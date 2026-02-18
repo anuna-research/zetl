@@ -41,12 +41,10 @@ fn run_json(cmd: &mut Command) -> Value {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "zetl exited with non-zero status.\nstdout: {}\nstderr: {}",
-        stdout,
-        stderr,
+        "zetl exited with non-zero status.\nstdout: {stdout}\nstderr: {stderr}",
     );
     serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("failed to parse JSON output: {}\nraw stdout: {}", e, stdout))
+        .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"))
 }
 
 /// Run the command (may fail) and parse stdout as JSON regardless of exit code.
@@ -56,7 +54,7 @@ fn run_json_any(cmd: &mut Command) -> (Value, std::process::ExitStatus) {
         .expect("failed to execute zetl");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("failed to parse JSON output: {}\nraw stdout: {}", e, stdout));
+        .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"));
     (json, output.status)
 }
 
@@ -289,16 +287,14 @@ fn test_001_index_scan_completeness() {
     assert_eq!(
         json["files_scanned"].as_u64(),
         Some(5),
-        "expected 5 files scanned, got: {}",
-        json
+        "expected 5 files scanned, got: {json}"
     );
 
     // Verify links_found = 12 (only body text links, excluding code/comments)
     assert_eq!(
         json["links_found"].as_u64(),
         Some(12),
-        "expected 12 body-text links found, got: {}",
-        json
+        "expected 12 body-text links found, got: {json}"
     );
 
     // Verify elapsed time is reported
@@ -326,8 +322,7 @@ fn test_002_graph_construction() {
     assert_eq!(
         links_a.len(),
         2,
-        "A should have 2 forward links, got: {:?}",
-        links_a
+        "A should have 2 forward links, got: {links_a:?}"
     );
 
     // Check forward links from B: should link to C
@@ -336,8 +331,7 @@ fn test_002_graph_construction() {
     assert_eq!(
         links_b.len(),
         1,
-        "B should have 1 forward link, got: {:?}",
-        links_b
+        "B should have 1 forward link, got: {links_b:?}"
     );
 
     // Check forward links from D: should have 0 links
@@ -346,8 +340,7 @@ fn test_002_graph_construction() {
     assert_eq!(
         links_d.len(),
         0,
-        "D should have 0 forward links, got: {:?}",
-        links_d
+        "D should have 0 forward links, got: {links_d:?}"
     );
 
     // Check backlinks for C: should be linked from A and B
@@ -358,8 +351,7 @@ fn test_002_graph_construction() {
     assert_eq!(
         backlinks_c.len(),
         2,
-        "C should have 2 backlinks, got: {:?}",
-        backlinks_c
+        "C should have 2 backlinks, got: {backlinks_c:?}"
     );
     let sources: Vec<&str> = backlinks_c
         .iter()
@@ -367,13 +359,11 @@ fn test_002_graph_construction() {
         .collect();
     assert!(
         sources.contains(&"A"),
-        "C should have backlink from A, sources: {:?}",
-        sources
+        "C should have backlink from A, sources: {sources:?}"
     );
     assert!(
         sources.contains(&"B"),
-        "C should have backlink from B, sources: {:?}",
-        sources
+        "C should have backlink from B, sources: {sources:?}"
     );
 
     // D is an orphan (zero incoming edges) -- checked via orphan detection in TEST-006
@@ -453,8 +443,7 @@ fn test_004_backlink_query() {
     assert_eq!(
         backlinks.len(),
         3,
-        "expected 3 backlinks to 'Concept X', got: {:?}",
-        backlinks
+        "expected 3 backlinks to 'Concept X', got: {backlinks:?}"
     );
 
     // Verify source files are present
@@ -464,26 +453,22 @@ fn test_004_backlink_query() {
         .collect();
     assert!(
         sources.contains(&"Note 1"),
-        "should have backlink from Note 1, sources: {:?}",
-        sources
+        "should have backlink from Note 1, sources: {sources:?}"
     );
     assert!(
         sources.contains(&"Note 2"),
-        "should have backlink from Note 2, sources: {:?}",
-        sources
+        "should have backlink from Note 2, sources: {sources:?}"
     );
     assert!(
         sources.contains(&"Note 3"),
-        "should have backlink from Note 3, sources: {:?}",
-        sources
+        "should have backlink from Note 3, sources: {sources:?}"
     );
 
     // Each backlink should have a line number
     for bl in backlinks {
         assert!(
             bl.get("line").is_some() && bl["line"].as_u64().is_some(),
-            "each backlink should have a line number, got: {:?}",
-            bl
+            "each backlink should have a line number, got: {bl:?}"
         );
     }
 }
@@ -512,8 +497,7 @@ fn test_005_dead_link_detection() {
     assert_eq!(
         dead_links.len(),
         1,
-        "expected 1 dead link, got: {:?}",
-        dead_links
+        "expected 1 dead link, got: {dead_links:?}"
     );
 
     let dead = &dead_links[0];
@@ -566,29 +550,25 @@ fn test_006_orphan_detection() {
     // D should be an orphan (never linked to)
     assert!(
         orphan_pages.contains(&"D"),
-        "D should be detected as an orphan, orphans: {:?}",
-        orphan_pages
+        "D should be detected as an orphan, orphans: {orphan_pages:?}"
     );
 
     // A is also an orphan (nobody links to A in this vault)
     assert!(
         orphan_pages.contains(&"A"),
-        "A should be detected as an orphan (no incoming links), orphans: {:?}",
-        orphan_pages
+        "A should be detected as an orphan (no incoming links), orphans: {orphan_pages:?}"
     );
 
     // B should NOT be an orphan (A links to B)
     assert!(
         !orphan_pages.contains(&"B"),
-        "B should NOT be an orphan, orphans: {:?}",
-        orphan_pages
+        "B should NOT be an orphan, orphans: {orphan_pages:?}"
     );
 
     // C should NOT be an orphan (B links to C)
     assert!(
         !orphan_pages.contains(&"C"),
-        "C should NOT be an orphan, orphans: {:?}",
-        orphan_pages
+        "C should NOT be an orphan, orphans: {orphan_pages:?}"
     );
 }
 
@@ -645,18 +625,15 @@ fn test_007_syntax_validation() {
     for err in syntax_errors {
         assert!(
             err.get("file").is_some() || err.get("source").is_some(),
-            "syntax error should have file, got: {:?}",
-            err
+            "syntax error should have file, got: {err:?}"
         );
         assert!(
             err.get("line").is_some(),
-            "syntax error should have line, got: {:?}",
-            err
+            "syntax error should have line, got: {err:?}"
         );
         assert!(
             err.get("message").is_some(),
-            "syntax error should have message, got: {:?}",
-            err
+            "syntax error should have message, got: {err:?}"
         );
     }
 }
@@ -698,16 +675,14 @@ fn test_008_simhash_fuzzy_search() {
         page_names
             .iter()
             .any(|name| name.to_lowercase().contains("zettelkasten")),
-        "should find at least one Zettelkasten page, got: {:?}",
-        page_names
+        "should find at least one Zettelkasten page, got: {page_names:?}"
     );
 
     // Each result should have a distance field
     for result in results {
         assert!(
             result.get("distance").is_some(),
-            "each result should have a distance field, got: {:?}",
-            result
+            "each result should have a distance field, got: {result:?}"
         );
     }
 
@@ -719,8 +694,7 @@ fn test_008_simhash_fuzzy_search() {
     for window in distances.windows(2) {
         assert!(
             window[0] <= window[1],
-            "results should be sorted by distance ascending, got: {:?}",
-            distances
+            "results should be sorted by distance ascending, got: {distances:?}"
         );
     }
 }
@@ -740,32 +714,28 @@ fn test_009_stats() {
     assert_eq!(
         json["pages"].as_u64(),
         Some(4),
-        "expected 4 pages, got: {}",
-        json
+        "expected 4 pages, got: {json}"
     );
 
     // 3 links: A->B, A->C, B->C
     assert_eq!(
         json["links"].as_u64(),
         Some(3),
-        "expected 3 links, got: {}",
-        json
+        "expected 3 links, got: {json}"
     );
 
     // Dead links: 0 (all targets exist)
     assert_eq!(
         json["dead_links"].as_u64(),
         Some(0),
-        "expected 0 dead links, got: {}",
-        json
+        "expected 0 dead links, got: {json}"
     );
 
     // Orphans: A and D have no incoming links
     assert_eq!(
         json["orphans"].as_u64(),
         Some(2),
-        "expected 2 orphans (A and D), got: {}",
-        json
+        "expected 2 orphans (A and D), got: {json}"
     );
 
     // Connected components: 2 (the {A,B,C} cluster and {D} isolated)
@@ -774,8 +744,7 @@ fn test_009_stats() {
     assert_eq!(
         json["connected_components"].as_u64(),
         Some(2),
-        "expected 2 connected components, got: {}",
-        json
+        "expected 2 connected components, got: {json}"
     );
 
     // most_linked should be present and sorted descending by backlink_count
@@ -791,8 +760,7 @@ fn test_009_stats() {
     assert_eq!(
         most_linked[0]["page"].as_str(),
         Some("C"),
-        "most linked page should be C, got: {:?}",
-        most_linked
+        "most linked page should be C, got: {most_linked:?}"
     );
     assert_eq!(
         most_linked[0]["backlink_count"].as_u64(),
@@ -808,8 +776,7 @@ fn test_009_stats() {
     for window in backlink_counts.windows(2) {
         assert!(
             window[0] >= window[1],
-            "most_linked should be sorted descending, got: {:?}",
-            backlink_counts
+            "most_linked should be sorted descending, got: {backlink_counts:?}"
         );
     }
 }
@@ -833,8 +800,7 @@ fn test_010_shortest_path_found() {
     assert_eq!(
         json["hops"].as_u64(),
         Some(3),
-        "expected 3 hops, got: {}",
-        json
+        "expected 3 hops, got: {json}"
     );
 
     let path = json["path"]
@@ -879,8 +845,7 @@ fn test_012_ignore_patterns() {
     assert_eq!(
         json["files_scanned"].as_u64(),
         Some(2),
-        "expected 2 files scanned (drafts/ should be ignored), got: {}",
-        json
+        "expected 2 files scanned (drafts/ should be ignored), got: {json}"
     );
 
     // Verify with stats that only 2 pages exist
@@ -888,8 +853,7 @@ fn test_012_ignore_patterns() {
     assert_eq!(
         stats["pages"].as_u64(),
         Some(2),
-        "expected 2 pages in stats (drafts excluded), got: {}",
-        stats
+        "expected 2 pages in stats (drafts excluded), got: {stats}"
     );
 }
 
@@ -943,8 +907,7 @@ fn test_default_ignores_git_and_node_modules() {
     assert_eq!(
         json["files_scanned"].as_u64(),
         Some(1),
-        "only Real Note.md should be scanned (default ignores for .git, node_modules, .zetl), got: {}",
-        json
+        "only Real Note.md should be scanned (default ignores for .git, node_modules, .zetl), got: {json}"
     );
 }
 

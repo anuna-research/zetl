@@ -70,7 +70,7 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
     if !cli.no_cache {
         if let Err(e) = save_cache(&vault_root, &files) {
             if cli.verbose > 0 {
-                eprintln!("Warning: failed to save cache: {}", e);
+                eprintln!("Warning: failed to save cache: {e}");
             }
         }
     }
@@ -135,14 +135,14 @@ fn find_page(
         }
     }
 
-    Err(format!("Page not found: '{}'", page_input))
+    Err(format!("Page not found: '{page_input}'"))
 }
 
 // ── Output helpers ─────────────────────────────────────────────────────────
 
 fn print_json<T: Serialize>(value: &T) -> Result<()> {
     let json = serde_json::to_string_pretty(value)?;
-    println!("{}", json);
+    println!("{json}");
     Ok(())
 }
 
@@ -217,7 +217,7 @@ fn cmd_links(
 
     let resolved_page =
         find_page(page, &pipeline.file_index, fuzzy, &pipeline.files).unwrap_or_else(|e| {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             std::process::exit(1);
         });
 
@@ -360,7 +360,7 @@ fn cmd_backlinks(
 
     let resolved_page =
         find_page(page, &pipeline.file_index, fuzzy, &pipeline.files).unwrap_or_else(|e| {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             std::process::exit(1);
         });
 
@@ -626,7 +626,7 @@ fn cmd_similar(cli: &Cli, query: &str, threshold: u32, limit: usize) -> Result<(
         OutputFormat::Json => print_json(&output)?,
         OutputFormat::Table => {
             if output.results.is_empty() {
-                println!("No similar pages found for '{}'.", query);
+                println!("No similar pages found for '{query}'.");
             } else {
                 let mut table = Table::new();
                 table.set_header(vec!["Page", "Distance", "Path"]);
@@ -637,7 +637,7 @@ fn cmd_similar(cli: &Cli, query: &str, threshold: u32, limit: usize) -> Result<(
                         Cell::new(&r.path),
                     ]);
                 }
-                println!("Similar pages to '{}':", query);
+                println!("Similar pages to '{query}':");
                 println!("{table}");
             }
         }
@@ -694,13 +694,13 @@ fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
 
     let resolved_from =
         find_page(from, &pipeline.file_index, false, &pipeline.files).unwrap_or_else(|e| {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             std::process::exit(1);
         });
 
     let resolved_to =
         find_page(to, &pipeline.file_index, false, &pipeline.files).unwrap_or_else(|e| {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             std::process::exit(1);
         });
 
@@ -717,7 +717,7 @@ fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
                     path_result.from, path_result.to, path_result.hops
                 );
                 let path_str = path_result.path.join(" -> ");
-                println!("  {}", path_str);
+                println!("  {path_str}");
             }
         },
         None => {
@@ -736,8 +736,7 @@ fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
                 OutputFormat::Json => print_json(&output)?,
                 OutputFormat::Table => {
                     eprintln!(
-                        "No path found from '{}' to '{}' within {} hops.",
-                        resolved_from, resolved_to, max_depth
+                        "No path found from '{resolved_from}' to '{resolved_to}' within {max_depth} hops."
                     );
                 }
             }

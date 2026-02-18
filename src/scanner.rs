@@ -31,7 +31,7 @@ pub fn scan_vault(root: &Path, ignore_patterns: &[String]) -> Result<Vec<ParsedF
     overrides.add("!node_modules/")?;
     overrides.add("!.zetl/")?;
     for pattern in ignore_patterns {
-        overrides.add(&format!("!{}", pattern))?;
+        overrides.add(&format!("!{pattern}"))?;
     }
     builder.overrides(overrides.build()?);
 
@@ -340,13 +340,13 @@ pub fn validate_syntax(path: &Path, content: &str) -> Vec<Diagnostic> {
                         .iter()
                         .collect();
                     let display = if snippet.len() < (len - open_start) {
-                        format!("{}...", snippet)
+                        format!("{snippet}...")
                     } else {
                         snippet
                     };
                     diagnostics.push(Diagnostic {
                         level: DiagnosticLevel::Error,
-                        message: format!("Unclosed wikilink: '{}'", display),
+                        message: format!("Unclosed wikilink: '{display}'"),
                         file: path.to_path_buf(),
                         line: line_number,
                         column: open_col,
@@ -628,13 +628,11 @@ mod tests {
         let text = body_text(content);
         assert!(
             !text.contains("let x = 1;"),
-            "Code block content should be excluded, got: {:?}",
-            text
+            "Code block content should be excluded, got: {text:?}"
         );
         assert!(
             !text.contains("```"),
-            "Code fence markers should be excluded, got: {:?}",
-            text
+            "Code fence markers should be excluded, got: {text:?}"
         );
         assert!(text.contains("Before"), "Text before code block should be included");
         assert!(text.contains("After"), "Text after code block should be included");
@@ -646,8 +644,7 @@ mod tests {
         let text = body_text(content);
         assert!(
             !text.contains("`inline`"),
-            "Inline code should be excluded, got: {:?}",
-            text
+            "Inline code should be excluded, got: {text:?}"
         );
         assert!(text.contains("Some "), "Text before inline code should be included");
         assert!(text.contains(" code"), "Text after inline code should be included");
@@ -659,13 +656,11 @@ mod tests {
         let text = body_text(content);
         assert!(
             !text.contains("<!-- comment -->"),
-            "HTML comment should be excluded, got: {:?}",
-            text
+            "HTML comment should be excluded, got: {text:?}"
         );
         assert!(
             !text.contains("comment"),
-            "Comment content should be excluded, got: {:?}",
-            text
+            "Comment content should be excluded, got: {text:?}"
         );
         assert!(text.contains("Before"), "Text before comment should be included");
         assert!(text.contains("After"), "Text after comment should be included");
@@ -677,13 +672,11 @@ mod tests {
         let text = body_text(content);
         assert!(
             !text.contains("title: test"),
-            "Frontmatter should be excluded, got: {:?}",
-            text
+            "Frontmatter should be excluded, got: {text:?}"
         );
         assert!(
             !text.contains("---"),
-            "Frontmatter delimiters should be excluded, got: {:?}",
-            text
+            "Frontmatter delimiters should be excluded, got: {text:?}"
         );
         assert!(text.contains("Body text"), "Body text should be included");
     }
@@ -712,8 +705,7 @@ mod tests {
         let text = body_text(content);
         assert!(
             !text.contains("<!-- comment -->"),
-            "Inline HTML comment should be excluded, got: {:?}",
-            text
+            "Inline HTML comment should be excluded, got: {text:?}"
         );
         assert!(text.contains("Text "), "Text before inline comment should be included");
         assert!(text.contains(" more text"), "Text after inline comment should be included");

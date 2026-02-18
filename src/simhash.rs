@@ -103,8 +103,8 @@ pub fn compute_simhash(text: &str) -> u64 {
     }
 
     let mut fingerprint: u64 = 0;
-    for i in 0..64 {
-        if weights[i] > 0 {
+    for (i, &w) in weights.iter().enumerate() {
+        if w > 0 {
             fingerprint |= 1 << i;
         }
     }
@@ -113,11 +113,11 @@ pub fn compute_simhash(text: &str) -> u64 {
 
 /// Accumulate a hash into the weight vector (+1 for set bits, -1 for unset)
 fn accumulate_hash(weights: &mut [i32; 64], hash: u64) {
-    for i in 0..64 {
+    for (i, w) in weights.iter_mut().enumerate() {
         if (hash >> i) & 1 == 1 {
-            weights[i] += 1;
+            *w += 1;
         } else {
-            weights[i] -= 1;
+            *w -= 1;
         }
     }
 }
@@ -177,9 +177,7 @@ mod tests {
         let dissimilar_dist = hamming_distance(h1, compute_simhash("rust programming"));
         assert!(
             similar_dist < dissimilar_dist,
-            "similar strings should have lower distance ({}) than dissimilar ones ({})",
-            similar_dist,
-            dissimilar_dist
+            "similar strings should have lower distance ({similar_dist}) than dissimilar ones ({dissimilar_dist})"
         );
     }
 

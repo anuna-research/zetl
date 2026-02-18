@@ -359,7 +359,7 @@ mod tests {
     /// Helper: build a minimal ParsedFile
     fn make_file(name: &str, links: Vec<(&str, u32)>) -> ParsedFile {
         ParsedFile {
-            path: PathBuf::from(format!("{}.md", name)),
+            path: PathBuf::from(format!("{name}.md")),
             page_name: name.to_string(),
             links: links
                 .into_iter()
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn test_build_with_resolved_pages_mapping() {
         // raw_target "note" resolves to "My Note"
-        let files = vec![ParsedFile {
+        let files = [ParsedFile {
             path: PathBuf::from("daily.md"),
             page_name: "daily".to_string(),
             links: vec![make_link("note", 5, None, None, None, false)],
@@ -532,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_backlinks_with_alias_and_embed() {
-        let files = vec![ParsedFile {
+        let files = [ParsedFile {
             path: PathBuf::from("source.md"),
             page_name: "source".to_string(),
             links: vec![make_link("target", 3, Some("display"), None, None, true)],
@@ -877,7 +877,7 @@ mod tests {
 
     #[test]
     fn test_edge_meta_preserves_heading_and_block_ref() {
-        let files = vec![ParsedFile {
+        let files = [ParsedFile {
             path: PathBuf::from("source.md"),
             page_name: "source".to_string(),
             links: vec![make_link(
