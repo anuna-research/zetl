@@ -1,0 +1,259 @@
+;; ────────────────────────────────────────────────────────────────────
+;; IMPL-002: zetl search — Full-Text Content Search
+;; ────────────────────────────────────────────────────────────────────
+
+(meta plan
+  (id "IMPL-002")
+  (title "Implement zetl search — Full-Text Content Search")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-02-18")
+  (author "agent:claude")
+  (spec "SPEC-002")
+  (description "Implement the search subcommand per SPEC-002: fast, local, index-free content search across vault Markdown files with body-text exclusions, regex, case-sensitivity, and context extraction."))
+
+;; ────────────────────────────────────────────────────────────────────
+;; Agents
+;; ────────────────────────────────────────────────────────────────────
+
+(given agent-claude-available)
+
+;; ────────────────────────────────────────────────────────────────────
+;; Tasks
+;; ────────────────────────────────────────────────────────────────────
+
+(given task-cli)
+(given task-search-module)
+(given task-exclusion-ranges)
+(given task-cmd-search)
+(given task-integration-tests)
+(given task-verify)
+(given task-cleanup-similar)
+
+;; ── Task metadata ──────────────────────────────────────────────────
+
+(meta task-cli
+  (description "Add Search variant to CLI with all flags: query, --context, --limit, --regex, --case-sensitive, --all")
+  (acceptance "cargo check passes; Search variant in Command enum with all flags from CON-008")
+  (file "src/cli.rs")
+  (req "REQ-013, REQ-014, REQ-015, REQ-016")
+  (con "CON-008"))
+
+(meta task-search-module
+  (description "Create src/search.rs module with SearchMatch struct and search_vault() function. Performs sequential file read + text matching. Returns matches with page, path, line, column. Supports literal and regex modes, case-insensitive by default.")
+  (acceptance "Unit tests pass for literal search, regex search, case-sensitive search, result ordering by path then line")
+  (file "src/search.rs")
+  (req "REQ-013, REQ-015, REQ-016")
+  (con "CON-008"))
+
+(meta task-exclusion-ranges
+  (description "Extract the scanner's exclusion-range logic (frontmatter, code blocks, inline code, HTML comments) into a reusable function that search can call. Currently this logic is embedded in scan_vault/parse flow. Refactor so search can call compute_exclusion_ranges(content) -> Vec<Range<usize>> and skip matches in excluded regions.")
+  (acceptance "Existing scanner tests still pass; new function is pub and usable from search module; unit test confirms frontmatter/code/comment ranges are correctly computed")
+  (file "src/scanner.rs, src/search.rs")
+  (req "REQ-014"))
+
+(meta task-cmd-search
+  (description "Wire up cmd_search in main.rs: parse CLI args, call search_vault(), format output as JSON or table. Add Line/Col/Context columns to table. Handle exit codes: 0 matches found, 1 no matches, 2 bad regex.")
+  (acceptance "Manual test: zetl search 'idea' --context 40 returns correct results from demo-vault in both JSON and table format")
+  (file "src/main.rs")
+  (req "REQ-013")
+  (con "CON-008"))
+
+(meta task-integration-tests
+  (description "Add integration tests per TEST-013 through TEST-018: basic search, body-text exclusion, regex, case sensitivity, ignore patterns, result limiting")
+  (acceptance "cargo test passes; all 6 new test functions pass; covers all test specs from SPEC-002")
+  (file "tests/integration.rs")
+  (test "TEST-013, TEST-014, TEST-015, TEST-016, TEST-017, TEST-018"))
+
+(meta task-verify
+  (description "Run cargo test, cargo clippy -- -D warnings, and manual smoke tests against demo-vault to verify the full implementation")
+  (acceptance "All tests pass; zero clippy warnings; manual test of zetl search 'idea' --context 40 on demo-vault produces correct output"))
+
+(meta task-cleanup-similar
+  (description "Remove the line/context fields from SimilarResult and the extract_text_context helper, since search now handles content lookup properly. Revert similar to its original clean page-name-only output per SPEC-001 CON-005.")
+  (acceptance "similar output matches original SPEC-001 schema (page, distance, path only); no references to extract_text_context remain; all tests pass")
+  (file "src/simhash.rs, src/main.rs, src/cli.rs, tests/integration.rs")
+  (req "REQ-008"))
+
+;; ── Dependency facts ───────────────────────────────────────────────
+
+;; task-cli has no dependencies — can start immediately
+(given no-deps-cli)
+
+;; task-search-module depends on task-cli (needs SearchMatch struct aligned with CLI flags)
+;; task-exclusion-ranges has no code deps but logically pairs with search-module
+;; task-cmd-search depends on search-module and exclusion-ranges and cli
+;; task-integration-tests depends on cmd-search being wired up
+;; task-verify depends on integration-tests
+;; task-cleanup-similar depends on verify (clean up after confirming search works)
+
+;; ────────────────────────────────────────────────────────────────────
+;; Readiness rules
+;; ────────────────────────────────────────────────────────────────────
+
+(normally r-ready-cli
+  (and task-cli no-deps-cli)
+  ready-cli)
+
+(normally r-ready-search-module
+  (and task-search-module completed-cli)
+  ready-search-module)
+
+(normally r-ready-exclusion-ranges
+  (and task-exclusion-ranges completed-cli)
+  ready-exclusion-ranges)
+
+(normally r-ready-cmd-search
+  (and task-cmd-search completed-search-module completed-exclusion-ranges)
+  ready-cmd-search)
+
+(normally r-ready-integration-tests
+  (and task-integration-tests completed-cmd-search)
+  ready-integration-tests)
+
+(normally r-ready-verify
+  (and task-verify completed-integration-tests)
+  ready-verify)
+
+(normally r-ready-cleanup-similar
+  (and task-cleanup-similar completed-verify)
+  ready-cleanup-similar)
+
+;; ── Rule metadata ──────────────────────────────────────────────────
+
+(meta r-ready-cli
+  (description "CLI flags can be added first with no dependencies")
+  (justification "Establishes the interface contract before implementation"))
+
+(meta r-ready-search-module
+  (description "Search module needs CLI types to align struct fields")
+  (justification "SearchMatch fields must correspond to CLI output flags"))
+
+(meta r-ready-exclusion-ranges
+  (description "Exclusion range extraction can start once CLI is done")
+  (justification "Needs to know whether --all flag exists to design the API"))
+
+(meta r-ready-cmd-search
+  (description "Wiring requires both search logic and exclusion ranges")
+  (justification "cmd_search calls search_vault() which uses exclusion ranges"))
+
+(meta r-ready-integration-tests
+  (description "Integration tests need the full command wired up")
+  (justification "Tests invoke the binary end-to-end"))
+
+(meta r-ready-verify
+  (description "Final verification after all tests are written")
+  (justification "Catches regressions across the full test suite and clippy"))
+
+(meta r-ready-cleanup-similar
+  (description "Clean up similar only after search is verified working")
+  (justification "Per SPEC-002 §9.3: line/context on similar is a stopgap replaced by search"))
+
+;; ────────────────────────────────────────────────────────────────────
+;; Assignment rules — all tasks assigned to claude
+;; ────────────────────────────────────────────────────────────────────
+
+(normally r-assign-cli
+  (and ready-cli agent-claude-available)
+  assign-to-cli-claude)
+
+(normally r-assign-search-module
+  (and ready-search-module agent-claude-available)
+  assign-to-search-module-claude)
+
+(normally r-assign-exclusion-ranges
+  (and ready-exclusion-ranges agent-claude-available)
+  assign-to-exclusion-ranges-claude)
+
+(normally r-assign-cmd-search
+  (and ready-cmd-search agent-claude-available)
+  assign-to-cmd-search-claude)
+
+(normally r-assign-integration-tests
+  (and ready-integration-tests agent-claude-available)
+  assign-to-integration-tests-claude)
+
+(normally r-assign-verify
+  (and ready-verify agent-claude-available)
+  assign-to-verify-claude)
+
+(normally r-assign-cleanup-similar
+  (and ready-cleanup-similar agent-claude-available)
+  assign-to-cleanup-similar-claude)
+
+(claims agent:claude
+  :at "2026-02-18T08:32:04Z"
+  (given claim-v1-cli)
+  (normally r-cl-state-v1-cli claim-v1-cli state-claimed-v1-cli)
+  (normally r-cl-chain-v1-cli state-claimed-v1-cli claimed-cli)
+)
+
+(claims agent:claude
+  :at "2026-02-18T08:32:47Z"
+  (given completed-cli))
+
+(claims agent:claude
+  :at "2026-02-18T08:32:54Z"
+  (given claim-v1-exclusion-ranges)
+  (normally r-cl-state-v1-exclusion-ranges claim-v1-exclusion-ranges state-claimed-v1-exclusion-ranges)
+  (normally r-cl-chain-v1-exclusion-ranges state-claimed-v1-exclusion-ranges claimed-exclusion-ranges)
+)
+
+(claims agent:claude
+  :at "2026-02-18T08:32:54Z"
+  (given claim-v1-search-module)
+  (normally r-cl-state-v1-search-module claim-v1-search-module state-claimed-v1-search-module)
+  (normally r-cl-chain-v1-search-module state-claimed-v1-search-module claimed-search-module)
+)
+
+(claims agent:claude
+  :at "2026-02-18T08:33:31Z"
+  (given completed-exclusion-ranges))
+
+(claims agent:claude
+  :at "2026-02-18T08:35:02Z"
+  (given completed-search-module))
+
+(claims agent:claude
+  :at "2026-02-18T08:35:07Z"
+  (given claim-v1-cmd-search)
+  (normally r-cl-state-v1-cmd-search claim-v1-cmd-search state-claimed-v1-cmd-search)
+  (normally r-cl-chain-v1-cmd-search state-claimed-v1-cmd-search claimed-cmd-search)
+)
+
+(claims agent:claude
+  :at "2026-02-18T08:36:16Z"
+  (given completed-cmd-search))
+
+(claims agent:claude
+  :at "2026-02-18T08:36:22Z"
+  (given claim-v1-integration-tests)
+  (normally r-cl-state-v1-integration-tests claim-v1-integration-tests state-claimed-v1-integration-tests)
+  (normally r-cl-chain-v1-integration-tests state-claimed-v1-integration-tests claimed-integration-tests)
+)
+
+(claims agent:claude
+  :at "2026-02-18T08:37:25Z"
+  (given completed-integration-tests))
+
+(claims agent:claude
+  :at "2026-02-18T08:37:30Z"
+  (given claim-v1-verify)
+  (normally r-cl-state-v1-verify claim-v1-verify state-claimed-v1-verify)
+  (normally r-cl-chain-v1-verify state-claimed-v1-verify claimed-verify)
+)
+
+(claims agent:claude
+  :at "2026-02-18T08:37:44Z"
+  (given completed-verify))
+
+(claims agent:claude
+  :at "2026-02-18T08:37:49Z"
+  (given claim-v1-cleanup-similar)
+  (normally r-cl-state-v1-cleanup-similar claim-v1-cleanup-similar state-claimed-v1-cleanup-similar)
+  (normally r-cl-chain-v1-cleanup-similar state-claimed-v1-cleanup-similar claimed-cleanup-similar)
+)
+
+(claims agent:claude
+  :at "2026-02-18T08:39:35Z"
+  (given completed-cleanup-similar))

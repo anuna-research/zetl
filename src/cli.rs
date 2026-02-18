@@ -93,11 +93,32 @@ pub enum Command {
         /// Search string
         query: String,
         /// Max Hamming distance
-        #[arg(long, default_value = "8")]
+        #[arg(long, default_value = "12")]
         threshold: u32,
         /// Max results
         #[arg(long, default_value = "10")]
         limit: usize,
+    },
+
+    /// Search vault file contents for text
+    Search {
+        /// Search string (literal text, or regex with --regex)
+        query: String,
+        /// Include N characters of surrounding text
+        #[arg(long, default_value = "0")]
+        context: usize,
+        /// Max results to return
+        #[arg(long, default_value = "50")]
+        limit: usize,
+        /// Interpret query as a regular expression
+        #[arg(long)]
+        regex: bool,
+        /// Require exact case match
+        #[arg(long)]
+        case_sensitive: bool,
+        /// Search raw file content (include frontmatter, code blocks, comments)
+        #[arg(long)]
+        all: bool,
     },
 
     /// Print summary statistics

@@ -11,6 +11,7 @@ use zetl::cache::{files_needing_reparse, load_cache, save_cache};
 use zetl::cli::{Cli, Command, FailLevel, OutputFormat};
 use zetl::graph::LinkGraph;
 use zetl::scanner::{resolve_page_name, scan_vault};
+use zetl::search::{search_vault, SearchConfig};
 use zetl::simhash::SimHashIndex;
 use zetl::types::{DiagnosticLevel, ParsedFile};
 
@@ -747,6 +748,72 @@ fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
     Ok(())
 }
 
+fn cmd_search(
+    cli: &Cli,
+    query: &str,
+    context: usize,
+    limit: usize,
+    regex: bool,
+    case_sensitive: bool,
+    all: bool,
+) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    let config = SearchConfig {
+        query,
+        context_chars: context,
+        limit,
+        regex,
+        case_sensitive,
+        body_only: !all,
+    };
+
+    let output = search_vault(&vault_root, &config)?;
+
+    if output.total_matches == 0 {
+        match cli.format {
+            OutputFormat::Json => print_json(&output)?,
+            OutputFormat::Table => {
+                println!("No matches found for '{query}'.");
+            }
+        }
+        std::process::exit(1);
+    }
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            let mut table = Table::new();
+            let mut headers = vec!["Page", "Line", "Col"];
+            if context > 0 {
+                headers.push("Context");
+            }
+            table.set_header(headers);
+            for r in &output.results {
+                let mut row = vec![
+                    Cell::new(&r.page),
+                    Cell::new(r.line),
+                    Cell::new(r.column),
+                ];
+                if context > 0 {
+                    row.push(Cell::new(
+                        r.context.as_deref().unwrap_or(""),
+                    ));
+                }
+                table.add_row(row);
+            }
+            println!(
+                "Search results for '{}' ({} matches):",
+                query, output.total_matches
+            );
+            println!("{table}");
+        }
+    }
+
+    Ok(())
+}
+
 // ── Context extraction helper ──────────────────────────────────────────────
 
 /// Read the source file and extract `n` chars of context around the wikilink
@@ -799,6 +866,14 @@ fn main() -> anyhow::Result<()> {
             threshold,
             limit,
         } => cmd_similar(&cli, query, *threshold, *limit),
+        Command::Search {
+            query,
+            context,
+            limit,
+            regex,
+            case_sensitive,
+            all,
+        } => cmd_search(&cli, query, *context, *limit, *regex, *case_sensitive, *all),
         Command::Stats { top } => cmd_stats(&cli, *top),
         Command::Path {
             from,

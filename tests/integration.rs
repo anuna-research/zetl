@@ -224,17 +224,17 @@ fn build_test008_vault(root: &Path) {
     write_file(
         root,
         "Zettelkasten Method.md",
-        "# Zettelkasten Method\n\nContent.\n",
+        "# Zettelkasten Method\n\nThe zettelkasten method is a personal knowledge management system.\n",
     );
     write_file(
         root,
         "Zettelkasten History.md",
-        "# Zettelkasten History\n\nContent.\n",
+        "# Zettelkasten History\n\nThe zettelkasten was invented by Niklas Luhmann.\n",
     );
     write_file(
         root,
         "Rust Programming.md",
-        "# Rust Programming\n\nContent.\n",
+        "# Rust Programming\n\nRust is a systems programming language.\n",
     );
 }
 
@@ -1006,4 +1006,345 @@ fn test_check_all_categories() {
             "summary should have syntax_errors count"
         );
     }
+}
+
+// ===========================================================================
+// TEST-013: Basic Content Search
+// ===========================================================================
+
+fn build_test013_vault(root: &Path) {
+    write_file(
+        root,
+        "Alpha.md",
+        "# Alpha\n\nThe quick brown fox.\n",
+    );
+    write_file(
+        root,
+        "Beta.md",
+        "# Beta\n\nNothing here.\nA quick summary of topics.\n",
+    );
+    write_file(
+        root,
+        "Gamma.md",
+        "# Gamma\n\nNo match here.\n",
+    );
+}
+
+#[test]
+fn test_013_basic_content_search() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_test013_vault(dir.path());
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("quick"),
+    );
+
+    let results = json["results"]
+        .as_array()
+        .expect("results should be array");
+
+    assert_eq!(
+        results.len(),
+        2,
+        "expected 2 matches for 'quick', got: {results:?}"
+    );
+
+    // Each result should have page, path, line, column
+    for result in results {
+        assert!(result.get("page").is_some(), "result should have page");
+        assert!(result.get("path").is_some(), "result should have path");
+        assert!(result["line"].as_u64().is_some(), "result should have line");
+        assert!(result["column"].as_u64().is_some(), "result should have column");
+    }
+
+    // Verify pages found
+    let pages: Vec<&str> = results
+        .iter()
+        .filter_map(|r| r["page"].as_str())
+        .collect();
+    assert!(pages.contains(&"Alpha"), "should find match in Alpha");
+    assert!(pages.contains(&"Beta"), "should find match in Beta");
+}
+
+#[test]
+fn test_013_search_with_context() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_test013_vault(dir.path());
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("quick")
+            .arg("--context")
+            .arg("10"),
+    );
+
+    let results = json["results"]
+        .as_array()
+        .expect("results should be array");
+
+    // All results should have context
+    for result in results {
+        assert!(
+            result["context"].as_str().is_some(),
+            "result should have context when --context is specified, got: {result:?}"
+        );
+    }
+}
+
+#[test]
+fn test_013_search_no_matches() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_test013_vault(dir.path());
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("search").arg("nonexistent");
+
+    // Should exit non-zero
+    cmd.assert().failure();
+}
+
+// ===========================================================================
+// TEST-014: Body-Text Exclusion
+// ===========================================================================
+
+#[test]
+fn test_014_body_text_exclusion() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    write_file(
+        dir.path(),
+        "Mixed.md",
+        "---\ntitle: Quick Start Guide\n---\n\n# Mixed\n\nBody has quick overview.\n\n```\nquick_sort(arr)\n```\n\nMore body text.\n",
+    );
+
+    // Default: body-text only — should find "quick" in body but not frontmatter or code block
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("quick"),
+    );
+
+    let results = json["results"]
+        .as_array()
+        .expect("results should be array");
+
+    assert_eq!(
+        results.len(),
+        1,
+        "should find 1 match in body text only (not frontmatter/code), got: {results:?}"
+    );
+    assert_eq!(
+        results[0]["line"].as_u64(),
+        Some(7),
+        "match should be on line 7 (body text)"
+    );
+}
+
+#[test]
+fn test_014_search_all_mode() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    write_file(
+        dir.path(),
+        "Mixed.md",
+        "---\ntitle: Quick Start Guide\n---\n\n# Mixed\n\nBody has quick overview.\n\n```\nquick_sort(arr)\n```\n\nMore body text.\n",
+    );
+
+    // --all mode: should find "quick" in frontmatter, body, and code block
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("quick")
+            .arg("--all"),
+    );
+
+    let total = json["total_matches"].as_u64().expect("total_matches");
+    assert!(
+        total >= 3,
+        "with --all, should find matches in frontmatter, body, and code block, got total: {total}"
+    );
+}
+
+// ===========================================================================
+// TEST-015: Regex Search
+// ===========================================================================
+
+#[test]
+fn test_015_regex_search() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    write_file(
+        dir.path(),
+        "Words.md",
+        "# Words\n\nI have a note and some notes but not notation.\n",
+    );
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg(r"\bnotes?\b")
+            .arg("--regex"),
+    );
+
+    let results = json["results"]
+        .as_array()
+        .expect("results should be array");
+
+    // Should match "note" and "notes" but not "notation"
+    assert_eq!(
+        results.len(),
+        2,
+        "regex \\bnotes?\\b should match 'note' and 'notes', got: {results:?}"
+    );
+}
+
+#[test]
+fn test_015_invalid_regex() {
+    let dir = TempDir::new().expect("create temp dir");
+    write_file(dir.path(), "A.md", "# A\n\nContent.\n");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("search").arg("[invalid").arg("--regex");
+
+    // Should fail (bad regex)
+    cmd.assert().failure();
+}
+
+// ===========================================================================
+// TEST-016: Case Sensitivity
+// ===========================================================================
+
+#[test]
+fn test_016_case_insensitive_default() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    write_file(
+        dir.path(),
+        "Case.md",
+        "# Case\n\nZettelkasten on line 3.\nzettelkasten on line 4.\n",
+    );
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("ZETTELKASTEN"),
+    );
+
+    let total = json["total_matches"].as_u64().expect("total_matches");
+    assert_eq!(
+        total, 2,
+        "case-insensitive search should find both occurrences, got: {total}"
+    );
+}
+
+#[test]
+fn test_016_case_sensitive() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    write_file(
+        dir.path(),
+        "Case.md",
+        "# Case\n\nZettelkasten on line 3.\nzettelkasten on line 4.\n",
+    );
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("Zettelkasten")
+            .arg("--case-sensitive"),
+    );
+
+    let total = json["total_matches"].as_u64().expect("total_matches");
+    assert_eq!(
+        total, 1,
+        "case-sensitive search should find only 'Zettelkasten', got: {total}"
+    );
+}
+
+// ===========================================================================
+// TEST-017: Search Respects Ignore Patterns
+// ===========================================================================
+
+#[test]
+fn test_017_search_respects_ignores() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    write_file(dir.path(), ".zetlignore", "drafts/\n");
+    write_file(
+        dir.path(),
+        "Public.md",
+        "# Public\n\nPublic content here.\n",
+    );
+    write_file(
+        dir.path(),
+        "drafts/Draft.md",
+        "# Draft\n\nSecret draft content here.\n",
+    );
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("content"),
+    );
+
+    let results = json["results"]
+        .as_array()
+        .expect("results should be array");
+
+    let pages: Vec<&str> = results
+        .iter()
+        .filter_map(|r| r["page"].as_str())
+        .collect();
+
+    assert!(
+        pages.contains(&"Public"),
+        "should find match in Public, got: {pages:?}"
+    );
+    assert!(
+        !pages.iter().any(|p| *p == "Draft"),
+        "should NOT find match in ignored Draft, got: {pages:?}"
+    );
+}
+
+// ===========================================================================
+// TEST-018: Search Result Limiting
+// ===========================================================================
+
+#[test]
+fn test_018_search_result_limiting() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    // Create files with many matches
+    write_file(
+        dir.path(),
+        "Many.md",
+        "# Many\n\nthe the the the the\nthe the the the the\nthe the the the the\n",
+    );
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("the")
+            .arg("--limit")
+            .arg("3"),
+    );
+
+    let results = json["results"]
+        .as_array()
+        .expect("results should be array");
+
+    let total = json["total_matches"].as_u64().expect("total_matches");
+
+    assert_eq!(
+        results.len(),
+        3,
+        "results should be capped at limit of 3"
+    );
+    assert!(
+        total > 3,
+        "total_matches should report full count ({total}), not just the limited results"
+    );
 }
