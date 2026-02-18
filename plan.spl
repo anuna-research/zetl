@@ -1,0 +1,298 @@
+;; =============================================================================
+;; IMPL-001: zetl — Bi-directional Link Graph CLI (Rust)
+;; Implementation plan for SPEC-001
+;; =============================================================================
+
+(meta plan
+  (id "IMPL-001")
+  (title "zetl — Bi-directional Link Graph CLI Implementation")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-02-18")
+  (author "agent:architect")
+  (spec "SPEC-001")
+  (description "Implement zetl CLI in Rust: wikilink parser, link graph, SimHash fuzzy search, cache, and CLI commands"))
+
+;; =============================================================================
+;; Agents — specialized workers for parallel execution
+;; =============================================================================
+
+(given agent-architect-available)
+(given agent-scanner-available)
+(given agent-graph-available)
+(given agent-simhash-available)
+(given agent-cache-available)
+(given agent-cli-available)
+(given agent-tester-available)
+
+;; =============================================================================
+;; Phase 1: Project Scaffold
+;; =============================================================================
+
+(given task-scaffold)
+(given no-deps-scaffold)
+(meta task-scaffold
+  (description "Initialize Rust project with Cargo.toml, dependencies, module structure, and shared data types. Create src/main.rs, src/lib.rs, and module files: scanner.rs, graph.rs, simhash.rs, cache.rs, cli.rs, types.rs. Cargo.toml dependencies: clap (derive), pulldown-cmark, petgraph, serde/serde_json, ignore, comfy-table (for table output), anyhow. Define core data types in types.rs: WikiLink, ParsedFile, Diagnostic, DiagnosticLevel per SPEC-001 section 5.3.")
+  (acceptance "cargo check passes; all modules declared; core types compile; project structure matches SPEC-001 section 5.2"))
+
+(normally r-ready-scaffold
+  (and task-scaffold no-deps-scaffold)
+  ready-scaffold)
+(normally r-assign-scaffold
+  (and ready-scaffold agent-architect-available)
+  assign-to-scaffold-architect)
+
+;; =============================================================================
+;; Phase 2: Core Parsing (depends on scaffold)
+;; =============================================================================
+
+;; --- Task: Wikilink Parser ---
+(given task-parser)
+(meta task-parser
+  (description "Implement wikilink regex parser in scanner.rs. Must handle all formats from SPEC-001 section 3.1: [[Page]], [[Page|Alias]], [[Page#Heading]], [[Page#Heading|Alias]], [[Page^block-id]], ![[Embed]], [[#Heading]]. Parse into WikiLink struct with target_page, heading, block_ref, alias, is_embed, line, column. Follow the formal grammar in section 3.4. Must correctly split on first | for alias, first # for heading, first ^ for block ref.")
+  (acceptance "Unit tests pass for all 7 link formats; correctly extracts page name, heading, block ref, alias, embed flag; line/column numbers are 1-indexed and accurate"))
+
+(normally r-ready-parser
+  (and task-parser completed-scaffold)
+  ready-parser)
+(normally r-assign-parser
+  (and ready-parser agent-scanner-available)
+  assign-to-parser-scanner)
+
+;; --- Task: Markdown Context Filtering ---
+(given task-md-filter)
+(meta task-md-filter
+  (description "Implement markdown context-aware filtering using pulldown-cmark. Must exclude wikilinks inside: fenced code blocks (```), inline code (`), HTML comments (<!-- -->), and YAML frontmatter (--- delimiters). Use pulldown-cmark's event stream to track which regions are code/comment, then only extract wikilinks from body text regions. This is critical for SPEC-001 section 3.3 parsing rules.")
+  (acceptance "Links inside code blocks, inline code, HTML comments, and frontmatter are correctly ignored; links in normal body text are extracted; unit tests cover all exclusion cases"))
+
+(normally r-ready-md-filter
+  (and task-md-filter completed-scaffold)
+  ready-md-filter)
+(normally r-assign-md-filter
+  (and ready-md-filter agent-scanner-available)
+  assign-to-md-filter-scanner)
+
+;; --- Task: Page Name Resolution ---
+(given task-resolver)
+(meta task-resolver
+  (description "Implement page name resolution per SPEC-001 section 3.2. Four-level resolution: 1) Exact match (case-insensitive filename sans .md), 2) Normalized match (spaces/hyphens/underscores equivalent), 3) Path-qualified match (if link contains /), 4) Ambiguous match detection (warn if multiple files match). Build a resolution index mapping normalized names to file paths.")
+  (acceptance "Resolves exact matches case-insensitively; treats my-page/my_page/my page as equivalent; path-qualified links resolve correctly; ambiguous matches produce warnings; unit tests cover all 4 levels"))
+
+(normally r-ready-resolver
+  (and task-resolver completed-scaffold)
+  ready-resolver)
+(normally r-assign-resolver
+  (and ready-resolver agent-scanner-available)
+  assign-to-resolver-scanner)
+
+;; --- Task: Syntax Validator ---
+(given task-validator)
+(meta task-validator
+  (description "Implement wikilink syntax validation per REQ-007. Detect: unclosed brackets ([[page without closing), empty links ([[]]), nested brackets ([[page [[nested]]]]). Produce Diagnostic structs with file, line, column, level (Error), and descriptive messages. Scan each line for malformed patterns that the main parser would skip or misparse.")
+  (acceptance "Detects unclosed brackets, empty links, nested brackets; each diagnostic has correct file/line/column; descriptive error messages; unit tests for all 3 malformed patterns from TEST-007"))
+
+(normally r-ready-validator
+  (and task-validator completed-scaffold)
+  ready-validator)
+(normally r-assign-validator
+  (and ready-validator agent-scanner-available)
+  assign-to-validator-scanner)
+
+;; =============================================================================
+;; Phase 2b: File Scanner (depends on scaffold, composes parsing components)
+;; =============================================================================
+
+(given task-file-scanner)
+(meta task-file-scanner
+  (description "Implement the file-walking scanner that ties together parsing components. Use the `ignore` crate to walk the vault directory recursively for **/*.md files, respecting .zetlignore (gitignore syntax) and default ignores (.git, node_modules, .zetl). For each file: read contents, apply md-filter to identify non-code regions, run wikilink parser on those regions, run syntax validator, collect results into ParsedFile structs. Per REQ-001 and REQ-012.")
+  (acceptance "Recursively finds all .md files; respects .zetlignore and default ignores; produces ParsedFile with all links and diagnostics; handles file read errors gracefully; unit test with test vault of 5 files per TEST-001"))
+
+(normally r-ready-file-scanner
+  (and task-file-scanner completed-parser completed-md-filter completed-validator)
+  ready-file-scanner)
+(normally r-assign-file-scanner
+  (and ready-file-scanner agent-scanner-available)
+  assign-to-file-scanner-scanner)
+
+;; =============================================================================
+;; Phase 3: Graph Engine (depends on scaffold + types)
+;; =============================================================================
+
+(given task-graph-build)
+(meta task-graph-build
+  (description "Implement graph construction in graph.rs using petgraph::DiGraph. Consume Vec<ParsedFile> and page resolver results to build directed graph where: each node = page (resolved filename or unresolved name), each edge = link with metadata (line, alias, heading, block_ref, embed flag). Compute backlinks as reverse edges. Track resolved vs unresolved nodes. Per REQ-002.")
+  (acceptance "Graph has correct nodes and edges for test data; backlinks computed correctly; unresolved targets tracked as dead links; handles ambiguous resolution; TEST-002 scenario passes"))
+
+(normally r-ready-graph-build
+  (and task-graph-build completed-scaffold)
+  ready-graph-build)
+(normally r-assign-graph-build
+  (and ready-graph-build agent-graph-available)
+  assign-to-graph-build-graph)
+
+;; --- Task: Graph Queries ---
+(given task-graph-queries)
+(meta task-graph-queries
+  (description "Implement query methods on the graph: forward_links(page) -> Vec<Link> (REQ-003), backlinks(page) -> Vec<Backlink> (REQ-004), dead_links() -> Vec<DeadLink> (REQ-005), orphans() -> Vec<Orphan> (REQ-006), shortest_path(from, to, max_depth) using BFS (REQ-010), connected_components() count, stats() summary (REQ-009). Each query returns structured data ready for JSON serialization.")
+  (acceptance "All query methods return correct results for test graphs; shortest_path uses BFS and respects max_depth; orphans = nodes with zero incoming edges; dead_links = edges to unresolved targets; stats includes all fields from CON-006; connected_components count correct"))
+
+(normally r-ready-graph-queries
+  (and task-graph-queries completed-graph-build)
+  ready-graph-queries)
+(normally r-assign-graph-queries
+  (and ready-graph-queries agent-graph-available)
+  assign-to-graph-queries-graph)
+
+;; =============================================================================
+;; Phase 3b: SimHash (depends on scaffold)
+;; =============================================================================
+
+(given task-simhash)
+(meta task-simhash
+  (description "Implement SimHash fuzzy search in simhash.rs per SPEC-001 section 7. Algorithm: 1) Normalize page name (lowercase, collapse whitespace, strip punctuation), 2) Extract character trigrams, 3) Hash each trigram with FNV-1a to 64-bit, 4) Accumulate bit weights (+1/-1), 5) Threshold to get 64-bit fingerprint. Implement Hamming distance as (a XOR b).count_ones(). Build SimHashIndex that stores fingerprints for all pages and supports search(query, threshold, limit) returning matches sorted by distance. Default threshold=3. Per REQ-008.")
+  (acceptance "SimHash produces consistent fingerprints; similar strings have low Hamming distance; 'zettelkasen' matches 'Zettelkasten Method' within distance 3; 'Rust Programming' does not match; search respects threshold and limit; TEST-008 passes"))
+
+(normally r-ready-simhash
+  (and task-simhash completed-scaffold)
+  ready-simhash)
+(normally r-assign-simhash
+  (and ready-simhash agent-simhash-available)
+  assign-to-simhash-simhash)
+
+;; =============================================================================
+;; Phase 3c: Cache (depends on scaffold)
+;; =============================================================================
+
+(given task-cache)
+(meta task-cache
+  (description "Implement persistent cache in cache.rs per REQ-011. Serialize scanner output to .zetl/index.json with per-file mtimes. On load: read cached index, compare mtimes with current files, return list of files needing re-parse (changed/new/deleted). Support --no-cache flag to force full rescan. Cache format: JSON object with version field and map of file paths to {mtime, parsed_file_data}. Create .zetl/ directory if it doesn't exist.")
+  (acceptance "Cache writes to .zetl/index.json; subsequent runs skip unchanged files; modified files are re-parsed; deleted files removed from cache; --no-cache forces full rescan; TEST-011 scenarios pass"))
+
+(normally r-ready-cache
+  (and task-cache completed-scaffold)
+  ready-cache)
+(normally r-assign-cache
+  (and ready-cache agent-cache-available)
+  assign-to-cache-cache)
+
+;; =============================================================================
+;; Phase 4: CLI Layer (depends on all components)
+;; =============================================================================
+
+(given task-cli-framework)
+(meta task-cli-framework
+  (description "Implement CLI framework in cli.rs and main.rs using clap derive macros. Define all global flags per CON-001: --dir, --format (json|table), --no-cache, --no-color, --quiet, --verbose, --help, --version. Define subcommand enum: Index, Links, Backlinks, Check, Similar, Stats, Path. Wire up main.rs to parse args, run the appropriate pipeline (scan -> build graph -> run command -> format output). Implement JSON and table (comfy-table) output formatters.")
+  (acceptance "All subcommands parse correctly; global flags work; --format json produces valid JSON; --format table produces aligned table; --help shows usage; --version shows version; exit codes match spec"))
+
+(normally r-ready-cli-framework
+  (and task-cli-framework completed-file-scanner completed-graph-queries completed-simhash completed-cache completed-resolver)
+  ready-cli-framework)
+(normally r-assign-cli-framework
+  (and ready-cli-framework agent-cli-available)
+  assign-to-cli-framework-cli)
+
+;; --- Task: CLI Subcommands ---
+(given task-cli-commands)
+(meta task-cli-commands
+  (description "Implement all CLI subcommand handlers: 1) index - scan, build, cache, report stats (CON-002), 2) links <PAGE> - forward link query with --fuzzy, --context, --depth (CON-003), 3) backlinks <PAGE> - backlink query (CON-003), 4) check - validate dead links, orphans, syntax with --dead-links/--orphans/--syntax/--fail-on filters (CON-004), 5) similar <QUERY> - SimHash search with --threshold, --limit (CON-005), 6) stats - graph statistics with --top (CON-006), 7) path <FROM> <TO> - shortest path with --max-depth (CON-007). Each command: load/build index, execute query, format and print, set exit code.")
+  (acceptance "All 7 subcommands produce output matching their CON spec examples; exit codes correct; filters work (--dead-links, --orphans, etc); JSON output valid and matches schemas; table output readable"))
+
+(normally r-ready-cli-commands
+  (and task-cli-commands completed-cli-framework)
+  ready-cli-commands)
+(normally r-assign-cli-commands
+  (and ready-cli-commands agent-cli-available)
+  assign-to-cli-commands-cli)
+
+;; =============================================================================
+;; Phase 5: Integration Tests
+;; =============================================================================
+
+(given task-integration-tests)
+(meta task-integration-tests
+  (description "Create comprehensive integration tests using a test vault fixture (tests/fixtures/vault/) with known files and links. Implement TEST-001 through TEST-012 from SPEC-001 section 8. Test via cargo test. Create test vault with: File A linking to B, C; File B linking to C; File D (orphan); File with syntax errors; File with code blocks containing links to ignore; .zetlignore with drafts/ exclusion; drafts/ directory with files to exclude. Each test runs zetl as a library call and validates output structure and values.")
+  (acceptance "All 12 test scenarios from SPEC-001 pass; test vault is self-contained in tests/fixtures/; tests cover: scan completeness, graph construction, forward links, backlinks, dead links, orphans, syntax validation, SimHash search, stats, shortest path, cache, ignore patterns"))
+
+(normally r-ready-integration-tests
+  (and task-integration-tests completed-cli-commands)
+  ready-integration-tests)
+(normally r-assign-integration-tests
+  (and ready-integration-tests agent-tester-available)
+  assign-to-integration-tests-tester)
+
+;; =============================================================================
+;; Metadata for rules
+;; =============================================================================
+
+(meta r-ready-scaffold (description "Scaffold has no dependencies"))
+(meta r-ready-parser (description "Parser depends on scaffold for types"))
+(meta r-ready-md-filter (description "Markdown filter depends on scaffold"))
+(meta r-ready-resolver (description "Resolver depends on scaffold for types"))
+(meta r-ready-validator (description "Validator depends on scaffold for types"))
+(meta r-ready-file-scanner (description "File scanner composes parser, md-filter, and validator"))
+(meta r-ready-graph-build (description "Graph build depends on scaffold for types"))
+(meta r-ready-graph-queries (description "Queries depend on graph being built"))
+(meta r-ready-simhash (description "SimHash is independent, only needs scaffold"))
+(meta r-ready-cache (description "Cache is independent, only needs scaffold"))
+(meta r-ready-cli-framework (description "CLI wires all components together"))
+(meta r-ready-cli-commands (description "Commands depend on framework being in place"))
+(meta r-ready-integration-tests (description "Tests run after all commands are implemented"))
+
+(claims agent:architect
+  :at "2026-02-18T05:39:37Z"
+  (given claim-v1-scaffold)
+  (normally r-cl-state-v1-scaffold claim-v1-scaffold state-claimed-v1-scaffold)
+  (normally r-cl-chain-v1-scaffold state-claimed-v1-scaffold claimed-scaffold)
+)
+
+(claims agent:architect
+  :at "2026-02-18T05:41:45Z"
+  (given completed-scaffold))
+
+(claims agent:architect
+  :at "2026-02-18T05:49:41Z"
+  (given completed-parser))
+
+(claims agent:architect
+  :at "2026-02-18T05:49:41Z"
+  (given completed-md-filter))
+
+(claims agent:architect
+  :at "2026-02-18T05:49:41Z"
+  (given completed-resolver))
+
+(claims agent:architect
+  :at "2026-02-18T05:49:41Z"
+  (given completed-validator))
+
+(claims agent:architect
+  :at "2026-02-18T05:49:41Z"
+  (given completed-graph-build))
+
+(claims agent:architect
+  :at "2026-02-18T05:49:41Z"
+  (given completed-graph-queries))
+
+(claims agent:architect
+  :at "2026-02-18T05:49:41Z"
+  (given completed-simhash))
+
+(claims agent:architect
+  :at "2026-02-18T05:49:41Z"
+  (given completed-cache))
+
+(claims agent:architect
+  :at "2026-02-18T05:50:39Z"
+  (given completed-file-scanner))
+
+(claims agent:architect
+  :at "2026-02-18T05:56:23Z"
+  (given completed-cli-framework))
+
+(claims agent:architect
+  :at "2026-02-18T05:56:23Z"
+  (given completed-cli-commands))
+
+(claims agent:architect
+  :at "2026-02-18T05:56:23Z"
+  (given completed-integration-tests))
