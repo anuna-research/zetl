@@ -57,25 +57,48 @@ impl SimHashIndex {
     }
 }
 
-/// Compute a 64-bit SimHash fingerprint for a string
+/// Compute a 64-bit SimHash fingerprint for a string.
+///
+/// Uses multiple n-gram sizes (unigrams, bigrams with boundary markers,
+/// trigrams) to produce fingerprints where similar short strings have
+/// low Hamming distance. The multi-gram approach ensures enough feature
+/// overlap that single-character edits flip only a few bits.
 pub fn compute_simhash(text: &str) -> u64 {
     let normalized = normalize(text);
-    let trigrams = char_trigrams(&normalized);
 
-    if trigrams.is_empty() {
+    if normalized.is_empty() {
         return 0;
     }
 
     let mut weights = [0i32; 64];
 
-    for trigram in &trigrams {
-        let hash = fnv1a_hash(trigram);
-        for i in 0..64 {
-            if (hash >> i) & 1 == 1 {
-                weights[i] += 1;
-            } else {
-                weights[i] -= 1;
-            }
+    // Collect all n-gram features: unigrams, bigrams (with boundary markers), trigrams
+    let chars: Vec<char> = normalized.chars().collect();
+
+    // Unigrams (individual characters)
+    for ch in &chars {
+        let feature = ch.to_string();
+        let hash = fnv1a_hash(&feature);
+        accumulate_hash(&mut weights, hash);
+    }
+
+    // Bigrams with boundary markers for better short-string sensitivity
+    let padded: Vec<char> = std::iter::once('^')
+        .chain(chars.iter().copied())
+        .chain(std::iter::once('$'))
+        .collect();
+    for w in padded.windows(2) {
+        let feature: String = w.iter().collect();
+        let hash = fnv1a_hash(&feature);
+        accumulate_hash(&mut weights, hash);
+    }
+
+    // Trigrams (if long enough)
+    if chars.len() >= 3 {
+        for w in chars.windows(3) {
+            let feature: String = w.iter().collect();
+            let hash = fnv1a_hash(&feature);
+            accumulate_hash(&mut weights, hash);
         }
     }
 
@@ -86,6 +109,17 @@ pub fn compute_simhash(text: &str) -> u64 {
         }
     }
     fingerprint
+}
+
+/// Accumulate a hash into the weight vector (+1 for set bits, -1 for unset)
+fn accumulate_hash(weights: &mut [i32; 64], hash: u64) {
+    for i in 0..64 {
+        if (hash >> i) & 1 == 1 {
+            weights[i] += 1;
+        } else {
+            weights[i] -= 1;
+        }
+    }
 }
 
 /// Hamming distance between two 64-bit fingerprints
@@ -109,15 +143,6 @@ fn normalize(text: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// Extract character trigrams from text
-fn char_trigrams(text: &str) -> Vec<String> {
-    let chars: Vec<char> = text.chars().collect();
-    if chars.len() < 3 {
-        return vec![text.to_string()];
-    }
-    chars.windows(3).map(|w| w.iter().collect()).collect()
 }
 
 /// FNV-1a hash for a string, producing a 64-bit value

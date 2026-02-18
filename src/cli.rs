@@ -93,7 +93,7 @@ pub enum Command {
         /// Search string
         query: String,
         /// Max Hamming distance
-        #[arg(long, default_value = "3")]
+        #[arg(long, default_value = "8")]
         threshold: u32,
         /// Max results
         #[arg(long, default_value = "10")]
