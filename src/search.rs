@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
+use globset::GlobBuilder;
 use ignore::WalkBuilder;
 use regex::Regex;
 use serde::Serialize;
@@ -34,6 +35,7 @@ pub struct SearchConfig<'a> {
     pub regex: bool,
     pub case_sensitive: bool,
     pub body_only: bool,
+    pub path_filter: Option<&'a str>,
 }
 
 /// Search all Markdown files in `vault_root` for matches.
@@ -43,7 +45,31 @@ pub struct SearchConfig<'a> {
 /// is true, matches inside frontmatter, code blocks, inline code, and HTML
 /// comments are skipped.
 pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOutput> {
+    // Reject empty/whitespace queries before entering the match loop
+    // (empty pattern matches every byte position, causing UTF-8 boundary panics)
+    if config.query.trim().is_empty() {
+        anyhow::bail!("Empty search query");
+    }
+
     let matcher = build_matcher(config)?;
+
+    // Build path filter glob if specified
+    let path_glob = if let Some(pattern) = config.path_filter {
+        // Normalize: "concepts/" → "concepts/**"
+        let pat = if pattern.ends_with('/') {
+            format!("{pattern}**")
+        } else {
+            pattern.to_string()
+        };
+        let glob = GlobBuilder::new(&pat)
+            .literal_separator(false)
+            .build()
+            .map_err(|e| anyhow::anyhow!("Invalid path glob: {e}"))?
+            .compile_matcher();
+        Some(glob)
+    } else {
+        None
+    };
 
     let mut all_matches: Vec<SearchMatch> = Vec::new();
     let mut total = 0usize;
@@ -79,6 +105,14 @@ pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOu
         }
 
         let rel_path = path.strip_prefix(vault_root).unwrap_or(path);
+
+        // Apply path filter if specified
+        if let Some(ref glob) = path_glob {
+            if !glob.is_match(rel_path) {
+                continue;
+            }
+        }
+
         let page_name = page_name_from_path(rel_path);
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,

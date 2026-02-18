@@ -1,0 +1,254 @@
+;; IMPL-003: Agent Ergonomics & Robustness (SPEC-003)
+;; Implementation plan for crash fixes, JSON error responses,
+;; dedup, UTF-8 safety, and new commands (list, search --path, export).
+
+(meta plan
+  (id "IMPL-003")
+  (title "Agent Ergonomics & Robustness")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-02-18")
+  (author "agent:claude")
+  (spec "SPEC-003")
+  (description "Fix crash bugs, structured JSON errors, link dedup, UTF-8 safety, and add list/export commands"))
+
+;; ─── Agents ──────────────────────────────────────────────────────────────────
+
+(given agent-claude-available)
+
+;; ─── Tasks ───────────────────────────────────────────────────────────────────
+
+;; P0 — Critical
+(given task-empty-query-fix)
+(given task-json-errors)
+
+;; P1 — Important
+(given task-link-dedup)
+(given task-utf8-context)
+
+;; P2 — Enhancement
+(given task-list-cmd)
+(given task-search-path)
+(given task-export-cmd)
+
+;; Verification
+(given task-verify)
+
+;; ─── Dependency facts ────────────────────────────────────────────────────────
+
+;; P0 tasks have no deps
+(given no-deps-empty-query-fix)
+(given no-deps-json-errors)
+
+;; P1 tasks have no deps on each other but logically come after P0
+;; (not strictly necessary, just good ordering)
+(given no-deps-link-dedup)
+(given no-deps-utf8-context)
+
+;; P2 tasks depend on json-errors being done (they emit JSON output)
+;; list and export are independent of each other
+;; search-path is independent
+
+;; verify depends on everything else
+(given verify-needs-all)
+
+;; ─── Task metadata ──────────────────────────────────────────────────────────
+
+(meta task-empty-query-fix
+  (description "REQ-019: Reject empty/whitespace search queries with exit code 2 instead of panicking. Add guard at top of search_vault() or build_matcher(). Also reject in cmd_search before calling search_vault.")
+  (acceptance "zetl search '' exits with code 2 and structured error. No panics. Whitespace-only query also rejected. TEST-019 passes."))
+
+(meta task-json-errors
+  (description "REQ-020/CON-009/ADR-003: All error paths output JSON on stdout when -f json. Create error_json() helper. Modify find_page() callers (cmd_links, cmd_backlinks, cmd_path) to use it. Modify cmd_search for invalid regex. Modify cmd_similar for no results. Pattern: if format==json, print {\"error\":msg,\"code\":N} to stdout; else eprintln as before.")
+  (acceptance "Every error path with -f json produces parseable JSON on stdout. Agents can json.parse(stdout) without exception. TEST-020 scenarios all pass."))
+
+(meta task-link-dedup
+  (description "REQ-021/ADR-004: Deduplicate (source, target, line) triples in cmd_links() and cmd_backlinks() output. Add a HashSet<(String, String, u32)> seen set during BFS. Skip entries already seen. Apply to both depth-1 and multi-hop results.")
+  (acceptance "links 'Zettelkasten' --depth 1 returns ≤9 entries (no dupes). Each (source,target,line) triple appears once. TEST-021 passes."))
+
+(meta task-utf8-context
+  (description "REQ-022: Apply floor_char_boundary/ceil_char_boundary to extract_context() in main.rs. The search module already has these helpers — either move them to a shared location or duplicate the 6-line functions. Fix line 836: target_line[ctx_start..ctx_end] must snap to char boundaries.")
+  (acceptance "Files with em-dash, CJK, emoji near wikilinks produce valid context without panic. TEST-022 passes."))
+
+(meta task-list-cmd
+  (description "REQ-023/CON-010: Add 'list' subcommand. Lean version: just page name + path, sorted alphabetically. Does NOT need the full graph pipeline — can use scan_vault() output directly. Add List variant to Command enum. Add cmd_list() handler. JSON output: {pages: [{page,path}], total: N}.")
+  (acceptance "zetl -f json list returns all pages sorted alphabetically. Respects .zetlignore. Empty vault returns {pages:[],total:0}. TEST-023 passes."))
+
+(meta task-search-path
+  (description "REQ-024/CON-008 ext: Add --path <GLOB> flag to search command. Add path_filter: Option<String> to SearchConfig. In search_vault(), after matching a file path against the walk, check if it matches the glob pattern. Use ignore::overrides or a simple glob match.")
+  (acceptance "zetl search 'note' --path 'concepts/' returns only results from concepts/. TEST-024 passes."))
+
+(meta task-export-cmd
+  (description "REQ-025/CON-011: Add 'export' subcommand. Runs full pipeline, then serializes nodes (page+path) and edges (source+target, deduplicated). Add Export variant to Command enum with --edges-only flag. JSON output: {nodes:[],edges:[],node_count:N,edge_count:N}.")
+  (acceptance "zetl -f json export returns complete graph. Edges are unique (source,target) pairs. Dead link targets appear as nodes. TEST-025 passes."))
+
+(meta task-verify
+  (description "Run cargo test, cargo clippy -- -D warnings, and manual verification of all TEST-019 through TEST-025 scenarios.")
+  (acceptance "All tests pass. Zero clippy warnings. Manual smoke tests confirm JSON errors, dedup, list, export work correctly."))
+
+;; ─── Readiness rules ─────────────────────────────────────────────────────────
+
+;; P0: no deps, ready immediately
+(normally r-ready-empty-query-fix
+  (and task-empty-query-fix no-deps-empty-query-fix)
+  ready-empty-query-fix)
+
+(normally r-ready-json-errors
+  (and task-json-errors no-deps-json-errors)
+  ready-json-errors)
+
+;; P1: ready after P0 done (ensures clean error handling exists before dedup/utf8)
+(normally r-ready-link-dedup
+  (and task-link-dedup no-deps-link-dedup completed-json-errors)
+  ready-link-dedup)
+
+(normally r-ready-utf8-context
+  (and task-utf8-context no-deps-utf8-context completed-json-errors)
+  ready-utf8-context)
+
+;; P2: ready after json-errors done (new commands need JSON error patterns)
+(normally r-ready-list-cmd
+  (and task-list-cmd completed-json-errors)
+  ready-list-cmd)
+
+(normally r-ready-search-path
+  (and task-search-path completed-json-errors completed-empty-query-fix)
+  ready-search-path)
+
+(normally r-ready-export-cmd
+  (and task-export-cmd completed-json-errors completed-link-dedup)
+  ready-export-cmd)
+
+;; Verify: ready after ALL tasks done
+(normally r-ready-verify
+  (and task-verify
+       completed-empty-query-fix
+       completed-json-errors
+       completed-link-dedup
+       completed-utf8-context
+       completed-list-cmd
+       completed-search-path
+       completed-export-cmd)
+  ready-verify)
+
+;; ─── Assignment rules ────────────────────────────────────────────────────────
+
+(normally r-assign-empty-query-fix
+  (and ready-empty-query-fix agent-claude-available)
+  assign-to-empty-query-fix-claude)
+
+(normally r-assign-json-errors
+  (and ready-json-errors agent-claude-available)
+  assign-to-json-errors-claude)
+
+(normally r-assign-link-dedup
+  (and ready-link-dedup agent-claude-available)
+  assign-to-link-dedup-claude)
+
+(normally r-assign-utf8-context
+  (and ready-utf8-context agent-claude-available)
+  assign-to-utf8-context-claude)
+
+(normally r-assign-list-cmd
+  (and ready-list-cmd agent-claude-available)
+  assign-to-list-cmd-claude)
+
+(normally r-assign-search-path
+  (and ready-search-path agent-claude-available)
+  assign-to-search-path-claude)
+
+(normally r-assign-export-cmd
+  (and ready-export-cmd agent-claude-available)
+  assign-to-export-cmd-claude)
+
+(normally r-assign-verify
+  (and ready-verify agent-claude-available)
+  assign-to-verify-claude)
+
+(claims agent:claude
+  :at "2026-02-18T09:28:48Z"
+  (given claim-v1-empty-query-fix)
+  (normally r-cl-state-v1-empty-query-fix claim-v1-empty-query-fix state-claimed-v1-empty-query-fix)
+  (normally r-cl-chain-v1-empty-query-fix state-claimed-v1-empty-query-fix claimed-empty-query-fix)
+)
+
+(claims agent:claude
+  :at "2026-02-18T09:28:49Z"
+  (given claim-v1-json-errors)
+  (normally r-cl-state-v1-json-errors claim-v1-json-errors state-claimed-v1-json-errors)
+  (normally r-cl-chain-v1-json-errors state-claimed-v1-json-errors claimed-json-errors)
+)
+
+(claims agent:claude
+  :at "2026-02-18T09:30:37Z"
+  (given completed-empty-query-fix))
+
+(claims agent:claude
+  :at "2026-02-18T09:30:39Z"
+  (given completed-json-errors))
+
+(claims agent:claude
+  :at "2026-02-18T09:30:45Z"
+  (given claim-v1-link-dedup)
+  (normally r-cl-state-v1-link-dedup claim-v1-link-dedup state-claimed-v1-link-dedup)
+  (normally r-cl-chain-v1-link-dedup state-claimed-v1-link-dedup claimed-link-dedup)
+)
+
+(claims agent:claude
+  :at "2026-02-18T09:30:45Z"
+  (given claim-v1-utf8-context)
+  (normally r-cl-state-v1-utf8-context claim-v1-utf8-context state-claimed-v1-utf8-context)
+  (normally r-cl-chain-v1-utf8-context state-claimed-v1-utf8-context claimed-utf8-context)
+)
+
+(claims agent:claude
+  :at "2026-02-18T09:30:45Z"
+  (given claim-v1-list-cmd)
+  (normally r-cl-state-v1-list-cmd claim-v1-list-cmd state-claimed-v1-list-cmd)
+  (normally r-cl-chain-v1-list-cmd state-claimed-v1-list-cmd claimed-list-cmd)
+)
+
+(claims agent:claude
+  :at "2026-02-18T09:30:45Z"
+  (given claim-v1-search-path)
+  (normally r-cl-state-v1-search-path claim-v1-search-path state-claimed-v1-search-path)
+  (normally r-cl-chain-v1-search-path state-claimed-v1-search-path claimed-search-path)
+)
+
+(claims agent:claude
+  :at "2026-02-18T09:37:29Z"
+  (given completed-link-dedup))
+
+(claims agent:claude
+  :at "2026-02-18T09:37:29Z"
+  (given completed-utf8-context))
+
+(claims agent:claude
+  :at "2026-02-18T09:37:29Z"
+  (given completed-list-cmd))
+
+(claims agent:claude
+  :at "2026-02-18T09:37:29Z"
+  (given completed-search-path))
+
+(claims agent:claude
+  :at "2026-02-18T09:37:36Z"
+  (given claim-v1-export-cmd)
+  (normally r-cl-state-v1-export-cmd claim-v1-export-cmd state-claimed-v1-export-cmd)
+  (normally r-cl-chain-v1-export-cmd state-claimed-v1-export-cmd claimed-export-cmd)
+)
+
+(claims agent:claude
+  :at "2026-02-18T09:37:36Z"
+  (given completed-export-cmd))
+
+(claims agent:claude
+  :at "2026-02-18T09:37:40Z"
+  (given claim-v1-verify)
+  (normally r-cl-state-v1-verify claim-v1-verify state-claimed-v1-verify)
+  (normally r-cl-chain-v1-verify state-claimed-v1-verify claimed-verify)
+)
+
+(claims agent:claude
+  :at "2026-02-18T09:38:15Z"
+  (given completed-verify))

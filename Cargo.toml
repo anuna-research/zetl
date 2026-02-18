@@ -9,6 +9,7 @@ license = "MIT"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 comfy-table = "7"
+globset = "0.4"
 ignore = "0.4"
 petgraph = "0.7"
 pulldown-cmark = "0.12"

@@ -24,6 +24,12 @@ pub struct EdgeMeta {
     pub is_embed: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct ForwardLinkResult {
+    pub target: String,
+    pub meta: EdgeMeta,
+}
+
 #[derive(Debug, Serialize)]
 pub struct BacklinkResult {
     pub source: String,
@@ -133,14 +139,17 @@ impl LinkGraph {
     }
 
     /// Get forward links (outgoing edges) from a page.
-    pub fn forward_links(&self, page: &str) -> Vec<EdgeMeta> {
+    pub fn forward_links(&self, page: &str) -> Vec<ForwardLinkResult> {
         let Some(&idx) = self.node_map.get(page) else {
             return Vec::new();
         };
 
         self.graph
             .edges_directed(idx, Direction::Outgoing)
-            .map(|edge| edge.weight().clone())
+            .map(|edge| ForwardLinkResult {
+                target: self.graph[edge.target()].clone(),
+                meta: edge.weight().clone(),
+            })
             .collect()
     }
 
@@ -500,7 +509,7 @@ mod tests {
         let fwd = graph.forward_links("A");
         assert_eq!(fwd.len(), 2);
         // Verify lines
-        let mut lines: Vec<u32> = fwd.iter().map(|e| e.line).collect();
+        let mut lines: Vec<u32> = fwd.iter().map(|e| e.meta.line).collect();
         lines.sort();
         assert_eq!(lines, vec![1, 2]);
     }
@@ -906,11 +915,11 @@ mod tests {
         let graph = LinkGraph::build(&[files[0].clone(), target_file], &resolved);
         let fwd = graph.forward_links("source");
         assert_eq!(fwd.len(), 1);
-        assert_eq!(fwd[0].heading.as_deref(), Some("my-heading"));
-        assert_eq!(fwd[0].block_ref.as_deref(), Some("block123"));
-        assert_eq!(fwd[0].alias.as_deref(), Some("alias text"));
-        assert_eq!(fwd[0].line, 7);
-        assert_eq!(fwd[0].source_file, "source.md");
-        assert!(!fwd[0].is_embed);
+        assert_eq!(fwd[0].meta.heading.as_deref(), Some("my-heading"));
+        assert_eq!(fwd[0].meta.block_ref.as_deref(), Some("block123"));
+        assert_eq!(fwd[0].meta.alias.as_deref(), Some("alias text"));
+        assert_eq!(fwd[0].meta.line, 7);
+        assert_eq!(fwd[0].meta.source_file, "source.md");
+        assert!(!fwd[0].meta.is_embed);
     }
 }

@@ -119,7 +119,13 @@ pub enum Command {
         /// Search raw file content (include frontmatter, code blocks, comments)
         #[arg(long)]
         all: bool,
+        /// Restrict results to files matching glob (relative to vault root)
+        #[arg(long)]
+        path: Option<String>,
     },
+
+    /// List all pages in the vault
+    List,
 
     /// Print summary statistics
     Stats {
@@ -138,6 +144,9 @@ pub enum Command {
         #[arg(long, default_value = "10")]
         max_depth: usize,
     },
+
+    /// Export the complete link graph
+    Export,
 }
 
 #[derive(Clone, ValueEnum)]

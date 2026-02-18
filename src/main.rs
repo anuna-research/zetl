@@ -147,6 +147,34 @@ fn print_json<T: Serialize>(value: &T) -> Result<()> {
     Ok(())
 }
 
+/// Print a structured JSON error to stdout and exit.
+/// Used when -f json is specified so agents can always parse stdout as JSON.
+fn exit_json_error(message: &str, code: i32) -> ! {
+    #[derive(Serialize)]
+    struct JsonError {
+        error: String,
+        code: i32,
+    }
+    let err = JsonError {
+        error: message.to_string(),
+        code,
+    };
+    // Ignore write errors — we're exiting anyway
+    let _ = serde_json::to_string_pretty(&err).map(|json| println!("{json}"));
+    std::process::exit(code);
+}
+
+/// Handle a page-not-found error: JSON on stdout when format=json, plain text on stderr otherwise.
+fn exit_page_not_found(format: &OutputFormat, message: &str) -> ! {
+    match format {
+        OutputFormat::Json => exit_json_error(message, 1),
+        OutputFormat::Table => {
+            eprintln!("{message}");
+            std::process::exit(1);
+        }
+    }
+}
+
 // ── Command handlers ───────────────────────────────────────────────────────
 
 fn cmd_index(cli: &Cli) -> Result<()> {
@@ -218,8 +246,7 @@ fn cmd_links(
 
     let resolved_page =
         find_page(page, &pipeline.file_index, fuzzy, &pipeline.files).unwrap_or_else(|e| {
-            eprintln!("{e}");
-            std::process::exit(1);
+            exit_page_not_found(&cli.format, &e);
         });
 
     // BFS collecting forward links at each depth level
@@ -241,6 +268,7 @@ fn cmd_links(
     }
 
     let mut entries: Vec<LinkEntry> = Vec::new();
+    let mut seen_edges: HashSet<(String, String, u32)> = HashSet::new();
 
     while let Some((current_page, current_depth)) = queue.pop_front() {
         if current_depth >= depth {
@@ -248,33 +276,19 @@ fn cmd_links(
         }
 
         let forward = pipeline.graph.forward_links(&current_page);
-        for edge in &forward {
-            // Determine target page name from the graph
-            let target_name = {
-                // Look up by raw_target in resolved_pages, or fall back to scanning graph nodes
-                // We need to find the target node. The edge has source_file and line info.
-                // Since forward_links returns EdgeMeta, we need to find the target.
-                // Let's look at graph edges directly.
-                let mut target = None;
-                if let Some(&src_idx) = pipeline.graph.node_map.get(&current_page) {
-                    use petgraph::visit::EdgeRef;
-                    for e in pipeline
-                        .graph
-                        .graph
-                        .edges_directed(src_idx, petgraph::Direction::Outgoing)
-                    {
-                        let w = e.weight();
-                        if w.line == edge.line
-                            && w.source_file == edge.source_file
-                            && w.alias == edge.alias
-                        {
-                            target = Some(pipeline.graph.graph[e.target()].clone());
-                            break;
-                        }
-                    }
+        for fwd in &forward {
+            let target_name = &fwd.target;
+            let edge = &fwd.meta;
+
+            // Deduplicate: skip if we've already seen this (source, target, line)
+            let dedup_key = (current_page.clone(), target_name.clone(), edge.line);
+            if !seen_edges.insert(dedup_key) {
+                if !visited.contains(target_name) {
+                    visited.insert(target_name.clone());
+                    queue.push_back((target_name.clone(), current_depth + 1));
                 }
-                target.unwrap_or_default()
-            };
+                continue;
+            }
 
             // Context: read N chars around the wikilink position in the source file
             let ctx = if context > 0 {
@@ -299,9 +313,9 @@ fn cmd_links(
                 hop: current_depth + 1,
             });
 
-            if !visited.contains(&target_name) {
+            if !visited.contains(target_name) {
                 visited.insert(target_name.clone());
-                queue.push_back((target_name, current_depth + 1));
+                queue.push_back((target_name.clone(), current_depth + 1));
             }
         }
     }
@@ -361,8 +375,7 @@ fn cmd_backlinks(
 
     let resolved_page =
         find_page(page, &pipeline.file_index, fuzzy, &pipeline.files).unwrap_or_else(|e| {
-            eprintln!("{e}");
-            std::process::exit(1);
+            exit_page_not_found(&cli.format, &e);
         });
 
     // BFS collecting backlinks at each depth level
@@ -383,6 +396,7 @@ fn cmd_backlinks(
     }
 
     let mut entries: Vec<BacklinkEntry> = Vec::new();
+    let mut seen_edges: HashSet<(String, String, u32)> = HashSet::new();
 
     while let Some((current_page, current_depth)) = queue.pop_front() {
         if current_depth >= depth {
@@ -391,9 +405,18 @@ fn cmd_backlinks(
 
         let backlinks = pipeline.graph.backlinks(&current_page);
         for bl in &backlinks {
+            // Deduplicate: skip if we've already seen this (source, target, line)
+            let dedup_key = (bl.source.clone(), current_page.clone(), bl.line);
+            if !seen_edges.insert(dedup_key) {
+                if !visited.contains(&bl.source) {
+                    visited.insert(bl.source.clone());
+                    queue.push_back((bl.source.clone(), current_depth + 1));
+                }
+                continue;
+            }
+
             // Context: read N chars around the wikilink position in the source file
             let ctx = if context > 0 {
-                // Find the source file path from the parsed files
                 let source_file_path = pipeline
                     .files
                     .iter()
@@ -695,14 +718,12 @@ fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
 
     let resolved_from =
         find_page(from, &pipeline.file_index, false, &pipeline.files).unwrap_or_else(|e| {
-            eprintln!("{e}");
-            std::process::exit(1);
+            exit_page_not_found(&cli.format, &e);
         });
 
     let resolved_to =
         find_page(to, &pipeline.file_index, false, &pipeline.files).unwrap_or_else(|e| {
-            eprintln!("{e}");
-            std::process::exit(1);
+            exit_page_not_found(&cli.format, &e);
         });
 
     let result = pipeline
@@ -722,32 +743,23 @@ fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
             }
         },
         None => {
-            #[derive(Serialize)]
-            struct NoPath {
-                from: String,
-                to: String,
-                path: Option<Vec<String>>,
-            }
-            let output = NoPath {
-                from: resolved_from.clone(),
-                to: resolved_to.clone(),
-                path: None,
-            };
+            let msg = format!(
+                "No path found from '{resolved_from}' to '{resolved_to}' within {max_depth} hops"
+            );
             match cli.format {
-                OutputFormat::Json => print_json(&output)?,
+                OutputFormat::Json => exit_json_error(&msg, 1),
                 OutputFormat::Table => {
-                    eprintln!(
-                        "No path found from '{resolved_from}' to '{resolved_to}' within {max_depth} hops."
-                    );
+                    eprintln!("{msg}.");
+                    std::process::exit(1);
                 }
             }
-            std::process::exit(1);
         }
     }
 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_search(
     cli: &Cli,
     query: &str,
@@ -756,6 +768,7 @@ fn cmd_search(
     regex: bool,
     case_sensitive: bool,
     all: bool,
+    path_filter: Option<&str>,
 ) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
@@ -767,9 +780,27 @@ fn cmd_search(
         regex,
         case_sensitive,
         body_only: !all,
+        path_filter,
     };
 
-    let output = search_vault(&vault_root, &config)?;
+    let output = match search_vault(&vault_root, &config) {
+        Ok(o) => o,
+        Err(e) => {
+            let msg = format!("{e}");
+            let code = if msg.contains("Empty search query") || msg.contains("Invalid regex") {
+                2
+            } else {
+                1
+            };
+            match cli.format {
+                OutputFormat::Json => exit_json_error(&msg, code),
+                OutputFormat::Table => {
+                    eprintln!("Error: {msg}");
+                    std::process::exit(code);
+                }
+            }
+        }
+    };
 
     if output.total_matches == 0 {
         match cli.format {
@@ -814,10 +845,154 @@ fn cmd_search(
     Ok(())
 }
 
+fn cmd_list(cli: &Cli) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // Lean version: just scan for files, no graph construction needed
+    let files = scan_vault(&vault_root, &[])?;
+
+    #[derive(Serialize)]
+    struct PageEntry {
+        page: String,
+        path: String,
+    }
+
+    let mut pages: Vec<PageEntry> = files
+        .iter()
+        .map(|f| PageEntry {
+            page: f.page_name.clone(),
+            path: f.path.to_string_lossy().to_string(),
+        })
+        .collect();
+    pages.sort_by(|a, b| a.page.to_lowercase().cmp(&b.page.to_lowercase()));
+
+    #[derive(Serialize)]
+    struct ListOutput {
+        pages: Vec<PageEntry>,
+        total: usize,
+    }
+
+    let total = pages.len();
+    let output = ListOutput { pages, total };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            if output.pages.is_empty() {
+                println!("No pages found.");
+            } else {
+                let mut table = Table::new();
+                table.set_header(vec!["Page", "Path"]);
+                for p in &output.pages {
+                    table.add_row(vec![Cell::new(&p.page), Cell::new(&p.path)]);
+                }
+                println!("{table}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_export(cli: &Cli) -> Result<()> {
+    let pipeline = run_pipeline(cli)?;
+
+    #[derive(Serialize)]
+    struct NodeEntry {
+        page: String,
+        path: Option<String>,
+    }
+
+    #[derive(Serialize)]
+    struct EdgeEntry {
+        source: String,
+        target: String,
+    }
+
+    // Collect all nodes from the graph
+    let mut nodes: Vec<NodeEntry> = Vec::new();
+    for node_name in pipeline.graph.node_map.keys() {
+        let path = pipeline
+            .files
+            .iter()
+            .find(|f| &f.page_name == node_name)
+            .map(|f| f.path.to_string_lossy().to_string());
+        nodes.push(NodeEntry {
+            page: node_name.clone(),
+            path,
+        });
+    }
+    nodes.sort_by(|a, b| a.page.to_lowercase().cmp(&b.page.to_lowercase()));
+
+    // Collect deduplicated edges
+    let mut edge_set: HashSet<(String, String)> = HashSet::new();
+    let mut edges: Vec<EdgeEntry> = Vec::new();
+
+    use petgraph::visit::EdgeRef;
+    for edge in pipeline.graph.graph.edge_references() {
+        let source = pipeline.graph.graph[edge.source()].clone();
+        let target = pipeline.graph.graph[edge.target()].clone();
+        if edge_set.insert((source.clone(), target.clone())) {
+            edges.push(EdgeEntry { source, target });
+        }
+    }
+    edges.sort_by(|a, b| a.source.cmp(&b.source).then(a.target.cmp(&b.target)));
+
+    #[derive(Serialize)]
+    struct ExportOutput {
+        nodes: Vec<NodeEntry>,
+        edges: Vec<EdgeEntry>,
+        node_count: usize,
+        edge_count: usize,
+    }
+
+    let output = ExportOutput {
+        node_count: nodes.len(),
+        edge_count: edges.len(),
+        nodes,
+        edges,
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            println!("Graph: {} nodes, {} edges", output.node_count, output.edge_count);
+            println!();
+            let mut table = Table::new();
+            table.set_header(vec!["Source", "Target"]);
+            for e in &output.edges {
+                table.add_row(vec![Cell::new(&e.source), Cell::new(&e.target)]);
+            }
+            println!("{table}");
+        }
+    }
+
+    Ok(())
+}
+
 // ── Context extraction helper ──────────────────────────────────────────────
 
 /// Read the source file and extract `n` chars of context around the wikilink
 /// at the given line.
+/// Snap a byte index to the nearest char boundary at or before it.
+fn floor_char_boundary(s: &str, index: usize) -> usize {
+    let mut i = index.min(s.len());
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+/// Snap a byte index to the nearest char boundary at or after it.
+fn ceil_char_boundary(s: &str, index: usize) -> usize {
+    let mut i = index.min(s.len());
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
 fn extract_context(vault_root: &Path, source_file: &str, line: u32, n: usize) -> Option<String> {
     let full_path = vault_root.join(source_file);
     let content = std::fs::read_to_string(&full_path).ok()?;
@@ -829,9 +1004,9 @@ fn extract_context(vault_root: &Path, source_file: &str, line: u32, n: usize) ->
     let link_start = target_line.find("[[")?;
     let link_end = target_line[link_start..].find("]]").map(|i| link_start + i + 2)?;
 
-    // Extract n chars before and after
-    let ctx_start = link_start.saturating_sub(n);
-    let ctx_end = (link_end + n).min(target_line.len());
+    // Extract n chars before and after, snapping to char boundaries
+    let ctx_start = floor_char_boundary(target_line, link_start.saturating_sub(n));
+    let ctx_end = ceil_char_boundary(target_line, (link_end + n).min(target_line.len()));
 
     Some(target_line[ctx_start..ctx_end].to_string())
 }
@@ -873,12 +1048,24 @@ fn main() -> anyhow::Result<()> {
             regex,
             case_sensitive,
             all,
-        } => cmd_search(&cli, query, *context, *limit, *regex, *case_sensitive, *all),
+            path,
+        } => cmd_search(
+            &cli,
+            query,
+            *context,
+            *limit,
+            *regex,
+            *case_sensitive,
+            *all,
+            path.as_deref(),
+        ),
+        Command::List => cmd_list(&cli),
         Command::Stats { top } => cmd_stats(&cli, *top),
         Command::Path {
             from,
             to,
             max_depth,
         } => cmd_path(&cli, from, to, *max_depth),
+        Command::Export => cmd_export(&cli),
     }
 }

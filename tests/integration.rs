@@ -1348,3 +1348,263 @@ fn test_018_search_result_limiting() {
         "total_matches should report full count ({total}), not just the limited results"
     );
 }
+
+// ===========================================================================
+// TEST-019: Empty Search Query Rejection
+// ===========================================================================
+
+#[test]
+fn test_019_empty_search_query() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "A.md", "# A\n\nSome content here.\n");
+
+    // Empty query should return JSON error with code 2
+    let (json, status) = run_json_any(
+        zetl_cmd(dir.path()).arg("search").arg(""),
+    );
+    assert!(!status.success(), "empty query should fail");
+    assert_eq!(json["error"].as_str(), Some("Empty search query"));
+    assert_eq!(json["code"].as_i64(), Some(2));
+}
+
+#[test]
+fn test_019_whitespace_search_query() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "A.md", "# A\n\nSome content here.\n");
+
+    let (json, status) = run_json_any(
+        zetl_cmd(dir.path()).arg("search").arg("   "),
+    );
+    assert!(!status.success(), "whitespace-only query should fail");
+    assert_eq!(json["error"].as_str(), Some("Empty search query"));
+    assert_eq!(json["code"].as_i64(), Some(2));
+}
+
+// ===========================================================================
+// TEST-020: Structured JSON Error Responses
+// ===========================================================================
+
+#[test]
+fn test_020_json_error_page_not_found() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "A.md", "# A\n\nContent.\n");
+
+    // links to nonexistent page should return JSON error
+    let (json, status) = run_json_any(
+        zetl_cmd(dir.path()).arg("links").arg("nonexistent"),
+    );
+    assert!(!status.success());
+    assert!(json["error"].as_str().unwrap().contains("Page not found"));
+    assert_eq!(json["code"].as_i64(), Some(1));
+}
+
+#[test]
+fn test_020_json_error_backlinks_not_found() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "A.md", "# A\n\nContent.\n");
+
+    let (json, status) = run_json_any(
+        zetl_cmd(dir.path()).arg("backlinks").arg("nonexistent"),
+    );
+    assert!(!status.success());
+    assert!(json["error"].as_str().unwrap().contains("Page not found"));
+    assert_eq!(json["code"].as_i64(), Some(1));
+}
+
+#[test]
+fn test_020_json_error_invalid_regex() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "A.md", "# A\n\nContent.\n");
+
+    let (json, status) = run_json_any(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("[bad")
+            .arg("--regex"),
+    );
+    assert!(!status.success());
+    assert!(json["error"].as_str().unwrap().contains("Invalid regex"));
+    assert_eq!(json["code"].as_i64(), Some(2));
+}
+
+// ===========================================================================
+// TEST-021: Deduplicated Link Results
+// ===========================================================================
+
+#[test]
+fn test_021_links_dedup() {
+    let dir = TempDir::new().unwrap();
+    // Create a file that links to B twice on the same line
+    write_file(
+        dir.path(),
+        "A.md",
+        "# A\n\nSee [[B]] and also [[B]] again.\n",
+    );
+    write_file(dir.path(), "B.md", "# B\n\nContent.\n");
+
+    run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(zetl_cmd(dir.path()).arg("links").arg("A"));
+    let links = json["links"].as_array().unwrap();
+
+    // Both [[B]] are on line 3, so (A, B, 3) should appear only once
+    assert_eq!(links.len(), 1, "duplicate (source,target,line) should be deduped: {links:?}");
+    assert_eq!(links[0]["target"].as_str(), Some("B"));
+}
+
+#[test]
+fn test_021_links_different_lines_not_deduped() {
+    let dir = TempDir::new().unwrap();
+    // B on line 3 and B on line 5 — different lines, should both appear
+    write_file(
+        dir.path(),
+        "A.md",
+        "# A\n\nFirst [[B]] link.\n\nSecond [[B]] link.\n",
+    );
+    write_file(dir.path(), "B.md", "# B\n\nContent.\n");
+
+    run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(zetl_cmd(dir.path()).arg("links").arg("A"));
+    let links = json["links"].as_array().unwrap();
+
+    assert_eq!(links.len(), 2, "links on different lines should both appear: {links:?}");
+}
+
+// ===========================================================================
+// TEST-023: List All Pages
+// ===========================================================================
+
+#[test]
+fn test_023_list_pages() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Zebra.md", "# Zebra\n");
+    write_file(dir.path(), "Apple.md", "# Apple\n");
+    write_file(dir.path(), "sub/Mango.md", "# Mango\n");
+
+    let json = run_json(zetl_cmd(dir.path()).arg("list"));
+    let pages = json["pages"].as_array().unwrap();
+
+    assert_eq!(json["total"].as_u64(), Some(3));
+    assert_eq!(pages.len(), 3);
+
+    // Should be sorted alphabetically
+    let names: Vec<&str> = pages.iter().map(|p| p["page"].as_str().unwrap()).collect();
+    assert_eq!(names, vec!["Apple", "Mango", "Zebra"]);
+}
+
+#[test]
+fn test_023_list_empty_vault() {
+    let dir = TempDir::new().unwrap();
+    let json = run_json(zetl_cmd(dir.path()).arg("list"));
+    assert_eq!(json["total"].as_u64(), Some(0));
+    assert_eq!(json["pages"].as_array().unwrap().len(), 0);
+}
+
+// ===========================================================================
+// TEST-024: Search Path Filter
+// ===========================================================================
+
+#[test]
+fn test_024_search_path_filter() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "concepts/Alpha.md", "# Alpha\n\nA note about things.\n");
+    write_file(dir.path(), "concepts/Beta.md", "# Beta\n\nAnother note about things.\n");
+    write_file(dir.path(), "tools/Gamma.md", "# Gamma\n\nA note about tools.\n");
+
+    // Search with --path restricts to concepts/
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("note")
+            .arg("--path")
+            .arg("concepts/"),
+    );
+    let results = json["results"].as_array().unwrap();
+
+    assert_eq!(results.len(), 2, "should only find results in concepts/");
+    for r in results {
+        assert!(
+            r["path"].as_str().unwrap().starts_with("concepts/"),
+            "result path should be in concepts/: {}",
+            r["path"]
+        );
+    }
+}
+
+#[test]
+fn test_024_search_no_path_filter() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "concepts/Alpha.md", "# Alpha\n\nA note.\n");
+    write_file(dir.path(), "tools/Gamma.md", "# Gamma\n\nA note.\n");
+
+    // Without --path, all directories searched
+    let json = run_json(
+        zetl_cmd(dir.path()).arg("search").arg("note"),
+    );
+    let results = json["results"].as_array().unwrap();
+    let dirs: std::collections::HashSet<&str> = results
+        .iter()
+        .map(|r| r["path"].as_str().unwrap().split('/').next().unwrap())
+        .collect();
+
+    assert!(dirs.contains("concepts"), "should include concepts/");
+    assert!(dirs.contains("tools"), "should include tools/");
+}
+
+// ===========================================================================
+// TEST-025: Graph Export
+// ===========================================================================
+
+#[test]
+fn test_025_export_graph() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "A.md", "# A\n\n[[B]] and [[C]].\n");
+    write_file(dir.path(), "B.md", "# B\n\n[[C]].\n");
+    write_file(dir.path(), "C.md", "# C\n\n[[A]].\n");
+
+    run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(zetl_cmd(dir.path()).arg("export"));
+
+    let nodes = json["nodes"].as_array().unwrap();
+    let edges = json["edges"].as_array().unwrap();
+
+    assert_eq!(json["node_count"].as_u64(), Some(3));
+    assert_eq!(json["edge_count"].as_u64().unwrap(), edges.len() as u64);
+
+    // Should have edges A->B, A->C, B->C, C->A
+    assert_eq!(edges.len(), 4, "triangle graph should have 4 directed edges");
+
+    // Edges should be unique
+    let edge_set: std::collections::HashSet<(&str, &str)> = edges
+        .iter()
+        .map(|e| {
+            (
+                e["source"].as_str().unwrap(),
+                e["target"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(edge_set.len(), edges.len(), "edges should be unique");
+
+    // All nodes should have page and path
+    for n in nodes {
+        assert!(n["page"].as_str().is_some());
+    }
+}
+
+#[test]
+fn test_025_export_includes_dead_link_targets() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "A.md", "# A\n\n[[Ghost]].\n");
+
+    run_json(zetl_cmd(dir.path()).arg("index"));
+    let json = run_json(zetl_cmd(dir.path()).arg("export"));
+
+    let nodes = json["nodes"].as_array().unwrap();
+    let node_names: Vec<&str> = nodes.iter().map(|n| n["page"].as_str().unwrap()).collect();
+
+    assert!(node_names.contains(&"Ghost"), "dead link target should appear as node");
+
+    // Ghost should have null path
+    let ghost = nodes.iter().find(|n| n["page"] == "Ghost").unwrap();
+    assert!(ghost["path"].is_null(), "dead link target should have null path");
+}
