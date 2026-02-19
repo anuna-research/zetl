@@ -4,4 +4,5 @@ pub mod graph;
 pub mod scanner;
 pub mod search;
 pub mod simhash;
+pub mod tui;
 pub mod types;

@@ -1,0 +1,248 @@
+;; Plan: Ratatui Terminal UI for zetl
+(meta plan
+  (id "IMPL-TUI")
+  (title "Ratatui Terminal UI for zetl")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-02-19")
+  (author "agent:claude")
+  (description "Add an interactive terminal UI to zetl using ratatui, providing a dashboard with vault stats, page browser, link explorer, search, and diagnostics viewer"))
+
+;; Agent
+(given agent-claude-available)
+
+;; ── Tasks ──────────────────────────────────────────────────────────────
+
+;; Phase 1: Foundation
+(given task-deps)
+(given no-deps-deps)
+(meta task-deps
+  (description "Add ratatui, crossterm, and tui-input dependencies to Cargo.toml")
+  (acceptance "cargo check passes with new deps; no version conflicts"))
+
+(given task-app-scaffold)
+(meta task-app-scaffold
+  (description "Create src/tui/ module with App struct, event loop, and basic terminal setup/teardown using crossterm alternate screen and raw mode")
+  (acceptance "zetl tui launches, shows blank screen, quits on 'q' key"))
+
+;; Phase 2: Core Views
+(given task-dashboard)
+(meta task-dashboard
+  (description "Build dashboard tab showing vault stats: page count, link count, dead links, orphans, connected components, and most-linked pages as a bar/list")
+  (acceptance "Dashboard renders vault stats correctly; updates on tab switch"))
+
+(given task-page-list)
+(meta task-page-list
+  (description "Build page list tab with scrollable list of all pages, filterable by typing; highlight selected page")
+  (acceptance "All pages shown; typing filters list; arrow keys scroll; selection highlights"))
+
+(given task-link-explorer)
+(meta task-link-explorer
+  (description "Build link explorer tab: select a page to see forward links and backlinks in side-by-side panes; navigate into linked pages")
+  (acceptance "Forward and backlinks render for selected page; can navigate to linked pages"))
+
+(given task-search-view)
+(meta task-search-view
+  (description "Build search tab with text input field and results list showing matches with context; navigate results")
+  (acceptance "Typing queries produces results; results show page, line, and context; Enter opens link explorer for selected result"))
+
+(given task-diagnostics)
+(meta task-diagnostics
+  (description "Build diagnostics tab showing dead links, orphans, and syntax errors in categorized lists")
+  (acceptance "All diagnostics from check command shown; color-coded by severity"))
+
+;; Phase 3: Polish
+(given task-keybindings)
+(meta task-keybindings
+  (description "Add help overlay showing keybindings (? key); implement tab switching with number keys and Tab; consistent navigation across views")
+  (acceptance "? shows help; 1-5 switch tabs; Tab cycles; Esc closes overlays; consistent vim-style j/k navigation"))
+
+(given task-cli-integration)
+(meta task-cli-integration
+  (description "Add 'tui' subcommand to CLI via clap; wire it to launch the TUI app with vault scanning pipeline")
+  (acceptance "zetl tui launches interactive UI; zetl tui -d <dir> works; existing commands unchanged"))
+
+;; ── Dependencies ──────────────────────────────────────────────────────
+
+(given no-deps-app-scaffold)  ;; only depends on task-deps
+
+;; Phase 2 tasks depend on scaffold
+;; Phase 3 tasks depend on phase 2
+
+;; ── Readiness Rules ───────────────────────────────────────────────────
+
+;; Phase 1
+(normally r-ready-deps
+  (and task-deps no-deps-deps)
+  ready-deps)
+
+(normally r-ready-app-scaffold
+  (and task-app-scaffold completed-deps)
+  ready-app-scaffold)
+
+;; Phase 2 — all depend on scaffold
+(normally r-ready-dashboard
+  (and task-dashboard completed-app-scaffold)
+  ready-dashboard)
+
+(normally r-ready-page-list
+  (and task-page-list completed-app-scaffold)
+  ready-page-list)
+
+(normally r-ready-link-explorer
+  (and task-link-explorer completed-app-scaffold)
+  ready-link-explorer)
+
+(normally r-ready-search-view
+  (and task-search-view completed-app-scaffold)
+  ready-search-view)
+
+(normally r-ready-diagnostics
+  (and task-diagnostics completed-app-scaffold)
+  ready-diagnostics)
+
+;; Phase 3 — depend on all phase 2 views
+(normally r-ready-keybindings
+  (and task-keybindings completed-dashboard completed-page-list completed-link-explorer completed-search-view completed-diagnostics)
+  ready-keybindings)
+
+(normally r-ready-cli-integration
+  (and task-cli-integration completed-app-scaffold)
+  ready-cli-integration)
+
+;; ── Assignment Rules ──────────────────────────────────────────────────
+
+(normally r-assign-deps
+  (and ready-deps agent-claude-available)
+  assign-to-deps-claude)
+
+(normally r-assign-app-scaffold
+  (and ready-app-scaffold agent-claude-available)
+  assign-to-app-scaffold-claude)
+
+(normally r-assign-dashboard
+  (and ready-dashboard agent-claude-available)
+  assign-to-dashboard-claude)
+
+(normally r-assign-page-list
+  (and ready-page-list agent-claude-available)
+  assign-to-page-list-claude)
+
+(normally r-assign-link-explorer
+  (and ready-link-explorer agent-claude-available)
+  assign-to-link-explorer-claude)
+
+(normally r-assign-search-view
+  (and ready-search-view agent-claude-available)
+  assign-to-search-view-claude)
+
+(normally r-assign-diagnostics
+  (and ready-diagnostics agent-claude-available)
+  assign-to-diagnostics-claude)
+
+(normally r-assign-keybindings
+  (and ready-keybindings agent-claude-available)
+  assign-to-keybindings-claude)
+
+(normally r-assign-cli-integration
+  (and ready-cli-integration agent-claude-available)
+  assign-to-cli-integration-claude)
+
+(claims agent:claude
+  :at "2026-02-18T23:46:40Z"
+  (given claim-v1-deps)
+  (normally r-cl-state-v1-deps claim-v1-deps state-claimed-v1-deps)
+  (normally r-cl-chain-v1-deps state-claimed-v1-deps claimed-deps)
+)
+
+(claims agent:claude
+  :at "2026-02-18T23:47:09Z"
+  (given completed-deps))
+
+(claims agent:claude
+  :at "2026-02-18T23:47:12Z"
+  (given claim-v1-app-scaffold)
+  (normally r-cl-state-v1-app-scaffold claim-v1-app-scaffold state-claimed-v1-app-scaffold)
+  (normally r-cl-chain-v1-app-scaffold state-claimed-v1-app-scaffold claimed-app-scaffold)
+)
+
+(claims agent:claude
+  :at "2026-02-18T23:50:43Z"
+  (given completed-app-scaffold))
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given claim-v1-dashboard)
+  (normally r-cl-state-v1-dashboard claim-v1-dashboard state-claimed-v1-dashboard)
+  (normally r-cl-chain-v1-dashboard state-claimed-v1-dashboard claimed-dashboard)
+)
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given completed-dashboard))
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given claim-v1-page-list)
+  (normally r-cl-state-v1-page-list claim-v1-page-list state-claimed-v1-page-list)
+  (normally r-cl-chain-v1-page-list state-claimed-v1-page-list claimed-page-list)
+)
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given completed-page-list))
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given claim-v1-link-explorer)
+  (normally r-cl-state-v1-link-explorer claim-v1-link-explorer state-claimed-v1-link-explorer)
+  (normally r-cl-chain-v1-link-explorer state-claimed-v1-link-explorer claimed-link-explorer)
+)
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given completed-link-explorer))
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given claim-v1-search-view)
+  (normally r-cl-state-v1-search-view claim-v1-search-view state-claimed-v1-search-view)
+  (normally r-cl-chain-v1-search-view state-claimed-v1-search-view claimed-search-view)
+)
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given completed-search-view))
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given claim-v1-diagnostics)
+  (normally r-cl-state-v1-diagnostics claim-v1-diagnostics state-claimed-v1-diagnostics)
+  (normally r-cl-chain-v1-diagnostics state-claimed-v1-diagnostics claimed-diagnostics)
+)
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given completed-diagnostics))
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given claim-v1-cli-integration)
+  (normally r-cl-state-v1-cli-integration claim-v1-cli-integration state-claimed-v1-cli-integration)
+  (normally r-cl-chain-v1-cli-integration state-claimed-v1-cli-integration claimed-cli-integration)
+)
+
+(claims agent:claude
+  :at "2026-02-18T23:50:52Z"
+  (given completed-cli-integration))
+
+(claims agent:claude
+  :at "2026-02-18T23:50:58Z"
+  (given claim-v1-keybindings)
+  (normally r-cl-state-v1-keybindings claim-v1-keybindings state-claimed-v1-keybindings)
+  (normally r-cl-chain-v1-keybindings state-claimed-v1-keybindings claimed-keybindings)
+)
+
+(claims agent:claude
+  :at "2026-02-18T23:50:58Z"
+  (given completed-keybindings))

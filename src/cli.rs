@@ -147,6 +147,9 @@ pub enum Command {
 
     /// Export the complete link graph
     Export,
+
+    /// Launch interactive terminal UI
+    Tui,
 }
 
 #[derive(Clone, ValueEnum)]

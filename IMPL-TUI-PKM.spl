@@ -1,0 +1,198 @@
+;; Plan: PKM-Inspired TUI Enhancements
+(meta plan
+  (id "IMPL-TUI-PKM")
+  (title "PKM-Inspired TUI Views: Obsidian/Logseq/Roam patterns")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-02-19")
+  (author "agent:claude")
+  (description "Add page detail view with markdown rendering, local graph browser, unlinked mentions, quick switcher overlay, and enhanced backlink context — inspired by Obsidian, Logseq, and Roam Research"))
+
+;; Agent
+(given agent-claude-available)
+
+;; ── Tasks ──────────────────────────────────────────────────────────────
+
+;; Phase 1: Markdown rendering engine
+(given task-md-renderer)
+(given no-deps-md-renderer)
+(meta task-md-renderer
+  (description "Build a terminal markdown renderer in src/tui/markdown.rs that converts raw markdown text into styled ratatui Lines. Handle headings (colored, bold, indented by level), bold/italic via terminal modifiers, bullet/numbered lists with indent, code blocks with distinct background style, blockquotes with bar prefix, horizontal rules, and wikilinks highlighted in cyan. Use pulldown-cmark (already a dep) to parse.")
+  (acceptance "Renderer produces Vec<Line> from markdown string; headings, lists, bold, italic, code, blockquotes, wikilinks all visually distinct"))
+
+;; Phase 2: New views (depend on renderer)
+(given task-page-detail)
+(meta task-page-detail
+  (description "Add a Page Detail tab (tab 6) with a split layout: left pane shows rendered markdown content of the selected page (scrollable with j/k), right pane shows a stacked view of frontmatter properties as key-value pairs at top, then backlinks with 1-line context below. Entering this tab from Pages list or Links tab carries over the selected page. Pressing Enter on a backlink navigates to that page in the same view.")
+  (acceptance "Page content renders with styled markdown; properties show as key-value; backlinks listed with context; scrollable; navigable"))
+
+(given task-local-graph)
+(meta task-local-graph
+  (description "Add a Local Graph tab (tab 7) showing an interactive adjacency browser. Center shows selected page name. Below, two columns: outgoing neighbors (forward links) on left, incoming neighbors (backlinks) on right, each with connection count. Support depth slider (1-2 hops) toggled with d key. At depth 2, show 2nd-hop neighbors grouped under their 1st-hop parent. Enter on any neighbor re-centers the graph on that page.")
+  (acceptance "Selected page centered; neighbors listed in two columns; depth toggle works; navigation re-centers; connection counts shown"))
+
+(given task-unlinked-mentions)
+(meta task-unlinked-mentions
+  (description "Add unlinked mentions to the Page Detail right pane: below the backlinks section, show a 'Unlinked Mentions' section listing pages that contain the current page's name as plain text but do NOT have a formal [[wikilink]] to it. Show the matching line with context. Case-insensitive search.")
+  (acceptance "Unlinked mentions appear below backlinks; only shows pages without formal link; context shown; case-insensitive"))
+
+;; Phase 3: Overlays and navigation polish
+(given task-quick-switcher)
+(meta task-quick-switcher
+  (description "Add a Ctrl+K quick switcher overlay (like Obsidian). Popup centered modal with text input at top and filtered page list below. Fuzzy substring matching as user types. Enter opens the selected page in Page Detail tab. Esc dismisses. Works from any tab as a global shortcut.")
+  (acceptance "Ctrl+K opens overlay from any tab; typing filters pages; Enter navigates to Page Detail; Esc closes; fuzzy matching works"))
+
+(given task-breadcrumb)
+(meta task-breadcrumb
+  (description "Add navigation history (breadcrumb trail) so users can go back. Track visited pages in a stack. Pressing Backspace or Alt+Left navigates back to the previous page in Page Detail and Local Graph tabs. Show breadcrumb trail in the status bar (last 3 pages).")
+  (acceptance "Back navigation works with Backspace; breadcrumb shown in status bar; history tracks across Page Detail and Local Graph"))
+
+(given task-link-context)
+(meta task-link-context
+  (description "Enhance the existing Links tab: show 1-line context snippet for each forward link and backlink (the line containing the wikilink). Read source files to extract the line content. Truncate to fit available width.")
+  (acceptance "Each link in both panes shows a context line below the page name; context is the line from the source file containing the wikilink"))
+
+;; ── Dependencies ──────────────────────────────────────────────────────
+
+;; Phase 2 depends on renderer
+;; Phase 3 depends on page-detail existing
+
+;; ── Readiness Rules ───────────────────────────────────────────────────
+
+;; Phase 1
+(normally r-ready-md-renderer
+  (and task-md-renderer no-deps-md-renderer)
+  ready-md-renderer)
+
+;; Phase 2
+(normally r-ready-page-detail
+  (and task-page-detail completed-md-renderer)
+  ready-page-detail)
+
+(normally r-ready-local-graph
+  (and task-local-graph completed-md-renderer)
+  ready-local-graph)
+
+(normally r-ready-unlinked-mentions
+  (and task-unlinked-mentions completed-page-detail)
+  ready-unlinked-mentions)
+
+;; Phase 3
+(normally r-ready-quick-switcher
+  (and task-quick-switcher completed-page-detail)
+  ready-quick-switcher)
+
+(normally r-ready-breadcrumb
+  (and task-breadcrumb completed-page-detail)
+  ready-breadcrumb)
+
+(normally r-ready-link-context
+  (and task-link-context completed-md-renderer)
+  ready-link-context)
+
+;; ── Assignment Rules ──────────────────────────────────────────────────
+
+(normally r-assign-md-renderer
+  (and ready-md-renderer agent-claude-available)
+  assign-to-md-renderer-claude)
+
+(normally r-assign-page-detail
+  (and ready-page-detail agent-claude-available)
+  assign-to-page-detail-claude)
+
+(normally r-assign-local-graph
+  (and ready-local-graph agent-claude-available)
+  assign-to-local-graph-claude)
+
+(normally r-assign-unlinked-mentions
+  (and ready-unlinked-mentions agent-claude-available)
+  assign-to-unlinked-mentions-claude)
+
+(normally r-assign-quick-switcher
+  (and ready-quick-switcher agent-claude-available)
+  assign-to-quick-switcher-claude)
+
+(normally r-assign-breadcrumb
+  (and ready-breadcrumb agent-claude-available)
+  assign-to-breadcrumb-claude)
+
+(normally r-assign-link-context
+  (and ready-link-context agent-claude-available)
+  assign-to-link-context-claude)
+
+(claims agent:claude
+  :at "2026-02-19T00:26:51Z"
+  (given claim-v1-md-renderer)
+  (normally r-cl-state-v1-md-renderer claim-v1-md-renderer state-claimed-v1-md-renderer)
+  (normally r-cl-chain-v1-md-renderer state-claimed-v1-md-renderer claimed-md-renderer)
+)
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given completed-md-renderer))
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given claim-v1-page-detail)
+  (normally r-cl-state-v1-page-detail claim-v1-page-detail state-claimed-v1-page-detail)
+  (normally r-cl-chain-v1-page-detail state-claimed-v1-page-detail claimed-page-detail)
+)
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given completed-page-detail))
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given claim-v1-local-graph)
+  (normally r-cl-state-v1-local-graph claim-v1-local-graph state-claimed-v1-local-graph)
+  (normally r-cl-chain-v1-local-graph state-claimed-v1-local-graph claimed-local-graph)
+)
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given completed-local-graph))
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given claim-v1-link-context)
+  (normally r-cl-state-v1-link-context claim-v1-link-context state-claimed-v1-link-context)
+  (normally r-cl-chain-v1-link-context state-claimed-v1-link-context claimed-link-context)
+)
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given completed-link-context))
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given claim-v1-unlinked-mentions)
+  (normally r-cl-state-v1-unlinked-mentions claim-v1-unlinked-mentions state-claimed-v1-unlinked-mentions)
+  (normally r-cl-chain-v1-unlinked-mentions state-claimed-v1-unlinked-mentions claimed-unlinked-mentions)
+)
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given completed-unlinked-mentions))
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given claim-v1-quick-switcher)
+  (normally r-cl-state-v1-quick-switcher claim-v1-quick-switcher state-claimed-v1-quick-switcher)
+  (normally r-cl-chain-v1-quick-switcher state-claimed-v1-quick-switcher claimed-quick-switcher)
+)
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given completed-quick-switcher))
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given claim-v1-breadcrumb)
+  (normally r-cl-state-v1-breadcrumb claim-v1-breadcrumb state-claimed-v1-breadcrumb)
+  (normally r-cl-chain-v1-breadcrumb state-claimed-v1-breadcrumb claimed-breadcrumb)
+)
+
+(claims agent:claude
+  :at "2026-02-19T00:32:46Z"
+  (given completed-breadcrumb))
