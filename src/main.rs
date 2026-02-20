@@ -1011,6 +1011,35 @@ fn extract_context(vault_root: &Path, source_file: &str, line: u32, n: usize) ->
     Some(target_line[ctx_start..ctx_end].to_string())
 }
 
+fn cmd_tui(cli: &Cli) -> Result<()> {
+    let pipeline = run_pipeline(cli)?;
+
+    // Build resolved_pages map for App::new
+    let mut resolved_pages: HashMap<String, String> = HashMap::new();
+    for file in &pipeline.files {
+        for link in &file.links {
+            let key = link.raw_target.clone();
+            if resolved_pages.contains_key(&key) {
+                continue;
+            }
+            if let Some(resolved) = resolve_page_name(&link.target_page, &pipeline.file_index) {
+                resolved_pages.insert(key, resolved);
+            }
+        }
+    }
+
+    let mut app = zetl::tui::App::new(
+        pipeline.files,
+        pipeline.file_index,
+        pipeline.graph,
+        pipeline.vault_root,
+        &resolved_pages,
+    );
+
+    zetl::tui::run(&mut app)?;
+    Ok(())
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 fn main() -> anyhow::Result<()> {
@@ -1067,5 +1096,6 @@ fn main() -> anyhow::Result<()> {
             max_depth,
         } => cmd_path(&cli, from, to, *max_depth),
         Command::Export => cmd_export(&cli),
+        Command::Tui => cmd_tui(&cli),
     }
 }
