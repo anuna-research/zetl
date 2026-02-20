@@ -738,13 +738,6 @@ fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
                 app.should_quit = true;
                 return;
             }
-            KeyCode::Char('1') => { app.active_tab = Tab::Dashboard; return; }
-            KeyCode::Char('2') => { app.active_tab = Tab::Pages; return; }
-            KeyCode::Char('3') => { app.active_tab = Tab::Links; return; }
-            KeyCode::Char('4') => { app.active_tab = Tab::Search; return; }
-            KeyCode::Char('5') => { app.active_tab = Tab::Diagnostics; return; }
-            KeyCode::Char('6') => { app.active_tab = Tab::PageDetail; return; }
-            KeyCode::Char('7') => { app.active_tab = Tab::Graph; return; }
             KeyCode::Tab => {
                 let idx = app.active_tab.index();
                 let next = (idx + 1) % Tab::ALL.len();

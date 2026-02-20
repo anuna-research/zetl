@@ -45,7 +45,7 @@ fn draw_tabs(frame: &mut Frame, app: &App, area: Rect) {
     let titles: Vec<Line> = Tab::ALL
         .iter()
         .enumerate()
-        .map(|(i, tab)| Line::from(format!(" {} {} ", i + 1, tab.label())))
+        .map(|(_i, tab)| Line::from(format!(" {} ", tab.label())))
         .collect();
 
     let tabs = Tabs::new(titles)
@@ -64,7 +64,7 @@ fn draw_tabs(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let hint = match app.active_tab {
-        Tab::Dashboard => "? help | q quit | 1-7 tabs | Ctrl+K switcher",
+        Tab::Dashboard => "? help | q quit | Tab/Shift+Tab cycle | Ctrl+K switcher",
         Tab::Pages => "type to filter | Enter view page | Esc clear",
         Tab::Links => {
             if app.link_selected_page.is_none() {
@@ -1083,8 +1083,7 @@ fn draw_help_overlay(frame: &mut Frame) {
         Line::styled("  Global", Style::default().add_modifier(Modifier::BOLD)),
         Line::raw("  q             Quit"),
         Line::raw("  ?             Toggle help"),
-        Line::raw("  1-7           Switch tab"),
-        Line::raw("  Tab/S-Tab     Cycle tabs"),
+        Line::raw("  Tab/Shift+Tab Cycle views"),
         Line::raw("  Ctrl+K        Quick switcher (fuzzy page finder)"),
         Line::raw("  Ctrl+C        Force quit"),
         Line::raw(""),
