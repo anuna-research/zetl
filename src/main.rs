@@ -496,12 +496,13 @@ fn cmd_check(
     show_dead_links: bool,
     show_orphans: bool,
     show_syntax: bool,
+    show_spl: bool,
     fail_on: &FailLevel,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
     // If none of the flags are set, show all
-    let show_all = !show_dead_links && !show_orphans && !show_syntax;
+    let show_all = !show_dead_links && !show_orphans && !show_syntax && !show_spl;
 
     let dead = if show_all || show_dead_links {
         pipeline.graph.dead_links()
@@ -525,17 +526,26 @@ fn cmd_check(
         vec![]
     };
 
+    // Collect SPL diagnostics (requires "reason" feature)
+    let spl_diagnostics: Vec<zetl::types::Diagnostic> = if show_all || show_spl {
+        collect_spl_diagnostics(&pipeline.files)
+    } else {
+        vec![]
+    };
+
     #[derive(Serialize)]
     struct CheckOutput {
         dead_links: Vec<zetl::graph::DeadLink>,
         orphans: Vec<zetl::graph::Orphan>,
         syntax_errors: Vec<zetl::types::Diagnostic>,
+        spl_diagnostics: Vec<zetl::types::Diagnostic>,
     }
 
     let output = CheckOutput {
         dead_links: dead,
         orphans: orphan_list,
         syntax_errors: diagnostics,
+        spl_diagnostics,
     };
 
     match cli.format {
@@ -587,9 +597,27 @@ fn cmd_check(
                 println!();
             }
 
+            if !output.spl_diagnostics.is_empty() {
+                let mut table = Table::new();
+                table.set_header(vec!["Level", "File", "Line", "Column", "Message"]);
+                for d in &output.spl_diagnostics {
+                    table.add_row(vec![
+                        Cell::new(format!("{:?}", d.level)),
+                        Cell::new(d.file.display()),
+                        Cell::new(d.line),
+                        Cell::new(d.column),
+                        Cell::new(&d.message),
+                    ]);
+                }
+                println!("SPL Diagnostics:");
+                println!("{table}");
+                println!();
+            }
+
             if output.dead_links.is_empty()
                 && output.orphans.is_empty()
                 && output.syntax_errors.is_empty()
+                && output.spl_diagnostics.is_empty()
             {
                 println!("No issues found.");
             }
@@ -602,12 +630,20 @@ fn cmd_check(
         || output
             .syntax_errors
             .iter()
+            .any(|d| d.level == DiagnosticLevel::Error)
+        || output
+            .spl_diagnostics
+            .iter()
             .any(|d| d.level == DiagnosticLevel::Error);
 
     let has_warnings = output
         .syntax_errors
         .iter()
-        .any(|d| d.level == DiagnosticLevel::Warning);
+        .any(|d| d.level == DiagnosticLevel::Warning)
+        || output
+            .spl_diagnostics
+            .iter()
+            .any(|d| d.level == DiagnosticLevel::Warning);
 
     let should_fail = match fail_on {
         FailLevel::Error => has_errors,
@@ -619,6 +655,37 @@ fn cmd_check(
     }
 
     Ok(())
+}
+
+/// Collect SPL diagnostics by running the reasoning engine's build_theory.
+///
+/// Feature-gated: returns empty vec when the "reason" feature is disabled.
+#[cfg(feature = "reason")]
+fn collect_spl_diagnostics(files: &[ParsedFile]) -> Vec<zetl::types::Diagnostic> {
+    use zetl::reason::build_theory;
+
+    let spl_blocks: Vec<_> = files.iter().flat_map(|f| f.spl_blocks.clone()).collect();
+    if spl_blocks.is_empty() {
+        return vec![];
+    }
+
+    match build_theory(&spl_blocks) {
+        Ok(result) => result.diagnostics,
+        Err(e) => {
+            vec![zetl::types::Diagnostic {
+                level: DiagnosticLevel::Error,
+                message: format!("SPL theory construction failed: {e}"),
+                file: std::path::PathBuf::new(),
+                line: 0,
+                column: 0,
+            }]
+        }
+    }
+}
+
+#[cfg(not(feature = "reason"))]
+fn collect_spl_diagnostics(_files: &[ParsedFile]) -> Vec<zetl::types::Diagnostic> {
+    vec![]
 }
 
 fn cmd_similar(cli: &Cli, query: &str, threshold: u32, limit: usize) -> Result<()> {
@@ -1322,8 +1389,9 @@ fn main() -> anyhow::Result<()> {
             dead_links,
             orphans,
             syntax,
+            spl,
             fail_on,
-        } => cmd_check(&cli, *dead_links, *orphans, *syntax, fail_on),
+        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, fail_on),
         Command::Similar {
             query,
             threshold,
