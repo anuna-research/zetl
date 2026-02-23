@@ -216,8 +216,17 @@ pub enum ReasonCommand {
         /// Literal to analyze (e.g. "flies", "~guilty")
         literal: String,
     },
-    /// What facts are needed to prove a literal?
-    Require,
+    /// What facts are needed to prove a literal? (abductive reasoning)
+    Require {
+        /// Goal literal to make provable (e.g. "ready-for-production", "~guilty")
+        literal: String,
+        /// Maximum number of solution sets to return
+        #[arg(long, default_value = "5")]
+        max_solutions: usize,
+        /// Assume these facts already true (inline SPL, e.g. "(given bird)")
+        #[arg(long)]
+        assume: Option<String>,
+    },
     /// Analyze unresolved logical conflicts in the theory
     Conflicts {
         /// Suggest resolutions for each conflict

@@ -2097,6 +2097,383 @@ struct WhyNotSource {
     rule_label: Option<String>,
 }
 
+// ── Require command (abductive reasoning) ─────────────────────────────────
+
+#[cfg(feature = "reason")]
+fn cmd_reason_require(
+    cli: &Cli,
+    literal_input: &str,
+    max_solutions: usize,
+    assume_spl: Option<&str>,
+) -> Result<()> {
+    use zetl::reason::build_theory;
+    use zetl::reason::types::ConclusionType;
+
+    let pipeline = run_pipeline(cli)?;
+
+    let spl_blocks: Vec<_> = pipeline
+        .files
+        .iter()
+        .flat_map(|f| f.spl_blocks.clone())
+        .collect();
+
+    if spl_blocks.is_empty() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
+            OutputFormat::Table => {
+                eprintln!("No SPL blocks found in vault.");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let result = build_theory(&spl_blocks)?;
+
+    // Parse --assume facts if provided, and inject them into the theory for reasoning
+    let assumed_literals: HashSet<String> = if let Some(assume_input) = assume_spl {
+        use spindle_parser::parse_spl;
+        let assumed_theory = match parse_spl(assume_input) {
+            Ok(t) => t,
+            Err(e) => {
+                let msg = format!("--assume SPL parse error: {e}");
+                match cli.format {
+                    OutputFormat::Json => exit_json_error(&msg, 1),
+                    OutputFormat::Table => {
+                        eprintln!("{msg}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        };
+        // Collect literals from assumed facts
+        assumed_theory
+            .rules()
+            .filter(|r| r.rule_type == spindle_core::prelude::RuleType::Fact)
+            .flat_map(|r| r.head.iter().map(|h| h.to_string()).collect::<Vec<_>>())
+            .collect()
+    } else {
+        HashSet::new()
+    };
+
+    // Build provable set: all positively provable literals + assumed literals
+    let mut provable_set: HashSet<String> = result
+        .conclusions
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.conclusion_type,
+                ConclusionType::DefinitelyProvable | ConclusionType::DefeasiblyProvable
+            )
+        })
+        .map(|c| c.literal.clone())
+        .collect();
+    provable_set.extend(assumed_literals.clone());
+
+    // Check if the literal appears as a rule head anywhere in the theory
+    let all_head_literals: HashSet<String> = result
+        .theory
+        .rules()
+        .flat_map(|r| r.head.iter().map(|h| h.to_string()))
+        .collect();
+
+    // Special case: goal already provable
+    if provable_set.contains(literal_input) {
+        let output = RequireOutput {
+            literal: literal_input.to_string(),
+            status: "already_provable".to_string(),
+            message: Some(format!(
+                "Literal '{}' is already provable. No additional facts needed.",
+                literal_input
+            )),
+            solutions: vec![],
+            assumed: assumed_literals.iter().cloned().collect(),
+        };
+        match cli.format {
+            OutputFormat::Json => print_json(&output)?,
+            OutputFormat::Table => {
+                println!(
+                    "Literal '{}' is already provable. No additional facts needed.",
+                    literal_input
+                );
+                if !output.assumed.is_empty() {
+                    println!("  (with assumed facts: {})", output.assumed.join(", "));
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    // Special case: no rules exist with this literal as head
+    if !all_head_literals.contains(literal_input) {
+        // Offer fuzzy suggestions
+        let all_lits: Vec<String> = all_head_literals.into_iter().collect();
+        let suggestions = fuzzy_match_literals(literal_input, &all_lits);
+
+        let msg = if suggestions.is_empty() {
+            format!(
+                "No rules found with '{}' as head — cannot determine requirements",
+                literal_input
+            )
+        } else {
+            let did_you_mean: Vec<String> =
+                suggestions.iter().map(|s| format!("'{}'", s)).collect();
+            format!(
+                "No rules found with '{}' as head. Did you mean: {}?",
+                literal_input,
+                did_you_mean.join(", ")
+            )
+        };
+
+        match cli.format {
+            OutputFormat::Json => {
+                #[derive(Serialize)]
+                struct NoRulesOutput {
+                    error: String,
+                    literal: String,
+                    suggestions: Vec<String>,
+                }
+                let output = NoRulesOutput {
+                    error: msg.clone(),
+                    literal: literal_input.to_string(),
+                    suggestions,
+                };
+                print_json(&output)?;
+                std::process::exit(1);
+            }
+            OutputFormat::Table => {
+                eprintln!("{msg}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Find all rules that could prove this literal
+    let candidate_rules: Vec<_> = result
+        .rules
+        .iter()
+        .filter(|r| r.head.to_string() == literal_input)
+        .collect();
+
+    // Abductive reasoning: for each candidate rule, find what body literals are missing,
+    // then recursively find what's needed to make those provable too.
+    let mut solutions: Vec<RequireSolution> = Vec::new();
+
+    for rule in &candidate_rules {
+        // Find missing body literals for this rule
+        let missing: Vec<String> = rule
+            .body
+            .iter()
+            .map(|b| b.to_string())
+            .filter(|b| !provable_set.contains(b))
+            .collect();
+
+        if missing.is_empty() {
+            // All body literals are provable — this rule path needs nothing more
+            // (but the goal isn't provable, so something else must be blocking it —
+            // e.g., a defeater or superior rule; still worth reporting as "empty" solution)
+            solutions.push(RequireSolution {
+                required_facts: vec![],
+                via_rule: rule.label.clone(),
+                rule_text: format_rule_text(rule),
+                source_page: rule.source_page.clone(),
+                source_file: rule.source_file.to_string_lossy().to_string(),
+                source_line: rule.source_line,
+                note: Some(
+                    "All body literals are satisfied, but conclusion may be \
+                     blocked by a defeater or superior rule."
+                        .to_string(),
+                ),
+            });
+            continue;
+        }
+
+        // Recursively expand missing literals: for each missing literal,
+        // check if there are rules that could prove it (and find what THOSE need),
+        // or if it can only be asserted as a new fact.
+        let mut required_facts: Vec<RequiredFact> = Vec::new();
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut queue: VecDeque<(String, String, String)> = VecDeque::new(); // (literal, needed_by_rule, source_page)
+
+        for m in &missing {
+            queue.push_back((m.clone(), rule.label.clone(), rule.source_page.clone()));
+        }
+
+        while let Some((lit, needed_by, needed_in_page)) = queue.pop_front() {
+            if visited.contains(&lit) || provable_set.contains(&lit) {
+                continue;
+            }
+            visited.insert(lit.clone());
+
+            // Find rules that could prove this missing literal
+            let sub_rules: Vec<_> = result
+                .rules
+                .iter()
+                .filter(|r| r.head.to_string() == lit)
+                .collect();
+
+            if sub_rules.is_empty() {
+                // No rule can prove it — must be asserted as a fact
+                required_facts.push(RequiredFact {
+                    literal: lit.clone(),
+                    reason: format!(
+                        "No rules can derive '{}'; must be asserted as a fact",
+                        lit
+                    ),
+                    needed_by_rule: needed_by.clone(),
+                    needed_in_page: needed_in_page.clone(),
+                });
+            } else {
+                // There are rules that could prove this sub-literal,
+                // but their bodies may also be missing facts.
+                // For simplicity (avoiding exponential blowup), we take the
+                // first rule as the "cheapest" path and expand its missing body.
+                let best_rule = sub_rules[0];
+                let sub_missing: Vec<String> = best_rule
+                    .body
+                    .iter()
+                    .map(|b| b.to_string())
+                    .filter(|b| !provable_set.contains(b) && !visited.contains(b))
+                    .collect();
+
+                if sub_missing.is_empty() {
+                    // Sub-rule body is all satisfied — this literal *should* be provable
+                    // via this rule, but isn't. Might be defeated.
+                    required_facts.push(RequiredFact {
+                        literal: lit.clone(),
+                        reason: format!(
+                            "Rule '{}' has all body literals, but '{}' is still not provable \
+                             (may be defeated); asserting as fact would force it",
+                            best_rule.label, lit
+                        ),
+                        needed_by_rule: needed_by.clone(),
+                        needed_in_page: needed_in_page.clone(),
+                    });
+                } else {
+                    // Queue the sub-rule's missing body literals
+                    for sub_m in sub_missing {
+                        queue.push_back((
+                            sub_m,
+                            best_rule.label.clone(),
+                            best_rule.source_page.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        solutions.push(RequireSolution {
+            required_facts,
+            via_rule: rule.label.clone(),
+            rule_text: format_rule_text(rule),
+            source_page: rule.source_page.clone(),
+            source_file: rule.source_file.to_string_lossy().to_string(),
+            source_line: rule.source_line,
+            note: None,
+        });
+
+        if solutions.len() >= max_solutions {
+            break;
+        }
+    }
+
+    // Sort solutions by number of required facts (fewest first)
+    solutions.sort_by_key(|s| s.required_facts.len());
+
+    // Truncate to max_solutions
+    solutions.truncate(max_solutions);
+
+    let output = RequireOutput {
+        literal: literal_input.to_string(),
+        status: "requirements_found".to_string(),
+        message: None,
+        solutions,
+        assumed: assumed_literals.iter().cloned().collect(),
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            println!("Requirements to prove '{}':", literal_input);
+            if !output.assumed.is_empty() {
+                println!("  Assumed facts: {}", output.assumed.join(", "));
+            }
+            println!();
+
+            if output.solutions.is_empty() {
+                println!("  No solution paths found.");
+            } else {
+                for (i, solution) in output.solutions.iter().enumerate() {
+                    println!(
+                        "  Solution {} via rule '{}' ([[{}]]:{})",
+                        i + 1,
+                        solution.via_rule,
+                        solution.source_page,
+                        solution.source_line,
+                    );
+                    println!("    {}", solution.rule_text);
+
+                    if let Some(ref note) = solution.note {
+                        println!("    Note: {}", note);
+                    }
+
+                    if solution.required_facts.is_empty() {
+                        println!("    No additional facts required.");
+                    } else {
+                        println!(
+                            "    {} fact(s) required:",
+                            solution.required_facts.len()
+                        );
+                        for fact in &solution.required_facts {
+                            println!("      - '{}' (needed by rule '{}')", fact.literal, fact.needed_by_rule);
+                            println!("        {}", fact.reason);
+                            println!(
+                                "        defined in: [[{}]]",
+                                fact.needed_in_page
+                            );
+                        }
+                    }
+                    println!();
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct RequireOutput {
+    literal: String,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    solutions: Vec<RequireSolution>,
+    assumed: Vec<String>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct RequireSolution {
+    required_facts: Vec<RequiredFact>,
+    via_rule: String,
+    rule_text: String,
+    source_page: String,
+    source_file: String,
+    source_line: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct RequiredFact {
+    literal: String,
+    reason: String,
+    needed_by_rule: String,
+    needed_in_page: String,
+}
+
 // ── Conflicts command ──────────────────────────────────────────────────────
 
 #[cfg(feature = "reason")]
@@ -3850,6 +4227,11 @@ fn main() -> anyhow::Result<()> {
                 ReasonCommand::WhatIf { spl, file, goal } => {
                     cmd_reason_what_if(&cli, spl.as_deref(), file.as_deref(), goal.as_deref())
                 }
+                ReasonCommand::Require {
+                    literal,
+                    max_solutions,
+                    assume,
+                } => cmd_reason_require(&cli, literal, *max_solutions, assume.as_deref()),
                 _ => {
                     eprintln!("This reason subcommand is not yet implemented.");
                     std::process::exit(1);
