@@ -4,7 +4,7 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 309,
+    "insertions": 398,
     "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
@@ -15,14 +15,14 @@
   },
   "learnings": [
     {
-      "key": "task-cmd-reason-what-if-changes",
-      "content": "Modified 3 files (+309, -7): .hence/context-manifest.json, src/cli.rs, src/main.rs",
+      "key": "task-cmd-reason-require-changes",
+      "content": "Modified 3 files (+398, -7): .hence/context-manifest.json, src/cli.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cmd-reason-what-if-v1",
-  "evaluated_at": "2026-02-23T14:23:02Z",
+  "branch_name": "hence/cmd-reason-require-v1",
+  "evaluated_at": "2026-02-23T14:28:01Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
