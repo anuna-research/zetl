@@ -1,12 +1,12 @@
 {
-  "task_id": "cmd-reason-why-not",
+  "task_id": "cmd-reason-conflicts",
   "token_budget": 8000,
-  "tokens_used": 321,
+  "tokens_used": 346,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement `zetl reason why-not <LITERAL>` per CON-015. Explains why a literal is NOT provable by analyzing: which rules could prove it, what body literals are missing or failed, and which defeaters are blocking it. Each missing/failed literal includes the document(s) that would need to assert it. Two blocker types: 'failed_body' (missing precondition) and 'defeated' (blocked by a defeater). Exit codes: 0 explanation generated, 1 literal not in theory.",
-      "token_cost": 113,
+      "content": "Implement `zetl reason conflicts` per CON-017. Analyze the theory for unresolved logical conflicts: literals where both p and ~p have applicable rules but no superiority relation resolves the conflict. For each conflict, report: the contested literal, competing rules with source provenance, whether a superiority relation exists, and (with --suggest) suggested resolutions. Exit codes: 0 no conflicts or listed successfully, 1 with --fail-on-conflicts if conflicts found.",
+      "token_cost": 118,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 2 files (+815, -2): src/cli.rs, src/main.rs",
       "token_cost": 13,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cmd-reason-why-not-changes",
+      "content": "Modified 3 files (+489, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T13:56:25Z"
+  "constructed_at": "2026-02-23T14:00:06Z"
 }

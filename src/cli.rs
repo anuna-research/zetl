@@ -203,8 +203,15 @@ pub enum ReasonCommand {
     },
     /// What facts are needed to prove a literal?
     Require,
-    /// Show conflicting rules for a literal
-    Conflicts,
+    /// Analyze unresolved logical conflicts in the theory
+    Conflicts {
+        /// Suggest resolutions for each conflict
+        #[arg(long)]
+        suggest: bool,
+        /// Exit non-zero (1) if conflicts are found
+        #[arg(long)]
+        fail_on_conflicts: bool,
+    },
     /// Export theory in various formats
     Export,
     /// Trace full provenance for a conclusion

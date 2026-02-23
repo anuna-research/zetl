@@ -1930,6 +1930,488 @@ struct WhyNotSource {
     rule_label: Option<String>,
 }
 
+// ── Conflicts command ──────────────────────────────────────────────────────
+
+#[cfg(feature = "reason")]
+fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Result<()> {
+    use zetl::reason::build_theory;
+    use zetl::reason::types::RuleType;
+
+    let pipeline = run_pipeline(cli)?;
+
+    let spl_blocks: Vec<_> = pipeline
+        .files
+        .iter()
+        .flat_map(|f| f.spl_blocks.clone())
+        .collect();
+
+    if spl_blocks.is_empty() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
+            OutputFormat::Table => {
+                eprintln!("No SPL blocks found in vault.");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let result = build_theory(&spl_blocks)?;
+
+    // Build a set of all rule heads grouped by their base literal name.
+    // A conflict exists when there are rules for both `p` and `~p`.
+    // We need to find literal names where rules produce both a literal and its complement.
+    let mut rules_for_literal: HashMap<String, Vec<&zetl::reason::types::ProvenancedRule>> =
+        HashMap::new();
+    for rule in &result.rules {
+        let head_str = rule.head.to_string();
+        rules_for_literal
+            .entry(head_str)
+            .or_default()
+            .push(rule);
+    }
+
+    // Also include facts as potential sources of conflict
+    let mut facts_for_literal: HashMap<String, Vec<&zetl::reason::types::ProvenancedFact>> =
+        HashMap::new();
+    for fact in &result.facts {
+        let lit_str = fact.literal.to_string();
+        facts_for_literal
+            .entry(lit_str)
+            .or_default()
+            .push(fact);
+    }
+
+    // Build the set of superiority relations for quick lookup
+    let superiorities: Vec<_> = result.theory.superiorities().to_vec();
+
+    // Find all conflicting literal pairs: (p, ~p)
+    // For each literal name, check if both the positive and negative forms have applicable rules
+    let mut seen_names: HashSet<String> = HashSet::new();
+    let mut all_head_literals: HashSet<String> = HashSet::new();
+    for rule in &result.rules {
+        all_head_literals.insert(rule.head.to_string());
+    }
+    for fact in &result.facts {
+        all_head_literals.insert(fact.literal.to_string());
+    }
+
+    let mut conflicts: Vec<ConflictEntry> = Vec::new();
+
+    for lit_str in &all_head_literals {
+        // Determine the base name and its complement
+        let (base_name, _complement) = if let Some(name) = lit_str.strip_prefix('~') {
+            (name.to_string(), name.to_string())
+        } else {
+            (lit_str.clone(), format!("~{}", lit_str))
+        };
+
+        // Skip if we already processed this pair
+        if !seen_names.insert(base_name.clone()) {
+            continue;
+        }
+
+        // Check if the complement also has rules/facts
+        let positive = base_name.clone();
+        let negative = format!("~{}", base_name);
+
+        let pos_has_rules = rules_for_literal.contains_key(&positive)
+            || facts_for_literal.contains_key(&positive);
+        let neg_has_rules = rules_for_literal.contains_key(&negative)
+            || facts_for_literal.contains_key(&negative);
+
+        if !pos_has_rules || !neg_has_rules {
+            continue; // No conflict — only one side has rules
+        }
+
+        // Collect all competing rules for both sides
+        let pos_rules: Vec<_> = rules_for_literal
+            .get(&positive)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+            .to_vec();
+        let neg_rules: Vec<_> = rules_for_literal
+            .get(&negative)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+            .to_vec();
+        let pos_facts: Vec<_> = facts_for_literal
+            .get(&positive)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+            .to_vec();
+        let neg_facts: Vec<_> = facts_for_literal
+            .get(&negative)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+            .to_vec();
+
+        // Check which superiority relations exist between competing rules
+        let mut existing_superiorities: Vec<ConflictSuperiority> = Vec::new();
+        let mut all_pairs_resolved = true;
+
+        // Only defeasible rules can be in superiority relations
+        let pos_defeasible: Vec<_> = pos_rules
+            .iter()
+            .filter(|r| r.rule_type == RuleType::Defeasible)
+            .collect();
+        let neg_defeasible: Vec<_> = neg_rules
+            .iter()
+            .filter(|r| r.rule_type == RuleType::Defeasible)
+            .collect();
+
+        for pr in &pos_defeasible {
+            for nr in &neg_defeasible {
+                let sup_pos_over_neg = superiorities
+                    .iter()
+                    .any(|s| s.superior == pr.label && s.inferior == nr.label);
+                let sup_neg_over_pos = superiorities
+                    .iter()
+                    .any(|s| s.superior == nr.label && s.inferior == pr.label);
+
+                if sup_pos_over_neg {
+                    existing_superiorities.push(ConflictSuperiority {
+                        superior: pr.label.clone(),
+                        inferior: nr.label.clone(),
+                    });
+                } else if sup_neg_over_pos {
+                    existing_superiorities.push(ConflictSuperiority {
+                        superior: nr.label.clone(),
+                        inferior: pr.label.clone(),
+                    });
+                } else {
+                    all_pairs_resolved = false;
+                }
+            }
+        }
+
+        // If any side has strict rules, or all defeasible pairs are resolved, skip
+        let pos_has_strict = pos_rules.iter().any(|r| r.rule_type == RuleType::Strict);
+        let neg_has_strict = neg_rules.iter().any(|r| r.rule_type == RuleType::Strict);
+
+        // Strict rules always dominate — but if both sides have strict rules, that's a hard conflict
+        if (pos_has_strict || neg_has_strict) && !(pos_has_strict && neg_has_strict) {
+            continue; // One side has a strict rule, so no unresolved conflict
+        }
+
+        // If all defeasible rule pairs have superiority relations, skip
+        if !pos_defeasible.is_empty() && !neg_defeasible.is_empty() && all_pairs_resolved {
+            continue;
+        }
+
+        // If there are no defeasible rules on either side (only facts or strict),
+        // check if it's actually an unresolved situation
+        if pos_defeasible.is_empty() && neg_defeasible.is_empty() && !pos_has_strict && !neg_has_strict {
+            // Both sides only have facts — this is a genuine conflict
+        }
+
+        // Build competing rule entries
+        let mut competing_rules: Vec<CompetingRule> = Vec::new();
+        for rule in pos_rules.iter().chain(neg_rules.iter()) {
+            competing_rules.push(CompetingRule {
+                label: rule.label.clone(),
+                rule_type: format!("{:?}", rule.rule_type),
+                head: rule.head.to_string(),
+                body: rule.body.iter().map(|b| b.to_string()).collect(),
+                source_page: rule.source_page.clone(),
+                source_file: rule.source_file.to_string_lossy().to_string(),
+                source_line: rule.source_line,
+            });
+        }
+        for fact in pos_facts.iter().chain(neg_facts.iter()) {
+            competing_rules.push(CompetingRule {
+                label: String::new(),
+                rule_type: "Fact".to_string(),
+                head: fact.literal.to_string(),
+                body: vec![],
+                source_page: fact.source_page.clone(),
+                source_file: fact.source_file.to_string_lossy().to_string(),
+                source_line: fact.source_line,
+            });
+        }
+
+        // Build suggestions if requested
+        let suggestions = if suggest {
+            build_conflict_suggestions(&base_name, &pos_rules, &neg_rules, &pos_facts, &neg_facts)
+        } else {
+            vec![]
+        };
+
+        conflicts.push(ConflictEntry {
+            literal: base_name,
+            positive_literal: positive,
+            negative_literal: negative,
+            competing_rules,
+            existing_superiorities,
+            resolved: false,
+            suggestions,
+        });
+    }
+
+    // Sort conflicts by literal name for stable output
+    conflicts.sort_by(|a, b| a.literal.cmp(&b.literal));
+
+    let output = ConflictsOutput {
+        conflicts: conflicts.clone(),
+        conflict_count: conflicts.len(),
+        diagnostics: result.diagnostics,
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            if conflicts.is_empty() {
+                println!("No unresolved conflicts found in theory.");
+            } else {
+                println!(
+                    "{} unresolved conflict(s) found:\n",
+                    conflicts.len()
+                );
+
+                for (i, conflict) in conflicts.iter().enumerate() {
+                    println!(
+                        "{}. Contested literal: {}",
+                        i + 1,
+                        conflict.literal
+                    );
+                    println!();
+
+                    // Group rules by which side they support
+                    let pos_rules: Vec<_> = conflict
+                        .competing_rules
+                        .iter()
+                        .filter(|r| r.head == conflict.positive_literal)
+                        .collect();
+                    let neg_rules: Vec<_> = conflict
+                        .competing_rules
+                        .iter()
+                        .filter(|r| r.head == conflict.negative_literal)
+                        .collect();
+
+                    println!("   Rules for '{}':", conflict.positive_literal);
+                    for rule in &pos_rules {
+                        if rule.label.is_empty() {
+                            println!(
+                                "     [Fact] {}  ([[{}]]:{})",
+                                rule.head, rule.source_page, rule.source_line
+                            );
+                        } else {
+                            let body_str = if rule.body.is_empty() {
+                                String::new()
+                            } else {
+                                format!("{} => ", rule.body.join(", "))
+                            };
+                            println!(
+                                "     '{}' [{}]: {}{}  ([[{}]]:{})",
+                                rule.label,
+                                rule.rule_type,
+                                body_str,
+                                rule.head,
+                                rule.source_page,
+                                rule.source_line
+                            );
+                        }
+                    }
+
+                    println!("   Rules for '{}':", conflict.negative_literal);
+                    for rule in &neg_rules {
+                        if rule.label.is_empty() {
+                            println!(
+                                "     [Fact] {}  ([[{}]]:{})",
+                                rule.head, rule.source_page, rule.source_line
+                            );
+                        } else {
+                            let body_str = if rule.body.is_empty() {
+                                String::new()
+                            } else {
+                                format!("{} => ", rule.body.join(", "))
+                            };
+                            println!(
+                                "     '{}' [{}]: {}{}  ([[{}]]:{})",
+                                rule.label,
+                                rule.rule_type,
+                                body_str,
+                                rule.head,
+                                rule.source_page,
+                                rule.source_line
+                            );
+                        }
+                    }
+
+                    if !conflict.existing_superiorities.is_empty() {
+                        println!();
+                        println!("   Existing superiority relations (partial):");
+                        for sup in &conflict.existing_superiorities {
+                            println!("     {} > {}", sup.superior, sup.inferior);
+                        }
+                    } else {
+                        println!();
+                        println!("   No superiority relations between competing rules.");
+                    }
+
+                    if suggest && !conflict.suggestions.is_empty() {
+                        println!();
+                        println!("   Suggested resolutions:");
+                        for suggestion in &conflict.suggestions {
+                            println!("     - {}", suggestion);
+                        }
+                    }
+
+                    println!();
+                }
+            }
+        }
+    }
+
+    if fail_on_conflicts && !conflicts.is_empty() {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "reason")]
+fn build_conflict_suggestions(
+    base_name: &str,
+    pos_rules: &[&zetl::reason::types::ProvenancedRule],
+    neg_rules: &[&zetl::reason::types::ProvenancedRule],
+    pos_facts: &[&zetl::reason::types::ProvenancedFact],
+    neg_facts: &[&zetl::reason::types::ProvenancedFact],
+) -> Vec<String> {
+    use zetl::reason::types::RuleType;
+
+    let mut suggestions = Vec::new();
+
+    let pos_def: Vec<_> = pos_rules
+        .iter()
+        .filter(|r| r.rule_type == RuleType::Defeasible)
+        .collect();
+    let neg_def: Vec<_> = neg_rules
+        .iter()
+        .filter(|r| r.rule_type == RuleType::Defeasible)
+        .collect();
+    let neg_defeaters: Vec<_> = neg_rules
+        .iter()
+        .filter(|r| r.rule_type == RuleType::Defeater)
+        .collect();
+    let pos_defeaters: Vec<_> = pos_rules
+        .iter()
+        .filter(|r| r.rule_type == RuleType::Defeater)
+        .collect();
+
+    // Suggest superiority relations between defeasible rule pairs
+    for pr in &pos_def {
+        for nr in &neg_def {
+            suggestions.push(format!(
+                "Add (prefer {} {}) to make '{}' prevail",
+                pr.label, nr.label, base_name
+            ));
+            suggestions.push(format!(
+                "Add (prefer {} {}) to make '~{}' prevail",
+                nr.label, pr.label, base_name
+            ));
+        }
+    }
+
+    // Suggest converting defeasible rules to defeaters
+    if !pos_def.is_empty() {
+        for nr in &neg_def {
+            suggestions.push(format!(
+                "Convert '{}' to a defeater (except) to block without proving ~{}",
+                nr.label, base_name
+            ));
+        }
+    }
+    if !neg_def.is_empty() {
+        for pr in &pos_def {
+            suggestions.push(format!(
+                "Convert '{}' to a defeater (except) to block without proving {}",
+                pr.label, base_name
+            ));
+        }
+    }
+
+    // For defeater-vs-defeasible conflicts: suggest removing defeater or adding strict rule
+    for def in &neg_defeaters {
+        if !pos_def.is_empty() {
+            suggestions.push(format!(
+                "Remove defeater '{}' if '~{}' should no longer block '{}'",
+                def.label, base_name, base_name
+            ));
+            suggestions.push(format!(
+                "Add a strict rule (always) for '{}' to override defeater '{}'",
+                base_name, def.label
+            ));
+        }
+    }
+    for def in &pos_defeaters {
+        if !neg_def.is_empty() {
+            suggestions.push(format!(
+                "Remove defeater '{}' if '{}' should no longer block '~{}'",
+                def.label, base_name, base_name
+            ));
+            suggestions.push(format!(
+                "Add a strict rule (always) for '~{}' to override defeater '{}'",
+                base_name, def.label
+            ));
+        }
+    }
+
+    // Suggest removing conflicting facts
+    if !neg_facts.is_empty() && !pos_rules.is_empty() {
+        suggestions.push(format!(
+            "Remove the fact '~{}' if it is no longer applicable",
+            base_name
+        ));
+    }
+    if !pos_facts.is_empty() && !neg_rules.is_empty() {
+        suggestions.push(format!(
+            "Remove the fact '{}' if it is no longer applicable",
+            base_name
+        ));
+    }
+
+    suggestions
+}
+
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct ConflictsOutput {
+    conflicts: Vec<ConflictEntry>,
+    conflict_count: usize,
+    diagnostics: Vec<zetl::types::Diagnostic>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct ConflictEntry {
+    literal: String,
+    positive_literal: String,
+    negative_literal: String,
+    competing_rules: Vec<CompetingRule>,
+    existing_superiorities: Vec<ConflictSuperiority>,
+    resolved: bool,
+    suggestions: Vec<String>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct CompetingRule {
+    label: String,
+    rule_type: String,
+    head: String,
+    body: Vec<String>,
+    source_page: String,
+    source_file: String,
+    source_line: u32,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct ConflictSuperiority {
+    superior: String,
+    inferior: String,
+}
+
 /// Find documents that could potentially provide a given literal.
 ///
 /// Returns sources where the literal already appears as a rule head (but isn't
@@ -2711,6 +3193,10 @@ fn main() -> anyhow::Result<()> {
                     format,
                 } => cmd_reason_explain(&cli, literal, *depth, format),
                 ReasonCommand::WhyNot { literal } => cmd_reason_why_not(&cli, literal),
+                ReasonCommand::Conflicts {
+                    suggest,
+                    fail_on_conflicts,
+                } => cmd_reason_conflicts(&cli, *suggest, *fail_on_conflicts),
                 _ => {
                     eprintln!("This reason subcommand is not yet implemented.");
                     std::process::exit(1);
