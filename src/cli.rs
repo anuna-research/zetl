@@ -197,7 +197,10 @@ pub enum ReasonCommand {
     /// Hypothetical reasoning: what if a fact were added?
     WhatIf,
     /// Why is a literal not provable?
-    WhyNot,
+    WhyNot {
+        /// Literal to analyze (e.g. "flies", "~guilty")
+        literal: String,
+    },
     /// What facts are needed to prove a literal?
     Require,
     /// Show conflicting rules for a literal

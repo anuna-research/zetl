@@ -1,12 +1,12 @@
 {
-  "task_id": "cmd-reason-explain",
+  "task_id": "cmd-reason-why-not",
   "token_budget": 8000,
-  "tokens_used": 376,
+  "tokens_used": 321,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement `zetl reason explain <LITERAL>` per CON-013. Uses spindle-core's explanation API to build a proof tree for the given literal. Output includes: conclusion type, the rule chain that derives it (for +D/+d), the defeat chain that blocks it (for -d), and for each rule/fact in the chain the source document name, file path, and line number (from provenance metadata). Support --depth <N> for max proof tree depth [default: 10] and --format json|table|natural|dot. JSON output: nested proof tree with sources. Table/natural output: human-readable explanation with [[PageName]]:line references. If the literal is not found, exit code 1 with 'did you mean?' suggestions using existing SimHash fuzzy matching on literal names.",
-      "token_cost": 181,
+      "content": "Implement `zetl reason why-not <LITERAL>` per CON-015. Explains why a literal is NOT provable by analyzing: which rules could prove it, what body literals are missing or failed, and which defeaters are blocking it. Each missing/failed literal includes the document(s) that would need to assert it. Two blocker types: 'failed_body' (missing precondition) and 'defeated' (blocked by a defeater). Exit codes: 0 explanation generated, 1 literal not in theory.",
+      "token_cost": 113,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,14 @@
       "content": "Modified 3 files (+86, -9): .hence/context-manifest.json, src/cli.rs, src/main.rs",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cmd-reason-explain-changes",
+      "content": "Modified 2 files (+815, -2): src/cli.rs, src/main.rs",
+      "token_cost": 13,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T13:47:31Z"
+  "constructed_at": "2026-02-23T13:56:25Z"
 }
