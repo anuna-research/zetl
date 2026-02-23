@@ -44,8 +44,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 fn draw_tabs(frame: &mut Frame, app: &App, area: Rect) {
     let titles: Vec<Line> = Tab::ALL
         .iter()
-        .enumerate()
-        .map(|(_i, tab)| Line::from(format!(" {} ", tab.label())))
+        .map(|tab| Line::from(format!(" {} ", tab.label())))
         .collect();
 
     let tabs = Tabs::new(titles)

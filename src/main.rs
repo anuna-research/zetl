@@ -1314,11 +1314,19 @@ fn build_or_load_theory(
     use zetl::cache::{build_theory_cache, load_theory_cache, save_theory_cache, theory_cache_valid};
     use zetl::reason::{build_theory, build_theory_from_cache};
 
+    let total_start = Instant::now();
+
     let spl_blocks: Vec<_> = pipeline
         .files
         .iter()
         .flat_map(|f| f.spl_blocks.clone())
         .collect();
+
+    let spl_file_count = pipeline
+        .files
+        .iter()
+        .filter(|f| !f.spl_blocks.is_empty())
+        .count();
 
     // Try loading from theory cache (unless --no-cache).
     if !no_cache {
@@ -1327,13 +1335,29 @@ fn build_or_load_theory(
                 if verbose > 0 {
                     eprintln!("Theory cache hit — re-reasoning from cached theory");
                 }
-                return build_theory_from_cache(&cache);
+                let reason_start = Instant::now();
+                let result = build_theory_from_cache(&cache)?;
+                let reason_elapsed = reason_start.elapsed();
+                if verbose > 0 {
+                    emit_timing_metrics(
+                        spl_blocks.len(),
+                        spl_file_count,
+                        &result,
+                        0,
+                        0,
+                        reason_elapsed.as_millis(),
+                        total_start.elapsed().as_millis(),
+                    );
+                }
+                return Ok(result);
             }
         }
     }
 
     // Cache miss: full build.
+    let build_start = Instant::now();
     let result = build_theory(&spl_blocks)?;
+    let build_elapsed = build_start.elapsed();
 
     // Save to theory cache.
     if !no_cache {
@@ -1345,7 +1369,148 @@ fn build_or_load_theory(
         }
     }
 
+    if verbose > 0 {
+        emit_timing_metrics(
+            spl_blocks.len(),
+            spl_file_count,
+            &result,
+            build_elapsed.as_millis(),
+            build_elapsed.as_millis(),
+            build_elapsed.as_millis(),
+            total_start.elapsed().as_millis(),
+        );
+    }
+
     Ok(result)
+}
+
+/// Emit OBS-005 timing metrics to stderr.
+#[cfg(feature = "reason")]
+fn emit_timing_metrics(
+    spl_block_count: usize,
+    spl_file_count: usize,
+    result: &zetl::reason::types::TheoryResult,
+    parse_ms: u128,
+    construction_ms: u128,
+    reasoning_ms: u128,
+    total_ms: u128,
+) {
+    eprintln!("SPL blocks extracted: {}", spl_block_count);
+    eprintln!("Source files with SPL: {}", spl_file_count);
+    eprintln!(
+        "Theory: {} facts, {} rules, {} defeaters, {} superiority relations",
+        result.summary.fact_count,
+        result.summary.rule_count,
+        result.summary.defeater_count,
+        result.summary.superiority_count,
+    );
+    eprintln!("SPL parse time: {}ms", parse_ms);
+    eprintln!("Theory construction time: {}ms", construction_ms);
+    eprintln!("Reasoning time: {}ms", reasoning_ms);
+    eprintln!("Total elapsed: {}ms", total_ms);
+}
+
+/// Count unresolved conflicts in the theory (OBS-006).
+///
+/// A conflict exists when rules produce both a literal and its complement (~p vs p)
+/// without a superiority relation resolving the dispute.
+#[cfg(feature = "reason")]
+fn count_unresolved_conflicts(result: &zetl::reason::types::TheoryResult) -> usize {
+    use zetl::reason::types::RuleType;
+
+    let mut rules_by_head: HashMap<String, Vec<&zetl::reason::types::ProvenancedRule>> =
+        HashMap::new();
+    for rule in &result.rules {
+        rules_by_head
+            .entry(rule.head.to_string())
+            .or_default()
+            .push(rule);
+    }
+
+    let mut all_heads: HashSet<String> = HashSet::new();
+    for rule in &result.rules {
+        all_heads.insert(rule.head.to_string());
+    }
+    for fact in &result.facts {
+        all_heads.insert(fact.literal.to_string());
+    }
+
+    let superiorities = result.theory.superiorities().to_vec();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut count = 0;
+
+    for lit in &all_heads {
+        let base = if let Some(name) = lit.strip_prefix('~') {
+            name.to_string()
+        } else {
+            lit.clone()
+        };
+        if !seen.insert(base.clone()) {
+            continue;
+        }
+
+        let positive = &base;
+        let negative = format!("~{}", base);
+
+        let pos_exists = all_heads.contains(positive);
+        let neg_exists = all_heads.contains(&negative);
+        if !pos_exists || !neg_exists {
+            continue;
+        }
+
+        let pos_defeasible: Vec<_> = rules_by_head
+            .get(positive)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+            .iter()
+            .filter(|r| r.rule_type == RuleType::Defeasible)
+            .collect();
+        let neg_defeasible: Vec<_> = rules_by_head
+            .get(&negative)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+            .iter()
+            .filter(|r| r.rule_type == RuleType::Defeasible)
+            .collect();
+
+        let pos_has_strict = rules_by_head
+            .get(positive)
+            .map(|v| v.iter().any(|r| r.rule_type == RuleType::Strict))
+            .unwrap_or(false);
+        let neg_has_strict = rules_by_head
+            .get(&negative)
+            .map(|v| v.iter().any(|r| r.rule_type == RuleType::Strict))
+            .unwrap_or(false);
+
+        // One-sided strict rule resolves conflict
+        if (pos_has_strict || neg_has_strict) && !(pos_has_strict && neg_has_strict) {
+            continue;
+        }
+
+        // Check if all defeasible pairs have superiority
+        let mut all_resolved = true;
+        for pr in &pos_defeasible {
+            for nr in &neg_defeasible {
+                let has_sup = superiorities
+                    .iter()
+                    .any(|s| {
+                        (s.superior == pr.label && s.inferior == nr.label)
+                            || (s.superior == nr.label && s.inferior == pr.label)
+                    });
+                if !has_sup {
+                    all_resolved = false;
+                }
+            }
+        }
+
+        if !pos_defeasible.is_empty() && !neg_defeasible.is_empty() && all_resolved {
+            continue;
+        }
+
+        count += 1;
+    }
+
+    count
 }
 
 #[cfg(feature = "reason")]
@@ -1384,6 +1549,19 @@ fn cmd_reason_status(
         .count();
     let has_parse_errors = parse_error_count > 0;
     let all_blocks_failed = parse_error_count == block_count && result.conclusions.is_empty();
+
+    // OBS-006: Count unresolved conflicts and diagnostics
+    let unresolved_conflict_count = count_unresolved_conflicts(&result);
+    let error_count = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.level == DiagnosticLevel::Error)
+        .count();
+    let warning_count = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.level == DiagnosticLevel::Warning)
+        .count();
 
     // Filter conclusions
     let mut conclusions = result.conclusions;
@@ -1467,6 +1645,9 @@ fn cmd_reason_status(
                 defeasibly_provable: usize,
                 defeasibly_not_provable: usize,
                 total: usize,
+                unresolved_conflicts: usize,
+                diagnostic_errors: usize,
+                diagnostic_warnings: usize,
             }
 
             let output = ReasonStatusOutput {
@@ -1487,6 +1668,9 @@ fn cmd_reason_status(
                         + result.summary.definitely_not_provable
                         + result.summary.defeasibly_provable
                         + result.summary.defeasibly_not_provable,
+                    unresolved_conflicts: unresolved_conflict_count,
+                    diagnostic_errors: error_count,
+                    diagnostic_warnings: warning_count,
                 },
                 diagnostics: result.diagnostics,
             };
@@ -1548,6 +1732,18 @@ fn cmd_reason_status(
                     + result.summary.defeasibly_provable
                     + result.summary.defeasibly_not_provable,
             );
+            if unresolved_conflict_count > 0 {
+                println!(
+                    "Unresolved conflicts: {}",
+                    unresolved_conflict_count,
+                );
+            }
+            if error_count > 0 || warning_count > 0 {
+                println!(
+                    "Diagnostics: {} errors, {} warnings",
+                    error_count, warning_count,
+                );
+            }
 
             if !result.diagnostics.is_empty() {
                 println!();
@@ -1569,9 +1765,7 @@ fn cmd_reason_status(
         }
     }
 
-    if all_blocks_failed {
-        std::process::exit(2);
-    } else if has_parse_errors {
+    if all_blocks_failed || has_parse_errors {
         std::process::exit(2);
     }
 
@@ -1878,8 +2072,8 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
         }
 
         // Check if any defeater blocks this rule's conclusion
-        let negated_literal = if literal_input.starts_with('~') {
-            literal_input[1..].to_string()
+        let negated_literal = if let Some(stripped) = literal_input.strip_prefix('~') {
+            stripped.to_string()
         } else {
             format!("~{}", literal_input)
         };
@@ -3194,7 +3388,7 @@ fn cmd_reason_what_if(
     // Count unchanged
     let unchanged_count = hyp_set
         .intersection(&baseline_set)
-        .filter(|(lit, _)| goal.map_or(true, |g| lit.as_str() == g))
+        .filter(|(lit, _)| goal.is_none_or(|g| lit.as_str() == g))
         .count();
 
     // Sort for stable output
@@ -3741,8 +3935,8 @@ fn print_negative_explanation(
         .iter()
         .filter(|r| {
             let head_str = r.head.to_string();
-            let negated_input = if literal_input.starts_with('~') {
-                literal_input[1..].to_string()
+            let negated_input = if let Some(stripped) = literal_input.strip_prefix('~') {
+                stripped.to_string()
             } else {
                 format!("~{}", literal_input)
             };
@@ -3828,9 +4022,9 @@ fn print_negative_explanation(
                 for r in &defeat_chain {
                     let body_strs: Vec<String> = r.body.iter().map(|b| b.to_string()).collect();
                     println!(
-                        "    {} [{}]: {} => {}  ([[{}]]:{})",
+                        "    {} [{:?}]: {} => {}  ([[{}]]:{})",
                         r.label,
-                        format!("{:?}", r.rule_type),
+                        r.rule_type,
                         body_strs.join(", "),
                         r.head,
                         r.source_page,
