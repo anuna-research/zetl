@@ -17,11 +17,11 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 
 ## Install
 
-```
-cargo install --path .
-```
+Requires a Rust toolchain ([rustup](https://rustup.rs/)).
 
-Requires Rust 1.88.0+.
+```
+make install
+```
 
 ## Usage
 
@@ -29,34 +29,34 @@ Point zetl at a vault (a directory of Markdown files):
 
 ```bash
 # Build the link index
-zetl index --root ./my-vault
+zetl index -d ./my-vault
 
 # Query links
-zetl links "Some Page" --root ./my-vault
-zetl backlinks "Some Page" --root ./my-vault
+zetl links "Some Page" -d ./my-vault
+zetl backlinks "Some Page" -d ./my-vault
 zetl backlinks "Some Page" --depth 2    # multi-hop
 
 # Find shortest path between pages
-zetl path "Page A" "Page B" --root ./my-vault
+zetl path "Page A" "Page B" -d ./my-vault
 
 # Search content
-zetl search "query" --root ./my-vault
+zetl search "query" -d ./my-vault
 zetl search "pattern" --regex
 
 # Validate vault
-zetl check --root ./my-vault
+zetl check -d ./my-vault
 zetl check --dead-links --fail-on dead-links
 
 # Fuzzy page name matching
-zetl similar "zettelkasen" --root ./my-vault
+zetl similar "zettelkasen" -d ./my-vault
 
 # Stats and export
-zetl stats --root ./my-vault
-zetl list --root ./my-vault
-zetl export --root ./my-vault    # full graph as JSON
+zetl stats -d ./my-vault
+zetl list -d ./my-vault
+zetl export -d ./my-vault    # full graph as JSON
 
 # Interactive TUI
-zetl tui --root ./my-vault
+zetl tui -d ./my-vault
 ```
 
 All commands default to JSON output. Add `--format table` for human-readable tables.
@@ -91,10 +91,14 @@ zetl never modifies your files. The index is a disposable cache stored in `.zetl
 ## Development
 
 ```bash
-make check    # fmt + clippy
-make test     # run tests
-make build    # debug build
-make release  # release build
+make            # fmt + clippy + build + test
+make build      # debug build
+make release    # release build
+make test       # run tests
+make check      # fmt + clippy
+make fmt-fix    # auto-format code
+make doc-open   # generate and open docs in browser
+make clean      # remove build artifacts
 ```
 
 ## License
