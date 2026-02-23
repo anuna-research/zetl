@@ -1518,6 +1518,479 @@ fn cmd_reason_explain(
     Ok(())
 }
 
+// ── Why-not command ────────────────────────────────────────────────────────
+
+#[cfg(feature = "reason")]
+fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
+    use zetl::reason::build_theory;
+    use zetl::reason::types::ConclusionType;
+
+    let pipeline = run_pipeline(cli)?;
+
+    let spl_blocks: Vec<_> = pipeline
+        .files
+        .iter()
+        .flat_map(|f| f.spl_blocks.clone())
+        .collect();
+
+    if spl_blocks.is_empty() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
+            OutputFormat::Table => {
+                eprintln!("No SPL blocks found in vault.");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let result = build_theory(&spl_blocks)?;
+
+    // Check if the literal appears anywhere in the theory (as a head, body, or fact)
+    let all_head_literals: HashSet<String> = result
+        .theory
+        .rules()
+        .flat_map(|r| r.head.iter().map(|h| h.to_string()))
+        .collect();
+
+    if !all_head_literals.contains(literal_input) {
+        // Offer fuzzy suggestions
+        let all_lits: Vec<String> = all_head_literals.into_iter().collect();
+        let suggestions = fuzzy_match_literals(literal_input, &all_lits);
+
+        let msg = if suggestions.is_empty() {
+            format!("Literal '{}' not found in theory", literal_input)
+        } else {
+            let did_you_mean: Vec<String> =
+                suggestions.iter().map(|s| format!("'{}'", s)).collect();
+            format!(
+                "Literal '{}' not found in theory. Did you mean: {}?",
+                literal_input,
+                did_you_mean.join(", ")
+            )
+        };
+
+        match cli.format {
+            OutputFormat::Json => {
+                #[derive(Serialize)]
+                struct NotFoundOutput {
+                    error: String,
+                    literal: String,
+                    suggestions: Vec<String>,
+                }
+                let output = NotFoundOutput {
+                    error: msg.clone(),
+                    literal: literal_input.to_string(),
+                    suggestions,
+                };
+                print_json(&output)?;
+                std::process::exit(1);
+            }
+            OutputFormat::Table => {
+                eprintln!("{msg}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Check if the literal is already positively provable — if so, why-not is moot
+    let is_provable = result.conclusions.iter().any(|c| {
+        c.literal == literal_input
+            && matches!(
+                c.conclusion_type,
+                ConclusionType::DefinitelyProvable | ConclusionType::DefeasiblyProvable
+            )
+    });
+
+    if is_provable {
+        let msg = format!(
+            "Literal '{}' IS provable. Use 'zetl reason explain {}' instead.",
+            literal_input, literal_input
+        );
+        match cli.format {
+            OutputFormat::Json => {
+                #[derive(Serialize)]
+                struct ProvableOutput {
+                    error: String,
+                    literal: String,
+                    hint: String,
+                }
+                let output = ProvableOutput {
+                    error: msg.clone(),
+                    literal: literal_input.to_string(),
+                    hint: format!("zetl reason explain {}", literal_input),
+                };
+                print_json(&output)?;
+                std::process::exit(1);
+            }
+            OutputFormat::Table => {
+                eprintln!("{msg}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Find all rules that could prove this literal (head matches)
+    let candidate_rules: Vec<_> = result
+        .rules
+        .iter()
+        .filter(|r| r.head.to_string() == literal_input)
+        .collect();
+
+    // Find facts for this literal
+    let candidate_facts: Vec<_> = result
+        .facts
+        .iter()
+        .filter(|f| f.literal.to_string() == literal_input)
+        .collect();
+
+    // Build blockers for each candidate rule
+    let mut rule_analyses: Vec<WhyNotRuleAnalysis> = Vec::new();
+
+    // Set of all provable literals (positive conclusions)
+    let provable_set: HashSet<String> = result
+        .conclusions
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.conclusion_type,
+                ConclusionType::DefinitelyProvable | ConclusionType::DefeasiblyProvable
+            )
+        })
+        .map(|c| c.literal.clone())
+        .collect();
+
+    for rule in &candidate_rules {
+        let mut blockers: Vec<WhyNotBlocker> = Vec::new();
+
+        // Check each body literal
+        for body_lit in &rule.body {
+            let body_str = body_lit.to_string();
+            if !provable_set.contains(&body_str) {
+                // This body literal is not provable — find which docs could assert it
+                let asserting_docs = find_potential_sources(&body_str, &result);
+                blockers.push(WhyNotBlocker {
+                    blocker_type: "failed_body".to_string(),
+                    literal: body_str,
+                    explanation: "Missing precondition: this body literal is not provable"
+                        .to_string(),
+                    sources: asserting_docs,
+                });
+            }
+        }
+
+        // Check if any defeater blocks this rule's conclusion
+        let negated_literal = if literal_input.starts_with('~') {
+            literal_input[1..].to_string()
+        } else {
+            format!("~{}", literal_input)
+        };
+
+        // Find defeaters that target this literal (produce its negation)
+        for def_rule in &result.rules {
+            if def_rule.rule_type == zetl::reason::types::RuleType::Defeater
+                && def_rule.head.to_string() == negated_literal
+            {
+                // Check if the defeater's body is satisfied
+                let defeater_body_satisfied = def_rule
+                    .body
+                    .iter()
+                    .all(|b| provable_set.contains(&b.to_string()));
+
+                if defeater_body_satisfied {
+                    blockers.push(WhyNotBlocker {
+                        blocker_type: "defeated".to_string(),
+                        literal: negated_literal.clone(),
+                        explanation: format!(
+                            "Blocked by defeater '{}': all its preconditions are met",
+                            def_rule.label
+                        ),
+                        sources: vec![WhyNotSource {
+                            page: def_rule.source_page.clone(),
+                            path: def_rule.source_file.to_string_lossy().to_string(),
+                            line: def_rule.source_line,
+                            rule_label: Some(def_rule.label.clone()),
+                        }],
+                    });
+                }
+            }
+        }
+
+        // Also check if a superior rule for the negation defeats this rule
+        for other_rule in &result.rules {
+            if other_rule.head.to_string() == negated_literal
+                && other_rule.rule_type != zetl::reason::types::RuleType::Defeater
+            {
+                // Is there a superiority relation defeating our rule?
+                let other_superior = result
+                    .theory
+                    .superiorities()
+                    .iter()
+                    .any(|s| s.superior == other_rule.label && s.inferior == rule.label);
+
+                if other_superior {
+                    let other_body_satisfied = other_rule
+                        .body
+                        .iter()
+                        .all(|b| provable_set.contains(&b.to_string()));
+
+                    if other_body_satisfied {
+                        blockers.push(WhyNotBlocker {
+                            blocker_type: "defeated".to_string(),
+                            literal: negated_literal.clone(),
+                            explanation: format!(
+                                "Defeated by superior rule '{}' which proves '{}'",
+                                other_rule.label, negated_literal
+                            ),
+                            sources: vec![WhyNotSource {
+                                page: other_rule.source_page.clone(),
+                                path: other_rule.source_file.to_string_lossy().to_string(),
+                                line: other_rule.source_line,
+                                rule_label: Some(other_rule.label.clone()),
+                            }],
+                        });
+                    }
+                }
+            }
+        }
+
+        rule_analyses.push(WhyNotRuleAnalysis {
+            rule_label: rule.label.clone(),
+            rule_type: format!("{:?}", rule.rule_type),
+            rule_text: format_rule_text(rule),
+            source: WhyNotSource {
+                page: rule.source_page.clone(),
+                path: rule.source_file.to_string_lossy().to_string(),
+                line: rule.source_line,
+                rule_label: Some(rule.label.clone()),
+            },
+            blockers,
+        });
+    }
+
+    // Find the conclusion type for this literal
+    let conclusion_tag = result
+        .conclusions
+        .iter()
+        .find(|c| c.literal == literal_input)
+        .map(|c| match c.conclusion_type {
+            ConclusionType::DefinitelyProvable => "+D",
+            ConclusionType::DefinitelyNotProvable => "-D",
+            ConclusionType::DefeasiblyProvable => "+d",
+            ConclusionType::DefeasiblyNotProvable => "-d",
+        })
+        .unwrap_or("none");
+
+    let output = WhyNotOutput {
+        literal: literal_input.to_string(),
+        conclusion: conclusion_tag.to_string(),
+        candidate_rules: rule_analyses,
+        is_fact: !candidate_facts.is_empty(),
+        fact_sources: candidate_facts
+            .iter()
+            .map(|f| WhyNotSource {
+                page: f.source_page.clone(),
+                path: f.source_file.to_string_lossy().to_string(),
+                line: f.source_line,
+                rule_label: None,
+            })
+            .collect(),
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            println!(
+                "Why not '{}'?  (conclusion: {})",
+                output.literal, output.conclusion
+            );
+            println!();
+
+            if output.is_fact {
+                println!("  '{}' is asserted as a fact in:", output.literal);
+                for src in &output.fact_sources {
+                    println!("    [[{}]]:{} ({})", src.page, src.line, src.path);
+                }
+                println!();
+            }
+
+            if output.candidate_rules.is_empty() {
+                println!("  No rules have '{}' as their head.", output.literal);
+                println!(
+                    "  To make it provable, add a rule or fact asserting it."
+                );
+            } else {
+                println!(
+                    "  {} rule(s) could prove '{}':",
+                    output.candidate_rules.len(),
+                    output.literal
+                );
+                println!();
+
+                for analysis in &output.candidate_rules {
+                    println!(
+                        "  Rule '{}' [{}]  ([[{}]]:{})",
+                        analysis.rule_label,
+                        analysis.rule_type,
+                        analysis.source.page,
+                        analysis.source.line,
+                    );
+                    println!("    {}", analysis.rule_text);
+
+                    if analysis.blockers.is_empty() {
+                        println!("    No blockers found (body satisfied, no defeaters).");
+                    } else {
+                        for blocker in &analysis.blockers {
+                            match blocker.blocker_type.as_str() {
+                                "failed_body" => {
+                                    println!("    MISSING: '{}'", blocker.literal);
+                                    if blocker.sources.is_empty() {
+                                        println!(
+                                            "      Not asserted by any document in the vault."
+                                        );
+                                    } else {
+                                        println!(
+                                            "      Would need to be asserted by:"
+                                        );
+                                        for src in &blocker.sources {
+                                            if let Some(ref label) = src.rule_label {
+                                                println!(
+                                                    "        [[{}]]:{} (rule '{}')",
+                                                    src.page, src.line, label
+                                                );
+                                            } else {
+                                                println!(
+                                                    "        [[{}]]:{} ({})",
+                                                    src.page, src.line, src.path
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                "defeated" => {
+                                    println!("    DEFEATED: {}", blocker.explanation);
+                                    for src in &blocker.sources {
+                                        if let Some(ref label) = src.rule_label {
+                                            println!(
+                                                "      by '{}' at [[{}]]:{}",
+                                                label, src.page, src.line
+                                            );
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    println!("    {}: {}", blocker.blocker_type, blocker.explanation);
+                                }
+                            }
+                        }
+                    }
+                    println!();
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct WhyNotOutput {
+    literal: String,
+    conclusion: String,
+    candidate_rules: Vec<WhyNotRuleAnalysis>,
+    is_fact: bool,
+    fact_sources: Vec<WhyNotSource>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct WhyNotRuleAnalysis {
+    rule_label: String,
+    rule_type: String,
+    rule_text: String,
+    source: WhyNotSource,
+    blockers: Vec<WhyNotBlocker>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct WhyNotBlocker {
+    blocker_type: String,
+    literal: String,
+    explanation: String,
+    sources: Vec<WhyNotSource>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct WhyNotSource {
+    page: String,
+    path: String,
+    line: u32,
+    rule_label: Option<String>,
+}
+
+/// Find documents that could potentially provide a given literal.
+///
+/// Returns sources where the literal already appears as a rule head (but isn't
+/// provable because its own preconditions fail), plus the source pages of rules
+/// that reference it in their body (suggesting which docs should assert it).
+#[cfg(feature = "reason")]
+fn find_potential_sources(
+    literal_str: &str,
+    theory_result: &zetl::reason::types::TheoryResult,
+) -> Vec<WhyNotSource> {
+    let mut sources = Vec::new();
+
+    // Rules that have this literal as head (they tried to prove it but failed)
+    for rule in &theory_result.rules {
+        if rule.head.to_string() == literal_str {
+            sources.push(WhyNotSource {
+                page: rule.source_page.clone(),
+                path: rule.source_file.to_string_lossy().to_string(),
+                line: rule.source_line,
+                rule_label: Some(rule.label.clone()),
+            });
+        }
+    }
+
+    // Facts asserting this literal
+    for fact in &theory_result.facts {
+        if fact.literal.to_string() == literal_str {
+            sources.push(WhyNotSource {
+                page: fact.source_page.clone(),
+                path: fact.source_file.to_string_lossy().to_string(),
+                line: fact.source_line,
+                rule_label: None,
+            });
+        }
+    }
+
+    sources
+}
+
+/// Format a rule as human-readable text.
+#[cfg(feature = "reason")]
+fn format_rule_text(rule: &zetl::reason::types::ProvenancedRule) -> String {
+    let arrow = match rule.rule_type {
+        zetl::reason::types::RuleType::Strict => "->",
+        zetl::reason::types::RuleType::Defeasible => "=>",
+        zetl::reason::types::RuleType::Defeater => "~>",
+    };
+    if rule.body.is_empty() {
+        format!("{}: {} {}", rule.label, arrow, rule.head)
+    } else {
+        let body_strs: Vec<String> = rule.body.iter().map(|b| b.to_string()).collect();
+        format!(
+            "{}: {} {} {}",
+            rule.label,
+            body_strs.join(", "),
+            arrow,
+            rule.head
+        )
+    }
+}
+
 // ── Explain output types ───────────────────────────────────────────────────
 
 #[cfg(feature = "reason")]
@@ -2237,6 +2710,7 @@ fn main() -> anyhow::Result<()> {
                     depth,
                     format,
                 } => cmd_reason_explain(&cli, literal, *depth, format),
+                ReasonCommand::WhyNot { literal } => cmd_reason_why_not(&cli, literal),
                 _ => {
                     eprintln!("This reason subcommand is not yet implemented.");
                     std::process::exit(1);
