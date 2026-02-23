@@ -3,26 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 86,
-    "deletions": 9,
+    "files_changed": 2,
+    "insertions": 815,
+    "deletions": 2,
     "file_list": [
-      ".hence/context-manifest.json",
       "src/cli.rs",
       "src/main.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-check-spl-changes",
-      "content": "Modified 3 files (+86, -9): .hence/context-manifest.json, src/cli.rs, src/main.rs",
+      "key": "task-cmd-reason-explain-changes",
+      "content": "Modified 2 files (+815, -2): src/cli.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/check-spl-v1",
-  "evaluated_at": "2026-02-23T13:47:25Z",
+  "branch_name": "hence/cmd-reason-explain-v1",
+  "evaluated_at": "2026-02-23T13:56:19Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
