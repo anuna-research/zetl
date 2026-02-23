@@ -1,12 +1,12 @@
 {
-  "task_id": "reason-engine",
+  "task_id": "cmd-reason-status",
   "token_budget": 8000,
-  "tokens_used": 397,
+  "tokens_used": 317,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create src/reason.rs (or src/reason/mod.rs) gated behind #[cfg(feature = \"reason\")]. Implement the theory construction pipeline from SPEC-005 §5.5: 1) Parse — feed each SplBlock.content to spindle-parser, collect rules/facts/superiority/diagnostics, 2) Annotate provenance — attach _source_file, _source_line, _source_page metadata to each rule/fact via spindle-core Meta API (per ADR-007), 3) Combine — union all fragments into a single spindle-core Theory, detect duplicate rule labels (warn), 4) Validate — check undefined labels in (prefer ...), body literals with no matching head/fact (warn), 5) Reason — run spindle-core StandardReasoner, produce conclusions (+D/-D/+d/-d) for every literal, 6) Annotate conclusions — trace proof sources from rule metadata into ProvenancedConclusion structs. Key function: build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> where TheoryResult contains the Theory, conclusions, and diagnostics. Handle parse errors gracefully: exclude errored blocks, continue with partial theory, collect diagnostics.",
-      "token_cost": 266,
+      "content": "Add a Reason subcommand group to src/cli.rs with sub-subcommands: Status, Explain, WhatIf, WhyNot, Require, Conflicts, Export, Provenance. Initially implement only Status. In src/main.rs, wire up cmd_reason_status: scan vault, extract SPL, build theory, compute conclusions, format output. CLI options per CON-012: --positive, --negative, --definite, --defeasible, --literal <PAT>. JSON output includes theory summary (facts/rules/defeaters/superiority/source_files), conclusions array with provenance, summary counts, and diagnostics. Table output shows conclusions in a human-readable table. Exit codes: 0 success, 1 no SPL blocks, 2 parse errors.",
+      "token_cost": 162,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 5 files (+394, -20): .hence/context-manifest.json, src/cache.rs, src/graph.rs, src/scanner.rs, src/types.rs",
       "token_cost": 29,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-reason-engine-changes",
+      "content": "Modified 3 files (+990, -23): .hence/context-manifest.json, src/reason/mod.rs, src/reason/types.rs",
+      "token_cost": 24,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T13:20:30Z"
+  "constructed_at": "2026-02-23T13:37:26Z"
 }
