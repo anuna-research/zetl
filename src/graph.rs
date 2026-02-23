@@ -383,6 +383,7 @@ mod tests {
                     column: 1,
                 })
                 .collect(),
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         }
@@ -473,6 +474,7 @@ mod tests {
             path: PathBuf::from("daily.md"),
             page_name: "daily".to_string(),
             links: vec![make_link("note", 5, None, None, None, false)],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         }];
@@ -486,6 +488,7 @@ mod tests {
                 path: PathBuf::from("My Note.md"),
                 page_name: "My Note".to_string(),
                 links: vec![],
+                spl_blocks: vec![],
                 diagnostics: vec![],
                 mtime: SystemTime::now(),
             },
@@ -545,6 +548,7 @@ mod tests {
             path: PathBuf::from("source.md"),
             page_name: "source".to_string(),
             links: vec![make_link("target", 3, Some("display"), None, None, true)],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         }];
@@ -555,6 +559,7 @@ mod tests {
             path: PathBuf::from("target.md"),
             page_name: "target".to_string(),
             links: vec![],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         };
@@ -897,6 +902,7 @@ mod tests {
                 Some("block123"),
                 false,
             )],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         }];
@@ -904,6 +910,7 @@ mod tests {
             path: PathBuf::from("target.md"),
             page_name: "target".to_string(),
             links: vec![],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         };
