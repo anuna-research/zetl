@@ -1,7 +1,7 @@
-use crate::types::{Diagnostic, DiagnosticLevel, ParsedFile, WikiLink};
+use crate::types::{Diagnostic, DiagnosticLevel, ParsedFile, SplBlock, WikiLink};
 use anyhow::Result;
 use ignore::WalkBuilder;
-use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use regex::Regex;
 use std::path::{Path, PathBuf};
 
@@ -41,23 +41,49 @@ pub fn scan_vault(root: &Path, ignore_patterns: &[String]) -> Result<Vec<ParsedF
         let entry = entry?;
         let path = entry.path();
 
-        // Only process .md files
         if !path.is_file() {
             continue;
         }
         let ext = path.extension().and_then(|e| e.to_str());
-        if ext != Some("md") {
-            continue;
+
+        match ext {
+            Some("md") => {
+                let rel_path = path.strip_prefix(root).unwrap_or(path).to_path_buf();
+                let page_name = page_name_from_path(&rel_path);
+                let content = std::fs::read_to_string(path)?;
+                let mtime = std::fs::metadata(path)?.modified()?;
+
+                let mut parsed = parse_file(&rel_path, &content, &page_name);
+                parsed.mtime = mtime;
+                parsed_files.push(parsed);
+            }
+            Some("spl") => {
+                let rel_path = path.strip_prefix(root).unwrap_or(path).to_path_buf();
+                let page_name = page_name_from_path(&rel_path);
+                let content = std::fs::read_to_string(path)?;
+                let mtime = std::fs::metadata(path)?.modified()?;
+
+                let end_line = content.lines().count().max(1) as u32;
+                let spl_block = SplBlock {
+                    source_file: rel_path.clone(),
+                    source_page: page_name.clone(),
+                    start_line: 1,
+                    end_line,
+                    content: content.clone(),
+                };
+
+                let parsed = ParsedFile {
+                    path: rel_path,
+                    page_name,
+                    links: vec![],
+                    spl_blocks: vec![spl_block],
+                    diagnostics: vec![],
+                    mtime,
+                };
+                parsed_files.push(parsed);
+            }
+            _ => continue,
         }
-
-        let rel_path = path.strip_prefix(root).unwrap_or(path).to_path_buf();
-        let page_name = page_name_from_path(&rel_path);
-        let content = std::fs::read_to_string(path)?;
-        let mtime = std::fs::metadata(path)?.modified()?;
-
-        let mut parsed = parse_file(&rel_path, &content, &page_name);
-        parsed.mtime = mtime;
-        parsed_files.push(parsed);
     }
 
     Ok(parsed_files)
@@ -65,8 +91,9 @@ pub fn scan_vault(root: &Path, ignore_patterns: &[String]) -> Result<Vec<ParsedF
 
 /// Parse wikilinks from markdown content, respecting code blocks and comments.
 ///
-/// Composes `body_text_ranges`, `extract_wikilinks`, and `validate_syntax` to produce
-/// a complete `ParsedFile` with only links from body text and all syntax diagnostics.
+/// Composes `body_text_ranges`, `extract_wikilinks`, `extract_spl_blocks`, and
+/// `validate_syntax` to produce a complete `ParsedFile` with only links from body text,
+/// extracted SPL blocks, and all syntax diagnostics.
 pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
     // Get body text ranges (excludes code blocks, comments, frontmatter)
     let ranges = body_text_ranges(content);
@@ -84,6 +111,9 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
         })
         .collect();
 
+    // Extract SPL blocks
+    let spl_blocks = extract_spl_blocks(path, content, page_name);
+
     // Validate syntax
     let diagnostics = validate_syntax(path, content);
 
@@ -91,6 +121,7 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
         path: path.to_path_buf(),
         page_name: page_name.to_string(),
         links,
+        spl_blocks,
         diagnostics,
         mtime: std::time::SystemTime::UNIX_EPOCH, // caller sets real mtime
     }
@@ -456,6 +487,101 @@ pub fn page_name_from_path(path: &Path) -> String {
         .unwrap_or_default()
         .to_string_lossy()
         .to_string()
+}
+
+/// Extract SPL blocks from markdown content.
+///
+/// Identifies fenced code blocks tagged `spl` or `spindle` (both backtick and tilde fences)
+/// and captures their content with provenance. Blocks inside HTML comments are ignored
+/// (consistent with SPEC-001 §3.3). Blocks inside nested fences are naturally handled by
+/// pulldown-cmark which only recognises top-level fences.
+///
+/// Returns blocks in document order.
+pub fn extract_spl_blocks(path: &Path, content: &str, page_name: &str) -> Vec<SplBlock> {
+    if content.is_empty() {
+        return vec![];
+    }
+
+    // Pre-compute HTML comment ranges so we can skip SPL blocks inside them.
+    let comment_ranges = html_comment_ranges(content);
+
+    // Pre-compute line start byte offsets for byte-offset → line-number conversion.
+    let line_starts: Vec<usize> = std::iter::once(0)
+        .chain(content.match_indices('\n').map(|(i, _)| i + 1))
+        .collect();
+
+    let byte_to_line = |byte_offset: usize| -> u32 {
+        let idx = line_starts.partition_point(|&start| start <= byte_offset);
+        idx as u32 // partition_point returns count of elements ≤, which equals 1-indexed line
+    };
+
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+
+    let parser = Parser::new_ext(content, options);
+
+    let mut blocks = Vec::new();
+    let mut in_spl_block = false;
+    let mut spl_content = String::new();
+    let mut block_start_byte: usize = 0;
+
+    for (event, range) in parser.into_offset_iter() {
+        match event {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref info))) => {
+                let tag = info.split_whitespace().next().unwrap_or("");
+                if tag == "spl" || tag == "spindle" {
+                    // Check if this code block is inside an HTML comment
+                    let inside_comment = comment_ranges
+                        .iter()
+                        .any(|&(cs, ce)| range.start >= cs && range.start < ce);
+                    if !inside_comment {
+                        in_spl_block = true;
+                        spl_content.clear();
+                        block_start_byte = range.start;
+                    }
+                }
+            }
+            Event::Text(ref text) if in_spl_block => {
+                spl_content.push_str(text);
+            }
+            Event::End(TagEnd::CodeBlock) if in_spl_block => {
+                let start_line = byte_to_line(block_start_byte);
+                let end_line = byte_to_line(range.end.saturating_sub(1));
+
+                blocks.push(SplBlock {
+                    source_file: path.to_path_buf(),
+                    source_page: page_name.to_string(),
+                    start_line,
+                    end_line,
+                    content: spl_content.clone(),
+                });
+                in_spl_block = false;
+                spl_content.clear();
+            }
+            _ => {}
+        }
+    }
+
+    blocks
+}
+
+/// Find byte ranges of HTML comments (`<!-- ... -->`) in content.
+fn html_comment_ranges(content: &str) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut search_start = 0;
+    while let Some(open_offset) = content[search_start..].find("<!--") {
+        let abs_open = search_start + open_offset;
+        if let Some(close_offset) = content[abs_open..].find("-->") {
+            let abs_close = abs_open + close_offset + 3;
+            ranges.push((abs_open, abs_close));
+            search_start = abs_close;
+        } else {
+            // Unclosed comment extends to end
+            ranges.push((abs_open, content.len()));
+            break;
+        }
+    }
+    ranges
 }
 
 /// Given markdown content, return a list of (start_byte, end_byte) ranges that are body text
@@ -1456,5 +1582,219 @@ mod tests {
             resolve_page_name("gamma", &index),
             Some("Gamma".to_string())
         );
+    }
+
+    // ── extract_spl_blocks tests ──────────────────────────────────────────
+
+    fn run_extract_spl(content: &str) -> Vec<SplBlock> {
+        extract_spl_blocks(Path::new("test.md"), content, "test")
+    }
+
+    #[test]
+    fn spl_no_blocks() {
+        let blocks = run_extract_spl("Just plain text.");
+        assert!(blocks.is_empty());
+    }
+
+    #[test]
+    fn spl_empty_content() {
+        let blocks = run_extract_spl("");
+        assert!(blocks.is_empty());
+    }
+
+    #[test]
+    fn spl_single_backtick_block() {
+        let content = "Before\n\n```spl\n(given foo)\n```\n\nAfter\n";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content, "(given foo)\n");
+        assert_eq!(blocks[0].source_file, PathBuf::from("test.md"));
+        assert_eq!(blocks[0].source_page, "test");
+        assert_eq!(blocks[0].start_line, 3);
+        assert_eq!(blocks[0].end_line, 5);
+    }
+
+    #[test]
+    fn spl_single_tilde_block() {
+        let content = "Before\n\n~~~spl\n(given bar)\n~~~\n\nAfter\n";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content, "(given bar)\n");
+    }
+
+    #[test]
+    fn spl_spindle_tag() {
+        let content = "```spindle\n(normally r1 a b)\n```\n";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content, "(normally r1 a b)\n");
+    }
+
+    #[test]
+    fn spl_multiple_blocks_document_order() {
+        let content = "\
+Before
+
+```spl
+(given alpha)
+```
+
+Middle
+
+```spl
+(given beta)
+```
+
+After
+";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].content, "(given alpha)\n");
+        assert_eq!(blocks[1].content, "(given beta)\n");
+        assert!(blocks[0].start_line < blocks[1].start_line);
+    }
+
+    #[test]
+    fn spl_non_spl_code_block_ignored() {
+        let content = "```rust\nlet x = 1;\n```\n\n```spl\n(given y)\n```\n";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content, "(given y)\n");
+    }
+
+    #[test]
+    fn spl_plain_code_block_ignored() {
+        let content = "```\nplain code\n```\n";
+        let blocks = run_extract_spl(content);
+        assert!(blocks.is_empty());
+    }
+
+    #[test]
+    fn spl_inside_html_comment_ignored() {
+        let content = "\
+<!--
+```spl
+(given hidden)
+```
+-->
+
+```spl
+(given visible)
+```
+";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content, "(given visible)\n");
+    }
+
+    #[test]
+    fn spl_multiline_content() {
+        let content = "\
+```spl
+(given evaluated-redis)
+(given redis-supports-persistence)
+(normally r-prefer-redis
+  (and evaluated-redis redis-supports-persistence)
+  decided-use-redis)
+```
+";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 1);
+        assert!(blocks[0].content.contains("evaluated-redis"));
+        assert!(blocks[0].content.contains("decided-use-redis"));
+    }
+
+    #[test]
+    fn spl_info_string_with_extra_text() {
+        // pulldown-cmark passes the full info string; we match on the first word
+        let content = "```spl some-extra-info\n(given x)\n```\n";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content, "(given x)\n");
+    }
+
+    #[test]
+    fn spl_with_frontmatter() {
+        let content = "---\ntitle: test\n---\n\n```spl\n(given fact)\n```\n";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content, "(given fact)\n");
+    }
+
+    #[test]
+    fn spl_mixed_spl_and_spindle() {
+        let content = "\
+```spl
+(given a)
+```
+
+```spindle
+(given b)
+```
+";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].content, "(given a)\n");
+        assert_eq!(blocks[1].content, "(given b)\n");
+    }
+
+    #[test]
+    fn spl_line_numbers_correct() {
+        let content = "line 1\nline 2\nline 3\n\n```spl\n(given test)\n```\nline 8\n";
+        let blocks = run_extract_spl(content);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].start_line, 5);
+        assert_eq!(blocks[0].end_line, 7);
+    }
+
+    #[test]
+    fn spl_parse_file_populates_spl_blocks() {
+        let content = "See [[Page]].\n\n```spl\n(given fact)\n```\n";
+        let parsed = parse_file(Path::new("notes/test.md"), content, "test");
+        assert_eq!(parsed.spl_blocks.len(), 1);
+        assert_eq!(parsed.spl_blocks[0].content, "(given fact)\n");
+        assert_eq!(parsed.links.len(), 1);
+    }
+
+    // ── scan_vault integration tests for .spl files ───────────────────────
+
+    #[test]
+    fn scan_vault_finds_spl_files() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let spl_dir = dir.path().join("theories");
+        std::fs::create_dir_all(&spl_dir).unwrap();
+
+        let spl_content = "; caching theory\n(given eval-redis)\n";
+        std::fs::write(spl_dir.join("caching.spl"), spl_content).unwrap();
+
+        let files = scan_vault(dir.path(), &[]).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].page_name, "caching");
+        assert_eq!(files[0].spl_blocks.len(), 1);
+        assert_eq!(files[0].spl_blocks[0].start_line, 1);
+        assert_eq!(files[0].spl_blocks[0].end_line, 2);
+        assert_eq!(files[0].spl_blocks[0].content, spl_content);
+        assert!(files[0].links.is_empty());
+    }
+
+    #[test]
+    fn scan_vault_finds_both_md_and_spl_files() {
+        let dir = tempfile::TempDir::new().unwrap();
+
+        let md_content = "# Decision\n\n```spl\n(given x)\n```\n";
+        std::fs::write(dir.path().join("decision.md"), md_content).unwrap();
+
+        let spl_content = "(given y)\n";
+        std::fs::write(dir.path().join("theory.spl"), spl_content).unwrap();
+
+        let files = scan_vault(dir.path(), &[]).unwrap();
+        assert_eq!(files.len(), 2);
+
+        let md_file = files.iter().find(|f| f.page_name == "decision").unwrap();
+        assert_eq!(md_file.spl_blocks.len(), 1);
+
+        let spl_file = files.iter().find(|f| f.page_name == "theory").unwrap();
+        assert_eq!(spl_file.spl_blocks.len(), 1);
+        assert_eq!(spl_file.spl_blocks[0].content, spl_content);
     }
 }

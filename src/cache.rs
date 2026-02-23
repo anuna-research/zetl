@@ -82,6 +82,7 @@ mod tests {
                 .unwrap_or(rel_path)
                 .to_string(),
             links: vec![],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime,
         }

@@ -1,12 +1,12 @@
 {
-  "task_id": "demo-vault-spl",
+  "task_id": "spl-extraction",
   "token_budget": 8000,
-  "tokens_used": 206,
+  "tokens_used": 305,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add SPL code blocks to existing demo-vault files and create new demo files to exercise the reasoning pipeline. Create: 1) demo-vault/decisions/Redis vs Memcached.md with SPL facts and defeasible rule for decided-use-redis, 2) demo-vault/audits/License Audit.md with a defeater for decided-use-redis, 3) demo-vault/processes/Deployment Checklist.md with a rule requiring verified-load-test and verified-security-audit for ready-for-production, 4) demo-vault/theories/caching.spl standalone SPL file. Files should use wikilinks AND SPL blocks to demonstrate cross-referencing. Use the literal naming conventions from SPEC-005 §3.3.",
-      "token_cost": 157,
+      "content": "Extend src/scanner.rs to extract SPL content from fenced code blocks tagged `spl` or `spindle`. During the existing Markdown scan pass (which already tracks code block boundaries via pulldown-cmark), identify spl-tagged blocks and capture their content with provenance. Produce SplBlock structs with source_file, source_page, start_line, end_line, content. Rules: 1) Both backtick and tilde fences accepted, 2) Multiple blocks per file concatenated in document order, 3) Blocks inside HTML comments ignored (consistent with SPEC-001 §3.3), 4) Blocks inside nested fences ignored. Also detect standalone .spl files during the file walk (by extension) and create SplBlocks for them (start_line=1, content=entire file). Extend ParsedFile to include spl_blocks: Vec<SplBlock>. Per SPEC-005 §5.4 extraction algorithm.",
+      "token_cost": 203,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 5 files (+127, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/reason/mod.rs, src/reason/types.rs",
       "token_cost": 30,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-demo-vault-spl-changes",
+      "content": "Modified 5 files (+79, -5): .hence/context-manifest.json, demo-vault/audits/License Audit.md, demo-vault/decisions/Redis vs Memcached.md, demo-vault/processes/Deployment Checklist.md, demo-vault/theories/caching.spl",
+      "token_cost": 53,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T13:10:49Z"
+  "constructed_at": "2026-02-23T13:15:14Z"
 }
