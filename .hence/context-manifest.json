@@ -1,12 +1,12 @@
 {
-  "task_id": "cmd-reason-conflicts",
+  "task_id": "cross-ref",
   "token_budget": 8000,
-  "tokens_used": 346,
+  "tokens_used": 400,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement `zetl reason conflicts` per CON-017. Analyze the theory for unresolved logical conflicts: literals where both p and ~p have applicable rules but no superiority relation resolves the conflict. For each conflict, report: the contested literal, competing rules with source provenance, whether a superiority relation exists, and (with --suggest) suggested resolutions. Exit codes: 0 no conflicts or listed successfully, 1 with --fail-on-conflicts if conflicts found.",
-      "token_cost": 118,
+      "content": "Implement cross-referencing between the link graph and logical theory per REQ-036. Three features: 1) `zetl reason provenance <LITERAL>` — show which documents contribute to a literal's proof, cross-referenced with backlinks between those documents (CON-013 extended), 2) `zetl links <page> --with-conclusions` — for each linked page, show which conclusions that page contributes, 3) `zetl backlinks <page> --with-conclusions` — same for backlinking pages. The --with-conclusions flags are additive enrichments to existing output. Requires both link graph and theory to be computed (full pipeline run).",
+      "token_cost": 152,
       "priority": "PlanMeta"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 3 files (+489, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cmd-reason-conflicts-changes",
+      "content": "Modified 3 files (+506, -7): .hence/context-manifest.json, src/cli.rs, src/main.rs",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T14:00:06Z"
+  "constructed_at": "2026-02-23T14:05:19Z"
 }

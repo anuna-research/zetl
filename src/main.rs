@@ -241,6 +241,7 @@ fn cmd_links(
     fuzzy: bool,
     context: usize,
     depth: usize,
+    with_conclusions: bool,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -248,6 +249,22 @@ fn cmd_links(
         find_page(page, &pipeline.file_index, fuzzy, &pipeline.files).unwrap_or_else(|e| {
             exit_page_not_found(&cli.format, &e);
         });
+
+    // If --with-conclusions, build the theory to get page→conclusion mappings
+    #[cfg(feature = "reason")]
+    let page_conclusions: HashMap<String, Vec<PageConclusionEntry>> = if with_conclusions {
+        build_page_conclusions_map(&pipeline.files)
+    } else {
+        HashMap::new()
+    };
+    #[cfg(not(feature = "reason"))]
+    let page_conclusions: HashMap<String, Vec<PageConclusionEntry>> = {
+        if with_conclusions {
+            eprintln!("--with-conclusions requires the 'reason' feature flag.");
+            std::process::exit(1);
+        }
+        HashMap::new()
+    };
 
     // BFS collecting forward links at each depth level
     let mut visited: HashSet<String> = HashSet::new();
@@ -265,6 +282,8 @@ fn cmd_links(
         is_embed: bool,
         context: Option<String>,
         hop: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        conclusions: Option<Vec<PageConclusionEntry>>,
     }
 
     let mut entries: Vec<LinkEntry> = Vec::new();
@@ -302,6 +321,17 @@ fn cmd_links(
                 None
             };
 
+            let conclusions = if with_conclusions {
+                Some(
+                    page_conclusions
+                        .get(target_name)
+                        .cloned()
+                        .unwrap_or_default(),
+                )
+            } else {
+                None
+            };
+
             entries.push(LinkEntry {
                 source: current_page.clone(),
                 target: target_name.clone(),
@@ -311,6 +341,7 @@ fn cmd_links(
                 is_embed: edge.is_embed,
                 context: ctx,
                 hop: current_depth + 1,
+                conclusions,
             });
 
             if !visited.contains(target_name) {
@@ -341,6 +372,9 @@ fn cmd_links(
             if context > 0 {
                 headers.push("Context");
             }
+            if with_conclusions {
+                headers.push("Conclusions");
+            }
             table.set_header(headers);
             for entry in &output.links {
                 let mut row = vec![
@@ -353,6 +387,23 @@ fn cmd_links(
                     row.push(Cell::new(
                         entry.context.as_deref().unwrap_or(""),
                     ));
+                }
+                if with_conclusions {
+                    let conc_str = entry
+                        .conclusions
+                        .as_ref()
+                        .map(|cs| {
+                            cs.iter()
+                                .map(|c| format!("{} {}", c.conclusion_type, c.literal))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        })
+                        .unwrap_or_default();
+                    row.push(Cell::new(if conc_str.is_empty() {
+                        "-"
+                    } else {
+                        &conc_str
+                    }));
                 }
                 table.add_row(row);
             }
@@ -370,6 +421,7 @@ fn cmd_backlinks(
     fuzzy: bool,
     context: usize,
     depth: usize,
+    with_conclusions: bool,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -377,6 +429,22 @@ fn cmd_backlinks(
         find_page(page, &pipeline.file_index, fuzzy, &pipeline.files).unwrap_or_else(|e| {
             exit_page_not_found(&cli.format, &e);
         });
+
+    // If --with-conclusions, build the theory to get page→conclusion mappings
+    #[cfg(feature = "reason")]
+    let page_conclusions: HashMap<String, Vec<PageConclusionEntry>> = if with_conclusions {
+        build_page_conclusions_map(&pipeline.files)
+    } else {
+        HashMap::new()
+    };
+    #[cfg(not(feature = "reason"))]
+    let page_conclusions: HashMap<String, Vec<PageConclusionEntry>> = {
+        if with_conclusions {
+            eprintln!("--with-conclusions requires the 'reason' feature flag.");
+            std::process::exit(1);
+        }
+        HashMap::new()
+    };
 
     // BFS collecting backlinks at each depth level
     let mut visited: HashSet<String> = HashSet::new();
@@ -393,6 +461,8 @@ fn cmd_backlinks(
         is_embed: bool,
         context: Option<String>,
         hop: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        conclusions: Option<Vec<PageConclusionEntry>>,
     }
 
     let mut entries: Vec<BacklinkEntry> = Vec::new();
@@ -431,6 +501,17 @@ fn cmd_backlinks(
                 None
             };
 
+            let conclusions = if with_conclusions {
+                Some(
+                    page_conclusions
+                        .get(&bl.source)
+                        .cloned()
+                        .unwrap_or_default(),
+                )
+            } else {
+                None
+            };
+
             entries.push(BacklinkEntry {
                 source: bl.source.clone(),
                 target: current_page.clone(),
@@ -439,6 +520,7 @@ fn cmd_backlinks(
                 is_embed: bl.is_embed,
                 context: ctx,
                 hop: current_depth + 1,
+                conclusions,
             });
 
             if !visited.contains(&bl.source) {
@@ -469,6 +551,9 @@ fn cmd_backlinks(
             if context > 0 {
                 headers.push("Context");
             }
+            if with_conclusions {
+                headers.push("Conclusions");
+            }
             table.set_header(headers);
             for entry in &output.backlinks {
                 let mut row = vec![
@@ -480,6 +565,23 @@ fn cmd_backlinks(
                     row.push(Cell::new(
                         entry.context.as_deref().unwrap_or(""),
                     ));
+                }
+                if with_conclusions {
+                    let conc_str = entry
+                        .conclusions
+                        .as_ref()
+                        .map(|cs| {
+                            cs.iter()
+                                .map(|c| format!("{} {}", c.conclusion_type, c.literal))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        })
+                        .unwrap_or_default();
+                    row.push(Cell::new(if conc_str.is_empty() {
+                        "-"
+                    } else {
+                        &conc_str
+                    }));
                 }
                 table.add_row(row);
             }
@@ -1036,6 +1138,71 @@ fn cmd_export(cli: &Cli) -> Result<()> {
     }
 
     Ok(())
+}
+
+// ── Cross-referencing helpers ──────────────────────────────────────────────
+
+/// A conclusion that a page contributes to (used by --with-conclusions).
+#[derive(Debug, Clone, Serialize)]
+struct PageConclusionEntry {
+    literal: String,
+    conclusion_type: String,
+    contribution: String,
+}
+
+/// Build a map from page name → conclusions that page contributes to.
+///
+/// Runs the reasoning pipeline over all SPL blocks and maps each proof source
+/// page back to the conclusions it supports.
+#[cfg(feature = "reason")]
+fn build_page_conclusions_map(
+    files: &[ParsedFile],
+) -> HashMap<String, Vec<PageConclusionEntry>> {
+    use zetl::reason::build_theory;
+    use zetl::reason::types::ConclusionType;
+
+    let spl_blocks: Vec<_> = files.iter().flat_map(|f| f.spl_blocks.clone()).collect();
+
+    if spl_blocks.is_empty() {
+        return HashMap::new();
+    }
+
+    let result = match build_theory(&spl_blocks) {
+        Ok(r) => r,
+        Err(_) => return HashMap::new(),
+    };
+
+    let mut map: HashMap<String, Vec<PageConclusionEntry>> = HashMap::new();
+
+    for conclusion in &result.conclusions {
+        let tag = match conclusion.conclusion_type {
+            ConclusionType::DefinitelyProvable => "+D",
+            ConclusionType::DefinitelyNotProvable => "-D",
+            ConclusionType::DefeasiblyProvable => "+d",
+            ConclusionType::DefeasiblyNotProvable => "-d",
+        };
+
+        for ps in &conclusion.proof_sources {
+            let entry = PageConclusionEntry {
+                literal: conclusion.literal.clone(),
+                conclusion_type: tag.to_string(),
+                contribution: ps.contribution.clone(),
+            };
+            map.entry(ps.page.clone()).or_default().push(entry);
+        }
+    }
+
+    // Deduplicate entries per page (same literal+type should appear only once)
+    for entries in map.values_mut() {
+        entries.sort_by(|a, b| {
+            a.conclusion_type
+                .cmp(&b.conclusion_type)
+                .then(a.literal.cmp(&b.literal))
+        });
+        entries.dedup_by(|a, b| a.literal == b.literal && a.conclusion_type == b.conclusion_type);
+    }
+
+    map
 }
 
 // ── Context extraction helper ──────────────────────────────────────────────
@@ -2412,6 +2579,196 @@ struct ConflictSuperiority {
     inferior: String,
 }
 
+// ── Cross-referencing: provenance with link graph ──────────────────────────
+
+#[cfg(feature = "reason")]
+fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
+    use zetl::reason::build_theory;
+    use zetl::reason::types::ConclusionType;
+
+    let pipeline = run_pipeline(cli)?;
+
+    let spl_blocks: Vec<_> = pipeline
+        .files
+        .iter()
+        .flat_map(|f| f.spl_blocks.clone())
+        .collect();
+
+    if spl_blocks.is_empty() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
+            OutputFormat::Table => {
+                eprintln!("No SPL blocks found in vault.");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let result = build_theory(&spl_blocks)?;
+
+    // Normalize literal input: handle ~ prefix for negation
+    let literal_str = literal_input.trim();
+
+    // Find all conclusions matching this literal
+    let matching: Vec<_> = result
+        .conclusions
+        .iter()
+        .filter(|c| c.literal == literal_str)
+        .collect();
+
+    if matching.is_empty() {
+        let msg = format!(
+            "Literal '{}' not found in conclusions. Use `zetl reason status` to see all conclusions.",
+            literal_str
+        );
+        match cli.format {
+            OutputFormat::Json => exit_json_error(&msg, 1),
+            OutputFormat::Table => {
+                eprintln!("{msg}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Collect all unique source pages from proof sources
+    let mut source_pages: Vec<String> = Vec::new();
+    let mut seen_pages: HashSet<String> = HashSet::new();
+    for c in &matching {
+        for ps in &c.proof_sources {
+            if seen_pages.insert(ps.page.clone()) {
+                source_pages.push(ps.page.clone());
+            }
+        }
+    }
+
+    // Cross-reference: for each pair of source pages, find link graph connections
+    let mut cross_refs: Vec<ProvenanceCrossRef> = Vec::new();
+    for i in 0..source_pages.len() {
+        for j in 0..source_pages.len() {
+            if i == j {
+                continue;
+            }
+            let from = &source_pages[i];
+            let to = &source_pages[j];
+
+            // Check direct forward links
+            let forward = pipeline.graph.forward_links(from);
+            for fwd in &forward {
+                if fwd.target == *to {
+                    cross_refs.push(ProvenanceCrossRef {
+                        from_page: from.clone(),
+                        to_page: to.clone(),
+                        direction: "forward_link".to_string(),
+                        line: fwd.meta.line,
+                    });
+                }
+            }
+        }
+    }
+
+    // Deduplicate cross-refs
+    cross_refs.sort_by(|a, b| {
+        a.from_page
+            .cmp(&b.from_page)
+            .then(a.to_page.cmp(&b.to_page))
+            .then(a.line.cmp(&b.line))
+    });
+    cross_refs.dedup_by(|a, b| {
+        a.from_page == b.from_page && a.to_page == b.to_page && a.line == b.line
+    });
+
+    // Build per-conclusion output
+    let conclusion_entries: Vec<ProvenanceConclusionEntry> = matching
+        .iter()
+        .map(|c| {
+            let tag = match c.conclusion_type {
+                ConclusionType::DefinitelyProvable => "+D",
+                ConclusionType::DefinitelyNotProvable => "-D",
+                ConclusionType::DefeasiblyProvable => "+d",
+                ConclusionType::DefeasiblyNotProvable => "-d",
+            };
+            ProvenanceConclusionEntry {
+                conclusion_type: tag.to_string(),
+                literal: c.literal.clone(),
+                proof_sources: c.proof_sources.clone(),
+            }
+        })
+        .collect();
+
+    let output = ProvenanceOutput {
+        literal: literal_str.to_string(),
+        conclusions: conclusion_entries,
+        source_pages: source_pages.clone(),
+        cross_references: cross_refs.clone(),
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            println!("Provenance for '{}':\n", literal_str);
+
+            for entry in &output.conclusions {
+                println!("  {} {}", entry.conclusion_type, entry.literal);
+                println!("  Proof sources:");
+                for ps in &entry.proof_sources {
+                    if let Some(ref label) = ps.rule_label {
+                        println!(
+                            "    [[{}]]:{} — {} ({})",
+                            ps.page, ps.line, ps.contribution, label
+                        );
+                    } else {
+                        println!(
+                            "    [[{}]]:{} — {}",
+                            ps.page, ps.line, ps.contribution
+                        );
+                    }
+                }
+                println!();
+            }
+
+            if cross_refs.is_empty() {
+                println!("  No link-graph connections between source pages.");
+            } else {
+                println!("  Link-graph cross-references between source pages:");
+                for cr in &cross_refs {
+                    println!(
+                        "    [[{}]] → [[{}]] (line {})",
+                        cr.from_page, cr.to_page, cr.line
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct ProvenanceOutput {
+    literal: String,
+    conclusions: Vec<ProvenanceConclusionEntry>,
+    source_pages: Vec<String>,
+    cross_references: Vec<ProvenanceCrossRef>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct ProvenanceConclusionEntry {
+    conclusion_type: String,
+    literal: String,
+    proof_sources: Vec<zetl::reason::types::ProofSource>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct ProvenanceCrossRef {
+    from_page: String,
+    to_page: String,
+    direction: String,
+    line: u32,
+}
+
 /// Find documents that could potentially provide a given literal.
 ///
 /// Returns sources where the literal already appears as a rule head (but isn't
@@ -3123,13 +3480,15 @@ fn main() -> anyhow::Result<()> {
             fuzzy,
             context,
             depth,
-        } => cmd_links(&cli, page, *fuzzy, *context, *depth),
+            with_conclusions,
+        } => cmd_links(&cli, page, *fuzzy, *context, *depth, *with_conclusions),
         Command::Backlinks {
             page,
             fuzzy,
             context,
             depth,
-        } => cmd_backlinks(&cli, page, *fuzzy, *context, *depth),
+            with_conclusions,
+        } => cmd_backlinks(&cli, page, *fuzzy, *context, *depth, *with_conclusions),
         Command::Check {
             dead_links,
             orphans,
@@ -3197,6 +3556,7 @@ fn main() -> anyhow::Result<()> {
                     suggest,
                     fail_on_conflicts,
                 } => cmd_reason_conflicts(&cli, *suggest, *fail_on_conflicts),
+                ReasonCommand::Provenance { literal } => cmd_reason_provenance(&cli, literal),
                 _ => {
                     eprintln!("This reason subcommand is not yet implemented.");
                     std::process::exit(1);
