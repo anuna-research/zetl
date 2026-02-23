@@ -166,6 +166,13 @@ pub enum Command {
         #[command(subcommand)]
         command: ReasonCommand,
     },
+
+    /// Defeasible reasoning over vault-wide SPL (requires --features reason)
+    #[cfg(not(feature = "reason"))]
+    Reason {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        _args: Vec<String>,
+    },
 }
 
 #[cfg(feature = "reason")]

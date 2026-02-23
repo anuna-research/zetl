@@ -601,6 +601,11 @@ fn cmd_check(
     show_spl: bool,
     fail_on: &FailLevel,
 ) -> Result<()> {
+    #[cfg(not(feature = "reason"))]
+    if show_spl {
+        reason_not_available();
+    }
+
     let pipeline = run_pipeline(cli)?;
 
     // If none of the flags are set, show all
@@ -4390,6 +4395,18 @@ fn sanitize_dot_id(s: &str) -> String {
     )
 }
 
+// ── Feature-gate error ─────────────────────────────────────────────────────
+
+#[cfg(not(feature = "reason"))]
+fn reason_not_available() -> ! {
+    let error = serde_json::json!({
+        "error": "Reasoning engine not available. Build with --features reason",
+        "code": 2
+    });
+    println!("{}", serde_json::to_string(&error).unwrap());
+    std::process::exit(2);
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 fn main() -> anyhow::Result<()> {
@@ -4493,5 +4510,7 @@ fn main() -> anyhow::Result<()> {
                 } => cmd_reason_export(&cli, format, *with_conclusions),
             }
         }
+        #[cfg(not(feature = "reason"))]
+        Command::Reason { .. } => reason_not_available(),
     }
 }
