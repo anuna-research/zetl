@@ -463,3 +463,237 @@
 (normally r-assign-verify-reason
   (and ready-verify-reason agent-claude-available)
   assign-to-verify-reason-claude)
+
+(claims agent:claude
+  :at "2026-02-23T13:02:25Z"
+  (given claim-v1-feature-flag-by-claude)
+  (normally r-cl-state-v1-feature-flag-by-claude claim-v1-feature-flag-by-claude state-claimed-v1-feature-flag-by-claude)
+  (normally r-cl-chain-v1-feature-flag-by-claude state-claimed-v1-feature-flag-by-claude claimed-feature-flag)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:05:41Z"
+  (given completed-feature-flag)
+  (given spawn-result-v1-feature-flag-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:05:46Z"
+  (given claim-v1-spl-types-by-claude)
+  (normally r-cl-state-v1-spl-types-by-claude claim-v1-spl-types-by-claude state-claimed-v1-spl-types-by-claude)
+  (normally r-cl-chain-v1-spl-types-by-claude state-claimed-v1-spl-types-by-claude claimed-spl-types)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:10:43Z"
+  (given completed-spl-types)
+  (given spawn-result-v1-spl-types-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:10:48Z"
+  (given claim-v1-demo-vault-spl-by-claude)
+  (normally r-cl-state-v1-demo-vault-spl-by-claude claim-v1-demo-vault-spl-by-claude state-claimed-v1-demo-vault-spl-by-claude)
+  (normally r-cl-chain-v1-demo-vault-spl-by-claude state-claimed-v1-demo-vault-spl-by-claude claimed-demo-vault-spl)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:15:09Z"
+  (given completed-demo-vault-spl)
+  (given spawn-result-v1-demo-vault-spl-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:15:14Z"
+  (given claim-v1-spl-extraction-by-claude)
+  (normally r-cl-state-v1-spl-extraction-by-claude claim-v1-spl-extraction-by-claude state-claimed-v1-spl-extraction-by-claude)
+  (normally r-cl-chain-v1-spl-extraction-by-claude state-claimed-v1-spl-extraction-by-claude claimed-spl-extraction)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:20:25Z"
+  (given completed-spl-extraction)
+  (given spawn-result-v1-spl-extraction-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:20:30Z"
+  (given claim-v1-reason-engine-by-claude)
+  (normally r-cl-state-v1-reason-engine-by-claude claim-v1-reason-engine-by-claude state-claimed-v1-reason-engine-by-claude)
+  (normally r-cl-chain-v1-reason-engine-by-claude state-claimed-v1-reason-engine-by-claude claimed-reason-engine)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:37:21Z"
+  (given completed-reason-engine)
+  (given spawn-result-v1-reason-engine-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:37:26Z"
+  (given claim-v1-cmd-reason-status-by-claude)
+  (normally r-cl-state-v1-cmd-reason-status-by-claude claim-v1-cmd-reason-status-by-claude state-claimed-v1-cmd-reason-status-by-claude)
+  (normally r-cl-chain-v1-cmd-reason-status-by-claude state-claimed-v1-cmd-reason-status-by-claude claimed-cmd-reason-status)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:43:35Z"
+  (given completed-cmd-reason-status)
+  (given spawn-result-v1-cmd-reason-status-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:43:40Z"
+  (given claim-v1-check-spl-by-claude)
+  (normally r-cl-state-v1-check-spl-by-claude claim-v1-check-spl-by-claude state-claimed-v1-check-spl-by-claude)
+  (normally r-cl-chain-v1-check-spl-by-claude state-claimed-v1-check-spl-by-claude claimed-check-spl)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:47:26Z"
+  (given completed-check-spl)
+  (given spawn-result-v1-check-spl-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:47:31Z"
+  (given claim-v1-cmd-reason-explain-by-claude)
+  (normally r-cl-state-v1-cmd-reason-explain-by-claude claim-v1-cmd-reason-explain-by-claude state-claimed-v1-cmd-reason-explain-by-claude)
+  (normally r-cl-chain-v1-cmd-reason-explain-by-claude state-claimed-v1-cmd-reason-explain-by-claude claimed-cmd-reason-explain)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:56:19Z"
+  (given completed-cmd-reason-explain)
+  (given spawn-result-v1-cmd-reason-explain-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T13:56:25Z"
+  (given claim-v1-cmd-reason-why-not-by-claude)
+  (normally r-cl-state-v1-cmd-reason-why-not-by-claude claim-v1-cmd-reason-why-not-by-claude state-claimed-v1-cmd-reason-why-not-by-claude)
+  (normally r-cl-chain-v1-cmd-reason-why-not-by-claude state-claimed-v1-cmd-reason-why-not-by-claude claimed-cmd-reason-why-not)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:00:01Z"
+  (given completed-cmd-reason-why-not)
+  (given spawn-result-v1-cmd-reason-why-not-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:00:06Z"
+  (given claim-v1-cmd-reason-conflicts-by-claude)
+  (normally r-cl-state-v1-cmd-reason-conflicts-by-claude claim-v1-cmd-reason-conflicts-by-claude state-claimed-v1-cmd-reason-conflicts-by-claude)
+  (normally r-cl-chain-v1-cmd-reason-conflicts-by-claude state-claimed-v1-cmd-reason-conflicts-by-claude claimed-cmd-reason-conflicts)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:05:14Z"
+  (given completed-cmd-reason-conflicts)
+  (given spawn-result-v1-cmd-reason-conflicts-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:05:19Z"
+  (given claim-v1-cross-ref-by-claude)
+  (normally r-cl-state-v1-cross-ref-by-claude claim-v1-cross-ref-by-claude state-claimed-v1-cross-ref-by-claude)
+  (normally r-cl-chain-v1-cross-ref-by-claude state-claimed-v1-cross-ref-by-claude claimed-cross-ref)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:12:34Z"
+  (given completed-cross-ref)
+  (given spawn-result-v1-cross-ref-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:12:40Z"
+  (given claim-v1-cmd-reason-what-if-by-claude)
+  (normally r-cl-state-v1-cmd-reason-what-if-by-claude claim-v1-cmd-reason-what-if-by-claude state-claimed-v1-cmd-reason-what-if-by-claude)
+  (normally r-cl-chain-v1-cmd-reason-what-if-by-claude state-claimed-v1-cmd-reason-what-if-by-claude claimed-cmd-reason-what-if)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:23:02Z"
+  (given completed-cmd-reason-what-if)
+  (given spawn-result-v1-cmd-reason-what-if-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:23:07Z"
+  (given claim-v1-cmd-reason-require-by-claude)
+  (normally r-cl-state-v1-cmd-reason-require-by-claude claim-v1-cmd-reason-require-by-claude state-claimed-v1-cmd-reason-require-by-claude)
+  (normally r-cl-chain-v1-cmd-reason-require-by-claude state-claimed-v1-cmd-reason-require-by-claude claimed-cmd-reason-require)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:28:01Z"
+  (given completed-cmd-reason-require)
+  (given spawn-result-v1-cmd-reason-require-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:28:06Z"
+  (given claim-v1-theory-cache-by-claude)
+  (normally r-cl-state-v1-theory-cache-by-claude claim-v1-theory-cache-by-claude state-claimed-v1-theory-cache-by-claude)
+  (normally r-cl-chain-v1-theory-cache-by-claude state-claimed-v1-theory-cache-by-claude claimed-theory-cache)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:46:45Z"
+  (given completed-theory-cache)
+  (given spawn-result-v1-theory-cache-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:46:51Z"
+  (given claim-v1-cmd-reason-export-by-claude)
+  (normally r-cl-state-v1-cmd-reason-export-by-claude claim-v1-cmd-reason-export-by-claude state-claimed-v1-cmd-reason-export-by-claude)
+  (normally r-cl-chain-v1-cmd-reason-export-by-claude state-claimed-v1-cmd-reason-export-by-claude claimed-cmd-reason-export)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:53:02Z"
+  (given completed-cmd-reason-export)
+  (given spawn-result-v1-cmd-reason-export-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:53:07Z"
+  (given claim-v1-feature-gate-by-claude)
+  (normally r-cl-state-v1-feature-gate-by-claude claim-v1-feature-gate-by-claude state-claimed-v1-feature-gate-by-claude)
+  (normally r-cl-chain-v1-feature-gate-by-claude state-claimed-v1-feature-gate-by-claude claimed-feature-gate)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:56:42Z"
+  (given completed-feature-gate)
+  (given spawn-result-v1-feature-gate-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T14:56:47Z"
+  (given claim-v1-integration-tests-reason-by-claude)
+  (normally r-cl-state-v1-integration-tests-reason-by-claude claim-v1-integration-tests-reason-by-claude state-claimed-v1-integration-tests-reason-by-claude)
+  (normally r-cl-chain-v1-integration-tests-reason-by-claude state-claimed-v1-integration-tests-reason-by-claude claimed-integration-tests-reason)
+)
+
+(claims agent:claude
+  :at "2026-02-23T15:08:37Z"
+  (given completed-integration-tests-reason)
+  (given spawn-result-v1-integration-tests-reason-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-23T15:08:43Z"
+  (given claim-v1-verify-reason-by-claude)
+  (normally r-cl-state-v1-verify-reason-by-claude claim-v1-verify-reason-by-claude state-claimed-v1-verify-reason-by-claude)
+  (normally r-cl-chain-v1-verify-reason-by-claude state-claimed-v1-verify-reason-by-claude claimed-verify-reason)
+)
+
+(claims agent:claude
+  :at "2026-02-23T15:15:25Z"
+  (given completed-verify-reason)
+  (given spawn-result-v1-verify-reason-by-claude)
+)
