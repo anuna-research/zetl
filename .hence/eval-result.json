@@ -1,0 +1,29 @@
+{
+  "recommended_status": "completed",
+  "confidence": 1.0,
+  "exit_code": 0,
+  "diff_summary": {
+    "files_changed": 4,
+    "insertions": 285,
+    "deletions": 0,
+    "file_list": [
+      "Cargo.lock",
+      "Cargo.toml",
+      "src/lib.rs",
+      "src/reason.rs"
+    ],
+    "dirty_files": 1
+  },
+  "learnings": [
+    {
+      "key": "task-feature-flag-changes",
+      "content": "Modified 4 files (+285, -0): Cargo.lock, Cargo.toml, src/lib.rs, src/reason.rs",
+      "memory_type": "episodic",
+      "confidence": 0.8
+    }
+  ],
+  "branch_name": "hence/feature-flag-v1",
+  "evaluated_at": "2026-02-23T13:05:41Z",
+  "checks_passed": 0,
+  "checks_failed": 0
+}
