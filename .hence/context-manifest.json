@@ -1,12 +1,12 @@
 {
-  "task_id": "cmd-reason-what-if",
+  "task_id": "cmd-reason-require",
   "token_budget": 8000,
-  "tokens_used": 372,
+  "tokens_used": 411,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement `zetl reason what-if <SPL>` per CON-014. Temporarily add facts/rules to the theory and compute what changes. Parse inline SPL argument (or --file <PATH> for file input), clone the theory, add hypothetical facts/rules, re-reason, then diff conclusions against the base theory. Report: new conclusions, changed conclusions (was/now), and unchanged count. Optional --goal <LITERAL> focuses on a specific literal's change. Hypothetical additions SHALL NOT modify the vault or cached theory.",
-      "token_cost": 124,
+      "content": "Implement `zetl reason require <LITERAL>` per CON-016. Abductive reasoning: find what facts are needed to make a goal literal provable. Uses spindle-core's abduce API (or manual analysis if not available): find rules with the literal as head, identify which body literals are not provable, recursively find what's needed. Return solution sets of required facts, each annotated with the rule that needs it and the document where that rule is defined. Options: --max-solutions <N> [default: 5], --assume <SPL> (assume these facts already true). Special cases: goal already provable returns empty solution with message; no rules exist returns exit code 1.",
+      "token_cost": 163,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T14:12:40Z"
+  "constructed_at": "2026-02-23T14:23:07Z"
 }
