@@ -1,12 +1,12 @@
 {
-  "task_id": "cross-ref",
+  "task_id": "cmd-reason-what-if",
   "token_budget": 8000,
-  "tokens_used": 400,
+  "tokens_used": 372,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement cross-referencing between the link graph and logical theory per REQ-036. Three features: 1) `zetl reason provenance <LITERAL>` — show which documents contribute to a literal's proof, cross-referenced with backlinks between those documents (CON-013 extended), 2) `zetl links <page> --with-conclusions` — for each linked page, show which conclusions that page contributes, 3) `zetl backlinks <page> --with-conclusions` — same for backlinking pages. The --with-conclusions flags are additive enrichments to existing output. Requires both link graph and theory to be computed (full pipeline run).",
-      "token_cost": 152,
+      "content": "Implement `zetl reason what-if <SPL>` per CON-014. Temporarily add facts/rules to the theory and compute what changes. Parse inline SPL argument (or --file <PATH> for file input), clone the theory, add hypothetical facts/rules, re-reason, then diff conclusions against the base theory. Report: new conclusions, changed conclusions (was/now), and unchanged count. Optional --goal <LITERAL> focuses on a specific literal's change. Hypothetical additions SHALL NOT modify the vault or cached theory.",
+      "token_cost": 124,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T14:05:19Z"
+  "constructed_at": "2026-02-23T14:12:40Z"
 }
