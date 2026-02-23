@@ -1,26 +1,13 @@
 //! Core data types for SPL extraction and defeasible reasoning.
 //!
 //! These types implement the data model defined in SPEC-005 §5.3.
-//! All types derive `Serialize` for JSON CLI output.
+//! All output types derive `Serialize` for JSON CLI output.
 
 use serde::Serialize;
-use spindle_core::Literal;
+use spindle_core::prelude::*;
 use std::path::PathBuf;
 
-/// An extracted SPL block from a Markdown file or standalone `.spl` file.
-#[derive(Debug, Clone, Serialize)]
-pub struct SplBlock {
-    /// Relative path from vault root.
-    pub source_file: PathBuf,
-    /// Page name (filename sans extension).
-    pub source_page: String,
-    /// 1-indexed line of opening ``` fence (or 1 for `.spl` files).
-    pub start_line: u32,
-    /// Line of closing ``` fence (or last line for `.spl` files).
-    pub end_line: u32,
-    /// Raw SPL text between fences.
-    pub content: String,
-}
+use crate::types::Diagnostic;
 
 /// The type of a rule in the defeasible logic theory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
@@ -109,4 +96,46 @@ pub struct ProofSource {
     /// One of: `"fact"`, `"strict_rule"`, `"defeasible_rule"`,
     /// `"defeater"`, `"superiority"`.
     pub contribution: String,
+}
+
+/// Result of building and reasoning over a theory from SPL blocks.
+///
+/// Returned by [`build_theory`](super::build_theory). Contains the combined
+/// spindle-core `Theory`, provenanced conclusions, and diagnostics.
+pub struct TheoryResult {
+    /// The combined spindle-core Theory.
+    pub theory: Theory,
+    /// Provenanced conclusions from defeasible reasoning.
+    pub conclusions: Vec<ProvenancedConclusion>,
+    /// Provenanced rules (non-fact) extracted from SPL blocks.
+    pub rules: Vec<ProvenancedRule>,
+    /// Provenanced facts extracted from SPL blocks.
+    pub facts: Vec<ProvenancedFact>,
+    /// Parse errors, validation warnings, and other diagnostics.
+    pub diagnostics: Vec<Diagnostic>,
+    /// Summary statistics.
+    pub summary: TheorySummary,
+}
+
+/// Summary statistics for the theory and reasoning results.
+#[derive(Debug, Clone, Serialize)]
+pub struct TheorySummary {
+    /// Number of facts in the theory.
+    pub fact_count: usize,
+    /// Number of non-fact rules (strict + defeasible).
+    pub rule_count: usize,
+    /// Number of defeater rules.
+    pub defeater_count: usize,
+    /// Number of superiority relations.
+    pub superiority_count: usize,
+    /// Number of distinct source files contributing SPL.
+    pub source_file_count: usize,
+    /// Number of +D conclusions.
+    pub definitely_provable: usize,
+    /// Number of -D conclusions.
+    pub definitely_not_provable: usize,
+    /// Number of +d conclusions.
+    pub defeasibly_provable: usize,
+    /// Number of -d conclusions.
+    pub defeasibly_not_provable: usize,
 }
