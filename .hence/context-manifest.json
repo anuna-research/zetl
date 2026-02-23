@@ -1,12 +1,12 @@
 {
-  "task_id": "cmd-reason-status",
+  "task_id": "check-spl",
   "token_budget": 8000,
-  "tokens_used": 317,
+  "tokens_used": 352,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add a Reason subcommand group to src/cli.rs with sub-subcommands: Status, Explain, WhatIf, WhyNot, Require, Conflicts, Export, Provenance. Initially implement only Status. In src/main.rs, wire up cmd_reason_status: scan vault, extract SPL, build theory, compute conclusions, format output. CLI options per CON-012: --positive, --negative, --definite, --defeasible, --literal <PAT>. JSON output includes theory summary (facts/rules/defeaters/superiority/source_files), conclusions array with provenance, summary counts, and diagnostics. Table output shows conclusions in a human-readable table. Exit codes: 0 success, 1 no SPL blocks, 2 parse errors.",
-      "token_cost": 162,
+      "content": "Extend the existing `zetl check` command to include SPL diagnostics alongside dead links, orphans, and syntax errors. Add --spl flag to filter to SPL diagnostics only. SPL diagnostics include: 1) Parse errors (malformed SPL syntax) with file/line/column/message, 2) Undefined rule labels in superiority relations (warning), 3) Duplicate rule labels across documents (warning with both locations), 4) Body literals that appear nowhere as a head or fact (warning, possible typo). Integrate into existing check output format — add spl_diagnostics array to JSON, add SPL section to table. The existing --fail-on flag applies to SPL diagnostics (errors count as errors, warnings as warnings). Per CON-004 extended.",
+      "token_cost": 177,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 3 files (+990, -23): .hence/context-manifest.json, src/reason/mod.rs, src/reason/types.rs",
       "token_cost": 24,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cmd-reason-status-changes",
+      "content": "Modified 3 files (+338, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T13:37:26Z"
+  "constructed_at": "2026-02-23T13:43:40Z"
 }

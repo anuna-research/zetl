@@ -72,7 +72,7 @@ pub enum Command {
         depth: usize,
     },
 
-    /// Validate: report dead links, orphans, and syntax errors
+    /// Validate: report dead links, orphans, syntax errors, and SPL diagnostics
     Check {
         /// Show only dead links
         #[arg(long)]
@@ -83,6 +83,9 @@ pub enum Command {
         /// Show only syntax errors
         #[arg(long)]
         syntax: bool,
+        /// Show only SPL diagnostics (parse errors, duplicate labels, undefined references, unreachable literals)
+        #[arg(long)]
+        spl: bool,
         /// Exit non-zero if issues at level
         #[arg(long, default_value = "error")]
         fail_on: FailLevel,
