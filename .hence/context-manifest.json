@@ -1,0 +1,15 @@
+{
+  "task_id": "feature-flag",
+  "token_budget": 8000,
+  "tokens_used": 90,
+  "elements_selected": [
+    {
+      "source": "plan-meta/description",
+      "content": "Add a `reason` feature flag to Cargo.toml. Under this feature, add spindle-core and spindle-parser as optional Cargo dependencies. Add a `reason` module to src/lib.rs gated behind #[cfg(feature = \"reason\")]. Ensure `cargo check` passes both with and without the feature. This follows ADR-005: embed spindle-core as a Rust library dependency behind a feature flag.",
+      "token_cost": 90,
+      "priority": "PlanMeta"
+    }
+  ],
+  "elements_excluded": [],
+  "constructed_at": "2026-02-23T13:02:25Z"
+}
