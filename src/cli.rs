@@ -200,8 +200,17 @@ pub enum ReasonCommand {
         #[arg(long, default_value = "json")]
         format: ExplainFormat,
     },
-    /// Hypothetical reasoning: what if a fact were added?
-    WhatIf,
+    /// Hypothetical reasoning: what if facts/rules were added?
+    WhatIf {
+        /// Inline SPL to add hypothetically (e.g. "(given bird)")
+        spl: Option<String>,
+        /// Read hypothetical SPL from a file instead of inline
+        #[arg(long)]
+        file: Option<String>,
+        /// Focus diff on a specific literal (e.g. "flies", "~guilty")
+        #[arg(long)]
+        goal: Option<String>,
+    },
     /// Why is a literal not provable?
     WhyNot {
         /// Literal to analyze (e.g. "flies", "~guilty")

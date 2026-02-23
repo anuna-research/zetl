@@ -2579,6 +2579,296 @@ struct ConflictSuperiority {
     inferior: String,
 }
 
+// ── What-if command ────────────────────────────────────────────────────────
+
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct WhatIfOutput {
+    hypothetical_spl: String,
+    new_conclusions: Vec<WhatIfConclusion>,
+    changed_conclusions: Vec<WhatIfChanged>,
+    removed_conclusions: Vec<WhatIfConclusion>,
+    unchanged_count: usize,
+    diagnostics: Vec<zetl::types::Diagnostic>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct WhatIfConclusion {
+    literal: String,
+    conclusion_type: String,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct WhatIfChanged {
+    literal: String,
+    was: String,
+    now: String,
+}
+
+#[cfg(feature = "reason")]
+fn cmd_reason_what_if(
+    cli: &Cli,
+    spl_inline: Option<&str>,
+    file_path: Option<&str>,
+    goal: Option<&str>,
+) -> Result<()> {
+    use spindle_parser::parse_spl;
+    use zetl::reason::build_theory;
+
+    // Resolve the hypothetical SPL input
+    let hyp_spl = match (spl_inline, file_path) {
+        (Some(_), Some(_)) => {
+            let msg = "Provide either inline SPL or --file, not both";
+            match cli.format {
+                OutputFormat::Json => exit_json_error(msg, 1),
+                OutputFormat::Table => {
+                    eprintln!("{msg}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        (None, None) => {
+            let msg = "Provide inline SPL argument or --file <PATH>";
+            match cli.format {
+                OutputFormat::Json => exit_json_error(msg, 1),
+                OutputFormat::Table => {
+                    eprintln!("{msg}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        (Some(inline), None) => inline.to_string(),
+        (None, Some(path)) => {
+            std::fs::read_to_string(path).with_context(|| format!("Cannot read file: {path}"))?
+        }
+    };
+
+    // Parse the hypothetical SPL to validate it
+    let extra_theory = match parse_spl(&hyp_spl) {
+        Ok(t) => t,
+        Err(e) => {
+            let msg = format!("Hypothetical SPL parse error: {e}");
+            match cli.format {
+                OutputFormat::Json => exit_json_error(&msg, 1),
+                OutputFormat::Table => {
+                    eprintln!("{msg}");
+                    std::process::exit(1);
+                }
+            }
+        }
+    };
+
+    // Build the baseline theory from vault
+    let pipeline = run_pipeline(cli)?;
+
+    let spl_blocks: Vec<_> = pipeline
+        .files
+        .iter()
+        .flat_map(|f| f.spl_blocks.clone())
+        .collect();
+
+    if spl_blocks.is_empty() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
+            OutputFormat::Table => {
+                eprintln!("No SPL blocks found in vault.");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let result = build_theory(&spl_blocks)?;
+
+    // Build baseline conclusion set: (literal, type_symbol) pairs
+    let conclusion_symbol =
+        |ct: &zetl::reason::types::ConclusionType| -> &'static str {
+            match ct {
+                zetl::reason::types::ConclusionType::DefinitelyProvable => "+D",
+                zetl::reason::types::ConclusionType::DefinitelyNotProvable => "-D",
+                zetl::reason::types::ConclusionType::DefeasiblyProvable => "+d",
+                zetl::reason::types::ConclusionType::DefeasiblyNotProvable => "-d",
+            }
+        };
+
+    let baseline_set: HashSet<(String, String)> = result
+        .conclusions
+        .iter()
+        .map(|c| (c.literal.clone(), conclusion_symbol(&c.conclusion_type).to_string()))
+        .collect();
+
+    // Clone the theory and inject hypothetical additions
+    let mut hyp_theory = result.theory.clone();
+    let mut fact_counter = 0u32;
+    for rule in extra_theory.rules() {
+        if rule.rule_type == spindle_core::prelude::RuleType::Fact {
+            // Re-label to avoid collisions with vault's __fact_N labels
+            fact_counter += 1;
+            let new_label = format!("__whatif_fact_{fact_counter}");
+            let head_lit = rule.head[0].clone();
+            let new_rule = spindle_core::prelude::Rule::fact(&new_label, head_lit);
+            hyp_theory.add_rule(new_rule);
+        } else {
+            hyp_theory.add_rule(rule.clone());
+        }
+    }
+    for sup in extra_theory.superiorities() {
+        hyp_theory.add_superiority(&sup.superior, &sup.inferior);
+    }
+
+    // Re-reason on the hypothetical theory
+    let hyp_conclusions = spindle_core::reason::reason(&hyp_theory)
+        .context("Hypothetical reasoning failed")?;
+
+    // Build hypothetical conclusion set
+    let hyp_set: HashSet<(String, String)> = hyp_conclusions
+        .iter()
+        .map(|c| (c.literal.to_string(), c.conclusion_type.symbol().to_string()))
+        .collect();
+
+    // Diff the two sets
+    let added: HashSet<&(String, String)> = hyp_set.difference(&baseline_set).collect();
+    let removed: HashSet<&(String, String)> = baseline_set.difference(&hyp_set).collect();
+
+    // Literals that have both additions and removals are "changed"
+    let added_lits: HashSet<&str> = added.iter().map(|(l, _)| l.as_str()).collect();
+    let removed_lits: HashSet<&str> = removed.iter().map(|(l, _)| l.as_str()).collect();
+    let changed_lits: HashSet<&str> = added_lits.intersection(&removed_lits).copied().collect();
+
+    let mut new_conclusions: Vec<WhatIfConclusion> = Vec::new();
+    let mut changed_conclusions: Vec<WhatIfChanged> = Vec::new();
+    let mut removed_conclusions: Vec<WhatIfConclusion> = Vec::new();
+
+    // Separate pure-new from changed (added side)
+    for (lit, typ) in &added {
+        if let Some(filter) = goal {
+            if lit.as_str() != filter {
+                continue;
+            }
+        }
+        if changed_lits.contains(lit.as_str()) {
+            // Will be reported as "changed" below
+        } else {
+            new_conclusions.push(WhatIfConclusion {
+                literal: lit.clone(),
+                conclusion_type: typ.clone(),
+            });
+        }
+    }
+
+    // Separate pure-removed from changed (removed side)
+    for (lit, typ) in &removed {
+        if let Some(filter) = goal {
+            if lit.as_str() != filter {
+                continue;
+            }
+        }
+        if changed_lits.contains(lit.as_str()) {
+            // Will be reported as "changed" below
+        } else {
+            removed_conclusions.push(WhatIfConclusion {
+                literal: lit.clone(),
+                conclusion_type: typ.clone(),
+            });
+        }
+    }
+
+    // Build changed entries: group by literal, show was/now
+    for lit in &changed_lits {
+        if let Some(filter) = goal {
+            if *lit != filter {
+                continue;
+            }
+        }
+        let mut was: Vec<String> = removed
+            .iter()
+            .filter(|(l, _)| l.as_str() == *lit)
+            .map(|(_, t)| t.clone())
+            .collect();
+        was.sort();
+        let mut now: Vec<String> = added
+            .iter()
+            .filter(|(l, _)| l.as_str() == *lit)
+            .map(|(_, t)| t.clone())
+            .collect();
+        now.sort();
+        changed_conclusions.push(WhatIfChanged {
+            literal: lit.to_string(),
+            was: was.join(", "),
+            now: now.join(", "),
+        });
+    }
+
+    // Count unchanged
+    let unchanged_count = hyp_set
+        .intersection(&baseline_set)
+        .filter(|(lit, _)| goal.map_or(true, |g| lit.as_str() == g))
+        .count();
+
+    // Sort for stable output
+    new_conclusions.sort_by(|a, b| a.literal.cmp(&b.literal));
+    changed_conclusions.sort_by(|a, b| a.literal.cmp(&b.literal));
+    removed_conclusions.sort_by(|a, b| a.literal.cmp(&b.literal));
+
+    let output = WhatIfOutput {
+        hypothetical_spl: hyp_spl.clone(),
+        new_conclusions: new_conclusions.clone(),
+        changed_conclusions: changed_conclusions.clone(),
+        removed_conclusions: removed_conclusions.clone(),
+        unchanged_count,
+        diagnostics: result.diagnostics,
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            println!(
+                "What-if analysis: hypothetically adding:\n  {}\n",
+                hyp_spl.trim()
+            );
+
+            if new_conclusions.is_empty()
+                && changed_conclusions.is_empty()
+                && removed_conclusions.is_empty()
+            {
+                println!("No changes to conclusions.");
+            } else {
+                if !new_conclusions.is_empty() {
+                    println!("New conclusions:");
+                    for c in &new_conclusions {
+                        println!("  {} {}", c.conclusion_type, c.literal);
+                    }
+                    println!();
+                }
+
+                if !changed_conclusions.is_empty() {
+                    println!("Changed conclusions:");
+                    for c in &changed_conclusions {
+                        println!(
+                            "  {} : was {} , now {}",
+                            c.literal, c.was, c.now
+                        );
+                    }
+                    println!();
+                }
+
+                if !removed_conclusions.is_empty() {
+                    println!("Removed conclusions:");
+                    for c in &removed_conclusions {
+                        println!("  {} {} (no longer derived)", c.conclusion_type, c.literal);
+                    }
+                    println!();
+                }
+            }
+
+            println!("Unchanged: {unchanged_count}");
+        }
+    }
+
+    Ok(())
+}
+
 // ── Cross-referencing: provenance with link graph ──────────────────────────
 
 #[cfg(feature = "reason")]
@@ -3557,6 +3847,9 @@ fn main() -> anyhow::Result<()> {
                     fail_on_conflicts,
                 } => cmd_reason_conflicts(&cli, *suggest, *fail_on_conflicts),
                 ReasonCommand::Provenance { literal } => cmd_reason_provenance(&cli, literal),
+                ReasonCommand::WhatIf { spl, file, goal } => {
+                    cmd_reason_what_if(&cli, spl.as_deref(), file.as_deref(), goal.as_deref())
+                }
                 _ => {
                     eprintln!("This reason subcommand is not yet implemented.");
                     std::process::exit(1);
