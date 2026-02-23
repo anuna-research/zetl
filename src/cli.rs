@@ -236,13 +236,27 @@ pub enum ReasonCommand {
         #[arg(long)]
         fail_on_conflicts: bool,
     },
-    /// Export theory in various formats
-    Export,
+    /// Export the combined theory (SPL with provenance or structured JSON)
+    Export {
+        /// Output format: spl (reconstructed SPL with provenance comments), json (structured theory)
+        #[arg(long, default_value = "json")]
+        format: ExportFormat,
+        /// Include reasoning results (conclusions) in the export
+        #[arg(long)]
+        with_conclusions: bool,
+    },
     /// Trace full provenance for a conclusion, cross-referenced with the link graph
     Provenance {
         /// Literal to trace (e.g. "flies", "~guilty", "decided-use-redis")
         literal: String,
     },
+}
+
+#[cfg(feature = "reason")]
+#[derive(Clone, ValueEnum)]
+pub enum ExportFormat {
+    Json,
+    Spl,
 }
 
 #[cfg(feature = "reason")]

@@ -4128,6 +4128,258 @@ fn emit_dot_node(node: &ExplainNode, parent_id: &str, counter: &mut usize) {
     }
 }
 
+// ── reason export ─────────────────────────────────────────────────────────
+
+#[cfg(feature = "reason")]
+fn cmd_reason_export(
+    cli: &Cli,
+    format: &zetl::cli::ExportFormat,
+    with_conclusions: bool,
+) -> Result<()> {
+    use zetl::cli::ExportFormat;
+    use zetl::reason::types::{ConclusionType, RuleType};
+
+    let pipeline = run_pipeline(cli)?;
+
+    let has_spl = pipeline.files.iter().any(|f| !f.spl_blocks.is_empty());
+    if !has_spl {
+        // Even with no SPL, export always exits 0 per CON-018.
+        match format {
+            ExportFormat::Json => {
+                print_json(&serde_json::json!({
+                    "facts": [],
+                    "rules": [],
+                    "superiority": [],
+                    "diagnostics": [],
+                    "summary": {
+                        "fact_count": 0,
+                        "rule_count": 0,
+                        "defeater_count": 0,
+                        "superiority_count": 0,
+                        "source_file_count": 0
+                    }
+                }))?;
+            }
+            ExportFormat::Spl => {
+                println!("; Theory extracted from vault: {}", pipeline.vault_root.display());
+                println!("; 0 source files, 0 facts, 0 rules, 0 defeaters");
+            }
+        }
+        return Ok(());
+    }
+
+    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+
+    match format {
+        ExportFormat::Spl => {
+            // Header comment
+            println!(
+                "; Theory extracted from vault: {}",
+                pipeline.vault_root.display()
+            );
+            println!(
+                "; {} source files, {} facts, {} rules, {} defeaters",
+                result.summary.source_file_count,
+                result.summary.fact_count,
+                result.summary.rule_count,
+                result.summary.defeater_count,
+            );
+            println!(";");
+
+            // Emit facts with provenance comments
+            for fact in &result.facts {
+                println!(
+                    "; --- From: {}:{} ---",
+                    fact.source_file.display(),
+                    fact.source_line
+                );
+                println!("(given {})", literal_to_spl(&fact.literal.to_string()));
+            }
+
+            // Emit rules with provenance comments
+            for rule in &result.rules {
+                println!(
+                    "; --- From: {}:{} ---",
+                    rule.source_file.display(),
+                    rule.source_line
+                );
+                let keyword = match rule.rule_type {
+                    RuleType::Strict => "always",
+                    RuleType::Defeasible => "normally",
+                    RuleType::Defeater => "except",
+                };
+                if rule.body.is_empty() {
+                    println!(
+                        "({} {} {})",
+                        keyword,
+                        rule.label,
+                        literal_to_spl(&rule.head.to_string())
+                    );
+                } else if rule.body.len() == 1 {
+                    println!(
+                        "({} {}\n  {}\n  {})",
+                        keyword,
+                        rule.label,
+                        literal_to_spl(&rule.body[0].to_string()),
+                        literal_to_spl(&rule.head.to_string()),
+                    );
+                } else {
+                    let body_parts: Vec<String> = rule
+                        .body
+                        .iter()
+                        .map(|l| literal_to_spl(&l.to_string()))
+                        .collect();
+                    println!(
+                        "({} {}\n  (and {})\n  {})",
+                        keyword,
+                        rule.label,
+                        body_parts.join(" "),
+                        literal_to_spl(&rule.head.to_string()),
+                    );
+                }
+            }
+
+            // Emit superiority relations
+            for sup in result.theory.superiorities() {
+                println!("(prefer {} {})", sup.superior, sup.inferior);
+            }
+
+            // Optionally emit conclusions as comments
+            if with_conclusions {
+                println!();
+                println!("; --- Conclusions ---");
+                for c in &result.conclusions {
+                    let tag = match c.conclusion_type {
+                        ConclusionType::DefinitelyProvable => "+D",
+                        ConclusionType::DefinitelyNotProvable => "-D",
+                        ConclusionType::DefeasiblyProvable => "+d",
+                        ConclusionType::DefeasiblyNotProvable => "-d",
+                    };
+                    println!("; {} {}", tag, c.literal);
+                }
+            }
+        }
+        ExportFormat::Json => {
+            #[derive(Serialize)]
+            struct ExportOutput {
+                facts: Vec<ExportFact>,
+                rules: Vec<ExportRule>,
+                superiority: Vec<ExportSuperiority>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                conclusions: Option<Vec<ExportConclusion>>,
+                diagnostics: Vec<zetl::types::Diagnostic>,
+                summary: zetl::reason::types::TheorySummary,
+            }
+
+            #[derive(Serialize)]
+            struct ExportFact {
+                literal: String,
+                source_file: String,
+                source_line: u32,
+                source_page: String,
+            }
+
+            #[derive(Serialize)]
+            struct ExportRule {
+                label: String,
+                rule_type: RuleType,
+                body: Vec<String>,
+                head: String,
+                source_file: String,
+                source_line: u32,
+                source_page: String,
+            }
+
+            #[derive(Serialize)]
+            struct ExportSuperiority {
+                superior: String,
+                inferior: String,
+            }
+
+            #[derive(Serialize)]
+            struct ExportConclusion {
+                literal: String,
+                conclusion_type: ConclusionType,
+                proof_sources: Vec<zetl::reason::types::ProofSource>,
+            }
+
+            let facts: Vec<ExportFact> = result
+                .facts
+                .iter()
+                .map(|f| ExportFact {
+                    literal: f.literal.to_string(),
+                    source_file: f.source_file.display().to_string(),
+                    source_line: f.source_line,
+                    source_page: f.source_page.clone(),
+                })
+                .collect();
+
+            let rules: Vec<ExportRule> = result
+                .rules
+                .iter()
+                .map(|r| ExportRule {
+                    label: r.label.clone(),
+                    rule_type: r.rule_type,
+                    body: r.body.iter().map(|l| l.to_string()).collect(),
+                    head: r.head.to_string(),
+                    source_file: r.source_file.display().to_string(),
+                    source_line: r.source_line,
+                    source_page: r.source_page.clone(),
+                })
+                .collect();
+
+            let superiority: Vec<ExportSuperiority> = result
+                .theory
+                .superiorities()
+                .iter()
+                .map(|s| ExportSuperiority {
+                    superior: s.superior.clone(),
+                    inferior: s.inferior.clone(),
+                })
+                .collect();
+
+            let conclusions = if with_conclusions {
+                Some(
+                    result
+                        .conclusions
+                        .iter()
+                        .map(|c| ExportConclusion {
+                            literal: c.literal.clone(),
+                            conclusion_type: c.conclusion_type,
+                            proof_sources: c.proof_sources.clone(),
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            };
+
+            let output = ExportOutput {
+                facts,
+                rules,
+                superiority,
+                conclusions,
+                diagnostics: result.diagnostics.clone(),
+                summary: result.summary.clone(),
+            };
+
+            print_json(&output)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Convert a display-form literal (e.g. "~flies") to SPL syntax (e.g. "(not flies)").
+#[cfg(feature = "reason")]
+fn literal_to_spl(lit: &str) -> String {
+    if let Some(name) = lit.strip_prefix('~') {
+        format!("(not {})", name)
+    } else {
+        lit.to_string()
+    }
+}
+
 #[cfg(feature = "reason")]
 fn sanitize_dot_id(s: &str) -> String {
     format!(
@@ -4235,10 +4487,10 @@ fn main() -> anyhow::Result<()> {
                     max_solutions,
                     assume,
                 } => cmd_reason_require(&cli, literal, *max_solutions, assume.as_deref()),
-                _ => {
-                    eprintln!("This reason subcommand is not yet implemented.");
-                    std::process::exit(1);
-                }
+                ReasonCommand::Export {
+                    format,
+                    with_conclusions,
+                } => cmd_reason_export(&cli, format, *with_conclusions),
             }
         }
     }
