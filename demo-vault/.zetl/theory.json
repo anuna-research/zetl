@@ -1,12 +1,23 @@
 {
   "version": 1,
   "spl_file_mtimes": {
-    "processes/Deployment Checklist.md": 1771858387.3253086,
-    "audits/License Audit.md": 1771858387.3215084,
-    "theories/caching.spl": 1771858387.325559,
-    "decisions/Redis vs Memcached.md": 1771858387.323912
+    "audits/License Audit.md": 1771859323.0301764,
+    "theories/caching.spl": 1771859323.0340152,
+    "processes/Deployment Checklist.md": 1771859323.0337975,
+    "decisions/Redis vs Memcached.md": 1771859323.0325284
   },
   "rules": [
+    {
+      "label": "__fact_2",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "evaluated-memcached"
+      ],
+      "source_file": "theories/caching.spl",
+      "source_line": 5,
+      "source_page": "caching"
+    },
     {
       "label": "__fact_1",
       "rule_type": "Fact",
@@ -17,33 +28,6 @@
       "source_file": "audits/License Audit.md",
       "source_line": 7,
       "source_page": "License Audit"
-    },
-    {
-      "label": "r-prefer-memcached",
-      "rule_type": "Defeasible",
-      "body": [
-        "evaluated-memcached"
-      ],
-      "head": [
-        "decided-use-memcached"
-      ],
-      "source_file": "theories/caching.spl",
-      "source_line": 7,
-      "source_page": "caching"
-    },
-    {
-      "label": "r-ready-prod",
-      "rule_type": "Defeasible",
-      "body": [
-        "verified-load-test",
-        "verified-security-audit"
-      ],
-      "head": [
-        "ready-for-production"
-      ],
-      "source_file": "processes/Deployment Checklist.md",
-      "source_line": 9,
-      "source_page": "Deployment Checklist"
     },
     {
       "label": "r-prefer-redis",
@@ -60,28 +44,42 @@
       "source_page": "Redis vs Memcached"
     },
     {
-      "label": "d-license-risk",
-      "rule_type": "Defeater",
+      "label": "r-ready-prod",
+      "rule_type": "Defeasible",
       "body": [
-        "discovered-license-risk"
+        "verified-load-test",
+        "verified-security-audit"
       ],
       "head": [
-        "~decided-use-redis"
+        "ready-for-production"
       ],
-      "source_file": "audits/License Audit.md",
-      "source_line": 8,
-      "source_page": "License Audit"
+      "source_file": "processes/Deployment Checklist.md",
+      "source_line": 9,
+      "source_page": "Deployment Checklist"
     },
     {
-      "label": "__fact_2",
+      "label": "r-prefer-memcached",
+      "rule_type": "Defeasible",
+      "body": [
+        "evaluated-memcached"
+      ],
+      "head": [
+        "decided-use-memcached"
+      ],
+      "source_file": "theories/caching.spl",
+      "source_line": 7,
+      "source_page": "caching"
+    },
+    {
+      "label": "__fact_3",
       "rule_type": "Fact",
       "body": [],
       "head": [
-        "evaluated-memcached"
+        "redis-supports-persistence"
       ],
-      "source_file": "theories/caching.spl",
-      "source_line": 5,
-      "source_page": "caching"
+      "source_file": "decisions/Redis vs Memcached.md",
+      "source_line": 13,
+      "source_page": "Redis vs Memcached"
     },
     {
       "label": "__fact_4",
@@ -95,15 +93,17 @@
       "source_page": "Redis vs Memcached"
     },
     {
-      "label": "__fact_3",
-      "rule_type": "Fact",
-      "body": [],
-      "head": [
-        "redis-supports-persistence"
+      "label": "d-license-risk",
+      "rule_type": "Defeater",
+      "body": [
+        "discovered-license-risk"
       ],
-      "source_file": "decisions/Redis vs Memcached.md",
-      "source_line": 13,
-      "source_page": "Redis vs Memcached"
+      "head": [
+        "~decided-use-redis"
+      ],
+      "source_file": "audits/License Audit.md",
+      "source_line": 8,
+      "source_page": "License Audit"
     }
   ],
   "superiorities": [

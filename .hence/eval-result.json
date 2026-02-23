@@ -3,31 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 1878,
-    "deletions": 5,
+    "files_changed": 3,
+    "insertions": 211,
+    "deletions": 18,
     "file_list": [
       ".hence/context-manifest.json",
-      "tests/fixtures/reason-vault/Bird Facts.md",
-      "tests/fixtures/reason-vault/Conflicts Page.md",
-      "tests/fixtures/reason-vault/Multi Block.md",
-      "tests/fixtures/reason-vault/No Links.md",
-      "tests/fixtures/reason-vault/Penguin Facts.md",
-      "tests/fixtures/reason-vault/theories/standalone.spl",
-      "tests/reason_integration.rs"
+      "src/main.rs",
+      "src/tui/ui.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 2
   },
   "learnings": [
     {
-      "key": "task-integration-tests-reason-changes",
-      "content": "Modified 8 files (+1878, -5): .hence/context-manifest.json, tests/fixtures/reason-vault/Bird Facts.md, tests/fixtures/reason-vault/Conflicts Page.md, tests/fixtures/reason-vault/Multi Block.md, tests/fixtures/reason-vault/No Links.md and 3 more",
+      "key": "task-verify-reason-changes",
+      "content": "Modified 3 files (+211, -18): .hence/context-manifest.json, src/main.rs, src/tui/ui.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/integration-tests-reason-v1",
-  "evaluated_at": "2026-02-23T15:08:37Z",
+  "branch_name": "hence/verify-reason-v1",
+  "evaluated_at": "2026-02-23T15:15:25Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

@@ -1,39 +1,29 @@
 {
   "version": 1,
   "files": {
-    "tools/Obsidian.md": {
-      "path": "tools/Obsidian.md",
-      "page_name": "Obsidian",
+    "practices/Review Process.md": {
+      "path": "practices/Review Process.md",
+      "page_name": "Review Process",
       "links": [
         {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 8,
-          "column": 30
+          "line": 7,
+          "column": 54
         },
         {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
+          "target_page": "Daily Note Practice",
+          "raw_target": "Daily Note Practice",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 8,
-          "column": 76
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 12,
-          "column": 37
+          "line": 11,
+          "column": 12
         },
         {
           "target_page": "Atomic Notes",
@@ -42,7 +32,339 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
+          "line": 11,
+          "column": 50
+        },
+        {
+          "target_page": "Map of Content",
+          "raw_target": "Map of Content",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 14,
+          "column": 26
+        },
+        {
+          "target_page": "Knowledge Graph",
+          "raw_target": "Knowledge Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 21,
+          "column": 15
+        },
+        {
+          "target_page": "Linking Practice",
+          "raw_target": "Linking Practice",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 24,
+          "column": 11
+        },
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 24,
+          "column": 33
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [
+        {
+          "level": "Error",
+          "message": "Unclosed wikilink: '[[broken link targets'",
+          "file": "practices/Review Process.md",
+          "line": 12,
+          "column": 14
+        },
+        {
+          "level": "Error",
+          "message": "Empty wikilink: '[[]]'",
+          "file": "practices/Review Process.md",
+          "line": 15,
+          "column": 11
+        }
+      ],
+      "mtime": 1771859323.0336041
+    },
+    "practices/Daily Note Practice.md": {
+      "path": "practices/Daily Note Practice.md",
+      "page_name": "Daily Note Practice",
+      "links": [
+        {
+          "target_page": "Obsidian",
+          "raw_target": "Obsidian",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 114
+        },
+        {
+          "target_page": "Logseq",
+          "raw_target": "Logseq",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 131
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 39
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 14,
+          "column": 23
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 15,
+          "column": 36
+        },
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 18,
+          "column": 118
+        },
+        {
+          "target_page": "Elaborative Encoding",
+          "raw_target": "Elaborative Encoding",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 24,
+          "column": 32
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0333734
+    },
+    "tools/Notion.md": {
+      "path": "tools/Notion.md",
+      "page_name": "Notion",
+      "links": [
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 129
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 181
+        },
+        {
+          "target_page": "Folder-based Organization",
+          "raw_target": "Folder-based Organization",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 14,
+          "column": 14
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 18,
+          "column": 77
+        },
+        {
+          "target_page": "Obsidian",
+          "raw_target": "Obsidian",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 18,
+          "column": 104
+        },
+        {
+          "target_page": "Logseq",
+          "raw_target": "Logseq",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 18,
+          "column": 120
+        },
+        {
+          "target_page": "Second Brain",
+          "raw_target": "Second Brain",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
           "line": 20,
+          "column": 11
+        },
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 29
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.034304
+    },
+    "concepts/Luhmann's Slip Box.md": {
+      "path": "concepts/Luhmann's Slip Box.md",
+      "page_name": "Luhmann's Slip Box",
+      "links": [
+        {
+          "target_page": "Niklas Luhmann",
+          "raw_target": "Niklas Luhmann",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 1
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 31
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 120
+        },
+        {
+          "target_page": "Literature Notes",
+          "raw_target": "Literature Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 23,
+          "column": 26
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 24,
+          "column": 21
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 26,
+          "column": 22
+        },
+        {
+          "target_page": "Obsidian",
+          "raw_target": "Obsidian",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 30,
+          "column": 19
+        },
+        {
+          "target_page": "Logseq",
+          "raw_target": "Logseq",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 30,
+          "column": 36
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 30,
+          "column": 155
+        },
+        {
+          "target_page": "Emergent Structure",
+          "raw_target": "Emergent Structure",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 34,
           "column": 11
         },
         {
@@ -52,38 +374,107 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 23,
-          "column": 11
-        },
+          "line": 34,
+          "column": 35
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0317857
+    },
+    "concepts/Atomic Notes.md": {
+      "path": "concepts/Atomic Notes.md",
+      "page_name": "Atomic Notes",
+      "links": [
         {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 28,
-          "column": 24
+          "line": 7,
+          "column": 96
         },
         {
-          "target_page": "Notion",
-          "raw_target": "Notion",
+          "target_page": "Functional Programming",
+          "raw_target": "Functional Programming",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 28,
-          "column": 37
+          "line": 11,
+          "column": 111
         },
         {
-          "target_page": "zetl",
-          "raw_target": "zetl",
+          "target_page": "Data Structures",
+          "raw_target": "Data Structures",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 35,
-          "column": 11
+          "line": 11,
+          "column": 139
+        },
+        {
+          "target_page": "Mathematical Induction",
+          "raw_target": "Mathematical Induction",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 163
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 30
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 51
+        },
+        {
+          "target_page": "Elaborative Encoding",
+          "raw_target": "Elaborative Encoding",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 21,
+          "column": 49
+        },
+        {
+          "target_page": "Literature Notes",
+          "raw_target": "Literature Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 1
+        },
+        {
+          "target_page": "Literature Notes",
+          "raw_target": "Literature Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 27,
+          "column": 29
         },
         {
           "target_page": "Zettelkasten",
@@ -92,13 +483,109 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 35,
-          "column": 21
+          "line": 29,
+          "column": 40
         }
       ],
       "spl_blocks": [],
       "diagnostics": [],
-      "mtime": 1771858387.3260524
+      "mtime": 1771859323.0303917
+    },
+    "audits/License Audit.md": {
+      "path": "audits/License Audit.md",
+      "page_name": "License Audit",
+      "links": [
+        {
+          "target_page": "Redis vs Memcached",
+          "raw_target": "Redis vs Memcached",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 13,
+          "column": 26
+        },
+        {
+          "target_page": "Deployment Checklist",
+          "raw_target": "Deployment Checklist",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 15,
+          "column": 5
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "audits/License Audit.md",
+          "source_page": "License Audit",
+          "start_line": 6,
+          "end_line": 9,
+          "content": "(given discovered-license-risk)\n(except d-license-risk discovered-license-risk (not decided-use-redis))\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771859323.0301764
+    },
+    "concepts/Folder-based Organization.md": {
+      "path": "concepts/Folder-based Organization.md",
+      "page_name": "Folder-based Organization",
+      "links": [
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 58
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 5
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 53
+        },
+        {
+          "target_page": "Emergent Structure",
+          "raw_target": "Emergent Structure",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 81
+        },
+        {
+          "target_page": "Obsidian",
+          "raw_target": "Obsidian",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 27,
+          "column": 12
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0310287
     },
     "concepts/Map of Content.md": {
       "path": "concepts/Map of Content.md",
@@ -227,541 +714,7 @@
       ],
       "spl_blocks": [],
       "diagnostics": [],
-      "mtime": 1771858387.3232908
-    },
-    "concepts/Progressive Summarization.md": {
-      "path": "concepts/Progressive Summarization.md",
-      "page_name": "Progressive Summarization",
-      "links": [
-        {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 7
-        },
-        {
-          "target_page": "Second Brain",
-          "raw_target": "Second Brain",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 60
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 107
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 178
-        },
-        {
-          "target_page": "Elaborative Encoding",
-          "raw_target": "Elaborative Encoding",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 29
-        },
-        {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 11
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 33
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3234162
-    },
-    "concepts/Emergent Structure.md": {
-      "path": "concepts/Emergent Structure.md",
-      "page_name": "Emergent Structure",
-      "links": [
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 6
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 148
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 39
-        },
-        {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 158
-        },
-        {
-          "target_page": "Folder-based Organization",
-          "raw_target": "Folder-based Organization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 1
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 166
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 11
-        },
-        {
-          "target_page": "Niklas Luhmann",
-          "raw_target": "Niklas Luhmann",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 32
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3221152
-    },
-    "concepts/Luhmann's Slip Box.md": {
-      "path": "concepts/Luhmann's Slip Box.md",
-      "page_name": "Luhmann's Slip Box",
-      "links": [
-        {
-          "target_page": "Niklas Luhmann",
-          "raw_target": "Niklas Luhmann",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 1
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 31
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 120
-        },
-        {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 26
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 21
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 22
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 30,
-          "column": 19
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 30,
-          "column": 36
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 30,
-          "column": 155
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 34,
-          "column": 11
-        },
-        {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 34,
-          "column": 35
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3231556
-    },
-    "practices/Daily Note Practice.md": {
-      "path": "practices/Daily Note Practice.md",
-      "page_name": "Daily Note Practice",
-      "links": [
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 114
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 131
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 39
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 23
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 15,
-          "column": 36
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 18,
-          "column": 118
-        },
-        {
-          "target_page": "Elaborative Encoding",
-          "raw_target": "Elaborative Encoding",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 32
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3248272
-    },
-    "concepts/Atomic Notes.md": {
-      "path": "concepts/Atomic Notes.md",
-      "page_name": "Atomic Notes",
-      "links": [
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 96
-        },
-        {
-          "target_page": "Functional Programming",
-          "raw_target": "Functional Programming",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 111
-        },
-        {
-          "target_page": "Data Structures",
-          "raw_target": "Data Structures",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 139
-        },
-        {
-          "target_page": "Mathematical Induction",
-          "raw_target": "Mathematical Induction",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 163
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 30
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 51
-        },
-        {
-          "target_page": "Elaborative Encoding",
-          "raw_target": "Elaborative Encoding",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 49
-        },
-        {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 1
-        },
-        {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 27,
-          "column": 29
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 29,
-          "column": 40
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3217254
-    },
-    "concepts/Functional Programming.md": {
-      "path": "concepts/Functional Programming.md",
-      "page_name": "Functional Programming",
-      "links": [
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 27
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 12,
-          "column": 88
-        },
-        {
-          "target_page": "Data Structures",
-          "raw_target": "Data Structures",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 11
-        },
-        {
-          "target_page": "Category Theory",
-          "raw_target": "Category Theory",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 32
-        },
-        {
-          "target_page": "Lambda Calculus",
-          "raw_target": "Lambda Calculus",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 53
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3225086
+      "mtime": 1771859323.0319111
     },
     "practices/Linking Practice.md": {
       "path": "practices/Linking Practice.md",
@@ -860,117 +813,11 @@
       ],
       "spl_blocks": [],
       "diagnostics": [],
-      "mtime": 1771858387.3249516
+      "mtime": 1771859323.0334916
     },
-    "processes/Deployment Checklist.md": {
-      "path": "processes/Deployment Checklist.md",
-      "page_name": "Deployment Checklist",
-      "links": [
-        {
-          "target_page": "License Audit",
-          "raw_target": "License Audit",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 11
-        },
-        {
-          "target_page": "Redis vs Memcached",
-          "raw_target": "Redis vs Memcached",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 53
-        }
-      ],
-      "spl_blocks": [
-        {
-          "source_file": "processes/Deployment Checklist.md",
-          "source_page": "Deployment Checklist",
-          "start_line": 8,
-          "end_line": 12,
-          "content": "(normally r-ready-prod\n  (and verified-load-test verified-security-audit)\n  ready-for-production)\n"
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771858387.3253086
-    },
-    "tools/zetl.md": {
-      "path": "tools/zetl.md",
-      "page_name": "zetl",
-      "links": [
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 34
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 63
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 143
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 29,
-          "column": 11
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 29,
-          "column": 25
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 29,
-          "column": 37
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3261788
-    },
-    "tools/Notion.md": {
-      "path": "tools/Notion.md",
-      "page_name": "Notion",
+    "concepts/GTD.md": {
+      "path": "concepts/GTD.md",
+      "page_name": "GTD",
       "links": [
         {
           "target_page": "Knowledge Management",
@@ -980,27 +827,7 @@
           "alias": null,
           "is_embed": false,
           "line": 7,
-          "column": 129
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 181
-        },
-        {
-          "target_page": "Folder-based Organization",
-          "raw_target": "Folder-based Organization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 14
+          "column": 106
         },
         {
           "target_page": "Zettelkasten",
@@ -1009,28 +836,18 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 18,
-          "column": 77
+          "line": 19,
+          "column": 9
         },
         {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 18,
-          "column": 104
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 18,
-          "column": 120
+          "line": 24,
+          "column": 83
         },
         {
           "target_page": "Second Brain",
@@ -1039,7 +856,7 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 20,
+          "line": 26,
           "column": 11
         },
         {
@@ -1049,13 +866,13 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 20,
+          "line": 26,
           "column": 29
         }
       ],
       "spl_blocks": [],
       "diagnostics": [],
-      "mtime": 1771858387.3259215
+      "mtime": 1771859323.0312848
     },
     "theories/caching.spl": {
       "path": "theories/caching.spl",
@@ -1071,11 +888,295 @@
         }
       ],
       "diagnostics": [],
-      "mtime": 1771858387.325559
+      "mtime": 1771859323.0340152
     },
-    "concepts/Folder-based Organization.md": {
-      "path": "concepts/Folder-based Organization.md",
-      "page_name": "Folder-based Organization",
+    "concepts/Bidirectional Links.md": {
+      "path": "concepts/Bidirectional Links.md",
+      "page_name": "Bidirectional Links",
+      "links": [
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 9,
+          "column": 36
+        },
+        {
+          "target_page": "Obsidian",
+          "raw_target": "Obsidian",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 19,
+          "column": 15
+        },
+        {
+          "target_page": "Logseq",
+          "raw_target": "Logseq",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 19,
+          "column": 32
+        },
+        {
+          "target_page": "zetl",
+          "raw_target": "zetl",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 21,
+          "column": 26
+        },
+        {
+          "target_page": "Knowledge Graph",
+          "raw_target": "Knowledge Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 44
+        },
+        {
+          "target_page": "Emergent Structure",
+          "raw_target": "Emergent Structure",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 31,
+          "column": 11
+        },
+        {
+          "target_page": "Map of Content",
+          "raw_target": "Map of Content",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 31,
+          "column": 35
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0305216
+    },
+    "decisions/Redis vs Memcached.md": {
+      "path": "decisions/Redis vs Memcached.md",
+      "page_name": "Redis vs Memcached",
+      "links": [
+        {
+          "target_page": "Deployment Checklist",
+          "raw_target": "Deployment Checklist",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 9,
+          "column": 5
+        },
+        {
+          "target_page": "License Audit",
+          "raw_target": "License Audit",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 66
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "decisions/Redis vs Memcached.md",
+          "source_page": "Redis vs Memcached",
+          "start_line": 11,
+          "end_line": 17,
+          "content": "(given evaluated-redis)\n(given redis-supports-persistence)\n(normally r-prefer-redis\n  (and evaluated-redis redis-supports-persistence)\n  decided-use-redis)\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771859323.0325284
+    },
+    "concepts/Evergreen Notes.md": {
+      "path": "concepts/Evergreen Notes.md",
+      "page_name": "Evergreen Notes",
+      "links": [
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 53
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 13,
+          "column": 57
+        },
+        {
+          "target_page": "Emergent Structure",
+          "raw_target": "Emergent Structure",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 14,
+          "column": 64
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 18,
+          "column": 57
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 34
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 64
+        },
+        {
+          "target_page": "Niklas Luhmann",
+          "raw_target": "Niklas Luhmann",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 22,
+          "column": 11
+        },
+        {
+          "target_page": "Progressive Summarization",
+          "raw_target": "Progressive Summarization",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 22,
+          "column": 31
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.030905
+    },
+    "concepts/Progressive Summarization.md": {
+      "path": "concepts/Progressive Summarization.md",
+      "page_name": "Progressive Summarization",
+      "links": [
+        {
+          "target_page": "Progressive Summarization",
+          "raw_target": "Progressive Summarization",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 7
+        },
+        {
+          "target_page": "Second Brain",
+          "raw_target": "Second Brain",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 60
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 107
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 178
+        },
+        {
+          "target_page": "Elaborative Encoding",
+          "raw_target": "Elaborative Encoding",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 19,
+          "column": 29
+        },
+        {
+          "target_page": "Literature Notes",
+          "raw_target": "Literature Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 21,
+          "column": 11
+        },
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 21,
+          "column": 33
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.032035
+    },
+    "concepts/Second Brain.md": {
+      "path": "concepts/Second Brain.md",
+      "page_name": "Second Brain",
       "links": [
         {
           "target_page": "Knowledge Management",
@@ -1085,7 +1186,17 @@
           "alias": null,
           "is_embed": false,
           "line": 7,
-          "column": 58
+          "column": 25
+        },
+        {
+          "target_page": "Progressive Summarization",
+          "raw_target": "Progressive Summarization",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 26
         },
         {
           "target_page": "Zettelkasten",
@@ -1094,8 +1205,18 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 25,
-          "column": 5
+          "line": 16,
+          "column": 22
+        },
+        {
+          "target_page": "Folder-based Organization",
+          "raw_target": "Folder-based Organization",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 18
         },
         {
           "target_page": "Bidirectional Links",
@@ -1104,8 +1225,18 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 25,
-          "column": 53
+          "line": 20,
+          "column": 57
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 21,
+          "column": 35
         },
         {
           "target_page": "Emergent Structure",
@@ -1114,8 +1245,18 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 25,
-          "column": 81
+          "line": 22,
+          "column": 47
+        },
+        {
+          "target_page": "Notion",
+          "raw_target": "Notion",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 23,
+          "column": 11
         },
         {
           "target_page": "Obsidian",
@@ -1124,13 +1265,112 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 27,
-          "column": 12
+          "line": 23,
+          "column": 34
+        },
+        {
+          "target_page": "Logseq",
+          "raw_target": "Logseq",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 23,
+          "column": 48
         }
       ],
       "spl_blocks": [],
       "diagnostics": [],
-      "mtime": 1771858387.3223789
+      "mtime": 1771859323.0321617
+    },
+    "concepts/Literature Notes.md": {
+      "path": "concepts/Literature Notes.md",
+      "page_name": "Literature Notes",
+      "links": [
+        {
+          "target_page": "Niklas Luhmann",
+          "raw_target": "Niklas Luhmann",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 4
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 25
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 15,
+          "column": 6
+        },
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 140
+        },
+        {
+          "target_page": "Elaborative Encoding",
+          "raw_target": "Elaborative Encoding",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 21,
+          "column": 32
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 23,
+          "column": 37
+        },
+        {
+          "target_page": "Progressive Summarization",
+          "raw_target": "Progressive Summarization",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 26,
+          "column": 11
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 26,
+          "column": 42
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0316606
     },
     "concepts/Knowledge Management.md": {
       "path": "concepts/Knowledge Management.md",
@@ -1259,865 +1499,7 @@
       ],
       "spl_blocks": [],
       "diagnostics": [],
-      "mtime": 1771858387.3228981
-    },
-    "practices/Review Process.md": {
-      "path": "practices/Review Process.md",
-      "page_name": "Review Process",
-      "links": [
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 54
-        },
-        {
-          "target_page": "Daily Note Practice",
-          "raw_target": "Daily Note Practice",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 12
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 50
-        },
-        {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 26
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 15
-        },
-        {
-          "target_page": "Linking Practice",
-          "raw_target": "Linking Practice",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 11
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 33
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [
-        {
-          "level": "Error",
-          "message": "Unclosed wikilink: '[[broken link targets'",
-          "file": "practices/Review Process.md",
-          "line": 12,
-          "column": 14
-        },
-        {
-          "level": "Error",
-          "message": "Empty wikilink: '[[]]'",
-          "file": "practices/Review Process.md",
-          "line": 15,
-          "column": 11
-        }
-      ],
-      "mtime": 1771858387.325079
-    },
-    "concepts/Second Brain.md": {
-      "path": "concepts/Second Brain.md",
-      "page_name": "Second Brain",
-      "links": [
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 25
-        },
-        {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 26
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 16,
-          "column": 22
-        },
-        {
-          "target_page": "Folder-based Organization",
-          "raw_target": "Folder-based Organization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 18
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 57
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 35
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 22,
-          "column": 47
-        },
-        {
-          "target_page": "Notion",
-          "raw_target": "Notion",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 11
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 34
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 48
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3235524
-    },
-    "concepts/Bidirectional Links.md": {
-      "path": "concepts/Bidirectional Links.md",
-      "page_name": "Bidirectional Links",
-      "links": [
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 9,
-          "column": 36
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 15
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 32
-        },
-        {
-          "target_page": "zetl",
-          "raw_target": "zetl",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 26
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 44
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 31,
-          "column": 11
-        },
-        {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 31,
-          "column": 35
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3218596
-    },
-    "decisions/Redis vs Memcached.md": {
-      "path": "decisions/Redis vs Memcached.md",
-      "page_name": "Redis vs Memcached",
-      "links": [
-        {
-          "target_page": "Deployment Checklist",
-          "raw_target": "Deployment Checklist",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 9,
-          "column": 5
-        },
-        {
-          "target_page": "License Audit",
-          "raw_target": "License Audit",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 66
-        }
-      ],
-      "spl_blocks": [
-        {
-          "source_file": "decisions/Redis vs Memcached.md",
-          "source_page": "Redis vs Memcached",
-          "start_line": 11,
-          "end_line": 17,
-          "content": "(given evaluated-redis)\n(given redis-supports-persistence)\n(normally r-prefer-redis\n  (and evaluated-redis redis-supports-persistence)\n  decided-use-redis)\n"
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771858387.323912
-    },
-    "concepts/Literature Notes.md": {
-      "path": "concepts/Literature Notes.md",
-      "page_name": "Literature Notes",
-      "links": [
-        {
-          "target_page": "Niklas Luhmann",
-          "raw_target": "Niklas Luhmann",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 4
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 25
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 15,
-          "column": 6
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 140
-        },
-        {
-          "target_page": "Elaborative Encoding",
-          "raw_target": "Elaborative Encoding",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 32
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 37
-        },
-        {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 11
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 42
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3230236
-    },
-    "concepts/Elaborative Encoding.md": {
-      "path": "concepts/Elaborative Encoding.md",
-      "page_name": "Elaborative Encoding",
-      "links": [
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 5
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 13,
-          "column": 22
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 29
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 16,
-          "column": 77
-        },
-        {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 11
-        },
-        {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 33
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.321986
-    },
-    "tools/Logseq.md": {
-      "path": "tools/Logseq.md",
-      "page_name": "Logseq",
-      "links": [
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 42
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 78
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 104
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 12,
-          "column": 137
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 18,
-          "column": 65
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": "atomic note",
-          "is_embed": false,
-          "line": 18,
-          "column": 140
-        },
-        {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 68
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 22,
-          "column": 11
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 22,
-          "column": 25
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3257937
-    },
-    "pages/contents.md": {
-      "path": "pages/contents.md",
-      "page_name": "contents",
-      "links": [],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3244646
-    },
-    "concepts/Knowledge Graph.md": {
-      "path": "concepts/Knowledge Graph.md",
-      "page_name": "Knowledge Graph",
-      "links": [
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 132
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 28
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 12,
-          "column": 17
-        },
-        {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 40
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 18,
-          "column": 28
-        },
-        {
-          "target_page": "zetl",
-          "raw_target": "zetl",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 12
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 31,
-          "column": 11
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 31,
-          "column": 35
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3227625
-    },
-    "audits/License Audit.md": {
-      "path": "audits/License Audit.md",
-      "page_name": "License Audit",
-      "links": [
-        {
-          "target_page": "Redis vs Memcached",
-          "raw_target": "Redis vs Memcached",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 13,
-          "column": 26
-        },
-        {
-          "target_page": "Deployment Checklist",
-          "raw_target": "Deployment Checklist",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 15,
-          "column": 5
-        }
-      ],
-      "spl_blocks": [
-        {
-          "source_file": "audits/License Audit.md",
-          "source_page": "License Audit",
-          "start_line": 6,
-          "end_line": 9,
-          "content": "(given discovered-license-risk)\n(except d-license-risk discovered-license-risk (not decided-use-redis))\n"
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771858387.3215084
-    },
-    "people/Niklas Luhmann.md": {
-      "path": "people/Niklas Luhmann.md",
-      "page_name": "Niklas Luhmann",
-      "links": [
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 13,
-          "column": 58
-        },
-        {
-          "target_page": "Luhmann's Slip Box",
-          "raw_target": "Luhmann's Slip Box",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 15,
-          "column": 22
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 15,
-          "column": 138
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 7
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 149
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 201
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 27,
-          "column": 11
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 27,
-          "column": 37
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.324647
-    },
-    "concepts/GTD.md": {
-      "path": "concepts/GTD.md",
-      "page_name": "GTD",
-      "links": [
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 106
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 9
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 83
-        },
-        {
-          "target_page": "Second Brain",
-          "raw_target": "Second Brain",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 11
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 29
-        }
-      ],
-      "spl_blocks": [],
-      "diagnostics": [],
-      "mtime": 1771858387.3226345
+      "mtime": 1771859323.031537
     },
     "concepts/Zettelkasten.md": {
       "path": "concepts/Zettelkasten.md",
@@ -2266,21 +1648,100 @@
       ],
       "spl_blocks": [],
       "diagnostics": [],
-      "mtime": 1771858387.323682
+      "mtime": 1771859323.0322943
     },
-    "concepts/Evergreen Notes.md": {
-      "path": "concepts/Evergreen Notes.md",
-      "page_name": "Evergreen Notes",
+    "tools/zetl.md": {
+      "path": "tools/zetl.md",
+      "page_name": "zetl",
       "links": [
         {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 11,
-          "column": 53
+          "line": 7,
+          "column": 34
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 63
+        },
+        {
+          "target_page": "Knowledge Graph",
+          "raw_target": "Knowledge Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 143
+        },
+        {
+          "target_page": "Obsidian",
+          "raw_target": "Obsidian",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 29,
+          "column": 11
+        },
+        {
+          "target_page": "Logseq",
+          "raw_target": "Logseq",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 29,
+          "column": 25
+        },
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 29,
+          "column": 37
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0345237
+    },
+    "tools/Logseq.md": {
+      "path": "tools/Logseq.md",
+      "page_name": "Logseq",
+      "links": [
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 8,
+          "column": 42
+        },
+        {
+          "target_page": "Obsidian",
+          "raw_target": "Obsidian",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 8,
+          "column": 78
         },
         {
           "target_page": "Bidirectional Links",
@@ -2289,18 +1750,18 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 13,
-          "column": 57
+          "line": 8,
+          "column": 104
         },
         {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 14,
-          "column": 64
+          "line": 12,
+          "column": 137
         },
         {
           "target_page": "Zettelkasten",
@@ -2310,7 +1771,125 @@
           "alias": null,
           "is_embed": false,
           "line": 18,
-          "column": 57
+          "column": 65
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": "atomic note",
+          "is_embed": false,
+          "line": 18,
+          "column": 140
+        },
+        {
+          "target_page": "Literature Notes",
+          "raw_target": "Literature Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 68
+        },
+        {
+          "target_page": "Obsidian",
+          "raw_target": "Obsidian",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 22,
+          "column": 11
+        },
+        {
+          "target_page": "Knowledge Graph",
+          "raw_target": "Knowledge Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 22,
+          "column": 25
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0341969
+    },
+    "concepts/Functional Programming.md": {
+      "path": "concepts/Functional Programming.md",
+      "page_name": "Functional Programming",
+      "links": [
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 27
+        },
+        {
+          "target_page": "Knowledge Graph",
+          "raw_target": "Knowledge Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 12,
+          "column": 88
+        },
+        {
+          "target_page": "Data Structures",
+          "raw_target": "Data Structures",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 14,
+          "column": 11
+        },
+        {
+          "target_page": "Category Theory",
+          "raw_target": "Category Theory",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 14,
+          "column": 32
+        },
+        {
+          "target_page": "Lambda Calculus",
+          "raw_target": "Lambda Calculus",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 14,
+          "column": 53
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0311522
+    },
+    "concepts/Elaborative Encoding.md": {
+      "path": "concepts/Elaborative Encoding.md",
+      "page_name": "Elaborative Encoding",
+      "links": [
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 5
         },
         {
           "target_page": "Atomic Notes",
@@ -2319,8 +1898,8 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 20,
-          "column": 34
+          "line": 13,
+          "column": 22
         },
         {
           "target_page": "Bidirectional Links",
@@ -2329,17 +1908,27 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 20,
-          "column": 64
+          "line": 14,
+          "column": 29
         },
         {
-          "target_page": "Niklas Luhmann",
-          "raw_target": "Niklas Luhmann",
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 22,
+          "line": 16,
+          "column": 77
+        },
+        {
+          "target_page": "Literature Notes",
+          "raw_target": "Literature Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
           "column": 11
         },
         {
@@ -2349,13 +1938,424 @@
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 22,
-          "column": 31
+          "line": 25,
+          "column": 33
         }
       ],
       "spl_blocks": [],
       "diagnostics": [],
-      "mtime": 1771858387.322243
+      "mtime": 1771859323.0306482
+    },
+    "pages/contents.md": {
+      "path": "pages/contents.md",
+      "page_name": "contents",
+      "links": [],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0330665
+    },
+    "concepts/Emergent Structure.md": {
+      "path": "concepts/Emergent Structure.md",
+      "page_name": "Emergent Structure",
+      "links": [
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 6
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 148
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 39
+        },
+        {
+          "target_page": "Map of Content",
+          "raw_target": "Map of Content",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 158
+        },
+        {
+          "target_page": "Folder-based Organization",
+          "raw_target": "Folder-based Organization",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 24,
+          "column": 1
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 24,
+          "column": 166
+        },
+        {
+          "target_page": "Knowledge Graph",
+          "raw_target": "Knowledge Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 26,
+          "column": 11
+        },
+        {
+          "target_page": "Niklas Luhmann",
+          "raw_target": "Niklas Luhmann",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 26,
+          "column": 32
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0307784
+    },
+    "concepts/Knowledge Graph.md": {
+      "path": "concepts/Knowledge Graph.md",
+      "page_name": "Knowledge Graph",
+      "links": [
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 132
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 28
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 12,
+          "column": 17
+        },
+        {
+          "target_page": "Map of Content",
+          "raw_target": "Map of Content",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 14,
+          "column": 40
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 18,
+          "column": 28
+        },
+        {
+          "target_page": "zetl",
+          "raw_target": "zetl",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 12
+        },
+        {
+          "target_page": "Emergent Structure",
+          "raw_target": "Emergent Structure",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 31,
+          "column": 11
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 31,
+          "column": 35
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0314112
+    },
+    "processes/Deployment Checklist.md": {
+      "path": "processes/Deployment Checklist.md",
+      "page_name": "Deployment Checklist",
+      "links": [
+        {
+          "target_page": "License Audit",
+          "raw_target": "License Audit",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 11
+        },
+        {
+          "target_page": "Redis vs Memcached",
+          "raw_target": "Redis vs Memcached",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 53
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "processes/Deployment Checklist.md",
+          "source_page": "Deployment Checklist",
+          "start_line": 8,
+          "end_line": 12,
+          "content": "(normally r-ready-prod\n  (and verified-load-test verified-security-audit)\n  ready-for-production)\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771859323.0337975
+    },
+    "tools/Obsidian.md": {
+      "path": "tools/Obsidian.md",
+      "page_name": "Obsidian",
+      "links": [
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 8,
+          "column": 30
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 8,
+          "column": 76
+        },
+        {
+          "target_page": "Knowledge Graph",
+          "raw_target": "Knowledge Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 12,
+          "column": 37
+        },
+        {
+          "target_page": "Atomic Notes",
+          "raw_target": "Atomic Notes",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 20,
+          "column": 11
+        },
+        {
+          "target_page": "Map of Content",
+          "raw_target": "Map of Content",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 23,
+          "column": 11
+        },
+        {
+          "target_page": "Logseq",
+          "raw_target": "Logseq",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 28,
+          "column": 24
+        },
+        {
+          "target_page": "Notion",
+          "raw_target": "Notion",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 28,
+          "column": 37
+        },
+        {
+          "target_page": "zetl",
+          "raw_target": "zetl",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 35,
+          "column": 11
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 35,
+          "column": 21
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0344126
+    },
+    "people/Niklas Luhmann.md": {
+      "path": "people/Niklas Luhmann.md",
+      "page_name": "Niklas Luhmann",
+      "links": [
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 13,
+          "column": 58
+        },
+        {
+          "target_page": "Luhmann's Slip Box",
+          "raw_target": "Luhmann's Slip Box",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 15,
+          "column": 22
+        },
+        {
+          "target_page": "Bidirectional Links",
+          "raw_target": "Bidirectional Links",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 15,
+          "column": 138
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 21,
+          "column": 7
+        },
+        {
+          "target_page": "Obsidian",
+          "raw_target": "Obsidian",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 149
+        },
+        {
+          "target_page": "Zettelkasten",
+          "raw_target": "Zettelkasten",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 201
+        },
+        {
+          "target_page": "Knowledge Management",
+          "raw_target": "Knowledge Management",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 27,
+          "column": 11
+        },
+        {
+          "target_page": "Emergent Structure",
+          "raw_target": "Emergent Structure",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 27,
+          "column": 37
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771859323.0332198
     }
   }
 }
