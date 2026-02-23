@@ -3,26 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 277,
-    "deletions": 11,
+    "files_changed": 2,
+    "insertions": 26,
+    "deletions": 0,
     "file_list": [
-      ".hence/context-manifest.json",
       "src/cli.rs",
       "src/main.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 3
   },
   "learnings": [
     {
-      "key": "task-cmd-reason-export-changes",
-      "content": "Modified 3 files (+277, -11): .hence/context-manifest.json, src/cli.rs, src/main.rs",
+      "key": "task-feature-gate-changes",
+      "content": "Modified 2 files (+26, -0): src/cli.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cmd-reason-export-v1",
-  "evaluated_at": "2026-02-23T14:53:02Z",
+  "branch_name": "hence/feature-gate-v1",
+  "evaluated_at": "2026-02-23T14:56:42Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
