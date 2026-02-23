@@ -183,8 +183,17 @@ pub enum ReasonCommand {
         #[arg(long)]
         literal: Option<String>,
     },
-    /// Explain why a conclusion holds
-    Explain,
+    /// Explain why a conclusion holds (proof tree with provenance)
+    Explain {
+        /// Literal to explain (e.g. "flies", "~guilty")
+        literal: String,
+        /// Maximum proof tree depth
+        #[arg(long, default_value = "10")]
+        depth: usize,
+        /// Output format for the explanation
+        #[arg(long, default_value = "json")]
+        format: ExplainFormat,
+    },
     /// Hypothetical reasoning: what if a fact were added?
     WhatIf,
     /// Why is a literal not provable?
@@ -197,6 +206,15 @@ pub enum ReasonCommand {
     Export,
     /// Trace full provenance for a conclusion
     Provenance,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Clone, ValueEnum)]
+pub enum ExplainFormat {
+    Json,
+    Table,
+    Natural,
+    Dot,
 }
 
 #[derive(Clone, ValueEnum)]
