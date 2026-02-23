@@ -114,9 +114,9 @@ impl LinkGraph {
                     .unwrap_or_else(|| link.target_page.clone());
 
                 // Create the target node if it doesn't exist yet (phantom node)
-                let target_idx = *node_map.entry(target_name.clone()).or_insert_with(|| {
-                    graph.add_node(target_name.clone())
-                });
+                let target_idx = *node_map
+                    .entry(target_name.clone())
+                    .or_insert_with(|| graph.add_node(target_name.clone()));
 
                 let meta = EdgeMeta {
                     source_file: file.path.to_string_lossy().to_string(),
@@ -207,16 +207,10 @@ impl LinkGraph {
 
         for page_name in &self.resolved {
             let &idx = &self.node_map[page_name];
-            let incoming_count = self
-                .graph
-                .edges_directed(idx, Direction::Incoming)
-                .count();
+            let incoming_count = self.graph.edges_directed(idx, Direction::Incoming).count();
 
             if incoming_count == 0 {
-                let forward_count = self
-                    .graph
-                    .edges_directed(idx, Direction::Outgoing)
-                    .count();
+                let forward_count = self.graph.edges_directed(idx, Direction::Outgoing).count();
 
                 result.push(Orphan {
                     page: page_name.clone(),
@@ -302,11 +296,8 @@ impl LinkGraph {
         let links = self.graph.edge_count();
 
         // Unique targets: count distinct target nodes across all edges
-        let unique_targets: HashSet<NodeIndex> = self
-            .graph
-            .edge_references()
-            .map(|e| e.target())
-            .collect();
+        let unique_targets: HashSet<NodeIndex> =
+            self.graph.edge_references().map(|e| e.target()).collect();
         let unique_targets_count = unique_targets.len();
 
         let dead_links = self.dead_links().len();
@@ -317,8 +308,7 @@ impl LinkGraph {
         let ambiguous_links = 0;
 
         // Connected components using petgraph's algo (treats the graph as undirected)
-        let connected_components =
-            petgraph::algo::connected_components(&self.graph);
+        let connected_components = petgraph::algo::connected_components(&self.graph);
 
         // Most linked: count incoming edges for each real node, sort descending
         let mut backlink_counts: Vec<MostLinked> = self
@@ -326,10 +316,7 @@ impl LinkGraph {
             .iter()
             .map(|name| {
                 let &idx = &self.node_map[name];
-                let count = self
-                    .graph
-                    .edges_directed(idx, Direction::Incoming)
-                    .count();
+                let count = self.graph.edges_directed(idx, Direction::Incoming).count();
                 MostLinked {
                     page: name.clone(),
                     backlink_count: count,
@@ -383,6 +370,7 @@ mod tests {
                     column: 1,
                 })
                 .collect(),
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         }
@@ -473,6 +461,7 @@ mod tests {
             path: PathBuf::from("daily.md"),
             page_name: "daily".to_string(),
             links: vec![make_link("note", 5, None, None, None, false)],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         }];
@@ -486,6 +475,7 @@ mod tests {
                 path: PathBuf::from("My Note.md"),
                 page_name: "My Note".to_string(),
                 links: vec![],
+                spl_blocks: vec![],
                 diagnostics: vec![],
                 mtime: SystemTime::now(),
             },
@@ -545,6 +535,7 @@ mod tests {
             path: PathBuf::from("source.md"),
             page_name: "source".to_string(),
             links: vec![make_link("target", 3, Some("display"), None, None, true)],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         }];
@@ -555,6 +546,7 @@ mod tests {
             path: PathBuf::from("target.md"),
             page_name: "target".to_string(),
             links: vec![],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         };
@@ -897,6 +889,7 @@ mod tests {
                 Some("block123"),
                 false,
             )],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         }];
@@ -904,13 +897,13 @@ mod tests {
             path: PathBuf::from("target.md"),
             page_name: "target".to_string(),
             links: vec![],
+            spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
         };
-        let resolved: HashMap<String, String> =
-            [("target".to_string(), "target".to_string())]
-                .into_iter()
-                .collect();
+        let resolved: HashMap<String, String> = [("target".to_string(), "target".to_string())]
+            .into_iter()
+            .collect();
 
         let graph = LinkGraph::build(&[files[0].clone(), target_file], &resolved);
         let fwd = graph.forward_links("source");

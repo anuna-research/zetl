@@ -1,541 +1,196 @@
 {
   "version": 1,
   "files": {
-    "concepts/Knowledge Graph.md": {
-      "path": "concepts/Knowledge Graph.md",
-      "page_name": "Knowledge Graph",
+    "architecture/Cache.md": {
+      "path": "architecture/Cache.md",
+      "page_name": "Cache",
       "links": [
         {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 7,
-          "column": 132
+          "column": 56
         },
         {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 11,
-          "column": 28
+          "line": 7,
+          "column": 79
         },
         {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
+          "target_page": "Plugin System",
+          "raw_target": "Plugin System",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 12,
-          "column": 17
+          "line": 39,
+          "column": 126
         },
         {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
+          "target_page": "Local-first Design",
+          "raw_target": "Local-first Design",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 14,
+          "line": 43,
+          "column": 95
+        },
+        {
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 45,
+          "column": 11
+        },
+        {
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 45,
+          "column": 24
+        },
+        {
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 45,
           "column": 40
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "architecture/Cache.md",
+          "source_page": "Cache",
+          "start_line": 18,
+          "end_line": 21,
+          "content": "(given mtime-based-cache)\n(given incremental-rebuild)\n"
         },
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 18,
-          "column": 28
-        },
-        {
-          "target_page": "zetl",
-          "raw_target": "zetl",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 12
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 31,
-          "column": 11
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 31,
-          "column": 35
+          "source_file": "architecture/Cache.md",
+          "source_page": "Cache",
+          "start_line": 27,
+          "end_line": 37,
+          "content": "; Cache the theory for fast startup\n(normally r-cache-theory\n  mtime-based-cache\n  cache-reasoning-results)\n\n; But recomputing ensures results are always fresh\n(normally r-recompute-theory\n  incremental-rebuild\n  (not cache-reasoning-results))\n"
         }
       ],
       "diagnostics": [],
-      "mtime": 1771400006.1367712
+      "mtime": 1771877001.1969976
     },
-    "concepts/Progressive Summarization.md": {
-      "path": "concepts/Progressive Summarization.md",
-      "page_name": "Progressive Summarization",
+    "concepts/Wikilinks.md": {
+      "path": "concepts/Wikilinks.md",
+      "page_name": "Wikilinks",
       "links": [
         {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 7
-        },
-        {
-          "target_page": "Second Brain",
-          "raw_target": "Second Brain",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 60
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 107
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 178
-        },
-        {
-          "target_page": "Elaborative Encoding",
-          "raw_target": "Elaborative Encoding",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 29
-        },
-        {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 11
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 33
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400037.077791
-    },
-    "concepts/Evergreen Notes.md": {
-      "path": "concepts/Evergreen Notes.md",
-      "page_name": "Evergreen Notes",
-      "links": [
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 53
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 13,
-          "column": 57
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 64
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 18,
-          "column": 57
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 34
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 64
-        },
-        {
-          "target_page": "Niklas Luhmann",
-          "raw_target": "Niklas Luhmann",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 22,
-          "column": 11
-        },
-        {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 22,
-          "column": 31
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400010.8954952
-    },
-    "concepts/GTD.md": {
-      "path": "concepts/GTD.md",
-      "page_name": "GTD",
-      "links": [
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 7,
-          "column": 106
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 9
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 83
-        },
-        {
-          "target_page": "Second Brain",
-          "raw_target": "Second Brain",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 11
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 29
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400095.4099271
-    },
-    "concepts/Second Brain.md": {
-      "path": "concepts/Second Brain.md",
-      "page_name": "Second Brain",
-      "links": [
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 25
-        },
-        {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 26
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 16,
-          "column": 22
-        },
-        {
-          "target_page": "Folder-based Organization",
-          "raw_target": "Folder-based Organization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 18
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 57
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 35
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 22,
-          "column": 47
-        },
-        {
-          "target_page": "Notion",
-          "raw_target": "Notion",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 11
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 34
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 48
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400032.5951927
-    },
-    "concepts/Atomic Notes.md": {
-      "path": "concepts/Atomic Notes.md",
-      "page_name": "Atomic Notes",
-      "links": [
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 96
-        },
-        {
-          "target_page": "Functional Programming",
-          "raw_target": "Functional Programming",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 111
-        },
-        {
-          "target_page": "Data Structures",
-          "raw_target": "Data Structures",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 139
-        },
-        {
-          "target_page": "Mathematical Induction",
-          "raw_target": "Mathematical Induction",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
           "column": 163
         },
         {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 30
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 51
-        },
-        {
-          "target_page": "Elaborative Encoding",
-          "raw_target": "Elaborative Encoding",
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 21,
-          "column": 49
+          "column": 5
         },
         {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 25,
-          "column": 1
+          "line": 21,
+          "column": 66
         },
         {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 27,
-          "column": 29
+          "line": 30,
+          "column": 81
         },
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 29,
-          "column": 40
+          "line": 30,
+          "column": 162
+        },
+        {
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 30,
+          "column": 185
+        },
+        {
+          "target_page": "Local-first Design",
+          "raw_target": "Local-first Design",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 34,
+          "column": 89
         }
       ],
+      "spl_blocks": [],
       "diagnostics": [],
-      "mtime": 1771399980.6930454
+      "mtime": 1771876829.6421926
     },
-    "tools/Notion.md": {
-      "path": "tools/Notion.md",
-      "page_name": "Notion",
+    "features/Reason Commands.md": {
+      "path": "features/Reason Commands.md",
+      "page_name": "Reason Commands",
       "links": [
         {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 27
+        },
+        {
+          "target_page": "Feature Gates",
+          "raw_target": "Feature Gates",
           "heading": null,
           "block_ref": null,
           "alias": null,
@@ -544,231 +199,743 @@
           "column": 129
         },
         {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 7,
-          "column": 181
+          "line": 24,
+          "column": 32
         },
         {
-          "target_page": "Folder-based Organization",
-          "raw_target": "Folder-based Organization",
+          "target_page": "Provenance",
+          "raw_target": "Provenance",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 14,
-          "column": 14
+          "line": 28,
+          "column": 113
         },
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 18,
-          "column": 77
+          "line": 40,
+          "column": 96
         },
         {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 18,
-          "column": 104
+          "line": 48,
+          "column": 54
         },
         {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
+          "target_page": "Provenance",
+          "raw_target": "Provenance",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 18,
-          "column": 120
+          "line": 48,
+          "column": 76
         },
         {
-          "target_page": "Second Brain",
-          "raw_target": "Second Brain",
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 20,
+          "line": 52,
+          "column": 69
+        },
+        {
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 64,
           "column": 11
         },
         {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
+          "target_page": "Defeasible Reasoning",
+          "raw_target": "Defeasible Reasoning",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 20,
-          "column": 29
+          "line": 64,
+          "column": 33
+        },
+        {
+          "target_page": "Provenance",
+          "raw_target": "Provenance",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 64,
+          "column": 59
+        },
+        {
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 64,
+          "column": 75
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "features/Reason Commands.md",
+          "source_page": "Reason Commands",
+          "start_line": 9,
+          "end_line": 18,
+          "content": "(given reason-status-done)\n(given reason-explain-done)\n(given reason-why-not-done)\n(given reason-require-done)\n(given reason-what-if-done)\n(given reason-conflicts-done)\n(given reason-export-done)\n(given reason-provenance-done)\n"
         }
       ],
       "diagnostics": [],
-      "mtime": 1771400071.7800486
+      "mtime": 1771877307.8118062
     },
-    "pages/contents.md": {
-      "path": "pages/contents.md",
-      "page_name": "contents",
+    "theories/design-principles.spl": {
+      "path": "theories/design-principles.spl",
+      "page_name": "design-principles",
       "links": [],
-      "diagnostics": [],
-      "mtime": 1771402647.3121305
-    },
-    "concepts/Knowledge Management.md": {
-      "path": "concepts/Knowledge Management.md",
-      "page_name": "Knowledge Management",
-      "links": [
+      "spl_blocks": [
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 13,
-          "column": 3
-        },
-        {
-          "target_page": "Second Brain",
-          "raw_target": "Second Brain",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 3
-        },
-        {
-          "target_page": "GTD",
-          "raw_target": "GTD",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 15,
-          "column": 3
-        },
-        {
-          "target_page": "Folder-based Organization",
-          "raw_target": "Folder-based Organization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 49
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 102
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 116
-        },
-        {
-          "target_page": "Notion",
-          "raw_target": "Notion",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 132
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 150
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 123
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 188
-        },
-        {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 11
-        },
-        {
-          "target_page": "Elaborative Encoding",
-          "raw_target": "Elaborative Encoding",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 42
+          "source_file": "theories/design-principles.spl",
+          "source_page": "design-principles",
+          "start_line": 1,
+          "end_line": 28,
+          "content": "; zetl design principles as defeasible logic\n; These rules capture the reasoning behind architectural decisions.\n; Run: zetl reason status --positive -d .\n\n; Good CLI tool: fast, single binary, type-safe\n(normally r-good-cli\n  (and fast-startup single-binary type-safe)\n  good-cli-tool)\n\n; Dual-audience: serves both agents and humans\n(normally r-dual-audience\n  (and json-default-output tui-complete seven-views)\n  serves-both-audiences)\n\n; Lean default: optional deps don't bloat the default binary\n(normally r-lean-default\n  reason-feature-optional\n  lean-default-binary)\n\n; Good developer experience from graceful degradation\n(normally r-good-dx\n  graceful-degradation\n  good-developer-experience)\n\n; Feature gates + graceful degradation = progressive disclosure\n(normally r-progressive-disclosure\n  (and lean-default-binary good-developer-experience)\n  progressive-disclosure)\n"
         }
       ],
       "diagnostics": [],
-      "mtime": 1771399994.2424238
+      "mtime": 1771877108.288976
     },
-    "concepts/Emergent Structure.md": {
-      "path": "concepts/Emergent Structure.md",
-      "page_name": "Emergent Structure",
+    "concepts/Provenance.md": {
+      "path": "concepts/Provenance.md",
+      "page_name": "Provenance",
       "links": [
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 130
+        },
+        {
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 24,
+          "column": 68
+        },
+        {
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 55
+        },
+        {
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 31,
+          "column": 11
+        },
+        {
+          "target_page": "Reason Commands",
+          "raw_target": "Reason Commands",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 31,
+          "column": 33
+        },
+        {
+          "target_page": "Defeasible Reasoning",
+          "raw_target": "Defeasible Reasoning",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 31,
+          "column": 54
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771876847.0461864
+    },
+    "decisions/Rust for CLI.md": {
+      "path": "decisions/Rust for CLI.md",
+      "page_name": "Rust for CLI",
+      "links": [
+        {
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 27
+        },
+        {
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 40
+        },
+        {
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 60
+        },
+        {
+          "target_page": "Feature Gates",
+          "raw_target": "Feature Gates",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 7
+        },
+        {
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 32,
+          "column": 47
+        },
+        {
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 32,
+          "column": 82
+        },
+        {
+          "target_page": "TUI",
+          "raw_target": "TUI",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 32,
+          "column": 107
+        },
+        {
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 32,
+          "column": 152
+        },
+        {
+          "target_page": "Feature Gates",
+          "raw_target": "Feature Gates",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 34,
+          "column": 11
+        },
+        {
+          "target_page": "JSON by Default",
+          "raw_target": "JSON by Default",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 34,
+          "column": 30
+        },
+        {
+          "target_page": "Local-first Design",
+          "raw_target": "Local-first Design",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 34,
+          "column": 51
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "decisions/Rust for CLI.md",
+          "source_page": "Rust for CLI",
+          "start_line": 9,
+          "end_line": 13,
+          "content": "(given type-safe)\n(given single-binary)\n(given fast-startup)\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771877027.6113973
+    },
+    "theories/release-readiness.spl": {
+      "path": "theories/release-readiness.spl",
+      "page_name": "release-readiness",
+      "links": [],
+      "spl_blocks": [
+        {
+          "source_file": "theories/release-readiness.spl",
+          "source_page": "release-readiness",
+          "start_line": 1,
+          "end_line": 52,
+          "content": "; zetl release readiness theory\n; Combines facts from across the vault to determine if zetl is ready to ship.\n; Run: zetl reason status -d . | jq '.conclusions[] | select(.literal == \"release-candidate\")'\n\n; --- Strict rules: these must hold, no exceptions ---\n\n; Scanner must handle both wikilinks and SPL\n(always r-scanner-complete\n  (and wikilink-extraction spl-extraction)\n  scanner-complete)\n\n; Graph engine must support all query types\n(always r-graph-complete\n  (and directed-graph multi-hop-traversal forward-links-done backlinks-done shortest-path-done)\n  graph-complete)\n\n; All eight reason commands must be implemented\n(always r-reason-commands-complete\n  (and reason-status-done reason-explain-done reason-why-not-done reason-require-done reason-what-if-done reason-conflicts-done reason-export-done reason-provenance-done)\n  reason-commands-complete)\n\n; Diagnostics cover both links and logic\n(always r-diagnostics-complete\n  (and dead-link-detection orphan-detection spl-diagnostics)\n  diagnostics-complete)\n\n; --- Defeasible rules: normally true, can be defeated ---\n\n; Agent-friendly when JSON + structured errors + exit codes\n(normally r-agent-friendly\n  (and json-default-output structured-errors nonzero-exit-codes)\n  agent-friendly)\n\n; Safe to use when read-only + disposable cache\n(normally r-safe-to-use\n  (and read-only-vault-access disposable-cache)\n  safe-to-use)\n\n; Core features ready when scanner, graph, diagnostics, and search are done\n(normally r-core-ready\n  (and scanner-complete graph-complete diagnostics-complete fulltext-search-done)\n  core-features-ready)\n\n; Reasoning layer ready when commands + engine integration are done\n(normally r-reasoning-ready\n  (and reason-commands-complete spindle-core-integrated four-conclusion-types)\n  reasoning-ready)\n\n; Release candidate when all areas are in place\n(normally r-release-candidate\n  (and core-features-ready reasoning-ready agent-friendly safe-to-use tui-complete)\n  release-candidate)\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771877103.0238416
+    },
+    "architecture/Link Graph.md": {
+      "path": "architecture/Link Graph.md",
+      "page_name": "Link Graph",
+      "links": [
+        {
+          "target_page": "Wikilinks",
+          "raw_target": "Wikilinks",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 7,
-          "column": 6
+          "column": 66
         },
         {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 14,
+          "column": 27
+        },
+        {
+          "target_page": "Cache",
+          "raw_target": "Cache",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 14,
+          "column": 57
+        },
+        {
+          "target_page": "Graph Queries",
+          "raw_target": "Graph Queries",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 30,
+          "column": 27
+        },
+        {
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 30,
+          "column": 125
+        },
+        {
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 36,
+          "column": 11
+        },
+        {
+          "target_page": "Graph Queries",
+          "raw_target": "Graph Queries",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 36,
+          "column": 24
+        },
+        {
+          "target_page": "Vault Diagnostics",
+          "raw_target": "Vault Diagnostics",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 36,
+          "column": 43
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "architecture/Link Graph.md",
+          "source_page": "Link Graph",
+          "start_line": 16,
+          "end_line": 19,
+          "content": "(given directed-graph)\n(given multi-hop-traversal)\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771876795.7427723
+    },
+    "architecture/Reasoning Engine.md": {
+      "path": "architecture/Reasoning Engine.md",
+      "page_name": "Reasoning Engine",
+      "links": [
+        {
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 28
+        },
+        {
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 62
+        },
+        {
+          "target_page": "Defeasible Reasoning",
+          "raw_target": "Defeasible Reasoning",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 167
+        },
+        {
+          "target_page": "Provenance",
+          "raw_target": "Provenance",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 223
+        },
+        {
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 11,
+          "column": 20
+        },
+        {
+          "target_page": "Defeasible Reasoning",
+          "raw_target": "Defeasible Reasoning",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 26,
+          "column": 54
+        },
+        {
+          "target_page": "Feature Gates",
+          "raw_target": "Feature Gates",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 37,
+          "column": 83
+        },
+        {
+          "target_page": "Reason Commands",
+          "raw_target": "Reason Commands",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 39,
+          "column": 11
+        },
+        {
+          "target_page": "Provenance",
+          "raw_target": "Provenance",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 39,
+          "column": 32
+        },
+        {
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 39,
+          "column": 48
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "architecture/Reasoning Engine.md",
+          "source_page": "Reasoning Engine",
+          "start_line": 19,
+          "end_line": 22,
+          "content": "(given spindle-core-integrated)\n(given four-conclusion-types)\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771876803.9225364
+    },
+    "concepts/Spindle Lisp.md": {
+      "path": "concepts/Spindle Lisp.md",
+      "page_name": "Spindle Lisp",
+      "links": [
+        {
+          "target_page": "Defeasible Reasoning",
+          "raw_target": "Defeasible Reasoning",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 65
+        },
+        {
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 87,
+          "column": 5
+        },
+        {
+          "target_page": "Provenance",
+          "raw_target": "Provenance",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 87,
+          "column": 61
+        },
+        {
+          "target_page": "Reason Commands",
+          "raw_target": "Reason Commands",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 87,
+          "column": 124
+        },
+        {
+          "target_page": "Defeasible Reasoning",
+          "raw_target": "Defeasible Reasoning",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 93,
+          "column": 11
+        },
+        {
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 93,
+          "column": 37
+        },
+        {
+          "target_page": "Provenance",
+          "raw_target": "Provenance",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 93,
+          "column": 59
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771877210.4146054
+    },
+    "decisions/Local-first Design.md": {
+      "path": "decisions/Local-first Design.md",
+      "page_name": "Local-first Design",
+      "links": [
+        {
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 83
+        },
+        {
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 17,
+          "column": 108
+        },
+        {
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 19,
+          "column": 65
+        },
+        {
+          "target_page": "Cache",
+          "raw_target": "Cache",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 25,
+          "column": 5
+        },
+        {
+          "target_page": "Cache",
+          "raw_target": "Cache",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 31,
+          "column": 11
+        },
+        {
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 31,
+          "column": 22
+        },
+        {
+          "target_page": "Rust for CLI",
+          "raw_target": "Rust for CLI",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 31,
+          "column": 35
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "decisions/Local-first Design.md",
+          "source_page": "Local-first Design",
+          "start_line": 9,
+          "end_line": 12,
+          "content": "(given read-only-vault-access)\n(given disposable-cache)\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771877052.0901449
+    },
+    "architecture/Scanner.md": {
+      "path": "architecture/Scanner.md",
+      "page_name": "Scanner",
+      "links": [
+        {
+          "target_page": "Wikilinks",
+          "raw_target": "Wikilinks",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 130
+        },
+        {
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
           "heading": null,
           "block_ref": null,
           "alias": null,
@@ -777,795 +944,279 @@
           "column": 148
         },
         {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 39
-        },
-        {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 158
-        },
-        {
-          "target_page": "Folder-based Organization",
-          "raw_target": "Folder-based Organization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 1
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 166
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 11
-        },
-        {
-          "target_page": "Niklas Luhmann",
-          "raw_target": "Niklas Luhmann",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 26,
-          "column": 32
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400000.601858
-    },
-    "tools/Obsidian.md": {
-      "path": "tools/Obsidian.md",
-      "page_name": "Obsidian",
-      "links": [
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 30
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 76
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 12,
-          "column": 37
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 11
-        },
-        {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 11
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 28,
-          "column": 24
-        },
-        {
-          "target_page": "Notion",
-          "raw_target": "Notion",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 28,
-          "column": 37
-        },
-        {
-          "target_page": "zetl",
-          "raw_target": "zetl",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 35,
-          "column": 11
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 35,
-          "column": 21
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400062.1967428
-    },
-    "concepts/Folder-based Organization.md": {
-      "path": "concepts/Folder-based Organization.md",
-      "page_name": "Folder-based Organization",
-      "links": [
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 58
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 5
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 53
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 81
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 27,
-          "column": 12
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400021.988101
-    },
-    "concepts/Bidirectional Links.md": {
-      "path": "concepts/Bidirectional Links.md",
-      "page_name": "Bidirectional Links",
-      "links": [
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 9,
-          "column": 36
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 19,
-          "column": 15
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 32
-        },
-        {
-          "target_page": "zetl",
-          "raw_target": "zetl",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 26
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 44
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 31,
-          "column": 11
-        },
-        {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 31,
-          "column": 35
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771399988.474276
-    },
-    "tools/Logseq.md": {
-      "path": "tools/Logseq.md",
-      "page_name": "Logseq",
-      "links": [
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 42
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 78
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 104
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 12,
-          "column": 137
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 18,
-          "column": 65
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": "atomic note",
-          "is_embed": false,
-          "line": 18,
-          "column": 140
-        },
-        {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 68
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 22,
-          "column": 11
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 22,
-          "column": 25
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400068.5524461
-    },
-    "concepts/Luhmann's Slip Box.md": {
-      "path": "concepts/Luhmann's Slip Box.md",
-      "page_name": "Luhmann's Slip Box",
-      "links": [
-        {
-          "target_page": "Niklas Luhmann",
-          "raw_target": "Niklas Luhmann",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 1
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
           "column": 31
         },
         {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 120
-        },
-        {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 23,
-          "column": 26
+          "column": 193
         },
         {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
+          "target_page": "Provenance",
+          "raw_target": "Provenance",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 24,
-          "column": 21
+          "line": 23,
+          "column": 224
         },
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Local-first Design",
+          "raw_target": "Local-first Design",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 26,
+          "line": 32,
+          "column": 144
+        },
+        {
+          "target_page": "Cache",
+          "raw_target": "Cache",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 34,
+          "column": 11
+        },
+        {
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 34,
           "column": 22
         },
         {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 30,
-          "column": 19
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 30,
-          "column": 36
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 30,
-          "column": 155
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 34,
-          "column": 11
-        },
+          "column": 38
+        }
+      ],
+      "spl_blocks": [
         {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 34,
-          "column": 35
+          "source_file": "architecture/Scanner.md",
+          "source_page": "Scanner",
+          "start_line": 25,
+          "end_line": 28,
+          "content": "(given wikilink-extraction)\n(given spl-extraction)\n"
         }
       ],
       "diagnostics": [],
-      "mtime": 1771400056.023513
+      "mtime": 1771876789.090034
     },
-    "practices/Review Process.md": {
-      "path": "practices/Review Process.md",
-      "page_name": "Review Process",
+    "features/Search.md": {
+      "path": "features/Search.md",
+      "page_name": "Search",
       "links": [
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 7,
-          "column": 54
+          "line": 35,
+          "column": 129
         },
         {
-          "target_page": "Daily Note Practice",
-          "raw_target": "Daily Note Practice",
+          "target_page": "Graph Queries",
+          "raw_target": "Graph Queries",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 11,
-          "column": 12
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 50
-        },
-        {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 26
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 15
-        },
-        {
-          "target_page": "Linking Practice",
-          "raw_target": "Linking Practice",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
+          "line": 47,
           "column": 11
         },
         {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
+          "target_page": "TUI",
+          "raw_target": "TUI",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 24,
-          "column": 33
-        }
-      ],
-      "diagnostics": [
-        {
-          "level": "Error",
-          "message": "Unclosed wikilink: '[[broken link targets'",
-          "file": "practices/Review Process.md",
-          "line": 12,
-          "column": 14
+          "line": 47,
+          "column": 30
         },
         {
-          "level": "Error",
-          "message": "Empty wikilink: '[[]]'",
-          "file": "practices/Review Process.md",
-          "line": 15,
-          "column": 11
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 47,
+          "column": 39
         }
       ],
-      "mtime": 1771400103.6237605
+      "spl_blocks": [
+        {
+          "source_file": "features/Search.md",
+          "source_page": "Search",
+          "start_line": 9,
+          "end_line": 12,
+          "content": "(given fulltext-search-done)\n(given regex-support)\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771877302.7019677
     },
-    "practices/Linking Practice.md": {
-      "path": "practices/Linking Practice.md",
-      "page_name": "Linking Practice",
+    "features/Graph Queries.md": {
+      "path": "features/Graph Queries.md",
+      "page_name": "Graph Queries",
       "links": [
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 7,
-          "column": 47
+          "column": 18
         },
         {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
+          "target_page": "JSON by Default",
+          "raw_target": "JSON by Default",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 7,
-          "column": 153
+          "column": 100
         },
         {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 18,
-          "column": 67
-        },
-        {
-          "target_page": "Map of Content",
-          "raw_target": "Map of Content",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 42
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 36
-        },
-        {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 62
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
+          "target_page": "Wikilinks",
+          "raw_target": "Wikilinks",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 27,
-          "column": 56
+          "column": 28
         },
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 29,
+          "line": 31,
+          "column": 17
+        },
+        {
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 43,
+          "column": 64
+        },
+        {
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 43,
+          "column": 190
+        },
+        {
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 49,
           "column": 11
         },
         {
-          "target_page": "zetl",
-          "raw_target": "zetl",
+          "target_page": "Vault Diagnostics",
+          "raw_target": "Vault Diagnostics",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 29,
-          "column": 29
+          "line": 49,
+          "column": 27
+        },
+        {
+          "target_page": "Search",
+          "raw_target": "Search",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 49,
+          "column": 50
+        },
+        {
+          "target_page": "TUI",
+          "raw_target": "TUI",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 49,
+          "column": 62
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "features/Graph Queries.md",
+          "source_page": "Graph Queries",
+          "start_line": 9,
+          "end_line": 13,
+          "content": "(given forward-links-done)\n(given backlinks-done)\n(given shortest-path-done)\n"
         }
       ],
       "diagnostics": [],
-      "mtime": 1771400089.7517931
+      "mtime": 1771877287.8694565
     },
-    "practices/Daily Note Practice.md": {
-      "path": "practices/Daily Note Practice.md",
-      "page_name": "Daily Note Practice",
+    "decisions/Feature Gates.md": {
+      "path": "decisions/Feature Gates.md",
+      "page_name": "Feature Gates",
       "links": [
         {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 7,
-          "column": 114
+          "column": 5
         },
         {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 131
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 39
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 23
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 15,
-          "column": 36
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 18,
-          "column": 118
-        },
-        {
-          "target_page": "Elaborative Encoding",
-          "raw_target": "Elaborative Encoding",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 24,
-          "column": 32
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400083.9939418
-    },
-    "tools/zetl.md": {
-      "path": "tools/zetl.md",
-      "page_name": "zetl",
-      "links": [
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
+          "target_page": "Reason Commands",
+          "raw_target": "Reason Commands",
           "heading": null,
           "block_ref": null,
           "alias": null,
@@ -1574,636 +1225,437 @@
           "column": 34
         },
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Wikilinks",
+          "raw_target": "Wikilinks",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 7,
-          "column": 63
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 143
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 29,
-          "column": 11
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 29,
-          "column": 25
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 29,
-          "column": 37
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400079.2531857
-    },
-    "people/Niklas Luhmann.md": {
-      "path": "people/Niklas Luhmann.md",
-      "page_name": "Niklas Luhmann",
-      "links": [
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 13,
+          "line": 24,
           "column": 58
         },
         {
-          "target_page": "Luhmann's Slip Box",
-          "raw_target": "Luhmann's Slip Box",
+          "target_page": "Graph Queries",
+          "raw_target": "Graph Queries",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 15,
-          "column": 22
+          "line": 24,
+          "column": 73
         },
         {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
+          "target_page": "Search",
+          "raw_target": "Search",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 15,
-          "column": 138
+          "line": 24,
+          "column": 92
         },
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Vault Diagnostics",
+          "raw_target": "Vault Diagnostics",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 21,
-          "column": 7
+          "line": 24,
+          "column": 104
         },
         {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
+          "target_page": "TUI",
+          "raw_target": "TUI",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 25,
-          "column": 149
+          "line": 24,
+          "column": 135
         },
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Defeasible Reasoning",
+          "raw_target": "Defeasible Reasoning",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 25,
-          "column": 201
+          "line": 33,
+          "column": 24
         },
         {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 27,
+          "line": 34,
+          "column": 3
+        },
+        {
+          "target_page": "Rust for CLI",
+          "raw_target": "Rust for CLI",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 42,
           "column": 11
         },
         {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 27,
-          "column": 37
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400048.5092983
-    },
-    "concepts/Map of Content.md": {
-      "path": "concepts/Map of Content.md",
-      "page_name": "Map of Content",
-      "links": [
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 97
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 7,
-          "column": 134
-        },
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 17,
-          "column": 3
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 18,
-          "column": 3
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 3
-        },
-        {
-          "target_page": "Niklas Luhmann",
-          "raw_target": "Niklas Luhmann",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 20,
-          "column": 3
-        },
-        {
-          "target_page": "Luhmann's Slip Box",
-          "raw_target": "Luhmann's Slip Box",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 3
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 22,
-          "column": 3
-        },
-        {
-          "target_page": "Evergreen Notes",
-          "raw_target": "Evergreen Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 23,
-          "column": 3
-        },
-        {
-          "target_page": "Folder-based Organization",
-          "raw_target": "Folder-based Organization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 27,
-          "column": 8
-        },
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 29,
-          "column": 11
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 29,
-          "column": 37
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400016.7750401
-    },
-    "concepts/Zettelkasten.md": {
-      "path": "concepts/Zettelkasten.md",
-      "page_name": "Zettelkasten",
-      "links": [
-        {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 36
-        },
-        {
-          "target_page": "Niklas Luhmann",
-          "raw_target": "Niklas Luhmann",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 81
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 8,
-          "column": 124
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 12,
-          "column": 60
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 13,
-          "column": 50
-        },
-        {
-          "target_page": "Emergent Structure",
-          "raw_target": "Emergent Structure",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 70
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 127
-        },
-        {
-          "target_page": "Folder-based Organization",
-          "raw_target": "Folder-based Organization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 19,
-          "column": 229
-        },
-        {
-          "target_page": "Obsidian",
-          "raw_target": "Obsidian",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 39
-        },
-        {
-          "target_page": "Logseq",
-          "raw_target": "Logseq",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 21,
-          "column": 56
-        },
-        {
-          "target_page": "Luhmann's Slip Box",
-          "raw_target": "Luhmann's Slip Box",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 185
-        },
-        {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 29,
-          "column": 3
-        },
-        {
-          "target_page": "Evergreen Notes",
-          "raw_target": "Evergreen Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 30,
-          "column": 3
-        },
-        {
-          "target_page": "Second Brain",
-          "raw_target": "Second Brain",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 31,
-          "column": 3
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771399973.0014722
-    },
-    "concepts/Functional Programming.md": {
-      "path": "concepts/Functional Programming.md",
-      "page_name": "Functional Programming",
-      "links": [
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 27
-        },
-        {
-          "target_page": "Knowledge Graph",
-          "raw_target": "Knowledge Graph",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 12,
-          "column": 88
-        },
-        {
-          "target_page": "Data Structures",
-          "raw_target": "Data Structures",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 11
-        },
-        {
-          "target_page": "Category Theory",
-          "raw_target": "Category Theory",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 32
-        },
-        {
-          "target_page": "Lambda Calculus",
-          "raw_target": "Lambda Calculus",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
-          "column": 53
-        }
-      ],
-      "diagnostics": [],
-      "mtime": 1771400097.728169
-    },
-    "concepts/Elaborative Encoding.md": {
-      "path": "concepts/Elaborative Encoding.md",
-      "page_name": "Elaborative Encoding",
-      "links": [
-        {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 11,
-          "column": 5
-        },
-        {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 13,
-          "column": 22
-        },
-        {
-          "target_page": "Bidirectional Links",
-          "raw_target": "Bidirectional Links",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 14,
+          "line": 42,
           "column": 29
         },
         {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
+          "target_page": "Reason Commands",
+          "raw_target": "Reason Commands",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 16,
-          "column": 77
-        },
+          "line": 42,
+          "column": 51
+        }
+      ],
+      "spl_blocks": [
         {
-          "target_page": "Literature Notes",
-          "raw_target": "Literature Notes",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 11
-        },
-        {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
-          "heading": null,
-          "block_ref": null,
-          "alias": null,
-          "is_embed": false,
-          "line": 25,
-          "column": 33
+          "source_file": "decisions/Feature Gates.md",
+          "source_page": "Feature Gates",
+          "start_line": 9,
+          "end_line": 12,
+          "content": "(given reason-feature-optional)\n(given graceful-degradation)\n"
         }
       ],
       "diagnostics": [],
-      "mtime": 1771400041.6683364
+      "mtime": 1771877035.37095
     },
-    "concepts/Literature Notes.md": {
-      "path": "concepts/Literature Notes.md",
-      "page_name": "Literature Notes",
+    "concepts/Defeasible Reasoning.md": {
+      "path": "concepts/Defeasible Reasoning.md",
+      "page_name": "Defeasible Reasoning",
       "links": [
         {
-          "target_page": "Niklas Luhmann",
-          "raw_target": "Niklas Luhmann",
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 11,
-          "column": 4
+          "column": 202
         },
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 11,
-          "column": 25
+          "column": 276
         },
         {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
+          "target_page": "Reasoning Engine",
+          "raw_target": "Reasoning Engine",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 15,
-          "column": 6
+          "line": 43,
+          "column": 5
         },
         {
-          "target_page": "Knowledge Management",
-          "raw_target": "Knowledge Management",
+          "target_page": "Reason Commands",
+          "raw_target": "Reason Commands",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 17,
-          "column": 140
+          "line": 43,
+          "column": 82
         },
         {
-          "target_page": "Elaborative Encoding",
-          "raw_target": "Elaborative Encoding",
+          "target_page": "Provenance",
+          "raw_target": "Provenance",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 21,
-          "column": 32
+          "line": 43,
+          "column": 128
+        }
+      ],
+      "spl_blocks": [],
+      "diagnostics": [],
+      "mtime": 1771877004.8408089
+    },
+    "features/Vault Diagnostics.md": {
+      "path": "features/Vault Diagnostics.md",
+      "page_name": "Vault Diagnostics",
+      "links": [
+        {
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 75
         },
         {
-          "target_page": "Atomic Notes",
-          "raw_target": "Atomic Notes",
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 94
+        },
+        {
+          "target_page": "Wikilinks",
+          "raw_target": "Wikilinks",
+          "heading": null,
+          "block_ref": null,
+          "alias": "wikilink",
+          "is_embed": false,
+          "line": 19,
+          "column": 3
+        },
+        {
+          "target_page": "Wikilinks",
+          "raw_target": "Wikilinks",
+          "heading": null,
+          "block_ref": null,
+          "alias": "wikilink",
+          "is_embed": false,
+          "line": 27,
+          "column": 130
+        },
+        {
+          "target_page": "Wikilinks",
+          "raw_target": "Wikilinks",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 35,
+          "column": 11
+        },
+        {
+          "target_page": "Spindle Lisp",
+          "raw_target": "Spindle Lisp",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 39,
+          "column": 88
+        },
+        {
+          "target_page": "Graph Queries",
+          "raw_target": "Graph Queries",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 53,
+          "column": 11
+        },
+        {
+          "target_page": "Reason Commands",
+          "raw_target": "Reason Commands",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 53,
+          "column": 30
+        },
+        {
+          "target_page": "Scanner",
+          "raw_target": "Scanner",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 53,
+          "column": 51
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "features/Vault Diagnostics.md",
+          "source_page": "Vault Diagnostics",
+          "start_line": 9,
+          "end_line": 13,
+          "content": "(given dead-link-detection)\n(given orphan-detection)\n(given spl-diagnostics)\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771877292.148196
+    },
+    "decisions/JSON by Default.md": {
+      "path": "decisions/JSON by Default.md",
+      "page_name": "JSON by Default",
+      "links": [
+        {
+          "target_page": "TUI",
+          "raw_target": "TUI",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 26,
+          "column": 96
+        },
+        {
+          "target_page": "TUI",
+          "raw_target": "TUI",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 26,
+          "column": 153
+        },
+        {
+          "target_page": "Rust for CLI",
+          "raw_target": "Rust for CLI",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 32,
+          "column": 11
+        },
+        {
+          "target_page": "TUI",
+          "raw_target": "TUI",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 32,
+          "column": 29
+        },
+        {
+          "target_page": "Reason Commands",
+          "raw_target": "Reason Commands",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 32,
+          "column": 38
+        }
+      ],
+      "spl_blocks": [
+        {
+          "source_file": "decisions/JSON by Default.md",
+          "source_page": "JSON by Default",
+          "start_line": 9,
+          "end_line": 13,
+          "content": "(given json-default-output)\n(given structured-errors)\n(given nonzero-exit-codes)\n"
+        }
+      ],
+      "diagnostics": [],
+      "mtime": 1771877046.666251
+    },
+    "architecture/TUI.md": {
+      "path": "architecture/TUI.md",
+      "page_name": "TUI",
+      "links": [
+        {
+          "target_page": "JSON by Default",
+          "raw_target": "JSON by Default",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 7,
+          "column": 126
+        },
+        {
+          "target_page": "Wikilinks",
+          "raw_target": "Wikilinks",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
           "line": 23,
-          "column": 37
+          "column": 40
         },
         {
-          "target_page": "Progressive Summarization",
-          "raw_target": "Progressive Summarization",
+          "target_page": "Link Graph",
+          "raw_target": "Link Graph",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 26,
+          "line": 36,
+          "column": 60
+        },
+        {
+          "target_page": "Cache",
+          "raw_target": "Cache",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 36,
+          "column": 79
+        },
+        {
+          "target_page": "Graph Queries",
+          "raw_target": "Graph Queries",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 38,
           "column": 11
         },
         {
-          "target_page": "Zettelkasten",
-          "raw_target": "Zettelkasten",
+          "target_page": "Search",
+          "raw_target": "Search",
           "heading": null,
           "block_ref": null,
           "alias": null,
           "is_embed": false,
-          "line": 26,
+          "line": 38,
+          "column": 30
+        },
+        {
+          "target_page": "Vault Diagnostics",
+          "raw_target": "Vault Diagnostics",
+          "heading": null,
+          "block_ref": null,
+          "alias": null,
+          "is_embed": false,
+          "line": 38,
           "column": 42
         }
       ],
+      "spl_blocks": [
+        {
+          "source_file": "architecture/TUI.md",
+          "source_page": "TUI",
+          "start_line": 11,
+          "end_line": 14,
+          "content": "(given tui-complete)\n(given seven-views)\n"
+        }
+      ],
       "diagnostics": [],
-      "mtime": 1771400027.1431682
+      "mtime": 1771876818.2264755
     }
   }
 }

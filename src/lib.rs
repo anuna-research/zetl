@@ -1,6 +1,8 @@
 pub mod cache;
 pub mod cli;
 pub mod graph;
+#[cfg(feature = "reason")]
+pub mod reason;
 pub mod scanner;
 pub mod search;
 pub mod simhash;

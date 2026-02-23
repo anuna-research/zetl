@@ -1,4 +1,4 @@
-.PHONY: all build test clippy fmt check clean install release
+.PHONY: all build test test-reason clippy fmt check clean install release
 
 # Default target
 all: check build test
@@ -14,6 +14,10 @@ release:
 # Run all tests
 test:
 	cargo test
+
+# Run all tests with reason feature
+test-reason:
+	cargo test --features reason
 
 # Run clippy lints
 clippy:

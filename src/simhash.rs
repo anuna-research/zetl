@@ -204,10 +204,22 @@ mod tests {
         let results = index.search("notes", 12, 10);
 
         let found: Vec<&str> = results.iter().map(|r| r.page.as_str()).collect();
-        assert!(found.contains(&"Atomic Notes"), "should find 'Atomic Notes', got: {found:?}");
-        assert!(found.contains(&"Literature Notes"), "should find 'Literature Notes', got: {found:?}");
-        assert!(found.contains(&"Evergreen Notes"), "should find 'Evergreen Notes', got: {found:?}");
-        assert!(!found.contains(&"Knowledge Graph"), "should NOT find 'Knowledge Graph', got: {found:?}");
+        assert!(
+            found.contains(&"Atomic Notes"),
+            "should find 'Atomic Notes', got: {found:?}"
+        );
+        assert!(
+            found.contains(&"Literature Notes"),
+            "should find 'Literature Notes', got: {found:?}"
+        );
+        assert!(
+            found.contains(&"Evergreen Notes"),
+            "should find 'Evergreen Notes', got: {found:?}"
+        );
+        assert!(
+            !found.contains(&"Knowledge Graph"),
+            "should NOT find 'Knowledge Graph', got: {found:?}"
+        );
     }
 
     #[test]
@@ -222,8 +234,14 @@ mod tests {
         let results = index.search("knowledge", 10, 10);
 
         let found: Vec<&str> = results.iter().map(|r| r.page.as_str()).collect();
-        assert!(found.contains(&"Knowledge Management"), "should find 'Knowledge Management', got: {found:?}");
-        assert!(found.contains(&"Knowledge Graph"), "should find 'Knowledge Graph', got: {found:?}");
+        assert!(
+            found.contains(&"Knowledge Management"),
+            "should find 'Knowledge Management', got: {found:?}"
+        );
+        assert!(
+            found.contains(&"Knowledge Graph"),
+            "should find 'Knowledge Graph', got: {found:?}"
+        );
     }
 
     #[test]

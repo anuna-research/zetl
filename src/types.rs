@@ -2,6 +2,24 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+/// An extracted SPL block from a Markdown file or standalone `.spl` file.
+///
+/// For Markdown files, this captures the raw text between `` ```spl `` / `` ```spindle ``
+/// fences with provenance. For `.spl` files, the entire file content is captured.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplBlock {
+    /// Relative path from vault root.
+    pub source_file: PathBuf,
+    /// Page name (filename sans extension).
+    pub source_page: String,
+    /// 1-indexed line of opening fence (or 1 for `.spl` files).
+    pub start_line: u32,
+    /// 1-indexed line of closing fence (or last line for `.spl` files).
+    pub end_line: u32,
+    /// Raw SPL text between fences (or entire file for `.spl`).
+    pub content: String,
+}
+
 /// A single extracted wikilink occurrence
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WikiLink {
@@ -32,6 +50,8 @@ pub struct ParsedFile {
     pub page_name: String,
     /// Extracted wikilinks
     pub links: Vec<WikiLink>,
+    /// Extracted SPL blocks (from ```spl/```spindle fences or standalone .spl files)
+    pub spl_blocks: Vec<SplBlock>,
     /// Syntax warnings/errors
     pub diagnostics: Vec<Diagnostic>,
     /// File modification time

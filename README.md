@@ -1,65 +1,177 @@
 # zetl
 
-Bi-directional wikilink graph CLI for personal knowledge management.
+Bi-directional wikilink graph CLI with defeasible reasoning for personal knowledge management.
 
-zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph, and exposes query, validation, search, and visualization commands. Designed for both AI agents (JSON output) and humans (tables, interactive TUI).
+zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph, and exposes query, validation, search, and visualization commands. Optionally, it extracts [Spindle Lisp (SPL)](https://codeberg.org/anuna/spindle-rust) code blocks from your vault and performs defeasible reasoning — drawing conclusions that can be defeated by stronger evidence. Designed for both AI agents (JSON output) and humans (tables, interactive TUI).
 
 ## Features
 
-- **Wikilink parsing** - `[[target]]`, `[[target|alias]]`, `[[target#heading]]`, `[[target^block-id]]`, `![[embeds]]`
-- **Graph queries** - forward links, backlinks, multi-hop traversal, shortest path between pages
-- **Vault diagnostics** - dead links, orphan pages, syntax errors
-- **Full-text search** - content search with regex support, frontmatter/code-block awareness
-- **Fuzzy matching** - SimHash-based page name similarity
-- **Interactive TUI** - dashboard, page browser, link explorer, graph view, inline wikilink navigation
-- **Incremental caching** - mtime-based index for fast re-scans
-- **Agent-friendly** - JSON by default, structured errors, non-zero exit codes
+- **Wikilink parsing** — `[[target]]`, `[[target|alias]]`, `[[target#heading]]`, `[[target^block-id]]`, `![[embeds]]`
+- **Graph queries** — forward links, backlinks, multi-hop traversal, shortest path between pages
+- **Vault diagnostics** — dead links, orphan pages, syntax errors, SPL parse errors
+- **Full-text search** — content search with regex support, frontmatter/code-block awareness
+- **Fuzzy matching** — SimHash-based page name similarity
+- **Interactive TUI** — dashboard, page browser, link explorer, graph view, inline wikilink navigation
+- **Incremental caching** — mtime-based index for both wikilinks and reasoning theories
+- **Agent-friendly** — JSON by default, structured errors, non-zero exit codes
+- **Defeasible reasoning** — extract SPL facts and rules from Markdown, build a vault-wide theory, derive conclusions with full provenance
+- **Proof trees** — explain why a conclusion holds, traced back to source files and line numbers
+- **What-if analysis** — hypothetical reasoning: add temporary facts and see what changes
+- **Abductive reasoning** — find what facts are needed to prove a goal
+- **Conflict detection** — find unresolved logical contradictions with resolution suggestions
+- **Cross-referencing** — link graph and logical theory annotate each other
 
 ## Install
 
 Requires a Rust toolchain ([rustup](https://rustup.rs/)).
 
-```
+```bash
+# Wikilink features only
 make install
+
+# With defeasible reasoning
+cargo install --path . --features reason
+```
+
+Without `--features reason`, running `zetl reason` prints a helpful error instead of failing silently.
+
+## Quick start
+
+The included `demo-vault/` is a self-referential knowledge base about zetl itself, with wikilinks and SPL throughout.
+
+```bash
+# Build the link index
+zetl -d ./demo-vault index
+
+# Query links
+zetl -d ./demo-vault links "Scanner"
+zetl -d ./demo-vault backlinks "Cache" --depth 2
+
+# Run reasoning over all SPL in the vault
+zetl -d ./demo-vault reason status
+zetl -d ./demo-vault reason explain "release-candidate" --format natural
+zetl -d ./demo-vault reason conflicts
 ```
 
 ## Usage
 
-Point zetl at a vault (a directory of Markdown files):
+### Wikilink commands
 
 ```bash
-# Build the link index
-zetl index -d ./my-vault
+# Build or refresh the link index
+zetl -d ./my-vault index
 
-# Query links
-zetl links "Some Page" -d ./my-vault
-zetl backlinks "Some Page" -d ./my-vault
-zetl backlinks "Some Page" --depth 2    # multi-hop
+# Forward and back links
+zetl -d ./my-vault links "Some Page"
+zetl -d ./my-vault backlinks "Some Page"
+zetl -d ./my-vault backlinks "Some Page" --depth 2    # multi-hop
 
 # Find shortest path between pages
-zetl path "Page A" "Page B" -d ./my-vault
+zetl -d ./my-vault path "Page A" "Page B"
 
 # Search content
-zetl search "query" -d ./my-vault
+zetl -d ./my-vault search "query"
 zetl search "pattern" --regex
 
 # Validate vault
-zetl check -d ./my-vault
-zetl check --dead-links --fail-on dead-links
+zetl -d ./my-vault check
+zetl check --dead-links --fail-on error   # cwd is vault
+zetl check --spl                        # SPL diagnostics only
 
 # Fuzzy page name matching
-zetl similar "zettelkasen" -d ./my-vault
+zetl -d ./my-vault similar "zettelkasen"
 
 # Stats and export
-zetl stats -d ./my-vault
-zetl list -d ./my-vault
-zetl export -d ./my-vault    # full graph as JSON
+zetl -d ./my-vault stats
+zetl -d ./my-vault list
+zetl -d ./my-vault export    # full graph as JSON
 
 # Interactive TUI
-zetl tui -d ./my-vault
+zetl -d ./my-vault tui
 ```
 
-All commands default to JSON output. Add `--format table` for human-readable tables.
+### Reasoning commands
+
+Requires `--features reason` at build time. All commands operate on SPL extracted from ` ```spl ` fenced code blocks in Markdown files and standalone `.spl` files.
+
+```bash
+# What does the vault's combined theory conclude?
+zetl -d ./demo-vault reason status
+zetl reason status --positive              # only +D, +d conclusions
+zetl reason status --literal "release*"    # wildcard filter
+
+# Why does a conclusion hold? (proof tree with provenance)
+zetl -d ./demo-vault reason explain "release-candidate"
+zetl -d ./demo-vault reason explain "good-cli-tool" --format natural
+zetl -d ./demo-vault reason explain "scanner-complete" --format dot
+
+# Why can't something be proved?
+zetl -d ./demo-vault reason why-not "docs-updated"
+
+# What facts would make a goal provable?
+zetl -d ./demo-vault reason require "release-candidate"
+zetl -d ./demo-vault reason require "release-candidate" --assume "(given docs-updated)"
+
+# Hypothetical: what if we add facts?
+zetl -d ./demo-vault reason what-if "(given docs-updated)" --goal "release-candidate"
+zetl -d ./demo-vault reason what-if --file extra.spl
+
+# Find unresolved conflicts (the demo vault has a deliberate tension in Cache.md)
+zetl -d ./demo-vault reason conflicts
+zetl -d ./demo-vault reason conflicts --suggest --fail-on-conflicts
+
+# Export the combined theory
+zetl -d ./demo-vault reason export                         # JSON
+zetl -d ./demo-vault reason export --format spl            # reconstructed SPL with provenance
+zetl -d ./demo-vault reason export --with-conclusions
+
+# Trace a conclusion back to source files
+zetl -d ./demo-vault reason provenance "release-candidate"
+
+# Cross-reference links with reasoning
+zetl -d ./demo-vault links "Cache" --with-conclusions
+zetl -d ./demo-vault backlinks "Reasoning Engine" --with-conclusions
+```
+
+All commands default to JSON output. Add `--format table` (or `--format natural`/`--format dot` for explain) for human-readable output.
+
+## SPL in Markdown
+
+Embed Spindle Lisp in any Markdown file using fenced code blocks:
+
+````markdown
+# Rust for CLI
+
+zetl is written in Rust for type safety and fast startup.
+
+```spl
+(given type-safe)
+(given single-binary)
+(given fast-startup)
+```
+
+These facts feed into the vault-wide theory.
+````
+
+You can also place standalone `.spl` files anywhere in the vault:
+
+```spl
+; release-readiness.spl — rules that combine facts from across the vault
+(normally r-good-cli
+  (and fast-startup single-binary type-safe)
+  good-cli-tool)
+```
+
+zetl merges all SPL from across the vault into a single theory, reasons over it, and traces every conclusion back to its source file and line number. The `demo-vault/` included in this repo is a working example — it documents zetl itself using both wikilinks and SPL.
+
+### Conclusion types
+
+| Tag  | Meaning |
+|------|---------|
+| `+D` | Definitely provable (strict rules, no defeaters possible) |
+| `-D` | Definitely not provable |
+| `+d` | Defeasibly provable (inferred, no active defeaters) |
+| `-d` | Defeasibly not provable (blocked or no derivation path) |
 
 ## TUI
 
@@ -86,19 +198,20 @@ Works with any Markdown vault using `[[wikilink]]` syntax:
 - Foam
 - Dendron
 
-zetl never modifies your files. The index is a disposable cache stored in `.zetl/`.
+SPL embedding is optional — vaults work fine with just wikilinks. zetl never modifies your files. The index and theory cache are disposable and stored in `.zetl/`.
 
 ## Development
 
 ```bash
-make            # fmt + clippy + build + test
-make build      # debug build
-make release    # release build
-make test       # run tests
-make check      # fmt + clippy
-make fmt-fix    # auto-format code
-make doc-open   # generate and open docs in browser
-make clean      # remove build artifacts
+make                    # fmt + clippy + build + test
+make build              # debug build
+make release            # release build
+make test               # run tests
+make test-reason        # run tests with reason feature
+make check              # fmt + clippy
+make fmt-fix            # auto-format code
+make doc-open           # generate and open docs in browser
+make clean              # remove build artifacts
 ```
 
 ## License
