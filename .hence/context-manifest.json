@@ -1,12 +1,12 @@
 {
-  "task_id": "cmd-reason-require",
+  "task_id": "theory-cache",
   "token_budget": 8000,
-  "tokens_used": 411,
+  "tokens_used": 387,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement `zetl reason require <LITERAL>` per CON-016. Abductive reasoning: find what facts are needed to make a goal literal provable. Uses spindle-core's abduce API (or manual analysis if not available): find rules with the literal as head, identify which body literals are not provable, recursively find what's needed. Return solution sets of required facts, each annotated with the rule that needs it and the document where that rule is defined. Options: --max-solutions <N> [default: 5], --assume <SPL> (assume these facts already true). Special cases: goal already provable returns empty solution with message; no rules exist returns exit code 1.",
-      "token_cost": 163,
+      "content": "Implement theory caching per ADR-006 and NFR-011. Cache the parsed theory (not conclusions — re-reason each time per Open Question 4) to .zetl/theory.json alongside the existing index.json. Use the same mtime-based invalidation: if any file containing an SPL block has changed, invalidate and rebuild. Track which files contain SPL blocks for targeted invalidation. Cache format: serialized Theory with provenance metadata. Subsequent reason queries should load cache + re-reason (~100ms) instead of full extract + parse + reason (~2-3s for large vaults).",
+      "token_cost": 139,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T14:23:07Z"
+  "constructed_at": "2026-02-23T14:28:06Z"
 }
