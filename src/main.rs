@@ -1366,6 +1366,796 @@ fn cmd_reason_status(
     Ok(())
 }
 
+#[cfg(feature = "reason")]
+fn cmd_reason_explain(
+    cli: &Cli,
+    literal_input: &str,
+    max_depth: usize,
+    explain_format: &zetl::cli::ExplainFormat,
+) -> Result<()> {
+    use zetl::cli::ExplainFormat;
+    use zetl::reason::build_theory;
+
+    let pipeline = run_pipeline(cli)?;
+
+    // Collect all SPL blocks from parsed files
+    let spl_blocks: Vec<_> = pipeline
+        .files
+        .iter()
+        .flat_map(|f| f.spl_blocks.clone())
+        .collect();
+
+    if spl_blocks.is_empty() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
+            OutputFormat::Table => {
+                eprintln!("No SPL blocks found in vault.");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let result = build_theory(&spl_blocks)?;
+
+    // Parse the literal input: handle ~negation prefix
+    let (is_negated, lit_name) = if let Some(name) = literal_input.strip_prefix('~') {
+        (true, name)
+    } else {
+        (false, literal_input)
+    };
+
+    let target_literal = if is_negated {
+        spindle_core::prelude::Literal::negated(lit_name)
+    } else {
+        spindle_core::prelude::Literal::simple(lit_name)
+    };
+
+    // Try to explain using spindle-core's explain API
+    let explanation = spindle_core::explanation::explain(&result.theory, &target_literal)
+        .context("Explanation engine failed")?;
+
+    // If the literal is not found/provable, check all conclusions and offer suggestions
+    if explanation.is_none() {
+        // Check if the literal has any conclusion at all (including negative)
+        // Prefer the most informative conclusion: -d > -D
+        // (-d means defeasible reasoning was attempted; -D is just "no strict proof")
+        let matching_conclusions: Vec<_> = result
+            .conclusions
+            .iter()
+            .filter(|c| c.literal == literal_input)
+            .collect();
+
+        let matching_conclusion = matching_conclusions.iter().find(|c| {
+            matches!(
+                c.conclusion_type,
+                zetl::reason::types::ConclusionType::DefeasiblyNotProvable
+            )
+        }).or_else(|| matching_conclusions.first())
+        .copied();
+
+        if let Some(conclusion) = matching_conclusion {
+            // The literal exists but is not positively provable — explain that
+            return print_negative_explanation(
+                cli,
+                explain_format,
+                literal_input,
+                conclusion,
+                &result,
+            );
+        }
+
+        // Literal not found at all — offer "did you mean?" suggestions
+        let all_literals: Vec<String> = result
+            .conclusions
+            .iter()
+            .map(|c| c.literal.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        let suggestions = fuzzy_match_literals(literal_input, &all_literals);
+
+        let msg = if suggestions.is_empty() {
+            format!("Literal '{}' not found in any conclusion", literal_input)
+        } else {
+            let did_you_mean: Vec<String> = suggestions.iter().map(|s| format!("'{}'", s)).collect();
+            format!(
+                "Literal '{}' not found. Did you mean: {}?",
+                literal_input,
+                did_you_mean.join(", ")
+            )
+        };
+
+        match cli.format {
+            OutputFormat::Json => {
+                #[derive(Serialize)]
+                struct NotFoundOutput {
+                    error: String,
+                    literal: String,
+                    suggestions: Vec<String>,
+                }
+                let output = NotFoundOutput {
+                    error: msg.clone(),
+                    literal: literal_input.to_string(),
+                    suggestions,
+                };
+                print_json(&output)?;
+                std::process::exit(1);
+            }
+            OutputFormat::Table => {
+                eprintln!("{msg}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let explanation = explanation.unwrap();
+
+    // Build our enriched proof tree with provenance
+    let enriched = enrich_proof_tree(
+        &explanation,
+        &result,
+        literal_input,
+        max_depth,
+    );
+
+    // Output in the requested format
+    match explain_format {
+        ExplainFormat::Json => {
+            print_json(&enriched)?;
+        }
+        ExplainFormat::Table => {
+            print_explain_table(&enriched);
+        }
+        ExplainFormat::Natural => {
+            print_explain_natural(&enriched);
+        }
+        ExplainFormat::Dot => {
+            print_explain_dot(&enriched);
+        }
+    }
+
+    Ok(())
+}
+
+// ── Explain output types ───────────────────────────────────────────────────
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct ExplainOutput {
+    literal: String,
+    conclusion_type: String,
+    proof_tree: Option<ExplainNode>,
+    conflicts_resolved: Vec<ExplainConflict>,
+    blocked_alternatives: Vec<ExplainBlocked>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize, Clone)]
+struct ExplainNode {
+    literal: String,
+    derivation: String,
+    source: Option<ExplainSource>,
+    rule: Option<ExplainRule>,
+    body: Vec<ExplainNode>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize, Clone)]
+struct ExplainSource {
+    page: String,
+    path: String,
+    line: u32,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize, Clone)]
+struct ExplainRule {
+    label: String,
+    rule_type: String,
+    rule_text: String,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct ExplainConflict {
+    winning_rule: String,
+    losing_rule: String,
+    resolution: String,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct ExplainBlocked {
+    literal: String,
+    rule_label: String,
+    reason: String,
+    blocking_rule: Option<String>,
+    explanation: String,
+}
+
+// ── Enrichment: merge spindle-core proof tree with our provenance ───────────
+
+#[cfg(feature = "reason")]
+fn enrich_proof_tree(
+    explanation: &spindle_core::explanation::Explanation,
+    theory_result: &zetl::reason::types::TheoryResult,
+    literal_input: &str,
+    max_depth: usize,
+) -> ExplainOutput {
+    let conclusion_type_str = match explanation.conclusion_type {
+        spindle_core::prelude::ConclusionType::DefinitelyProvable => "+D",
+        spindle_core::prelude::ConclusionType::DefinitelyNotProvable => "-D",
+        spindle_core::prelude::ConclusionType::DefeasiblyProvable => "+d",
+        spindle_core::prelude::ConclusionType::DefeasiblyNotProvable => "-d",
+    };
+
+    let proof_tree = explanation
+        .proof_tree
+        .as_ref()
+        .map(|node| enrich_node(node, theory_result, 0, max_depth));
+
+    let conflicts_resolved = explanation
+        .conflicts_resolved
+        .iter()
+        .map(|c| ExplainConflict {
+            winning_rule: c.winning_rule.clone(),
+            losing_rule: c.losing_rule.clone(),
+            resolution: c.resolution_type.to_string(),
+        })
+        .collect();
+
+    let blocked_alternatives = explanation
+        .blocked_alternatives
+        .iter()
+        .map(|b| ExplainBlocked {
+            literal: b.literal.to_string(),
+            rule_label: b.rule_label.clone(),
+            reason: b.reason.to_string(),
+            blocking_rule: b.blocking_rule.clone(),
+            explanation: b.explanation.clone(),
+        })
+        .collect();
+
+    ExplainOutput {
+        literal: literal_input.to_string(),
+        conclusion_type: conclusion_type_str.to_string(),
+        proof_tree,
+        conflicts_resolved,
+        blocked_alternatives,
+    }
+}
+
+#[cfg(feature = "reason")]
+fn enrich_node(
+    node: &spindle_core::explanation::ProofNode,
+    theory_result: &zetl::reason::types::TheoryResult,
+    depth: usize,
+    max_depth: usize,
+) -> ExplainNode {
+    let literal_str = node.literal.to_string();
+    let derivation = match node.derivation_type {
+        spindle_core::explanation::DerivationType::Definite => "definite",
+        spindle_core::explanation::DerivationType::Defeasible => "defeasible",
+    };
+
+    let (source, rule_info, body) = if let Some(ref step) = node.proof_step {
+        // Look up provenance for this rule label
+        let source = lookup_source(&step.rule_label, theory_result);
+
+        let rule_type_str = match step.rule_type {
+            spindle_core::prelude::RuleType::Fact => "fact",
+            spindle_core::prelude::RuleType::Strict => "strict",
+            spindle_core::prelude::RuleType::Defeasible => "defeasible",
+            spindle_core::prelude::RuleType::Defeater => "defeater",
+        };
+
+        let rule = ExplainRule {
+            label: step.rule_label.clone(),
+            rule_type: rule_type_str.to_string(),
+            rule_text: step.rule_text.clone(),
+        };
+
+        let body = if depth < max_depth {
+            step.body_proofs
+                .iter()
+                .map(|bp| enrich_node(bp, theory_result, depth + 1, max_depth))
+                .collect()
+        } else {
+            vec![]
+        };
+
+        (source, Some(rule), body)
+    } else {
+        (None, None, vec![])
+    };
+
+    ExplainNode {
+        literal: literal_str,
+        derivation: derivation.to_string(),
+        source,
+        rule: rule_info,
+        body,
+    }
+}
+
+#[cfg(feature = "reason")]
+fn lookup_source(
+    rule_label: &str,
+    theory_result: &zetl::reason::types::TheoryResult,
+) -> Option<ExplainSource> {
+    // Check provenanced rules
+    if let Some(rule) = theory_result.rules.iter().find(|r| r.label == rule_label) {
+        return Some(ExplainSource {
+            page: rule.source_page.clone(),
+            path: rule.source_file.to_string_lossy().to_string(),
+            line: rule.source_line,
+        });
+    }
+
+    // Check provenanced facts (they have auto-generated labels like __fact_N)
+    if rule_label.starts_with("__fact_") {
+        // Match by looking at the theory's metadata for this label
+        if let Some(rule) = theory_result.theory.get_rule(rule_label) {
+            if let Some(head) = rule.head.first() {
+                let head_str = head.to_string();
+                if let Some(fact) = theory_result
+                    .facts
+                    .iter()
+                    .find(|f| f.literal.to_string() == head_str)
+                {
+                    return Some(ExplainSource {
+                        page: fact.source_page.clone(),
+                        path: fact.source_file.to_string_lossy().to_string(),
+                        line: fact.source_line,
+                    });
+                }
+            }
+        }
+    }
+
+    None
+}
+
+// ── Negative explanation (for -D / -d conclusions) ─────────────────────────
+
+#[cfg(feature = "reason")]
+fn print_negative_explanation(
+    _cli: &Cli,
+    explain_format: &zetl::cli::ExplainFormat,
+    literal_input: &str,
+    conclusion: &zetl::reason::types::ProvenancedConclusion,
+    theory_result: &zetl::reason::types::TheoryResult,
+) -> Result<()> {
+    use zetl::cli::ExplainFormat;
+    use zetl::reason::types::ConclusionType;
+
+    let conclusion_type_str = match conclusion.conclusion_type {
+        ConclusionType::DefinitelyProvable => "+D",
+        ConclusionType::DefinitelyNotProvable => "-D",
+        ConclusionType::DefeasiblyProvable => "+d",
+        ConclusionType::DefeasiblyNotProvable => "-d",
+    };
+
+    // Build source info from proof_sources
+    let sources: Vec<ExplainSource> = conclusion
+        .proof_sources
+        .iter()
+        .map(|s| ExplainSource {
+            page: s.page.clone(),
+            path: s.path.to_string_lossy().to_string(),
+            line: s.line,
+        })
+        .collect();
+
+    // Find defeat chain: rules that blocked this literal
+    let defeat_chain: Vec<_> = theory_result
+        .rules
+        .iter()
+        .filter(|r| {
+            let head_str = r.head.to_string();
+            let negated_input = if literal_input.starts_with('~') {
+                literal_input[1..].to_string()
+            } else {
+                format!("~{}", literal_input)
+            };
+            head_str == negated_input
+        })
+        .collect();
+
+    match explain_format {
+        ExplainFormat::Json => {
+            #[derive(Serialize)]
+            struct NegativeExplainOutput {
+                literal: String,
+                conclusion_type: String,
+                explanation: String,
+                sources: Vec<ExplainSource>,
+                defeat_chain: Vec<DefeatChainEntry>,
+            }
+
+            #[derive(Serialize)]
+            struct DefeatChainEntry {
+                rule_label: String,
+                rule_type: String,
+                head: String,
+                body: Vec<String>,
+                source: ExplainSource,
+            }
+
+            let chain_entries: Vec<DefeatChainEntry> = defeat_chain
+                .iter()
+                .map(|r| DefeatChainEntry {
+                    rule_label: r.label.clone(),
+                    rule_type: format!("{:?}", r.rule_type),
+                    head: r.head.to_string(),
+                    body: r.body.iter().map(|b| b.to_string()).collect(),
+                    source: ExplainSource {
+                        page: r.source_page.clone(),
+                        path: r.source_file.to_string_lossy().to_string(),
+                        line: r.source_line,
+                    },
+                })
+                .collect();
+
+            let explanation_text = match conclusion.conclusion_type {
+                ConclusionType::DefinitelyNotProvable => {
+                    format!("'{}' is definitely not provable (-D): no strict proof chain exists", literal_input)
+                }
+                ConclusionType::DefeasiblyNotProvable => {
+                    if defeat_chain.is_empty() {
+                        format!("'{}' is defeasibly not provable (-d): no undefeated defeasible proof chain exists", literal_input)
+                    } else {
+                        format!(
+                            "'{}' is defeasibly not provable (-d): defeated by {} rule(s)",
+                            literal_input,
+                            defeat_chain.len()
+                        )
+                    }
+                }
+                _ => format!("'{}' holds as {}", literal_input, conclusion_type_str),
+            };
+
+            let output = NegativeExplainOutput {
+                literal: literal_input.to_string(),
+                conclusion_type: conclusion_type_str.to_string(),
+                explanation: explanation_text,
+                sources,
+                defeat_chain: chain_entries,
+            };
+            print_json(&output)?;
+        }
+        ExplainFormat::Table => {
+            println!("Explanation for '{}':", literal_input);
+            println!("  Conclusion: {} {}", conclusion_type_str, literal_input);
+            println!();
+            if !sources.is_empty() {
+                println!("  Sources:");
+                for s in &sources {
+                    println!("    [[{}]]:{}  ({})", s.page, s.line, s.path);
+                }
+                println!();
+            }
+            if !defeat_chain.is_empty() {
+                println!("  Defeat chain:");
+                for r in &defeat_chain {
+                    let body_strs: Vec<String> = r.body.iter().map(|b| b.to_string()).collect();
+                    println!(
+                        "    {} [{}]: {} => {}  ([[{}]]:{})",
+                        r.label,
+                        format!("{:?}", r.rule_type),
+                        body_strs.join(", "),
+                        r.head,
+                        r.source_page,
+                        r.source_line,
+                    );
+                }
+            }
+        }
+        ExplainFormat::Natural => {
+            match conclusion.conclusion_type {
+                ConclusionType::DefinitelyNotProvable => {
+                    println!("The literal '{}' is definitely not provable.", literal_input);
+                    println!("No strict proof chain can establish it from the known facts and rules.");
+                }
+                ConclusionType::DefeasiblyNotProvable => {
+                    println!("The literal '{}' is defeasibly not provable.", literal_input);
+                    if defeat_chain.is_empty() {
+                        println!("No undefeated defeasible proof chain exists.");
+                    } else {
+                        println!("It is blocked by the following rule(s):");
+                        for r in &defeat_chain {
+                            println!("  - Rule '{}' from [[{}]]:{}", r.label, r.source_page, r.source_line);
+                        }
+                    }
+                }
+                _ => {
+                    println!("'{}' holds as {} {}.", literal_input, conclusion_type_str, literal_input);
+                }
+            }
+        }
+        ExplainFormat::Dot => {
+            // Minimal DOT graph for negative conclusions
+            println!("digraph explanation {{");
+            println!("  rankdir=BT;");
+            println!("  node [shape=box];");
+            let conclusion_id = format!("\"{}\\n{}\"", conclusion_type_str, literal_input);
+            println!("  {} [style=filled, fillcolor=lightcoral];", conclusion_id);
+            for r in &defeat_chain {
+                let rule_id = format!("\"{}\"", r.label);
+                println!("  {} -> {} [label=\"defeats\"];", rule_id, conclusion_id);
+                println!(
+                    "  {} [label=\"{}\\n[[{}]]:{}\"];",
+                    rule_id, r.label, r.source_page, r.source_line
+                );
+            }
+            println!("}}");
+        }
+    }
+
+    Ok(())
+}
+
+// ── Fuzzy matching for literal suggestions ─────────────────────────────────
+
+#[cfg(feature = "reason")]
+fn fuzzy_match_literals(query: &str, literals: &[String]) -> Vec<String> {
+    use zetl::simhash::{compute_simhash, hamming_distance};
+
+    let query_hash = compute_simhash(query);
+    let mut scored: Vec<(String, u32)> = literals
+        .iter()
+        .filter_map(|lit| {
+            let lit_hash = compute_simhash(lit);
+            let dist = hamming_distance(query_hash, lit_hash);
+            if dist <= 16 {
+                Some((lit.clone(), dist))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    scored.sort_by_key(|(_, d)| *d);
+    scored.truncate(5);
+    scored.into_iter().map(|(lit, _)| lit).collect()
+}
+
+// ── Explain output formatters ──────────────────────────────────────────────
+
+#[cfg(feature = "reason")]
+fn print_explain_table(output: &ExplainOutput) {
+    println!("Explanation for '{}':", output.literal);
+    println!("  Conclusion: {} {}", output.conclusion_type, output.literal);
+    println!();
+
+    if let Some(ref tree) = output.proof_tree {
+        println!("  Proof tree:");
+        print_tree_node(tree, 2);
+    }
+
+    if !output.conflicts_resolved.is_empty() {
+        println!();
+        println!("  Conflicts resolved:");
+        for c in &output.conflicts_resolved {
+            println!(
+                "    {} > {} ({})",
+                c.winning_rule, c.losing_rule, c.resolution
+            );
+        }
+    }
+
+    if !output.blocked_alternatives.is_empty() {
+        println!();
+        println!("  Blocked alternatives:");
+        for b in &output.blocked_alternatives {
+            println!("    {} via '{}': {}", b.literal, b.rule_label, b.reason);
+            if let Some(ref blocker) = b.blocking_rule {
+                println!("      blocked by: {}", blocker);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "reason")]
+fn print_tree_node(node: &ExplainNode, indent: usize) {
+    let pad = " ".repeat(indent);
+
+    let source_str = if let Some(ref src) = node.source {
+        format!("  [[{}]]:{}", src.page, src.line)
+    } else {
+        String::new()
+    };
+
+    let rule_str = if let Some(ref rule) = node.rule {
+        format!(" via {} [{}]", rule.label, rule.rule_type)
+    } else {
+        String::new()
+    };
+
+    println!(
+        "{}{} ({}){}{}", pad, node.literal, node.derivation, rule_str, source_str
+    );
+
+    for child in &node.body {
+        print_tree_node(child, indent + 2);
+    }
+}
+
+#[cfg(feature = "reason")]
+fn print_explain_natural(output: &ExplainOutput) {
+    let ct_desc = match output.conclusion_type.as_str() {
+        "+D" => "definitely provable",
+        "-D" => "definitely not provable",
+        "+d" => "defeasibly provable",
+        "-d" => "defeasibly not provable",
+        _ => &output.conclusion_type,
+    };
+
+    println!(
+        "The literal '{}' is {} ({}).",
+        output.literal, ct_desc, output.conclusion_type
+    );
+    println!();
+
+    if let Some(ref tree) = output.proof_tree {
+        println!("Proof:");
+        print_natural_node(tree, 0);
+    }
+
+    if !output.conflicts_resolved.is_empty() {
+        println!();
+        println!("Conflicts were resolved as follows:");
+        for c in &output.conflicts_resolved {
+            println!(
+                "  Rule '{}' prevails over '{}' by {}.",
+                c.winning_rule, c.losing_rule, c.resolution
+            );
+        }
+    }
+}
+
+#[cfg(feature = "reason")]
+fn print_natural_node(node: &ExplainNode, depth: usize) {
+    let indent = "  ".repeat(depth);
+
+    if let Some(ref rule) = node.rule {
+        let source_ref = if let Some(ref src) = node.source {
+            format!(" (from [[{}]]:{})", src.page, src.line)
+        } else {
+            String::new()
+        };
+
+        match rule.rule_type.as_str() {
+            "fact" => {
+                println!(
+                    "{}'{}' is an established fact{}.{}",
+                    indent,
+                    node.literal,
+                    source_ref,
+                    if node.derivation == "definite" {
+                        ""
+                    } else {
+                        " [defeasible]"
+                    }
+                );
+            }
+            "strict" => {
+                println!(
+                    "{}'{}' follows strictly from rule '{}'{}, because:",
+                    indent, node.literal, rule.label, source_ref
+                );
+            }
+            "defeasible" => {
+                println!(
+                    "{}'{}' is normally concluded by rule '{}'{}, because:",
+                    indent, node.literal, rule.label, source_ref
+                );
+            }
+            "defeater" => {
+                println!(
+                    "{}'{}' is blocked by defeater '{}'{}, because:",
+                    indent, node.literal, rule.label, source_ref
+                );
+            }
+            _ => {
+                println!("{}'{}'{}", indent, node.literal, source_ref);
+            }
+        }
+    } else {
+        println!("{}'{}'", indent, node.literal);
+    }
+
+    for child in &node.body {
+        print_natural_node(child, depth + 1);
+    }
+}
+
+#[cfg(feature = "reason")]
+fn print_explain_dot(output: &ExplainOutput) {
+    println!("digraph explanation {{");
+    println!("  rankdir=BT;");
+    println!("  node [shape=box, fontname=\"Helvetica\"];");
+    println!("  edge [fontname=\"Helvetica\", fontsize=10];");
+    println!();
+
+    // Root conclusion node
+    let root_id = sanitize_dot_id(&output.literal);
+    println!(
+        "  {} [label=\"{}\\n{}\", style=filled, fillcolor=lightgreen];",
+        root_id, output.conclusion_type, output.literal
+    );
+
+    if let Some(ref tree) = output.proof_tree {
+        let mut counter = 0;
+        emit_dot_node(tree, &root_id, &mut counter);
+    }
+
+    // Conflict edges
+    for c in &output.conflicts_resolved {
+        let winner_id = sanitize_dot_id(&c.winning_rule);
+        let loser_id = sanitize_dot_id(&c.losing_rule);
+        println!(
+            "  {} -> {} [label=\"{}\", style=dashed, color=red];",
+            winner_id, loser_id, c.resolution
+        );
+    }
+
+    println!("}}");
+}
+
+#[cfg(feature = "reason")]
+fn emit_dot_node(node: &ExplainNode, parent_id: &str, counter: &mut usize) {
+    if let Some(ref step) = node.rule {
+        // Rule node
+        let rule_node_id = format!("rule_{}", counter);
+        *counter += 1;
+
+        let source_label = if let Some(ref src) = node.source {
+            format!("\\n[[{}]]:{}", src.page, src.line)
+        } else {
+            String::new()
+        };
+
+        println!(
+            "  {} [label=\"{}\\n[{}]{}\"];",
+            rule_node_id, step.label, step.rule_type, source_label
+        );
+        println!("  {} -> {};", rule_node_id, parent_id);
+
+        // Body literals
+        for child in &node.body {
+            let child_id = format!("lit_{}", counter);
+            *counter += 1;
+
+            let child_source = if let Some(ref src) = child.source {
+                format!("\\n[[{}]]:{}", src.page, src.line)
+            } else {
+                String::new()
+            };
+
+            println!(
+                "  {} [label=\"{}{}\"];",
+                child_id, child.literal, child_source
+            );
+            println!("  {} -> {};", child_id, rule_node_id);
+
+            // Recurse into children of the body node
+            emit_dot_node(child, &child_id, counter);
+        }
+    }
+}
+
+#[cfg(feature = "reason")]
+fn sanitize_dot_id(s: &str) -> String {
+    format!(
+        "\"{}\"",
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('~', "neg_")
+    )
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 fn main() -> anyhow::Result<()> {
@@ -1442,6 +2232,11 @@ fn main() -> anyhow::Result<()> {
                     *defeasible,
                     literal.as_deref(),
                 ),
+                ReasonCommand::Explain {
+                    literal,
+                    depth,
+                    format,
+                } => cmd_reason_explain(&cli, literal, *depth, format),
                 _ => {
                     eprintln!("This reason subcommand is not yet implemented.");
                     std::process::exit(1);

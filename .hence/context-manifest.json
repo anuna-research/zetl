@@ -1,12 +1,12 @@
 {
-  "task_id": "check-spl",
+  "task_id": "cmd-reason-explain",
   "token_budget": 8000,
-  "tokens_used": 352,
+  "tokens_used": 376,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend the existing `zetl check` command to include SPL diagnostics alongside dead links, orphans, and syntax errors. Add --spl flag to filter to SPL diagnostics only. SPL diagnostics include: 1) Parse errors (malformed SPL syntax) with file/line/column/message, 2) Undefined rule labels in superiority relations (warning), 3) Duplicate rule labels across documents (warning with both locations), 4) Body literals that appear nowhere as a head or fact (warning, possible typo). Integrate into existing check output format — add spl_diagnostics array to JSON, add SPL section to table. The existing --fail-on flag applies to SPL diagnostics (errors count as errors, warnings as warnings). Per CON-004 extended.",
-      "token_cost": 177,
+      "content": "Implement `zetl reason explain <LITERAL>` per CON-013. Uses spindle-core's explanation API to build a proof tree for the given literal. Output includes: conclusion type, the rule chain that derives it (for +D/+d), the defeat chain that blocks it (for -d), and for each rule/fact in the chain the source document name, file path, and line number (from provenance metadata). Support --depth <N> for max proof tree depth [default: 10] and --format json|table|natural|dot. JSON output: nested proof tree with sources. Table/natural output: human-readable explanation with [[PageName]]:line references. If the literal is not found, exit code 1 with 'did you mean?' suggestions using existing SimHash fuzzy matching on literal names.",
+      "token_cost": 181,
       "priority": "PlanMeta"
     },
     {
@@ -44,8 +44,14 @@
       "content": "Modified 3 files (+338, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-check-spl-changes",
+      "content": "Modified 3 files (+86, -9): .hence/context-manifest.json, src/cli.rs, src/main.rs",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T13:43:40Z"
+  "constructed_at": "2026-02-23T13:47:31Z"
 }
