@@ -1,12 +1,12 @@
 {
-  "task_id": "cmd-reason-export",
+  "task_id": "feature-gate",
   "token_budget": 8000,
-  "tokens_used": 354,
+  "tokens_used": 350,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement `zetl reason export` per CON-018. Export the combined theory in two formats: 1) SPL format — reconstructed SPL with provenance comments ('; --- From: file:line ---' before each rule/fact), valid parseable SPL; 2) JSON format — structured { rules[], facts[], superiority[], conclusions[] } with provenance fields on each item. Option: --with-conclusions includes reasoning results in the export. Always exits 0.",
-      "token_cost": 106,
+      "content": "Implement graceful degradation per NFR-013. When zetl is compiled without --features reason, all `zetl reason` commands return a structured error: {\"error\": \"Reasoning engine not available. Build with --features reason\", \"code\": 2}. All non-reasoning commands continue to work unchanged. The --spl flag on check also returns this error. Implement via cfg(feature) guards on the reason module and CLI dispatch.",
+      "token_cost": 102,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T14:46:51Z"
+  "constructed_at": "2026-02-23T14:53:07Z"
 }
