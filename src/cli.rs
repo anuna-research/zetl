@@ -55,6 +55,9 @@ pub enum Command {
         /// Traverse N hops (1 = direct only)
         #[arg(long, default_value = "1")]
         depth: usize,
+        /// Show which conclusions each linked page contributes (requires reason feature)
+        #[arg(long)]
+        with_conclusions: bool,
     },
 
     /// Query backlinks to a page
@@ -70,6 +73,9 @@ pub enum Command {
         /// Traverse N hops (1 = direct only)
         #[arg(long, default_value = "1")]
         depth: usize,
+        /// Show which conclusions each linked page contributes (requires reason feature)
+        #[arg(long)]
+        with_conclusions: bool,
     },
 
     /// Validate: report dead links, orphans, syntax errors, and SPL diagnostics
@@ -214,8 +220,11 @@ pub enum ReasonCommand {
     },
     /// Export theory in various formats
     Export,
-    /// Trace full provenance for a conclusion
-    Provenance,
+    /// Trace full provenance for a conclusion, cross-referenced with the link graph
+    Provenance {
+        /// Literal to trace (e.g. "flies", "~guilty", "decided-use-redis")
+        literal: String,
+    },
 }
 
 #[cfg(feature = "reason")]
