@@ -1,12 +1,12 @@
 {
-  "task_id": "integration-tests-reason",
+  "task_id": "verify-reason",
   "token_budget": 8000,
-  "tokens_used": 461,
+  "tokens_used": 388,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create comprehensive integration tests for all reason commands per TEST-026 through TEST-037. Use a test vault fixture (tests/fixtures/reason-vault/) with known SPL content designed to exercise: basic extraction (single block, multiple blocks, HTML comment exclusion, standalone .spl), theory construction (multi-file, parse errors, provenance), reasoning (penguin/bird scenario, defeated conclusions), explanation (proof trees, defeat chains, unknown literal), what-if (add fact, verify no side effects), why-not (missing preconditions, defeated), require (missing facts, already provable, impossible), conflicts (ambiguous, resolved), export (SPL with provenance, JSON), cross-referencing (links --with-conclusions), and caching (cache hit, invalidation). Each test invokes zetl as a binary via assert_cmd and validates JSON output structure and values.",
-      "token_cost": 213,
+      "content": "Run cargo test --features reason, cargo clippy --features reason -- -D warnings, and manual smoke tests against demo-vault. Verify: 1) All tests pass, 2) Zero clippy warnings, 3) zetl reason status on demo-vault shows correct conclusions, 4) zetl reason explain shows proof trees with correct provenance, 5) zetl reason conflicts reports no unresolved conflicts (or expected ones), 6) zetl check --spl reports no errors in demo-vault, 7) cargo build without --features reason still works, 8) Verbose output (--verbose) shows timing metrics per OBS-005/OBS-006.",
+      "token_cost": 140,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T14:56:47Z"
+  "constructed_at": "2026-02-23T15:08:43Z"
 }
