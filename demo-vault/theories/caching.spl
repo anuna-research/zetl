@@ -1,0 +1,12 @@
+; Caching theory — standalone SPL file
+; Complements decisions in Redis vs Memcached
+
+; Memcached is a simpler alternative for stateless caching
+(given evaluated-memcached)
+
+(normally r-prefer-memcached
+  evaluated-memcached
+  decided-use-memcached)
+
+; When both options are viable, prefer Redis over Memcached
+(prefer r-prefer-redis r-prefer-memcached)

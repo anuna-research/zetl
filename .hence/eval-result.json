@@ -4,27 +4,27 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 5,
-    "insertions": 127,
-    "deletions": 6,
+    "insertions": 79,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml",
-      "src/reason/mod.rs",
-      "src/reason/types.rs"
+      "demo-vault/audits/License Audit.md",
+      "demo-vault/decisions/Redis vs Memcached.md",
+      "demo-vault/processes/Deployment Checklist.md",
+      "demo-vault/theories/caching.spl"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-spl-types-changes",
-      "content": "Modified 5 files (+127, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/reason/mod.rs, src/reason/types.rs",
+      "key": "task-demo-vault-spl-changes",
+      "content": "Modified 5 files (+79, -5): .hence/context-manifest.json, demo-vault/audits/License Audit.md, demo-vault/decisions/Redis vs Memcached.md, demo-vault/processes/Deployment Checklist.md, demo-vault/theories/caching.spl",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/spl-types-v1",
-  "evaluated_at": "2026-02-23T13:10:43Z",
+  "branch_name": "hence/demo-vault-spl-v1",
+  "evaluated_at": "2026-02-23T13:15:09Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

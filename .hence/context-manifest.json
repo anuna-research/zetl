@@ -1,12 +1,12 @@
 {
-  "task_id": "spl-types",
+  "task_id": "demo-vault-spl",
   "token_budget": 8000,
-  "tokens_used": 167,
+  "tokens_used": 206,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Define the core data types for SPL extraction and reasoning in src/types.rs (or a new src/reason/types.rs if gated). Implement: SplBlock { source_file, source_page, start_line, end_line, content }, ProvenancedRule { label, rule_type, body, head, source_file, source_line, source_page }, ProvenancedFact { literal, source_file, source_line, source_page }, ProvenancedConclusion { literal, conclusion_type, proof_sources }, ProofSource { page, path, line, rule_label, contribution }, ConclusionType enum (+D, -D, +d, -d). All types derive Serialize for JSON output. Per SPEC-005 §5.3 data model.",
-      "token_cost": 148,
+      "content": "Add SPL code blocks to existing demo-vault files and create new demo files to exercise the reasoning pipeline. Create: 1) demo-vault/decisions/Redis vs Memcached.md with SPL facts and defeasible rule for decided-use-redis, 2) demo-vault/audits/License Audit.md with a defeater for decided-use-redis, 3) demo-vault/processes/Deployment Checklist.md with a rule requiring verified-load-test and verified-security-audit for ready-for-production, 4) demo-vault/theories/caching.spl standalone SPL file. Files should use wikilinks AND SPL blocks to demonstrate cross-referencing. Use the literal naming conventions from SPEC-005 §3.3.",
+      "token_cost": 157,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 4 files (+285, -0): Cargo.lock, Cargo.toml, src/lib.rs, src/reason.rs",
       "token_cost": 19,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-spl-types-changes",
+      "content": "Modified 5 files (+127, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/reason/mod.rs, src/reason/types.rs",
+      "token_cost": 30,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T13:05:46Z"
+  "constructed_at": "2026-02-23T13:10:49Z"
 }
