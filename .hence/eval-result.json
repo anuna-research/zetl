@@ -3,27 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 285,
-    "deletions": 0,
+    "files_changed": 5,
+    "insertions": 127,
+    "deletions": 6,
     "file_list": [
+      ".hence/context-manifest.json",
       "Cargo.lock",
       "Cargo.toml",
-      "src/lib.rs",
-      "src/reason.rs"
+      "src/reason/mod.rs",
+      "src/reason/types.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-feature-flag-changes",
-      "content": "Modified 4 files (+285, -0): Cargo.lock, Cargo.toml, src/lib.rs, src/reason.rs",
+      "key": "task-spl-types-changes",
+      "content": "Modified 5 files (+127, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/reason/mod.rs, src/reason/types.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/feature-flag-v1",
-  "evaluated_at": "2026-02-23T13:05:41Z",
+  "branch_name": "hence/spl-types-v1",
+  "evaluated_at": "2026-02-23T13:10:43Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
