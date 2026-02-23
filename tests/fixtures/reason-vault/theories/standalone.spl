@@ -1,0 +1,9 @@
+; Standalone SPL file - no markdown wrapper
+; This tests .spl file extraction
+
+(given has-tests)
+(given has-docs)
+
+(normally r-ready
+  (and has-tests has-docs)
+  ready-for-release)

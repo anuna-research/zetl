@@ -1,12 +1,12 @@
 {
-  "task_id": "feature-gate",
+  "task_id": "integration-tests-reason",
   "token_budget": 8000,
-  "tokens_used": 350,
+  "tokens_used": 461,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement graceful degradation per NFR-013. When zetl is compiled without --features reason, all `zetl reason` commands return a structured error: {\"error\": \"Reasoning engine not available. Build with --features reason\", \"code\": 2}. All non-reasoning commands continue to work unchanged. The --spl flag on check also returns this error. Implement via cfg(feature) guards on the reason module and CLI dispatch.",
-      "token_cost": 102,
+      "content": "Create comprehensive integration tests for all reason commands per TEST-026 through TEST-037. Use a test vault fixture (tests/fixtures/reason-vault/) with known SPL content designed to exercise: basic extraction (single block, multiple blocks, HTML comment exclusion, standalone .spl), theory construction (multi-file, parse errors, provenance), reasoning (penguin/bird scenario, defeated conclusions), explanation (proof trees, defeat chains, unknown literal), what-if (add fact, verify no side effects), why-not (missing preconditions, defeated), require (missing facts, already provable, impossible), conflicts (ambiguous, resolved), export (SPL with provenance, JSON), cross-referencing (links --with-conclusions), and caching (cache hit, invalidation). Each test invokes zetl as a binary via assert_cmd and validates JSON output structure and values.",
+      "token_cost": 213,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T14:53:07Z"
+  "constructed_at": "2026-02-23T14:56:47Z"
 }
