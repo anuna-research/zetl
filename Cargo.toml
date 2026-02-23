@@ -2,7 +2,7 @@
 name = "zetl"
 version = "0.1.0"
 edition = "2021"
-description = "Bi-directional wikilink graph CLI for personal knowledge management"
+description = "Bi-directional wikilink graph CLI with defeasible reasoning for personal knowledge management"
 license = "MIT"
 
 [features]

@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser)]
-#[command(name = "zetl", version, about = "Bi-directional wikilink graph CLI")]
+#[command(name = "zetl", version, about = "Bi-directional wikilink graph CLI with defeasible reasoning")]
 pub struct Cli {
     /// Vault root directory
     #[arg(short = 'd', long, default_value = ".")]

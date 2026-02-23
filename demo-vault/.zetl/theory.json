@@ -1,131 +1,659 @@
 {
   "version": 1,
   "spl_file_mtimes": {
-    "audits/License Audit.md": 1771859323.0301764,
-    "theories/caching.spl": 1771859323.0340152,
-    "processes/Deployment Checklist.md": 1771859323.0337975,
-    "decisions/Redis vs Memcached.md": 1771859323.0325284
+    "architecture/Cache.md": 1771877001.1969976,
+    "decisions/Rust for CLI.md": 1771877027.6113973,
+    "architecture/Reasoning Engine.md": 1771876803.9225364,
+    "decisions/Feature Gates.md": 1771877035.37095,
+    "architecture/TUI.md": 1771876818.2264755,
+    "features/Vault Diagnostics.md": 1771877292.148196,
+    "architecture/Link Graph.md": 1771876795.7427723,
+    "architecture/Scanner.md": 1771876789.090034,
+    "decisions/JSON by Default.md": 1771877046.666251,
+    "decisions/Local-first Design.md": 1771877052.0901449,
+    "theories/design-principles.spl": 1771877108.288976,
+    "features/Graph Queries.md": 1771877287.8694565,
+    "features/Reason Commands.md": 1771877307.8118062,
+    "theories/release-readiness.spl": 1771877103.0238416,
+    "features/Search.md": 1771877302.7019677
   },
   "rules": [
     {
-      "label": "__fact_2",
+      "label": "__fact_35",
       "rule_type": "Fact",
       "body": [],
       "head": [
-        "evaluated-memcached"
+        "spindle-core-integrated"
       ],
-      "source_file": "theories/caching.spl",
-      "source_line": 5,
-      "source_page": "caching"
+      "source_file": "architecture/Reasoning Engine.md",
+      "source_line": 20,
+      "source_page": "Reasoning Engine"
     },
     {
-      "label": "__fact_1",
+      "label": "__fact_6",
       "rule_type": "Fact",
       "body": [],
       "head": [
-        "discovered-license-risk"
+        "reason-provenance-done"
       ],
-      "source_file": "audits/License Audit.md",
-      "source_line": 7,
-      "source_page": "License Audit"
+      "source_file": "features/Reason Commands.md",
+      "source_line": 17,
+      "source_page": "Reason Commands"
     },
     {
-      "label": "r-prefer-redis",
-      "rule_type": "Defeasible",
-      "body": [
-        "evaluated-redis",
-        "redis-supports-persistence"
-      ],
+      "label": "__fact_14",
+      "rule_type": "Fact",
+      "body": [],
       "head": [
-        "decided-use-redis"
+        "dead-link-detection"
       ],
-      "source_file": "decisions/Redis vs Memcached.md",
-      "source_line": 14,
-      "source_page": "Redis vs Memcached"
+      "source_file": "features/Vault Diagnostics.md",
+      "source_line": 10,
+      "source_page": "Vault Diagnostics"
     },
     {
-      "label": "r-ready-prod",
-      "rule_type": "Defeasible",
+      "label": "r-scanner-complete",
+      "rule_type": "Strict",
       "body": [
-        "verified-load-test",
-        "verified-security-audit"
+        "wikilink-extraction",
+        "spl-extraction"
       ],
       "head": [
-        "ready-for-production"
+        "scanner-complete"
       ],
-      "source_file": "processes/Deployment Checklist.md",
-      "source_line": 9,
-      "source_page": "Deployment Checklist"
+      "source_file": "theories/release-readiness.spl",
+      "source_line": 8,
+      "source_page": "release-readiness"
     },
     {
-      "label": "r-prefer-memcached",
+      "label": "__fact_18",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "single-binary"
+      ],
+      "source_file": "decisions/Rust for CLI.md",
+      "source_line": 11,
+      "source_page": "Rust for CLI"
+    },
+    {
+      "label": "__fact_28",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "tui-complete"
+      ],
+      "source_file": "architecture/TUI.md",
+      "source_line": 12,
+      "source_page": "TUI"
+    },
+    {
+      "label": "__fact_30",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "multi-hop-traversal"
+      ],
+      "source_file": "architecture/Link Graph.md",
+      "source_line": 18,
+      "source_page": "Link Graph"
+    },
+    {
+      "label": "__fact_32",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spl-extraction"
+      ],
+      "source_file": "architecture/Scanner.md",
+      "source_line": 27,
+      "source_page": "Scanner"
+    },
+    {
+      "label": "__fact_23",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-feature-optional"
+      ],
+      "source_file": "decisions/Feature Gates.md",
+      "source_line": 10,
+      "source_page": "Feature Gates"
+    },
+    {
+      "label": "r-good-dx",
       "rule_type": "Defeasible",
       "body": [
-        "evaluated-memcached"
+        "graceful-degradation"
       ],
       "head": [
-        "decided-use-memcached"
+        "good-developer-experience"
       ],
-      "source_file": "theories/caching.spl",
-      "source_line": 7,
-      "source_page": "caching"
+      "source_file": "theories/design-principles.spl",
+      "source_line": 21,
+      "source_page": "design-principles"
+    },
+    {
+      "label": "__fact_34",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "incremental-rebuild"
+      ],
+      "source_file": "architecture/Cache.md",
+      "source_line": 20,
+      "source_page": "Cache"
+    },
+    {
+      "label": "__fact_10",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-conflicts-done"
+      ],
+      "source_file": "features/Reason Commands.md",
+      "source_line": 15,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "r-reason-commands-complete",
+      "rule_type": "Strict",
+      "body": [
+        "reason-status-done",
+        "reason-explain-done",
+        "reason-why-not-done",
+        "reason-require-done",
+        "reason-what-if-done",
+        "reason-conflicts-done",
+        "reason-export-done",
+        "reason-provenance-done"
+      ],
+      "head": [
+        "reason-commands-complete"
+      ],
+      "source_file": "theories/release-readiness.spl",
+      "source_line": 18,
+      "source_page": "release-readiness"
+    },
+    {
+      "label": "r-core-ready",
+      "rule_type": "Defeasible",
+      "body": [
+        "scanner-complete",
+        "graph-complete",
+        "diagnostics-complete",
+        "fulltext-search-done"
+      ],
+      "head": [
+        "core-features-ready"
+      ],
+      "source_file": "theories/release-readiness.spl",
+      "source_line": 40,
+      "source_page": "release-readiness"
+    },
+    {
+      "label": "__fact_25",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "structured-errors"
+      ],
+      "source_file": "decisions/JSON by Default.md",
+      "source_line": 11,
+      "source_page": "JSON by Default"
+    },
+    {
+      "label": "__fact_27",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "seven-views"
+      ],
+      "source_file": "architecture/TUI.md",
+      "source_line": 13,
+      "source_page": "TUI"
+    },
+    {
+      "label": "__fact_16",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "orphan-detection"
+      ],
+      "source_file": "features/Vault Diagnostics.md",
+      "source_line": 11,
+      "source_page": "Vault Diagnostics"
     },
     {
       "label": "__fact_3",
       "rule_type": "Fact",
       "body": [],
       "head": [
-        "redis-supports-persistence"
+        "reason-export-done"
       ],
-      "source_file": "decisions/Redis vs Memcached.md",
-      "source_line": 13,
-      "source_page": "Redis vs Memcached"
+      "source_file": "features/Reason Commands.md",
+      "source_line": 16,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "__fact_11",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "backlinks-done"
+      ],
+      "source_file": "features/Graph Queries.md",
+      "source_line": 11,
+      "source_page": "Graph Queries"
+    },
+    {
+      "label": "__fact_15",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spl-diagnostics"
+      ],
+      "source_file": "features/Vault Diagnostics.md",
+      "source_line": 12,
+      "source_page": "Vault Diagnostics"
+    },
+    {
+      "label": "r-diagnostics-complete",
+      "rule_type": "Strict",
+      "body": [
+        "dead-link-detection",
+        "orphan-detection",
+        "spl-diagnostics"
+      ],
+      "head": [
+        "diagnostics-complete"
+      ],
+      "source_file": "theories/release-readiness.spl",
+      "source_line": 23,
+      "source_page": "release-readiness"
+    },
+    {
+      "label": "__fact_12",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "shortest-path-done"
+      ],
+      "source_file": "features/Graph Queries.md",
+      "source_line": 12,
+      "source_page": "Graph Queries"
     },
     {
       "label": "__fact_4",
       "rule_type": "Fact",
       "body": [],
       "head": [
-        "evaluated-redis"
+        "reason-status-done"
       ],
-      "source_file": "decisions/Redis vs Memcached.md",
-      "source_line": 12,
-      "source_page": "Redis vs Memcached"
+      "source_file": "features/Reason Commands.md",
+      "source_line": 10,
+      "source_page": "Reason Commands"
     },
     {
-      "label": "d-license-risk",
-      "rule_type": "Defeater",
+      "label": "r-good-cli",
+      "rule_type": "Defeasible",
       "body": [
-        "discovered-license-risk"
+        "fast-startup",
+        "single-binary",
+        "type-safe"
       ],
       "head": [
-        "~decided-use-redis"
+        "good-cli-tool"
       ],
-      "source_file": "audits/License Audit.md",
-      "source_line": 8,
-      "source_page": "License Audit"
-    }
-  ],
-  "superiorities": [
-    [
-      "r-prefer-redis",
-      "r-prefer-memcached"
-    ]
-  ],
-  "diagnostics": [
-    {
-      "level": "Warning",
-      "message": "Body literal 'verified-load-test' in rule 'r-ready-prod' appears in no rule head or fact (possible typo)",
-      "file": "processes/Deployment Checklist.md",
-      "line": 9,
-      "column": 0
+      "source_file": "theories/design-principles.spl",
+      "source_line": 6,
+      "source_page": "design-principles"
     },
     {
-      "level": "Warning",
-      "message": "Body literal 'verified-security-audit' in rule 'r-ready-prod' appears in no rule head or fact (possible typo)",
-      "file": "processes/Deployment Checklist.md",
-      "line": 9,
-      "column": 0
+      "label": "r-recompute-theory",
+      "rule_type": "Defeasible",
+      "body": [
+        "incremental-rebuild"
+      ],
+      "head": [
+        "~cache-reasoning-results"
+      ],
+      "source_file": "architecture/Cache.md",
+      "source_line": 34,
+      "source_page": "Cache"
+    },
+    {
+      "label": "__fact_36",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "four-conclusion-types"
+      ],
+      "source_file": "architecture/Reasoning Engine.md",
+      "source_line": 21,
+      "source_page": "Reasoning Engine"
+    },
+    {
+      "label": "__fact_1",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "fulltext-search-done"
+      ],
+      "source_file": "features/Search.md",
+      "source_line": 10,
+      "source_page": "Search"
+    },
+    {
+      "label": "__fact_9",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-explain-done"
+      ],
+      "source_file": "features/Reason Commands.md",
+      "source_line": 11,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "__fact_13",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "forward-links-done"
+      ],
+      "source_file": "features/Graph Queries.md",
+      "source_line": 10,
+      "source_page": "Graph Queries"
+    },
+    {
+      "label": "r-release-candidate",
+      "rule_type": "Defeasible",
+      "body": [
+        "core-features-ready",
+        "reasoning-ready",
+        "agent-friendly",
+        "safe-to-use",
+        "tui-complete"
+      ],
+      "head": [
+        "release-candidate"
+      ],
+      "source_file": "theories/release-readiness.spl",
+      "source_line": 50,
+      "source_page": "release-readiness"
+    },
+    {
+      "label": "__fact_2",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "regex-support"
+      ],
+      "source_file": "features/Search.md",
+      "source_line": 11,
+      "source_page": "Search"
+    },
+    {
+      "label": "__fact_21",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "read-only-vault-access"
+      ],
+      "source_file": "decisions/Local-first Design.md",
+      "source_line": 10,
+      "source_page": "Local-first Design"
+    },
+    {
+      "label": "r-safe-to-use",
+      "rule_type": "Defeasible",
+      "body": [
+        "read-only-vault-access",
+        "disposable-cache"
+      ],
+      "head": [
+        "safe-to-use"
+      ],
+      "source_file": "theories/release-readiness.spl",
+      "source_line": 35,
+      "source_page": "release-readiness"
+    },
+    {
+      "label": "__fact_24",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "json-default-output"
+      ],
+      "source_file": "decisions/JSON by Default.md",
+      "source_line": 10,
+      "source_page": "JSON by Default"
+    },
+    {
+      "label": "__fact_5",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-why-not-done"
+      ],
+      "source_file": "features/Reason Commands.md",
+      "source_line": 12,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "__fact_29",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "directed-graph"
+      ],
+      "source_file": "architecture/Link Graph.md",
+      "source_line": 17,
+      "source_page": "Link Graph"
+    },
+    {
+      "label": "__fact_17",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "type-safe"
+      ],
+      "source_file": "decisions/Rust for CLI.md",
+      "source_line": 10,
+      "source_page": "Rust for CLI"
+    },
+    {
+      "label": "r-progressive-disclosure",
+      "rule_type": "Defeasible",
+      "body": [
+        "lean-default-binary",
+        "good-developer-experience"
+      ],
+      "head": [
+        "progressive-disclosure"
+      ],
+      "source_file": "theories/design-principles.spl",
+      "source_line": 26,
+      "source_page": "design-principles"
+    },
+    {
+      "label": "__fact_7",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-require-done"
+      ],
+      "source_file": "features/Reason Commands.md",
+      "source_line": 13,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "r-reasoning-ready",
+      "rule_type": "Defeasible",
+      "body": [
+        "reason-commands-complete",
+        "spindle-core-integrated",
+        "four-conclusion-types"
+      ],
+      "head": [
+        "reasoning-ready"
+      ],
+      "source_file": "theories/release-readiness.spl",
+      "source_line": 45,
+      "source_page": "release-readiness"
+    },
+    {
+      "label": "__fact_26",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "nonzero-exit-codes"
+      ],
+      "source_file": "decisions/JSON by Default.md",
+      "source_line": 12,
+      "source_page": "JSON by Default"
+    },
+    {
+      "label": "r-graph-complete",
+      "rule_type": "Strict",
+      "body": [
+        "directed-graph",
+        "multi-hop-traversal",
+        "forward-links-done",
+        "backlinks-done",
+        "shortest-path-done"
+      ],
+      "head": [
+        "graph-complete"
+      ],
+      "source_file": "theories/release-readiness.spl",
+      "source_line": 13,
+      "source_page": "release-readiness"
+    },
+    {
+      "label": "r-lean-default",
+      "rule_type": "Defeasible",
+      "body": [
+        "reason-feature-optional"
+      ],
+      "head": [
+        "lean-default-binary"
+      ],
+      "source_file": "theories/design-principles.spl",
+      "source_line": 16,
+      "source_page": "design-principles"
+    },
+    {
+      "label": "r-agent-friendly",
+      "rule_type": "Defeasible",
+      "body": [
+        "json-default-output",
+        "structured-errors",
+        "nonzero-exit-codes"
+      ],
+      "head": [
+        "agent-friendly"
+      ],
+      "source_file": "theories/release-readiness.spl",
+      "source_line": 30,
+      "source_page": "release-readiness"
+    },
+    {
+      "label": "__fact_20",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "disposable-cache"
+      ],
+      "source_file": "decisions/Local-first Design.md",
+      "source_line": 11,
+      "source_page": "Local-first Design"
+    },
+    {
+      "label": "__fact_33",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "mtime-based-cache"
+      ],
+      "source_file": "architecture/Cache.md",
+      "source_line": 19,
+      "source_page": "Cache"
+    },
+    {
+      "label": "__fact_22",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "graceful-degradation"
+      ],
+      "source_file": "decisions/Feature Gates.md",
+      "source_line": 11,
+      "source_page": "Feature Gates"
+    },
+    {
+      "label": "__fact_31",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "wikilink-extraction"
+      ],
+      "source_file": "architecture/Scanner.md",
+      "source_line": 26,
+      "source_page": "Scanner"
+    },
+    {
+      "label": "r-dual-audience",
+      "rule_type": "Defeasible",
+      "body": [
+        "json-default-output",
+        "tui-complete",
+        "seven-views"
+      ],
+      "head": [
+        "serves-both-audiences"
+      ],
+      "source_file": "theories/design-principles.spl",
+      "source_line": 11,
+      "source_page": "design-principles"
+    },
+    {
+      "label": "__fact_8",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-what-if-done"
+      ],
+      "source_file": "features/Reason Commands.md",
+      "source_line": 14,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "r-cache-theory",
+      "rule_type": "Defeasible",
+      "body": [
+        "mtime-based-cache"
+      ],
+      "head": [
+        "cache-reasoning-results"
+      ],
+      "source_file": "architecture/Cache.md",
+      "source_line": 29,
+      "source_page": "Cache"
+    },
+    {
+      "label": "__fact_19",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "fast-startup"
+      ],
+      "source_file": "decisions/Rust for CLI.md",
+      "source_line": 12,
+      "source_page": "Rust for CLI"
     }
-  ]
+  ],
+  "superiorities": [],
+  "diagnostics": []
 }
