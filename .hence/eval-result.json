@@ -3,28 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 394,
-    "deletions": 20,
+    "files_changed": 3,
+    "insertions": 990,
+    "deletions": 23,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cache.rs",
-      "src/graph.rs",
-      "src/scanner.rs",
-      "src/types.rs"
+      "src/reason/mod.rs",
+      "src/reason/types.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-spl-extraction-changes",
-      "content": "Modified 5 files (+394, -20): .hence/context-manifest.json, src/cache.rs, src/graph.rs, src/scanner.rs, src/types.rs",
+      "key": "task-reason-engine-changes",
+      "content": "Modified 3 files (+990, -23): .hence/context-manifest.json, src/reason/mod.rs, src/reason/types.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/spl-extraction-v1",
-  "evaluated_at": "2026-02-23T13:20:25Z",
+  "branch_name": "hence/reason-engine-v1",
+  "evaluated_at": "2026-02-23T13:37:21Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

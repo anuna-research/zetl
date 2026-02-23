@@ -1,12 +1,12 @@
 {
-  "task_id": "spl-extraction",
+  "task_id": "reason-engine",
   "token_budget": 8000,
-  "tokens_used": 305,
+  "tokens_used": 397,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend src/scanner.rs to extract SPL content from fenced code blocks tagged `spl` or `spindle`. During the existing Markdown scan pass (which already tracks code block boundaries via pulldown-cmark), identify spl-tagged blocks and capture their content with provenance. Produce SplBlock structs with source_file, source_page, start_line, end_line, content. Rules: 1) Both backtick and tilde fences accepted, 2) Multiple blocks per file concatenated in document order, 3) Blocks inside HTML comments ignored (consistent with SPEC-001 §3.3), 4) Blocks inside nested fences ignored. Also detect standalone .spl files during the file walk (by extension) and create SplBlocks for them (start_line=1, content=entire file). Extend ParsedFile to include spl_blocks: Vec<SplBlock>. Per SPEC-005 §5.4 extraction algorithm.",
-      "token_cost": 203,
+      "content": "Create src/reason.rs (or src/reason/mod.rs) gated behind #[cfg(feature = \"reason\")]. Implement the theory construction pipeline from SPEC-005 §5.5: 1) Parse — feed each SplBlock.content to spindle-parser, collect rules/facts/superiority/diagnostics, 2) Annotate provenance — attach _source_file, _source_line, _source_page metadata to each rule/fact via spindle-core Meta API (per ADR-007), 3) Combine — union all fragments into a single spindle-core Theory, detect duplicate rule labels (warn), 4) Validate — check undefined labels in (prefer ...), body literals with no matching head/fact (warn), 5) Reason — run spindle-core StandardReasoner, produce conclusions (+D/-D/+d/-d) for every literal, 6) Annotate conclusions — trace proof sources from rule metadata into ProvenancedConclusion structs. Key function: build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> where TheoryResult contains the Theory, conclusions, and diagnostics. Handle parse errors gracefully: exclude errored blocks, continue with partial theory, collect diagnostics.",
+      "token_cost": 266,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 5 files (+79, -5): .hence/context-manifest.json, demo-vault/audits/License Audit.md, demo-vault/decisions/Redis vs Memcached.md, demo-vault/processes/Deployment Checklist.md, demo-vault/theories/caching.spl",
       "token_cost": 53,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-spl-extraction-changes",
+      "content": "Modified 5 files (+394, -20): .hence/context-manifest.json, src/cache.rs, src/graph.rs, src/scanner.rs, src/types.rs",
+      "token_cost": 29,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T13:15:14Z"
+  "constructed_at": "2026-02-23T13:20:30Z"
 }
