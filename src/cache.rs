@@ -279,10 +279,7 @@ mod tests {
     fn make_parsed_file(rel_path: &str, mtime: SystemTime) -> ParsedFile {
         ParsedFile {
             path: PathBuf::from(rel_path),
-            page_name: rel_path
-                .strip_suffix(".md")
-                .unwrap_or(rel_path)
-                .to_string(),
+            page_name: rel_path.strip_suffix(".md").unwrap_or(rel_path).to_string(),
             links: vec![],
             spl_blocks: vec![],
             diagnostics: vec![],
@@ -352,14 +349,8 @@ mod tests {
         let t2 = UNIX_EPOCH + Duration::from_secs(2_000_000);
 
         let cached: HashMap<PathBuf, ParsedFile> = [
-            (
-                PathBuf::from("a.md"),
-                make_parsed_file("a.md", t1),
-            ),
-            (
-                PathBuf::from("b.md"),
-                make_parsed_file("b.md", t1),
-            ),
+            (PathBuf::from("a.md"), make_parsed_file("a.md", t1)),
+            (PathBuf::from("b.md"), make_parsed_file("b.md", t1)),
         ]
         .into_iter()
         .collect();
@@ -373,7 +364,10 @@ mod tests {
         let mut need_reparse = files_needing_reparse(&cached, &current_files);
         need_reparse.sort();
 
-        assert_eq!(need_reparse, vec![PathBuf::from("b.md"), PathBuf::from("c.md")]);
+        assert_eq!(
+            need_reparse,
+            vec![PathBuf::from("b.md"), PathBuf::from("c.md")]
+        );
     }
 
     #[test]
@@ -381,30 +375,32 @@ mod tests {
         let cached: HashMap<PathBuf, ParsedFile> = HashMap::new();
         let t = UNIX_EPOCH + Duration::from_secs(1_000_000);
 
-        let current_files = vec![
-            (PathBuf::from("x.md"), t),
-            (PathBuf::from("y.md"), t),
-        ];
+        let current_files = vec![(PathBuf::from("x.md"), t), (PathBuf::from("y.md"), t)];
 
         let need_reparse = files_needing_reparse(&cached, &current_files);
-        assert_eq!(need_reparse.len(), 2, "all files should need parsing when cache is empty");
+        assert_eq!(
+            need_reparse.len(),
+            2,
+            "all files should need parsing when cache is empty"
+        );
     }
 
     #[test]
     fn files_needing_reparse_unchanged_returns_empty() {
         let t = UNIX_EPOCH + Duration::from_secs(1_500_000);
 
-        let cached: HashMap<PathBuf, ParsedFile> = [(
-            PathBuf::from("only.md"),
-            make_parsed_file("only.md", t),
-        )]
-        .into_iter()
-        .collect();
+        let cached: HashMap<PathBuf, ParsedFile> =
+            [(PathBuf::from("only.md"), make_parsed_file("only.md", t))]
+                .into_iter()
+                .collect();
 
         let current_files = vec![(PathBuf::from("only.md"), t)];
 
         let need_reparse = files_needing_reparse(&cached, &current_files);
-        assert!(need_reparse.is_empty(), "unchanged file should not need reparse");
+        assert!(
+            need_reparse.is_empty(),
+            "unchanged file should not need reparse"
+        );
     }
 
     #[test]
@@ -446,10 +442,7 @@ mod tests {
         use crate::types::SplBlock;
         ParsedFile {
             path: PathBuf::from(rel_path),
-            page_name: rel_path
-                .strip_suffix(".md")
-                .unwrap_or(rel_path)
-                .to_string(),
+            page_name: rel_path.strip_suffix(".md").unwrap_or(rel_path).to_string(),
             links: vec![],
             spl_blocks: vec![SplBlock {
                 source_file: PathBuf::from(rel_path),
@@ -561,10 +554,7 @@ mod tests {
 
         let cache = make_theory_cache(spl_mtimes, vec![]);
         // Two SPL files now, cache only knew about one
-        let files = vec![
-            make_spl_file("a.md", t),
-            make_spl_file("b.md", t),
-        ];
+        let files = vec![make_spl_file("a.md", t), make_spl_file("b.md", t)];
 
         assert!(!theory_cache_valid(&cache, &files));
     }

@@ -46,10 +46,9 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
             .map(|f| (f.path.clone(), f.mtime))
             .collect();
 
-        let needs_reparse: HashSet<PathBuf> =
-            files_needing_reparse(cached_map, &current_files)
-                .into_iter()
-                .collect();
+        let needs_reparse: HashSet<PathBuf> = files_needing_reparse(cached_map, &current_files)
+            .into_iter()
+            .collect();
 
         // Merge: use cached data for unchanged files, freshly scanned data for changed ones
         let mut merged = Vec::new();
@@ -216,10 +215,7 @@ fn cmd_index(cli: &Cli) -> Result<()> {
                 Cell::new("Links found"),
                 Cell::new(result.links_found),
             ]);
-            table.add_row(vec![
-                Cell::new("Dead links"),
-                Cell::new(result.dead_links),
-            ]);
+            table.add_row(vec![Cell::new("Dead links"), Cell::new(result.dead_links)]);
             table.add_row(vec![
                 Cell::new("Diagnostics"),
                 Cell::new(result.diagnostics),
@@ -245,8 +241,8 @@ fn cmd_links(
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
-    let resolved_page =
-        find_page(page, &pipeline.file_index, fuzzy, &pipeline.files).unwrap_or_else(|e| {
+    let resolved_page = find_page(page, &pipeline.file_index, fuzzy, &pipeline.files)
+        .unwrap_or_else(|e| {
             exit_page_not_found(&cli.format, &e);
         });
 
@@ -311,12 +307,7 @@ fn cmd_links(
 
             // Context: read N chars around the wikilink position in the source file
             let ctx = if context > 0 {
-                extract_context(
-                    &pipeline.vault_root,
-                    &edge.source_file,
-                    edge.line,
-                    context,
-                )
+                extract_context(&pipeline.vault_root, &edge.source_file, edge.line, context)
             } else {
                 None
             };
@@ -384,9 +375,7 @@ fn cmd_links(
                     Cell::new(entry.line),
                 ];
                 if context > 0 {
-                    row.push(Cell::new(
-                        entry.context.as_deref().unwrap_or(""),
-                    ));
+                    row.push(Cell::new(entry.context.as_deref().unwrap_or("")));
                 }
                 if with_conclusions {
                     let conc_str = entry
@@ -399,11 +388,7 @@ fn cmd_links(
                                 .join(", ")
                         })
                         .unwrap_or_default();
-                    row.push(Cell::new(if conc_str.is_empty() {
-                        "-"
-                    } else {
-                        &conc_str
-                    }));
+                    row.push(Cell::new(if conc_str.is_empty() { "-" } else { &conc_str }));
                 }
                 table.add_row(row);
             }
@@ -425,8 +410,8 @@ fn cmd_backlinks(
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
-    let resolved_page =
-        find_page(page, &pipeline.file_index, fuzzy, &pipeline.files).unwrap_or_else(|e| {
+    let resolved_page = find_page(page, &pipeline.file_index, fuzzy, &pipeline.files)
+        .unwrap_or_else(|e| {
             exit_page_not_found(&cli.format, &e);
         });
 
@@ -562,9 +547,7 @@ fn cmd_backlinks(
                     Cell::new(entry.line),
                 ];
                 if context > 0 {
-                    row.push(Cell::new(
-                        entry.context.as_deref().unwrap_or(""),
-                    ));
+                    row.push(Cell::new(entry.context.as_deref().unwrap_or("")));
                 }
                 if with_conclusions {
                     let conc_str = entry
@@ -577,11 +560,7 @@ fn cmd_backlinks(
                                 .join(", ")
                         })
                         .unwrap_or_default();
-                    row.push(Cell::new(if conc_str.is_empty() {
-                        "-"
-                    } else {
-                        &conc_str
-                    }));
+                    row.push(Cell::new(if conc_str.is_empty() { "-" } else { &conc_str }));
                 }
                 table.add_row(row);
             }
@@ -677,10 +656,7 @@ fn cmd_check(
                 let mut table = Table::new();
                 table.set_header(vec!["Orphan Page", "Forward Links"]);
                 for o in &output.orphans {
-                    table.add_row(vec![
-                        Cell::new(&o.page),
-                        Cell::new(o.forward_links),
-                    ]);
+                    table.add_row(vec![Cell::new(&o.page), Cell::new(o.forward_links)]);
                 }
                 println!("Orphan Pages:");
                 println!("{table}");
@@ -890,8 +866,8 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
 fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
-    let resolved_from =
-        find_page(from, &pipeline.file_index, false, &pipeline.files).unwrap_or_else(|e| {
+    let resolved_from = find_page(from, &pipeline.file_index, false, &pipeline.files)
+        .unwrap_or_else(|e| {
             exit_page_not_found(&cli.format, &e);
         });
 
@@ -996,15 +972,9 @@ fn cmd_search(
             }
             table.set_header(headers);
             for r in &output.results {
-                let mut row = vec![
-                    Cell::new(&r.page),
-                    Cell::new(r.line),
-                    Cell::new(r.column),
-                ];
+                let mut row = vec![Cell::new(&r.page), Cell::new(r.line), Cell::new(r.column)];
                 if context > 0 {
-                    row.push(Cell::new(
-                        r.context.as_deref().unwrap_or(""),
-                    ));
+                    row.push(Cell::new(r.context.as_deref().unwrap_or("")));
                 }
                 table.add_row(row);
             }
@@ -1131,7 +1101,10 @@ fn cmd_export(cli: &Cli) -> Result<()> {
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
         OutputFormat::Table => {
-            println!("Graph: {} nodes, {} edges", output.node_count, output.edge_count);
+            println!(
+                "Graph: {} nodes, {} edges",
+                output.node_count, output.edge_count
+            );
             println!();
             let mut table = Table::new();
             table.set_header(vec!["Source", "Target"]);
@@ -1160,9 +1133,7 @@ struct PageConclusionEntry {
 /// Runs the reasoning pipeline over all SPL blocks and maps each proof source
 /// page back to the conclusions it supports.
 #[cfg(feature = "reason")]
-fn build_page_conclusions_map(
-    files: &[ParsedFile],
-) -> HashMap<String, Vec<PageConclusionEntry>> {
+fn build_page_conclusions_map(files: &[ParsedFile]) -> HashMap<String, Vec<PageConclusionEntry>> {
     use zetl::reason::build_theory;
     use zetl::reason::types::ConclusionType;
 
@@ -1241,7 +1212,9 @@ fn extract_context(vault_root: &Path, source_file: &str, line: u32, n: usize) ->
 
     // Find the wikilink on this line
     let link_start = target_line.find("[[")?;
-    let link_end = target_line[link_start..].find("]]").map(|i| link_start + i + 2)?;
+    let link_end = target_line[link_start..]
+        .find("]]")
+        .map(|i| link_start + i + 2)?;
 
     // Extract n chars before and after, snapping to char boundaries
     let ctx_start = floor_char_boundary(target_line, link_start.saturating_sub(n));
@@ -1311,7 +1284,9 @@ fn build_or_load_theory(
     no_cache: bool,
     verbose: u8,
 ) -> Result<zetl::reason::types::TheoryResult> {
-    use zetl::cache::{build_theory_cache, load_theory_cache, save_theory_cache, theory_cache_valid};
+    use zetl::cache::{
+        build_theory_cache, load_theory_cache, save_theory_cache, theory_cache_valid,
+    };
     use zetl::reason::{build_theory, build_theory_from_cache};
 
     let total_start = Instant::now();
@@ -1491,12 +1466,10 @@ fn count_unresolved_conflicts(result: &zetl::reason::types::TheoryResult) -> usi
         let mut all_resolved = true;
         for pr in &pos_defeasible {
             for nr in &neg_defeasible {
-                let has_sup = superiorities
-                    .iter()
-                    .any(|s| {
-                        (s.superior == pr.label && s.inferior == nr.label)
-                            || (s.superior == nr.label && s.inferior == pr.label)
-                    });
+                let has_sup = superiorities.iter().any(|s| {
+                    (s.superior == pr.label && s.inferior == nr.label)
+                        || (s.superior == nr.label && s.inferior == pr.label)
+                });
                 if !has_sup {
                     all_resolved = false;
                 }
@@ -1543,9 +1516,7 @@ fn cmd_reason_status(
     let parse_error_count = result
         .diagnostics
         .iter()
-        .filter(|d| {
-            d.level == DiagnosticLevel::Error && d.message.contains("SPL parse error")
-        })
+        .filter(|d| d.level == DiagnosticLevel::Error && d.message.contains("SPL parse error"))
         .count();
     let has_parse_errors = parse_error_count > 0;
     let all_blocks_failed = parse_error_count == block_count && result.conclusions.is_empty();
@@ -1594,8 +1565,7 @@ fn cmd_reason_status(
                 || (defeasible
                     && matches!(
                         c.conclusion_type,
-                        ConclusionType::DefeasiblyProvable
-                            | ConclusionType::DefeasiblyNotProvable
+                        ConclusionType::DefeasiblyProvable | ConclusionType::DefeasiblyNotProvable
                     ))
         });
     }
@@ -1733,10 +1703,7 @@ fn cmd_reason_status(
                     + result.summary.defeasibly_not_provable,
             );
             if unresolved_conflict_count > 0 {
-                println!(
-                    "Unresolved conflicts: {}",
-                    unresolved_conflict_count,
-                );
+                println!("Unresolved conflicts: {}", unresolved_conflict_count,);
             }
             if error_count > 0 || warning_count > 0 {
                 println!(
@@ -1824,13 +1791,16 @@ fn cmd_reason_explain(
             .filter(|c| c.literal == literal_input)
             .collect();
 
-        let matching_conclusion = matching_conclusions.iter().find(|c| {
-            matches!(
-                c.conclusion_type,
-                zetl::reason::types::ConclusionType::DefeasiblyNotProvable
-            )
-        }).or_else(|| matching_conclusions.first())
-        .copied();
+        let matching_conclusion = matching_conclusions
+            .iter()
+            .find(|c| {
+                matches!(
+                    c.conclusion_type,
+                    zetl::reason::types::ConclusionType::DefeasiblyNotProvable
+                )
+            })
+            .or_else(|| matching_conclusions.first())
+            .copied();
 
         if let Some(conclusion) = matching_conclusion {
             // The literal exists but is not positively provable — explain that
@@ -1857,7 +1827,8 @@ fn cmd_reason_explain(
         let msg = if suggestions.is_empty() {
             format!("Literal '{}' not found in any conclusion", literal_input)
         } else {
-            let did_you_mean: Vec<String> = suggestions.iter().map(|s| format!("'{}'", s)).collect();
+            let did_you_mean: Vec<String> =
+                suggestions.iter().map(|s| format!("'{}'", s)).collect();
             format!(
                 "Literal '{}' not found. Did you mean: {}?",
                 literal_input,
@@ -1891,12 +1862,7 @@ fn cmd_reason_explain(
     let explanation = explanation.unwrap();
 
     // Build our enriched proof tree with provenance
-    let enriched = enrich_proof_tree(
-        &explanation,
-        &result,
-        literal_input,
-        max_depth,
-    );
+    let enriched = enrich_proof_tree(&explanation, &result, literal_input, max_depth);
 
     // Output in the requested format
     match explain_format {
@@ -2208,9 +2174,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
 
             if output.candidate_rules.is_empty() {
                 println!("  No rules have '{}' as their head.", output.literal);
-                println!(
-                    "  To make it provable, add a rule or fact asserting it."
-                );
+                println!("  To make it provable, add a rule or fact asserting it.");
             } else {
                 println!(
                     "  {} rule(s) could prove '{}':",
@@ -2241,9 +2205,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
                                             "      Not asserted by any document in the vault."
                                         );
                                     } else {
-                                        println!(
-                                            "      Would need to be asserted by:"
-                                        );
+                                        println!("      Would need to be asserted by:");
                                         for src in &blocker.sources {
                                             if let Some(ref label) = src.rule_label {
                                                 println!(
@@ -2271,7 +2233,10 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
                                     }
                                 }
                                 _ => {
-                                    println!("    {}: {}", blocker.blocker_type, blocker.explanation);
+                                    println!(
+                                        "    {}: {}",
+                                        blocker.blocker_type, blocker.explanation
+                                    );
                                 }
                             }
                         }
@@ -2535,10 +2500,7 @@ fn cmd_reason_require(
                 // No rule can prove it — must be asserted as a fact
                 required_facts.push(RequiredFact {
                     literal: lit.clone(),
-                    reason: format!(
-                        "No rules can derive '{}'; must be asserted as a fact",
-                        lit
-                    ),
+                    reason: format!("No rules can derive '{}'; must be asserted as a fact", lit),
                     needed_by_rule: needed_by.clone(),
                     needed_in_page: needed_in_page.clone(),
                 });
@@ -2639,17 +2601,14 @@ fn cmd_reason_require(
                     if solution.required_facts.is_empty() {
                         println!("    No additional facts required.");
                     } else {
-                        println!(
-                            "    {} fact(s) required:",
-                            solution.required_facts.len()
-                        );
+                        println!("    {} fact(s) required:", solution.required_facts.len());
                         for fact in &solution.required_facts {
-                            println!("      - '{}' (needed by rule '{}')", fact.literal, fact.needed_by_rule);
-                            println!("        {}", fact.reason);
                             println!(
-                                "        defined in: [[{}]]",
-                                fact.needed_in_page
+                                "      - '{}' (needed by rule '{}')",
+                                fact.literal, fact.needed_by_rule
                             );
+                            println!("        {}", fact.reason);
+                            println!("        defined in: [[{}]]", fact.needed_in_page);
                         }
                     }
                     println!();
@@ -2722,10 +2681,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
         HashMap::new();
     for rule in &result.rules {
         let head_str = rule.head.to_string();
-        rules_for_literal
-            .entry(head_str)
-            .or_default()
-            .push(rule);
+        rules_for_literal.entry(head_str).or_default().push(rule);
     }
 
     // Also include facts as potential sources of conflict
@@ -2733,10 +2689,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
         HashMap::new();
     for fact in &result.facts {
         let lit_str = fact.literal.to_string();
-        facts_for_literal
-            .entry(lit_str)
-            .or_default()
-            .push(fact);
+        facts_for_literal.entry(lit_str).or_default().push(fact);
     }
 
     // Build the set of superiority relations for quick lookup
@@ -2772,10 +2725,10 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
         let positive = base_name.clone();
         let negative = format!("~{}", base_name);
 
-        let pos_has_rules = rules_for_literal.contains_key(&positive)
-            || facts_for_literal.contains_key(&positive);
-        let neg_has_rules = rules_for_literal.contains_key(&negative)
-            || facts_for_literal.contains_key(&negative);
+        let pos_has_rules =
+            rules_for_literal.contains_key(&positive) || facts_for_literal.contains_key(&positive);
+        let neg_has_rules =
+            rules_for_literal.contains_key(&negative) || facts_for_literal.contains_key(&negative);
 
         if !pos_has_rules || !neg_has_rules {
             continue; // No conflict — only one side has rules
@@ -2858,7 +2811,11 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
 
         // If there are no defeasible rules on either side (only facts or strict),
         // check if it's actually an unresolved situation
-        if pos_defeasible.is_empty() && neg_defeasible.is_empty() && !pos_has_strict && !neg_has_strict {
+        if pos_defeasible.is_empty()
+            && neg_defeasible.is_empty()
+            && !pos_has_strict
+            && !neg_has_strict
+        {
             // Both sides only have facts — this is a genuine conflict
         }
 
@@ -2920,17 +2877,10 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
             if conflicts.is_empty() {
                 println!("No unresolved conflicts found in theory.");
             } else {
-                println!(
-                    "{} unresolved conflict(s) found:\n",
-                    conflicts.len()
-                );
+                println!("{} unresolved conflict(s) found:\n", conflicts.len());
 
                 for (i, conflict) in conflicts.iter().enumerate() {
-                    println!(
-                        "{}. Contested literal: {}",
-                        i + 1,
-                        conflict.literal
-                    );
+                    println!("{}. Contested literal: {}", i + 1, conflict.literal);
                     println!();
 
                     // Group rules by which side they support
@@ -3267,20 +3217,24 @@ fn cmd_reason_what_if(
     let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Build baseline conclusion set: (literal, type_symbol) pairs
-    let conclusion_symbol =
-        |ct: &zetl::reason::types::ConclusionType| -> &'static str {
-            match ct {
-                zetl::reason::types::ConclusionType::DefinitelyProvable => "+D",
-                zetl::reason::types::ConclusionType::DefinitelyNotProvable => "-D",
-                zetl::reason::types::ConclusionType::DefeasiblyProvable => "+d",
-                zetl::reason::types::ConclusionType::DefeasiblyNotProvable => "-d",
-            }
-        };
+    let conclusion_symbol = |ct: &zetl::reason::types::ConclusionType| -> &'static str {
+        match ct {
+            zetl::reason::types::ConclusionType::DefinitelyProvable => "+D",
+            zetl::reason::types::ConclusionType::DefinitelyNotProvable => "-D",
+            zetl::reason::types::ConclusionType::DefeasiblyProvable => "+d",
+            zetl::reason::types::ConclusionType::DefeasiblyNotProvable => "-d",
+        }
+    };
 
     let baseline_set: HashSet<(String, String)> = result
         .conclusions
         .iter()
-        .map(|c| (c.literal.clone(), conclusion_symbol(&c.conclusion_type).to_string()))
+        .map(|c| {
+            (
+                c.literal.clone(),
+                conclusion_symbol(&c.conclusion_type).to_string(),
+            )
+        })
         .collect();
 
     // Clone the theory and inject hypothetical additions
@@ -3303,13 +3257,18 @@ fn cmd_reason_what_if(
     }
 
     // Re-reason on the hypothetical theory
-    let hyp_conclusions = spindle_core::reason::reason(&hyp_theory)
-        .context("Hypothetical reasoning failed")?;
+    let hyp_conclusions =
+        spindle_core::reason::reason(&hyp_theory).context("Hypothetical reasoning failed")?;
 
     // Build hypothetical conclusion set
     let hyp_set: HashSet<(String, String)> = hyp_conclusions
         .iter()
-        .map(|c| (c.literal.to_string(), c.conclusion_type.symbol().to_string()))
+        .map(|c| {
+            (
+                c.literal.to_string(),
+                c.conclusion_type.symbol().to_string(),
+            )
+        })
         .collect();
 
     // Diff the two sets
@@ -3430,10 +3389,7 @@ fn cmd_reason_what_if(
                 if !changed_conclusions.is_empty() {
                     println!("Changed conclusions:");
                     for c in &changed_conclusions {
-                        println!(
-                            "  {} : was {} , now {}",
-                            c.literal, c.was, c.now
-                        );
+                        println!("  {} : was {} , now {}", c.literal, c.was, c.now);
                     }
                     println!();
                 }
@@ -3542,9 +3498,8 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
             .then(a.to_page.cmp(&b.to_page))
             .then(a.line.cmp(&b.line))
     });
-    cross_refs.dedup_by(|a, b| {
-        a.from_page == b.from_page && a.to_page == b.to_page && a.line == b.line
-    });
+    cross_refs
+        .dedup_by(|a, b| a.from_page == b.from_page && a.to_page == b.to_page && a.line == b.line);
 
     // Build per-conclusion output
     let conclusion_entries: Vec<ProvenanceConclusionEntry> = matching
@@ -3586,10 +3541,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
                             ps.page, ps.line, ps.contribution, label
                         );
                     } else {
-                        println!(
-                            "    [[{}]]:{} — {}",
-                            ps.page, ps.line, ps.contribution
-                        );
+                        println!("    [[{}]]:{} — {}", ps.page, ps.line, ps.contribution);
                     }
                 }
                 println!();
@@ -3981,7 +3933,10 @@ fn print_negative_explanation(
 
             let explanation_text = match conclusion.conclusion_type {
                 ConclusionType::DefinitelyNotProvable => {
-                    format!("'{}' is definitely not provable (-D): no strict proof chain exists", literal_input)
+                    format!(
+                        "'{}' is definitely not provable (-D): no strict proof chain exists",
+                        literal_input
+                    )
                 }
                 ConclusionType::DefeasiblyNotProvable => {
                     if defeat_chain.is_empty() {
@@ -4033,28 +3988,38 @@ fn print_negative_explanation(
                 }
             }
         }
-        ExplainFormat::Natural => {
-            match conclusion.conclusion_type {
-                ConclusionType::DefinitelyNotProvable => {
-                    println!("The literal '{}' is definitely not provable.", literal_input);
-                    println!("No strict proof chain can establish it from the known facts and rules.");
-                }
-                ConclusionType::DefeasiblyNotProvable => {
-                    println!("The literal '{}' is defeasibly not provable.", literal_input);
-                    if defeat_chain.is_empty() {
-                        println!("No undefeated defeasible proof chain exists.");
-                    } else {
-                        println!("It is blocked by the following rule(s):");
-                        for r in &defeat_chain {
-                            println!("  - Rule '{}' from [[{}]]:{}", r.label, r.source_page, r.source_line);
-                        }
+        ExplainFormat::Natural => match conclusion.conclusion_type {
+            ConclusionType::DefinitelyNotProvable => {
+                println!(
+                    "The literal '{}' is definitely not provable.",
+                    literal_input
+                );
+                println!("No strict proof chain can establish it from the known facts and rules.");
+            }
+            ConclusionType::DefeasiblyNotProvable => {
+                println!(
+                    "The literal '{}' is defeasibly not provable.",
+                    literal_input
+                );
+                if defeat_chain.is_empty() {
+                    println!("No undefeated defeasible proof chain exists.");
+                } else {
+                    println!("It is blocked by the following rule(s):");
+                    for r in &defeat_chain {
+                        println!(
+                            "  - Rule '{}' from [[{}]]:{}",
+                            r.label, r.source_page, r.source_line
+                        );
                     }
                 }
-                _ => {
-                    println!("'{}' holds as {} {}.", literal_input, conclusion_type_str, literal_input);
-                }
             }
-        }
+            _ => {
+                println!(
+                    "'{}' holds as {} {}.",
+                    literal_input, conclusion_type_str, literal_input
+                );
+            }
+        },
         ExplainFormat::Dot => {
             // Minimal DOT graph for negative conclusions
             println!("digraph explanation {{");
@@ -4107,7 +4072,10 @@ fn fuzzy_match_literals(query: &str, literals: &[String]) -> Vec<String> {
 #[cfg(feature = "reason")]
 fn print_explain_table(output: &ExplainOutput) {
     println!("Explanation for '{}':", output.literal);
-    println!("  Conclusion: {} {}", output.conclusion_type, output.literal);
+    println!(
+        "  Conclusion: {} {}",
+        output.conclusion_type, output.literal
+    );
     println!();
 
     if let Some(ref tree) = output.proof_tree {
@@ -4155,7 +4123,8 @@ fn print_tree_node(node: &ExplainNode, indent: usize) {
     };
 
     println!(
-        "{}{} ({}){}{}", pad, node.literal, node.derivation, rule_str, source_str
+        "{}{} ({}){}{}",
+        pad, node.literal, node.derivation, rule_str, source_str
     );
 
     for child in &node.body {
@@ -4360,7 +4329,10 @@ fn cmd_reason_export(
                 }))?;
             }
             ExportFormat::Spl => {
-                println!("; Theory extracted from vault: {}", pipeline.vault_root.display());
+                println!(
+                    "; Theory extracted from vault: {}",
+                    pipeline.vault_root.display()
+                );
                 println!("; 0 source files, 0 facts, 0 rules, 0 defeaters");
             }
         }

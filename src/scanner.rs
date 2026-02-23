@@ -367,9 +367,8 @@ pub fn validate_syntax(path: &Path, content: &str) -> Vec<Diagnostic> {
 
                 if !found_close && !found_nested {
                     // Unclosed wikilink - collect the text we saw for the message
-                    let snippet: String = chars[open_start..len.min(open_start + 40)]
-                        .iter()
-                        .collect();
+                    let snippet: String =
+                        chars[open_start..len.min(open_start + 40)].iter().collect();
                     let display = if snippet.len() < (len - open_start) {
                         format!("{snippet}...")
                     } else {
@@ -760,8 +759,14 @@ mod tests {
             !text.contains("```"),
             "Code fence markers should be excluded, got: {text:?}"
         );
-        assert!(text.contains("Before"), "Text before code block should be included");
-        assert!(text.contains("After"), "Text after code block should be included");
+        assert!(
+            text.contains("Before"),
+            "Text before code block should be included"
+        );
+        assert!(
+            text.contains("After"),
+            "Text after code block should be included"
+        );
     }
 
     #[test]
@@ -772,8 +777,14 @@ mod tests {
             !text.contains("`inline`"),
             "Inline code should be excluded, got: {text:?}"
         );
-        assert!(text.contains("Some "), "Text before inline code should be included");
-        assert!(text.contains(" code"), "Text after inline code should be included");
+        assert!(
+            text.contains("Some "),
+            "Text before inline code should be included"
+        );
+        assert!(
+            text.contains(" code"),
+            "Text after inline code should be included"
+        );
     }
 
     #[test]
@@ -788,8 +799,14 @@ mod tests {
             !text.contains("comment"),
             "Comment content should be excluded, got: {text:?}"
         );
-        assert!(text.contains("Before"), "Text before comment should be included");
-        assert!(text.contains("After"), "Text after comment should be included");
+        assert!(
+            text.contains("Before"),
+            "Text before comment should be included"
+        );
+        assert!(
+            text.contains("After"),
+            "Text after comment should be included"
+        );
     }
 
     #[test]
@@ -813,16 +830,34 @@ mod tests {
         let text = body_text(content);
 
         // Excluded content should not appear
-        assert!(!text.contains("title: doc"), "Frontmatter should be excluded");
+        assert!(
+            !text.contains("title: doc"),
+            "Frontmatter should be excluded"
+        );
         assert!(!text.contains("`code`"), "Inline code should be excluded");
-        assert!(!text.contains("print('hi')"), "Code block should be excluded");
-        assert!(!text.contains("<!-- hidden -->"), "HTML comment should be excluded");
+        assert!(
+            !text.contains("print('hi')"),
+            "Code block should be excluded"
+        );
+        assert!(
+            !text.contains("<!-- hidden -->"),
+            "HTML comment should be excluded"
+        );
 
         // Included content should appear
         assert!(text.contains("# Heading"), "Heading should be included");
-        assert!(text.contains("Some text with "), "Body text should be included");
-        assert!(text.contains(" here."), "Body text after inline code should be included");
-        assert!(text.contains("Final paragraph."), "Final paragraph should be included");
+        assert!(
+            text.contains("Some text with "),
+            "Body text should be included"
+        );
+        assert!(
+            text.contains(" here."),
+            "Body text after inline code should be included"
+        );
+        assert!(
+            text.contains("Final paragraph."),
+            "Final paragraph should be included"
+        );
     }
 
     #[test]
@@ -833,16 +868,28 @@ mod tests {
             !text.contains("<!-- comment -->"),
             "Inline HTML comment should be excluded, got: {text:?}"
         );
-        assert!(text.contains("Text "), "Text before inline comment should be included");
-        assert!(text.contains(" more text"), "Text after inline comment should be included");
+        assert!(
+            text.contains("Text "),
+            "Text before inline comment should be included"
+        );
+        assert!(
+            text.contains(" more text"),
+            "Text after inline comment should be included"
+        );
     }
 
     #[test]
     fn multiple_code_blocks_excluded() {
         let content = "A\n\n```\nblock1\n```\n\nB\n\n```\nblock2\n```\n\nC\n";
         let text = body_text(content);
-        assert!(!text.contains("block1"), "First code block should be excluded");
-        assert!(!text.contains("block2"), "Second code block should be excluded");
+        assert!(
+            !text.contains("block1"),
+            "First code block should be excluded"
+        );
+        assert!(
+            !text.contains("block2"),
+            "Second code block should be excluded"
+        );
         assert!(text.contains("A"), "Text A should be included");
         assert!(text.contains("B"), "Text B should be included");
         assert!(text.contains("C"), "Text C should be included");
@@ -974,14 +1021,20 @@ mod tests {
     fn validate_skips_fenced_code_block_backticks() {
         let content = "```\n[[broken\n```";
         let diags = run_validate(content);
-        assert!(diags.is_empty(), "Should skip content inside fenced code blocks");
+        assert!(
+            diags.is_empty(),
+            "Should skip content inside fenced code blocks"
+        );
     }
 
     #[test]
     fn validate_skips_fenced_code_block_tildes() {
         let content = "~~~\n[[]]\n~~~";
         let diags = run_validate(content);
-        assert!(diags.is_empty(), "Should skip content inside ~~~ fenced code blocks");
+        assert!(
+            diags.is_empty(),
+            "Should skip content inside ~~~ fenced code blocks"
+        );
     }
 
     #[test]
@@ -1005,7 +1058,10 @@ mod tests {
     #[test]
     fn validate_skips_inline_code() {
         let diags = run_validate("Use `[[broken` syntax.");
-        assert!(diags.is_empty(), "Should skip wikilink patterns inside inline code");
+        assert!(
+            diags.is_empty(),
+            "Should skip wikilink patterns inside inline code"
+        );
     }
 
     #[test]
@@ -1427,30 +1483,21 @@ mod tests {
 
     #[test]
     fn resolve_ambiguous_exact_match() {
-        let index = make_index(&[
-            ("notes", "work/notes.md"),
-            ("Notes", "personal/Notes.md"),
-        ]);
+        let index = make_index(&[("notes", "work/notes.md"), ("Notes", "personal/Notes.md")]);
         let result = resolve_page_name("notes", &index);
         assert_eq!(result, None);
     }
 
     #[test]
     fn resolve_ambiguous_normalized_match() {
-        let index = make_index(&[
-            ("my-page", "my-page.md"),
-            ("my_page", "my_page.md"),
-        ]);
+        let index = make_index(&[("my-page", "my-page.md"), ("my_page", "my_page.md")]);
         let result = resolve_page_name("my page", &index);
         assert_eq!(result, None);
     }
 
     #[test]
     fn resolve_ambiguous_path_qualified() {
-        let index = make_index(&[
-            ("Page A", "notes/Page A.md"),
-            ("Page A", "notes/Page A.md"),
-        ]);
+        let index = make_index(&[("Page A", "notes/Page A.md"), ("Page A", "notes/Page A.md")]);
         let result = resolve_page_name("notes/Page A", &index);
         assert_eq!(result, None);
     }
@@ -1492,30 +1539,21 @@ mod tests {
 
     #[test]
     fn resolve_exact_before_path_qualified() {
-        let index = make_index(&[
-            ("notes/Page", "notes/Page.md"),
-            ("Page", "other/Page.md"),
-        ]);
+        let index = make_index(&[("notes/Page", "notes/Page.md"), ("Page", "other/Page.md")]);
         let result = resolve_page_name("Page", &index);
         assert_eq!(result, Some("Page".to_string()));
     }
 
     #[test]
     fn resolve_path_qualified_disambiguates() {
-        let index = make_index(&[
-            ("README", "docs/README.md"),
-            ("README", "src/README.md"),
-        ]);
+        let index = make_index(&[("README", "docs/README.md"), ("README", "src/README.md")]);
         let result = resolve_page_name("docs/README", &index);
         assert_eq!(result, Some("README".to_string()));
     }
 
     #[test]
     fn resolve_slash_triggers_path_match_when_needed() {
-        let index = make_index(&[(
-            "Status Report",
-            "work/projects/Status Report.md",
-        )]);
+        let index = make_index(&[("Status Report", "work/projects/Status Report.md")]);
         let result = resolve_page_name("work/projects/Status Report", &index);
         assert_eq!(result, Some("Status Report".to_string()));
     }
@@ -1574,10 +1612,7 @@ mod tests {
             resolve_page_name("alpha", &index),
             Some("Alpha".to_string())
         );
-        assert_eq!(
-            resolve_page_name("BETA", &index),
-            Some("Beta".to_string())
-        );
+        assert_eq!(resolve_page_name("BETA", &index), Some("Beta".to_string()));
         assert_eq!(
             resolve_page_name("gamma", &index),
             Some("Gamma".to_string())

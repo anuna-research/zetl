@@ -11,7 +11,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // Tab bar
-            Constraint::Min(0),   // Content
+            Constraint::Min(0),    // Content
             Constraint::Length(1), // Status bar
         ])
         .split(frame.area());
@@ -80,13 +80,23 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
             }
         }
         Tab::Diagnostics => "h/l category | j/k scroll",
-        Tab::PageDetail => "h/l panes | j/k wikilinks | Enter follow | PgUp/PgDn scroll | g graph | Backspace back",
-        Tab::Graph => "h/l panes | j/k scroll | d toggle depth | Enter navigate | p detail | Backspace back",
+        Tab::PageDetail => {
+            "h/l panes | j/k wikilinks | Enter follow | PgUp/PgDn scroll | g graph | Backspace back"
+        }
+        Tab::Graph => {
+            "h/l panes | j/k scroll | d toggle depth | Enter navigate | p detail | Backspace back"
+        }
     };
 
     // Breadcrumb trail
     let breadcrumb = if !app.history.is_empty() {
-        let recent: Vec<&str> = app.history.iter().rev().take(3).map(|s| s.as_str()).collect();
+        let recent: Vec<&str> = app
+            .history
+            .iter()
+            .rev()
+            .take(3)
+            .map(|s| s.as_str())
+            .collect();
         let trail: Vec<&str> = recent.into_iter().rev().collect();
         format!(" {} > ", trail.join(" > "))
     } else {
@@ -131,7 +141,13 @@ fn draw_dashboard(frame: &mut Frame, app: &App, area: Rect) {
 
     let stats_text: Vec<Line> = stats_items
         .into_iter()
-        .map(|s| if s.is_empty() { Line::raw("") } else { Line::raw(s) })
+        .map(|s| {
+            if s.is_empty() {
+                Line::raw("")
+            } else {
+                Line::raw(s)
+            }
+        })
         .collect();
 
     let stats_para = Paragraph::new(stats_text)
@@ -265,8 +281,11 @@ fn draw_links(frame: &mut Frame, app: &App, area: Rect) {
                 .collect()
         };
 
-        let list = List::new(suggestions)
-            .block(Block::default().borders(Borders::ALL).title(" Suggestions "));
+        let list = List::new(suggestions).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Suggestions "),
+        );
         frame.render_widget(list, chunks[1]);
 
         return;
@@ -322,11 +341,7 @@ fn draw_links(frame: &mut Frame, app: &App, area: Rect) {
             } else {
                 Style::default()
             };
-            let ctx_text = entry
-                .context
-                .as_deref()
-                .unwrap_or("")
-                .to_string();
+            let ctx_text = entry.context.as_deref().unwrap_or("").to_string();
             let lines = vec![
                 Line::from(vec![
                     Span::styled(format!("  {} ", entry.page), name_style),
@@ -372,11 +387,7 @@ fn draw_links(frame: &mut Frame, app: &App, area: Rect) {
             } else {
                 Style::default()
             };
-            let ctx_text = entry
-                .context
-                .as_deref()
-                .unwrap_or("")
-                .to_string();
+            let ctx_text = entry.context.as_deref().unwrap_or("").to_string();
             let lines = vec![
                 Line::from(vec![
                     Span::styled(format!("  {} ", entry.page), name_style),
@@ -439,8 +450,8 @@ fn draw_search(frame: &mut Frame, app: &App, area: Rect) {
         } else {
             "  No results"
         };
-        let para = Paragraph::new(msg)
-            .block(Block::default().borders(Borders::ALL).title(" Results "));
+        let para =
+            Paragraph::new(msg).block(Block::default().borders(Borders::ALL).title(" Results "));
         frame.render_widget(para, chunks[1]);
     } else {
         let rows: Vec<Row> = app
@@ -514,11 +525,7 @@ fn draw_diagnostics(frame: &mut Frame, app: &App, area: Rect) {
                 .borders(Borders::ALL)
                 .title(" Diagnostics "),
         )
-        .highlight_style(
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
-        )
+        .highlight_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
         .select(selected_idx);
 
     frame.render_widget(cat_tabs, chunks[0]);
@@ -601,7 +608,9 @@ fn draw_diagnostics(frame: &mut Frame, app: &App, area: Rect) {
                 .map(|(i, d)| {
                     let level_style = match d.level {
                         crate::types::DiagnosticLevel::Error => Style::default().fg(Color::Red),
-                        crate::types::DiagnosticLevel::Warning => Style::default().fg(Color::Yellow),
+                        crate::types::DiagnosticLevel::Warning => {
+                            Style::default().fg(Color::Yellow)
+                        }
                     };
                     let row_style = if i == app.diag_selected {
                         Style::default().add_modifier(Modifier::BOLD)
@@ -643,8 +652,14 @@ fn draw_diagnostics(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_page_detail(frame: &mut Frame, app: &App, area: Rect) {
     if app.detail_page.is_none() {
-        let msg = Paragraph::new("  No page selected. Use Ctrl+K to find a page, or navigate from Pages/Search/Links.")
-            .block(Block::default().borders(Borders::ALL).title(" Page Detail "));
+        let msg = Paragraph::new(
+            "  No page selected. Use Ctrl+K to find a page, or navigate from Pages/Search/Links.",
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Page Detail "),
+        );
         frame.render_widget(msg, area);
         return;
     }
@@ -668,7 +683,9 @@ fn draw_page_detail(frame: &mut Frame, app: &App, area: Rect) {
 
     // Get selected wikilink info for highlighting
     let selected_wl = app.detail_wikilink_idx.and_then(|idx| {
-        app.detail_wikilinks.get(idx).map(|wl| (wl.rendered_line, wl.match_on_line))
+        app.detail_wikilinks
+            .get(idx)
+            .map(|wl| (wl.rendered_line, wl.match_on_line))
     });
 
     let wl_re = Regex::new(r"\[\[([^\[\]]+)\]\]").unwrap();
@@ -717,20 +734,11 @@ fn draw_page_detail(frame: &mut Frame, app: &App, area: Rect) {
                     let cut_start = hl_range.0.saturating_sub(span_start);
                     let cut_end = (hl_range.1 - span_start).min(span_len);
                     if cut_start > 0 {
-                        new_spans.push(Span::styled(
-                            text[..cut_start].to_string(),
-                            span.style,
-                        ));
+                        new_spans.push(Span::styled(text[..cut_start].to_string(), span.style));
                     }
-                    new_spans.push(Span::styled(
-                        text[cut_start..cut_end].to_string(),
-                        hl_style,
-                    ));
+                    new_spans.push(Span::styled(text[cut_start..cut_end].to_string(), hl_style));
                     if cut_end < span_len {
-                        new_spans.push(Span::styled(
-                            text[cut_end..].to_string(),
-                            span.style,
-                        ));
+                        new_spans.push(Span::styled(text[cut_end..].to_string(), span.style));
                     }
                 }
                 pos = span_end;
@@ -740,12 +748,16 @@ fn draw_page_detail(frame: &mut Frame, app: &App, area: Rect) {
         .collect();
 
     // Show selected wikilink target in title
-    let wl_target = app.detail_wikilink_idx.and_then(|idx| {
-        app.detail_wikilinks.get(idx).map(|wl| wl.target.as_str())
-    });
+    let wl_target = app
+        .detail_wikilink_idx
+        .and_then(|idx| app.detail_wikilinks.get(idx).map(|wl| wl.target.as_str()));
 
     let scroll_info = if let Some(target) = wl_target {
-        format!(" {page_name} [{}/{}] → {target} ", app.detail_scroll + 1, total_lines)
+        format!(
+            " {page_name} [{}/{}] → {target} ",
+            app.detail_scroll + 1,
+            total_lines
+        )
     } else if total_lines > 0 {
         format!(" {page_name} [{}/{}] ", app.detail_scroll + 1, total_lines)
     } else {
@@ -798,8 +810,7 @@ fn draw_page_detail(frame: &mut Frame, app: &App, area: Rect) {
     ));
 
     for (i, bl) in app.detail_backlinks.iter().enumerate() {
-        let is_selected =
-            app.detail_pane == DetailPane::Sidebar && app.detail_sidebar_scroll == i;
+        let is_selected = app.detail_pane == DetailPane::Sidebar && app.detail_sidebar_scroll == i;
         let style = if is_selected {
             Style::default()
                 .fg(Color::Yellow)
@@ -837,10 +848,7 @@ fn draw_page_detail(frame: &mut Frame, app: &App, area: Rect) {
             } else {
                 Style::default()
             };
-            sidebar_lines.push(Line::styled(
-                format!("  {} :{}", um.page, um.line),
-                style,
-            ));
+            sidebar_lines.push(Line::styled(format!("  {} :{}", um.page, um.line), style));
             sidebar_lines.push(Line::styled(
                 format!("    {}", um.context),
                 Style::default().fg(Color::DarkGray),
@@ -864,8 +872,14 @@ fn draw_page_detail(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_graph(frame: &mut Frame, app: &App, area: Rect) {
     if app.graph_page.is_none() {
-        let msg = Paragraph::new("  No page selected. Use Ctrl+K to find a page, or press g from Links/Page Detail.")
-            .block(Block::default().borders(Borders::ALL).title(" Local Graph "));
+        let msg = Paragraph::new(
+            "  No page selected. Use Ctrl+K to find a page, or press g from Links/Page Detail.",
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Local Graph "),
+        );
         frame.render_widget(msg, area);
         return;
     }
@@ -880,7 +894,11 @@ fn draw_graph(frame: &mut Frame, app: &App, area: Rect) {
     // Center: page name and stats
     let out_count: usize = app.graph_outgoing.len();
     let in_count: usize = app.graph_incoming.len();
-    let depth_label = if app.graph_depth == 1 { "1 hop" } else { "2 hops" };
+    let depth_label = if app.graph_depth == 1 {
+        "1 hop"
+    } else {
+        "2 hops"
+    };
 
     let header_lines = vec![
         Line::from(vec![
@@ -892,12 +910,12 @@ fn draw_graph(frame: &mut Frame, app: &App, area: Rect) {
                     .add_modifier(Modifier::BOLD),
             ),
         ]),
-        Line::from(vec![
-            Span::styled(
-                format!("  {out_count} outgoing | {in_count} incoming | depth: {depth_label} (d to toggle)"),
-                Style::default().fg(Color::DarkGray),
+        Line::from(vec![Span::styled(
+            format!(
+                "  {out_count} outgoing | {in_count} incoming | depth: {depth_label} (d to toggle)"
             ),
-        ]),
+            Style::default().fg(Color::DarkGray),
+        )]),
     ];
 
     let header = Paragraph::new(header_lines).block(
@@ -1086,7 +1104,10 @@ fn draw_help_overlay(frame: &mut Frame) {
         Line::raw("  Ctrl+K        Quick switcher (fuzzy page finder)"),
         Line::raw("  Ctrl+C        Force quit"),
         Line::raw(""),
-        Line::styled("  Navigation", Style::default().add_modifier(Modifier::BOLD)),
+        Line::styled(
+            "  Navigation",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
         Line::raw("  j/Down        Move down / scroll"),
         Line::raw("  k/Up          Move up / scroll"),
         Line::raw("  h/Left        Left pane / prev category"),
@@ -1096,11 +1117,17 @@ fn draw_help_overlay(frame: &mut Frame) {
         Line::raw("  Backspace     Go back in history"),
         Line::raw("  PgUp/PgDn     Scroll page content"),
         Line::raw(""),
-        Line::styled("  Page Detail", Style::default().add_modifier(Modifier::BOLD)),
+        Line::styled(
+            "  Page Detail",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
         Line::raw("  h/l           Switch content/sidebar panes"),
         Line::raw("  g             Open local graph for this page"),
         Line::raw(""),
-        Line::styled("  Local Graph", Style::default().add_modifier(Modifier::BOLD)),
+        Line::styled(
+            "  Local Graph",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
         Line::raw("  d             Toggle depth (1 hop / 2 hops)"),
         Line::raw("  p             Open page detail"),
         Line::raw("  Enter         Re-center graph on selected neighbor"),

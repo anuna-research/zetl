@@ -31,11 +31,7 @@ pub fn render_markdown(content: &str) -> Vec<Line<'static>> {
                         3 => Color::Cyan,
                         _ => Color::Green,
                     };
-                    style_stack.push(
-                        Style::default()
-                            .fg(color)
-                            .add_modifier(Modifier::BOLD),
-                    );
+                    style_stack.push(Style::default().fg(color).add_modifier(Modifier::BOLD));
                 }
                 Tag::Paragraph => {}
                 Tag::Emphasis => {
@@ -67,10 +63,7 @@ pub fn render_markdown(content: &str) -> Vec<Line<'static>> {
                     } else {
                         format!("{indent}  ")
                     };
-                    current_spans.push(Span::styled(
-                        bullet,
-                        Style::default().fg(Color::DarkGray),
-                    ));
+                    current_spans.push(Span::styled(bullet, Style::default().fg(Color::DarkGray)));
                 }
                 Tag::BlockQuote(_) => {
                     in_blockquote = true;
@@ -237,7 +230,7 @@ fn strip_frontmatter(content: &str) -> String {
     let after_first = &trimmed[3..];
     if let Some(end_pos) = after_first.find("\n---") {
         let skip = 3 + end_pos + 4; // "---" + content + "\n---"
-        // Skip optional newline after closing ---
+                                    // Skip optional newline after closing ---
         let rest = &trimmed[skip..];
         let rest = rest.strip_prefix('\n').unwrap_or(rest);
         rest.to_string()

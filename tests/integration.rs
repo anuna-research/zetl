@@ -17,7 +17,7 @@ use tempfile::TempDir;
 
 /// Build a `Command` for the `zetl` binary with the given vault directory.
 fn zetl_cmd(vault: &Path) -> Command {
-    let mut cmd = Command::cargo_bin("zetl").expect("binary should be built");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     cmd.arg("-d").arg(vault.as_os_str());
     cmd.arg("--no-cache");
     cmd
@@ -34,9 +34,7 @@ fn write_file(root: &Path, relative: &str, content: &str) {
 
 /// Run the command, assert success, parse stdout as JSON.
 fn run_json(cmd: &mut Command) -> Value {
-    let output = cmd
-        .output()
-        .expect("failed to execute zetl");
+    let output = cmd.output().expect("failed to execute zetl");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -49,9 +47,7 @@ fn run_json(cmd: &mut Command) -> Value {
 
 /// Run the command (may fail) and parse stdout as JSON regardless of exit code.
 fn run_json_any(cmd: &mut Command) -> (Value, std::process::ExitStatus) {
-    let output = cmd
-        .output()
-        .expect("failed to execute zetl");
+    let output = cmd.output().expect("failed to execute zetl");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"));
@@ -158,21 +154,13 @@ fn build_test004_vault(root: &Path) {
         "Concept X.md",
         "# Concept X\n\nThis is the target page.\n",
     );
-    write_file(
-        root,
-        "Note 1.md",
-        "# Note 1\n\nRelated to [[Concept X]].\n",
-    );
+    write_file(root, "Note 1.md", "# Note 1\n\nRelated to [[Concept X]].\n");
     write_file(
         root,
         "Note 2.md",
         "# Note 2\n\nAlso about [[Concept X]] and [[Note 1]].\n",
     );
-    write_file(
-        root,
-        "Note 3.md",
-        "# Note 3\n\nSee [[Concept X]].\n",
-    );
+    write_file(root, "Note 3.md", "# Note 3\n\nSee [[Concept X]].\n");
 }
 
 /// Create a vault for TEST-005 dead link detection:
@@ -395,8 +383,7 @@ fn test_003_forward_link_query() {
     let link_a = links
         .iter()
         .find(|l| {
-            l["target"].as_str() == Some("Page A")
-                || l["target_page"].as_str() == Some("Page A")
+            l["target"].as_str() == Some("Page A") || l["target_page"].as_str() == Some("Page A")
         })
         .expect("should find link to Page A");
     assert!(
@@ -410,8 +397,7 @@ fn test_003_forward_link_query() {
     let link_b = links
         .iter()
         .find(|l| {
-            l["target"].as_str() == Some("Page B")
-                || l["target_page"].as_str() == Some("Page B")
+            l["target"].as_str() == Some("Page B") || l["target_page"].as_str() == Some("Page B")
         })
         .expect("should find link to Page B");
     assert_eq!(
@@ -430,11 +416,7 @@ fn test_004_backlink_query() {
     let dir = TempDir::new().expect("create temp dir");
     build_test004_vault(dir.path());
 
-    let json = run_json(
-        zetl_cmd(dir.path())
-            .arg("backlinks")
-            .arg("Concept X"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("backlinks").arg("Concept X"));
 
     // Verify backlinks count
     let backlinks = json["backlinks"]
@@ -482,11 +464,7 @@ fn test_005_dead_link_detection() {
     let dir = TempDir::new().expect("create temp dir");
     build_test005_vault(dir.path());
 
-    let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
-            .arg("check")
-            .arg("--dead-links"),
-    );
+    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--dead-links"));
 
     // Should report dead links
     let dead_links = json["dead_links"]
@@ -531,21 +509,12 @@ fn test_006_orphan_detection() {
     let dir = TempDir::new().expect("create temp dir");
     build_test006_vault(dir.path());
 
-    let (json, _status) = run_json_any(
-        zetl_cmd(dir.path())
-            .arg("check")
-            .arg("--orphans"),
-    );
+    let (json, _status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--orphans"));
 
-    let orphans = json["orphans"]
-        .as_array()
-        .expect("orphans should be array");
+    let orphans = json["orphans"].as_array().expect("orphans should be array");
 
     // Extract orphan page names
-    let orphan_pages: Vec<&str> = orphans
-        .iter()
-        .filter_map(|o| o["page"].as_str())
-        .collect();
+    let orphan_pages: Vec<&str> = orphans.iter().filter_map(|o| o["page"].as_str()).collect();
 
     // D should be an orphan (never linked to)
     assert!(
@@ -581,11 +550,7 @@ fn test_007_syntax_validation() {
     let dir = TempDir::new().expect("create temp dir");
     build_test007_vault(dir.path());
 
-    let (json, _status) = run_json_any(
-        zetl_cmd(dir.path())
-            .arg("check")
-            .arg("--syntax"),
-    );
+    let (json, _status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--syntax"));
 
     let syntax_errors = json["syntax_errors"]
         .as_array()
@@ -600,25 +565,21 @@ fn test_007_syntax_validation() {
     );
 
     // Check that we have an unclosed wikilink diagnostic
-    let has_unclosed = syntax_errors
-        .iter()
-        .any(|e| {
-            e["message"]
-                .as_str()
-                .map(|m| m.to_lowercase().contains("unclosed"))
-                .unwrap_or(false)
-        });
+    let has_unclosed = syntax_errors.iter().any(|e| {
+        e["message"]
+            .as_str()
+            .map(|m| m.to_lowercase().contains("unclosed"))
+            .unwrap_or(false)
+    });
     assert!(has_unclosed, "should detect unclosed wikilink syntax");
 
     // Check that we have an empty wikilink diagnostic
-    let has_empty = syntax_errors
-        .iter()
-        .any(|e| {
-            e["message"]
-                .as_str()
-                .map(|m| m.to_lowercase().contains("empty"))
-                .unwrap_or(false)
-        });
+    let has_empty = syntax_errors.iter().any(|e| {
+        e["message"]
+            .as_str()
+            .map(|m| m.to_lowercase().contains("empty"))
+            .unwrap_or(false)
+    });
     assert!(has_empty, "should detect empty wikilink syntax");
 
     // Verify that each error has file, line, column, and message
@@ -661,14 +622,9 @@ fn test_008_simhash_fuzzy_search() {
             .arg("20"),
     );
 
-    let results = json["results"]
-        .as_array()
-        .expect("results should be array");
+    let results = json["results"].as_array().expect("results should be array");
 
-    let page_names: Vec<&str> = results
-        .iter()
-        .filter_map(|r| r["page"].as_str())
-        .collect();
+    let page_names: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
 
     // Similar Zettelkasten pages should appear
     assert!(
@@ -751,10 +707,7 @@ fn test_009_stats() {
     let most_linked = json["most_linked"]
         .as_array()
         .expect("most_linked should be array");
-    assert!(
-        !most_linked.is_empty(),
-        "most_linked should not be empty"
-    );
+    assert!(!most_linked.is_empty(), "most_linked should not be empty");
 
     // C should be the most linked (2 incoming: from A and B)
     assert_eq!(
@@ -790,9 +743,7 @@ fn test_010_shortest_path_found() {
     let dir = TempDir::new().expect("create temp dir");
     build_test010_vault(dir.path());
 
-    let json = run_json(
-        zetl_cmd(dir.path()).arg("path").arg("A").arg("D"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("path").arg("A").arg("D"));
 
     // Verify path: A -> B -> C -> D
     assert_eq!(json["from"].as_str(), Some("A"));
@@ -803,13 +754,8 @@ fn test_010_shortest_path_found() {
         "expected 3 hops, got: {json}"
     );
 
-    let path = json["path"]
-        .as_array()
-        .expect("path should be array");
-    let path_names: Vec<&str> = path
-        .iter()
-        .filter_map(|v| v.as_str())
-        .collect();
+    let path = json["path"].as_array().expect("path should be array");
+    let path_names: Vec<&str> = path.iter().filter_map(|v| v.as_str()).collect();
     assert_eq!(
         path_names,
         vec!["A", "B", "C", "D"],
@@ -894,11 +840,7 @@ fn test_default_ignores_git_and_node_modules() {
         "node_modules/pkg/readme.md",
         "# Readme\n\n[[Link]].\n",
     );
-    write_file(
-        dir.path(),
-        ".zetl/index.md",
-        "# Index\n\n[[Link]].\n",
-    );
+    write_file(dir.path(), ".zetl/index.md", "# Index\n\n[[Link]].\n");
     // This one should be scanned
     write_file(dir.path(), "Real Note.md", "# Real Note\n\nContent.\n");
 
@@ -913,7 +855,7 @@ fn test_default_ignores_git_and_node_modules() {
 
 #[test]
 fn test_version_flag() {
-    let mut cmd = Command::cargo_bin("zetl").expect("binary should be built");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     cmd.arg("--version");
     cmd.assert()
         .success()
@@ -922,7 +864,7 @@ fn test_version_flag() {
 
 #[test]
 fn test_help_flag() {
-    let mut cmd = Command::cargo_bin("zetl").expect("binary should be built");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     cmd.arg("--help");
     cmd.assert()
         .success()
@@ -940,9 +882,7 @@ fn test_links_case_insensitive_page_name() {
     write_file(dir.path(), "Other.md", "# Other\n\nContent.\n");
 
     // Query with different case should still work
-    let json = run_json(
-        zetl_cmd(dir.path()).arg("links").arg("my page"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("links").arg("my page"));
 
     let links = json["links"].as_array().expect("links should be array");
     assert_eq!(links.len(), 1, "should find 1 forward link");
@@ -963,16 +903,8 @@ fn test_check_all_categories() {
         "Existing.md",
         "# Existing\n\nLinks to [[Main]].\n",
     );
-    write_file(
-        dir.path(),
-        "Orphan.md",
-        "# Orphan\n\nNobody links here.\n",
-    );
-    write_file(
-        dir.path(),
-        "Broken.md",
-        "# Broken\n\nUnclosed [[link\n",
-    );
+    write_file(dir.path(), "Orphan.md", "# Orphan\n\nNobody links here.\n");
+    write_file(dir.path(), "Broken.md", "# Broken\n\nUnclosed [[link\n");
 
     // Run check without any filter flags (should report all categories)
     let (json, _status) = run_json_any(zetl_cmd(dir.path()).arg("check"));
@@ -1013,21 +945,13 @@ fn test_check_all_categories() {
 // ===========================================================================
 
 fn build_test013_vault(root: &Path) {
-    write_file(
-        root,
-        "Alpha.md",
-        "# Alpha\n\nThe quick brown fox.\n",
-    );
+    write_file(root, "Alpha.md", "# Alpha\n\nThe quick brown fox.\n");
     write_file(
         root,
         "Beta.md",
         "# Beta\n\nNothing here.\nA quick summary of topics.\n",
     );
-    write_file(
-        root,
-        "Gamma.md",
-        "# Gamma\n\nNo match here.\n",
-    );
+    write_file(root, "Gamma.md", "# Gamma\n\nNo match here.\n");
 }
 
 #[test]
@@ -1035,15 +959,9 @@ fn test_013_basic_content_search() {
     let dir = TempDir::new().expect("create temp dir");
     build_test013_vault(dir.path());
 
-    let json = run_json(
-        zetl_cmd(dir.path())
-            .arg("search")
-            .arg("quick"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("quick"));
 
-    let results = json["results"]
-        .as_array()
-        .expect("results should be array");
+    let results = json["results"].as_array().expect("results should be array");
 
     assert_eq!(
         results.len(),
@@ -1056,14 +974,14 @@ fn test_013_basic_content_search() {
         assert!(result.get("page").is_some(), "result should have page");
         assert!(result.get("path").is_some(), "result should have path");
         assert!(result["line"].as_u64().is_some(), "result should have line");
-        assert!(result["column"].as_u64().is_some(), "result should have column");
+        assert!(
+            result["column"].as_u64().is_some(),
+            "result should have column"
+        );
     }
 
     // Verify pages found
-    let pages: Vec<&str> = results
-        .iter()
-        .filter_map(|r| r["page"].as_str())
-        .collect();
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
     assert!(pages.contains(&"Alpha"), "should find match in Alpha");
     assert!(pages.contains(&"Beta"), "should find match in Beta");
 }
@@ -1081,9 +999,7 @@ fn test_013_search_with_context() {
             .arg("10"),
     );
 
-    let results = json["results"]
-        .as_array()
-        .expect("results should be array");
+    let results = json["results"].as_array().expect("results should be array");
 
     // All results should have context
     for result in results {
@@ -1121,15 +1037,9 @@ fn test_014_body_text_exclusion() {
     );
 
     // Default: body-text only — should find "quick" in body but not frontmatter or code block
-    let json = run_json(
-        zetl_cmd(dir.path())
-            .arg("search")
-            .arg("quick"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("quick"));
 
-    let results = json["results"]
-        .as_array()
-        .expect("results should be array");
+    let results = json["results"].as_array().expect("results should be array");
 
     assert_eq!(
         results.len(),
@@ -1154,12 +1064,7 @@ fn test_014_search_all_mode() {
     );
 
     // --all mode: should find "quick" in frontmatter, body, and code block
-    let json = run_json(
-        zetl_cmd(dir.path())
-            .arg("search")
-            .arg("quick")
-            .arg("--all"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("quick").arg("--all"));
 
     let total = json["total_matches"].as_u64().expect("total_matches");
     assert!(
@@ -1189,9 +1094,7 @@ fn test_015_regex_search() {
             .arg("--regex"),
     );
 
-    let results = json["results"]
-        .as_array()
-        .expect("results should be array");
+    let results = json["results"].as_array().expect("results should be array");
 
     // Should match "note" and "notes" but not "notation"
     assert_eq!(
@@ -1227,11 +1130,7 @@ fn test_016_case_insensitive_default() {
         "# Case\n\nZettelkasten on line 3.\nzettelkasten on line 4.\n",
     );
 
-    let json = run_json(
-        zetl_cmd(dir.path())
-            .arg("search")
-            .arg("ZETTELKASTEN"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("ZETTELKASTEN"));
 
     let total = json["total_matches"].as_u64().expect("total_matches");
     assert_eq!(
@@ -1284,20 +1183,11 @@ fn test_017_search_respects_ignores() {
         "# Draft\n\nSecret draft content here.\n",
     );
 
-    let json = run_json(
-        zetl_cmd(dir.path())
-            .arg("search")
-            .arg("content"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("content"));
 
-    let results = json["results"]
-        .as_array()
-        .expect("results should be array");
+    let results = json["results"].as_array().expect("results should be array");
 
-    let pages: Vec<&str> = results
-        .iter()
-        .filter_map(|r| r["page"].as_str())
-        .collect();
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
 
     assert!(
         pages.contains(&"Public"),
@@ -1332,17 +1222,11 @@ fn test_018_search_result_limiting() {
             .arg("3"),
     );
 
-    let results = json["results"]
-        .as_array()
-        .expect("results should be array");
+    let results = json["results"].as_array().expect("results should be array");
 
     let total = json["total_matches"].as_u64().expect("total_matches");
 
-    assert_eq!(
-        results.len(),
-        3,
-        "results should be capped at limit of 3"
-    );
+    assert_eq!(results.len(), 3, "results should be capped at limit of 3");
     assert!(
         total > 3,
         "total_matches should report full count ({total}), not just the limited results"
@@ -1359,9 +1243,7 @@ fn test_019_empty_search_query() {
     write_file(dir.path(), "A.md", "# A\n\nSome content here.\n");
 
     // Empty query should return JSON error with code 2
-    let (json, status) = run_json_any(
-        zetl_cmd(dir.path()).arg("search").arg(""),
-    );
+    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("search").arg(""));
     assert!(!status.success(), "empty query should fail");
     assert_eq!(json["error"].as_str(), Some("Empty search query"));
     assert_eq!(json["code"].as_i64(), Some(2));
@@ -1372,9 +1254,7 @@ fn test_019_whitespace_search_query() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "A.md", "# A\n\nSome content here.\n");
 
-    let (json, status) = run_json_any(
-        zetl_cmd(dir.path()).arg("search").arg("   "),
-    );
+    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("search").arg("   "));
     assert!(!status.success(), "whitespace-only query should fail");
     assert_eq!(json["error"].as_str(), Some("Empty search query"));
     assert_eq!(json["code"].as_i64(), Some(2));
@@ -1390,9 +1270,7 @@ fn test_020_json_error_page_not_found() {
     write_file(dir.path(), "A.md", "# A\n\nContent.\n");
 
     // links to nonexistent page should return JSON error
-    let (json, status) = run_json_any(
-        zetl_cmd(dir.path()).arg("links").arg("nonexistent"),
-    );
+    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("links").arg("nonexistent"));
     assert!(!status.success());
     assert!(json["error"].as_str().unwrap().contains("Page not found"));
     assert_eq!(json["code"].as_i64(), Some(1));
@@ -1403,9 +1281,7 @@ fn test_020_json_error_backlinks_not_found() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "A.md", "# A\n\nContent.\n");
 
-    let (json, status) = run_json_any(
-        zetl_cmd(dir.path()).arg("backlinks").arg("nonexistent"),
-    );
+    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("backlinks").arg("nonexistent"));
     assert!(!status.success());
     assert!(json["error"].as_str().unwrap().contains("Page not found"));
     assert_eq!(json["code"].as_i64(), Some(1));
@@ -1447,7 +1323,11 @@ fn test_021_links_dedup() {
     let links = json["links"].as_array().unwrap();
 
     // Both [[B]] are on line 3, so (A, B, 3) should appear only once
-    assert_eq!(links.len(), 1, "duplicate (source,target,line) should be deduped: {links:?}");
+    assert_eq!(
+        links.len(),
+        1,
+        "duplicate (source,target,line) should be deduped: {links:?}"
+    );
     assert_eq!(links[0]["target"].as_str(), Some("B"));
 }
 
@@ -1466,7 +1346,11 @@ fn test_021_links_different_lines_not_deduped() {
     let json = run_json(zetl_cmd(dir.path()).arg("links").arg("A"));
     let links = json["links"].as_array().unwrap();
 
-    assert_eq!(links.len(), 2, "links on different lines should both appear: {links:?}");
+    assert_eq!(
+        links.len(),
+        2,
+        "links on different lines should both appear: {links:?}"
+    );
 }
 
 // ===========================================================================
@@ -1506,9 +1390,21 @@ fn test_023_list_empty_vault() {
 #[test]
 fn test_024_search_path_filter() {
     let dir = TempDir::new().unwrap();
-    write_file(dir.path(), "concepts/Alpha.md", "# Alpha\n\nA note about things.\n");
-    write_file(dir.path(), "concepts/Beta.md", "# Beta\n\nAnother note about things.\n");
-    write_file(dir.path(), "tools/Gamma.md", "# Gamma\n\nA note about tools.\n");
+    write_file(
+        dir.path(),
+        "concepts/Alpha.md",
+        "# Alpha\n\nA note about things.\n",
+    );
+    write_file(
+        dir.path(),
+        "concepts/Beta.md",
+        "# Beta\n\nAnother note about things.\n",
+    );
+    write_file(
+        dir.path(),
+        "tools/Gamma.md",
+        "# Gamma\n\nA note about tools.\n",
+    );
 
     // Search with --path restricts to concepts/
     let json = run_json(
@@ -1537,9 +1433,7 @@ fn test_024_search_no_path_filter() {
     write_file(dir.path(), "tools/Gamma.md", "# Gamma\n\nA note.\n");
 
     // Without --path, all directories searched
-    let json = run_json(
-        zetl_cmd(dir.path()).arg("search").arg("note"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("note"));
     let results = json["results"].as_array().unwrap();
     let dirs: std::collections::HashSet<&str> = results
         .iter()
@@ -1571,17 +1465,16 @@ fn test_025_export_graph() {
     assert_eq!(json["edge_count"].as_u64().unwrap(), edges.len() as u64);
 
     // Should have edges A->B, A->C, B->C, C->A
-    assert_eq!(edges.len(), 4, "triangle graph should have 4 directed edges");
+    assert_eq!(
+        edges.len(),
+        4,
+        "triangle graph should have 4 directed edges"
+    );
 
     // Edges should be unique
     let edge_set: std::collections::HashSet<(&str, &str)> = edges
         .iter()
-        .map(|e| {
-            (
-                e["source"].as_str().unwrap(),
-                e["target"].as_str().unwrap(),
-            )
-        })
+        .map(|e| (e["source"].as_str().unwrap(), e["target"].as_str().unwrap()))
         .collect();
     assert_eq!(edge_set.len(), edges.len(), "edges should be unique");
 
@@ -1602,9 +1495,15 @@ fn test_025_export_includes_dead_link_targets() {
     let nodes = json["nodes"].as_array().unwrap();
     let node_names: Vec<&str> = nodes.iter().map(|n| n["page"].as_str().unwrap()).collect();
 
-    assert!(node_names.contains(&"Ghost"), "dead link target should appear as node");
+    assert!(
+        node_names.contains(&"Ghost"),
+        "dead link target should appear as node"
+    );
 
     // Ghost should have null path
     let ghost = nodes.iter().find(|n| n["page"] == "Ghost").unwrap();
-    assert!(ghost["path"].is_null(), "dead link target should have null path");
+    assert!(
+        ghost["path"].is_null(),
+        "dead link target should have null path"
+    );
 }

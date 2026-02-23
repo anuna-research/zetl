@@ -204,9 +204,9 @@ pub struct UnlinkedMention {
 /// A wikilink found in the rendered markdown content, with its position in rendered lines.
 #[derive(Debug, Clone)]
 pub struct ContentWikilink {
-    pub rendered_line: usize,  // line index in detail_content
-    pub target: String,        // target page name
-    pub match_on_line: usize,  // 0-based index of this wikilink among all wikilinks on this line
+    pub rendered_line: usize, // line index in detail_content
+    pub target: String,       // target page name
+    pub match_on_line: usize, // 0-based index of this wikilink among all wikilinks on this line
 }
 
 #[derive(Debug, Clone)]
@@ -461,10 +461,10 @@ impl App {
                     if let Some(pos) = line_lower.find(&page_lower) {
                         let before = &line[..pos];
                         let after = &line[pos + page.len()..];
-                        let inside_link =
-                            before.rfind("[[").is_some_and(|start| {
-                                !before[start..].contains("]]")
-                            }) || after.starts_with("]]");
+                        let inside_link = before
+                            .rfind("[[")
+                            .is_some_and(|start| !before[start..].contains("]]"))
+                            || after.starts_with("]]");
                         if inside_link {
                             continue;
                         }
@@ -746,7 +746,11 @@ fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
             }
             KeyCode::BackTab => {
                 let idx = app.active_tab.index();
-                let prev = if idx == 0 { Tab::ALL.len() - 1 } else { idx - 1 };
+                let prev = if idx == 0 {
+                    Tab::ALL.len() - 1
+                } else {
+                    idx - 1
+                };
                 app.active_tab = Tab::ALL[prev];
                 return;
             }
@@ -913,12 +917,14 @@ fn handle_links_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
         },
         KeyCode::Enter => {
             let page = match app.link_pane {
-                LinkPane::Forward => {
-                    app.link_fwd.get(app.link_fwd_selected).map(|f| f.page.clone())
-                }
-                LinkPane::Backward => {
-                    app.link_back.get(app.link_back_selected).map(|b| b.page.clone())
-                }
+                LinkPane::Forward => app
+                    .link_fwd
+                    .get(app.link_fwd_selected)
+                    .map(|f| f.page.clone()),
+                LinkPane::Backward => app
+                    .link_back
+                    .get(app.link_back_selected)
+                    .map(|b| b.page.clone()),
             };
             if let Some(page) = page {
                 app.navigate_to_page(&page);
@@ -1087,7 +1093,9 @@ fn handle_detail_key(app: &mut App, code: KeyCode, _modifiers: KeyModifiers) {
                     Some(app.detail_backlinks[idx].page.clone())
                 } else {
                     let unlinked_idx = idx - bl_count;
-                    app.detail_unlinked.get(unlinked_idx).map(|u| u.page.clone())
+                    app.detail_unlinked
+                        .get(unlinked_idx)
+                        .map(|u| u.page.clone())
                 };
                 if let Some(page) = page {
                     app.navigate_to_page(&page);

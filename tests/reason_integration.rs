@@ -21,7 +21,7 @@ use tempfile::TempDir;
 
 /// Build a `Command` for the `zetl` binary with the given vault directory.
 fn zetl_cmd(vault: &Path) -> Command {
-    let mut cmd = Command::cargo_bin("zetl").expect("binary should be built");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     cmd.arg("-d").arg(vault.as_os_str());
     cmd.arg("--no-cache");
     cmd
@@ -304,13 +304,21 @@ fn test_026a_single_spl_block_extraction() {
 
     // The single SPL block should produce 1 fact (alpha) and 1 rule (r1)
     let facts = json["facts"].as_array().expect("facts array");
-    assert_eq!(facts.len(), 1, "should have exactly 1 fact from single block");
+    assert_eq!(
+        facts.len(),
+        1,
+        "should have exactly 1 fact from single block"
+    );
     assert_eq!(facts[0]["literal"].as_str(), Some("alpha"));
     assert_eq!(facts[0]["source_page"].as_str(), Some("Simple"));
     assert_eq!(facts[0]["source_file"].as_str(), Some("Simple.md"));
 
     let rules = json["rules"].as_array().expect("rules array");
-    assert_eq!(rules.len(), 1, "should have exactly 1 rule from single block");
+    assert_eq!(
+        rules.len(),
+        1,
+        "should have exactly 1 rule from single block"
+    );
     assert_eq!(rules[0]["label"].as_str(), Some("r1"));
     assert_eq!(rules[0]["source_page"].as_str(), Some("Simple"));
 }
@@ -366,7 +374,10 @@ Some text between blocks.
 
     // Both blocks should contribute facts
     assert!(fact_literals.contains(&"sunny"), "first block's sunny fact");
-    assert!(fact_literals.contains(&"windy"), "second block's windy fact");
+    assert!(
+        fact_literals.contains(&"windy"),
+        "second block's windy fact"
+    );
     assert_eq!(facts.len(), 2, "2 facts from 2 blocks");
 
     let rules = json["rules"].as_array().expect("rules array");
@@ -401,8 +412,14 @@ fn test_026c_html_comment_exclusion() {
     );
 
     // But sunny and windy from non-comment blocks SHOULD be present
-    assert!(fact_literals.contains(&"sunny"), "sunny should be extracted");
-    assert!(fact_literals.contains(&"windy"), "windy should be extracted");
+    assert!(
+        fact_literals.contains(&"sunny"),
+        "sunny should be extracted"
+    );
+    assert!(
+        fact_literals.contains(&"windy"),
+        "windy should be extracted"
+    );
 }
 
 /// TEST-026d: Standalone .spl files are correctly extracted.
@@ -489,9 +506,12 @@ fn test_027b_parse_error_diagnostics() {
         "should have at least one diagnostic for parse error"
     );
 
-    let has_parse_error = diagnostics
-        .iter()
-        .any(|d| d["message"].as_str().unwrap_or("").contains("SPL parse error"));
+    let has_parse_error = diagnostics.iter().any(|d| {
+        d["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("SPL parse error")
+    });
     assert!(has_parse_error, "should have SPL parse error diagnostic");
 }
 
@@ -573,7 +593,10 @@ fn test_028a_penguin_bird_reasoning() {
     let bird_definite = conclusions.iter().any(|c| {
         c["literal"].as_str() == Some("bird") && c["conclusion_type"].as_str() == Some("+D")
     });
-    assert!(bird_definite, "bird should be +D (definitively provable via strict rule)");
+    assert!(
+        bird_definite,
+        "bird should be +D (definitively provable via strict rule)"
+    );
 }
 
 /// TEST-028b: Conclusion counts are correct.
@@ -654,7 +677,10 @@ fn test_028d_literal_filter() {
             "filtered by 'flies' should only show flies or ~flies, got: {lit}"
         );
     }
-    assert!(!conclusions.is_empty(), "should have some fly-related conclusions");
+    assert!(
+        !conclusions.is_empty(),
+        "should have some fly-related conclusions"
+    );
 }
 
 // ===========================================================================
@@ -743,10 +769,7 @@ fn test_029c_explain_unknown_literal() {
 
     // Should have suggestions
     let suggestions = json["suggestions"].as_array().expect("suggestions array");
-    assert!(
-        !suggestions.is_empty(),
-        "should suggest similar literals"
-    );
+    assert!(!suggestions.is_empty(), "should suggest similar literals");
 }
 
 // ===========================================================================
@@ -871,10 +894,7 @@ fn test_031a_why_not_defeated() {
     let defeated = blockers
         .iter()
         .any(|b| b["blocker_type"].as_str() == Some("defeated"));
-    assert!(
-        defeated,
-        "r-bird-flies should be blocked by defeat"
-    );
+    assert!(defeated, "r-bird-flies should be blocked by defeat");
 }
 
 /// TEST-031b: Why-not for a provable literal exits with error and hint.
@@ -1064,9 +1084,7 @@ fn test_033a_unresolved_conflict() {
     let dir = TempDir::new().expect("create temp dir");
     build_reason_vault(dir.path());
 
-    let json = run_json(
-        zetl_cmd(dir.path()).arg("reason").arg("conflicts"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("conflicts"));
 
     let conflicts = json["conflicts"].as_array().expect("conflicts array");
     assert_eq!(
@@ -1077,14 +1095,8 @@ fn test_033a_unresolved_conflict() {
 
     let conflict = &conflicts[0];
     assert_eq!(conflict["literal"].as_str(), Some("approved"));
-    assert_eq!(
-        conflict["positive_literal"].as_str(),
-        Some("approved")
-    );
-    assert_eq!(
-        conflict["negative_literal"].as_str(),
-        Some("~approved")
-    );
+    assert_eq!(conflict["positive_literal"].as_str(), Some("approved"));
+    assert_eq!(conflict["negative_literal"].as_str(), Some("~approved"));
     assert_eq!(conflict["resolved"].as_bool(), Some(false));
 
     // Competing rules
@@ -1115,15 +1127,10 @@ fn test_033b_resolved_conflict() {
 ",
     );
 
-    let json = run_json(
-        zetl_cmd(dir.path()).arg("reason").arg("conflicts"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("conflicts"));
 
     let conflicts = json["conflicts"].as_array().expect("conflicts array");
-    assert!(
-        conflicts.is_empty(),
-        "resolved conflict should not appear"
-    );
+    assert!(conflicts.is_empty(), "resolved conflict should not appear");
     assert_eq!(json["conflict_count"].as_u64(), Some(0));
 }
 
@@ -1152,15 +1159,10 @@ fn test_033c_conflict_suggestions() {
     );
 
     // Should suggest adding superiority relations
-    let has_prefer_suggestion = suggestions.iter().any(|s| {
-        s.as_str()
-            .unwrap_or("")
-            .contains("prefer")
-    });
-    assert!(
-        has_prefer_suggestion,
-        "should suggest superiority relation"
-    );
+    let has_prefer_suggestion = suggestions
+        .iter()
+        .any(|s| s.as_str().unwrap_or("").contains("prefer"));
+    assert!(has_prefer_suggestion, "should suggest superiority relation");
 }
 
 /// TEST-033d: Conflicts with --fail-on-conflicts exits non-zero when conflicts exist.
@@ -1279,7 +1281,10 @@ fn test_034c_export_spl() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Should have provenance comments
-    assert!(stdout.contains("; --- From:"), "should have provenance comments");
+    assert!(
+        stdout.contains("; --- From:"),
+        "should have provenance comments"
+    );
 
     // Should have facts
     assert!(stdout.contains("(given bird)"), "should export bird fact");
@@ -1366,10 +1371,7 @@ fn test_035a_links_with_conclusions() {
     let has_neg_flies = conclusions
         .iter()
         .any(|c| c["literal"].as_str() == Some("~flies"));
-    assert!(
-        has_neg_flies,
-        "Penguin Facts should contribute to ~flies"
-    );
+    assert!(has_neg_flies, "Penguin Facts should contribute to ~flies");
 }
 
 /// TEST-035b: Provenance command traces sources and cross-references.
@@ -1387,9 +1389,7 @@ fn test_035b_provenance_trace() {
 
     assert_eq!(json["literal"].as_str(), Some("bird"));
 
-    let conclusions = json["conclusions"]
-        .as_array()
-        .expect("conclusions array");
+    let conclusions = json["conclusions"].as_array().expect("conclusions array");
     assert!(!conclusions.is_empty());
 
     // Should have +D and +d entries
@@ -1401,9 +1401,7 @@ fn test_035b_provenance_trace() {
     assert!(types.contains(&"+d"), "should have +d conclusion");
 
     // Source pages
-    let source_pages = json["source_pages"]
-        .as_array()
-        .expect("source_pages array");
+    let source_pages = json["source_pages"].as_array().expect("source_pages array");
     assert!(
         source_pages
             .iter()
@@ -1428,13 +1426,8 @@ fn test_035c_provenance_cross_references() {
     assert_eq!(json["literal"].as_str(), Some("~flies"));
 
     // Source pages should include Penguin Facts
-    let source_pages = json["source_pages"]
-        .as_array()
-        .expect("source_pages");
-    let pages: Vec<&str> = source_pages
-        .iter()
-        .map(|p| p.as_str().unwrap())
-        .collect();
+    let source_pages = json["source_pages"].as_array().expect("source_pages");
+    let pages: Vec<&str> = source_pages.iter().map(|p| p.as_str().unwrap()).collect();
     assert!(
         pages.contains(&"Penguin Facts"),
         "Penguin Facts should be a source page for ~flies"
@@ -1468,13 +1461,9 @@ fn test_036a_check_spl_clean() {
     let dir = TempDir::new().expect("create temp dir");
     build_reason_vault(dir.path());
 
-    let json = run_json(
-        zetl_cmd(dir.path()).arg("check").arg("--spl"),
-    );
+    let json = run_json(zetl_cmd(dir.path()).arg("check").arg("--spl"));
 
-    let spl_diags = json["spl_diagnostics"]
-        .as_array()
-        .expect("spl_diagnostics");
+    let spl_diags = json["spl_diagnostics"].as_array().expect("spl_diagnostics");
     assert!(
         spl_diags.is_empty(),
         "clean vault should have no SPL diagnostics"
@@ -1488,19 +1477,12 @@ fn test_036b_check_spl_errors() {
     build_parse_error_vault(dir.path());
 
     // check --spl exits non-zero when SPL errors exist (--fail-on error is default)
-    let (json, status) = run_json_any(
-        zetl_cmd(dir.path()).arg("check").arg("--spl"),
-    );
+    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--spl"));
 
     assert!(!status.success(), "check --spl should fail on parse errors");
 
-    let spl_diags = json["spl_diagnostics"]
-        .as_array()
-        .expect("spl_diagnostics");
-    assert!(
-        !spl_diags.is_empty(),
-        "should report SPL parse errors"
-    );
+    let spl_diags = json["spl_diagnostics"].as_array().expect("spl_diagnostics");
+    assert!(!spl_diags.is_empty(), "should report SPL parse errors");
 
     let has_error = spl_diags
         .iter()
@@ -1519,31 +1501,28 @@ fn test_037a_cache_consistency() {
     build_reason_vault(dir.path());
 
     // First run: build cache (without --no-cache)
-    let mut cmd1 = Command::cargo_bin("zetl").expect("binary should be built");
+    let mut cmd1 = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     cmd1.arg("-d").arg(dir.path().as_os_str());
     cmd1.arg("reason").arg("status");
     let json1 = run_json(&mut cmd1);
 
     // Second run: should use cache
-    let mut cmd2 = Command::cargo_bin("zetl").expect("binary should be built");
+    let mut cmd2 = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     cmd2.arg("-d").arg(dir.path().as_os_str());
     cmd2.arg("reason").arg("status");
     let json2 = run_json(&mut cmd2);
 
     // Conclusions should match
     assert_eq!(
-        json1["summary"]["total"],
-        json2["summary"]["total"],
+        json1["summary"]["total"], json2["summary"]["total"],
         "cached and uncached should produce same total conclusions"
     );
     assert_eq!(
-        json1["theory"]["facts"],
-        json2["theory"]["facts"],
+        json1["theory"]["facts"], json2["theory"]["facts"],
         "cached and uncached should produce same fact count"
     );
     assert_eq!(
-        json1["theory"]["rules"],
-        json2["theory"]["rules"],
+        json1["theory"]["rules"], json2["theory"]["rules"],
         "cached and uncached should produce same rule count"
     );
 }
@@ -1555,7 +1534,7 @@ fn test_037b_cache_invalidation() {
     build_reason_vault(dir.path());
 
     // First run: build cache (without --no-cache)
-    let mut cmd1 = Command::cargo_bin("zetl").expect("binary should be built");
+    let mut cmd1 = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     cmd1.arg("-d").arg(dir.path().as_os_str());
     cmd1.arg("reason").arg("status");
     let json1 = run_json(&mut cmd1);
@@ -1578,7 +1557,7 @@ fn test_037b_cache_invalidation() {
     );
 
     // Second run: cache should be invalidated due to mtime change
-    let mut cmd2 = Command::cargo_bin("zetl").expect("binary should be built");
+    let mut cmd2 = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     cmd2.arg("-d").arg(dir.path().as_os_str());
     cmd2.arg("reason").arg("status");
     let json2 = run_json(&mut cmd2);
@@ -1598,7 +1577,7 @@ fn test_037c_no_cache_flag() {
     build_reason_vault(dir.path());
 
     // First run: build cache
-    let mut cmd1 = Command::cargo_bin("zetl").expect("binary should be built");
+    let mut cmd1 = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     cmd1.arg("-d").arg(dir.path().as_os_str());
     cmd1.arg("reason").arg("status");
     let json1 = run_json(&mut cmd1);
@@ -1607,8 +1586,7 @@ fn test_037c_no_cache_flag() {
     let json2 = run_json(zetl_cmd(dir.path()).arg("reason").arg("status"));
 
     assert_eq!(
-        json1["summary"]["total"],
-        json2["summary"]["total"],
+        json1["summary"]["total"], json2["summary"]["total"],
         "--no-cache should produce same results"
     );
 }
@@ -1670,11 +1648,7 @@ fn test_what_if_from_file() {
 
     // Write hypothetical SPL file OUTSIDE the vault (otherwise it gets scanned as part of vault)
     let hyp_dir = TempDir::new().expect("create hyp dir");
-    write_file(
-        hyp_dir.path(),
-        "hypothetical.spl",
-        "(given new-evidence)\n",
-    );
+    write_file(hyp_dir.path(), "hypothetical.spl", "(given new-evidence)\n");
 
     let json = run_json(
         zetl_cmd(vault_dir.path())
@@ -1700,9 +1674,7 @@ fn test_no_spl_vault_error() {
     let dir = TempDir::new().expect("create temp dir");
     write_file(dir.path(), "Empty.md", "# Empty\nNo SPL here.\n");
 
-    let (json, status) = run_json_any(
-        zetl_cmd(dir.path()).arg("reason").arg("status"),
-    );
+    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("reason").arg("status"));
 
     assert!(!status.success());
     assert!(json["error"].as_str().is_some());

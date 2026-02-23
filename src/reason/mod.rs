@@ -28,8 +28,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use self::types::{
-    ConclusionType, ProofSource, ProvenancedConclusion, ProvenancedFact, ProvenancedRule,
-    RuleType, TheoryResult, TheorySummary,
+    ConclusionType, ProofSource, ProvenancedConclusion, ProvenancedFact, ProvenancedRule, RuleType,
+    TheoryResult, TheorySummary,
 };
 
 /// Build a combined theory from extracted SPL blocks, reason over it,
@@ -177,12 +177,11 @@ pub fn build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> {
     validate_theory(&combined, &label_origins, &mut diagnostics);
 
     // ── Phase 5: Reason ───────────────────────────────────────────────
-    let conclusions = spindle_core::reason::reason(&combined)
-        .context("spindle-core reasoning failed")?;
+    let conclusions =
+        spindle_core::reason::reason(&combined).context("spindle-core reasoning failed")?;
 
     // ── Phase 6: Annotate conclusions ─────────────────────────────────
-    let provenanced_conclusions =
-        annotate_conclusions(&combined, &conclusions, &label_origins);
+    let provenanced_conclusions = annotate_conclusions(&combined, &conclusions, &label_origins);
 
     let summary = build_summary(&combined, &provenanced_conclusions);
 
@@ -237,11 +236,7 @@ pub fn build_theory_from_cache(cache: &TheoryCache) -> Result<TheoryResult> {
             "_source_line",
             &cached_rule.source_line.to_string(),
         );
-        combined.add_meta_string(
-            &cached_rule.label,
-            "_source_page",
-            &cached_rule.source_page,
-        );
+        combined.add_meta_string(&cached_rule.label, "_source_page", &cached_rule.source_page);
 
         label_origins.insert(
             cached_rule.label.clone(),
@@ -450,11 +445,7 @@ fn find_rule_line(constructs: &[ConstructInfo], rule: &Rule) -> u32 {
 /// For Markdown files: `start_line` is the fence line; content starts on the next line.
 /// For `.spl` files: `start_line` is 1; content IS the file.
 fn absolute_line(block: &SplBlock, content_line: u32) -> u32 {
-    let is_spl_file = block
-        .source_file
-        .extension()
-        .and_then(|e| e.to_str())
-        == Some("spl");
+    let is_spl_file = block.source_file.extension().and_then(|e| e.to_str()) == Some("spl");
 
     if is_spl_file {
         // .spl files: start_line=1, content starts at line 1
@@ -697,12 +688,10 @@ fn build_summary(theory: &Theory, conclusions: &[ProvenancedConclusion]) -> Theo
         .metadata()
         .values()
         .filter_map(|meta| {
-            meta.properties
-                .get("_source_file")
-                .and_then(|v| match v {
-                    MetaValue::String(s) => Some(s.as_str()),
-                    _ => None,
-                })
+            meta.properties.get("_source_file").and_then(|v| match v {
+                MetaValue::String(s) => Some(s.as_str()),
+                _ => None,
+            })
         })
         .collect();
 
@@ -789,13 +778,9 @@ mod tests {
         assert_eq!(result.summary.fact_count, 1);
 
         // Should have +D conclusion for bird
-        let bird_conclusion = result
-            .conclusions
-            .iter()
-            .find(|c| {
-                c.literal == "bird"
-                    && c.conclusion_type == ConclusionType::DefinitelyProvable
-            });
+        let bird_conclusion = result.conclusions.iter().find(|c| {
+            c.literal == "bird" && c.conclusion_type == ConclusionType::DefinitelyProvable
+        });
         assert!(bird_conclusion.is_some(), "bird should be +D");
     }
 
@@ -814,22 +799,14 @@ mod tests {
         assert_eq!(result.rules[0].source_line, 11); // 10 + 1
 
         // bird should be +D, flies should be +d
-        let bird = result
-            .conclusions
-            .iter()
-            .find(|c| {
-                c.literal == "bird"
-                    && c.conclusion_type == ConclusionType::DefinitelyProvable
-            });
+        let bird = result.conclusions.iter().find(|c| {
+            c.literal == "bird" && c.conclusion_type == ConclusionType::DefinitelyProvable
+        });
         assert!(bird.is_some(), "bird should be +D");
 
-        let flies = result
-            .conclusions
-            .iter()
-            .find(|c| {
-                c.literal == "flies"
-                    && c.conclusion_type == ConclusionType::DefeasiblyProvable
-            });
+        let flies = result.conclusions.iter().find(|c| {
+            c.literal == "flies" && c.conclusion_type == ConclusionType::DefeasiblyProvable
+        });
         assert!(flies.is_some(), "flies should be +d");
     }
 
@@ -848,8 +825,7 @@ mod tests {
             result
                 .diagnostics
                 .iter()
-                .any(|d| d.level == DiagnosticLevel::Error
-                    && d.file == PathBuf::from("B.md")),
+                .any(|d| d.level == DiagnosticLevel::Error && d.file == PathBuf::from("B.md")),
             "Should have parse error for B.md"
         );
     }
@@ -857,12 +833,7 @@ mod tests {
     #[test]
     fn superiority_and_defeat() {
         let blocks = vec![
-            make_block(
-                "Birds.md",
-                "Birds",
-                5,
-                "(given bird)\n(given penguin)\n",
-            ),
+            make_block("Birds.md", "Birds", 5, "(given bird)\n(given penguin)\n"),
             make_block("Flight.md", "Flight", 10, "(normally r1 bird flies)\n"),
             make_block(
                 "Penguins.md",
@@ -1130,12 +1101,7 @@ mod tests {
         use std::time::{Duration, UNIX_EPOCH};
 
         let blocks = vec![
-            make_block(
-                "Birds.md",
-                "Birds",
-                5,
-                "(given bird)\n(given penguin)\n",
-            ),
+            make_block("Birds.md", "Birds", 5, "(given bird)\n(given penguin)\n"),
             make_block("Flight.md", "Flight", 10, "(normally r1 bird flies)\n"),
             make_block(
                 "Penguins.md",
@@ -1172,10 +1138,7 @@ mod tests {
             })
         };
 
-        assert!(
-            has_not_flies(&result),
-            "Original should have ~flies as +d"
-        );
+        assert!(has_not_flies(&result), "Original should have ~flies as +d");
         assert!(
             has_not_flies(&cached_result),
             "Cached should have ~flies as +d"
@@ -1221,7 +1184,9 @@ mod tests {
         let cache = build_theory_cache(&result.theory, &result.diagnostics, &files);
         save_theory_cache(vault, &cache).unwrap();
 
-        let loaded = load_theory_cache(vault).unwrap().expect("cache should exist");
+        let loaded = load_theory_cache(vault)
+            .unwrap()
+            .expect("cache should exist");
         assert!(theory_cache_valid(&loaded, &files));
 
         let cached_result = build_theory_from_cache(&loaded).unwrap();

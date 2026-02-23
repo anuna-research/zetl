@@ -155,7 +155,10 @@ pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOu
 
 /// Internal matcher abstraction — literal or regex.
 enum Matcher {
-    Literal { pattern: String, case_sensitive: bool },
+    Literal {
+        pattern: String,
+        case_sensitive: bool,
+    },
     Regex(Regex),
 }
 
@@ -166,8 +169,7 @@ fn build_matcher(config: &SearchConfig) -> Result<Matcher> {
         } else {
             format!("(?i){}", config.query)
         };
-        let re = Regex::new(&pattern)
-            .map_err(|e| anyhow::anyhow!("Invalid regex: {e}"))?;
+        let re = Regex::new(&pattern).map_err(|e| anyhow::anyhow!("Invalid regex: {e}"))?;
         Ok(Matcher::Regex(re))
     } else {
         Ok(Matcher::Literal {
@@ -205,7 +207,10 @@ fn find_matches_in_content(
         .collect();
 
     match matcher {
-        Matcher::Literal { pattern, case_sensitive } => {
+        Matcher::Literal {
+            pattern,
+            case_sensitive,
+        } => {
             let search_content = if *case_sensitive {
                 content.to_string()
             } else {
@@ -224,7 +229,8 @@ fn find_matches_in_content(
                 }
 
                 let (line, col) = byte_offset_to_line_col(&line_starts, byte_offset);
-                let ctx = extract_search_context(content, byte_offset, pattern.len(), context_chars);
+                let ctx =
+                    extract_search_context(content, byte_offset, pattern.len(), context_chars);
                 results.push(SearchMatch {
                     page: page_name.to_string(),
                     path: rel_path.to_string(),
@@ -262,7 +268,9 @@ fn find_matches_in_content(
 
 /// Convert a byte offset to (line, column), both 1-indexed.
 fn byte_offset_to_line_col(line_starts: &[usize], byte_offset: usize) -> (u32, u32) {
-    let line_idx = line_starts.partition_point(|&start| start <= byte_offset).saturating_sub(1);
+    let line_idx = line_starts
+        .partition_point(|&start| start <= byte_offset)
+        .saturating_sub(1);
     let col = byte_offset - line_starts[line_idx];
     ((line_idx + 1) as u32, (col + 1) as u32)
 }
