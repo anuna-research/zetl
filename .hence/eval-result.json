@@ -4,8 +4,8 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 489,
-    "deletions": 6,
+    "insertions": 506,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
       "src/cli.rs",
@@ -15,14 +15,14 @@
   },
   "learnings": [
     {
-      "key": "task-cmd-reason-why-not-changes",
-      "content": "Modified 3 files (+489, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs",
+      "key": "task-cmd-reason-conflicts-changes",
+      "content": "Modified 3 files (+506, -7): .hence/context-manifest.json, src/cli.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cmd-reason-why-not-v1",
-  "evaluated_at": "2026-02-23T14:00:01Z",
+  "branch_name": "hence/cmd-reason-conflicts-v1",
+  "evaluated_at": "2026-02-23T14:05:14Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
