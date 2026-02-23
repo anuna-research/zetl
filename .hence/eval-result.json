@@ -4,25 +4,25 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 990,
-    "deletions": 23,
+    "insertions": 338,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/reason/mod.rs",
-      "src/reason/types.rs"
+      "src/cli.rs",
+      "src/main.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-reason-engine-changes",
-      "content": "Modified 3 files (+990, -23): .hence/context-manifest.json, src/reason/mod.rs, src/reason/types.rs",
+      "key": "task-cmd-reason-status-changes",
+      "content": "Modified 3 files (+338, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/reason-engine-v1",
-  "evaluated_at": "2026-02-23T13:37:21Z",
+  "branch_name": "hence/cmd-reason-status-v1",
+  "evaluated_at": "2026-02-23T13:43:35Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
