@@ -150,6 +150,50 @@ pub enum Command {
 
     /// Launch interactive terminal UI
     Tui,
+
+    /// Defeasible reasoning over vault-wide SPL
+    #[cfg(feature = "reason")]
+    Reason {
+        #[command(subcommand)]
+        command: ReasonCommand,
+    },
+}
+
+#[cfg(feature = "reason")]
+#[derive(Subcommand)]
+pub enum ReasonCommand {
+    /// Show current reasoning status: conclusions from vault-wide SPL
+    Status {
+        /// Show only positive conclusions (+D, +d)
+        #[arg(long)]
+        positive: bool,
+        /// Show only negative conclusions (-D, -d)
+        #[arg(long)]
+        negative: bool,
+        /// Show only definite conclusions (+D, -D)
+        #[arg(long)]
+        definite: bool,
+        /// Show only defeasible conclusions (+d, -d)
+        #[arg(long)]
+        defeasible: bool,
+        /// Filter conclusions by literal name pattern (supports * and ? wildcards)
+        #[arg(long)]
+        literal: Option<String>,
+    },
+    /// Explain why a conclusion holds
+    Explain,
+    /// Hypothetical reasoning: what if a fact were added?
+    WhatIf,
+    /// Why is a literal not provable?
+    WhyNot,
+    /// What facts are needed to prove a literal?
+    Require,
+    /// Show conflicting rules for a literal
+    Conflicts,
+    /// Export theory in various formats
+    Export,
+    /// Trace full provenance for a conclusion
+    Provenance,
 }
 
 #[derive(Clone, ValueEnum)]

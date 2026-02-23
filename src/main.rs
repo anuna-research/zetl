@@ -1040,6 +1040,265 @@ fn cmd_tui(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
+// ── Reason commands ────────────────────────────────────────────────────────
+
+#[cfg(feature = "reason")]
+fn literal_matches(literal: &str, pattern: &str) -> bool {
+    if !pattern.contains('*') && !pattern.contains('?') {
+        return literal.contains(pattern);
+    }
+    let regex_str: String = pattern
+        .chars()
+        .map(|c| match c {
+            '*' => ".*".to_string(),
+            '?' => ".".to_string(),
+            c => regex::escape(&c.to_string()),
+        })
+        .collect();
+    let anchored = format!("^{regex_str}$");
+    regex::Regex::new(&anchored)
+        .map(|re| re.is_match(literal))
+        .unwrap_or(false)
+}
+
+#[cfg(feature = "reason")]
+fn cmd_reason_status(
+    cli: &Cli,
+    positive: bool,
+    negative: bool,
+    definite: bool,
+    defeasible: bool,
+    literal_pat: Option<&str>,
+) -> Result<()> {
+    use zetl::reason::build_theory;
+    use zetl::reason::types::ConclusionType;
+
+    let pipeline = run_pipeline(cli)?;
+
+    // Collect all SPL blocks from parsed files
+    let spl_blocks: Vec<_> = pipeline
+        .files
+        .iter()
+        .flat_map(|f| f.spl_blocks.clone())
+        .collect();
+
+    if spl_blocks.is_empty() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
+            OutputFormat::Table => {
+                eprintln!("No SPL blocks found in vault.");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let block_count = spl_blocks.len();
+    let result = build_theory(&spl_blocks)?;
+
+    // Determine if there were parse errors
+    let parse_error_count = result
+        .diagnostics
+        .iter()
+        .filter(|d| {
+            d.level == DiagnosticLevel::Error && d.message.contains("SPL parse error")
+        })
+        .count();
+    let has_parse_errors = parse_error_count > 0;
+    let all_blocks_failed = parse_error_count == block_count && result.conclusions.is_empty();
+
+    // Filter conclusions
+    let mut conclusions = result.conclusions;
+
+    // Sign filter: positive/negative
+    if positive || negative {
+        conclusions.retain(|c| {
+            (positive
+                && matches!(
+                    c.conclusion_type,
+                    ConclusionType::DefinitelyProvable | ConclusionType::DefeasiblyProvable
+                ))
+                || (negative
+                    && matches!(
+                        c.conclusion_type,
+                        ConclusionType::DefinitelyNotProvable
+                            | ConclusionType::DefeasiblyNotProvable
+                    ))
+        });
+    }
+
+    // Strength filter: definite/defeasible
+    if definite || defeasible {
+        conclusions.retain(|c| {
+            (definite
+                && matches!(
+                    c.conclusion_type,
+                    ConclusionType::DefinitelyProvable | ConclusionType::DefinitelyNotProvable
+                ))
+                || (defeasible
+                    && matches!(
+                        c.conclusion_type,
+                        ConclusionType::DefeasiblyProvable
+                            | ConclusionType::DefeasiblyNotProvable
+                    ))
+        });
+    }
+
+    // Literal pattern filter
+    if let Some(pat) = literal_pat {
+        conclusions.retain(|c| literal_matches(&c.literal, pat));
+    }
+
+    // Sort conclusions for stable output: by type then literal
+    conclusions.sort_by(|a, b| {
+        let type_order = |ct: &ConclusionType| match ct {
+            ConclusionType::DefinitelyProvable => 0,
+            ConclusionType::DefinitelyNotProvable => 1,
+            ConclusionType::DefeasiblyProvable => 2,
+            ConclusionType::DefeasiblyNotProvable => 3,
+        };
+        type_order(&a.conclusion_type)
+            .cmp(&type_order(&b.conclusion_type))
+            .then(a.literal.cmp(&b.literal))
+    });
+
+    // Output
+    match cli.format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            struct ReasonStatusOutput {
+                theory: TheoryJsonSummary,
+                conclusions: Vec<zetl::reason::types::ProvenancedConclusion>,
+                summary: ConclusionCounts,
+                diagnostics: Vec<zetl::types::Diagnostic>,
+            }
+
+            #[derive(Serialize)]
+            struct TheoryJsonSummary {
+                facts: usize,
+                rules: usize,
+                defeaters: usize,
+                superiority_relations: usize,
+                source_files: usize,
+            }
+
+            #[derive(Serialize)]
+            struct ConclusionCounts {
+                definitely_provable: usize,
+                definitely_not_provable: usize,
+                defeasibly_provable: usize,
+                defeasibly_not_provable: usize,
+                total: usize,
+            }
+
+            let output = ReasonStatusOutput {
+                theory: TheoryJsonSummary {
+                    facts: result.summary.fact_count,
+                    rules: result.summary.rule_count,
+                    defeaters: result.summary.defeater_count,
+                    superiority_relations: result.summary.superiority_count,
+                    source_files: result.summary.source_file_count,
+                },
+                conclusions,
+                summary: ConclusionCounts {
+                    definitely_provable: result.summary.definitely_provable,
+                    definitely_not_provable: result.summary.definitely_not_provable,
+                    defeasibly_provable: result.summary.defeasibly_provable,
+                    defeasibly_not_provable: result.summary.defeasibly_not_provable,
+                    total: result.summary.definitely_provable
+                        + result.summary.definitely_not_provable
+                        + result.summary.defeasibly_provable
+                        + result.summary.defeasibly_not_provable,
+                },
+                diagnostics: result.diagnostics,
+            };
+            print_json(&output)?;
+        }
+        OutputFormat::Table => {
+            println!(
+                "Theory: {} facts, {} rules, {} defeaters, {} superiority relations from {} files",
+                result.summary.fact_count,
+                result.summary.rule_count,
+                result.summary.defeater_count,
+                result.summary.superiority_count,
+                result.summary.source_file_count,
+            );
+            println!();
+
+            if conclusions.is_empty() {
+                println!("No conclusions match the given filters.");
+            } else {
+                let mut table = Table::new();
+                table.set_header(vec!["Tag", "Literal", "Sources"]);
+                for c in &conclusions {
+                    let tag = match c.conclusion_type {
+                        ConclusionType::DefinitelyProvable => "+D",
+                        ConclusionType::DefinitelyNotProvable => "-D",
+                        ConclusionType::DefeasiblyProvable => "+d",
+                        ConclusionType::DefeasiblyNotProvable => "-d",
+                    };
+                    let sources: String = c
+                        .proof_sources
+                        .iter()
+                        .map(|s| {
+                            if let Some(ref label) = s.rule_label {
+                                format!("{}:{} ({})", s.page, s.line, label)
+                            } else {
+                                format!("{}:{}", s.page, s.line)
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    table.add_row(vec![
+                        Cell::new(tag),
+                        Cell::new(&c.literal),
+                        Cell::new(sources),
+                    ]);
+                }
+                println!("{table}");
+            }
+
+            println!();
+            println!(
+                "Conclusions: {} +D, {} -D, {} +d, {} -d ({} total)",
+                result.summary.definitely_provable,
+                result.summary.definitely_not_provable,
+                result.summary.defeasibly_provable,
+                result.summary.defeasibly_not_provable,
+                result.summary.definitely_provable
+                    + result.summary.definitely_not_provable
+                    + result.summary.defeasibly_provable
+                    + result.summary.defeasibly_not_provable,
+            );
+
+            if !result.diagnostics.is_empty() {
+                println!();
+                println!("Diagnostics:");
+                for d in &result.diagnostics {
+                    let level = match d.level {
+                        DiagnosticLevel::Error => "ERROR",
+                        DiagnosticLevel::Warning => "WARN",
+                    };
+                    println!(
+                        "  [{}] {}:{}: {}",
+                        level,
+                        d.file.display(),
+                        d.line,
+                        d.message
+                    );
+                }
+            }
+        }
+    }
+
+    if all_blocks_failed {
+        std::process::exit(2);
+    } else if has_parse_errors {
+        std::process::exit(2);
+    }
+
+    Ok(())
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 fn main() -> anyhow::Result<()> {
@@ -1097,5 +1356,29 @@ fn main() -> anyhow::Result<()> {
         } => cmd_path(&cli, from, to, *max_depth),
         Command::Export => cmd_export(&cli),
         Command::Tui => cmd_tui(&cli),
+        #[cfg(feature = "reason")]
+        Command::Reason { command } => {
+            use zetl::cli::ReasonCommand;
+            match command {
+                ReasonCommand::Status {
+                    positive,
+                    negative,
+                    definite,
+                    defeasible,
+                    literal,
+                } => cmd_reason_status(
+                    &cli,
+                    *positive,
+                    *negative,
+                    *definite,
+                    *defeasible,
+                    literal.as_deref(),
+                ),
+                _ => {
+                    eprintln!("This reason subcommand is not yet implemented.");
+                    std::process::exit(1);
+                }
+            }
+        }
     }
 }
