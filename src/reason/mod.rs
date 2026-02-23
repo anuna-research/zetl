@@ -16,10 +16,11 @@
 
 pub mod types;
 
+use crate::cache::{CachedRuleType, TheoryCache};
 use crate::types::{Diagnostic, DiagnosticLevel, SplBlock};
 use anyhow::{Context, Result};
 use spindle_core::prelude::{
-    Conclusion, ConclusionType as CoreConclusionType, MetaValue, Rule,
+    Conclusion, ConclusionType as CoreConclusionType, Literal, MetaValue, Rule,
     RuleType as CoreRuleType, Theory,
 };
 use spindle_parser::parse_spl;
@@ -193,6 +194,121 @@ pub fn build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> {
         diagnostics,
         summary,
     })
+}
+
+/// Reconstruct a theory from cached data and re-reason (phases 5–6 only).
+///
+/// This skips the expensive parse + annotate + combine phases by rebuilding
+/// the spindle-core `Theory` from the serialized rule/superiority data in the
+/// cache.  Reasoning and conclusion annotation are always re-run.
+pub fn build_theory_from_cache(cache: &TheoryCache) -> Result<TheoryResult> {
+    let mut combined = Theory::new();
+    let mut provenanced_rules: Vec<ProvenancedRule> = Vec::new();
+    let mut provenanced_facts: Vec<ProvenancedFact> = Vec::new();
+    let mut label_origins: HashMap<String, (PathBuf, u32, String)> = HashMap::new();
+
+    for cached_rule in &cache.rules {
+        let core_type = match cached_rule.rule_type {
+            CachedRuleType::Fact => CoreRuleType::Fact,
+            CachedRuleType::Strict => CoreRuleType::Strict,
+            CachedRuleType::Defeasible => CoreRuleType::Defeasible,
+            CachedRuleType::Defeater => CoreRuleType::Defeater,
+        };
+
+        let body_lits: Vec<Literal> = cached_rule.body.iter().map(|s| parse_literal(s)).collect();
+        let head_lits: Vec<Literal> = cached_rule.head.iter().map(|s| parse_literal(s)).collect();
+
+        let rule = Rule::new(
+            &cached_rule.label,
+            core_type,
+            body_lits.clone(),
+            head_lits.clone(),
+        );
+        combined.add_rule(rule);
+
+        // Restore provenance metadata on the theory.
+        combined.add_meta_string(
+            &cached_rule.label,
+            "_source_file",
+            &cached_rule.source_file.display().to_string(),
+        );
+        combined.add_meta_string(
+            &cached_rule.label,
+            "_source_line",
+            &cached_rule.source_line.to_string(),
+        );
+        combined.add_meta_string(
+            &cached_rule.label,
+            "_source_page",
+            &cached_rule.source_page,
+        );
+
+        label_origins.insert(
+            cached_rule.label.clone(),
+            (
+                cached_rule.source_file.clone(),
+                cached_rule.source_line,
+                cached_rule.source_page.clone(),
+            ),
+        );
+
+        if cached_rule.rule_type == CachedRuleType::Fact {
+            if let Some(head_lit) = head_lits.into_iter().next() {
+                provenanced_facts.push(ProvenancedFact {
+                    literal: head_lit,
+                    source_file: cached_rule.source_file.clone(),
+                    source_line: cached_rule.source_line,
+                    source_page: cached_rule.source_page.clone(),
+                });
+            }
+        } else {
+            provenanced_rules.push(ProvenancedRule {
+                label: cached_rule.label.clone(),
+                rule_type: match cached_rule.rule_type {
+                    CachedRuleType::Strict => RuleType::Strict,
+                    CachedRuleType::Defeasible => RuleType::Defeasible,
+                    CachedRuleType::Defeater => RuleType::Defeater,
+                    CachedRuleType::Fact => RuleType::Strict, // unreachable in this branch
+                },
+                body: body_lits,
+                head: head_lits.into_iter().next().unwrap_or_default(),
+                source_file: cached_rule.source_file.clone(),
+                source_line: cached_rule.source_line,
+                source_page: cached_rule.source_page.clone(),
+            });
+        }
+    }
+
+    // Restore superiority relations.
+    for (superior, inferior) in &cache.superiorities {
+        combined.add_superiority(superior, inferior);
+    }
+
+    // Phase 5: Reason
+    let conclusions =
+        spindle_core::reason::reason(&combined).context("spindle-core reasoning failed")?;
+
+    // Phase 6: Annotate conclusions
+    let provenanced_conclusions = annotate_conclusions(&combined, &conclusions, &label_origins);
+    let summary = build_summary(&combined, &provenanced_conclusions);
+
+    Ok(TheoryResult {
+        theory: combined,
+        conclusions: provenanced_conclusions,
+        rules: provenanced_rules,
+        facts: provenanced_facts,
+        diagnostics: cache.diagnostics.clone(),
+        summary,
+    })
+}
+
+/// Parse a literal from its display-form string (e.g. "bird", "~flies").
+fn parse_literal(s: &str) -> Literal {
+    if let Some(name) = s.strip_prefix('~') {
+        Literal::negated(name)
+    } else {
+        Literal::simple(s)
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -935,5 +1051,182 @@ mod tests {
         let block = make_spl_file_block("test.spl", "test", "(given bird)\n");
         assert_eq!(absolute_line(&block, 1), 1); // 1 + 1 - 1
         assert_eq!(absolute_line(&block, 2), 2); // 1 + 2 - 1
+    }
+
+    #[test]
+    fn theory_cache_round_trip() {
+        use crate::cache::build_theory_cache;
+        use crate::types::ParsedFile;
+        use std::time::{Duration, UNIX_EPOCH};
+
+        // Build theory the normal way.
+        let blocks = vec![
+            make_block("A.md", "A", 5, "(given bird)\n"),
+            make_block("B.md", "B", 10, "(normally r1 bird flies)\n"),
+        ];
+        let result = build_theory(&blocks).unwrap();
+
+        // Collect conclusions from the original build.
+        let mut original_conclusions: Vec<(String, String)> = result
+            .conclusions
+            .iter()
+            .map(|c| (c.literal.clone(), format!("{:?}", c.conclusion_type)))
+            .collect();
+        original_conclusions.sort();
+
+        // Create fake ParsedFiles to simulate the pipeline (for mtime tracking).
+        let mtime = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let files = vec![
+            ParsedFile {
+                path: PathBuf::from("A.md"),
+                page_name: "A".to_string(),
+                links: vec![],
+                spl_blocks: vec![blocks[0].clone()],
+                diagnostics: vec![],
+                mtime,
+            },
+            ParsedFile {
+                path: PathBuf::from("B.md"),
+                page_name: "B".to_string(),
+                links: vec![],
+                spl_blocks: vec![blocks[1].clone()],
+                diagnostics: vec![],
+                mtime,
+            },
+        ];
+
+        // Build cache.
+        let cache = build_theory_cache(&result.theory, &result.diagnostics, &files);
+
+        // Reconstruct from cache and re-reason.
+        let cached_result = build_theory_from_cache(&cache).unwrap();
+
+        // Verify same conclusions.
+        let mut cached_conclusions: Vec<(String, String)> = cached_result
+            .conclusions
+            .iter()
+            .map(|c| (c.literal.clone(), format!("{:?}", c.conclusion_type)))
+            .collect();
+        cached_conclusions.sort();
+
+        assert_eq!(
+            original_conclusions, cached_conclusions,
+            "Conclusions should match between direct build and cache-based build"
+        );
+
+        // Verify same fact/rule counts.
+        assert_eq!(result.facts.len(), cached_result.facts.len());
+        assert_eq!(result.rules.len(), cached_result.rules.len());
+        assert_eq!(
+            result.summary.superiority_count,
+            cached_result.summary.superiority_count
+        );
+    }
+
+    #[test]
+    fn theory_cache_round_trip_with_superiority() {
+        use crate::cache::build_theory_cache;
+        use crate::types::ParsedFile;
+        use std::time::{Duration, UNIX_EPOCH};
+
+        let blocks = vec![
+            make_block(
+                "Birds.md",
+                "Birds",
+                5,
+                "(given bird)\n(given penguin)\n",
+            ),
+            make_block("Flight.md", "Flight", 10, "(normally r1 bird flies)\n"),
+            make_block(
+                "Penguins.md",
+                "Penguins",
+                15,
+                "(normally r2 penguin (not flies))\n(prefer r2 r1)\n",
+            ),
+        ];
+
+        let result = build_theory(&blocks).unwrap();
+
+        let mtime = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let files: Vec<ParsedFile> = blocks
+            .iter()
+            .map(|b| ParsedFile {
+                path: b.source_file.clone(),
+                page_name: b.source_page.clone(),
+                links: vec![],
+                spl_blocks: vec![b.clone()],
+                diagnostics: vec![],
+                mtime,
+            })
+            .collect();
+
+        let cache = build_theory_cache(&result.theory, &result.diagnostics, &files);
+        let cached_result = build_theory_from_cache(&cache).unwrap();
+
+        // ~flies should be +d in both
+        let has_not_flies = |r: &TheoryResult| {
+            r.conclusions.iter().any(|c| {
+                c.literal.contains("flies")
+                    && c.literal.starts_with('~')
+                    && c.conclusion_type == ConclusionType::DefeasiblyProvable
+            })
+        };
+
+        assert!(
+            has_not_flies(&result),
+            "Original should have ~flies as +d"
+        );
+        assert!(
+            has_not_flies(&cached_result),
+            "Cached should have ~flies as +d"
+        );
+
+        assert_eq!(
+            result.summary.superiority_count,
+            cached_result.summary.superiority_count
+        );
+    }
+
+    #[test]
+    fn theory_cache_round_trip_serialization() {
+        use crate::cache::{
+            build_theory_cache, load_theory_cache, save_theory_cache, theory_cache_valid,
+        };
+        use crate::types::ParsedFile;
+        use std::time::{Duration, UNIX_EPOCH};
+
+        let blocks = vec![
+            make_block("A.md", "A", 5, "(given bird)\n"),
+            make_block("B.md", "B", 10, "(normally r1 bird flies)\n"),
+        ];
+        let result = build_theory(&blocks).unwrap();
+
+        let mtime = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let files: Vec<ParsedFile> = blocks
+            .iter()
+            .map(|b| ParsedFile {
+                path: b.source_file.clone(),
+                page_name: b.source_page.clone(),
+                links: vec![],
+                spl_blocks: vec![b.clone()],
+                diagnostics: vec![],
+                mtime,
+            })
+            .collect();
+
+        // Save to disk, load back, verify.
+        let dir = tempfile::TempDir::new().unwrap();
+        let vault = dir.path();
+
+        let cache = build_theory_cache(&result.theory, &result.diagnostics, &files);
+        save_theory_cache(vault, &cache).unwrap();
+
+        let loaded = load_theory_cache(vault).unwrap().expect("cache should exist");
+        assert!(theory_cache_valid(&loaded, &files));
+
+        let cached_result = build_theory_from_cache(&loaded).unwrap();
+        assert_eq!(result.conclusions.len(), cached_result.conclusions.len());
+        assert_eq!(result.facts.len(), cached_result.facts.len());
+        assert_eq!(result.rules.len(), cached_result.rules.len());
     }
 }

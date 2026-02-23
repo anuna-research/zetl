@@ -1295,6 +1295,54 @@ fn literal_matches(literal: &str, pattern: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Build theory using the theory cache when possible.
+///
+/// On cache hit (no SPL-containing file has changed), reconstructs the theory
+/// from `.zetl/theory.json` and re-reasons (~100ms).  On cache miss, runs the
+/// full parse + combine + validate + reason pipeline and saves the cache.
+#[cfg(feature = "reason")]
+fn build_or_load_theory(
+    pipeline: &Pipeline,
+    no_cache: bool,
+    verbose: u8,
+) -> Result<zetl::reason::types::TheoryResult> {
+    use zetl::cache::{build_theory_cache, load_theory_cache, save_theory_cache, theory_cache_valid};
+    use zetl::reason::{build_theory, build_theory_from_cache};
+
+    let spl_blocks: Vec<_> = pipeline
+        .files
+        .iter()
+        .flat_map(|f| f.spl_blocks.clone())
+        .collect();
+
+    // Try loading from theory cache (unless --no-cache).
+    if !no_cache {
+        if let Ok(Some(cache)) = load_theory_cache(&pipeline.vault_root) {
+            if theory_cache_valid(&cache, &pipeline.files) {
+                if verbose > 0 {
+                    eprintln!("Theory cache hit — re-reasoning from cached theory");
+                }
+                return build_theory_from_cache(&cache);
+            }
+        }
+    }
+
+    // Cache miss: full build.
+    let result = build_theory(&spl_blocks)?;
+
+    // Save to theory cache.
+    if !no_cache {
+        let cache = build_theory_cache(&result.theory, &result.diagnostics, &pipeline.files);
+        if let Err(e) = save_theory_cache(&pipeline.vault_root, &cache) {
+            if verbose > 0 {
+                eprintln!("Warning: failed to save theory cache: {e}");
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 #[cfg(feature = "reason")]
 fn cmd_reason_status(
     cli: &Cli,
@@ -1304,19 +1352,12 @@ fn cmd_reason_status(
     defeasible: bool,
     literal_pat: Option<&str>,
 ) -> Result<()> {
-    use zetl::reason::build_theory;
     use zetl::reason::types::ConclusionType;
 
     let pipeline = run_pipeline(cli)?;
 
-    // Collect all SPL blocks from parsed files
-    let spl_blocks: Vec<_> = pipeline
-        .files
-        .iter()
-        .flat_map(|f| f.spl_blocks.clone())
-        .collect();
-
-    if spl_blocks.is_empty() {
+    let block_count: usize = pipeline.files.iter().map(|f| f.spl_blocks.len()).sum();
+    if block_count == 0 {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
             OutputFormat::Table => {
@@ -1326,8 +1367,7 @@ fn cmd_reason_status(
         }
     }
 
-    let block_count = spl_blocks.len();
-    let result = build_theory(&spl_blocks)?;
+    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Determine if there were parse errors
     let parse_error_count = result
@@ -1541,18 +1581,11 @@ fn cmd_reason_explain(
     explain_format: &zetl::cli::ExplainFormat,
 ) -> Result<()> {
     use zetl::cli::ExplainFormat;
-    use zetl::reason::build_theory;
 
     let pipeline = run_pipeline(cli)?;
 
-    // Collect all SPL blocks from parsed files
-    let spl_blocks: Vec<_> = pipeline
-        .files
-        .iter()
-        .flat_map(|f| f.spl_blocks.clone())
-        .collect();
-
-    if spl_blocks.is_empty() {
+    let has_spl = pipeline.files.iter().any(|f| !f.spl_blocks.is_empty());
+    if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
             OutputFormat::Table => {
@@ -1562,7 +1595,7 @@ fn cmd_reason_explain(
         }
     }
 
-    let result = build_theory(&spl_blocks)?;
+    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Parse the literal input: handle ~negation prefix
     let (is_negated, lit_name) = if let Some(name) = literal_input.strip_prefix('~') {
@@ -1689,18 +1722,12 @@ fn cmd_reason_explain(
 
 #[cfg(feature = "reason")]
 fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
-    use zetl::reason::build_theory;
     use zetl::reason::types::ConclusionType;
 
     let pipeline = run_pipeline(cli)?;
 
-    let spl_blocks: Vec<_> = pipeline
-        .files
-        .iter()
-        .flat_map(|f| f.spl_blocks.clone())
-        .collect();
-
-    if spl_blocks.is_empty() {
+    let has_spl = pipeline.files.iter().any(|f| !f.spl_blocks.is_empty());
+    if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
             OutputFormat::Table => {
@@ -1710,7 +1737,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
         }
     }
 
-    let result = build_theory(&spl_blocks)?;
+    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Check if the literal appears anywhere in the theory (as a head, body, or fact)
     let all_head_literals: HashSet<String> = result
@@ -2106,18 +2133,12 @@ fn cmd_reason_require(
     max_solutions: usize,
     assume_spl: Option<&str>,
 ) -> Result<()> {
-    use zetl::reason::build_theory;
     use zetl::reason::types::ConclusionType;
 
     let pipeline = run_pipeline(cli)?;
 
-    let spl_blocks: Vec<_> = pipeline
-        .files
-        .iter()
-        .flat_map(|f| f.spl_blocks.clone())
-        .collect();
-
-    if spl_blocks.is_empty() {
+    let has_spl = pipeline.files.iter().any(|f| !f.spl_blocks.is_empty());
+    if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
             OutputFormat::Table => {
@@ -2127,7 +2148,7 @@ fn cmd_reason_require(
         }
     }
 
-    let result = build_theory(&spl_blocks)?;
+    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Parse --assume facts if provided, and inject them into the theory for reasoning
     let assumed_literals: HashSet<String> = if let Some(assume_input) = assume_spl {
@@ -2478,18 +2499,12 @@ struct RequiredFact {
 
 #[cfg(feature = "reason")]
 fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Result<()> {
-    use zetl::reason::build_theory;
     use zetl::reason::types::RuleType;
 
     let pipeline = run_pipeline(cli)?;
 
-    let spl_blocks: Vec<_> = pipeline
-        .files
-        .iter()
-        .flat_map(|f| f.spl_blocks.clone())
-        .collect();
-
-    if spl_blocks.is_empty() {
+    let has_spl = pipeline.files.iter().any(|f| !f.spl_blocks.is_empty());
+    if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
             OutputFormat::Table => {
@@ -2499,7 +2514,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
         }
     }
 
-    let result = build_theory(&spl_blocks)?;
+    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Build a set of all rule heads grouped by their base literal name.
     // A conflict exists when there are rules for both `p` and `~p`.
@@ -2992,7 +3007,6 @@ fn cmd_reason_what_if(
     goal: Option<&str>,
 ) -> Result<()> {
     use spindle_parser::parse_spl;
-    use zetl::reason::build_theory;
 
     // Resolve the hypothetical SPL input
     let hyp_spl = match (spl_inline, file_path) {
@@ -3040,13 +3054,8 @@ fn cmd_reason_what_if(
     // Build the baseline theory from vault
     let pipeline = run_pipeline(cli)?;
 
-    let spl_blocks: Vec<_> = pipeline
-        .files
-        .iter()
-        .flat_map(|f| f.spl_blocks.clone())
-        .collect();
-
-    if spl_blocks.is_empty() {
+    let has_spl = pipeline.files.iter().any(|f| !f.spl_blocks.is_empty());
+    if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
             OutputFormat::Table => {
@@ -3056,7 +3065,7 @@ fn cmd_reason_what_if(
         }
     }
 
-    let result = build_theory(&spl_blocks)?;
+    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Build baseline conclusion set: (literal, type_symbol) pairs
     let conclusion_symbol =
@@ -3250,18 +3259,12 @@ fn cmd_reason_what_if(
 
 #[cfg(feature = "reason")]
 fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
-    use zetl::reason::build_theory;
     use zetl::reason::types::ConclusionType;
 
     let pipeline = run_pipeline(cli)?;
 
-    let spl_blocks: Vec<_> = pipeline
-        .files
-        .iter()
-        .flat_map(|f| f.spl_blocks.clone())
-        .collect();
-
-    if spl_blocks.is_empty() {
+    let has_spl = pipeline.files.iter().any(|f| !f.spl_blocks.is_empty());
+    if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
             OutputFormat::Table => {
@@ -3271,7 +3274,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
         }
     }
 
-    let result = build_theory(&spl_blocks)?;
+    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Normalize literal input: handle ~ prefix for negation
     let literal_str = literal_input.trim();
