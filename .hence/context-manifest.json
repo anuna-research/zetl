@@ -1,12 +1,12 @@
 {
-  "task_id": "theory-cache",
+  "task_id": "cmd-reason-export",
   "token_budget": 8000,
-  "tokens_used": 387,
+  "tokens_used": 354,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement theory caching per ADR-006 and NFR-011. Cache the parsed theory (not conclusions — re-reason each time per Open Question 4) to .zetl/theory.json alongside the existing index.json. Use the same mtime-based invalidation: if any file containing an SPL block has changed, invalidate and rebuild. Track which files contain SPL blocks for targeted invalidation. Cache format: serialized Theory with provenance metadata. Subsequent reason queries should load cache + re-reason (~100ms) instead of full extract + parse + reason (~2-3s for large vaults).",
-      "token_cost": 139,
+      "content": "Implement `zetl reason export` per CON-018. Export the combined theory in two formats: 1) SPL format — reconstructed SPL with provenance comments ('; --- From: file:line ---' before each rule/fact), valid parseable SPL; 2) JSON format — structured { rules[], facts[], superiority[], conclusions[] } with provenance fields on each item. Option: --with-conclusions includes reasoning results in the export. Always exits 0.",
+      "token_cost": 106,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T14:28:06Z"
+  "constructed_at": "2026-02-23T14:46:51Z"
 }
