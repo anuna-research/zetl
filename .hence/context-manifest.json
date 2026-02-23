@@ -1,15 +1,21 @@
 {
-  "task_id": "feature-flag",
+  "task_id": "spl-types",
   "token_budget": 8000,
-  "tokens_used": 90,
+  "tokens_used": 167,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add a `reason` feature flag to Cargo.toml. Under this feature, add spindle-core and spindle-parser as optional Cargo dependencies. Add a `reason` module to src/lib.rs gated behind #[cfg(feature = \"reason\")]. Ensure `cargo check` passes both with and without the feature. This follows ADR-005: embed spindle-core as a Rust library dependency behind a feature flag.",
-      "token_cost": 90,
+      "content": "Define the core data types for SPL extraction and reasoning in src/types.rs (or a new src/reason/types.rs if gated). Implement: SplBlock { source_file, source_page, start_line, end_line, content }, ProvenancedRule { label, rule_type, body, head, source_file, source_line, source_page }, ProvenancedFact { literal, source_file, source_line, source_page }, ProvenancedConclusion { literal, conclusion_type, proof_sources }, ProofSource { page, path, line, rule_label, contribution }, ConclusionType enum (+D, -D, +d, -d). All types derive Serialize for JSON output. Per SPEC-005 §5.3 data model.",
+      "token_cost": 148,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-feature-flag-changes",
+      "content": "Modified 4 files (+285, -0): Cargo.lock, Cargo.toml, src/lib.rs, src/reason.rs",
+      "token_cost": 19,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T13:02:25Z"
+  "constructed_at": "2026-02-23T13:05:46Z"
 }
