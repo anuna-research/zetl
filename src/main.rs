@@ -202,6 +202,48 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
     })
 }
 
+// ── No-index fallback ──────────────────────────────────────────────────────
+
+/// Pre-launch index check (REQ-072, CON-023).
+///
+/// Checks whether `.zetl/index.json` exists in the vault root before entering
+/// the alternate screen.  When the file is absent the user gets a brief status
+/// message on stderr and the index pipeline runs in-process (identical to
+/// `zetl index`).
+///
+/// * On success the freshly-built `Pipeline` is returned so the caller can
+///   reuse it rather than scanning a second time.
+/// * On pipeline failure the function prints a JSON error to stderr and exits
+///   with a non-zero status (error code `INDEX_BUILD_FAILED`).
+///
+/// Returns `Some(Pipeline)` when the index was missing and has just been built,
+/// or `None` when the index already existed (caller is responsible for loading
+/// it via `run_pipeline` if needed).
+fn check_no_index_fallback(cli: &Cli) -> Result<Option<Pipeline>> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let index_path = vault_root.join(".zetl").join("index.json");
+
+    if !index_path.exists() {
+        eprintln!("Building index\u{2026}");
+        match run_pipeline(cli) {
+            Ok(pipeline) => return Ok(Some(pipeline)),
+            Err(e) => {
+                let json = serde_json::json!({
+                    "error": {
+                        "code": "INDEX_BUILD_FAILED",
+                        "message": e.to_string()
+                    }
+                });
+                eprintln!("{json}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 // ── Page lookup helpers ────────────────────────────────────────────────────
 
 /// Resolve a page name from user input. Case-insensitive lookup, with optional
@@ -2096,7 +2138,10 @@ fn extract_context(vault_root: &Path, source_file: &str, line: u32, n: usize) ->
 }
 
 fn cmd_tui(cli: &Cli) -> Result<()> {
-    let pipeline = run_pipeline(cli)?;
+    // No-index fallback (REQ-072): ensure index exists before entering alternate screen.
+    let pipeline = check_no_index_fallback(cli)?
+        .map(Ok)
+        .unwrap_or_else(|| run_pipeline(cli))?;
 
     // Build resolved_pages map for App::new
     let mut resolved_pages: HashMap<String, String> = HashMap::new();
@@ -2122,6 +2167,70 @@ fn cmd_tui(cli: &Cli) -> Result<()> {
 
     zetl::tui::run(&mut app)?;
     Ok(())
+}
+
+fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) -> Result<()> {
+    // Require an interactive terminal (REQ-062, CON-023).
+    use std::io::IsTerminal as _;
+    if !std::io::stdin().is_terminal() {
+        eprintln!(
+            r#"{{"error":{{"code":"NOT_A_TTY","message":"zetl view requires an interactive terminal."}}}}"#
+        );
+        std::process::exit(1);
+    }
+
+    // No-index fallback (REQ-072): ensure index exists before entering alternate screen.
+    // If the index was missing and was just built, reuse the pipeline so we don't scan twice.
+    let prefetched = check_no_index_fallback(cli)?;
+
+    // Resolve the page title and its absolute file path, running the
+    // fuzzy-suggestion prompt (REQ-073) when the requested page is not found.
+    // Also extract the full set of vault page titles for dead-link detection (REQ-064).
+    let (page_title, file_path, page_set): (String, Option<PathBuf>, HashSet<String>) =
+        if let Some(page_input) = page {
+            let pipeline = prefetched
+                .map(Ok)
+                .unwrap_or_else(|| run_pipeline(cli))?;
+
+            let page_set: HashSet<String> = pipeline
+                .file_index
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect();
+
+            let resolved = if let Some(r) = resolve_page_name(page_input, &pipeline.file_index) {
+                r
+            } else {
+                // Page not found — offer the top-5 SimHash-nearest suggestions.
+                let pages: Vec<(String, String)> = pipeline
+                    .file_index
+                    .iter()
+                    .map(|(name, path)| (name.clone(), path.to_string_lossy().to_string()))
+                    .collect();
+
+                match zetl::view::fuzzy_suggestion_prompt(page_input, &pages)? {
+                    Some(selected) => selected,
+                    None => std::process::exit(0),
+                }
+            };
+
+            // Convert the relative path from the file index to an absolute path
+            // using the canonicalized vault root (SPEC-006 index path, REQ-067).
+            let abs_path = pipeline
+                .file_index
+                .iter()
+                .find(|(name, _)| name == &resolved)
+                .map(|(_, rel_path)| pipeline.vault_root.join(rel_path));
+
+            (resolved, abs_path, page_set)
+        } else {
+            // No page argument: index was already checked/built by check_no_index_fallback above.
+            ("(no page selected)".to_string(), None, HashSet::new())
+        };
+
+    let mut app =
+        zetl::view::ViewApp::new(page_title, file_path, context_lines, main_width, page_set);
+    app.run()
 }
 
 // ── Reason commands ────────────────────────────────────────────────────────
@@ -5758,6 +5867,9 @@ fn main() -> anyhow::Result<()> {
         } => cmd_blocks(&cli, page.as_deref(), block_type, resolve.as_deref()),
         Command::Export => cmd_export(&cli),
         Command::Tui => cmd_tui(&cli),
+        Command::View { page, context_lines, main_width } => {
+            cmd_view(&cli, page.as_deref(), *context_lines, *main_width)
+        }
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

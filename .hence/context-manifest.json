@@ -1,75 +1,57 @@
 {
-  "task_id": "unit-tests-p0",
+  "task_id": "anchor-annotations",
   "token_budget": 8000,
-  "tokens_used": 496,
+  "tokens_used": 335,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Write unit tests for the P0 Merkle infrastructure covering TEST-038 (Merkle construction), TEST-039 (SPL dual hashing), TEST-040 (two-tier cache invalidation), TEST-041 (SPL theory cache invalidation). For TEST-038: test vault root determinism (scan in different orders → same root), test normalisation (two files with identical text but different whitespace → same Merkle root), test that wikilink changes alter Merkle hash. For TEST-039: test content_hash and ast_hash computed and non-zero, test reformatting changes content_hash but not ast_hash (compare two logically identical SPL blocks), test parse error → sentinel ast_hash + diagnostic. For TEST-040: use tempfile vaults, test Tier 1 hit (mtime unchanged → no hashing call), test Tier 2 hit (touch file, same content → no downstream reprocess), test Tier 2 miss (edit content → full reprocess). For TEST-041: test prose edit → theory cache valid (no rebuild), test SPL reformat → theory cache valid, test SPL add fact → theory cache invalid. Tests in tests/ or src/ inline as #[cfg(test)].",
-      "token_cost": 266,
+      "content": "Implement wikilink parsing and anchor glyph injection for the main pane. For each line of the note content: scan for [[wikilink]] patterns; assign each unique wikilink an ordinal N (document order, 1-indexed); inject a styled anchor glyph [N] (ratatui Span with color from LinkColors) immediately after the closing ]] of each wikilink occurrence. Dead links (wikilinks whose target is not in the index) render in red (ANSI red in 8-color, Color::Red in true-color) or with a '!' prefix in no-color mode: ![N]. Track the document-order list of (ordinal, page_title, is_dead, line_number) tuples as LinkMap — this structure is shared by the context pane, bridge column, and focus mode tasks. REQ-064, ADR-017.",
+      "token_cost": 177,
       "priority": "PlanMeta"
     },
     {
-      "source": "memory/episodic/task-blake3-dep-changes",
-      "content": "Modified 3 files (+48, -65): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
-      "token_cost": 20,
+      "source": "memory/episodic/task-view-module-changes",
+      "content": "Modified 7 files (+260, -0): src/cli.rs, src/lib.rs, src/main.rs, src/view/app.rs, src/view/event.rs and 2 more",
+      "token_cost": 27,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-merkle-types-changes",
-      "content": "Modified 1 files (+152, -0): src/types.rs",
-      "token_cost": 10,
+      "source": "memory/episodic/task-color-palette-changes",
+      "content": "Modified 3 files (+349, -5): .hence/context-manifest.json, src/view/color.rs, src/view/mod.rs",
+      "token_cost": 23,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-demo-vault-merkle-changes",
-      "content": "Modified 5 files (+262, -5): .hence/context-manifest.json, demo-vault/architecture/Performance.md, demo-vault/decisions/Deployment Decision.md, demo-vault/decisions/Redis vs Memcached.md, demo-vault/theories/caching.spl",
-      "token_cost": 54,
+      "source": "memory/episodic/task-cli-entry-changes",
+      "content": "Modified 4 files (+226, -19): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/view/app.rs",
+      "token_cost": 25,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-leaf-grouper-changes",
-      "content": "Modified 5 files (+741, -5): src/cache.rs, src/graph.rs, src/reason/mod.rs, src/scanner.rs, src/types.rs",
+      "source": "memory/episodic/task-fuzzy-suggestion-changes",
+      "content": "Modified 4 files (+127, -8): .hence/context-manifest.json, src/main.rs, src/view/fuzzy.rs, src/view/mod.rs",
       "token_cost": 26,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-merkle-roots-changes",
-      "content": "Modified 8 files (+444, -18): .hence/context-manifest.json, src/cache.rs, src/graph.rs, src/lib.rs, src/merkle.rs and 3 more",
-      "token_cost": 31,
+      "source": "memory/episodic/task-no-index-fallback-changes",
+      "content": "Modified 2 files (+65, -7): .hence/context-manifest.json, src/main.rs",
+      "token_cost": 17,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-section-detection-changes",
-      "content": "Modified 2 files (+464, -5): src/merkle.rs, src/scanner.rs",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-spl-dual-hashing-changes",
-      "content": "Modified 3 files (+395, -37): .hence/context-manifest.json, src/merkle.rs, src/scanner.rs",
-      "token_cost": 22,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-cache-format-v2-changes",
-      "content": "Modified 2 files (+324, -35): .hence/context-manifest.json, src/cache.rs",
+      "source": "memory/episodic/task-two-pane-layout-changes",
+      "content": "Modified 2 files (+95, -12): .hence/context-manifest.json, src/view/app.rs",
       "token_cost": 18,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-theory-cache-spl-changes",
-      "content": "Modified 2 files (+200, -100): src/cache.rs, src/main.rs",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-stats-vault-hash-changes",
-      "content": "Modified 3 files (+87, -16): .hence/context-manifest.json, src/cache.rs, src/main.rs",
-      "token_cost": 21,
+      "source": "memory/episodic/task-main-pane-changes",
+      "content": "Modified 3 files (+110, -24): .hence/context-manifest.json, src/main.rs, src/view/app.rs",
+      "token_cost": 22,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T05:52:10Z"
+  "constructed_at": "2026-02-24T07:28:22Z"
 }

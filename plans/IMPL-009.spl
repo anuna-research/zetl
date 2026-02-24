@@ -1,0 +1,426 @@
+;; ════════════════════════════════════════════════════════════════════════════
+;; IMPL-009: zetl view — Xanadu-Inspired Transclusion TUI
+;; Implementation plan for SPEC-009
+;; ════════════════════════════════════════════════════════════════════════════
+
+(meta plan
+  (id "IMPL-009")
+  (title "zetl view — Xanadu-Inspired Transclusion TUI")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-02-24")
+  (author "agent:claude")
+  (spec "SPEC-009")
+  (description "Implement zetl view: an interactive TUI that renders the current note in a left pane alongside transcluded context cards in a right pane, connected by a visible bridge column — a terminal-native implementation of Ted Nelson's Xanadu parallel-pages model. Phases: P0 view module scaffold; P1 two-pane layout and main pane; P2 wikilink anchor annotations and color palette; P3 context cards and bridge column; P4 dynamic scroll tracking; P5 focused-link mode, navigation history, backlink toggle; P6 CLI entry point with page picker, no-index fallback, and fuzzy suggestion; P7 terminal degradation (no-color, narrow); P8 debug observability and tests TEST-071–079."))
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Agents
+;; ════════════════════════════════════════════════════════════════════════════
+
+(given agent-claude-available)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 0 — View Module Scaffold
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: View module scaffold ────────────────────────────────────────────
+
+(given task-view-module)
+(given no-deps-view-module)
+
+(meta task-view-module
+  (description "Create src/view/ module (distinct from existing src/tui/). Includes: mod.rs declaring the module; app.rs with ViewApp struct holding state (current_page, scroll_offset, nav_history, context_mode, focus_state); event.rs with the crossterm event loop; terminal.rs with enter_alternate_screen / restore_terminal helpers using crossterm. Wire the module into src/lib.rs and src/main.rs. ratatui + crossterm are already in Cargo.toml (from IMPL-TUI); no new Cargo.toml changes required.")
+  (acceptance "cargo check passes; src/view/ module compiles; a stub ViewApp::run() that opens a blank alternate screen and exits on 'q' works end-to-end; existing zetl commands unaffected"))
+
+(meta r-ready-view-module
+  (description "No blocking dependencies — ratatui and crossterm already present")
+  (justification "IMPL-TUI added ratatui = 0.29 and crossterm = 0.28 to Cargo.toml"))
+
+(normally r-ready-view-module
+  (and task-view-module no-deps-view-module)
+  ready-view-module)
+
+(normally r-assign-view-module
+  (and ready-view-module agent-claude-available)
+  assign-to-view-module-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 1 — Two-Pane Layout and Main Pane
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Two-pane layout ─────────────────────────────────────────────────
+
+(given task-two-pane-layout)
+
+(meta task-two-pane-layout
+  (description "Implement the ratatui Layout that divides the terminal into three columns: main pane (default 58% of terminal width, configurable via --main-width), bridge column (exactly 3 characters wide), and context pane (remaining width). Add a status bar row pinned to the bottom (1 row). When terminal width < 60 columns, switch to single-pane mode (main pane only; context overlay is a separate task). Store computed pane rects in ViewApp for use by all rendering tasks. REQ-063, NFR-025.")
+  (acceptance "At 80×24: main pane is ~46 cols, bridge is 3 cols, context pane is ~31 cols, status bar is 1 row. At 60 cols: same proportions hold. At 59 cols: single-pane mode activates (main pane fills width). cargo test layout passes."))
+
+(normally r-ready-two-pane-layout
+  (and task-two-pane-layout completed-view-module)
+  ready-two-pane-layout)
+
+(normally r-assign-two-pane-layout
+  (and ready-two-pane-layout agent-claude-available)
+  assign-to-two-pane-layout-claude)
+
+;; ── Task: Main pane — scrollable note content ─────────────────────────────
+
+(given task-main-pane)
+
+(meta task-main-pane
+  (description "Implement scrollable note content rendering in the main pane. Given the current page title, load the file content from disk (via the SPEC-006 index path). Render as a ratatui Paragraph with word-wrap disabled (preserve raw Markdown lines). Support scroll_offset: j/k scroll one line, Ctrl-d/Ctrl-u scroll half a page, g/G go to top/bottom. Render the page title as a styled header above the content. Track which lines are currently visible (viewport_start..viewport_start+height). REQ-063, REQ-067.")
+  (acceptance "Content renders with correct line count; j scrolls down one line per keypress; k scrolls up; Ctrl-d/Ctrl-u scroll half-page; g/G jump to top/bottom; scroll cannot go past end of content; line visibility range is correctly maintained"))
+
+(normally r-ready-main-pane
+  (and task-main-pane completed-two-pane-layout)
+  ready-main-pane)
+
+(normally r-assign-main-pane
+  (and ready-main-pane agent-claude-available)
+  assign-to-main-pane-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 2 — Wikilink Anchor Annotations and Color Palette
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Color palette and terminal color detection ──────────────────────
+
+(given task-color-palette)
+
+(meta task-color-palette
+  (description "Implement terminal color capability detection and the bridge color palette. Detect capability from environment: (1) NO_COLOR set or TERM=dumb → no-color mode; (2) COLORTERM=truecolor or COLORTERM=24bit → true-color; (3) TERM=xterm-256color or similar → 256-color; (4) fallback → 8-color ANSI. Provide a LinkColor type that wraps ratatui::style::Color and cycles through a palette of 8 visually distinct colors (using ANSI colors in 8-color mode, RGB values in true-color mode). Provide a LinkColors struct that assigns LinkColor values to link ordinals 1..N, cycling on overflow. Expose a no_color() predicate. NFR-025, ADR-017.")
+  (acceptance "With NO_COLOR=1: no_color() is true; all colors resolve to default foreground. With TERM=xterm: uses 8 ANSI colors, cycles after index 8. With COLORTERM=truecolor: uses RGB palette. Unit tests cover all three branches."))
+
+(normally r-ready-color-palette
+  (and task-color-palette completed-view-module)
+  ready-color-palette)
+
+(normally r-assign-color-palette
+  (and ready-color-palette agent-claude-available)
+  assign-to-color-palette-claude)
+
+;; ── Task: Wikilink anchor annotations ────────────────────────────────────
+
+(given task-anchor-annotations)
+
+(meta task-anchor-annotations
+  (description "Implement wikilink parsing and anchor glyph injection for the main pane. For each line of the note content: scan for [[wikilink]] patterns; assign each unique wikilink an ordinal N (document order, 1-indexed); inject a styled anchor glyph [N] (ratatui Span with color from LinkColors) immediately after the closing ]] of each wikilink occurrence. Dead links (wikilinks whose target is not in the index) render in red (ANSI red in 8-color, Color::Red in true-color) or with a '!' prefix in no-color mode: ![N]. Track the document-order list of (ordinal, page_title, is_dead, line_number) tuples as LinkMap — this structure is shared by the context pane, bridge column, and focus mode tasks. REQ-064, ADR-017.")
+  (acceptance "Line 'See [[Foo]] and [[Bar]].' renders as 'See [[Foo]][1] and [[Bar]][2].' with [1] colored in palette color 1 and [2] in palette color 2. Dead link renders as '![1]' in no-color mode and red [1] otherwise. LinkMap contains correct ordinals, titles, dead flags, and source line numbers."))
+
+(normally r-ready-anchor-annotations
+  (and task-anchor-annotations completed-main-pane completed-color-palette)
+  ready-anchor-annotations)
+
+(normally r-assign-anchor-annotations
+  (and ready-anchor-annotations agent-claude-available)
+  assign-to-anchor-annotations-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 3 — Context Cards and Bridge Column
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Context pane — excerpt cards ───────────────────────────────────
+
+(given task-context-cards)
+
+(meta task-context-cards
+  (description "Implement context card rendering in the right pane. For each wikilink visible in the main pane viewport (from LinkMap filtered by viewport_start..viewport_end): render one card consisting of: (1) card header: '[N] Page Title' styled in the link's bridge color (or plain in no-color mode), with '(dead link)' suffix if applicable; (2) excerpt: first --context-lines lines of the linked page's content (load from disk via index); (3) horizontal separator line ('─' × pane_width, or '-' × pane_width in no-color). In backlinks mode (task-backlink-mode), the excerpt instead shows the sentence from the citing note that contains the [[wikilink]] back to the current page. When more links exist than vertical space allows, show '↓ N more' at the bottom. REQ-065, REQ-067.")
+  (acceptance "With 2 visible wikilinks and --context-lines 5: context pane shows 2 cards, each with header + 5 lines + separator. With --context-lines 3: exactly 3 excerpt lines. '↓ N more' appears when cards overflow pane height. Dead link card shows '(dead link)' in header with no excerpt."))
+
+(normally r-ready-context-cards
+  (and task-context-cards completed-anchor-annotations)
+  ready-context-cards)
+
+(normally r-assign-context-cards
+  (and ready-context-cards agent-claude-available)
+  assign-to-context-cards-claude)
+
+;; ── Task: Bridge column connectors ───────────────────────────────────────
+
+(given task-bridge-column)
+
+(meta task-bridge-column
+  (description "Implement the bridge column renderer. The bridge column is exactly 3 characters wide, positioned between main pane and context pane. For each link N that has both an anchor visible in the main pane and a card visible in the context pane: compute the midpoint row between the anchor's terminal row and the card header's terminal row; render a 3-char connector at that row: '═══' if anchor_row == card_row (exact alignment, or focused link), '───' otherwise; color the connector with the link's bridge color. Rows not occupied by a connector render as '   ' (3 spaces) in color mode or '|||' (ASCII pipe) in no-color mode. In no-color mode, all connectors render in default foreground. ASCII fallback: '===' for exact alignment, '---' otherwise. REQ-066, ADR-017.")
+  (acceptance "Bridge column is exactly 3 chars wide. For a link with anchor at row 5 and card header at row 9: connector appears at row 7. Connector color matches link palette color. In NO_COLOR=1: connectors use '---'/'===' and default foreground. '|||' fills non-connector rows in no-color mode."))
+
+(normally r-ready-bridge-column
+  (and task-bridge-column completed-context-cards)
+  ready-bridge-column)
+
+(normally r-assign-bridge-column
+  (and ready-bridge-column agent-claude-available)
+  assign-to-bridge-column-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 4 — Dynamic Scroll Tracking
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Dynamic scroll tracking ────────────────────────────────────────
+
+(given task-scroll-tracking)
+
+(meta task-scroll-tracking
+  (description "Wire the viewport tracking so that every scroll event (j/k/Ctrl-d/Ctrl-u/g/G) triggers a synchronous re-render of both panes and the bridge column within the 16ms target (NFR-024). After each scroll: recompute viewport_start/viewport_end from scroll_offset and main pane height; filter LinkMap to visible_links = links with line_number in viewport; rebuild the context pane with cards for visible_links only; rebuild the bridge column with connectors for visible_links; links that scrolled out of view have their cards removed; newly visible links have cards inserted. The render pipeline is: compute_visible_links → render_main_pane → render_context_pane → render_bridge → flush. REQ-067, NFR-024.")
+  (acceptance "Scrolling past a wikilink removes its card from context pane; scrolling to reveal one adds it. Render completes within 16ms for a note with 50 wikilinks (verified via ZETL_DEBUG_RENDER=1 timing). '↓ N more' count updates dynamically with scroll position."))
+
+(normally r-ready-scroll-tracking
+  (and task-scroll-tracking completed-context-cards completed-bridge-column)
+  ready-scroll-tracking)
+
+(normally r-assign-scroll-tracking
+  (and ready-scroll-tracking agent-claude-available)
+  assign-to-scroll-tracking-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 5 — Focused-Link Mode, Navigation History, Backlink Toggle
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Focused-link mode ───────────────────────────────────────────────
+
+(given task-focus-mode)
+
+(meta task-focus-mode
+  (description "Implement focused-link mode. ViewApp gains a FocusState enum: ScrollMode | FocusMode { focused_index: usize }. Tab in ScrollMode: enters FocusMode on the first visible link (focused_index = 0 among visible_links). Tab in FocusMode: exits to ScrollMode; all cards return to normal size. In FocusMode: j/k cycle focused_index through visible_links (wrapping); the focused anchor in main pane renders with reverse-video Modifier (or '>[N]<' marker in no-color mode); the focused context card expands to context_lines × 3 lines, is independently scrollable via j/k, and renders with a box border '┌─┐/└─┘' (or plain border in no-color); the bridge connector for the focused link renders as '═══'. REQ-068.")
+  (acceptance "Tab enters focus mode on first visible link; anchor shows reverse-video (or >[N]<); card expands to triple lines. j/k cycle through links wrapping at ends. Second Tab returns to scroll mode; all cards shrink to normal. No-color mode shows >[N]< and ASCII border correctly."))
+
+(normally r-ready-focus-mode
+  (and task-focus-mode completed-scroll-tracking)
+  ready-focus-mode)
+
+(normally r-assign-focus-mode
+  (and ready-focus-mode agent-claude-available)
+  assign-to-focus-mode-claude)
+
+;; ── Task: Navigation history and Enter-to-navigate ────────────────────────
+
+(given task-nav-history)
+
+(meta task-nav-history
+  (description "Implement in-session navigation history and Enter-to-navigate. ViewApp gains a NavHistory struct holding a Vec<(page_title: String, scroll_offset: usize)> and a history_index: usize. Enter in FocusMode: if the focused link is dead, show a status bar message 'dead link — run zetl index or create the page' and do nothing; otherwise push (current_page, scroll_offset) to history, set current_page = focused link's target, reset scroll_offset = 0, exit FocusMode, reload content and LinkMap for new page. '[' navigates backward: pop to history_index - 1, restore scroll_offset. ']' navigates forward: advance history_index. History depth ≥ 50 entries (Vec truncates oldest on overflow). Status bar updates on every navigation. REQ-069, REQ-071.")
+  (acceptance "Navigate A → B → C; press '[' to return to B with scroll position restored; press '[' again to return to A; press ']' to return to B. History depth test: 51 navigations truncate the oldest entry. Dead link Enter shows status message; page does not change."))
+
+(normally r-ready-nav-history
+  (and task-nav-history completed-focus-mode)
+  ready-nav-history)
+
+(normally r-assign-nav-history
+  (and ready-nav-history agent-claude-available)
+  assign-to-nav-history-claude)
+
+;; ── Task: Backlink mode toggle ────────────────────────────────────────────
+
+(given task-backlink-mode)
+
+(meta task-backlink-mode
+  (description "Implement the 'b' key backlink mode toggle. ViewApp gains a ContextMode enum: Forward | Back | Both. 'b' cycles Forward → Back → Both → Forward. Context pane header shows the active mode: 'Context — forward (N links)', 'Context — back (N backlinks)', 'Context — both'. In Back mode: instead of forward links, query the SPEC-006 index for all pages that have [[current_page_title]] as a forward link; display their cards ordered by linking-note title alphabetically; each excerpt shows the sentence from the linking note that contains the wikilink (not the linking note's opening lines). In Both mode: forward link cards above a '── backlinks ──' separator, backlink cards below. Scroll tracking in back/both modes: bridge connectors point from the current page's title area (top of main pane) to each backlink card. REQ-070.")
+  (acceptance "'b' cycles through Forward → Back → Both → Forward; header updates each time. In Back mode for a page with 3 backlinks: 3 cards shown, each with the backlink sentence as excerpt. In Both mode: forward cards + separator + backlink cards. Zero backlinks shows 'no backlinks — this page is an orphan'. Status bar shows active mode."))
+
+(normally r-ready-backlink-mode
+  (and task-backlink-mode completed-context-cards)
+  ready-backlink-mode)
+
+(normally r-assign-backlink-mode
+  (and ready-backlink-mode agent-claude-available)
+  assign-to-backlink-mode-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 6 — CLI Entry Point, Page Picker, No-Index Fallback, Fuzzy Suggestion
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: zetl view CLI entry point ──────────────────────────────────────
+
+(given task-cli-entry)
+
+(meta task-cli-entry
+  (description "Add 'zetl view [<page>] [--context-lines <N>] [--main-width <pct>]' subcommand to the clap CLI in src/cli.rs. Validate arguments: --context-lines must be 1–20; --main-width must be 30–80. Before launching ViewApp: check stdin is a TTY (use crossterm::terminal::is_raw_mode_enabled or libc isatty()); if not, exit with error code NOT_A_TTY and JSON error message. Render the status bar at the bottom of the terminal showing: 'zetl view │ <page_title> │ <mode> │ [focused_link] │ N links │ j/k scroll  Tab focus  ?'. Implement '?' key to show a keybindings help overlay listing all keybindings from CON-023. Implement 'q' and Ctrl-C to restore terminal and exit 0. Implement Ctrl-R to toggle full-screen context pane overlay in single-pane mode. REQ-062, CON-023.")
+  (acceptance "'zetl view PageA' launches TUI on PageA. 'zetl view' with no arg shows page picker (task-page-picker). '--context-lines 3' limits cards to 3 lines. '--main-width 70' gives main pane 70% width. Non-TTY exits with NOT_A_TTY JSON error. 'q' exits 0 cleanly. '?' shows help overlay. Status bar displays correct page title and link count."))
+
+(normally r-ready-cli-entry
+  (and task-cli-entry completed-view-module)
+  ready-cli-entry)
+
+(normally r-assign-cli-entry
+  (and ready-cli-entry agent-claude-available)
+  assign-to-cli-entry-claude)
+
+;; ── Task: Interactive page picker ─────────────────────────────────────────
+
+(given task-page-picker)
+
+(meta task-page-picker
+  (description "Implement the interactive page picker shown when 'zetl view' is invoked without a <page> argument. Display a full-screen overlay with: a text input field at the top; a scrollable list of all indexed pages below, filtered in real time as the user types (substring match on page title, case-insensitive). Arrow keys or j/k scroll the list; Enter selects the focused page and opens the main TUI on it; Esc or 'q' exits 0 with no output. The '/' key in the main TUI also opens this same picker as an overlay (without closing the current session). REQ-062, CON-023.")
+  (acceptance "Launching 'zetl view' with no arg shows the picker overlay. Typing 'arch' filters to pages containing 'arch'. Enter on selected page opens TUI on that page. Esc exits cleanly. '/' from main TUI opens picker as overlay and returns to the previous page on Esc."))
+
+(normally r-ready-page-picker
+  (and task-page-picker completed-cli-entry completed-nav-history)
+  ready-page-picker)
+
+(normally r-assign-page-picker
+  (and ready-page-picker agent-claude-available)
+  assign-to-page-picker-claude)
+
+;; ── Task: No-index graceful fallback ──────────────────────────────────────
+
+(given task-no-index-fallback)
+
+(meta task-no-index-fallback
+  (description "Implement the no-index graceful fallback (REQ-072). Before opening the TUI: check for the existence of .zetl/index.json (or equivalent per SPEC-006). If missing: display a status message 'Building index…' on stderr (before entering alternate screen); run the SPEC-006 index pipeline in-process (call the same function as 'zetl index'); if indexing succeeds, proceed to open the TUI; if indexing fails, exit non-zero with a plain-text error and JSON error code INDEX_BUILD_FAILED. REQ-072, CON-023.")
+  (acceptance "With no index: 'Building index…' message appears; index is built; TUI opens. With a vault that fails to index (e.g. parse error): exits non-zero with INDEX_BUILD_FAILED JSON error. With index already present: no message shown; TUI opens immediately."))
+
+(normally r-ready-no-index-fallback
+  (and task-no-index-fallback completed-cli-entry)
+  ready-no-index-fallback)
+
+(normally r-assign-no-index-fallback
+  (and ready-no-index-fallback agent-claude-available)
+  assign-to-no-index-fallback-claude)
+
+;; ── Task: Page-not-found fuzzy suggestion ─────────────────────────────────
+
+(given task-fuzzy-suggestion)
+
+(meta task-fuzzy-suggestion
+  (description "Implement the page-not-found fuzzy suggestion prompt (REQ-073). When the <page> argument does not match any indexed page title exactly: use the SimHash + Hamming distance matching from SPEC-001 (already implemented in src/simhash.rs) to find the top 5 closest page titles; display them as a numbered selection prompt in a TUI overlay (or plain text if alternate screen not yet entered): '1. <title>  2. <title>  ...' with a 'Select [1-5] or q to quit:' prompt. If the user selects a number 1–5, open the TUI on that page. If the user presses 'q' or Esc, exit 0 with no output. REQ-073, CON-023.")
+  (acceptance "With 'zetl view Architektur' and no exact match: top 5 suggestions appear. Selecting '1' opens TUI on suggestion 1. 'q' exits 0 with no output. With 0 matches: 'No pages found matching X' message and exit 0."))
+
+(normally r-ready-fuzzy-suggestion
+  (and task-fuzzy-suggestion completed-cli-entry)
+  ready-fuzzy-suggestion)
+
+(normally r-assign-fuzzy-suggestion
+  (and ready-fuzzy-suggestion agent-claude-available)
+  assign-to-fuzzy-suggestion-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 7 — Terminal Degradation
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Terminal degradation ────────────────────────────────────────────
+
+(given task-degradation)
+
+(meta task-degradation
+  (description "Implement the full terminal degradation matrix (NFR-025, REQ-063, REQ-064, REQ-066). (1) No-color mode (NO_COLOR set or TERM=dumb): anchor glyphs as '[N]' in default foreground; dead links as '![N]'; bridge connectors as '---'/'===' in default foreground; bridge column vertical filler as '|||'; context card headers as '[N] Title' in default foreground; focused anchor as '>[N]<'; focused card as ASCII box border '┌/└/┐/┘'. (2) 8-color ANSI mode: cycle bridge colors through the 8 standard ANSI foreground colors (Color::Red, Color::Green, Color::Yellow, Color::Blue, Color::Magenta, Color::Cyan, Color::White, Color::Gray); no RGB values. (3) True-color / 256-color: RGB palette with 8+ perceptually distinct colors. (4) Narrow terminal (< 60 columns): single-pane mode (main pane only; no bridge column; no context pane); Ctrl-R toggles a full-screen context pane overlay. All degradation paths tested with TEST-078.")
+  (acceptance "NO_COLOR=1: zero ANSI escape sequences in output; all pairings via numbers only. TERM=xterm (8-color): colors cycle through 8 ANSI values; no RGB. COLORTERM=truecolor: RGB palette used. Terminal 59 cols wide: single-pane mode; Ctrl-R shows context overlay. All degradation tests in TEST-078 pass."))
+
+(normally r-ready-degradation
+  (and task-degradation completed-bridge-column completed-focus-mode completed-color-palette)
+  ready-degradation)
+
+(normally r-assign-degradation
+  (and ready-degradation agent-claude-available)
+  assign-to-degradation-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 8 — Observability and Tests
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Debug render timing (OBS-012) ──────────────────────────────────
+
+(given task-debug-render)
+
+(meta task-debug-render
+  (description "Implement ZETL_DEBUG_RENDER=1 timing output (OBS-012). When this env var is set, emit structured debug lines to stderr (not stdout, not alternate screen). Four event types: startup (index_load_ms, first_frame_ms, page); render (event name, layout_ms, paint_ms, total_ms); navigate (from, to, history_depth); quit (uptime_s, pages_visited, nav_history_depth). Use std::time::Instant for all measurements. startup timing: T0 at process start, T_index after index load, T_first_frame after first terminal write. render timing: instrument the render pipeline from keypress receipt (event dispatch) to flush. navigate timing: on every page transition. quit timing: on 'q' or Ctrl-C. Format: '[zetl view] <event>  <key=val>...' as shown in OBS-012. OBS-012.")
+  (acceptance "With ZETL_DEBUG_RENDER=1: startup line appears after first frame; every scroll event produces a render line; navigation produces a navigate line; quit produces a quit line. Without ZETL_DEBUG_RENDER: no debug output. timing values are non-zero and in plausible ranges."))
+
+(normally r-ready-debug-render
+  (and task-debug-render completed-scroll-tracking completed-nav-history)
+  ready-debug-render)
+
+(normally r-assign-debug-render
+  (and ready-debug-render agent-claude-available)
+  assign-to-debug-render-claude)
+
+;; ── Task: Tests TEST-071 through TEST-079 ────────────────────────────────
+
+(given task-tests)
+
+(meta task-tests
+  (description "Implement the test suite for SPEC-009 (TEST-071–079). Virtual terminal infrastructure: use the 'vt100' or 'alacritty-terminal' crate to render terminal output into an in-memory grid; write a harness that drives ViewApp with synthetic keypress Events and captures rendered frames. TEST-071: launch on 'PageA' (80×24, 256-color); verify first frame ≤ 200ms; verify main pane content; verify 2 context cards; verify status bar. TEST-072: anchor glyphs [1] and [2] appear after wikilinks; card headers match; --context-lines 3 gives 3 excerpt lines. TEST-073: bridge column connectors at correct midpoint rows; connector color matches anchor color via escape-sequence inspection. TEST-074: scroll 15 lines; verify context pane shows only viewport-visible links; each scroll re-render ≤ 16ms. TEST-075: Tab enters focus mode; anchor shows reverse-video or >[N]<; card expands; j/k cycles; second Tab exits. TEST-076: navigate A→B→C; '[' back to B with scroll restored; '[' back to A; ']' forward to B. TEST-077: 'b' cycles modes; back mode shows backlink sentences; both mode shows separator. TEST-078: NO_COLOR=1; zero color escapes; ASCII bridge. TEST-079: 5000-page vault; p95 startup ≤ 200ms over 10 runs.")
+  (acceptance "All TEST-071–079 pass under 'cargo test'. Virtual terminal harness renders correctly at 80×24 and 60×24. Timing assertions are wall-clock based using Instant. The test vault fixtures (PageA, PageB, PageC, Source, CentralPage, etc.) are created in tests/fixtures/view-vault/ with appropriate wikilinks."))
+
+(normally r-ready-tests
+  (and task-tests
+       completed-scroll-tracking
+       completed-nav-history
+       completed-backlink-mode
+       completed-degradation
+       completed-debug-render
+       completed-cli-entry
+       completed-no-index-fallback
+       completed-fuzzy-suggestion
+       completed-page-picker)
+  ready-tests)
+
+(normally r-assign-tests
+  (and ready-tests agent-claude-available)
+  assign-to-tests-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Rule Metadata
+;; ════════════════════════════════════════════════════════════════════════════
+
+(meta r-ready-two-pane-layout
+  (description "Two-pane layout needs the view module scaffold to exist first")
+  (justification "Cannot lay out panes without the ViewApp struct and terminal setup"))
+
+(meta r-ready-main-pane
+  (description "Main pane rendering needs the layout rects computed by two-pane-layout")
+  (justification "Paragraph widget must know its target Rect"))
+
+(meta r-ready-anchor-annotations
+  (description "Anchor annotations need both main pane (line structure) and color palette (color assignments)")
+  (justification "REQ-064 requires colored [N] glyphs; color is determined by color-palette"))
+
+(meta r-ready-context-cards
+  (description "Context cards need the LinkMap from anchor-annotations to know which links to show")
+  (justification "REQ-065 cards are indexed by the same ordinals as the anchor glyphs"))
+
+(meta r-ready-bridge-column
+  (description "Bridge column needs both anchor positions (from context-cards rendering) and card header positions")
+  (justification "REQ-066 connector row is the midpoint between anchor row and card header row"))
+
+(meta r-ready-scroll-tracking
+  (description "Scroll tracking wires context-cards and bridge-column into the scroll event pipeline")
+  (justification "NFR-024 requires synchronous re-render on every scroll event"))
+
+(meta r-ready-focus-mode
+  (description "Focus mode builds on scroll tracking — it modifies the viewport state and card rendering")
+  (justification "REQ-068 focused-link mode is a layer on top of scroll mode"))
+
+(meta r-ready-nav-history
+  (description "Navigation history requires focus mode (Enter is a focused-link mode action)")
+  (justification "REQ-069 Enter-to-navigate only works in focused-link mode"))
+
+(meta r-ready-backlink-mode
+  (description "Backlink mode is an alternative card data source; needs context-cards rendering framework")
+  (justification "REQ-070 back mode replaces the card content but uses the same card renderer"))
+
+(meta r-ready-cli-entry
+  (description "CLI entry can be stubbed immediately after the view module exists")
+  (justification "CON-023 argument parsing and TTY check are independent of TUI internals"))
+
+(meta r-ready-page-picker
+  (description "Page picker needs nav-history (to restore state after picker Esc) and cli-entry (to launch)")
+  (justification "'/' from main TUI must return to previous session state"))
+
+(meta r-ready-no-index-fallback
+  (description "No-index fallback is a pre-launch check in the CLI entry point")
+  (justification "REQ-072 fallback runs before ViewApp::run()"))
+
+(meta r-ready-fuzzy-suggestion
+  (description "Fuzzy suggestion is a pre-launch check in the CLI entry point")
+  (justification "REQ-073 suggestion prompt runs before ViewApp::run()"))
+
+(meta r-ready-degradation
+  (description "Degradation requires bridge-column and focus-mode to verify all rendering paths")
+  (justification "NFR-025 covers anchor, bridge, card, and focus rendering in all color modes"))
+
+(meta r-ready-debug-render
+  (description "Debug render timing wraps scroll-tracking and nav-history — both must exist to instrument")
+  (justification "OBS-012 instruments the full render pipeline"))
+
+(meta r-ready-tests
+  (description "Tests require the entire feature set to be implemented")
+  (justification "TEST-071–079 cover the complete SPEC-009 surface including all phases"))
