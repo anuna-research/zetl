@@ -2124,6 +2124,12 @@ fn cmd_tui(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
+fn cmd_view(page: Option<&str>) -> Result<()> {
+    let page_title = page.unwrap_or("(no page selected)");
+    let mut app = zetl::view::ViewApp::new(page_title);
+    app.run()
+}
+
 // ── Reason commands ────────────────────────────────────────────────────────
 
 #[cfg(feature = "reason")]
@@ -5758,6 +5764,7 @@ fn main() -> anyhow::Result<()> {
         } => cmd_blocks(&cli, page.as_deref(), block_type, resolve.as_deref()),
         Command::Export => cmd_export(&cli),
         Command::Tui => cmd_tui(&cli),
+        Command::View { page } => cmd_view(page.as_deref()),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

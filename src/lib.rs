@@ -11,3 +11,4 @@ pub mod simhash;
 pub mod tui;
 pub mod types;
 pub mod vcs;
+pub mod view;
