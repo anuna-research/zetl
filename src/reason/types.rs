@@ -5,9 +5,10 @@
 
 use serde::Serialize;
 use spindle_core::prelude::*;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::types::Diagnostic;
+use crate::types::{Diagnostic, ExplicitGrounding};
 
 /// The type of a rule in the defeasible logic theory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
@@ -115,6 +116,11 @@ pub struct TheoryResult {
     pub diagnostics: Vec<Diagnostic>,
     /// Summary statistics.
     pub summary: TheorySummary,
+    /// Explicit source groundings extracted from `(meta LABEL (source ...))` forms (REQ-042).
+    ///
+    /// Keyed by `"<path>:<start_line>"` matching the SPL block that contained
+    /// the meta declaration. Values are the raw groundings with unresolved `source_refs`.
+    pub groundings_by_block: HashMap<String, Vec<ExplicitGrounding>>,
 }
 
 /// Summary statistics for the theory and reasoning results.

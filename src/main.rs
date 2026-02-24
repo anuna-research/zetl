@@ -1464,7 +1464,12 @@ fn build_or_load_theory(
 
     // Save to theory cache.
     if !no_cache {
-        let cache = build_theory_cache(&result.theory, &result.diagnostics, &pipeline.files);
+        let cache = build_theory_cache(
+            &result.theory,
+            &result.diagnostics,
+            &pipeline.files,
+            &result.groundings_by_block,
+        );
         if let Err(e) = save_theory_cache(&pipeline.vault_root, &cache) {
             if verbose > 0 {
                 eprintln!("Warning: failed to save theory cache: {e}");
