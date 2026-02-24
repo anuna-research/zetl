@@ -2124,9 +2124,18 @@ fn cmd_tui(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-fn cmd_view(page: Option<&str>) -> Result<()> {
+fn cmd_view(page: Option<&str>, context_lines: u8, main_width: u8) -> Result<()> {
+    // Require an interactive terminal (REQ-062, CON-023).
+    use std::io::IsTerminal as _;
+    if !std::io::stdin().is_terminal() {
+        eprintln!(
+            r#"{{"error":{{"code":"NOT_A_TTY","message":"zetl view requires an interactive terminal."}}}}"#
+        );
+        std::process::exit(1);
+    }
+
     let page_title = page.unwrap_or("(no page selected)");
-    let mut app = zetl::view::ViewApp::new(page_title);
+    let mut app = zetl::view::ViewApp::new(page_title, context_lines, main_width);
     app.run()
 }
 
@@ -5764,7 +5773,9 @@ fn main() -> anyhow::Result<()> {
         } => cmd_blocks(&cli, page.as_deref(), block_type, resolve.as_deref()),
         Command::Export => cmd_export(&cli),
         Command::Tui => cmd_tui(&cli),
-        Command::View { page } => cmd_view(page.as_deref()),
+        Command::View { page, context_lines, main_width } => {
+            cmd_view(page.as_deref(), *context_lines, *main_width)
+        }
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

@@ -1,12 +1,12 @@
 {
-  "task_id": "color-palette",
+  "task_id": "cli-entry",
   "token_budget": 8000,
-  "tokens_used": 186,
+  "tokens_used": 243,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement terminal color capability detection and the bridge color palette. Detect capability from environment: (1) NO_COLOR set or TERM=dumb → no-color mode; (2) COLORTERM=truecolor or COLORTERM=24bit → true-color; (3) TERM=xterm-256color or similar → 256-color; (4) fallback → 8-color ANSI. Provide a LinkColor type that wraps ratatui::style::Color and cycles through a palette of 8 visually distinct colors (using ANSI colors in 8-color mode, RGB values in true-color mode). Provide a LinkColors struct that assigns LinkColor values to link ordinals 1..N, cycling on overflow. Expose a no_color() predicate. NFR-025, ADR-017.",
-      "token_cost": 159,
+      "content": "Add 'zetl view [<page>] [--context-lines <N>] [--main-width <pct>]' subcommand to the clap CLI in src/cli.rs. Validate arguments: --context-lines must be 1–20; --main-width must be 30–80. Before launching ViewApp: check stdin is a TTY (use crossterm::terminal::is_raw_mode_enabled or libc isatty()); if not, exit with error code NOT_A_TTY and JSON error message. Render the status bar at the bottom of the terminal showing: 'zetl view │ <page_title> │ <mode> │ [focused_link] │ N links │ j/k scroll  Tab focus  ?'. Implement '?' key to show a keybindings help overlay listing all keybindings from CON-023. Implement 'q' and Ctrl-C to restore terminal and exit 0. Implement Ctrl-R to toggle full-screen context pane overlay in single-pane mode. REQ-062, CON-023.",
+      "token_cost": 193,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 7 files (+260, -0): src/cli.rs, src/lib.rs, src/main.rs, src/view/app.rs, src/view/event.rs and 2 more",
       "token_cost": 27,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-color-palette-changes",
+      "content": "Modified 3 files (+349, -5): .hence/context-manifest.json, src/view/color.rs, src/view/mod.rs",
+      "token_cost": 23,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T06:57:18Z"
+  "constructed_at": "2026-02-24T07:01:54Z"
 }
