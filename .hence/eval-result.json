@@ -3,31 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 732,
-    "deletions": 10,
+    "files_changed": 2,
+    "insertions": 167,
+    "deletions": 55,
     "file_list": [
-      ".hence/context-manifest.json",
-      "Cargo.toml",
       "src/cache.rs",
-      "src/lib.rs",
-      "src/main.rs",
-      "src/reason/mod.rs",
-      "src/vcs.rs",
-      "tests/vcs_independence.rs"
+      "src/main.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-test-vcs-independence-changes",
-      "content": "Modified 8 files (+732, -10): .hence/context-manifest.json, Cargo.toml, src/cache.rs, src/lib.rs, src/main.rs and 3 more",
+      "key": "task-two-tier-invalidation-changes",
+      "content": "Modified 2 files (+167, -55): src/cache.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/test-vcs-independence-v1",
-  "evaluated_at": "2026-02-24T03:49:07Z",
+  "branch_name": "hence/two-tier-invalidation-v1",
+  "evaluated_at": "2026-02-24T03:58:44Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
