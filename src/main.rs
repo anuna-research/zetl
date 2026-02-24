@@ -1285,7 +1285,8 @@ fn build_or_load_theory(
     verbose: u8,
 ) -> Result<zetl::reason::types::TheoryResult> {
     use zetl::cache::{
-        build_theory_cache, load_theory_cache, save_theory_cache, theory_cache_valid,
+        build_theory_cache, collect_spl_ast_hashes, load_theory_cache, save_theory_cache,
+        theory_cache_valid,
     };
     use zetl::reason::{build_theory, build_theory_from_cache};
 
@@ -1306,7 +1307,8 @@ fn build_or_load_theory(
     // Try loading from theory cache (unless --no-cache).
     if !no_cache {
         if let Ok(Some(cache)) = load_theory_cache(&pipeline.vault_root) {
-            if theory_cache_valid(&cache, &pipeline.files) {
+            let current_spl_hashes = collect_spl_ast_hashes(&pipeline.files);
+            if theory_cache_valid(&current_spl_hashes, &cache) {
                 if verbose > 0 {
                     eprintln!("Theory cache hit — re-reasoning from cached theory");
                 }

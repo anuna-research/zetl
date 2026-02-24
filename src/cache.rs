@@ -288,35 +288,45 @@ pub fn save_theory_cache(vault_root: &Path, cache: &TheoryCache) -> Result<()> {
     Ok(())
 }
 
-/// Check whether the theory cache is still valid by comparing SPL file mtimes.
+/// Collect the current set of SPL leaf AST hashes from all parsed files (REQ-040).
+///
+/// Returns a map keyed by `"<path>:<start_line>"` to the AST-level BLAKE3 hash.
+/// Only files with a populated [`FileMerkle`] contribute entries — files without
+/// Merkle data are skipped (their SPL blocks haven't been hashed yet).
+pub fn collect_spl_ast_hashes(files: &[ParsedFile]) -> HashMap<String, ContentHash> {
+    let mut map = HashMap::new();
+    for f in files {
+        if let Some(fm) = &f.file_merkle {
+            for leaf in &fm.spl_leaves {
+                let key = format!("{}:{}", f.path.display(), leaf.start_line);
+                map.insert(key, leaf.ast_hash);
+            }
+        }
+    }
+    map
+}
+
+/// Check whether the theory cache is still valid by comparing SPL AST hashes (REQ-040).
 ///
 /// The cache is valid if and only if:
-/// 1. The set of files containing SPL blocks is unchanged.
-/// 2. Every SPL-containing file has the same mtime as when the cache was built.
-pub fn theory_cache_valid(cache: &TheoryCache, files: &[ParsedFile]) -> bool {
-    // Collect current SPL-containing files and their mtimes.
-    let current_spl_mtimes: HashMap<&PathBuf, f64> = files
-        .iter()
-        .filter(|f| !f.spl_blocks.is_empty())
-        .map(|f| {
-            let secs = f
-                .mtime
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or(Duration::ZERO)
-                .as_secs_f64();
-            (&f.path, secs)
-        })
-        .collect();
-
-    // Same number of SPL files?
-    if current_spl_mtimes.len() != cache.spl_file_mtimes.len() {
+/// 1. The set of SPL block keys (`"<path>:<start_line>"`) is unchanged.
+/// 2. Every SPL block has the same AST-level hash as when the cache was built.
+///
+/// A prose-only edit (file Merkle root changes, but SPL AST hash unchanged)
+/// does NOT invalidate the cache.
+pub fn theory_cache_valid(
+    current_spl_hashes: &HashMap<String, ContentHash>,
+    cached_theory: &TheoryCache,
+) -> bool {
+    // Same number of SPL blocks?
+    if current_spl_hashes.len() != cached_theory.spl_blocks.len() {
         return false;
     }
 
-    // Every cached file still present with same mtime?
-    for (path, cached_mtime) in &cache.spl_file_mtimes {
-        match current_spl_mtimes.get(path) {
-            Some(&current_mtime) if (current_mtime - cached_mtime).abs() < 0.001 => {}
+    // Every cached block still present with same AST hash?
+    for (key, cached_block) in &cached_theory.spl_blocks {
+        match current_spl_hashes.get(key) {
+            Some(&current_hash) if current_hash == cached_block.ast_hash => {}
             _ => return false,
         }
     }
@@ -457,7 +467,7 @@ fn build_spl_block_cache(files: &[ParsedFile]) -> HashMap<String, SplBlockCache>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{FileMerkle, ParsedFile};
+    use crate::types::{FileMerkle, ParsedFile, SplLeafCached};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tempfile::TempDir;
 
@@ -692,26 +702,6 @@ mod tests {
         }
     }
 
-    fn make_spl_file(rel_path: &str, mtime: SystemTime) -> ParsedFile {
-        use crate::types::SplBlock;
-        ParsedFile {
-            path: PathBuf::from(rel_path),
-            page_name: rel_path.strip_suffix(".md").unwrap_or(rel_path).to_string(),
-            links: vec![],
-            spl_blocks: vec![SplBlock {
-                source_file: PathBuf::from(rel_path),
-                source_page: "test".to_string(),
-                start_line: 1,
-                end_line: 2,
-                content: "(given test)".to_string(),
-            }],
-            diagnostics: vec![],
-            mtime,
-            merkle_leaves: vec![],
-            file_merkle: None,
-        }
-    }
-
     #[test]
     fn theory_cache_save_and_load_round_trip() {
         let dir = TempDir::new().unwrap();
@@ -773,61 +763,78 @@ mod tests {
         assert!(result.is_none(), "version mismatch should return None");
     }
 
-    #[test]
-    fn theory_cache_valid_unchanged_files() {
-        let t = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-        let t_secs = 1_700_000_000.0;
+    // ── Helpers for theory_cache_valid / collect_spl_ast_hashes tests ──
 
-        let mut spl_mtimes = HashMap::new();
-        spl_mtimes.insert(PathBuf::from("a.md"), t_secs);
+    /// Build a current SPL hashes map from (key, hash) pairs.
+    fn make_spl_hashes(entries: &[(&str, ContentHash)]) -> HashMap<String, ContentHash> {
+        entries.iter().map(|(k, v)| (k.to_string(), *v)).collect()
+    }
 
-        let cache = make_theory_cache(spl_mtimes, vec![]);
-        let files = vec![make_spl_file("a.md", t)];
+    /// Build a minimal SplBlockCache with the given AST hash.
+    fn make_cached_spl_block(ast_hash: ContentHash) -> SplBlockCache {
+        SplBlockCache {
+            ast_hash,
+            content_hash: [0u8; 32],
+            section_heading: None,
+            section_grounding_hash: [0u8; 32],
+            explicit_groundings: vec![],
+        }
+    }
 
-        assert!(theory_cache_valid(&cache, &files));
+    /// Build a TheoryCache with the given spl_blocks and no other data.
+    fn make_theory_cache_spl(spl_blocks: HashMap<String, SplBlockCache>) -> TheoryCache {
+        TheoryCache {
+            version: THEORY_CACHE_VERSION,
+            spl_file_mtimes: HashMap::new(),
+            rules: vec![],
+            superiorities: vec![],
+            diagnostics: vec![],
+            vault_root_hash: None,
+            built_at: None,
+            spl_blocks,
+            git_commit: None,
+            git_dirty: None,
+        }
     }
 
     #[test]
-    fn theory_cache_invalid_changed_mtime() {
-        let _t1 = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-        let t2 = UNIX_EPOCH + Duration::from_secs(1_700_001_000);
-
-        let mut spl_mtimes = HashMap::new();
-        spl_mtimes.insert(PathBuf::from("a.md"), 1_700_000_000.0);
-
-        let cache = make_theory_cache(spl_mtimes, vec![]);
-        let files = vec![make_spl_file("a.md", t2)]; // mtime changed
-
-        assert!(!theory_cache_valid(&cache, &files));
+    fn theory_cache_valid_same_ast_hashes() {
+        let hash: ContentHash = [0x01u8; 32];
+        let current = make_spl_hashes(&[("a.md:5", hash)]);
+        let mut spl_blocks = HashMap::new();
+        spl_blocks.insert("a.md:5".to_string(), make_cached_spl_block(hash));
+        assert!(theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
     }
 
     #[test]
-    fn theory_cache_invalid_new_spl_file() {
-        let t = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-
-        let mut spl_mtimes = HashMap::new();
-        spl_mtimes.insert(PathBuf::from("a.md"), 1_700_000_000.0);
-
-        let cache = make_theory_cache(spl_mtimes, vec![]);
-        // Two SPL files now, cache only knew about one
-        let files = vec![make_spl_file("a.md", t), make_spl_file("b.md", t)];
-
-        assert!(!theory_cache_valid(&cache, &files));
+    fn theory_cache_invalid_changed_ast_hash() {
+        let hash_old: ContentHash = [0x01u8; 32];
+        let hash_new: ContentHash = [0x02u8; 32];
+        let current = make_spl_hashes(&[("a.md:5", hash_new)]); // AST changed
+        let mut spl_blocks = HashMap::new();
+        spl_blocks.insert("a.md:5".to_string(), make_cached_spl_block(hash_old));
+        assert!(!theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
     }
 
     #[test]
-    fn theory_cache_invalid_removed_spl_file() {
-        let t = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    fn theory_cache_invalid_new_spl_block() {
+        let hash: ContentHash = [0x01u8; 32];
+        // current has two blocks; cache only knew about one
+        let current = make_spl_hashes(&[("a.md:5", hash), ("b.md:10", hash)]);
+        let mut spl_blocks = HashMap::new();
+        spl_blocks.insert("a.md:5".to_string(), make_cached_spl_block(hash));
+        assert!(!theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
+    }
 
-        let mut spl_mtimes = HashMap::new();
-        spl_mtimes.insert(PathBuf::from("a.md"), 1_700_000_000.0);
-        spl_mtimes.insert(PathBuf::from("b.md"), 1_700_000_000.0);
-
-        let cache = make_theory_cache(spl_mtimes, vec![]);
-        // Only one SPL file now
-        let files = vec![make_spl_file("a.md", t)];
-
-        assert!(!theory_cache_valid(&cache, &files));
+    #[test]
+    fn theory_cache_invalid_removed_spl_block() {
+        let hash: ContentHash = [0x01u8; 32];
+        // current has one block; cache had two
+        let current = make_spl_hashes(&[("a.md:5", hash)]);
+        let mut spl_blocks = HashMap::new();
+        spl_blocks.insert("a.md:5".to_string(), make_cached_spl_block(hash));
+        spl_blocks.insert("b.md:10".to_string(), make_cached_spl_block(hash));
+        assert!(!theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
     }
 
     #[test]
@@ -926,20 +933,111 @@ mod tests {
 
     #[test]
     fn theory_cache_valid_ignores_non_spl_file_changes() {
-        let t = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
-        let t2 = UNIX_EPOCH + Duration::from_secs(1_700_001_000);
+        // b.md has no SPL leaves → its changes don't appear in current_spl_hashes
+        let hash: ContentHash = [0x01u8; 32];
+        let current = make_spl_hashes(&[("a.md:5", hash)]); // only a.md's block
+        let mut spl_blocks = HashMap::new();
+        spl_blocks.insert("a.md:5".to_string(), make_cached_spl_block(hash));
+        assert!(theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
+    }
 
-        let mut spl_mtimes = HashMap::new();
-        spl_mtimes.insert(PathBuf::from("a.md"), 1_700_000_000.0);
+    #[test]
+    fn theory_cache_valid_prose_only_edit_does_not_invalidate() {
+        // Prose edit: file mtime and Merkle root change, but SPL AST hash stays same.
+        // Only the AST hash matters — the cache should remain valid.
+        let hash: ContentHash = [0xabu8; 32];
+        let current = make_spl_hashes(&[("notes/theory.md:12", hash)]);
+        let mut spl_blocks = HashMap::new();
+        spl_blocks.insert(
+            "notes/theory.md:12".to_string(),
+            make_cached_spl_block(hash), // same ast_hash as current
+        );
+        assert!(theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
+    }
 
-        let cache = make_theory_cache(spl_mtimes, vec![]);
+    #[test]
+    fn theory_cache_valid_empty_vault_no_spl() {
+        let current: HashMap<String, ContentHash> = HashMap::new();
+        assert!(theory_cache_valid(&current, &make_theory_cache_spl(HashMap::new())));
+    }
 
-        // a.md unchanged (has SPL), b.md changed but has no SPL blocks
-        let files = vec![
-            make_spl_file("a.md", t),
-            make_parsed_file("b.md", t2), // no SPL blocks
-        ];
+    // ── collect_spl_ast_hashes tests ──────────────────────────────────────
 
-        assert!(theory_cache_valid(&cache, &files));
+    #[test]
+    fn collect_spl_ast_hashes_from_file_with_merkle() {
+        let hash: ContentHash = [0xabu8; 32];
+        let t = UNIX_EPOCH;
+        let mut f = make_parsed_file("notes/theory.md", t);
+        f.file_merkle = Some(FileMerkle {
+            root_hash: [0u8; 32],
+            sections: vec![],
+            spl_leaves: vec![SplLeafCached {
+                start_line: 12,
+                content_hash: [0u8; 32],
+                ast_hash: hash,
+                section_index: 0,
+                explicit_groundings: vec![],
+            }],
+        });
+        let result = collect_spl_ast_hashes(&[f]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result.get("notes/theory.md:12"), Some(&hash));
+    }
+
+    #[test]
+    fn collect_spl_ast_hashes_skips_file_without_merkle() {
+        let t = UNIX_EPOCH;
+        let f = make_parsed_file("a.md", t); // file_merkle: None
+        let result = collect_spl_ast_hashes(&[f]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn collect_spl_ast_hashes_multiple_files_and_blocks() {
+        let hash1: ContentHash = [0x01u8; 32];
+        let hash2: ContentHash = [0x02u8; 32];
+        let hash3: ContentHash = [0x03u8; 32];
+        let t = UNIX_EPOCH;
+
+        let mut f1 = make_parsed_file("a.md", t);
+        f1.file_merkle = Some(FileMerkle {
+            root_hash: [0u8; 32],
+            sections: vec![],
+            spl_leaves: vec![
+                SplLeafCached {
+                    start_line: 1,
+                    content_hash: [0u8; 32],
+                    ast_hash: hash1,
+                    section_index: 0,
+                    explicit_groundings: vec![],
+                },
+                SplLeafCached {
+                    start_line: 20,
+                    content_hash: [0u8; 32],
+                    ast_hash: hash2,
+                    section_index: 0,
+                    explicit_groundings: vec![],
+                },
+            ],
+        });
+
+        let mut f2 = make_parsed_file("b.md", t);
+        f2.file_merkle = Some(FileMerkle {
+            root_hash: [0u8; 32],
+            sections: vec![],
+            spl_leaves: vec![SplLeafCached {
+                start_line: 5,
+                content_hash: [0u8; 32],
+                ast_hash: hash3,
+                section_index: 0,
+                explicit_groundings: vec![],
+            }],
+        });
+
+        let result = collect_spl_ast_hashes(&[f1, f2]);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result.get("a.md:1"), Some(&hash1));
+        assert_eq!(result.get("a.md:20"), Some(&hash2));
+        assert_eq!(result.get("b.md:5"), Some(&hash3));
     }
 }

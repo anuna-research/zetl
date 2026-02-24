@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 324,
-    "deletions": 35,
+    "insertions": 200,
+    "deletions": 100,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/cache.rs"
+      "src/cache.rs",
+      "src/main.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-cache-format-v2-changes",
-      "content": "Modified 2 files (+324, -35): .hence/context-manifest.json, src/cache.rs",
+      "key": "task-theory-cache-spl-changes",
+      "content": "Modified 2 files (+200, -100): src/cache.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cache-format-v2-v1",
-  "evaluated_at": "2026-02-24T02:32:23Z",
+  "branch_name": "hence/theory-cache-spl-v1",
+  "evaluated_at": "2026-02-24T02:37:13Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
