@@ -1,0 +1,51 @@
+; zetl caching theory
+; Reasoning about cache validity, backend selection, and performance acceptability.
+; Run: zetl reason status --positive -d .
+
+; --- Base facts: grounded to specific vault blocks ---
+
+; Cache is mtime-based (from architecture/Cache.md)
+(given mtime-based-cache)
+(given incremental-rebuild)
+
+; Redis was found fast enough, grounded to benchmark table
+; blake3:3a7f9c2e1b4d6f8a0c2e4f6a8b0d2f4a6c8e0b2d4f6a8c0e2a4c6e8f0b2d4f6a
+(meta redis-benchmarked
+  (source "blake3:3a7f9c2e1b4d6f8a0c2e4f6a8b0d2f4a6c8e0b2d4f6a8c0e2a4c6e8f0b2d4f6a"))
+
+; Performance requirements from architecture/Performance.md ^perf-numbers
+(meta perf-requirements-known
+  (source "[[Performance^perf-numbers]]"))
+
+; Deployment context: single-node, no external dependencies required
+(given single-node-deployment)
+(given no-network-calls)
+
+; --- Defeasible rules: cache coherence and backend selection ---
+
+; Merkle hashing gives reliable change detection even when mtimes are stale
+(normally r-merkle-over-mtime
+  (and mtime-based-cache incremental-rebuild)
+  merkle-hashing-preferred)
+
+; When Redis is fast enough and deployment is single-node, use Redis cache
+(normally r-redis-preferred
+  (and redis-benchmarked single-node-deployment)
+  use-redis-backend)
+
+; Cache theory is safe to use when it is disposable and read-only
+(normally r-cache-safe
+  (and disposable-cache read-only-vault-access)
+  cache-safe-to-deploy)
+
+; If perf requirements are known and cache is safe, caching strategy is sound
+(normally r-caching-strategy-sound
+  (and perf-requirements-known cache-safe-to-deploy merkle-hashing-preferred)
+  caching-strategy-sound)
+
+; --- Strict rules: must hold unconditionally ---
+
+; A caching strategy is only complete when it covers both cold and warm paths
+(always r-strategy-complete
+  (and caching-strategy-sound incremental-rebuild)
+  caching-strategy-complete)

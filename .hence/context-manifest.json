@@ -1,12 +1,12 @@
 {
-  "task_id": "merkle-types",
+  "task_id": "demo-vault-merkle",
   "token_budget": 8000,
-  "tokens_used": 396,
+  "tokens_used": 8000,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add all new types needed for SPEC-006 to src/types.rs. Implement: 1) type ContentHash = [u8; 32], 2) enum LeafType { Heading { level: u8 }, Paragraph, CodeBlock { language: Option<String> }, SplBlock, List { ordered: bool }, BlockQuote, Table, Frontmatter, ThematicBreak, HtmlBlock }, 3) struct SplLeafHash { content_hash: ContentHash, ast_hash: ContentHash }, 4) struct MerkleLeaf { node_type: LeafType, start_line: u32, end_line: u32, hash: ContentHash, spl_hashes: Option<SplLeafHash> }, 5) struct Section { heading_line: u32, heading_text: String, heading_level: u8, leaf_range: (usize, usize), grounding_hash: ContentHash }, 6) struct FileMerkle { root_hash: ContentHash, sections: Vec<Section>, spl_leaves: Vec<SplLeafCached> }, 7) struct SplLeafCached { start_line: u32, content_hash: ContentHash, ast_hash: ContentHash, section_index: usize, explicit_groundings: Vec<ExplicitGrounding> }, 8) struct ExplicitGrounding { construct: String, source_refs: Vec<String>, targets: Vec<ResolvedTarget> }, 9) struct ResolvedTarget { source_ref: String, target_file: PathBuf, target_leaf_hash: ContentHash }, 10) struct DriftDiagnostic { file: PathBuf, spl_line: u32, drift_type: DriftType, severity: DriftSeverity, message: String }, 11) enum DriftType { SectionDrift { section_heading: String }, ExplicitDrift { construct: String, source_ref: String } }, 12) enum DriftSeverity { Info, Warning }. All types derive Serialize, Deserialize, Debug, Clone where appropriate. ContentHash serializes as hex string.",
-      "token_cost": 376,
+      "content": "Extend demo-vault with content that exercises Merkle hashing, section grounding, and drift detection. Add or update: 1) demo-vault/decisions/Redis vs Memcached.md — add sections with headings (## Benchmark Results, ## Analysis), a metrics table with ^benchmark-results block-id tag, and an SPL block using (meta redis-fast-enough (source \"^benchmark-results\")), 2) demo-vault/architecture/Performance.md — add a paragraph tagged ^perf-numbers with performance requirements, 3) demo-vault/decisions/Deployment Decision.md — add cross-file SPL grounding: (meta perf-acceptable (source \"[[Performance^perf-numbers]]\")), 4) demo-vault/theories/caching.spl — standalone SPL file with facts grounded via Merkle hash (use placeholder hash from a prior zetl blocks run, or a realistic example). Files must have multiple ^block-id tags, headings at multiple levels, and SPL blocks both with and without explicit source metadata.",
+      "token_cost": 231,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 3 files (+48, -65): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-merkle-types-changes",
+      "content": "Modified 1 files (+152, -0): src/types.rs",
+      "token_cost": 10,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T01:36:43Z"
+  "constructed_at": "2026-02-24T02:10:00Z"
 }
