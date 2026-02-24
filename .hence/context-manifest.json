@@ -1,12 +1,12 @@
 {
-  "task_id": "section-detection",
+  "task_id": "spl-dual-hashing",
   "token_budget": 8000,
-  "tokens_used": 443,
+  "tokens_used": 390,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement the section boundary detection algorithm from §4.5. For each file's Vec<MerkleLeaf>, compute the grounding_section for every SplBlock leaf. Algorithm: 1) Walk backwards from the SPL leaf index to find the nearest preceding Heading leaf — this is section_start; if no heading found, section starts at index 0, 2) Walk forward from section_start to find the next Heading at the same or higher level (lower numeric level number) — this is section_end; if not found, section_end = last leaf index, 3) The grounding hash = BLAKE3(concat of hashes of all non-SplBlock leaves in [section_start..=section_end]). If the SPL leaf is in the preamble (no heading above it), grounding context = all content before the first heading (or entire file if no headings). Store the result in SplLeafCached::section_index and in the Section struct. Implement as detect_sections(leaves: &[MerkleLeaf]) -> Vec<Section> and grounding_section(leaves: &[MerkleLeaf], spl_leaf_idx: usize) -> Section in src/merkle.rs. Each Section stores: heading_line, heading_text, heading_level, leaf_range, grounding_hash. Subsection headings (###) create a narrower context than parent sections (##) — this is by design per §4.5.",
-      "token_cost": 302,
+      "content": "Implement dual hashing for SplBlock leaves per §4.4. For each SplBlock leaf: 1) content_hash = BLAKE3(normalised_raw_spl_text) — normalise whitespace and strip SPL comments (;; comment lines), 2) ast_hash = BLAKE3(canonically_serialised_spl_ast) where canonical serialisation means rules sorted by label, facts sorted by literal, superiority sorted by pair. Use spindle-parser to parse the SPL text; if parsing fails, ast_hash = [0u8; 32] (sentinel) and emit a diagnostic. The combined SplBlock leaf hash = BLAKE3(content_hash_bytes ‖ ast_hash_bytes) feeds into the file Merkle root. Implement this in the reason feature gate (#[cfg(feature = \"reason\")]) since it requires spindle-parser. When the reason feature is off, fall back to content_hash only for both content_hash and ast_hash. Store SplLeafHash { content_hash, ast_hash } in SplLeafCached. Expose compute_spl_hashes(content: &str) -> Result<SplLeafHash> as a testable function.",
+      "token_cost": 235,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 8 files (+444, -18): .hence/context-manifest.json, src/cache.rs, src/graph.rs, src/lib.rs, src/merkle.rs and 3 more",
       "token_cost": 31,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-section-detection-changes",
+      "content": "Modified 2 files (+464, -5): src/merkle.rs, src/scanner.rs",
+      "token_cost": 14,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T02:03:27Z"
+  "constructed_at": "2026-02-24T02:13:07Z"
 }

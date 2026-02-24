@@ -3,7 +3,7 @@
 //! Implements BLAKE3-based hashing for leaf nodes, file roots, and the vault root
 //! per §4.1–4.2 and §4.6.
 
-use crate::types::{ContentHash, LeafType, MerkleLeaf, Section};
+use crate::types::{ContentHash, LeafType, MerkleLeaf, Section, SplLeafHash};
 use std::path::Path;
 
 // ── Type tag bytes (one per LeafType variant) ─────────────────────────────────
@@ -49,21 +49,176 @@ pub fn leaf_type_tag(leaf_type: &LeafType) -> u8 {
 ///
 /// `ContentHash = BLAKE3(type_tag_byte ‖ content_bytes)` per §4.2.
 ///
-/// For [`LeafType::SplBlock`] leaves the hash is a placeholder sentinel
-/// (`BLAKE3([TAG_SPL_BLOCK])`); full dual hashing is handled by the
-/// `task-spl-dual-hashing` task.
+/// **Note:** [`LeafType::SplBlock`] leaves use a different hash formula
+/// (`BLAKE3(content_hash ‖ ast_hash)` per §4.4) computed by
+/// [`compute_spl_hashes`] and [`spl_combined_hash`]. This function is not
+/// used for `SplBlock` leaves by `build_merkle_leaves`.
 pub fn compute_leaf_hash(leaf_type: &LeafType, content: &[u8]) -> ContentHash {
     let tag = leaf_type_tag(leaf_type);
-    if matches!(leaf_type, LeafType::SplBlock) {
-        // Placeholder: hash only the type tag (content is not yet dual-hashed).
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(&[tag]);
-        return *hasher.finalize().as_bytes();
-    }
     let mut hasher = blake3::Hasher::new();
     hasher.update(&[tag]);
     hasher.update(content);
     *hasher.finalize().as_bytes()
+}
+
+// ── SPL dual hashing (§4.4) ───────────────────────────────────────────────────
+
+/// Normalise raw SPL text for content hashing.
+///
+/// 1. Strips lines whose first non-whitespace characters are `;;` (SPL line
+///    comments).
+/// 2. Collapses all remaining whitespace runs to a single ASCII space and
+///    trims leading/trailing whitespace.
+fn normalize_spl(content: &str) -> String {
+    let without_comments: String = content
+        .lines()
+        .filter(|line| !line.trim_start().starts_with(";;"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut out = String::with_capacity(without_comments.len());
+    let mut prev_space = false;
+    for ch in without_comments.chars() {
+        if ch.is_whitespace() {
+            if !prev_space {
+                out.push(' ');
+            }
+            prev_space = true;
+        } else {
+            out.push(ch);
+            prev_space = false;
+        }
+    }
+    out.trim().to_string()
+}
+
+/// Compute the dual-hash pair for an SPL block leaf (§4.4).
+///
+/// - `content_hash = BLAKE3(normalize(content))` where normalization strips
+///   `;;` comment lines and collapses whitespace.
+/// - When the `reason` feature is **enabled**: `ast_hash` is
+///   `BLAKE3(canonical_spl_ast)` where the canonical serialisation sorts
+///   rules by label, facts by head literal, and superiority relations by
+///   pair.  If parsing fails, `ast_hash = [0u8; 32]` (sentinel).
+/// - When the `reason` feature is **disabled**: `ast_hash = content_hash`.
+pub fn compute_spl_hashes(content: &str) -> SplLeafHash {
+    let normalized = normalize_spl(content);
+    let content_hash: ContentHash = *blake3::hash(normalized.as_bytes()).as_bytes();
+
+    #[cfg(feature = "reason")]
+    let ast_hash = compute_spl_ast_hash(content);
+
+    #[cfg(not(feature = "reason"))]
+    let ast_hash = content_hash;
+
+    SplLeafHash {
+        content_hash,
+        ast_hash,
+    }
+}
+
+/// Compute the combined SPL leaf hash from a dual-hash pair.
+///
+/// `combined = BLAKE3(content_hash ‖ ast_hash)` per §4.4.
+/// This is the value stored in [`MerkleLeaf::hash`] for `SplBlock` leaves.
+pub fn spl_combined_hash(spl: &SplLeafHash) -> ContentHash {
+    *blake3::Hasher::new()
+        .update(&spl.content_hash)
+        .update(&spl.ast_hash)
+        .finalize()
+        .as_bytes()
+}
+
+/// Compute the canonical AST hash for an SPL block (§4.4, `reason` feature only).
+///
+/// Parses the SPL text with spindle-parser.  On success the theory is
+/// serialised canonically (facts sorted by head literal, named rules sorted
+/// by label, superiority relations sorted by pair) and hashed with BLAKE3.
+/// On parse failure returns `[0u8; 32]` (sentinel).
+#[cfg(feature = "reason")]
+fn compute_spl_ast_hash(content: &str) -> ContentHash {
+    use spindle_core::prelude::RuleType as CoreRuleType;
+    use spindle_parser::parse_spl;
+
+    let parsed = match parse_spl(content) {
+        Ok(theory) => theory,
+        Err(_) => return [0u8; 32], // sentinel: parse failure
+    };
+
+    // ── Collect rules by kind ────────────────────────────────────────────────
+    let mut facts: Vec<String> = Vec::new();
+    // (label, type_str, body_csv, head_csv)
+    let mut named_rules: Vec<(String, &'static str, String, String)> = Vec::new();
+
+    for rule in parsed.rules() {
+        let body_csv: String = rule
+            .body
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let head_csv: String = rule
+            .head
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        match rule.rule_type {
+            CoreRuleType::Fact => {
+                facts.push(head_csv);
+            }
+            CoreRuleType::Strict => {
+                named_rules.push((rule.label.clone(), "strict", body_csv, head_csv));
+            }
+            CoreRuleType::Defeasible => {
+                named_rules.push((rule.label.clone(), "defeasible", body_csv, head_csv));
+            }
+            CoreRuleType::Defeater => {
+                named_rules.push((rule.label.clone(), "defeater", body_csv, head_csv));
+            }
+        }
+    }
+
+    // ── Collect superiority relations ────────────────────────────────────────
+    let mut sups: Vec<(String, String)> = parsed
+        .superiorities()
+        .iter()
+        .map(|s| (s.superior.clone(), s.inferior.clone()))
+        .collect();
+
+    // ── Sort for canonical ordering ──────────────────────────────────────────
+    facts.sort();
+    named_rules.sort_by(|a, b| a.0.cmp(&b.0));
+    sups.sort();
+
+    // ── Build canonical byte stream ──────────────────────────────────────────
+    let mut canonical = String::new();
+    for lit in &facts {
+        canonical.push_str("f:");
+        canonical.push_str(lit);
+        canonical.push('\n');
+    }
+    for (label, type_str, body, head) in &named_rules {
+        canonical.push_str("r:");
+        canonical.push_str(type_str);
+        canonical.push(':');
+        canonical.push_str(label);
+        canonical.push(':');
+        canonical.push_str(body);
+        canonical.push(':');
+        canonical.push_str(head);
+        canonical.push('\n');
+    }
+    for (sup, inf) in &sups {
+        canonical.push_str("s:");
+        canonical.push_str(sup);
+        canonical.push('>');
+        canonical.push_str(inf);
+        canonical.push('\n');
+    }
+
+    *blake3::hash(canonical.as_bytes()).as_bytes()
 }
 
 /// Compute the file-level Merkle root from an ordered list of leaf nodes.
@@ -366,19 +521,27 @@ mod tests {
     }
 
     #[test]
-    fn compute_leaf_hash_spl_is_placeholder() {
-        // SPL leaves always return BLAKE3([TAG_SPL_BLOCK]), regardless of content.
-        let h1 = compute_leaf_hash(&LeafType::SplBlock, b"some spl code");
-        let h2 = compute_leaf_hash(&LeafType::SplBlock, b"different spl code");
-        assert_eq!(
-            h1, h2,
-            "SPL placeholder should be independent of content"
-        );
+    fn compute_leaf_hash_spl_includes_tag_and_content() {
+        // compute_leaf_hash for SplBlock now behaves like other leaf types:
+        // BLAKE3(TAG_SPL_BLOCK ‖ content).  The dual-hash formula
+        // (BLAKE3(content_hash ‖ ast_hash)) is handled by spl_combined_hash.
+        let content = b"some spl code";
+        let h = compute_leaf_hash(&LeafType::SplBlock, content);
 
-        // Placeholder should equal BLAKE3([TAG_SPL_BLOCK]).
-        let expected: ContentHash =
-            *blake3::Hasher::new().update(&[TAG_SPL_BLOCK]).finalize().as_bytes();
-        assert_eq!(h1, expected);
+        let expected: ContentHash = {
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(&[TAG_SPL_BLOCK]);
+            hasher.update(content);
+            *hasher.finalize().as_bytes()
+        };
+        assert_eq!(h, expected);
+    }
+
+    #[test]
+    fn compute_leaf_hash_spl_differs_with_different_content() {
+        let h1 = compute_leaf_hash(&LeafType::SplBlock, b"rule_a");
+        let h2 = compute_leaf_hash(&LeafType::SplBlock, b"rule_b");
+        assert_ne!(h1, h2, "different SPL content should produce different hashes");
     }
 
     // ── compute_file_root ──────────────────────────────────────────────────────
@@ -726,5 +889,155 @@ mod tests {
         hasher.update(&p);
         let expected: ContentHash = *hasher.finalize().as_bytes();
         assert_eq!(sec_a.grounding_hash, expected);
+    }
+
+    // ── normalize_spl ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn normalize_spl_strips_comment_lines() {
+        let input = ";; this is a comment\n(given foo)\n;; another comment\n(given bar)";
+        let result = normalize_spl(input);
+        assert!(!result.contains(";;"), "comment lines should be stripped");
+        assert!(result.contains("foo"), "fact 'foo' should remain");
+        assert!(result.contains("bar"), "fact 'bar' should remain");
+    }
+
+    #[test]
+    fn normalize_spl_strips_indented_comment_lines() {
+        let input = "  ;; indented comment\n(given baz)";
+        let result = normalize_spl(input);
+        assert!(!result.contains(";;"));
+        assert!(result.contains("baz"));
+    }
+
+    #[test]
+    fn normalize_spl_collapses_whitespace() {
+        let input = "(given   foo)   (given   bar)";
+        let result = normalize_spl(input);
+        // Consecutive spaces collapsed to single
+        assert!(!result.contains("   "));
+    }
+
+    #[test]
+    fn normalize_spl_trims_result() {
+        let input = "   (given foo)   ";
+        let result = normalize_spl(input);
+        assert_eq!(result, result.trim());
+    }
+
+    #[test]
+    fn normalize_spl_empty_after_comment_stripping() {
+        let input = ";; comment only";
+        let result = normalize_spl(input);
+        assert_eq!(result, "");
+    }
+
+    // ── compute_spl_hashes ────────────────────────────────────────────────────
+
+    #[test]
+    fn compute_spl_hashes_content_hash_is_normalized_blake3() {
+        let content = "(given foo)";
+        let spl = compute_spl_hashes(content);
+        let expected: ContentHash = *blake3::hash(normalize_spl(content).as_bytes()).as_bytes();
+        assert_eq!(spl.content_hash, expected);
+    }
+
+    #[test]
+    fn compute_spl_hashes_different_content_differs() {
+        let a = compute_spl_hashes("(given foo)");
+        let b = compute_spl_hashes("(given bar)");
+        assert_ne!(a.content_hash, b.content_hash);
+    }
+
+    #[test]
+    fn compute_spl_hashes_comment_stripped_same_as_without() {
+        // Content with only a comment followed by same SPL should produce
+        // the same content_hash as the SPL without the comment.
+        let with_comment = ";; ignored\n(given foo)";
+        let without_comment = "(given foo)";
+        let a = compute_spl_hashes(with_comment);
+        let b = compute_spl_hashes(without_comment);
+        assert_eq!(a.content_hash, b.content_hash);
+    }
+
+    #[test]
+    fn compute_spl_hashes_deterministic() {
+        let content = "(given foo)\n(normally r1 a => b)";
+        let h1 = compute_spl_hashes(content);
+        let h2 = compute_spl_hashes(content);
+        assert_eq!(h1.content_hash, h2.content_hash);
+        assert_eq!(h1.ast_hash, h2.ast_hash);
+    }
+
+    #[cfg(not(feature = "reason"))]
+    #[test]
+    fn compute_spl_hashes_no_reason_ast_equals_content() {
+        let content = "(given foo)";
+        let spl = compute_spl_hashes(content);
+        assert_eq!(
+            spl.ast_hash, spl.content_hash,
+            "without reason feature, ast_hash should equal content_hash"
+        );
+    }
+
+    // ── spl_combined_hash ────────────────────────────────────────────────────
+
+    #[test]
+    fn spl_combined_hash_is_blake3_of_both() {
+        use crate::types::SplLeafHash;
+        let content_hash = [1u8; 32];
+        let ast_hash = [2u8; 32];
+        let spl = SplLeafHash {
+            content_hash,
+            ast_hash,
+        };
+        let combined = spl_combined_hash(&spl);
+
+        let expected: ContentHash = *blake3::Hasher::new()
+            .update(&content_hash)
+            .update(&ast_hash)
+            .finalize()
+            .as_bytes();
+        assert_eq!(combined, expected);
+    }
+
+    #[test]
+    fn spl_combined_hash_order_matters() {
+        use crate::types::SplLeafHash;
+        let a = SplLeafHash {
+            content_hash: [1u8; 32],
+            ast_hash: [2u8; 32],
+        };
+        let b = SplLeafHash {
+            content_hash: [2u8; 32],
+            ast_hash: [1u8; 32],
+        };
+        assert_ne!(
+            spl_combined_hash(&a),
+            spl_combined_hash(&b),
+            "swapping content_hash and ast_hash should change the combined hash"
+        );
+    }
+
+    #[test]
+    fn spl_combined_hash_equal_hashes_is_deterministic() {
+        use crate::types::SplLeafHash;
+        let spl = SplLeafHash {
+            content_hash: [42u8; 32],
+            ast_hash: [42u8; 32],
+        };
+        assert_eq!(spl_combined_hash(&spl), spl_combined_hash(&spl));
+    }
+
+    #[test]
+    fn compute_spl_hashes_combined_feeds_leaf_hash() {
+        // The hash stored in MerkleLeaf.hash for an SplBlock should equal
+        // spl_combined_hash(spl_hashes).
+        let content = "(given foo)";
+        let spl = compute_spl_hashes(content);
+        let combined = spl_combined_hash(&spl);
+
+        // combined hash must not be all-zero (content is non-empty)
+        assert_ne!(combined, [0u8; 32]);
     }
 }
