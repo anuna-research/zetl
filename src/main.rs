@@ -14,7 +14,7 @@ use zetl::scanner::{resolve_page_name, scan_vault};
 use zetl::search::{search_vault, SearchConfig};
 use zetl::simhash::SimHashIndex;
 use zetl::drift::detect_section_drift;
-use zetl::types::{DiagnosticLevel, DriftDiagnostic, DriftSeverity, ParsedFile};
+use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, ParsedFile};
 
 // ── Common pipeline ────────────────────────────────────────────────────────
 
@@ -39,23 +39,44 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
     // Scan vault for all markdown files
     let all_scanned = scan_vault(&vault_root, &[])?;
 
-    // Incremental re-parse: use cache to skip unchanged files
+    // Incremental re-parse: two-tier invalidation (REQ-039, ADR-009).
     let files = if let Some(ref cached_map) = cached {
-        // Build current file mtime list
-        let current_files: Vec<(PathBuf, std::time::SystemTime)> = all_scanned
-            .iter()
-            .map(|f| (f.path.clone(), f.mtime))
-            .collect();
+        // Build current file list with freshly computed Merkle roots for Tier 2 comparison.
+        let current_files: Vec<(PathBuf, std::time::SystemTime, Option<ContentHash>)> =
+            all_scanned
+                .iter()
+                .map(|f| {
+                    let fresh_root = f.file_merkle.as_ref().map(|fm| fm.root_hash);
+                    (f.path.clone(), f.mtime, fresh_root)
+                })
+                .collect();
 
-        let needs_reparse: HashSet<PathBuf> = files_needing_reparse(cached_map, &current_files)
-            .into_iter()
-            .collect();
+        let (full_reparse, content_unchanged) =
+            files_needing_reparse(cached_map, &current_files);
+        let full_reparse_set: HashSet<PathBuf> = full_reparse.into_iter().collect();
+        let content_unchanged_set: HashSet<PathBuf> = content_unchanged.into_iter().collect();
 
-        // Merge: use cached data for unchanged files, freshly scanned data for changed ones
+        // Merge:
+        //   full reparse    → use freshly scanned ParsedFile (links/SPL re-extracted).
+        //   content_unchanged (Tier 2 hit) → use cached ParsedFile, update mtime only so
+        //                     downstream processing (wikilink/SPL re-extraction, theory
+        //                     cache invalidation) is skipped.
+        //   mtime unchanged (Tier 1 hit)   → use cached ParsedFile as-is.
         let mut merged = Vec::new();
         for scanned in &all_scanned {
-            if needs_reparse.contains(&scanned.path) {
+            if full_reparse_set.contains(&scanned.path) {
                 merged.push(scanned.clone());
+            } else if content_unchanged_set.contains(&scanned.path) {
+                // Tier 2 hit: content unchanged despite mtime change.
+                // Preserve cached links/SPL/Merkle; update mtime to avoid repeated Tier 2
+                // hash comparisons on subsequent runs.
+                if let Some(cached_file) = cached_map.get(&scanned.path) {
+                    let mut updated = cached_file.clone();
+                    updated.mtime = scanned.mtime;
+                    merged.push(updated);
+                } else {
+                    merged.push(scanned.clone());
+                }
             } else if let Some(cached_file) = cached_map.get(&scanned.path) {
                 merged.push(cached_file.clone());
             } else {
