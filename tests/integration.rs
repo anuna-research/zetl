@@ -1784,3 +1784,282 @@ fn test_049_resolve_roundtrip() {
         "roundtrip text should match"
     );
 }
+
+// ===========================================================================
+// TEST-049: zetl blocks (forward mode) — REQ-045 / CON-020
+// ===========================================================================
+
+/// Fixture content modelled after demo-vault/decisions/Redis vs Memcached.md.
+/// Contains heading, paragraph, SPL block, table, and more paragraphs —
+/// giving us all the leaf types we need to exercise forward mode.
+const REDIS_FIXTURE: &str = "\
+# Redis vs Memcached
+
+We evaluated Redis and Memcached as caching backends for the zetl index layer.
+
+```spl
+(given redis-evaluated)
+(given memcached-evaluated)
+(given single-node-deployment)
+```
+
+## Benchmark Results
+
+| Backend    | Reads/sec | Memory overhead |
+|------------|-----------|-----------------|
+| Redis 7.2  | 185 000   | ~12 MB          |
+| Memcached  | 170 000   | ~8 MB           |
+
+The p99 numbers show Redis edges out Memcached on read latency under load.
+
+## Decision
+
+We adopt Redis as the recommended caching backend.
+";
+
+/// TEST-049 forward mode: blocks command returns heading, paragraph, spl, and
+/// table leaf types for a file that contains all of them.
+#[test]
+fn test_049_blocks_forward_list_all_types() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Redis vs Memcached.md", REDIS_FIXTURE);
+
+    let json = run_json(zetl_cmd(dir.path()).arg("blocks").arg("Redis vs Memcached"));
+
+    assert_eq!(
+        json["page"].as_str().unwrap(),
+        "Redis vs Memcached",
+        "page field should match the queried page name"
+    );
+    assert!(
+        json["block_count"].as_u64().unwrap() > 0,
+        "block_count should be positive"
+    );
+
+    let blocks = json["blocks"].as_array().unwrap();
+    assert!(!blocks.is_empty(), "blocks array must not be empty");
+
+    // Collect all block types present
+    let types: Vec<&str> = blocks
+        .iter()
+        .map(|b| b["type"].as_str().unwrap())
+        .collect();
+
+    // Heading blocks
+    assert!(
+        types.iter().any(|t| t.starts_with("heading")),
+        "expected at least one heading block, got: {types:?}"
+    );
+
+    // Paragraph blocks
+    assert!(
+        types.contains(&"paragraph"),
+        "expected at least one paragraph block, got: {types:?}"
+    );
+
+    // SPL block
+    assert!(
+        types.contains(&"spl"),
+        "expected at least one spl block, got: {types:?}"
+    );
+
+    // Table block
+    assert!(
+        types.contains(&"table"),
+        "expected at least one table block, got: {types:?}"
+    );
+
+    // Each block must have the required fields
+    for block in blocks {
+        assert!(block["index"].is_number(), "block must have an index");
+        assert!(block["type"].is_string(), "block must have a type");
+        assert!(block["lines"].is_array(), "block must have a lines array");
+        assert_eq!(
+            block["lines"].as_array().unwrap().len(),
+            2,
+            "lines must be a two-element array [start, end]"
+        );
+        assert!(block["hash"].is_string(), "block must have a hash");
+        assert!(block["text"].is_string(), "block must have a text field");
+    }
+
+    // file_hash should be present
+    assert!(
+        json["file_hash"].is_string(),
+        "forward mode should include a file_hash"
+    );
+}
+
+/// TEST-049 forward mode: SPL leaf blocks carry a spl_hashes object with
+/// content_hash and ast_hash fields (REQ-045 / CON-020 §spl-dual-hashing).
+#[test]
+fn test_049_blocks_forward_spl_has_spl_hashes() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Redis vs Memcached.md", REDIS_FIXTURE);
+
+    let json = run_json(zetl_cmd(dir.path()).arg("blocks").arg("Redis vs Memcached"));
+
+    let blocks = json["blocks"].as_array().unwrap();
+
+    let spl_block = blocks
+        .iter()
+        .find(|b| b["type"] == "spl")
+        .expect("fixture should contain an SPL block");
+
+    let spl_hashes = &spl_block["spl_hashes"];
+    assert!(
+        !spl_hashes.is_null(),
+        "SPL block must have a spl_hashes object"
+    );
+    assert!(
+        spl_hashes["content_hash"].is_string(),
+        "spl_hashes must have content_hash"
+    );
+    assert!(
+        spl_hashes["ast_hash"].is_string(),
+        "spl_hashes must have ast_hash"
+    );
+
+    // content_hash and ast_hash should be non-empty hex strings
+    let content_hash = spl_hashes["content_hash"].as_str().unwrap();
+    let ast_hash = spl_hashes["ast_hash"].as_str().unwrap();
+    assert!(!content_hash.is_empty(), "content_hash must be non-empty");
+    assert!(!ast_hash.is_empty(), "ast_hash must be non-empty");
+    assert!(
+        content_hash.chars().all(|c| c.is_ascii_hexdigit()),
+        "content_hash must be a hex string, got: {content_hash}"
+    );
+    assert!(
+        ast_hash.chars().all(|c| c.is_ascii_hexdigit()),
+        "ast_hash must be a hex string, got: {ast_hash}"
+    );
+
+    // Non-SPL blocks must NOT have spl_hashes
+    let non_spl = blocks.iter().find(|b| b["type"] != "spl").unwrap();
+    assert!(
+        non_spl["spl_hashes"].is_null(),
+        "non-SPL block must not have spl_hashes"
+    );
+}
+
+/// TEST-049 forward mode: --type paragraph filter returns only paragraph blocks.
+#[test]
+fn test_049_blocks_forward_type_filter_paragraph() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Redis vs Memcached.md", REDIS_FIXTURE);
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("blocks")
+            .arg("Redis vs Memcached")
+            .arg("--type")
+            .arg("paragraph"),
+    );
+
+    let blocks = json["blocks"].as_array().unwrap();
+
+    // Must have at least one paragraph
+    assert!(
+        !blocks.is_empty(),
+        "--type paragraph filter should return at least one paragraph"
+    );
+
+    // Every block in the result must be a paragraph
+    for block in blocks {
+        assert_eq!(
+            block["type"].as_str().unwrap(),
+            "paragraph",
+            "--type paragraph filter must only return paragraph blocks"
+        );
+    }
+
+    // Filtered count should equal block_count field
+    assert_eq!(
+        json["block_count"].as_u64().unwrap() as usize,
+        blocks.len(),
+        "block_count should equal the number of blocks in the array"
+    );
+}
+
+/// TEST-049 forward mode: querying a page that does not exist exits with
+/// code 1 and includes an error field in the JSON output.
+#[test]
+fn test_049_blocks_page_not_found() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "A.md", "# A\n\nSome content.\n");
+
+    let (json, status) = run_json_any(
+        zetl_cmd(dir.path())
+            .arg("blocks")
+            .arg("NonExistentPage"),
+    );
+
+    assert!(
+        !status.success(),
+        "blocks for a missing page should exit non-zero"
+    );
+    assert!(
+        json["error"].is_string(),
+        "error response must have an 'error' field, got: {json:?}"
+    );
+}
+
+/// TEST-049 forward mode: the hash returned for a block by forward mode is
+/// usable as source metadata — resolving that hash in reverse mode yields
+/// the same file, page, line range, and text (roundtrip via hash identity).
+#[test]
+fn test_049_blocks_forward_hash_as_source_metadata_roundtrip() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Redis vs Memcached.md", REDIS_FIXTURE);
+
+    // Forward pass: collect all blocks
+    let forward = run_json(zetl_cmd(dir.path()).arg("blocks").arg("Redis vs Memcached"));
+    let blocks = forward["blocks"].as_array().unwrap();
+
+    // Use the table block as our probe — it has a unique, stable hash
+    let table_block = blocks
+        .iter()
+        .find(|b| b["type"] == "table")
+        .expect("fixture must contain a table block");
+
+    let forward_hash = table_block["hash"].as_str().unwrap();
+    let forward_lines = table_block["lines"].as_array().unwrap();
+
+    // Reverse pass: resolve with the full hash
+    let reverse = run_json(
+        zetl_cmd(dir.path())
+            .arg("blocks")
+            .arg("--resolve")
+            .arg(forward_hash),
+    );
+
+    assert_eq!(
+        reverse["hash"].as_str().unwrap(),
+        forward_hash,
+        "resolved hash must equal the forward hash"
+    );
+    assert_eq!(
+        reverse["page"].as_str().unwrap(),
+        "Redis vs Memcached",
+        "resolved page must match the source page"
+    );
+    assert_eq!(
+        reverse["type"].as_str().unwrap(),
+        "table",
+        "resolved type must match the forward type"
+    );
+    assert_eq!(
+        reverse["lines"].as_array().unwrap()[0],
+        forward_lines[0],
+        "resolved start line must match forward start line"
+    );
+    assert_eq!(
+        reverse["lines"].as_array().unwrap()[1],
+        forward_lines[1],
+        "resolved end line must match forward end line"
+    );
+    assert!(
+        reverse["text"].is_string(),
+        "resolved result must include a text field"
+    );
+}
