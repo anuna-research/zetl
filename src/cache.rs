@@ -63,6 +63,23 @@ pub fn save_cache(vault_root: &Path, files: &[ParsedFile]) -> Result<()> {
     Ok(())
 }
 
+/// Load the vault-level Merkle root hex string from `.zetl/index.json`.
+///
+/// Returns the raw 64-character lowercase hex string, or `None` if the cache
+/// does not exist, has a version mismatch, or does not contain a vault root hash.
+pub fn load_vault_root_hex(vault_root: &Path) -> Result<Option<String>> {
+    let cache_path = vault_root.join(CACHE_DIR).join(CACHE_FILE);
+    if !cache_path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&cache_path)?;
+    let index: CacheIndex = serde_json::from_str(&content)?;
+    if index.version != CACHE_VERSION {
+        return Ok(None);
+    }
+    Ok(index.vault_root_hash.filter(|h| h.len() == 64))
+}
+
 /// Load the vault-level Merkle root from `.zetl/index.json`.
 ///
 /// Returns `None` if the cache does not exist, has a version mismatch, or

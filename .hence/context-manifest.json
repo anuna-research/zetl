@@ -1,12 +1,12 @@
 {
-  "task_id": "theory-cache-spl",
+  "task_id": "stats-vault-hash",
   "token_budget": 8000,
-  "tokens_used": 395,
+  "tokens_used": 368,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement SPL-specific theory cache invalidation using AST hashes per REQ-040. During zetl reason status (and any other theory-building command): 1) Collect the set of SPL leaf AST hashes from the current Merkle tree (from all SPL-containing files), 2) Compare against the set stored in theory.json spl_blocks (the ast_hash fields), 3) If the sets are identical (same labels, same hashes), the theory cache is valid — skip rebuild, 4) If any ast_hash differs or any file is added/removed, rebuild the theory. This means a prose-only edit (file Merkle root changes, but SPL AST hash unchanged) does NOT trigger a theory rebuild. Implement as a theory_cache_valid(current_spl_hashes, cached_theory) -> bool function in cache.rs. Wire this into cmd_reason_status in main.rs before the theory build step.",
-      "token_cost": 200,
+      "content": "Extend the zetl stats command output to include vault content integrity data per CON-006 extended. Add to stats JSON output: vault_content_hash (hex string of vault Merkle root from index.json), spl_blocks (count of all SPL blocks across vault), grounded_spl_blocks (count of SPL blocks with section grounding recorded in theory cache), explicitly_grounded_facts (count of SPL facts/rules with explicit source metadata). Read vault_root_hash from the loaded index cache. The count fields require the index to be loaded. If index not present, vault_content_hash is null. Add the same fields to table output. Per CON-006 extension in §7.",
+      "token_cost": 159,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 2 files (+324, -35): .hence/context-manifest.json, src/cache.rs",
       "token_cost": 18,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theory-cache-spl-changes",
+      "content": "Modified 2 files (+200, -100): src/cache.rs, src/main.rs",
+      "token_cost": 14,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T02:32:28Z"
+  "constructed_at": "2026-02-24T02:37:18Z"
 }

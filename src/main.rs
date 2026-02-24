@@ -7,7 +7,7 @@ use clap::Parser;
 use comfy_table::{Cell, Table};
 use serde::Serialize;
 
-use zetl::cache::{files_needing_reparse, load_cache, save_cache};
+use zetl::cache::{files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache};
 use zetl::cli::{Cli, Command, FailLevel, OutputFormat};
 use zetl::graph::LinkGraph;
 use zetl::scanner::{resolve_page_name, scan_vault};
@@ -822,32 +822,80 @@ fn cmd_similar(cli: &Cli, query: &str, threshold: u32, limit: usize) -> Result<(
 
 fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
-    let stats = pipeline.graph.stats(top);
+    let graph_stats = pipeline.graph.stats(top);
+
+    // Vault content integrity fields (CON-006 §7)
+    let vault_content_hash = load_vault_root_hex(&pipeline.vault_root).unwrap_or(None);
+    let spl_blocks: usize = pipeline.files.iter().map(|f| f.spl_blocks.len()).sum();
+    let theory = load_theory_cache(&pipeline.vault_root).unwrap_or(None);
+    let grounded_spl_blocks = theory.as_ref().map_or(0, |tc| {
+        tc.spl_blocks
+            .values()
+            .filter(|b| b.section_grounding_hash != [0u8; 32])
+            .count()
+    });
+    let explicitly_grounded_facts = theory.as_ref().map_or(0, |tc| {
+        tc.spl_blocks
+            .values()
+            .map(|b| b.explicit_groundings.len())
+            .sum()
+    });
+
+    #[derive(Serialize)]
+    struct StatsOutput {
+        #[serde(flatten)]
+        graph: zetl::graph::GraphStats,
+        vault_content_hash: Option<String>,
+        spl_blocks: usize,
+        grounded_spl_blocks: usize,
+        explicitly_grounded_facts: usize,
+    }
+
+    let output = StatsOutput {
+        graph: graph_stats,
+        vault_content_hash,
+        spl_blocks,
+        grounded_spl_blocks,
+        explicitly_grounded_facts,
+    };
 
     match cli.format {
-        OutputFormat::Json => print_json(&stats)?,
+        OutputFormat::Json => print_json(&output)?,
         OutputFormat::Table => {
             let mut table = Table::new();
             table.set_header(vec!["Metric", "Value"]);
-            table.add_row(vec![Cell::new("Pages"), Cell::new(stats.pages)]);
-            table.add_row(vec![Cell::new("Links"), Cell::new(stats.links)]);
+            table.add_row(vec![Cell::new("Pages"), Cell::new(output.graph.pages)]);
+            table.add_row(vec![Cell::new("Links"), Cell::new(output.graph.links)]);
             table.add_row(vec![
                 Cell::new("Unique targets"),
-                Cell::new(stats.unique_targets),
+                Cell::new(output.graph.unique_targets),
             ]);
-            table.add_row(vec![Cell::new("Dead links"), Cell::new(stats.dead_links)]);
-            table.add_row(vec![Cell::new("Orphans"), Cell::new(stats.orphans)]);
+            table.add_row(vec![Cell::new("Dead links"), Cell::new(output.graph.dead_links)]);
+            table.add_row(vec![Cell::new("Orphans"), Cell::new(output.graph.orphans)]);
             table.add_row(vec![
                 Cell::new("Connected components"),
-                Cell::new(stats.connected_components),
+                Cell::new(output.graph.connected_components),
+            ]);
+            table.add_row(vec![
+                Cell::new("Vault content hash"),
+                Cell::new(output.vault_content_hash.as_deref().unwrap_or("N/A")),
+            ]);
+            table.add_row(vec![Cell::new("SPL blocks"), Cell::new(output.spl_blocks)]);
+            table.add_row(vec![
+                Cell::new("Grounded SPL blocks"),
+                Cell::new(output.grounded_spl_blocks),
+            ]);
+            table.add_row(vec![
+                Cell::new("Explicitly grounded facts"),
+                Cell::new(output.explicitly_grounded_facts),
             ]);
             println!("{table}");
 
-            if !stats.most_linked.is_empty() {
+            if !output.graph.most_linked.is_empty() {
                 println!();
                 let mut ml_table = Table::new();
                 ml_table.set_header(vec!["#", "Page", "Backlinks"]);
-                for (i, ml) in stats.most_linked.iter().enumerate() {
+                for (i, ml) in output.graph.most_linked.iter().enumerate() {
                     ml_table.add_row(vec![
                         Cell::new(i + 1),
                         Cell::new(&ml.page),
