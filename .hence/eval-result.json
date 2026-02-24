@@ -3,31 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 444,
-    "deletions": 18,
+    "files_changed": 2,
+    "insertions": 464,
+    "deletions": 5,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/cache.rs",
-      "src/graph.rs",
-      "src/lib.rs",
       "src/merkle.rs",
-      "src/reason/mod.rs",
-      "src/scanner.rs",
-      "src/types.rs"
+      "src/scanner.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-merkle-roots-changes",
-      "content": "Modified 8 files (+444, -18): .hence/context-manifest.json, src/cache.rs, src/graph.rs, src/lib.rs, src/merkle.rs and 3 more",
+      "key": "task-section-detection-changes",
+      "content": "Modified 2 files (+464, -5): src/merkle.rs, src/scanner.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/merkle-roots-v1",
-  "evaluated_at": "2026-02-24T02:03:21Z",
+  "branch_name": "hence/section-detection-v1",
+  "evaluated_at": "2026-02-24T02:13:02Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
