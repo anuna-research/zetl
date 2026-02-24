@@ -6,7 +6,7 @@ use std::time::Instant;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Clear, Paragraph};
+use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
 use super::color::{detect_color_mode, ColorMode, LinkColors};
 use super::link_map::{build_annotated_lines, LinkEntry, LinkMap};
@@ -437,7 +437,9 @@ impl ViewApp {
 
         // ── Scrollable content ────────────────────────────────────────────
         let scroll_row = self.scroll_offset.min(u16::MAX as usize) as u16;
-        let para = Paragraph::new(self.annotated_lines_with_focus()).scroll((scroll_row, 0));
+        let para = Paragraph::new(self.annotated_lines_with_focus())
+            .wrap(Wrap { trim: false })
+            .scroll((scroll_row, 0));
         frame.render_widget(para, content_area);
     }
 
@@ -482,8 +484,12 @@ impl ViewApp {
         let mut cards = Vec::new();
         for (vis_idx, entry) in visible.iter().enumerate() {
             let is_focused = focused_vis_idx == Some(vis_idx);
+            // Focused card fills 80 % of the context pane; non-focused cards
+            // stay compact at `context_lines` rows.
             let excerpt_n = if is_focused {
-                (self.context_lines as usize) * 3
+                let pane_h = self.context_pane.height as usize;
+                let target = (pane_h * 4 / 5).saturating_sub(3); // subtract borders
+                target.max(1)
             } else {
                 self.context_lines as usize
             };
@@ -563,11 +569,90 @@ impl ViewApp {
     }
 
     /// Render a list of forward-link cards into `area`, recording `card_rows`.
+    ///
+    /// When a focused card is present it is vertically centred in `area`; the
+    /// cards before it fill upward and the cards after it fill downward.
+    /// Without a focused card the list renders top-to-bottom.
     fn render_cards(&mut self, frame: &mut Frame, area: Rect, cards: &[CardData]) {
         let is_no_color = self.color_mode == ColorMode::NoColor;
+
+        let Some(fi) = cards.iter().position(|c| c.is_focused) else {
+            // No focused card — simple top-to-bottom layout.
+            return self.render_cards_linear(frame, area, cards, is_no_color);
+        };
+
+        let focused_h = cards[fi].card_height.min(area.height);
+        let center_y = area.height.saturating_sub(focused_h) / 2;
+
+        // ── Cards above the focused card (fill upward from center_y) ─────
+        let above = &cards[..fi];
+        let mut y_cursor = center_y;
+        let mut rendered_above = 0;
+        for card in above.iter().rev() {
+            if y_cursor == 0 {
+                break;
+            }
+            let h = card.card_height.min(y_cursor);
+            y_cursor = y_cursor.saturating_sub(h);
+            let card_area =
+                Rect { x: area.x, y: area.y + y_cursor, width: area.width, height: h };
+            self.card_rows.insert(card.ordinal, card_area.y);
+            self.render_normal_card(frame, card_area, card, is_no_color);
+            rendered_above += 1;
+        }
+        if above.len() > rendered_above && center_y > 0 {
+            frame.render_widget(
+                Paragraph::new(format!("↑ {} more", above.len() - rendered_above))
+                    .style(Style::default().dim()),
+                Rect { x: area.x, y: area.y, width: area.width, height: 1 },
+            );
+        }
+
+        // ── Focused card (centred) ─────────────────────────────────────────
+        let focused_area =
+            Rect { x: area.x, y: area.y + center_y, width: area.width, height: focused_h };
+        self.card_rows.insert(cards[fi].ordinal, focused_area.y);
+        self.render_focused_card(frame, focused_area, &cards[fi], is_no_color);
+
+        // ── Cards below the focused card (fill downward) ──────────────────
+        let below = &cards[fi + 1..];
+        let mut y_below = center_y + focused_h;
+        let mut rendered_below = 0;
+        for card in below {
+            let remaining = area.height.saturating_sub(y_below);
+            if remaining < 2 {
+                break;
+            }
+            let h = card.card_height.min(remaining);
+            let card_area =
+                Rect { x: area.x, y: area.y + y_below, width: area.width, height: h };
+            self.card_rows.insert(card.ordinal, card_area.y);
+            self.render_normal_card(frame, card_area, card, is_no_color);
+            y_below += h;
+            rendered_below += 1;
+            if y_below >= area.height {
+                break;
+            }
+        }
+        if below.len() > rendered_below && area.height > 0 {
+            frame.render_widget(
+                Paragraph::new(format!("↓ {} more", below.len() - rendered_below))
+                    .style(Style::default().dim()),
+                Rect { x: area.x, y: area.y + area.height - 1, width: area.width, height: 1 },
+            );
+        }
+    }
+
+    /// Top-to-bottom card layout used when no card is focused.
+    fn render_cards_linear(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        cards: &[CardData],
+        is_no_color: bool,
+    ) {
         let mut y = 0u16;
         let mut rendered_count = 0;
-
         for card in cards {
             let remaining = area.height.saturating_sub(y);
             if remaining < 2 {
@@ -576,31 +661,19 @@ impl ViewApp {
             let card_h = card.card_height.min(remaining);
             let card_area =
                 Rect { x: area.x, y: area.y + y, width: area.width, height: card_h };
-
-            // Record the absolute terminal row of this card's header.
             self.card_rows.insert(card.ordinal, card_area.y);
-
-            if card.is_focused {
-                self.render_focused_card(frame, card_area, card, is_no_color);
-            } else {
-                self.render_normal_card(frame, card_area, card, is_no_color);
-            }
-
+            self.render_normal_card(frame, card_area, card, is_no_color);
             y += card_h;
             rendered_count += 1;
             if y >= area.height {
                 break;
             }
         }
-
-        // Show "↓ N more" when cards overflow the pane.
         let n_more = cards.len().saturating_sub(rendered_count);
         if n_more > 0 && area.height > 0 {
-            let more_y = area.y + area.height - 1;
-            let more_area = Rect { x: area.x, y: more_y, width: area.width, height: 1 };
             frame.render_widget(
                 Paragraph::new(format!("↓ {} more", n_more)).style(Style::default().dim()),
-                more_area,
+                Rect { x: area.x, y: area.y + area.height - 1, width: area.width, height: 1 },
             );
         }
     }
@@ -720,7 +793,7 @@ impl ViewApp {
         };
         lines.push(Line::raw(sep));
 
-        frame.render_widget(Paragraph::new(lines), area);
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
     }
 
     /// Render a focused card with expanded excerpt and box border (REQ-068).
@@ -744,12 +817,11 @@ impl ViewApp {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        let excerpt_n = (self.context_lines as usize) * 3;
         let mut inner_lines: Vec<Line<'static>> = Vec::new();
-        for line in card.excerpt.iter().take(excerpt_n) {
+        for line in &card.excerpt {
             inner_lines.push(Line::raw(line.clone()));
         }
-        frame.render_widget(Paragraph::new(inner_lines), inner);
+        frame.render_widget(Paragraph::new(inner_lines).wrap(Wrap { trim: false }), inner);
     }
 
     // ── Bridge column ─────────────────────────────────────────────────────
