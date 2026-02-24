@@ -2,9 +2,13 @@
 //!
 //! Implements BLAKE3-based hashing for leaf nodes, file roots, and the vault root
 //! per §4.1–4.2 and §4.6.
+//!
+//! Also provides hash prefix resolution (§3.3 resolution rule 1, REQ-042a) via
+//! [`build_vault_hash_index`] and [`resolve_hash_prefix`].
 
-use crate::types::{ContentHash, LeafType, MerkleLeaf, Section, SplLeafHash};
-use std::path::Path;
+use crate::types::{ContentHash, LeafType, MerkleLeaf, ParsedFile, Section, SplLeafHash};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 // ── Type tag bytes (one per LeafType variant) ─────────────────────────────────
 
@@ -413,6 +417,118 @@ pub fn detect_sections(leaves: &[MerkleLeaf]) -> Vec<Section> {
     }
 
     sections
+}
+
+// ── Hash prefix resolution (§3.3 rule 1, REQ-042a) ───────────────────────────
+
+/// A single location where a Merkle leaf with a given hash was found in the vault.
+#[derive(Debug, Clone)]
+pub struct HashLocation {
+    /// Relative path of the file within the vault.
+    pub file: PathBuf,
+    /// 0-indexed position of this leaf in the file's `merkle_leaves` list.
+    pub leaf_index: usize,
+    /// The Merkle leaf at that position.
+    pub leaf: MerkleLeaf,
+}
+
+/// Vault-wide index mapping full 64-char lowercase hex hashes to all leaf locations
+/// that carry that hash.
+///
+/// Built from loaded [`ParsedFile`] data by [`build_vault_hash_index`].
+pub struct VaultHashIndex {
+    /// `full_hex_hash → Vec<HashLocation>`.
+    ///
+    /// Multiple locations for the same hash arise when identical content
+    /// appears in more than one file or position (duplicate-content case).
+    pub entries: HashMap<String, Vec<HashLocation>>,
+}
+
+/// Outcome of a hash prefix resolution attempt (§3.3 resolution rule 1, REQ-042a).
+pub enum HashResolutionResult {
+    /// Exactly one distinct full hash matched the prefix.
+    ///
+    /// All locations sharing that full hash are returned.  When identical
+    /// content appears at multiple positions this is still a successful
+    /// resolution — the caller receives every location.
+    Found {
+        /// Full 64-char lowercase hex hash.
+        full_hash: String,
+        /// All vault locations that carry this hash (≥ 1).
+        locations: Vec<HashLocation>,
+    },
+    /// No leaf hash in the vault starts with the given prefix.
+    NotFound,
+    /// Two or more *distinct* full hashes start with the given prefix —
+    /// the prefix is not long enough to identify a unique content block.
+    Ambiguous {
+        /// The prefix as supplied by the caller.
+        prefix: String,
+        /// Sorted list of distinct full hex hashes that matched.
+        candidates: Vec<String>,
+    },
+}
+
+/// Build a vault-wide hash index from a collection of loaded [`ParsedFile`] entries.
+///
+/// For every file, iterates all `merkle_leaves` and inserts
+/// `full_hex_hash → (file, leaf_index, leaf)` into the index.
+/// The same full hash may map to multiple locations when identical content
+/// appears in more than one file or position.
+pub fn build_vault_hash_index(files: &[ParsedFile]) -> VaultHashIndex {
+    let mut entries: HashMap<String, Vec<HashLocation>> = HashMap::new();
+    for file in files {
+        for (leaf_index, leaf) in file.merkle_leaves.iter().enumerate() {
+            let hex: String = leaf.hash.iter().map(|b| format!("{b:02x}")).collect();
+            entries.entry(hex).or_default().push(HashLocation {
+                file: file.path.clone(),
+                leaf_index,
+                leaf: leaf.clone(),
+            });
+        }
+    }
+    VaultHashIndex { entries }
+}
+
+/// Resolve a hex hash prefix to its matching Merkle leaf location(s).
+///
+/// Implements §3.3 resolution rule 1 and REQ-042a:
+///
+/// 1. Filter all index entries whose `full_hash_hex` starts with `prefix`
+///    (case-insensitive).
+/// 2. Zero matches → [`HashResolutionResult::NotFound`].
+/// 3. Exactly one distinct full hash matches → [`HashResolutionResult::Found`]
+///    with all locations that share that hash.
+/// 4. Multiple distinct full hashes match → [`HashResolutionResult::Ambiguous`]
+///    with a sorted list of matching full hashes.
+pub fn resolve_hash_prefix(prefix: &str, index: &VaultHashIndex) -> HashResolutionResult {
+    let prefix_lower = prefix.to_lowercase();
+
+    let matching: Vec<(&String, &Vec<HashLocation>)> = index
+        .entries
+        .iter()
+        .filter(|(hash, _)| hash.starts_with(&prefix_lower))
+        .collect();
+
+    match matching.len() {
+        0 => HashResolutionResult::NotFound,
+        1 => {
+            let (full_hash, locations) = matching[0];
+            HashResolutionResult::Found {
+                full_hash: full_hash.clone(),
+                locations: locations.clone(),
+            }
+        }
+        _ => {
+            let mut candidates: Vec<String> =
+                matching.iter().map(|(h, _)| (*h).clone()).collect();
+            candidates.sort();
+            HashResolutionResult::Ambiguous {
+                prefix: prefix.to_string(),
+                candidates,
+            }
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1039,5 +1155,179 @@ mod tests {
 
         // combined hash must not be all-zero (content is non-empty)
         assert_ne!(combined, [0u8; 32]);
+    }
+
+    // ── build_vault_hash_index & resolve_hash_prefix ──────────────────────────
+
+    use crate::types::ParsedFile;
+    use std::path::PathBuf;
+    use std::time::SystemTime;
+
+    fn minimal_parsed_file(path: &str, leaves: Vec<MerkleLeaf>) -> ParsedFile {
+        ParsedFile {
+            path: PathBuf::from(path),
+            page_name: path.to_string(),
+            links: vec![],
+            spl_blocks: vec![],
+            diagnostics: vec![],
+            mtime: SystemTime::UNIX_EPOCH,
+            merkle_leaves: leaves,
+            file_merkle: None,
+        }
+    }
+
+    fn leaf_with_hash(hash: ContentHash) -> MerkleLeaf {
+        MerkleLeaf {
+            node_type: LeafType::Paragraph,
+            start_line: 1,
+            end_line: 1,
+            hash,
+            spl_hashes: None,
+        }
+    }
+
+    #[test]
+    fn build_vault_hash_index_empty_files() {
+        let index = build_vault_hash_index(&[]);
+        assert!(index.entries.is_empty());
+    }
+
+    #[test]
+    fn build_vault_hash_index_single_leaf() {
+        let hash = [0xab_u8; 32];
+        let file = minimal_parsed_file("notes/a.md", vec![leaf_with_hash(hash)]);
+        let index = build_vault_hash_index(&[file]);
+        assert_eq!(index.entries.len(), 1);
+        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+        let locs = index.entries.get(&hex).expect("entry should exist");
+        assert_eq!(locs.len(), 1);
+        assert_eq!(locs[0].leaf_index, 0);
+    }
+
+    #[test]
+    fn build_vault_hash_index_duplicate_content_across_files() {
+        let hash = [0xde_u8; 32];
+        let f1 = minimal_parsed_file("a.md", vec![leaf_with_hash(hash)]);
+        let f2 = minimal_parsed_file("b.md", vec![leaf_with_hash(hash)]);
+        let index = build_vault_hash_index(&[f1, f2]);
+        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+        let locs = index.entries.get(&hex).expect("entry should exist");
+        assert_eq!(locs.len(), 2, "same hash in two files → two locations");
+    }
+
+    #[test]
+    fn resolve_hash_prefix_not_found() {
+        let index = build_vault_hash_index(&[]);
+        let result = resolve_hash_prefix("aabbcc", &index);
+        assert!(matches!(result, HashResolutionResult::NotFound));
+    }
+
+    #[test]
+    fn resolve_hash_prefix_exact_match() {
+        let hash = [0x11_u8; 32];
+        let file = minimal_parsed_file("f.md", vec![leaf_with_hash(hash)]);
+        let index = build_vault_hash_index(&[file]);
+        let full_hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+
+        // Full prefix → found
+        let result = resolve_hash_prefix(&full_hex, &index);
+        match result {
+            HashResolutionResult::Found { full_hash, locations } => {
+                assert_eq!(full_hash, full_hex);
+                assert_eq!(locations.len(), 1);
+            }
+            _ => panic!("expected Found"),
+        }
+    }
+
+    #[test]
+    fn resolve_hash_prefix_short_prefix_found() {
+        let hash = [0xaa_u8; 32]; // hex: "aa" repeated 32 times
+        let file = minimal_parsed_file("f.md", vec![leaf_with_hash(hash)]);
+        let index = build_vault_hash_index(&[file]);
+
+        let result = resolve_hash_prefix("aaaa", &index);
+        assert!(matches!(result, HashResolutionResult::Found { .. }));
+    }
+
+    #[test]
+    fn resolve_hash_prefix_case_insensitive() {
+        let hash = [0xab_u8; 32]; // hex starts with "abab..."
+        let file = minimal_parsed_file("f.md", vec![leaf_with_hash(hash)]);
+        let index = build_vault_hash_index(&[file]);
+
+        // Upper-case prefix should still resolve
+        let result = resolve_hash_prefix("ABAB", &index);
+        assert!(matches!(result, HashResolutionResult::Found { .. }));
+    }
+
+    #[test]
+    fn resolve_hash_prefix_duplicate_content_returns_all_locations() {
+        let hash = [0xcc_u8; 32];
+        let f1 = minimal_parsed_file("a.md", vec![leaf_with_hash(hash)]);
+        let f2 = minimal_parsed_file("b.md", vec![leaf_with_hash(hash)]);
+        let index = build_vault_hash_index(&[f1, f2]);
+
+        let prefix = "cccc";
+        let result = resolve_hash_prefix(prefix, &index);
+        match result {
+            HashResolutionResult::Found { locations, .. } => {
+                assert_eq!(locations.len(), 2, "both locations returned for duplicate content");
+            }
+            _ => panic!("expected Found"),
+        }
+    }
+
+    #[test]
+    fn resolve_hash_prefix_ambiguous() {
+        // Two leaves with hashes that share a short common prefix but differ after it.
+        // hash_a: 0x01 followed by 0x00 bytes  → hex "0100...00"
+        // hash_b: 0x01 followed by 0xff bytes after byte 1 → needs careful crafting
+        let mut hash_a = [0x00_u8; 32];
+        hash_a[0] = 0x01;
+        hash_a[1] = 0x00;
+
+        let mut hash_b = [0x00_u8; 32];
+        hash_b[0] = 0x01;
+        hash_b[1] = 0xff;
+
+        // Both start with "01" so a 2-char prefix is ambiguous.
+        let f1 = minimal_parsed_file("a.md", vec![leaf_with_hash(hash_a)]);
+        let f2 = minimal_parsed_file("b.md", vec![leaf_with_hash(hash_b)]);
+        let index = build_vault_hash_index(&[f1, f2]);
+
+        let result = resolve_hash_prefix("01", &index);
+        match result {
+            HashResolutionResult::Ambiguous { candidates, .. } => {
+                assert_eq!(candidates.len(), 2);
+                // Candidates are sorted
+                assert!(candidates[0] < candidates[1]);
+            }
+            _ => panic!("expected Ambiguous"),
+        }
+    }
+
+    #[test]
+    fn resolve_hash_prefix_longer_prefix_disambiguates() {
+        let mut hash_a = [0x00_u8; 32];
+        hash_a[0] = 0x01;
+        hash_a[1] = 0x00;
+
+        let mut hash_b = [0x00_u8; 32];
+        hash_b[0] = 0x01;
+        hash_b[1] = 0xff;
+
+        let f1 = minimal_parsed_file("a.md", vec![leaf_with_hash(hash_a)]);
+        let f2 = minimal_parsed_file("b.md", vec![leaf_with_hash(hash_b)]);
+        let index = build_vault_hash_index(&[f1, f2]);
+
+        // "0100" uniquely identifies hash_a
+        let result = resolve_hash_prefix("0100", &index);
+        match result {
+            HashResolutionResult::Found { full_hash, .. } => {
+                assert!(full_hash.starts_with("0100"));
+            }
+            _ => panic!("expected Found"),
+        }
     }
 }
