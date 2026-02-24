@@ -3,27 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 576,
-    "deletions": 86,
+    "files_changed": 2,
+    "insertions": 497,
+    "deletions": 16,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/main.rs",
-      "src/merkle.rs",
-      "src/reason/mod.rs"
+      "src/drift.rs",
+      "src/main.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-source-validation-changes",
-      "content": "Modified 4 files (+576, -86): .hence/context-manifest.json, src/main.rs, src/merkle.rs, src/reason/mod.rs",
+      "key": "task-explicit-grounding-drift-changes",
+      "content": "Modified 2 files (+497, -16): src/drift.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/source-validation-v1",
-  "evaluated_at": "2026-02-24T04:44:02Z",
+  "branch_name": "hence/explicit-grounding-drift-v1",
+  "evaluated_at": "2026-02-24T04:52:06Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
