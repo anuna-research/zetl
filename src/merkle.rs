@@ -4,7 +4,9 @@
 //! per §4.1–4.2 and §4.6.
 //!
 //! Also provides hash prefix resolution (§3.3 resolution rule 1, REQ-042a) via
-//! [`build_vault_hash_index`] and [`resolve_hash_prefix`].
+//! [`build_vault_hash_index`] and [`resolve_hash_prefix`], and block-id resolution
+//! (§3.3 rules 2–3, REQ-042b, REQ-042c) via [`resolve_local_block_id`] and
+//! [`resolve_cross_file_block_id`].
 
 use crate::types::{ContentHash, LeafType, MerkleLeaf, ParsedFile, Section, SplLeafHash};
 use std::collections::HashMap;
@@ -531,6 +533,117 @@ pub fn resolve_hash_prefix(prefix: &str, index: &VaultHashIndex) -> HashResoluti
     }
 }
 
+// ── Block-id resolution (§3.3 rules 2–3, REQ-042b, REQ-042c) ─────────────────
+
+/// Error returned when a `^block-id` or `[[Page^block-id]]` reference cannot
+/// be resolved to a Merkle leaf (REQ-042b, REQ-042c).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockIdResolutionError {
+    /// No leaf carrying the given `block_id` annotation was found in the target
+    /// file.
+    BlockIdNotFound {
+        block_id: String,
+        file: PathBuf,
+    },
+    /// The page name in a cross-file reference could not be resolved to any
+    /// known file in the vault.
+    PageNotFound {
+        page_name: String,
+    },
+}
+
+impl std::fmt::Display for BlockIdResolutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BlockIdNotFound { block_id, file } => {
+                write!(
+                    f,
+                    "block id '^{}' not found in '{}'",
+                    block_id,
+                    file.display()
+                )
+            }
+            Self::PageNotFound { page_name } => {
+                write!(f, "page '{}' not found in vault", page_name)
+            }
+        }
+    }
+}
+
+impl std::error::Error for BlockIdResolutionError {}
+
+/// Resolve a local block-id reference (`^block-id`) within a single file's
+/// Merkle leaves (REQ-042b).
+///
+/// Scans `leaves` for the first leaf whose [`MerkleLeaf::block_id`] annotation
+/// equals `block_id` (case-sensitive).  Returns the leaf's [`ContentHash`] when
+/// found, or `None` if no matching leaf exists.
+///
+/// Callers should treat a `None` result as a static validation error.
+pub fn resolve_local_block_id(leaves: &[MerkleLeaf], block_id: &str) -> Option<ContentHash> {
+    leaves
+        .iter()
+        .find(|leaf| leaf.block_id.as_deref() == Some(block_id))
+        .map(|leaf| leaf.hash)
+}
+
+/// Resolve a cross-file block-id reference (`[[Page^block-id]]`) to a
+/// [`ContentHash`] (REQ-042c).
+///
+/// # Algorithm
+///
+/// 1. Resolve `page_name` to a canonical page name using standard wikilink
+///    page-name matching ([`crate::scanner::resolve_page_name`]) against
+///    `file_index`.
+/// 2. Locate the corresponding [`ParsedFile`] entry in `files`.
+/// 3. Call [`resolve_local_block_id`] on the target file's Merkle leaves.
+///
+/// # Errors
+///
+/// Returns [`BlockIdResolutionError::PageNotFound`] if the page name cannot be
+/// resolved, or [`BlockIdResolutionError::BlockIdNotFound`] if no leaf in the
+/// resolved file carries the given `block_id`.  Both are static validation
+/// errors — not drift diagnostics.
+pub fn resolve_cross_file_block_id(
+    files: &[ParsedFile],
+    file_index: &[(String, PathBuf)],
+    page_name: &str,
+    block_id: &str,
+) -> Result<ContentHash, BlockIdResolutionError> {
+    use crate::scanner::resolve_page_name;
+
+    // Step 1: Resolve the page name to a canonical page name.
+    let resolved_page =
+        resolve_page_name(page_name, file_index).ok_or_else(|| BlockIdResolutionError::PageNotFound {
+            page_name: page_name.to_string(),
+        })?;
+
+    // Step 2: Locate the file path for the resolved page name.
+    let target_path = file_index
+        .iter()
+        .find(|(p, _)| p == &resolved_page)
+        .map(|(_, path)| path)
+        .ok_or_else(|| BlockIdResolutionError::PageNotFound {
+            page_name: page_name.to_string(),
+        })?;
+
+    // Step 3: Find the ParsedFile with that path.
+    let parsed_file = files
+        .iter()
+        .find(|f| &f.path == target_path)
+        .ok_or_else(|| BlockIdResolutionError::PageNotFound {
+            page_name: page_name.to_string(),
+        })?;
+
+    // Step 4: Resolve the block-id within the file's Merkle leaves.
+    resolve_local_block_id(&parsed_file.merkle_leaves, block_id).ok_or_else(|| {
+        BlockIdResolutionError::BlockIdNotFound {
+            block_id: block_id.to_string(),
+            file: target_path.clone(),
+        }
+    })
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -545,6 +658,7 @@ mod tests {
             end_line: 1,
             hash,
             spl_hashes: None,
+            block_id: None,
         }
     }
 
@@ -768,6 +882,7 @@ mod tests {
             end_line: start_line,
             hash,
             spl_hashes: None,
+            block_id: None,
         }
     }
 
@@ -1183,6 +1298,7 @@ mod tests {
             end_line: 1,
             hash,
             spl_hashes: None,
+            block_id: None,
         }
     }
 
@@ -1329,5 +1445,169 @@ mod tests {
             }
             _ => panic!("expected Found"),
         }
+    }
+
+    // ── resolve_local_block_id ─────────────────────────────────────────────
+
+    fn leaf_with_block_id(hash: ContentHash, block_id: &str) -> MerkleLeaf {
+        MerkleLeaf {
+            node_type: LeafType::Paragraph,
+            start_line: 1,
+            end_line: 1,
+            hash,
+            spl_hashes: None,
+            block_id: Some(block_id.to_string()),
+        }
+    }
+
+    #[test]
+    fn resolve_local_block_id_found() {
+        let hash = [0xaa_u8; 32];
+        let leaves = vec![
+            leaf_with_hash([0x01_u8; 32]),
+            leaf_with_block_id(hash, "my-block"),
+            leaf_with_hash([0x03_u8; 32]),
+        ];
+        let result = resolve_local_block_id(&leaves, "my-block");
+        assert_eq!(result, Some(hash));
+    }
+
+    #[test]
+    fn resolve_local_block_id_not_found() {
+        let leaves = vec![
+            leaf_with_hash([0x01_u8; 32]),
+            leaf_with_hash([0x02_u8; 32]),
+        ];
+        let result = resolve_local_block_id(&leaves, "missing");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn resolve_local_block_id_empty_leaves() {
+        let result = resolve_local_block_id(&[], "any-id");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn resolve_local_block_id_case_sensitive() {
+        let hash = [0xbb_u8; 32];
+        let leaves = vec![leaf_with_block_id(hash, "MyBlock")];
+        // Exact case match
+        assert_eq!(resolve_local_block_id(&leaves, "MyBlock"), Some(hash));
+        // Different case → not found
+        assert_eq!(resolve_local_block_id(&leaves, "myblock"), None);
+    }
+
+    #[test]
+    fn resolve_local_block_id_returns_first_match() {
+        let hash_a = [0x11_u8; 32];
+        let hash_b = [0x22_u8; 32];
+        // Two leaves with the same block_id (unusual, but handle gracefully).
+        let leaves = vec![
+            leaf_with_block_id(hash_a, "dup"),
+            leaf_with_block_id(hash_b, "dup"),
+        ];
+        assert_eq!(resolve_local_block_id(&leaves, "dup"), Some(hash_a));
+    }
+
+    // ── resolve_cross_file_block_id ────────────────────────────────────────
+
+    fn make_parsed_file_with_leaves(
+        path: &str,
+        page_name: &str,
+        leaves: Vec<MerkleLeaf>,
+    ) -> ParsedFile {
+        ParsedFile {
+            path: PathBuf::from(path),
+            page_name: page_name.to_string(),
+            links: vec![],
+            spl_blocks: vec![],
+            diagnostics: vec![],
+            mtime: std::time::SystemTime::UNIX_EPOCH,
+            merkle_leaves: leaves,
+            file_merkle: None,
+        }
+    }
+
+    #[test]
+    fn resolve_cross_file_block_id_found() {
+        let target_hash = [0xcc_u8; 32];
+        let file = make_parsed_file_with_leaves(
+            "notes/Page A.md",
+            "Page A",
+            vec![leaf_with_block_id(target_hash, "para-ref")],
+        );
+        let files = vec![file];
+        let file_index = vec![("Page A".to_string(), PathBuf::from("notes/Page A.md"))];
+
+        let result = resolve_cross_file_block_id(&files, &file_index, "Page A", "para-ref");
+        assert_eq!(result, Ok(target_hash));
+    }
+
+    #[test]
+    fn resolve_cross_file_block_id_page_not_found() {
+        let files: Vec<ParsedFile> = vec![];
+        let file_index: Vec<(String, PathBuf)> = vec![];
+
+        let result =
+            resolve_cross_file_block_id(&files, &file_index, "Nonexistent Page", "some-id");
+        assert_eq!(
+            result,
+            Err(BlockIdResolutionError::PageNotFound {
+                page_name: "Nonexistent Page".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn resolve_cross_file_block_id_block_id_not_found() {
+        let file = make_parsed_file_with_leaves(
+            "notes/Page B.md",
+            "Page B",
+            vec![leaf_with_hash([0x01_u8; 32])],
+        );
+        let files = vec![file];
+        let file_index = vec![("Page B".to_string(), PathBuf::from("notes/Page B.md"))];
+
+        let result =
+            resolve_cross_file_block_id(&files, &file_index, "Page B", "missing-block");
+        assert_eq!(
+            result,
+            Err(BlockIdResolutionError::BlockIdNotFound {
+                block_id: "missing-block".to_string(),
+                file: PathBuf::from("notes/Page B.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn resolve_cross_file_block_id_case_insensitive_page_name() {
+        let target_hash = [0xdd_u8; 32];
+        let file = make_parsed_file_with_leaves(
+            "Page C.md",
+            "Page C",
+            vec![leaf_with_block_id(target_hash, "anchor")],
+        );
+        let files = vec![file];
+        let file_index = vec![("Page C".to_string(), PathBuf::from("Page C.md"))];
+
+        // resolve_page_name is case-insensitive for page names.
+        let result = resolve_cross_file_block_id(&files, &file_index, "page c", "anchor");
+        assert_eq!(result, Ok(target_hash));
+    }
+
+    #[test]
+    fn block_id_resolution_error_display() {
+        let e1 = BlockIdResolutionError::BlockIdNotFound {
+            block_id: "foo".to_string(),
+            file: PathBuf::from("bar.md"),
+        };
+        assert!(e1.to_string().contains("foo"));
+        assert!(e1.to_string().contains("bar.md"));
+
+        let e2 = BlockIdResolutionError::PageNotFound {
+            page_name: "Missing".to_string(),
+        };
+        assert!(e2.to_string().contains("Missing"));
     }
 }

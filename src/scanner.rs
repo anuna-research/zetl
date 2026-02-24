@@ -585,6 +585,28 @@ pub fn page_name_from_path(path: &Path) -> String {
         .to_string()
 }
 
+/// Extract an Obsidian block-id annotation from normalised leaf text (REQ-042b).
+///
+/// Obsidian block IDs are written as ` ^identifier` at the end of a block's
+/// content, where `identifier` consists solely of ASCII alphanumeric characters
+/// and hyphens.  Returns `Some(identifier)` if the pattern is found at the
+/// tail of `normalized_text`, `None` otherwise.
+pub(crate) fn extract_block_id(normalized_text: &str) -> Option<String> {
+    // Locate the last " ^" sequence.
+    let caret_pos = normalized_text.rfind(" ^")?;
+    let identifier = &normalized_text[caret_pos + 2..]; // skip the " ^"
+    // Identifier must be non-empty and only contain alphanumerics / hyphens.
+    if !identifier.is_empty()
+        && identifier
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        Some(identifier.to_string())
+    } else {
+        None
+    }
+}
+
 /// Extract SPL blocks from markdown content.
 ///
 /// Identifies fenced code blocks tagged `spl` or `spindle` (both backtick and tilde fences)
@@ -814,6 +836,7 @@ pub fn build_merkle_leaves<'a>(
                         end_line,
                         hash: hash_leaf(&LeafType::ThematicBreak, b"---"),
                         spl_hashes: None,
+                        block_id: None,
                     });
                 }
 
@@ -827,6 +850,7 @@ pub fn build_merkle_leaves<'a>(
                         end_line,
                         hash: hash_leaf(&LeafType::HtmlBlock, html.as_bytes()),
                         spl_hashes: None,
+                        block_id: None,
                     });
                 }
 
@@ -886,18 +910,34 @@ pub fn build_merkle_leaves<'a>(
 
                                 let leaf_type = current_leaf_type.take().unwrap();
 
+                                // Pre-compute normalised body text once so we can
+                                // both use it in the hash and inspect it for block IDs.
+                                let normalized_text = normalize(&text_buf);
+
+                                // Extract Obsidian block-id annotation (REQ-042b).
+                                // Only applicable to body-text leaf types; code/SPL/
+                                // frontmatter/HTML blocks cannot carry block IDs.
+                                let block_id: Option<String> = match &leaf_type {
+                                    LeafType::Paragraph
+                                    | LeafType::Heading { .. }
+                                    | LeafType::List { .. }
+                                    | LeafType::BlockQuote
+                                    | LeafType::Table => extract_block_id(&normalized_text),
+                                    _ => None,
+                                };
+
                                 // Compute hash input per §4.3.
                                 let hash_input: String = match &leaf_type {
                                     LeafType::Heading { level } => {
-                                        format!("{}{}", level, normalize(&text_buf))
+                                        format!("{}{}", level, &normalized_text)
                                     }
-                                    LeafType::Paragraph => normalize(&text_buf),
+                                    LeafType::Paragraph => normalized_text.clone(),
                                     LeafType::List { ordered } => {
                                         let flag = if *ordered { "1" } else { "0" };
-                                        format!("{}{}", flag, normalize(&text_buf))
+                                        format!("{}{}", flag, &normalized_text)
                                     }
-                                    LeafType::BlockQuote => normalize(&text_buf),
-                                    LeafType::Table => normalize(&text_buf),
+                                    LeafType::BlockQuote => normalized_text.clone(),
+                                    LeafType::Table => normalized_text.clone(),
                                     // Code blocks: language tag + raw content (whitespace-significant).
                                     LeafType::CodeBlock { language } => {
                                         let lang = language.as_deref().unwrap_or("");
@@ -924,6 +964,7 @@ pub fn build_merkle_leaves<'a>(
                                         end_line,
                                         hash: combined,
                                         spl_hashes: Some(spl),
+                                        block_id: None,
                                     });
                                 } else {
                                     let hash = hash_leaf(&leaf_type, hash_input.as_bytes());
@@ -933,6 +974,7 @@ pub fn build_merkle_leaves<'a>(
                                         end_line,
                                         hash,
                                         spl_hashes: None,
+                                        block_id,
                                     });
                                 }
 
@@ -2658,5 +2700,139 @@ code here
         let content = "# H1\n\n## H2\n\nPara.\n";
         let parsed = parse_file(Path::new("test.md"), content, "test");
         assert_eq!(parsed.merkle_leaves.len(), 3); // H1, H2, Para
+    }
+
+    // ── extract_block_id ──────────────────────────────────────────────────
+
+    #[test]
+    fn extract_block_id_basic() {
+        assert_eq!(
+            extract_block_id("Hello world ^my-block"),
+            Some("my-block".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_block_id_alphanumeric() {
+        assert_eq!(
+            extract_block_id("Some text ^abc123"),
+            Some("abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_block_id_dashes_only() {
+        assert_eq!(
+            extract_block_id("Text ^a-b-c"),
+            Some("a-b-c".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_block_id_no_annotation_returns_none() {
+        assert_eq!(extract_block_id("Plain paragraph text."), None);
+    }
+
+    #[test]
+    fn extract_block_id_caret_mid_sentence_not_trailing_returns_none() {
+        // The " ^" must be followed by the identifier to the end of string.
+        assert_eq!(extract_block_id("foo ^bar baz"), None);
+    }
+
+    #[test]
+    fn extract_block_id_empty_identifier_returns_none() {
+        assert_eq!(extract_block_id("Text ^"), None);
+    }
+
+    #[test]
+    fn extract_block_id_invalid_chars_in_identifier_returns_none() {
+        // Spaces inside the identifier are invalid.
+        assert_eq!(extract_block_id("Text ^foo bar"), None);
+    }
+
+    #[test]
+    fn extract_block_id_uppercase_and_digits() {
+        assert_eq!(
+            extract_block_id("Heading text ^Ref2024"),
+            Some("Ref2024".to_string())
+        );
+    }
+
+    // ── block_id extraction in build_merkle_leaves ────────────────────────
+
+    #[test]
+    fn leaf_paragraph_with_block_id() {
+        let leaves = parse_leaves("Hello world ^my-block\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "Paragraph");
+        assert_eq!(leaves[0].block_id, Some("my-block".to_string()));
+    }
+
+    #[test]
+    fn leaf_paragraph_without_block_id() {
+        let leaves = parse_leaves("Hello world.\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].block_id, None);
+    }
+
+    #[test]
+    fn leaf_heading_with_block_id() {
+        let leaves = parse_leaves("# My Heading ^heading-ref\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "Heading");
+        assert_eq!(leaves[0].block_id, Some("heading-ref".to_string()));
+    }
+
+    #[test]
+    fn leaf_list_with_block_id() {
+        // Obsidian block IDs on list items appear at the end of the list block.
+        let leaves = parse_leaves("- item one\n- item two ^list-id\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "List");
+        assert_eq!(leaves[0].block_id, Some("list-id".to_string()));
+    }
+
+    #[test]
+    fn leaf_code_block_no_block_id() {
+        // Code blocks never have block IDs extracted.
+        let leaves = parse_leaves("```rust\nfn main() {} ^not-an-id\n```\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "CodeBlock");
+        assert_eq!(leaves[0].block_id, None);
+    }
+
+    #[test]
+    fn leaf_spl_block_no_block_id() {
+        let leaves = parse_leaves("```spl\n(given foo)\n```\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "SplBlock");
+        assert_eq!(leaves[0].block_id, None);
+    }
+
+    #[test]
+    fn leaf_thematic_break_no_block_id() {
+        let leaves = parse_leaves("---\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "ThematicBreak");
+        assert_eq!(leaves[0].block_id, None);
+    }
+
+    #[test]
+    fn leaf_block_id_does_not_affect_hash_differently_from_content() {
+        // Two paragraphs with the same text but different block IDs should
+        // produce different hashes (block_id is part of the normalized content).
+        let a = parse_leaves("Same text ^id-alpha\n");
+        let b = parse_leaves("Same text ^id-beta\n");
+        assert_ne!(a[0].hash, b[0].hash);
+    }
+
+    #[test]
+    fn leaf_block_id_preserved_and_hash_includes_it() {
+        // The hash should differ from the same text without the block ID.
+        let with_id = parse_leaves("Some content ^myid\n");
+        let without = parse_leaves("Some content\n");
+        assert_ne!(with_id[0].hash, without[0].hash);
+        assert_eq!(with_id[0].block_id, Some("myid".to_string()));
+        assert_eq!(without[0].block_id, None);
     }
 }

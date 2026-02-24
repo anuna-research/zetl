@@ -172,6 +172,11 @@ pub struct MerkleLeaf {
     #[serde(with = "content_hash_serde")]
     pub hash: ContentHash,
     pub spl_hashes: Option<SplLeafHash>,
+    /// Obsidian block-id annotation (`^identifier`) extracted from the leaf's
+    /// normalised content (REQ-042b, REQ-042c).  `None` if the leaf carries no
+    /// block-id annotation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_id: Option<String>,
 }
 
 /// A heading-delimited section within a file's Merkle tree.
