@@ -3559,6 +3559,15 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
 
     let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
+    // Load theory cache for grounding freshness (REQ-044).
+    let theory_cache = load_theory_cache(&pipeline.vault_root).unwrap_or(None);
+
+    // Current vault Merkle root hex (written by run_pipeline → save_cache).
+    let vault_root_hash = load_vault_root_hex(&pipeline.vault_root).unwrap_or(None);
+
+    // theory_built_at comes from the theory cache's built_at field.
+    let theory_built_at = theory_cache.as_ref().and_then(|tc| tc.built_at.clone());
+
     // Normalize literal input: handle ~ prefix for negation
     let literal_str = literal_input.trim();
 
@@ -3629,7 +3638,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
     cross_refs
         .dedup_by(|a, b| a.from_page == b.from_page && a.to_page == b.to_page && a.line == b.line);
 
-    // Build per-conclusion output
+    // Build per-conclusion output — enrich each proof source with grounding freshness.
     let conclusion_entries: Vec<ProvenanceConclusionEntry> = matching
         .iter()
         .map(|c| {
@@ -3639,16 +3648,34 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
                 ConclusionType::DefeasiblyProvable => "+d",
                 ConclusionType::DefeasiblyNotProvable => "-d",
             };
+            let enriched_sources: Vec<EnrichedProofSource> = c
+                .proof_sources
+                .iter()
+                .map(|ps| {
+                    let grounding =
+                        compute_grounding(ps, &pipeline.files, theory_cache.as_ref());
+                    EnrichedProofSource {
+                        page: ps.page.clone(),
+                        path: ps.path.clone(),
+                        line: ps.line,
+                        rule_label: ps.rule_label.clone(),
+                        contribution: ps.contribution.clone(),
+                        grounding,
+                    }
+                })
+                .collect();
             ProvenanceConclusionEntry {
                 conclusion_type: tag.to_string(),
                 literal: c.literal.clone(),
-                proof_sources: c.proof_sources.clone(),
+                proof_sources: enriched_sources,
             }
         })
         .collect();
 
     let output = ProvenanceOutput {
         literal: literal_str.to_string(),
+        vault_root_hash,
+        theory_built_at,
         conclusions: conclusion_entries,
         source_pages: source_pages.clone(),
         cross_references: cross_refs.clone(),
@@ -3659,17 +3686,36 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
         OutputFormat::Table => {
             println!("Provenance for '{}':\n", literal_str);
 
+            if let Some(ref vr) = output.vault_root_hash {
+                println!("  Vault root hash: {vr}");
+            }
+            if let Some(ref ts) = output.theory_built_at {
+                println!("  Theory built at: {ts}");
+            }
+            if output.vault_root_hash.is_some() || output.theory_built_at.is_some() {
+                println!();
+            }
+
             for entry in &output.conclusions {
                 println!("  {} {}", entry.conclusion_type, entry.literal);
                 println!("  Proof sources:");
                 for ps in &entry.proof_sources {
-                    if let Some(ref label) = ps.rule_label {
-                        println!(
-                            "    [[{}]]:{} — {} ({})",
-                            ps.page, ps.line, ps.contribution, label
-                        );
+                    let label_part = if let Some(ref label) = ps.rule_label {
+                        format!(" ({})", label)
                     } else {
-                        println!("    [[{}]]:{} — {}", ps.page, ps.line, ps.contribution);
+                        String::new()
+                    };
+                    let freshness = match ps.grounding.fresh {
+                        Some(true) => " [fresh]",
+                        Some(false) => " [STALE]",
+                        None => "",
+                    };
+                    println!(
+                        "    [[{}]]:{} — {}{}{}",
+                        ps.page, ps.line, ps.contribution, label_part, freshness
+                    );
+                    if let Some(ref w) = ps.grounding.warning {
+                        println!("      Warning: {w}");
                     }
                 }
                 println!();
@@ -3696,6 +3742,8 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
 #[derive(Debug, Clone, Serialize)]
 struct ProvenanceOutput {
     literal: String,
+    vault_root_hash: Option<String>,
+    theory_built_at: Option<String>,
     conclusions: Vec<ProvenanceConclusionEntry>,
     source_pages: Vec<String>,
     cross_references: Vec<ProvenanceCrossRef>,
@@ -3706,7 +3754,7 @@ struct ProvenanceOutput {
 struct ProvenanceConclusionEntry {
     conclusion_type: String,
     literal: String,
-    proof_sources: Vec<zetl::reason::types::ProofSource>,
+    proof_sources: Vec<EnrichedProofSource>,
 }
 
 #[cfg(feature = "reason")]
@@ -3716,6 +3764,174 @@ struct ProvenanceCrossRef {
     to_page: String,
     direction: String,
     line: u32,
+}
+
+/// Grounding freshness info for a single proof source (REQ-044 / CON-012).
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct ProvenanceGrounding {
+    /// Grounding type: "section" (implicit, enclosing heading) or "explicit" (declared grounding).
+    #[serde(rename = "type")]
+    grounding_type: String,
+    /// Heading of the enclosing section (only present when type == "section").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    section_heading: Option<String>,
+    /// Source reference identifiers (only present when type == "explicit").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_refs: Option<Vec<String>>,
+    /// Whether the current grounding hash matches the one stored at theory-build time.
+    /// `null` when the theory cache has no stored grounding hash (first run or old cache).
+    fresh: Option<bool>,
+    /// Human-readable warning when `fresh` is false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warning: Option<String>,
+}
+
+/// A proof source enriched with grounding freshness (REQ-044).
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct EnrichedProofSource {
+    page: String,
+    path: std::path::PathBuf,
+    line: u32,
+    rule_label: Option<String>,
+    contribution: String,
+    grounding: ProvenanceGrounding,
+}
+
+/// Look up the current section grounding hash for an SPL block (identified by its
+/// start line) from the in-memory `ParsedFile` (REQ-044).
+///
+/// Returns `None` when the file has no `FileMerkle`, the SPL leaf is not found,
+/// or the section index is out of range.
+#[cfg(feature = "reason")]
+fn get_current_grounding_hash(
+    file: &zetl::types::ParsedFile,
+    spl_start_line: u32,
+) -> Option<zetl::types::ContentHash> {
+    let fm = file.file_merkle.as_ref()?;
+    let spl_leaf = fm.spl_leaves.iter().find(|l| l.start_line == spl_start_line)?;
+    let section = fm.sections.get(spl_leaf.section_index)?;
+    Some(section.grounding_hash)
+}
+
+/// Build a `ProvenanceGrounding` for one proof source by comparing the current
+/// scanner data against the theory cache (REQ-044 / CON-012).
+///
+/// The grounding type is determined by the theory cache entry:
+/// - "explicit" when the SPL block carries explicit grounding declarations
+/// - "section"  otherwise (implicit, enclosing heading-delimited section)
+///
+/// Freshness is computed by comparing the current section grounding hash
+/// (from the scanner-populated `FileMerkle`) against the hash stored in the
+/// theory cache at build time. `fresh = null` when the cache has no stored
+/// hash (first run or pre-v2 cache).
+#[cfg(feature = "reason")]
+fn compute_grounding(
+    proof_source: &zetl::reason::types::ProofSource,
+    files: &[zetl::types::ParsedFile],
+    theory_cache: Option<&zetl::cache::TheoryCache>,
+) -> ProvenanceGrounding {
+    use zetl::types::ContentHash;
+
+    // Find the ParsedFile for this proof source.
+    let Some(file) = files.iter().find(|f| f.path == proof_source.path) else {
+        return ProvenanceGrounding {
+            grounding_type: "section".to_string(),
+            section_heading: None,
+            source_refs: None,
+            fresh: None,
+            warning: None,
+        };
+    };
+
+    // Find the SplBlock whose fence range contains the rule/fact line.
+    let Some(spl_block) = file.spl_blocks.iter().find(|b| {
+        b.start_line <= proof_source.line && proof_source.line <= b.end_line
+    }) else {
+        return ProvenanceGrounding {
+            grounding_type: "section".to_string(),
+            section_heading: None,
+            source_refs: None,
+            fresh: None,
+            warning: None,
+        };
+    };
+
+    // Build the theory cache key used in `build_spl_block_cache`.
+    let key = format!("{}:{}", spl_block.source_file.display(), spl_block.start_line);
+
+    let Some(tc) = theory_cache else {
+        // No theory cache available — cannot determine freshness.
+        return ProvenanceGrounding {
+            grounding_type: "section".to_string(),
+            section_heading: None,
+            source_refs: None,
+            fresh: None,
+            warning: None,
+        };
+    };
+
+    let Some(cached) = tc.spl_blocks.get(&key) else {
+        // SPL block not present in theory cache (e.g. first run).
+        return ProvenanceGrounding {
+            grounding_type: "section".to_string(),
+            section_heading: None,
+            source_refs: None,
+            fresh: None,
+            warning: None,
+        };
+    };
+
+    // Determine grounding type from the cached entry.
+    let is_explicit = !cached.explicit_groundings.is_empty();
+    let grounding_type = if is_explicit { "explicit" } else { "section" };
+
+    let section_heading = if !is_explicit {
+        cached.section_heading.clone()
+    } else {
+        None
+    };
+
+    let source_refs: Option<Vec<String>> = if is_explicit {
+        let refs: Vec<String> = cached
+            .explicit_groundings
+            .iter()
+            .flat_map(|eg| eg.source_refs.iter().cloned())
+            .collect();
+        if refs.is_empty() { None } else { Some(refs) }
+    } else {
+        None
+    };
+
+    // Determine freshness: compare current section grounding hash vs cached.
+    let zero_hash: ContentHash = [0u8; 32];
+    let fresh: Option<bool> = if cached.section_grounding_hash == zero_hash {
+        // Zero hash means no grounding data was stored — fresh is indeterminate.
+        None
+    } else {
+        let current_hash = get_current_grounding_hash(file, spl_block.start_line);
+        current_hash.map(|h| h == cached.section_grounding_hash)
+    };
+
+    let warning = if fresh == Some(false) {
+        let msg = if is_explicit {
+            "Source content changed since theory was built"
+        } else {
+            "Section prose changed since theory was built"
+        };
+        Some(msg.to_string())
+    } else {
+        None
+    };
+
+    ProvenanceGrounding {
+        grounding_type: grounding_type.to_string(),
+        section_heading,
+        source_refs,
+        fresh,
+        warning,
+    }
 }
 
 /// Find documents that could potentially provide a given literal.

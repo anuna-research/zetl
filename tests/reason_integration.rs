@@ -1756,3 +1756,199 @@ fn test_ready_for_release_provable() {
         "ready-for-release should be +d from standalone.spl"
     );
 }
+
+// ===========================================================================
+// TEST-038: Provenance grounding freshness (REQ-044 / CON-012)
+// ===========================================================================
+
+/// TEST-038a: Provenance output includes vault_root_hash, theory_built_at, and
+/// per-source grounding objects when the theory cache is populated.
+#[test]
+fn test_038a_provenance_grounding_fields_present() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_reason_vault(dir.path());
+
+    // Run once with caching enabled so the theory cache is built and saved.
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    build_cmd.arg("-d").arg(dir.path().as_os_str());
+    build_cmd.arg("reason").arg("status");
+    run_json(&mut build_cmd);
+
+    // Now run provenance — theory cache should be present.
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    cmd.arg("-d").arg(dir.path().as_os_str());
+    cmd.arg("reason").arg("provenance").arg("bird");
+
+    let json = run_json(&mut cmd);
+
+    // Top-level fields must be present (REQ-044).
+    assert!(
+        json["vault_root_hash"].is_string(),
+        "vault_root_hash must be a string, got {:?}",
+        json["vault_root_hash"]
+    );
+    let vrh = json["vault_root_hash"].as_str().unwrap();
+    assert_eq!(vrh.len(), 64, "vault_root_hash must be 64 hex chars");
+
+    assert!(
+        json["theory_built_at"].is_string(),
+        "theory_built_at must be a string, got {:?}",
+        json["theory_built_at"]
+    );
+    let tba = json["theory_built_at"].as_str().unwrap();
+    assert!(
+        tba.ends_with('Z') && tba.contains('T'),
+        "theory_built_at must look like RFC3339, got {tba}"
+    );
+
+    // Each proof source must have a grounding object.
+    let conclusions = json["conclusions"].as_array().expect("conclusions");
+    assert!(!conclusions.is_empty(), "bird should have conclusions");
+    for c in conclusions {
+        for ps in c["proof_sources"].as_array().expect("proof_sources") {
+            let grounding = &ps["grounding"];
+            assert!(
+                grounding.is_object(),
+                "each proof source must have a grounding object"
+            );
+            let gt = grounding["type"].as_str().expect("grounding.type must be string");
+            assert!(
+                gt == "section" || gt == "explicit",
+                "grounding.type must be 'section' or 'explicit', got {gt}"
+            );
+        }
+    }
+}
+
+/// TEST-038b: When no theory cache exists, grounding.fresh is JSON null for each source.
+#[test]
+fn test_038b_provenance_grounding_fresh_null_without_cache() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_reason_vault(dir.path());
+
+    // Run with --no-cache: theory is rebuilt but NOT saved, so no theory cache on disk.
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("reason")
+            .arg("provenance")
+            .arg("bird"),
+    );
+
+    let conclusions = json["conclusions"].as_array().expect("conclusions");
+    for c in conclusions {
+        for ps in c["proof_sources"].as_array().expect("proof_sources") {
+            let fresh = &ps["grounding"]["fresh"];
+            assert!(
+                fresh.is_null(),
+                "grounding.fresh must be null when no theory cache exists, got {fresh}"
+            );
+        }
+    }
+}
+
+/// TEST-038c: Grounding is fresh=true when section prose is unchanged after theory build.
+#[test]
+fn test_038c_provenance_grounding_fresh_true_unchanged() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_reason_vault(dir.path());
+
+    // First run: build theory cache.
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    build_cmd.arg("-d").arg(dir.path().as_os_str());
+    build_cmd.arg("reason").arg("status");
+    run_json(&mut build_cmd);
+
+    // Second run: nothing changed — grounding should be fresh.
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    cmd.arg("-d").arg(dir.path().as_os_str());
+    cmd.arg("reason").arg("provenance").arg("bird");
+    let json = run_json(&mut cmd);
+
+    let conclusions = json["conclusions"].as_array().expect("conclusions");
+    // At least one source must report fresh=true (Bird Facts is unchanged).
+    let any_fresh = conclusions.iter().any(|c| {
+        c["proof_sources"]
+            .as_array()
+            .unwrap_or(&vec![])
+            .iter()
+            .any(|ps| ps["grounding"]["fresh"] == true)
+    });
+    assert!(any_fresh, "at least one source should be fresh=true when vault is unchanged");
+}
+
+/// TEST-038d: Grounding is fresh=false when section prose changes after theory build.
+///
+/// Changing prose in the section (but NOT the SPL block) leaves the theory cache
+/// valid (SPL AST hash is unchanged) but makes the section grounding hash stale.
+#[test]
+fn test_038d_provenance_grounding_fresh_false_section_changed() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_reason_vault(dir.path());
+
+    // First run: build theory cache.
+    let mut build_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    build_cmd.arg("-d").arg(dir.path().as_os_str());
+    build_cmd.arg("reason").arg("status");
+    run_json(&mut build_cmd);
+
+    // Modify the prose AFTER the SPL block in Bird Facts.md.
+    // The section heading and SPL block remain at the same lines so the theory
+    // cache key ("Bird Facts.md:5") and SPL AST hash are unchanged — the theory
+    // cache remains valid.  However the section grounding hash changes because
+    // the section now contains additional prose.
+    write_file(
+        dir.path(),
+        "Bird Facts.md",
+        "\
+# Bird Facts
+
+Birds are a common topic in defeasible reasoning. See also [[Penguin Facts]].
+
+```spl
+; Birds typically fly
+(given bird)
+(normally r-bird-flies
+  bird
+  flies)
+```
+
+This demonstrates basic defeasible rules about birds.
+An extra paragraph has been added here to change the section grounding hash.
+",
+    );
+
+    // Second run: SPL AST hash unchanged → theory cache hit, but section prose changed.
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    cmd.arg("-d").arg(dir.path().as_os_str());
+    cmd.arg("reason").arg("provenance").arg("bird");
+    let json = run_json(&mut cmd);
+
+    let conclusions = json["conclusions"].as_array().expect("conclusions");
+
+    // There must be at least one proof source from Bird Facts with fresh=false.
+    let stale_bird_facts_source = conclusions.iter().find_map(|c| {
+        c["proof_sources"]
+            .as_array()
+            .unwrap_or(&vec![])
+            .iter()
+            .find(|ps| {
+                ps["page"].as_str() == Some("Bird Facts")
+                    && ps["grounding"]["fresh"] == false
+            })
+            .cloned()
+    });
+
+    assert!(
+        stale_bird_facts_source.is_some(),
+        "Bird Facts proof source should have fresh=false after prose change, \
+         conclusions: {conclusions:?}"
+    );
+
+    let stale_source = stale_bird_facts_source.unwrap();
+    let warning = stale_source["grounding"]["warning"].as_str();
+    assert_eq!(
+        warning,
+        Some("Section prose changed since theory was built"),
+        "stale section grounding should carry the expected warning"
+    );
+}
