@@ -4,26 +4,26 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 4,
-    "insertions": 226,
-    "deletions": 19,
+    "insertions": 127,
+    "deletions": 8,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
       "src/main.rs",
-      "src/view/app.rs"
+      "src/view/fuzzy.rs",
+      "src/view/mod.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cli-entry-changes",
-      "content": "Modified 4 files (+226, -19): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/view/app.rs",
+      "key": "task-fuzzy-suggestion-changes",
+      "content": "Modified 4 files (+127, -8): .hence/context-manifest.json, src/main.rs, src/view/fuzzy.rs, src/view/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cli-entry-v1",
-  "evaluated_at": "2026-02-24T07:07:20Z",
+  "branch_name": "hence/fuzzy-suggestion-v1",
+  "evaluated_at": "2026-02-24T07:12:56Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
