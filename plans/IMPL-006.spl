@@ -1,0 +1,696 @@
+;; ════════════════════════════════════════════════════════════════════════════
+;; IMPL-006: Content-Addressed Merkle Tree over Markdown and SPL AST
+;; Implementation plan for SPEC-006
+;; ════════════════════════════════════════════════════════════════════════════
+
+(meta plan
+  (id "IMPL-006")
+  (title "Content-Addressed Merkle Tree over Markdown and SPL AST")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-02-24")
+  (author "agent:claude")
+  (spec "SPEC-006")
+  (description "Implement a content-addressed Merkle tree built transparently during zetl index. Every block-level AST node is BLAKE3-hashed into a hierarchy. Enables: smarter caching (theory rebuilds only on SPL changes), drift detection (prose changed but SPL unchanged), content grounding (SPL facts linked to source paragraphs), and content-addressed references (zetl blocks command). Four phases: P0 core Merkle infrastructure, P1 section grounding and drift, P2 explicit grounding and content discovery, P3 tests and observability."))
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Agents
+;; ════════════════════════════════════════════════════════════════════════════
+
+(given agent-claude-available)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 0 — Prerequisites
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Add blake3 dependency ──────────────────────────────────────────
+
+(given task-blake3-dep)
+(given no-deps-blake3-dep)
+
+(meta task-blake3-dep
+  (description "Add the blake3 crate to Cargo.toml as a regular (non-optional) dependency. Per ADR-008, blake3 is selected over SHA-256 for speed (~5 GB/s vs ~500 MB/s) and its built-in Merkle tree design. Add: blake3 = '1' to [dependencies]. Verify cargo check passes. The binary size increase (~100 KB) is acceptable per ADR-008.")
+  (acceptance "Cargo.toml has blake3 = '1' in [dependencies]; cargo check --all-features passes; cargo test passes")
+  (file "Cargo.toml")
+  (req "REQ-037")
+  (adr "ADR-008"))
+
+(normally r-ready-blake3-dep
+  (and task-blake3-dep no-deps-blake3-dep)
+  ready-blake3-dep)
+
+(meta r-ready-blake3-dep
+  (description "Blake3 is a prerequisite — no prior tasks needed")
+  (justification "All Merkle hashing tasks depend on the blake3 crate being available"))
+
+;; ── Task: Define Merkle and Drift types ──────────────────────────────────
+
+(given task-merkle-types)
+
+(meta task-merkle-types
+  (description "Add all new types needed for SPEC-006 to src/types.rs. Implement: 1) type ContentHash = [u8; 32], 2) enum LeafType { Heading { level: u8 }, Paragraph, CodeBlock { language: Option<String> }, SplBlock, List { ordered: bool }, BlockQuote, Table, Frontmatter, ThematicBreak, HtmlBlock }, 3) struct SplLeafHash { content_hash: ContentHash, ast_hash: ContentHash }, 4) struct MerkleLeaf { node_type: LeafType, start_line: u32, end_line: u32, hash: ContentHash, spl_hashes: Option<SplLeafHash> }, 5) struct Section { heading_line: u32, heading_text: String, heading_level: u8, leaf_range: (usize, usize), grounding_hash: ContentHash }, 6) struct FileMerkle { root_hash: ContentHash, sections: Vec<Section>, spl_leaves: Vec<SplLeafCached> }, 7) struct SplLeafCached { start_line: u32, content_hash: ContentHash, ast_hash: ContentHash, section_index: usize, explicit_groundings: Vec<ExplicitGrounding> }, 8) struct ExplicitGrounding { construct: String, source_refs: Vec<String>, targets: Vec<ResolvedTarget> }, 9) struct ResolvedTarget { source_ref: String, target_file: PathBuf, target_leaf_hash: ContentHash }, 10) struct DriftDiagnostic { file: PathBuf, spl_line: u32, drift_type: DriftType, severity: DriftSeverity, message: String }, 11) enum DriftType { SectionDrift { section_heading: String }, ExplicitDrift { construct: String, source_ref: String } }, 12) enum DriftSeverity { Info, Warning }. All types derive Serialize, Deserialize, Debug, Clone where appropriate. ContentHash serializes as hex string.")
+  (acceptance "All types compile; serde derives present; ContentHash serializes to hex; cargo check --all-features passes; no existing tests broken")
+  (file "src/types.rs")
+  (req "REQ-037, REQ-038, REQ-041, REQ-043"))
+
+(normally r-ready-merkle-types
+  (and task-merkle-types completed-blake3-dep)
+  ready-merkle-types)
+
+(meta r-ready-merkle-types
+  (description "Types depend on blake3 crate for ContentHash type usage")
+  (justification "ContentHash = [u8; 32] and associated impls may reference blake3 types"))
+
+;; ── Task: Add Merkle demo vault content ──────────────────────────────────
+
+(given task-demo-vault-merkle)
+
+(meta task-demo-vault-merkle
+  (description "Extend demo-vault with content that exercises Merkle hashing, section grounding, and drift detection. Add or update: 1) demo-vault/decisions/Redis vs Memcached.md — add sections with headings (## Benchmark Results, ## Analysis), a metrics table with ^benchmark-results block-id tag, and an SPL block using (meta redis-fast-enough (source \"^benchmark-results\")), 2) demo-vault/architecture/Performance.md — add a paragraph tagged ^perf-numbers with performance requirements, 3) demo-vault/decisions/Deployment Decision.md — add cross-file SPL grounding: (meta perf-acceptable (source \"[[Performance^perf-numbers]]\")), 4) demo-vault/theories/caching.spl — standalone SPL file with facts grounded via Merkle hash (use placeholder hash from a prior zetl blocks run, or a realistic example). Files must have multiple ^block-id tags, headings at multiple levels, and SPL blocks both with and without explicit source metadata.")
+  (acceptance "demo-vault has at least 3 files with ^block-id tags; at least 1 cross-file source reference; at least 1 standalone .spl file with explicit source; zetl index runs without errors on extended demo-vault; zetl check produces no errors on the new content (after index)")
+  (file "demo-vault/decisions/, demo-vault/architecture/, demo-vault/theories/")
+  (req "REQ-041, REQ-042, REQ-045"))
+
+(normally r-ready-demo-vault-merkle
+  (and task-demo-vault-merkle no-deps-blake3-dep)
+  ready-demo-vault-merkle)
+
+(meta r-ready-demo-vault-merkle
+  (description "Demo vault can be prepared early without code changes")
+  (justification "Fixtures for testing all subsequent Merkle features"))
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 1 — P0: Core Merkle Infrastructure
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Extend scanner with Merkle leaf grouper ────────────────────────
+
+(given task-leaf-grouper)
+
+(meta task-leaf-grouper
+  (description "Extend src/scanner.rs to group pulldown-cmark events into block-level MerkleLeaf nodes during the existing file parse pass. The grouper processes the same pulldown-cmark event stream as wikilink and SPL extraction — no second parse pass (per §6.4). Map event sequences to leaf types per §4.3: Start(Heading)..End(Heading) → Heading{level}, Start(Paragraph)..End(Paragraph) → Paragraph, Start(CodeBlock(Fenced(\"spl\")))..End(CodeBlock) → SplBlock (flagged for dual hashing), other fenced code → CodeBlock{language}, Start(List)..End(List) → List{ordered}, Start(BlockQuote)..End(BlockQuote) → BlockQuote, Start(Table)..End(Table) → Table, Start(MetadataBlock)..End(MetadataBlock) → Frontmatter, Rule → ThematicBreak, block-level Html → HtmlBlock. Track byte ranges from pulldown-cmark's range output to compute start_line/end_line for each leaf. Apply normalisation rules from §4.3: collapse whitespace, trim, strip bold/italic/strikethrough but preserve [[wikilinks]], standard links, images; preserve case; normalise line endings to \\n. Return Vec<MerkleLeaf> from a new build_merkle_leaves(content: &str, events: &[(Event, Range<usize>)]) function. Add leaf_count to ParsedFile or return alongside it.")
+  (acceptance "Scanner builds MerkleLeaf vec for each file; leaf types match §4.3 table exactly; start_line/end_line are correct 1-indexed; normalisation preserves wikilinks but strips bold/italic; SPL fenced blocks get SplBlock leaf type; line count agrees with raw file; no second parse pass; unit tests per TEST-038 normalisation scenario")
+  (file "src/scanner.rs, src/types.rs")
+  (req "REQ-037a, REQ-037b")
+  (test "TEST-038"))
+
+(normally r-ready-leaf-grouper
+  (and task-leaf-grouper completed-merkle-types completed-blake3-dep)
+  ready-leaf-grouper)
+
+(meta r-ready-leaf-grouper
+  (description "Leaf grouper needs MerkleLeaf type and blake3 available")
+  (justification "build_merkle_leaves returns Vec<MerkleLeaf> which requires the type to exist"))
+
+;; ── Task: Compute BLAKE3 leaf hashes and file/vault roots ────────────────
+
+(given task-merkle-roots)
+
+(meta task-merkle-roots
+  (description "Implement BLAKE3 hashing for all leaf nodes and compute file and vault Merkle roots per §4.1-4.2 and §4.6. Leaf hashing: ContentHash = BLAKE3(type_tag_byte ‖ normalised_content_bytes) for all non-SPL leaves. The type_tag_byte is a unique sentinel per LeafType variant (e.g., Heading=0x01, Paragraph=0x02, etc.). File Merkle root: ContentHash = BLAKE3(leaf1_hash ‖ leaf2_hash ‖ … ‖ leafN_hash) in document order. Vault root: ContentHash = BLAKE3(file1_hash ‖ file2_hash ‖ … ‖ fileM_hash) sorted by canonical relative path (UTF-8 lexicographic, forward-slash normalised) per §4.6. Store per-file root in FileMerkle::root_hash. Store vault root in the cache index. Expose compute_leaf_hash, compute_file_root, compute_vault_root as testable functions in a new src/merkle.rs module (or inline in scanner.rs). SPL leaf hashing is handled separately in task-spl-dual-hashing — leave SplBlock leaves with a placeholder sentinel hash for now.")
+  (acceptance "compute_leaf_hash produces deterministic BLAKE3 hashes; file Merkle root changes when any leaf changes; vault root is deterministic regardless of scan order; vault root serialised as hex string in cache; standalone .spl files produce a single-leaf file root; TEST-038 determinism scenario passes")
+  (file "src/merkle.rs (new), src/scanner.rs, src/cache.rs")
+  (req "REQ-037c, REQ-037d, REQ-037e")
+  (adr "ADR-008")
+  (test "TEST-038"))
+
+(normally r-ready-merkle-roots
+  (and task-merkle-roots completed-leaf-grouper)
+  ready-merkle-roots)
+
+(meta r-ready-merkle-roots
+  (description "Hashing requires the leaf grouper to produce MerkleLeaf structs first")
+  (justification "compute_file_root consumes Vec<MerkleLeaf> from build_merkle_leaves"))
+
+;; ── Task: SPL leaf dual hashing ──────────────────────────────────────────
+
+(given task-spl-dual-hashing)
+
+(meta task-spl-dual-hashing
+  (description "Implement dual hashing for SplBlock leaves per §4.4. For each SplBlock leaf: 1) content_hash = BLAKE3(normalised_raw_spl_text) — normalise whitespace and strip SPL comments (;; comment lines), 2) ast_hash = BLAKE3(canonically_serialised_spl_ast) where canonical serialisation means rules sorted by label, facts sorted by literal, superiority sorted by pair. Use spindle-parser to parse the SPL text; if parsing fails, ast_hash = [0u8; 32] (sentinel) and emit a diagnostic. The combined SplBlock leaf hash = BLAKE3(content_hash_bytes ‖ ast_hash_bytes) feeds into the file Merkle root. Implement this in the reason feature gate (#[cfg(feature = \"reason\")]) since it requires spindle-parser. When the reason feature is off, fall back to content_hash only for both content_hash and ast_hash. Store SplLeafHash { content_hash, ast_hash } in SplLeafCached. Expose compute_spl_hashes(content: &str) -> Result<SplLeafHash> as a testable function.")
+  (acceptance "SPL content_hash changes when SPL text changes; SPL ast_hash is identical for two logically-equivalent but differently-formatted SPL blocks; SPL ast_hash is [0; 32] for unparseable blocks and a diagnostic is emitted; combined leaf hash feeds correctly into file Merkle root; TEST-039 all three scenarios pass; feature-gated correctly: compiles without reason feature")
+  (file "src/merkle.rs or src/reason/merkle.rs, src/scanner.rs")
+  (req "REQ-038")
+  (test "TEST-039"))
+
+(normally r-ready-spl-dual-hashing
+  (and task-spl-dual-hashing completed-leaf-grouper)
+  ready-spl-dual-hashing)
+
+(meta r-ready-spl-dual-hashing
+  (description "Dual hashing builds on the leaf grouper to identify SplBlock leaves")
+  (justification "SplBlock leaves are identified during event grouping; dual hashing replaces their placeholder hash"))
+
+;; ── Task: Upgrade cache format to v2 ─────────────────────────────────────
+
+(given task-cache-format-v2)
+
+(meta task-cache-format-v2
+  (description "Upgrade both cache files to version 2 with Merkle fields per §12. index.json v2: increment CACHE_VERSION to 2, add merkle_root: String (hex ContentHash) to each file entry, add vault_root_hash: String at top level. theory.json v2: increment THEORY_CACHE_VERSION to 2, add vault_root_hash: String, built_at: String (RFC3339), spl_blocks: HashMap<String, SplBlockCache> where key is 'path:line' and value has ast_hash, content_hash, section_heading, section_grounding_hash, explicit_groundings fields per §12.2. When loading a v1 cache, return None (force full re-index/rebuild on first run after upgrade). When loading a v2 cache with missing merkle_root fields, treat that file as needing reparse. The git_commit/git_dirty fields in theory.json are Option<String>/Option<bool> per §1.6 and are absent in index.json per the VCS boundary contract. Implement FileMerkle serialisation/deserialisation as part of the cache schema.")
+  (acceptance "Cache loads/saves correctly at version 2; v1 cache correctly triggers full re-index (no panic, no partial load); vault_root_hash present in saved index; spl_blocks populated in saved theory after build; git fields are Option<> and absent when no .git; cargo test passes including existing cache tests")
+  (file "src/cache.rs")
+  (req "REQ-037, REQ-038, REQ-039")
+  (test "TEST-038, TEST-050"))
+
+(normally r-ready-cache-format-v2
+  (and task-cache-format-v2 completed-merkle-roots completed-spl-dual-hashing)
+  ready-cache-format-v2)
+
+(meta r-ready-cache-format-v2
+  (description "Cache format upgrade needs to know what fields to store")
+  (justification "Both file Merkle roots and SPL dual hashes must be defined before the schema can be finalised"))
+
+;; ── Task: Two-tier cache invalidation ────────────────────────────────────
+
+(given task-two-tier-invalidation)
+
+(meta task-two-tier-invalidation
+  (description "Replace the existing mtime-only cache invalidation with two-tier invalidation per REQ-039 and ADR-009. Tier 1 (fast): check file mtime. If unchanged since cache, skip hashing — reuse all cached Merkle nodes. Tier 2 (authoritative): if mtime changed, re-read and re-hash the file. If the computed file Merkle root equals the cached root, skip all downstream processing (wikilink re-extraction, SPL re-extraction, theory cache invalidation). Only if the root differs does full reprocessing occur. Implement in cache.rs files_needing_reparse, updating the signature to return (Vec<PathBuf>, Vec<PathBuf>) where the first vec is 'needs full reparse' and the second is 'mtime changed but content unchanged'. Update src/main.rs cmd_index to use the two-tier result and skip downstream processing for tier-2 hits. Also update cmd_reason_status to use the new invalidation path: a file with unchanged SPL AST hashes does not trigger theory rebuild even if its file Merkle root changed (prose edit only).")
+  (acceptance "Touching a file without changing content does NOT trigger wikilink/SPL re-extraction (Tier 2 hit); editing prose in an SPL file changes file root but reuses cached SPL AST hash and does not rebuild theory; editing SPL content invalidates theory cache; TEST-040 all three scenarios pass; no regression in existing cache invalidation tests")
+  (file "src/cache.rs, src/main.rs")
+  (req "REQ-039")
+  (adr "ADR-009")
+  (test "TEST-040"))
+
+(normally r-ready-two-tier-invalidation
+  (and task-two-tier-invalidation completed-cache-format-v2)
+  ready-two-tier-invalidation)
+
+(meta r-ready-two-tier-invalidation
+  (description "Two-tier invalidation requires the v2 cache with Merkle root fields")
+  (justification "Tier 2 compares new file root against cached merkle_root from index.json v2"))
+
+;; ── Task: SPL-specific theory cache invalidation ─────────────────────────
+
+(given task-theory-cache-spl)
+
+(meta task-theory-cache-spl
+  (description "Implement SPL-specific theory cache invalidation using AST hashes per REQ-040. During zetl reason status (and any other theory-building command): 1) Collect the set of SPL leaf AST hashes from the current Merkle tree (from all SPL-containing files), 2) Compare against the set stored in theory.json spl_blocks (the ast_hash fields), 3) If the sets are identical (same labels, same hashes), the theory cache is valid — skip rebuild, 4) If any ast_hash differs or any file is added/removed, rebuild the theory. This means a prose-only edit (file Merkle root changes, but SPL AST hash unchanged) does NOT trigger a theory rebuild. Implement as a theory_cache_valid(current_spl_hashes, cached_theory) -> bool function in cache.rs. Wire this into cmd_reason_status in main.rs before the theory build step.")
+  (acceptance "Editing prose around an SPL block (no SPL change) → theory cache hit, no rebuild; reformatting SPL whitespace → content_hash changes, but ast_hash unchanged → theory cache hit; adding a new SPL fact → ast_hash changes → theory rebuilds; TEST-041 all three scenarios pass; performance: no spindle-core theory construction on cache hit")
+  (file "src/cache.rs, src/main.rs")
+  (req "REQ-040")
+  (adr "ADR-009")
+  (test "TEST-041"))
+
+(normally r-ready-theory-cache-spl
+  (and task-theory-cache-spl completed-spl-dual-hashing completed-cache-format-v2)
+  ready-theory-cache-spl)
+
+(meta r-ready-theory-cache-spl
+  (description "Theory invalidation uses AST hashes from dual hashing and reads from v2 cache")
+  (justification "ast_hash from SplLeafHash and spl_blocks from theory.json v2 must both exist"))
+
+;; ── Task: Expose vault_content_hash in zetl stats ────────────────────────
+
+(given task-stats-vault-hash)
+
+(meta task-stats-vault-hash
+  (description "Extend the zetl stats command output to include vault content integrity data per CON-006 extended. Add to stats JSON output: vault_content_hash (hex string of vault Merkle root from index.json), spl_blocks (count of all SPL blocks across vault), grounded_spl_blocks (count of SPL blocks with section grounding recorded in theory cache), explicitly_grounded_facts (count of SPL facts/rules with explicit source metadata). Read vault_root_hash from the loaded index cache. The count fields require the index to be loaded. If index not present, vault_content_hash is null. Add the same fields to table output. Per CON-006 extension in §7.")
+  (acceptance "zetl stats JSON includes vault_content_hash as hex string; spl_blocks count matches actual SPL block count; grounded_spl_blocks is 0 when no theory has been built yet; explicitly_grounded_facts is 0 without explicit source metadata; table output shows the new fields; TEST-038 'vault root hash exposure' scenario passes")
+  (file "src/main.rs, src/cli.rs")
+  (req "REQ-037")
+  (con "CON-006")
+  (test "TEST-038"))
+
+(normally r-ready-stats-vault-hash
+  (and task-stats-vault-hash completed-cache-format-v2)
+  ready-stats-vault-hash)
+
+(meta r-ready-stats-vault-hash
+  (description "Stats command reads vault_root_hash from the v2 index cache")
+  (justification "vault_root_hash is added to index.json in the v2 cache format upgrade"))
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 2 — P1: Section Grounding and Drift Detection
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Section boundary detection ─────────────────────────────────────
+
+(given task-section-detection)
+
+(meta task-section-detection
+  (description "Implement the section boundary detection algorithm from §4.5. For each file's Vec<MerkleLeaf>, compute the grounding_section for every SplBlock leaf. Algorithm: 1) Walk backwards from the SPL leaf index to find the nearest preceding Heading leaf — this is section_start; if no heading found, section starts at index 0, 2) Walk forward from section_start to find the next Heading at the same or higher level (lower numeric level number) — this is section_end; if not found, section_end = last leaf index, 3) The grounding hash = BLAKE3(concat of hashes of all non-SplBlock leaves in [section_start..=section_end]). If the SPL leaf is in the preamble (no heading above it), grounding context = all content before the first heading (or entire file if no headings). Store the result in SplLeafCached::section_index and in the Section struct. Implement as detect_sections(leaves: &[MerkleLeaf]) -> Vec<Section> and grounding_section(leaves: &[MerkleLeaf], spl_leaf_idx: usize) -> Section in src/merkle.rs. Each Section stores: heading_line, heading_text, heading_level, leaf_range, grounding_hash. Subsection headings (###) create a narrower context than parent sections (##) — this is by design per §4.5.")
+  (acceptance "SPL block under '## Section A' is grounded only in Section A, not Section B content; SPL block before first heading is grounded in preamble content; nested headings (### inside ##) give narrower context; grounding hash excludes the SPL leaf itself; grounding hash changes when adjacent prose changes; TEST-042 both scenarios pass")
+  (file "src/merkle.rs, src/scanner.rs")
+  (req "REQ-041a, REQ-041b")
+  (test "TEST-042"))
+
+(normally r-ready-section-detection
+  (and task-section-detection completed-merkle-roots)
+  ready-section-detection)
+
+(meta r-ready-section-detection
+  (description "Section detection operates on the Vec<MerkleLeaf> produced by the leaf grouper and hashing")
+  (justification "detect_sections requires leaves with computed hashes to build grounding_hash"))
+
+;; ── Task: Store section grounding hashes in theory cache ─────────────────
+
+(given task-section-grounding)
+
+(meta task-section-grounding
+  (description "Wire section grounding hashes from scan-time into the theory cache per REQ-041c. During zetl index (or the combined index+reason pipeline): after computing Merkle leaves and sections, populate SplLeafCached with section_index (which section the SPL leaf belongs to) and the section's grounding_hash. In the theory cache (theory.json v2), the spl_blocks map entry for each SPL block must include: section_heading (string), section_grounding_hash (hex). When the theory is built (reason engine), copy these values from the scan results into TheoryCache::spl_blocks. Implement the theory cache population in src/reason/mod.rs (or reason engine) by reading the FileMerkle data stored alongside the parsed SPL blocks. Ensure section grounding is computed for standalone .spl files too — since they have no Markdown sections, their grounding is empty (no section, no grounding hash). Section grounding does NOT apply to standalone .spl files per §4.7.")
+  (acceptance "After zetl index + zetl reason status on demo-vault: theory.json spl_blocks entries have section_heading and section_grounding_hash populated; standalone .spl files have null section fields; grounding hash in theory matches what detect_sections computes; TEST-042 section grounding hash storage scenario passes")
+  (file "src/cache.rs, src/reason/mod.rs, src/main.rs")
+  (req "REQ-041c")
+  (test "TEST-042"))
+
+(normally r-ready-section-grounding
+  (and task-section-grounding completed-section-detection completed-theory-cache-spl)
+  ready-section-grounding)
+
+(meta r-ready-section-grounding
+  (description "Grounding storage requires both section detection and the v2 theory cache schema")
+  (justification "Section detection provides the hashes; theory cache v2 provides the storage location"))
+
+;; ── Task: Section drift detection ────────────────────────────────────────
+
+(given task-drift-detection-section)
+
+(meta task-drift-detection-section
+  (description "Implement section-level drift detection per REQ-043a. Drift detection runs during zetl check after the scanner has produced current Merkle trees. Algorithm (from §6.5): for each SPL block in the current scan, compare: 1) current section grounding hash (freshly computed) vs cached section grounding hash (from theory.json spl_blocks), 2) current SPL AST hash (freshly computed) vs cached SPL AST hash. If section grounding hash changed AND SPL AST hash unchanged → section drift detected. Severity: Warning if immediately-adjacent leaves changed (leaves at section_start or section_end-1 are non-SPL and differ), Info if only distant leaves changed. The DriftDiagnostic includes: file, spl_line, DriftType::SectionDrift { section_heading }, severity, message per the CON-019 example. Drift requires a prior theory build to compare against — if no theory.json exists, skip drift detection (no baseline). Implement as detect_section_drift(current: &FileMerkle, cached_theory: &TheoryCache) -> Vec<DriftDiagnostic> in src/drift.rs (new) or src/merkle.rs.")
+  (acceptance "Editing prose in a section containing an SPL block → drift Warning reported; editing prose in a different section → no drift; editing the SPL block itself → no drift (AST hash changed); no theory.json → no drift reported; adjacent vs distant leaf severity distinction correct; TEST-044 section drift and no-drift scenarios pass")
+  (file "src/drift.rs (new), src/main.rs")
+  (req "REQ-043a")
+  (test "TEST-044"))
+
+(normally r-ready-drift-detection-section
+  (and task-drift-detection-section completed-section-grounding)
+  ready-drift-detection-section)
+
+(meta r-ready-drift-detection-section
+  (description "Drift detection compares current grounding hashes against the theory cache baseline")
+  (justification "Requires both section grounding (current) and section grounding in theory cache (baseline)"))
+
+;; ── Task: Add --drift flag to zetl check ─────────────────────────────────
+
+(given task-check-drift-flag)
+
+(meta task-check-drift-flag
+  (description "Extend the zetl check command with --drift flag and integrate drift diagnostics into existing check output per CON-019. Changes: 1) Add --drift flag to CheckArgs in cli.rs — when set, show only drift diagnostics; when absent, include drift diagnostics alongside dead links, orphans, syntax errors, spl_diagnostics, 2) Add drift_diagnostics array to the check JSON output schema per CON-019 example, 3) Add drift section to table output, 4) Extend summary counts with drift_warnings and drift_info fields, 5) The existing --fail-on flag applies to drift diagnostics: --fail-on warning exits 1 if any drift warnings exist, --fail-on error exits 1 only on errors, 6) Wire detect_section_drift() call into cmd_check in main.rs — run drift detection after scan and before output. Exit code 0 when no errors; 1 when --fail-on threshold is met.")
+  (acceptance "zetl check includes drift_diagnostics in JSON; zetl check --drift shows only drift diagnostics; zetl check --drift --fail-on warning exits 1 when drift exists; zetl check without --drift includes all diagnostic types; summary counts include drift_warnings; TEST-044 --fail-on scenario passes; existing check tests still pass")
+  (file "src/cli.rs, src/main.rs")
+  (req "REQ-043")
+  (con "CON-019")
+  (test "TEST-044"))
+
+(normally r-ready-check-drift-flag
+  (and task-check-drift-flag completed-drift-detection-section)
+  ready-check-drift-flag)
+
+(meta r-ready-check-drift-flag
+  (description "The CLI extension requires drift detection to be implemented first")
+  (justification "cmd_check calls detect_section_drift which must exist before the flag can be wired in"))
+
+;; ── Task: Durable provenance with content hashes ─────────────────────────
+
+(given task-provenance-grounding)
+
+(meta task-provenance-grounding
+  (description "Extend zetl reason provenance output with grounding freshness per REQ-044 and CON-012 extended. Changes to provenance output: 1) Each source entry gains a grounding object with: type ('section' or 'explicit'), section heading (if section type), source references (if explicit type), fresh (bool — current grounding hash matches cached), optional warning message when fresh=false, 2) Top-level fields: vault_root_hash (current vault Merkle root), theory_built_at (RFC3339 timestamp from theory cache), 3) When fresh=false, include a warning: 'Section prose changed since theory was built' or 'Source content changed since theory was built'. Compute freshness by comparing current section grounding hashes (from scanner) against the theory cache's stored hashes. No new commands — extend existing provenance output path in src/reason/mod.rs or main.rs. If the theory cache has no grounding hashes (first run or old cache), fresh=null.")
+  (acceptance "zetl reason provenance \"decided-use-redis\" shows grounding.fresh: true when no changes; shows grounding.fresh: false with warning when section was edited after theory build; vault_root_hash field present; theory_built_at field present; JSON matches CON-012 extended example structure; TEST-045 both scenarios pass")
+  (file "src/reason/mod.rs, src/main.rs")
+  (req "REQ-044")
+  (con "CON-012")
+  (test "TEST-045"))
+
+(normally r-ready-provenance-grounding
+  (and task-provenance-grounding completed-section-grounding)
+  ready-provenance-grounding)
+
+(meta r-ready-provenance-grounding
+  (description "Provenance grounding requires section grounding hashes in both theory cache and current scan")
+  (justification "fresh comparison needs both cached baseline and current scan grounding hashes"))
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 3 — P2: Explicit Grounding and Content Discovery
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: zetl blocks forward mode ───────────────────────────────────────
+
+(given task-blocks-forward)
+
+(meta task-blocks-forward
+  (description "Implement the zetl blocks <page> command (forward mode) per REQ-045 and CON-020. New subcommand BlocksArgs in cli.rs with: page: Option<String>, --type <TYPE> filter (heading/paragraph/spl/code/table/list/blockquote/frontmatter/all), --resolve <HASH> (mutex with page). Forward mode implementation in main.rs cmd_blocks: 1) Resolve page name using same case-insensitive wikilink matching as SPEC-001 §3.2, 2) Load the Merkle leaf data from the index cache (or re-index if stale), 3) For each leaf, output: index (0-based), type (with level for headings), lines [start, end], hash (hex BLAKE3), text (first 200 chars of normalised content), spl_hashes if SplBlock. JSON output matches CON-020 forward mode schema exactly, including file_hash and block_count at top level. Table output per CON-020 example. Apply --type filter before outputting. Exit code 0 on success, 1 if page not found. Require zetl index to have been run — if cache is stale or missing, auto-re-index first (consistent with other query commands).")
+  (acceptance "zetl blocks 'Redis vs Memcached' returns all leaves in document order; each leaf has type, lines, hash, text preview; SPL leaves have spl_hashes; --type paragraph filters correctly; page name is case-insensitive; page not found exits 1; JSON matches CON-020 example structure; table output readable; hash in output is usable as source metadata value; TEST-049 forward mode scenarios pass")
+  (file "src/cli.rs, src/main.rs")
+  (req "REQ-045")
+  (con "CON-020")
+  (test "TEST-049"))
+
+(normally r-ready-blocks-forward
+  (and task-blocks-forward completed-two-tier-invalidation)
+  ready-blocks-forward)
+
+(meta r-ready-blocks-forward
+  (description "Forward mode reads leaf data from the v2 index cache")
+  (justification "Leaf data including hashes is stored in the cache after two-tier invalidation is wired in"))
+
+;; ── Task: zetl blocks reverse mode ───────────────────────────────────────
+
+(given task-blocks-reverse)
+
+(meta task-blocks-reverse
+  (description "Implement zetl blocks --resolve <hash> (reverse mode) per REQ-045 and CON-020. Resolve a Merkle leaf hash prefix to its source location. Resolution logic per §3.3: 1) Validate prefix is minimum 8 hex characters — if shorter, exit 1 with 'hash prefix too short' error, 2) Search all Merkle leaves across the entire vault for prefix match, 3) Zero matches → exit 1, error JSON per CON-020 'hash not found' example, 4) Multiple matches with different full hashes (ambiguous prefix) → exit 1, error JSON with matches list and suggestion, 5) Multiple matches with identical full hashes (duplicate content) → exit 0, success JSON with locations array and note per CON-020 duplicate content example, 6) One match → exit 0, standard CON-020 resolve success JSON. Build a hash→location lookup index from all cached FileMerkle data. Implement in main.rs cmd_blocks_resolve. The page argument is mutually exclusive with --resolve.")
+  (acceptance "zetl blocks --resolve e5f6a7b8 returns correct file/page/lines/type/text; ambiguous prefix → exit 1 with both matches listed; duplicate content → exit 0 with all locations; hash not found → exit 1; prefix < 8 chars → exit 1; full hash roundtrip: zetl blocks 'Page' then --resolve the hash returns same block; TEST-049 all reverse mode scenarios pass")
+  (file "src/main.rs")
+  (req "REQ-045")
+  (con "CON-020")
+  (test "TEST-049"))
+
+(normally r-ready-blocks-reverse
+  (and task-blocks-reverse completed-blocks-forward)
+  ready-blocks-reverse)
+
+(meta r-ready-blocks-reverse
+  (description "Reverse mode shares the hash lookup infrastructure with forward mode")
+  (justification "Both modes read from the same FileMerkle cache; reverse builds an inverted index from the same data"))
+
+;; ── Task: Extract source metadata from SPL blocks ────────────────────────
+
+(given task-source-extraction)
+
+(meta task-source-extraction
+  (description "Extend the SPL extraction pipeline to parse (meta label (source ...)) constructs from SPL blocks per REQ-042. The source key uses spindle-core's existing MetaValue API: MetaValue::String for single references, MetaValue::List for multiple references. After theory construction (via spindle-parser), walk the parsed AST to find all (meta LABEL (source VALUE)) forms. Extract: construct (the label), source_refs (Vec<String> — either a single string from MetaValue::String or list from MetaValue::List). Parse each source_ref to determine its type: hash_ref (8+ hex chars), local_ref (^block-id pattern), cross_file_ref ([[Page^block-id]] pattern). Store raw source_refs in ExplicitGrounding::source_refs in the SplLeafCached. No resolution yet — just extraction and classification. Implement in reason feature gate since it requires spindle-core MetaValue. Add extraction to the theory construction pipeline in src/reason/mod.rs.")
+  (acceptance "Single source (meta fact (source \"^block-id\")) extracted with source_refs = [\"^block-id\"]; multiple sources (meta fact (source (\"ref1\" \"ref2\"))) extracted with source_refs = [\"ref1\", \"ref2\"]; hash refs, local refs, cross-file refs all classified correctly; (meta fact (other-key \"value\")) not treated as source metadata; extraction works for both facts and rules; unit tests covering all three reference forms")
+  (file "src/reason/mod.rs")
+  (req "REQ-042")
+  (test "TEST-043"))
+
+(normally r-ready-source-extraction
+  (and task-source-extraction completed-theory-cache-spl)
+  ready-source-extraction)
+
+(meta r-ready-source-extraction
+  (description "Source extraction requires spindle-core MetaValue API (behind reason feature)")
+  (justification "MetaValue::String and MetaValue::List require spindle-core, gated by the reason feature"))
+
+;; ── Task: Hash prefix resolution across vault ────────────────────────────
+
+(given task-hash-prefix-resolution)
+
+(meta task-hash-prefix-resolution
+  (description "Implement Merkle hash prefix resolution per §3.3 resolution rule 1 and REQ-042a. Build a resolution index: for each file in the vault, iterate all MerkleLeaf hashes and store (full_hash_hex → list of (file, leaf)) mappings. At resolution time: 1) Filter entries whose full_hash_hex starts with the given prefix (case-insensitive), 2) Check result set: zero → error 'not found', 3) Check if all matching full hashes are identical (duplicate content case) → success, return all locations, 4) Multiple matches with different full hashes → error 'ambiguous prefix', list all with suggestion to use longer prefix. Resolution is position-independent: same content at any location resolves. Implement as resolve_hash_prefix(prefix: &str, index: &VaultHashIndex) -> HashResolutionResult where VaultHashIndex is built from loaded FileMerkle data. This function is shared by both zetl blocks --resolve (direct use) and source metadata validation. Implement in src/merkle.rs.")
+  (acceptance "Unique hash resolves to single location; prefix collision (different full hashes) returns error with all candidates; identical content at two locations returns both (exit 0); 7-char prefix → error 'too short'; resolution is case-insensitive against hex chars; building the index from 10,000 files is fast (< 100ms); TEST-049 resolve scenarios pass; TEST-043 hash-ref grounding resolution passes")
+  (file "src/merkle.rs")
+  (req "REQ-042a")
+  (test "TEST-043, TEST-049"))
+
+(normally r-ready-hash-prefix-resolution
+  (and task-hash-prefix-resolution completed-blocks-forward)
+  ready-hash-prefix-resolution)
+
+(meta r-ready-hash-prefix-resolution
+  (description "Hash resolution requires the VaultHashIndex built from FileMerkle leaf data in the cache")
+  (justification "FileMerkle data is loaded during cmd_blocks; the same cache load is reused for resolution"))
+
+;; ── Task: block-id and cross-file resolution ─────────────────────────────
+
+(given task-blockid-resolution)
+
+(meta task-blockid-resolution
+  (description "Implement ^block-id and [[Page^block-id]] resolution to Merkle leaves per REQ-042b and REQ-042c. Local block-id resolution (^block-id form): scan the source file's MerkleLeaf vec for a Paragraph or other leaf whose normalised content ends with '^block-id' (the Obsidian block-id syntax). The scanner already tracks WikiLink.block_ref — extend this to also record ^block-id annotations as part of MerkleLeaf metadata (add Option<String> block_id field to MerkleLeaf). During scan, when a paragraph or block-level element ends with ' ^identifier', extract the identifier and store it as the leaf's block_id. Resolution: find the leaf with matching block_id in the target file → return its ContentHash. Cross-file resolution ([[Page^block-id]] form): 1) Resolve the page name using standard wikilink matching, 2) Find the target file's leaf with matching block_id. For both forms, if not found: return an error (not a drift diagnostic — a static validation error). Implement in src/merkle.rs. Store resolved target_leaf_hash in ResolvedTarget.")
+  (acceptance "^block-id resolves to the paragraph ending with ' ^block-id' in the same file; [[Architecture^perf-numbers]] resolves to the leaf in Architecture.md with that block-id; block-id not found returns error (not drift); cross-file page not found returns error; block_id field populated in MerkleLeaf during scan; TEST-043 same-file and cross-file scenarios pass")
+  (file "src/scanner.rs, src/merkle.rs, src/types.rs")
+  (req "REQ-042b, REQ-042c")
+  (test "TEST-043"))
+
+(normally r-ready-blockid-resolution
+  (and task-blockid-resolution completed-hash-prefix-resolution)
+  ready-blockid-resolution)
+
+(meta r-ready-blockid-resolution
+  (description "block-id resolution builds on the same leaf data infrastructure as hash resolution")
+  (justification "Both use FileMerkle leaf data; building them together avoids duplicate index construction"))
+
+;; ── Task: Source metadata validation in zetl check ───────────────────────
+
+(given task-source-validation)
+
+(meta task-source-validation
+  (description "Extend zetl check to validate all source metadata references as static validation errors per REQ-042 and CON-004 extended. After extraction (task-source-extraction) and resolution infrastructure (task-blockid-resolution, task-hash-prefix-resolution): run validate_source_refs(spl_blocks, vault_hash_index) which for each ExplicitGrounding: 1) Attempt to resolve each source_ref, 2) Hash ref resolves to zero leaves → spl_diagnostics error: 'content hash X not found — source content may have been modified or removed', 3) Hash ref prefix ambiguous (different full hashes) → spl_diagnostics error: 'ambiguous hash prefix X — use a longer prefix', 4) Hash ref with duplicate content (identical full hashes) → valid, no error, 5) ^block-id not found in file → spl_diagnostics error: 'source references ^X which does not exist in this file', 6) [[Page]] not found → spl_diagnostics error: 'page Page not found', 7) [[Page^block-id]] block-id not found in page → spl_diagnostics error: 'block-id not found in Page'. Report in spl_diagnostics (not drift_diagnostics). These are static errors, not temporal drift. Wire into cmd_check in main.rs. No --fail-on changes needed — source validation errors use the existing spl error level.")
+  (acceptance "All four CON-004 extended error cases produce correct error messages; valid source references produce no errors; ambiguous prefix gives helpful disambiguation message with file/line candidates; duplicate content is NOT an error; errors appear in spl_diagnostics not drift_diagnostics; TEST-043 broken source scenarios pass; existing check integration test still passes")
+  (file "src/main.rs, src/merkle.rs")
+  (req "REQ-042")
+  (con "CON-004")
+  (test "TEST-043"))
+
+(normally r-ready-source-validation
+  (and task-source-validation completed-source-extraction completed-blockid-resolution)
+  ready-source-validation)
+
+(meta r-ready-source-validation
+  (description "Validation requires both extraction (to know which refs to validate) and resolution (to check them)")
+  (justification "validate_source_refs calls resolve on each extracted source_ref"))
+
+;; ── Task: Explicit grounding drift detection ──────────────────────────────
+
+(given task-explicit-grounding-drift)
+
+(meta task-explicit-grounding-drift
+  (description "Extend drift detection to cover explicit source metadata groundings per REQ-043b. For each SPL block with explicit groundings (in ExplicitGrounding): 1) Resolve each source_ref to a current Merkle leaf hash (re-resolve against current vault state), 2) Compare to cached target_leaf_hash in theory.json spl_blocks explicit_groundings, 3) If target hash changed AND the SPL construct (fact or rule) is unchanged → explicit drift Warning. The DriftDiagnostic has DriftType::ExplicitDrift { construct, source_ref }. If target not found (hash no longer in vault) — this is a static validation error (source_validation), NOT drift. Only report explicit drift when the target EXISTS but has a different hash. Update detect_section_drift to also handle explicit groundings, or create detect_explicit_drift as a separate function. Merge explicit drift results into the same Vec<DriftDiagnostic> returned by the drift detection phase. Wire into cmd_check alongside section drift.")
+  (acceptance "Editing a ^benchmark-results paragraph while SPL fact unchanged → explicit drift Warning naming the fact and source_ref; SPL fact itself changed → no drift (construct changed); target content deleted → static error in spl_diagnostics, not drift; cross-file explicit drift works (Architecture.md paragraph edited); TEST-044 explicit grounding drift scenario passes; TEST-044 no-drift scenario still passes")
+  (file "src/drift.rs, src/main.rs")
+  (req "REQ-043b")
+  (test "TEST-044"))
+
+(normally r-ready-explicit-grounding-drift
+  (and task-explicit-grounding-drift completed-source-validation completed-drift-detection-section)
+  ready-explicit-grounding-drift)
+
+(meta r-ready-explicit-grounding-drift
+  (description "Explicit drift detection requires source resolution and section drift infrastructure")
+  (justification "Resolves source refs against current vault (resolution), compares against theory cache (section drift infrastructure)"))
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 4 — Tests and Observability
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Unit tests — P0 Merkle infrastructure ──────────────────────────
+
+(given task-unit-tests-p0)
+
+(meta task-unit-tests-p0
+  (description "Write unit tests for the P0 Merkle infrastructure covering TEST-038 (Merkle construction), TEST-039 (SPL dual hashing), TEST-040 (two-tier cache invalidation), TEST-041 (SPL theory cache invalidation). For TEST-038: test vault root determinism (scan in different orders → same root), test normalisation (two files with identical text but different whitespace → same Merkle root), test that wikilink changes alter Merkle hash. For TEST-039: test content_hash and ast_hash computed and non-zero, test reformatting changes content_hash but not ast_hash (compare two logically identical SPL blocks), test parse error → sentinel ast_hash + diagnostic. For TEST-040: use tempfile vaults, test Tier 1 hit (mtime unchanged → no hashing call), test Tier 2 hit (touch file, same content → no downstream reprocess), test Tier 2 miss (edit content → full reprocess). For TEST-041: test prose edit → theory cache valid (no rebuild), test SPL reformat → theory cache valid, test SPL add fact → theory cache invalid. Tests in tests/ or src/ inline as #[cfg(test)].")
+  (acceptance "All four TEST-XXX scenarios have corresponding test functions; cargo test --all-features passes with all new tests; no test relies on external vault — uses in-memory strings or tempfile; TEST-038 determinism passes; TEST-039 both hashes computed correctly; TEST-040 all three tiers tested; TEST-041 all three scenarios tested")
+  (file "tests/merkle_unit.rs (new) or inline src/ modules")
+  (req "REQ-037, REQ-038, REQ-039, REQ-040")
+  (test "TEST-038, TEST-039, TEST-040, TEST-041"))
+
+(normally r-ready-unit-tests-p0
+  (and task-unit-tests-p0 completed-theory-cache-spl completed-two-tier-invalidation)
+  ready-unit-tests-p0)
+
+(meta r-ready-unit-tests-p0
+  (description "P0 tests can be written once all P0 implementation tasks complete")
+  (justification "Tests exercise the actual implementation functions, not stubs"))
+
+;; ── Task: Unit tests — P1 Section grounding and drift ────────────────────
+
+(given task-unit-tests-p1)
+
+(meta task-unit-tests-p1
+  (description "Write unit and integration tests for P1 features: TEST-042 (implicit section grounding), TEST-043 (explicit source grounding), TEST-044 (drift detection), TEST-045 (durable provenance). For TEST-042: test SPL in Section A is grounded only in Section A leaves; test SPL before first heading uses preamble; test subsection creates narrower context. For TEST-043: test same-file ^block-id grounding, cross-file [[Page^block-id]] grounding, multiple sources (MetaValue::List), broken ^block-id error, broken cross-file page error. For TEST-044: test section drift detection when prose edited; test explicit grounding drift; test no drift when SPL itself changed; test no drift when nothing changed; test --fail-on warning exit code. For TEST-045: test provenance includes grounding.fresh true; test fresh false with warning when section edited after build. Write as integration tests using tempfile vaults with realistic content.")
+  (acceptance "TEST-042 all scenarios pass; TEST-043 all 5 scenarios pass including broken source error messages; TEST-044 all 5 scenarios pass including --fail-on exit code; TEST-045 both scenarios pass; cargo test --all-features passes; tests are deterministic and hermetic")
+  (file "tests/grounding_tests.rs (new), tests/drift_tests.rs (new)")
+  (req "REQ-041, REQ-042, REQ-043, REQ-044")
+  (test "TEST-042, TEST-043, TEST-044, TEST-045"))
+
+(normally r-ready-unit-tests-p1
+  (and task-unit-tests-p1 completed-explicit-grounding-drift completed-provenance-grounding)
+  ready-unit-tests-p1)
+
+(meta r-ready-unit-tests-p1
+  (description "P1 tests require all P1 and P2 features to be implemented")
+  (justification "Explicit drift and provenance grounding are the last P1+P2 tasks to complete"))
+
+;; ── Task: Integration tests — zetl blocks command ────────────────────────
+
+(given task-integration-tests-blocks)
+
+(meta task-integration-tests-blocks
+  (description "Write integration tests for the zetl blocks command covering all TEST-049 scenarios. Use assert_cmd + tempfile to create vault fixtures. Forward mode tests: list blocks for a file with heading/paragraph/table/spl leaf types; verify SPL leaves have spl_hashes; verify --type paragraph filter; verify page not found exits 1; verify hash from forward mode is usable as source metadata (roundtrip). Reverse mode tests: resolve known hash to correct file/lines/type; hash not found exits 1; ambiguous prefix exits 1 with candidates; duplicate content (create two identical paragraphs) exits 0 with both locations; prefix < 8 chars exits 1; full hash roundtrip (forward → resolve → same block). Use the demo-vault/decisions/Redis vs Memcached.md file as a fixture.")
+  (acceptance "All TEST-049 forward and reverse scenarios have test functions; roundtrip test passes (zetl blocks → hash → zetl blocks --resolve → same block); ambiguous and duplicate content cases explicitly tested; filter tests pass; page not found exits 1; cargo test --features reason passes including these integration tests")
+  (file "tests/blocks_integration.rs (new)")
+  (req "REQ-045")
+  (test "TEST-049"))
+
+(normally r-ready-integration-tests-blocks
+  (and task-integration-tests-blocks completed-blocks-reverse)
+  ready-integration-tests-blocks)
+
+(meta r-ready-integration-tests-blocks
+  (description "Blocks integration tests require both forward and reverse modes implemented")
+  (justification "Roundtrip tests need both forward and reverse modes to function"))
+
+;; ── Task: VCS independence integration tests ──────────────────────────────
+
+(given task-test-vcs-independence)
+
+(meta task-test-vcs-independence
+  (description "Write integration tests for TEST-050 (VCS Independence, NFR-017). Tests must explicitly verify that all commands work identically whether or not a .git directory is present. Three scenarios: 1) Vault in a plain directory (no .git) — run zetl index, zetl check, zetl blocks, zetl reason status; assert all succeed and git fields are absent or null, 2) Git metadata is optional enrichment — create a vault inside a tempfile git repo (git init), run zetl reason provenance, verify git_commit and git_dirty fields are present; then remove .git and re-run, verify identical output except git fields are null, 3) Cache validity is VCS-independent — index inside a git repo, then remove .git, run zetl index, verify cache is still valid (no re-indexing) and git fields become null. Use tempfile and std::process::Command to run zetl binary. Note: these tests do NOT require an actual git installation — use conditional compilation or skip gracefully when git is not available.")
+  (acceptance "All three TEST-050 scenarios have test functions; plain directory scenario passes with no .git; git-enriched scenario shows git fields when .git present; cache survives .git removal; no command exits with error in plain directory mode; git fields are correctly Option<> typed (null in JSON when absent); NFR-017 compliance verified")
+  (file "tests/vcs_independence.rs (new)")
+  (req "NFR-017")
+  (test "TEST-050"))
+
+(normally r-ready-test-vcs-independence
+  (and task-test-vcs-independence completed-cache-format-v2)
+  ready-test-vcs-independence)
+
+(meta r-ready-test-vcs-independence
+  (description "VCS independence tests require the v2 cache with Option<> git fields")
+  (justification "git_commit and git_dirty as Option<> are specified in cache-format-v2"))
+
+;; ── Task: Performance and memory tests ───────────────────────────────────
+
+(given task-perf-tests)
+
+(meta task-perf-tests
+  (description "Write performance and memory benchmark tests for TEST-046 (Merkle construction overhead ≤ 20%), TEST-047 (memory overhead ≤ 30 MB for 10k files), TEST-048 (cache size ≤ 5 MB for 10k files). For TEST-046: generate a synthetic vault with 1,000+ Markdown files (using a loop in the test setup), time zetl index with and without Merkle construction; verify ratio ≤ 1.2. For TEST-047: measure peak RSS before and after Merkle construction on 10k synthetic files; verify delta ≤ 30 MB. For TEST-048: check .zetl/ directory size after indexing 10k files; verify additional size ≤ 5 MB over baseline. Mark perf tests with #[ignore] so they don't run in CI by default (run with cargo test -- --ignored). Document how to run: 'cargo test --features reason -- --ignored perf'. Note: these are smoke tests, not microbenchmarks — sufficient for regression detection.")
+  (acceptance "TEST-046 test function exists and measures overhead ratio; TEST-047 test function estimates memory; TEST-048 test checks .zetl/ size; all three marked #[ignore]; can be run manually; reasonable tolerances for CI machines (2x the spec limit to account for variance); documented in test comments")
+  (file "tests/perf_tests.rs (new)")
+  (req "NFR-014, NFR-015, NFR-016")
+  (test "TEST-046, TEST-047, TEST-048"))
+
+(normally r-ready-perf-tests
+  (and task-perf-tests completed-two-tier-invalidation)
+  ready-perf-tests)
+
+(meta r-ready-perf-tests
+  (description "Perf tests require the full Merkle construction pipeline to be working")
+  (justification "Can only measure overhead after the actual implementation exists"))
+
+;; ── Task: Observability — verbose Merkle output ──────────────────────────
+
+(given task-observability)
+
+(meta task-observability
+  (description "Implement verbose observability output per OBS-007, OBS-008, OBS-009. OBS-007 (zetl index --verbose): emit to stderr: files hashed / files skipped (mtime hit) / files with content-hash match (touch hit); total leaf nodes; SPL leaves with dual hashing; BLAKE3 hashing time (ms); section detection and grounding hash time (ms). OBS-008 (zetl check summary): add to summary JSON and table: total_spl_blocks, drifted_blocks_warning, drifted_blocks_info, explicitly_grounded_facts, broken_groundings. OBS-009 (zetl index --verbose and zetl reason status --verbose): emit cache efficiency stats: tier1_hits (mtime), tier1_misses, tier2_hits (hash match), tier2_misses (actual change), theory_cache_hit / theory_cache_miss. Add these counters to the scan/index pipeline. Output to stderr so JSON stdout is unaffected. Wire --verbose flag into cmd_index and cmd_reason_status in main.rs.")
+  (acceptance "zetl index --verbose shows file counts and timing; zetl check JSON includes extended summary fields from OBS-008; zetl reason status --verbose shows cache tier stats; stderr output only (stdout remains clean JSON); counters accurate against demo-vault; no regression in existing --verbose tests")
+  (file "src/main.rs")
+  (req "NFR-014")
+  (test "OBS-007, OBS-008, OBS-009"))
+
+(normally r-ready-observability
+  (and task-observability completed-check-drift-flag completed-two-tier-invalidation)
+  ready-observability)
+
+(meta r-ready-observability
+  (description "Observability requires drift detection and two-tier invalidation to have counters to report")
+  (justification "OBS-008 needs drift diagnostic counts; OBS-009 needs tier1/tier2 hit counts"))
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Assignment rules — assign all tasks to claude
+;; ════════════════════════════════════════════════════════════════════════════
+
+(normally r-assign-blake3-dep-claude
+  (and ready-blake3-dep agent-claude-available)
+  assign-to-blake3-dep-claude)
+
+(normally r-assign-merkle-types-claude
+  (and ready-merkle-types agent-claude-available)
+  assign-to-merkle-types-claude)
+
+(normally r-assign-demo-vault-merkle-claude
+  (and ready-demo-vault-merkle agent-claude-available)
+  assign-to-demo-vault-merkle-claude)
+
+(normally r-assign-leaf-grouper-claude
+  (and ready-leaf-grouper agent-claude-available)
+  assign-to-leaf-grouper-claude)
+
+(normally r-assign-merkle-roots-claude
+  (and ready-merkle-roots agent-claude-available)
+  assign-to-merkle-roots-claude)
+
+(normally r-assign-spl-dual-hashing-claude
+  (and ready-spl-dual-hashing agent-claude-available)
+  assign-to-spl-dual-hashing-claude)
+
+(normally r-assign-cache-format-v2-claude
+  (and ready-cache-format-v2 agent-claude-available)
+  assign-to-cache-format-v2-claude)
+
+(normally r-assign-two-tier-invalidation-claude
+  (and ready-two-tier-invalidation agent-claude-available)
+  assign-to-two-tier-invalidation-claude)
+
+(normally r-assign-theory-cache-spl-claude
+  (and ready-theory-cache-spl agent-claude-available)
+  assign-to-theory-cache-spl-claude)
+
+(normally r-assign-stats-vault-hash-claude
+  (and ready-stats-vault-hash agent-claude-available)
+  assign-to-stats-vault-hash-claude)
+
+(normally r-assign-section-detection-claude
+  (and ready-section-detection agent-claude-available)
+  assign-to-section-detection-claude)
+
+(normally r-assign-section-grounding-claude
+  (and ready-section-grounding agent-claude-available)
+  assign-to-section-grounding-claude)
+
+(normally r-assign-drift-detection-section-claude
+  (and ready-drift-detection-section agent-claude-available)
+  assign-to-drift-detection-section-claude)
+
+(normally r-assign-check-drift-flag-claude
+  (and ready-check-drift-flag agent-claude-available)
+  assign-to-check-drift-flag-claude)
+
+(normally r-assign-provenance-grounding-claude
+  (and ready-provenance-grounding agent-claude-available)
+  assign-to-provenance-grounding-claude)
+
+(normally r-assign-blocks-forward-claude
+  (and ready-blocks-forward agent-claude-available)
+  assign-to-blocks-forward-claude)
+
+(normally r-assign-blocks-reverse-claude
+  (and ready-blocks-reverse agent-claude-available)
+  assign-to-blocks-reverse-claude)
+
+(normally r-assign-source-extraction-claude
+  (and ready-source-extraction agent-claude-available)
+  assign-to-source-extraction-claude)
+
+(normally r-assign-hash-prefix-resolution-claude
+  (and ready-hash-prefix-resolution agent-claude-available)
+  assign-to-hash-prefix-resolution-claude)
+
+(normally r-assign-blockid-resolution-claude
+  (and ready-blockid-resolution agent-claude-available)
+  assign-to-blockid-resolution-claude)
+
+(normally r-assign-source-validation-claude
+  (and ready-source-validation agent-claude-available)
+  assign-to-source-validation-claude)
+
+(normally r-assign-explicit-grounding-drift-claude
+  (and ready-explicit-grounding-drift agent-claude-available)
+  assign-to-explicit-grounding-drift-claude)
+
+(normally r-assign-unit-tests-p0-claude
+  (and ready-unit-tests-p0 agent-claude-available)
+  assign-to-unit-tests-p0-claude)
+
+(normally r-assign-unit-tests-p1-claude
+  (and ready-unit-tests-p1 agent-claude-available)
+  assign-to-unit-tests-p1-claude)
+
+(normally r-assign-integration-tests-blocks-claude
+  (and ready-integration-tests-blocks agent-claude-available)
+  assign-to-integration-tests-blocks-claude)
+
+(normally r-assign-test-vcs-independence-claude
+  (and ready-test-vcs-independence agent-claude-available)
+  assign-to-test-vcs-independence-claude)
+
+(normally r-assign-perf-tests-claude
+  (and ready-perf-tests agent-claude-available)
+  assign-to-perf-tests-claude)
+
+(normally r-assign-observability-claude
+  (and ready-observability agent-claude-available)
+  assign-to-observability-claude)
