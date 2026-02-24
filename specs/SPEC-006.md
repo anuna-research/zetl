@@ -1,6 +1,6 @@
 ---
 title: "SPEC-006: Content-Addressed Merkle Tree over Markdown and SPL AST"
-version: 0.4.0
+version: 0.5.0
 status: draft
 audience: agent, human
 date: 2026-02-24
@@ -100,8 +100,8 @@ The solution has two parts:
 | **Drift warnings** | `zetl check --drift` warns: "SPL in Redis.md §Benchmarks may be stale — section was edited" |
 | **Stale provenance detection** | `zetl reason provenance` warns when source content has changed since the theory was built |
 | **False invalidation elimination** | `zetl index` doesn't re-process files that were touched but not changed |
-| **Content-addressed references** | `zetl blocks` returns Merkle hashes for every content block; `zetl blocks --resolve` maps a hash back to its file and line; agents use hashes as read-only `:source` references without modifying files |
-| **Explicit content references** | SPL can pin facts to specific paragraphs via `:source "^block-id"` or `:source "e5f6a7b8"` (Merkle hash) |
+| **Content-addressed references** | `zetl blocks` returns Merkle hashes for every content block; `zetl blocks --resolve` maps a hash back to its file and line; agents use hashes as read-only `source` metadata without modifying files |
+| **Explicit content references** | SPL can pin facts to specific paragraphs via `(meta label (source "^block-id"))` or `(meta label (source "e5f6a7b8"))` (Merkle hash) |
 | **Cross-agent verification** | Agents can verify that prose grounding a theory hasn't changed since it was built |
 
 ### 1.4 Design Philosophy
@@ -109,7 +109,7 @@ The solution has two parts:
 1. **Invisible infrastructure.** The Merkle tree is an implementation detail of the scanner and cache. Users never see hashes, never run `merkle` commands, never think about tree structure. They see faster caching, drift warnings, and content references.
 2. **Content over time.** Mtime answers "when was this touched?" Content hashing answers "what does it say?" Both are useful; content hashing is authoritative.
 3. **Mtime as pre-filter.** Hashing is more expensive than stat(). Mtime remains the first check: if mtime hasn't changed, skip hashing. Two-tier invalidation.
-4. **Section grounding by default, precision on demand.** SPL blocks are automatically grounded in their containing section — this handles the 80% case. Authors who need tighter coupling use `:source "^block-id"` — this handles the 20%.
+4. **Section grounding by default, precision on demand.** SPL blocks are automatically grounded in their containing section — this handles the 80% case. Authors who need tighter coupling use `(meta label (source "^block-id"))` — this handles the 20%.
 5. **AST boundaries, not byte boundaries.** Hashing normalised AST nodes is semantically stable across whitespace and formatting changes.
 
 ### 1.5 Scope
@@ -121,7 +121,7 @@ The solution has two parts:
 - File-level and vault-level Merkle roots
 - Two-tier cache invalidation (mtime + content hash)
 - Section grounding: implicit linking of SPL blocks to their containing Markdown section
-- Explicit grounding via `:source` — three forms: Merkle hash (agent-friendly, read-only), `^block-id` (human-friendly), `[[Page^block-id]]` (cross-file)
+- Explicit grounding via `(meta ... (source ...))` — three forms: Merkle hash (agent-friendly, read-only), `^block-id` (human-friendly), `[[Page^block-id]]` (cross-file)
 - Content block discovery: `zetl blocks <page>` exposes Merkle leaf hashes for agent consumption; `zetl blocks --resolve <hash>` maps hashes back to source locations
 - Drift detection integrated into `zetl check`
 - Durable provenance: content hashes in theory provenance metadata
@@ -156,7 +156,8 @@ Daily workflow:
   1. Read an existing note and want to formalise a claim
   2. Run `zetl blocks "Redis vs Memcached"` to see content blocks with hashes
   3. Write SPL grounding a fact in a specific paragraph:
-     (given redis-fast-enough :source "e5f6a7b8")
+     (given redis-fast-enough)
+     (meta redis-fast-enough (source "e5f6a7b8"))
   4. Run `zetl index` (Merkle tree built transparently)
   5. Run `zetl reason status` (theory uses content hashes for caching)
   6. Later, another agent edits the source paragraph
@@ -201,7 +202,8 @@ Daily workflow:
   2. Agent-A reads existing notes, runs `zetl blocks "Redis Benchmarks"`
      to get content hashes for the evidence paragraphs
   3. Agent-A writes SPL grounding facts in those hashes:
-     (given redis-fast-enough :source "e5f6a7b8")
+     (given redis-fast-enough)
+     (meta redis-fast-enough (source "e5f6a7b8"))
      No file modification needed — the hash references content as-is.
   4. Agent-B later edits the benchmark paragraph
   5. Hence post-edit hook: `zetl check --drift --fail-on drift`
@@ -210,7 +212,7 @@ Daily workflow:
   6. Reconciliation agent runs `zetl blocks --resolve e5f6a7b8` to see
      what the hash referenced, discovers it no longer resolves
   7. Agent runs `zetl blocks "Redis Benchmarks"` to get updated hashes,
-     rewrites the :source with the new hash
+     rewrites the source metadata with the new hash
 ```
 
 ### 2.4 Happy Paths
@@ -278,7 +280,8 @@ Steps:
        ]
   3. Agent identifies the paragraph at hash "e5f6a7b8" as the evidence
   4. Agent writes an SPL block in another file (or the same file):
-     (given redis-fast-enough :source "e5f6a7b8")
+     (given redis-fast-enough)
+     (meta redis-fast-enough (source "e5f6a7b8"))
   5. `zetl index` — reindexes, resolves the hash reference
   6. `zetl check` — no errors, grounding is valid
 Postconditions:
@@ -298,7 +301,8 @@ Preconditions:
   - "Architecture.md" has a section "## Performance" with paragraph
     tagged ^perf-numbers
   - "Decisions.md" has SPL grounded in that paragraph:
-    (given performance-acceptable :source "[[Architecture^perf-numbers]]")
+    (given performance-acceptable)
+    (meta performance-acceptable (source "[[Architecture^perf-numbers]]"))
   - The performance paragraph in Architecture.md is edited
 Steps:
   1. `zetl check --drift`
@@ -360,15 +364,18 @@ More discussion of results.      ← paragraph leaf (in grounding context)
 
 The grounding hash for the SPL block at line 10 is computed from the hashes of: the "## Benchmark Results" heading, the paragraph about testing Redis, the metrics table, and the "More discussion" paragraph. Not the SPL block itself.
 
-### 3.2 Explicit Grounding via `:source`
+### 3.2 Explicit Grounding via `source` Metadata
 
-For cases where implicit section grounding is too coarse, authors can explicitly ground individual SPL constructs to specific content blocks using the `:source` metadata key and Obsidian's `^block-id` syntax:
+For cases where implicit section grounding is too coarse, authors can explicitly ground individual SPL constructs to specific content blocks using spindle-core's `(meta ...)` construct with the `source` key and Obsidian's `^block-id` syntax.
+
+Spindle-core stores metadata as `HashMap<String, MetaValue>` where `MetaValue` is either `String(String)` or `List(Vec<String>)`. The `source` key uses this existing API — no parser changes are needed for single-source grounding, and `MetaValue::List` handles multiple sources natively.
 
 **Content-addressed grounding (agent-friendly, read-only):**
 
 ````markdown
 ```spl
-(given redis-fast-enough :source "e5f6a7b8")
+(given redis-fast-enough)
+(meta redis-fast-enough (source "e5f6a7b8"))
 ```
 ````
 
@@ -382,7 +389,8 @@ This is the primary mechanism for agents. An agent reads a file, runs `zetl bloc
 We benchmarked Redis at 120k ops/sec under production workload. ^benchmark-results
 
 ```spl
-(given redis-fast-enough :source "^benchmark-results")
+(given redis-fast-enough)
+(meta redis-fast-enough (source "^benchmark-results"))
 ```
 ````
 
@@ -392,7 +400,8 @@ The fact `redis-fast-enough` is pinned to the paragraph tagged `^benchmark-resul
 
 ````markdown
 ```spl
-(given performance-acceptable :source "[[Architecture^perf-numbers]]")
+(given performance-acceptable)
+(meta performance-acceptable (source "[[Architecture^perf-numbers]]"))
 ```
 ````
 
@@ -404,26 +413,51 @@ The fact `performance-acceptable` is grounded in the `^perf-numbers` block in `A
 ```spl
 (normally r-prefer-redis
   (and redis-benchmarked redis-fast-enough)
-  decided-use-redis
-  :source "e5f6a7b8")
+  decided-use-redis)
+(meta r-prefer-redis (source "e5f6a7b8"))
 ```
 ````
 
 An entire rule can be grounded in a specific content block identified by its Merkle hash.
 
-### 3.3 `:source` Syntax
+### 3.3 `source` Metadata Syntax
 
-The `:source` key follows spindle-core's existing metadata syntax (SPEC-005 §3.2):
+The `source` key uses spindle-core's existing `(meta ...)` construct (SPEC-005 §3.2):
 
 ```
-source_ref      ::= ':source' '"' target '"'
-target          ::= hash_ref | local_ref | cross_file_ref
+meta_source     ::= '(meta' label '(source' target '))'
+target          ::= '"' single_ref '"' | '(' ref_list ')'
+single_ref      ::= hash_ref | local_ref | cross_file_ref
+ref_list        ::= '"' single_ref '"' ('"' single_ref '"')*
 hash_ref        ::= hex_chars                          (8+ hex characters, Merkle leaf hash prefix)
 local_ref       ::= '^' block_id
 cross_file_ref  ::= '[[' page_name '^' block_id ']]'
 block_id        ::= [a-zA-Z0-9-]+
 hex_chars       ::= [0-9a-f]{8,64}
 ```
+
+Single source uses `MetaValue::String`:
+
+```spl
+(meta redis-fast-enough (source "e5f6a7b8"))
+```
+
+Multiple sources use `MetaValue::List`:
+
+```spl
+(meta meets-requirements (source ("^perf-numbers" "[[Security Audit^findings]]")))
+```
+
+This aligns with spindle-core's existing `MetaValue` enum:
+
+```rust
+pub enum MetaValue {
+    String(String),      // single source reference
+    List(Vec<String>),   // multiple source references
+}
+```
+
+No parser changes are required — `(meta label (key "value"))` and `(meta label (key ("v1" "v2")))` are already supported by spindle-parser.
 
 **Resolution rules:**
 
@@ -447,25 +481,24 @@ hex_chars       ::= [0-9a-f]{8,64}
 
 **Multiple sources:**
 
-A single fact or rule can have multiple `:source` references:
+A single fact or rule can reference multiple source blocks using `MetaValue::List`:
 
 ```spl
-(given meets-requirements
-  :source "^perf-numbers"
-  :source "[[Security Audit^findings]]")
+(given meets-requirements)
+(meta meets-requirements (source ("^perf-numbers" "[[Security Audit^findings]]")))
 ```
 
-The grounding hash is the combination of all referenced blocks. Drift is detected if any one changes.
+The grounding hash is the combination of all referenced blocks. Drift is detected if any one changes. Each reference in the list is resolved and tracked independently.
 
 ### 3.4 Grounding Precedence
 
-When both implicit section grounding and explicit `:source` grounding apply to the same SPL block:
+When both implicit section grounding and explicit `source` metadata apply to the same SPL block:
 
-1. **If any construct in the block has an explicit `:source`**, that construct uses only explicit grounding for drift detection. Section grounding still applies to constructs without `:source`.
-2. **If no construct has `:source`**, the entire block uses section grounding.
-3. **Mixed blocks** (some constructs with `:source`, some without) are valid. Each construct is tracked independently.
+1. **If any construct in the block has `(meta ... (source ...))`**, that construct uses only explicit grounding for drift detection. Section grounding still applies to constructs without `source` metadata.
+2. **If no construct has `source` metadata**, the entire block uses section grounding.
+3. **Mixed blocks** (some constructs with `source` metadata, some without) are valid. Each construct is tracked independently.
 
-This means adding `:source` to one fact doesn't disable section grounding for the other facts in the same block.
+This means adding `source` metadata to one fact doesn't disable section grounding for the other facts in the same block.
 
 ### 3.5 Grounding Hash Storage
 
@@ -647,7 +680,7 @@ File hashes are sorted by canonical relative path (UTF-8 lexicographic, forward-
 
 ### 4.7 Standalone SPL Files
 
-Standalone `.spl` files produce a single SPL leaf with dual hashing. Since there is no surrounding Markdown prose, section grounding does not apply. Standalone SPL files can still use explicit `:source` references to ground their content in other Markdown files.
+Standalone `.spl` files produce a single SPL leaf with dual hashing. Since there is no surrounding Markdown prose, section grounding does not apply. Standalone SPL files can still use explicit `(meta ... (source ...))` references to ground their content in other Markdown files.
 
 ---
 
@@ -766,17 +799,25 @@ Trace:
 ```
 
 ```
-REQ-042: Explicit Grounding via :source
+REQ-042: Explicit Grounding via source Metadata
 
 The system SHALL support explicit content grounding for individual
-SPL facts and rules using the :source metadata key in three forms:
-  a) :source "e5f6a7b8" — ground in a specific content block identified
-     by its Merkle leaf hash prefix (minimum 8 hex characters). Resolved
-     by prefix match against all Merkle leaves in the vault.
-  b) :source "^block-id" — ground in a specific ^block-id within the
-     same file
-  c) :source "[[Page^block-id]]" — ground in a specific ^block-id in
-     another file
+SPL facts and rules using spindle-core's (meta ...) construct with
+the `source` key. The `source` value can be a MetaValue::String
+(single reference) or MetaValue::List (multiple references).
+
+Reference forms:
+  a) (meta label (source "e5f6a7b8")) — ground in a specific content
+     block identified by its Merkle leaf hash prefix (minimum 8 hex
+     characters). Resolved by prefix match against all Merkle leaves
+     in the vault.
+  b) (meta label (source "^block-id")) — ground in a specific ^block-id
+     within the same file
+  c) (meta label (source "[[Page^block-id]]")) — ground in a specific
+     ^block-id in another file
+  d) (meta label (source ("ref1" "ref2"))) — ground in multiple content
+     blocks using MetaValue::List. Each reference is resolved and
+     tracked independently.
 
 The system SHALL:
   - Resolve hash references by prefix match across all vault leaves
@@ -784,17 +825,22 @@ The system SHALL:
   - Report an error if a hash prefix matches zero leaves or is ambiguous
   - Report an error if a ^block-id or page does not exist
   - Compute a grounding hash from the referenced leaf's content hash
+  - For MetaValue::List, compute a combined grounding hash from all
+    referenced blocks; detect drift if any one changes
   - Store explicit groundings in the theory cache
 
-Hash-based references (:source "e5f6a7b8") are position-independent:
+Hash-based references (source "e5f6a7b8") are position-independent:
 the same content at a different line or file still resolves. This is
 the primary mechanism for agents, who discover hashes via `zetl blocks`.
 
-When explicit :source is present, it takes precedence over implicit
-section grounding for that specific fact or rule (see §3.4).
+When explicit source metadata is present, it takes precedence over
+implicit section grounding for that specific fact or rule (see §3.4).
+
+No spindle-parser changes are required — (meta label (key "value"))
+and (meta label (key ("v1" "v2"))) are already supported.
 
 FOR all user roles
-WITH validation of :source targets alongside dead link detection.
+WITH validation of source targets alongside dead link detection.
 
 Trace:
 - TEST-043
@@ -809,7 +855,7 @@ The system SHALL detect and report SPL drift as part of `zetl check`:
      section grounding hash against the cached version from the last
      theory build. If different (prose changed) and the SPL AST hash
      is unchanged, report drift.
-  b) For each SPL fact/rule with explicit :source grounding: compare
+  b) For each SPL fact/rule with explicit source metadata: compare
      the current target leaf hash against the cached version. If
      different and the SPL construct is unchanged, report drift.
 
@@ -863,7 +909,7 @@ The system SHALL provide a `zetl blocks` command with two modes:
   including:
     a) Leaf type (heading, paragraph, code block, SPL block, table, etc.)
     b) Line range (start and end line numbers)
-    c) Merkle leaf hash (hex-encoded BLAKE3, usable as a :source reference)
+    c) Merkle leaf hash (hex-encoded BLAKE3, usable as a source metadata reference)
     d) Text preview (first 200 characters of normalised content)
 
   The page argument SHALL use the same resolution as wikilinks (SPEC-001
@@ -881,7 +927,7 @@ The system SHALL provide a `zetl blocks` command with two modes:
     f) Full hash (hex-encoded BLAKE3)
 
   The hash argument is a hex prefix (minimum 8 characters). Resolution
-  uses the same prefix-matching logic as :source hash references
+  uses the same prefix-matching logic as source metadata hash references
   (REQ-042):
     - Zero matches → error: "content hash not found"
     - One match → success: return the leaf's location
@@ -894,7 +940,7 @@ index first (consistent with other query commands).
 
 FOR agent and human user roles
 WITH output in JSON (default) or table format
-AND hashes usable directly as :source values in SPL.
+AND hashes usable directly as source metadata values in SPL.
 
 Trace:
 - TEST-049
@@ -1007,36 +1053,42 @@ Context:
      - Cannot ground in specific paragraphs
      - Cannot ground across files
 
-  C. Explicit grounding only — require :source on every fact:
+  C. Explicit grounding only — require source metadata on every fact:
      + Precise control
      - Too much ceremony for the common case
      - Most users won't annotate every fact
 
-  D. Section grounding by default + explicit :source override:
+  D. Section grounding by default + explicit source metadata override:
      + Automatic for 80% of cases
      + Precise when needed (20%)
      + Cross-file grounding via [[Page^block-id]]
      + Zero ceremony for basic use, progressive disclosure
+     + Uses existing spindle-core (meta ...) API — no parser changes
+     + MetaValue::List handles multiple sources natively
      - Slightly more complex grounding resolution logic
 
 Decision:
   Implement Option D — implicit section grounding with explicit
-  :source override.
+  source metadata override via (meta label (source "ref")).
 
 Rationale:
   - Section grounding handles the common case where an SPL block
     formalises the prose in its immediate context
-  - :source handles precision grounding and cross-file references
+  - (meta label (source ...)) handles precision grounding and
+    cross-file references using the existing spindle-core API
   - The ^block-id syntax already exists in the Obsidian ecosystem
-  - Progressive disclosure: beginners never need :source; experts
-    use it when precision matters
+  - MetaValue::List supports multiple source references per fact/rule
+  - Progressive disclosure: beginners never need source metadata;
+    experts use it when precision matters
+  - No spindle-parser changes required
 
 Consequences:
   + Zero-ceremony drift detection for all SPL blocks
   + Precise grounding available when needed
   + Cross-file grounding for multi-document theories
+  + No upstream spindle-rust changes required
   - Section boundary detection adds logic to the scanner
-  - :source validation adds checks to zetl check
+  - Source validation adds checks to zetl check
 ```
 
 ### 6.2 Component Architecture
@@ -1144,13 +1196,20 @@ struct SplLeafCached {
     explicit_groundings: Vec<ExplicitGrounding>,
 }
 
-/// An explicit :source grounding reference
+/// An explicit source grounding reference (from (meta label (source ...)))
 struct ExplicitGrounding {
     /// The literal or rule label this grounding applies to
     construct: String,
-    /// The :source reference (e.g., "^block-id" or "[[Page^block-id]]")
+    /// The source references — single String or List from MetaValue
+    /// Each entry is e.g. "^block-id", "[[Page^block-id]]", or "e5f6a7b8"
+    source_refs: Vec<String>,
+    /// Resolved targets: one per source_ref entry
+    targets: Vec<ResolvedTarget>,
+}
+
+/// A resolved source reference target
+struct ResolvedTarget {
     source_ref: String,
-    /// Resolved target: file path + leaf index
     target_file: PathBuf,
     target_leaf_hash: ContentHash,
 }
@@ -1169,12 +1228,12 @@ enum DriftType {
     SectionDrift {
         section_heading: String,
     },
-    /// Explicit :source target changed, SPL construct unchanged
+    /// Explicit source metadata target changed, SPL construct unchanged
     ExplicitDrift {
         construct: String,
         source_ref: String,
     },
-    /// Explicit :source target not found
+    /// Explicit source metadata target not found
     BrokenGrounding {
         construct: String,
         source_ref: String,
@@ -1184,7 +1243,7 @@ enum DriftType {
 enum DriftSeverity {
     Info,     // distant changes in section
     Warning,  // adjacent changes or explicit grounding broken
-    Error,    // :source target not found
+    Error,    // source target not found
 }
 ```
 
@@ -1227,8 +1286,9 @@ For each SPL block in current trees:
      d. Severity: check if immediately-adjacent leaves changed (Warning)
         or only distant leaves (Info)
 
-  2. EXPLICIT DRIFT (for blocks with :source):
-     a. Resolve each :source target to a current Merkle leaf
+  2. EXPLICIT DRIFT (for blocks with source metadata):
+     a. Resolve each source reference to a current Merkle leaf
+        (MetaValue::String → single target; MetaValue::List → multiple)
      b. Compare target leaf hash against cached target leaf hash
      c. If target changed AND the SPL construct is unchanged:
         → Explicit drift detected (severity: Warning)
@@ -1426,8 +1486,9 @@ Example error — ambiguous prefix (JSON):
 }
 
 Usage:
-  The hash values can be used directly as :source references in SPL:
-    (given redis-fast-enough :source "e5f6a7b8")
+  The hash values can be used as source metadata in SPL:
+    (given redis-fast-enough)
+    (meta redis-fast-enough (source "e5f6a7b8"))
 
   Resolve a hash back to its source location:
     zetl blocks --resolve e5f6a7b8
@@ -1440,11 +1501,11 @@ Verified by:
 ```
 
 ```
-CON-004 (extended): zetl check :source validation
+CON-004 (extended): zetl check source metadata validation
 
-Broken :source references (^block-id that doesn't exist, [[Page]] that
-doesn't exist) are reported as errors in the spl_diagnostics section,
-consistent with dead wikilink detection:
+Broken source references (^block-id that doesn't exist, [[Page]] that
+doesn't exist, Merkle hash that doesn't match) are reported as errors
+in the spl_diagnostics section, consistent with dead wikilink detection:
 
 {
   "spl_diagnostics": [
@@ -1452,13 +1513,19 @@ consistent with dead wikilink detection:
       "level": "error",
       "file": "decisions/Old Decision.md",
       "line": 16,
-      "message": "SPL :source references ^removed-section which does not exist in this file"
+      "message": "SPL source metadata references ^removed-section which does not exist in this file"
     },
     {
       "level": "error",
       "file": "decisions/Architecture.md",
       "line": 23,
-      "message": "SPL :source references [[Nonexistent Page^data]] — page 'Nonexistent Page' not found"
+      "message": "SPL source metadata references [[Nonexistent Page^data]] — page 'Nonexistent Page' not found"
+    },
+    {
+      "level": "error",
+      "file": "decisions/Stale.md",
+      "line": 10,
+      "message": "SPL source metadata hash e5f6a7b8 not found — source content may have been modified or removed"
     }
   ]
 }
@@ -1521,7 +1588,7 @@ CON-012 (extended): zetl reason provenance — staleness warnings
       "contribution": "fact",
       "grounding": {
         "type": "explicit",
-        "source": "^benchmark-results",
+        "source": ["^benchmark-results"],
         "fresh": true
       }
     }
@@ -1671,36 +1738,49 @@ Verifies: REQ-041
 ```
 
 ```
-TEST-043: Explicit Grounding via :source
+TEST-043: Explicit Grounding via source Metadata
 
-Scenario: Same-file :source grounding
+Scenario: Same-file source grounding
 Given: A file with:
   We tested Redis at 120k ops/sec. ^benchmark-results
   ```spl
-  (given redis-fast-enough :source "^benchmark-results")
+  (given redis-fast-enough)
+  (meta redis-fast-enough (source "^benchmark-results"))
   ```
 When: The file is indexed
 Then:
   - Fact redis-fast-enough has explicit grounding to ^benchmark-results
   - The grounding hash is the Merkle leaf hash of that paragraph
 
-Scenario: Cross-file :source grounding
+Scenario: Cross-file source grounding
 Given:
   File A: "Architecture.md" with paragraph tagged ^perf-numbers
-  File B: SPL with (given ok :source "[[Architecture^perf-numbers]]")
+  File B: SPL with:
+    (given ok)
+    (meta ok (source "[[Architecture^perf-numbers]]"))
 When: Both files are indexed
 Then:
   - Fact ok has explicit grounding to Architecture.md ^perf-numbers
   - Grounding hash is the target paragraph's Merkle leaf hash
 
-Scenario: Broken :source detected by check
-Given: SPL with :source "^nonexistent"
+Scenario: Multiple sources via MetaValue::List
+Given: SPL with:
+  (given meets-requirements)
+  (meta meets-requirements (source ("^perf-numbers" "[[Security Audit^findings]]")))
+When: The file is indexed
+Then:
+  - Fact meets-requirements has two explicit groundings
+  - Combined grounding hash covers both referenced blocks
+  - Drift is detected if either target changes
+
+Scenario: Broken source detected by check
+Given: SPL with (meta fact-x (source "^nonexistent"))
 When: `zetl check` is run
 Then:
-  - Reports error: ":source references ^nonexistent which does not exist"
+  - Reports error: "source references ^nonexistent which does not exist"
 
-Scenario: Broken cross-file :source
-Given: SPL with :source "[[Ghost Page^data]]"
+Scenario: Broken cross-file source
+Given: SPL with (meta fact-x (source "[[Ghost Page^data]]"))
 When: `zetl check` is run
 Then:
   - Reports error: "page 'Ghost Page' not found"
@@ -1723,12 +1803,12 @@ Then:
 
 Scenario: Explicit grounding drift detected
 Given:
-  - Fact grounded in ^benchmark-results via :source
+  - Fact grounded in ^benchmark-results via (meta ... (source ...))
   - The ^benchmark-results paragraph is edited
   - The SPL fact is unchanged
 When: `zetl check --drift` is run
 Then:
-  - Reports drift warning naming the fact and :source reference
+  - Reports drift warning naming the fact and source reference
 
 Scenario: SPL block itself changed — no drift
 Given: Both prose and SPL are edited
@@ -1783,12 +1863,14 @@ Then:
   - SPL blocks include spl_hashes
   - Output matches CON-020 forward mode schema
 
-Scenario: Hash is usable as :source
+Scenario: Hash is usable as source metadata
 Given: `zetl blocks "Redis"` returns hash "e5f6a7b8" for a paragraph
-When: An SPL block is written with (given fact :source "e5f6a7b8")
+When: An SPL block is written with:
+       (given fact)
+       (meta fact (source "e5f6a7b8"))
        and `zetl check` is run
 Then:
-  - The :source resolves successfully (no error)
+  - The source resolves successfully (no error)
   - The grounding hash matches the target paragraph
 
 Scenario: Hash becomes stale after edit
@@ -1981,14 +2063,14 @@ SHALL emit:
 | Item | Effort | Dependencies |
 | --- | --- | --- |
 | `zetl blocks` command (REQ-045) | 2 hours | P0 complete |
-| :source parsing from SPL metadata (REQ-042) | 3 hours | spindle-parser meta |
+| source metadata extraction from (meta ...) (REQ-042) | 2 hours | spindle-core meta API |
 | Merkle hash prefix resolution (REQ-042) | 3 hours | P0 complete |
 | ^block-id resolution to Merkle leaves (REQ-042) | 2 hours | Existing scanner |
-| Cross-file :source resolution (REQ-042) | 2 hours | Block-id resolution |
-| :source validation in check (REQ-042) | 2 hours | Resolution |
+| Cross-file source resolution (REQ-042) | 2 hours | Block-id resolution |
+| source validation in check (REQ-042) | 2 hours | Resolution |
 | Explicit grounding drift detection (REQ-043) | 2 hours | P1 + resolution |
 
-**Estimated total: ~42 hours** across all priorities.
+**Estimated total: ~41 hours** across all priorities.
 
 ---
 
@@ -2059,9 +2141,9 @@ No separate `merkle.json` file — Merkle data is folded into the existing cache
 | Cryptographic signing of vault root | Sign with author key for tamper detection in multi-agent environments. |
 | Semantic drift detection | Use embedding similarity (not just hash equality) to detect meaning drift. |
 | Cross-vault Merkle forests | Vault roots as leaves in a cross-vault tree. Builds on SPEC-004 sync. |
-| Named SPL blocks with grounding | Combine SPEC-005 §12.2 named blocks with explicit grounding: `@{caching-base :source "^section"}`. |
+| Named SPL blocks with grounding | Combine SPEC-005 §12.2 named blocks with explicit grounding: `@{caching-base}` + `(meta caching-base (source "^section"))`. |
 | Grounding visualisation in TUI | Show which prose each SPL block is grounded in, highlighted in the page view. |
-| Automatic :source suggestion | When drift is detected, suggest adding explicit :source to prevent false positives. |
+| Automatic source suggestion | When drift is detected, suggest adding explicit source metadata to prevent false positives. |
 | Grounding-aware what-if | `zetl reason what-if` could show which groundings would become stale if a hypothetical were applied. |
 
 ---
@@ -2072,7 +2154,7 @@ No separate `merkle.json` file — Merkle data is folded into the existing cache
 
 2. **How should the system handle files with no headings?** The entire file is one implicit section. All SPL blocks are grounded in the full file content. Recommendation: this is fine for small files. For large files with no headings, consider a warning.
 
-3. **Should `:source` be a spindle-core `(meta ...)` construct or inline syntax?** Inline (`:source "e5f6a7b8"` on the fact/rule line) is more readable but requires parser support. Meta (`(meta label :source "e5f6a7b8")`) works with the existing parser. Recommendation: support both; inline is sugar for meta.
+3. ~~**Should `source` be a spindle-core `(meta ...)` construct or inline syntax?**~~ **Resolved:** Use spindle-core's existing `(meta label (source "value"))` construct. This requires no parser changes and supports both single values (`MetaValue::String`) and multiple values (`MetaValue::List`). Inline syntax is not needed — the meta construct is sufficient and consistent with how spindle-core already handles metadata (e.g., `_source_file`, `_source_line`).
 
 7. **What is the minimum hash prefix length for unambiguous resolution?** 8 hex characters (32 bits) provides 4 billion distinct values, which is sufficient for typical vaults. For very large vaults, longer prefixes may be needed. Recommendation: minimum 8 characters, `zetl check` reports ambiguity if a prefix matches multiple leaves and suggests a longer prefix.
 
