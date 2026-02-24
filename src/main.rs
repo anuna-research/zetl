@@ -2183,10 +2183,9 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
     // If the index was missing and was just built, reuse the pipeline so we don't scan twice.
     let prefetched = check_no_index_fallback(cli)?;
 
-    // Resolve the page title and its absolute file path, running the
-    // fuzzy-suggestion prompt (REQ-073) when the requested page is not found.
-    // Also extract the full set of vault page titles for dead-link detection (REQ-064).
-    let (page_title, file_path, page_set): (String, Option<PathBuf>, HashSet<String>) =
+    // Resolve the page title, file path, and vault metadata in one pass.
+    type ViewInit = (String, Option<PathBuf>, HashSet<String>, Vec<(String, PathBuf)>, PathBuf);
+    let (page_title, file_path, page_set, file_index, vault_root): ViewInit =
         if let Some(page_input) = page {
             let pipeline = prefetched
                 .map(Ok)
@@ -2201,7 +2200,7 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
             let resolved = if let Some(r) = resolve_page_name(page_input, &pipeline.file_index) {
                 r
             } else {
-                // Page not found — offer the top-5 SimHash-nearest suggestions.
+                // Page not found — offer the top-5 SimHash-nearest suggestions (REQ-073).
                 let pages: Vec<(String, String)> = pipeline
                     .file_index
                     .iter()
@@ -2214,22 +2213,39 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
                 }
             };
 
-            // Convert the relative path from the file index to an absolute path
-            // using the canonicalized vault root (SPEC-006 index path, REQ-067).
             let abs_path = pipeline
                 .file_index
                 .iter()
                 .find(|(name, _)| name == &resolved)
                 .map(|(_, rel_path)| pipeline.vault_root.join(rel_path));
 
-            (resolved, abs_path, page_set)
+            (
+                resolved,
+                abs_path,
+                page_set,
+                pipeline.file_index,
+                pipeline.vault_root,
+            )
         } else {
-            // No page argument: index was already checked/built by check_no_index_fallback above.
-            ("(no page selected)".to_string(), None, HashSet::new())
+            // No page argument — index already ensured by check_no_index_fallback.
+            (
+                "(no page selected)".to_string(),
+                None,
+                HashSet::new(),
+                Vec::new(),
+                PathBuf::new(),
+            )
         };
 
-    let mut app =
-        zetl::view::ViewApp::new(page_title, file_path, context_lines, main_width, page_set);
+    let mut app = zetl::view::ViewApp::new(
+        page_title,
+        file_path,
+        context_lines,
+        main_width,
+        page_set,
+        file_index,
+        vault_root,
+    );
     app.run()
 }
 

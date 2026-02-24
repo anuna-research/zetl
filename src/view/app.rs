@@ -44,7 +44,7 @@ impl ContextMode {
 // ── FocusState ────────────────────────────────────────────────────────────
 
 /// Whether the user is scrolling freely or has focused a specific wikilink.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FocusState {
     /// Free-scroll mode — j/k scroll the main pane.
     #[default]
@@ -89,6 +89,16 @@ pub struct ViewApp {
     /// Navigation history as `(page_title, scroll_offset)` pairs.
     /// The most recent entry is pushed when navigating away; popped on `[`.
     pub nav_history: Vec<(String, usize)>,
+
+    /// Vault root used to resolve relative paths from `file_index`.
+    pub vault_root: std::path::PathBuf,
+
+    /// Mapping of page title → relative path for every page in the vault.
+    /// Used to resolve wikilink targets on Enter navigation.
+    pub file_index: Vec<(String, std::path::PathBuf)>,
+
+    /// Complete set of vault page titles for dead-link detection.
+    pub page_set: HashSet<String>,
 
     /// Which context cards to show in the right pane.
     pub context_mode: ContextMode,
@@ -146,6 +156,8 @@ impl ViewApp {
         context_lines: u8,
         main_width: u8,
         page_set: HashSet<String>,
+        file_index: Vec<(String, PathBuf)>,
+        vault_root: PathBuf,
     ) -> Self {
         let current_page = page.into();
         let content_lines: Vec<String> = file_path
@@ -166,6 +178,9 @@ impl ViewApp {
             scroll_offset: 0,
             viewport_height: 0,
             nav_history: Vec::new(),
+            vault_root,
+            file_index,
+            page_set,
             context_mode: ContextMode::default(),
             focus_state: FocusState::default(),
             context_lines,
@@ -272,7 +287,7 @@ impl ViewApp {
         // [[wikilink]] (REQ-064).  No word-wrap is applied; long Markdown lines
         // extend past the right edge (horizontal scrolling is not implemented).
         let scroll_row = self.scroll_offset.min(u16::MAX as usize) as u16;
-        let para = Paragraph::new(self.annotated_lines.clone()).scroll((scroll_row, 0));
+        let para = Paragraph::new(self.annotated_lines_with_focus()).scroll((scroll_row, 0));
         frame.render_widget(para, content_area);
     }
 
@@ -303,10 +318,15 @@ impl ViewApp {
             ContextMode::Both => "both",
         };
 
-        let focused_segment = match &self.focus_state {
+        let focused_segment = match self.focus_state {
             FocusState::ScrollMode => String::new(),
             FocusState::FocusMode { focused_index } => {
-                format!(" │ [{}] {}", focused_index + 1, self.current_page)
+                let title = self
+                    .link_map
+                    .get(focused_index)
+                    .map(|e| e.page_title.as_str())
+                    .unwrap_or("");
+                format!(" │ [{}] {}", focused_index + 1, title)
             }
         };
 
@@ -440,12 +460,23 @@ impl ViewApp {
             KeyCode::Char('?') => {
                 self.show_help = !self.show_help;
             }
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.scroll_down();
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.scroll_up();
-            }
+            KeyCode::Char('j') | KeyCode::Down => match self.focus_state {
+                FocusState::FocusMode { focused_index } => {
+                    let new_idx =
+                        (focused_index + 1).min(self.link_map.len().saturating_sub(1));
+                    self.focus_state = FocusState::FocusMode { focused_index: new_idx };
+                    self.scroll_to_focused();
+                }
+                FocusState::ScrollMode => self.scroll_down(),
+            },
+            KeyCode::Char('k') | KeyCode::Up => match self.focus_state {
+                FocusState::FocusMode { focused_index } => {
+                    let new_idx = focused_index.saturating_sub(1);
+                    self.focus_state = FocusState::FocusMode { focused_index: new_idx };
+                    self.scroll_to_focused();
+                }
+                FocusState::ScrollMode => self.scroll_up(),
+            },
             KeyCode::Char('g') => {
                 self.scroll_offset = 0;
             }
@@ -460,9 +491,11 @@ impl ViewApp {
                 self.toggle_focus();
             }
             KeyCode::Enter => {
-                // Navigate to the focused link's target page.
-                if let FocusState::FocusMode { .. } = self.focus_state {
-                    // Placeholder: no link data yet.
+                if let FocusState::FocusMode { focused_index } = self.focus_state {
+                    if let Some(entry) = self.link_map.get(focused_index) {
+                        let target = entry.page_title.clone();
+                        self.navigate_to(target);
+                    }
                 }
             }
             KeyCode::Char('b') => {
@@ -495,10 +528,96 @@ impl ViewApp {
 
     fn navigate_back(&mut self) {
         if let Some((page, offset)) = self.nav_history.pop() {
-            self.current_page = page;
+            self.current_page = page.clone();
+            let abs_path = self
+                .file_index
+                .iter()
+                .find(|(name, _)| name == &page)
+                .map(|(_, rel)| self.vault_root.join(rel));
+            self.load_page(abs_path);
             self.scroll_offset = offset;
             self.focus_state = FocusState::ScrollMode;
         }
+    }
+
+    /// Navigate to `page_title`, pushing the current page onto the history stack.
+    fn navigate_to(&mut self, page_title: String) {
+        let abs_path = self
+            .file_index
+            .iter()
+            .find(|(name, _)| name == &page_title)
+            .map(|(_, rel)| self.vault_root.join(rel));
+
+        self.nav_history
+            .push((self.current_page.clone(), self.scroll_offset));
+        self.current_page = page_title;
+        self.load_page(abs_path);
+        self.scroll_offset = 0;
+        self.focus_state = FocusState::ScrollMode;
+    }
+
+    /// Read content from `abs_path` and rebuild `content_lines`, `annotated_lines`, `link_map`.
+    fn load_page(&mut self, abs_path: Option<std::path::PathBuf>) {
+        self.content_lines = abs_path
+            .and_then(|p| std::fs::read_to_string(&p).ok())
+            .map(|s| s.lines().map(|l| l.to_string()).collect())
+            .unwrap_or_default();
+        let (annotated, link_map) =
+            build_annotated_lines(&self.content_lines, &self.page_set, self.color_mode);
+        self.annotated_lines = annotated;
+        self.link_map = link_map;
+    }
+
+    /// Scroll so the currently-focused link's line is visible in the viewport.
+    fn scroll_to_focused(&mut self) {
+        if let FocusState::FocusMode { focused_index } = self.focus_state {
+            if let Some(entry) = self.link_map.get(focused_index) {
+                let line = entry.line_number;
+                if line < self.scroll_offset {
+                    self.scroll_offset = line;
+                } else if self.viewport_height > 0
+                    && line >= self.scroll_offset + self.viewport_height
+                {
+                    self.scroll_offset = line + 1 - self.viewport_height;
+                }
+            }
+        }
+    }
+
+    /// Clone `annotated_lines`, applying a `reversed` highlight to the glyph
+    /// span of the currently-focused link (if in `FocusMode`).
+    fn annotated_lines_with_focus(&self) -> Vec<Line<'static>> {
+        let focused_ordinal = match self.focus_state {
+            FocusState::FocusMode { focused_index } => {
+                self.link_map.get(focused_index).map(|e| e.ordinal)
+            }
+            FocusState::ScrollMode => None,
+        };
+
+        let Some(ord) = focused_ordinal else {
+            return self.annotated_lines.clone();
+        };
+
+        let Some(entry) = self.link_map.iter().find(|e| e.ordinal == ord) else {
+            return self.annotated_lines.clone();
+        };
+
+        let focused_line = entry.line_number;
+        let mut lines = self.annotated_lines.clone();
+
+        if let Some(line) = lines.get_mut(focused_line) {
+            // The glyph span content is "[N]" or "![N]" (dead, no-color).
+            let plain = format!("[{}]", ord);
+            let bang = format!("![{}]", ord);
+            for span in line.spans.iter_mut() {
+                if span.content.as_ref() == plain || span.content.as_ref() == bang {
+                    span.style = span.style.reversed().bold();
+                    break;
+                }
+            }
+        }
+
+        lines
     }
 }
 
