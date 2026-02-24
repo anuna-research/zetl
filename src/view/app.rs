@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -5,6 +6,8 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Clear, Paragraph};
 
+use super::color::{detect_color_mode, ColorMode};
+use super::link_map::{build_annotated_lines, LinkMap};
 use super::terminal::{enter_alternate_screen, restore_terminal};
 use crate::view::event::run_event_loop;
 
@@ -66,6 +69,16 @@ pub struct ViewApp {
     /// Raw Markdown lines of the current page.  Empty when no file is loaded.
     pub content_lines: Vec<String>,
 
+    /// Pre-built ratatui [`Line`]s with `[N]` anchor glyphs injected after
+    /// each `[[wikilink]]` (REQ-064).  Parallel to `content_lines`.
+    pub annotated_lines: Vec<Line<'static>>,
+
+    /// Document-order list of all wikilinks found in the current page (REQ-064).
+    pub link_map: LinkMap,
+
+    /// Terminal color capability detected at startup.
+    pub color_mode: ColorMode,
+
     /// Number of lines scrolled down from the top of the document.
     pub scroll_offset: usize,
 
@@ -124,11 +137,15 @@ impl ViewApp {
     /// `Some`, the file is read immediately so the main pane can display its
     /// content (REQ-067).  Errors are silently ignored — `content_lines` will
     /// be empty if the file cannot be read.
+    ///
+    /// `page_set` is the complete set of page titles present in the vault
+    /// index; used to determine which wikilinks are dead (REQ-064).
     pub fn new(
         page: impl Into<String>,
         file_path: Option<PathBuf>,
         context_lines: u8,
         main_width: u8,
+        page_set: HashSet<String>,
     ) -> Self {
         let current_page = page.into();
         let content_lines: Vec<String> = file_path
@@ -136,9 +153,16 @@ impl ViewApp {
             .map(|s| s.lines().map(|l| l.to_string()).collect())
             .unwrap_or_default();
 
+        let color_mode = detect_color_mode();
+        let (annotated_lines, link_map) =
+            build_annotated_lines(&content_lines, &page_set, color_mode);
+
         Self {
             current_page,
             content_lines,
+            annotated_lines,
+            link_map,
+            color_mode,
             scroll_offset: 0,
             viewport_height: 0,
             nav_history: Vec::new(),
@@ -244,17 +268,11 @@ impl ViewApp {
         frame.render_widget(header, header_area);
 
         // ── Scrollable content ────────────────────────────────────────────
-        // Build Line items from raw content strings.  No word-wrap is applied;
-        // long Markdown lines extend past the right edge (horizontal scrolling
-        // is not implemented in this iteration).
-        let lines: Vec<Line> = self
-            .content_lines
-            .iter()
-            .map(|l| Line::raw(l.as_str()))
-            .collect();
-
+        // Use pre-annotated lines that include [N] anchor glyphs after each
+        // [[wikilink]] (REQ-064).  No word-wrap is applied; long Markdown lines
+        // extend past the right edge (horizontal scrolling is not implemented).
         let scroll_row = self.scroll_offset.min(u16::MAX as usize) as u16;
-        let para = Paragraph::new(lines).scroll((scroll_row, 0));
+        let para = Paragraph::new(self.annotated_lines.clone()).scroll((scroll_row, 0));
         frame.render_widget(para, content_area);
     }
 
@@ -293,8 +311,11 @@ impl ViewApp {
         };
 
         let status = format!(
-            " zetl view │ {} │ {} │{} 0 links │ j/k scroll  Tab focus  ?",
-            self.current_page, mode_str, focused_segment,
+            " zetl view │ {} │ {} │{} {} links │ j/k scroll  Tab focus  ?",
+            self.current_page,
+            mode_str,
+            focused_segment,
+            self.link_map.len(),
         );
 
         let para = Paragraph::new(status).style(Style::default().reversed());
