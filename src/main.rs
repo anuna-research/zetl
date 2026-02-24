@@ -8,7 +8,7 @@ use comfy_table::{Cell, Table};
 use serde::Serialize;
 
 use zetl::cache::{files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache};
-use zetl::cli::{Cli, Command, FailLevel, OutputFormat};
+use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, OutputFormat};
 use zetl::graph::LinkGraph;
 use zetl::scanner::{resolve_page_name, scan_vault};
 use zetl::search::{search_vault, SearchConfig};
@@ -1348,6 +1348,312 @@ fn cmd_list(cli: &Cli) -> Result<()> {
                     table.add_row(vec![Cell::new(&p.page), Cell::new(&p.path)]);
                 }
                 println!("{table}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_blocks(
+    cli: &Cli,
+    page: Option<&str>,
+    block_type: &BlockTypeFilter,
+    resolve: Option<&str>,
+) -> Result<()> {
+    // Validate mutual exclusion
+    if page.is_some() && resolve.is_some() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("--resolve and page are mutually exclusive", 2),
+            OutputFormat::Table => {
+                eprintln!("Error: --resolve and page are mutually exclusive");
+                std::process::exit(2);
+            }
+        }
+    }
+    if page.is_none() && resolve.is_none() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("Either a page name or --resolve <HASH> is required", 2),
+            OutputFormat::Table => {
+                eprintln!("Error: Either a page name or --resolve <HASH> is required");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let pipeline = run_pipeline(cli)?;
+
+    // ── Helper: convert hex ContentHash to string ──────────────────────────
+    let hash_to_hex = |h: &zetl::types::ContentHash| -> String {
+        h.iter().map(|b| format!("{:02x}", b)).collect()
+    };
+
+    // ── Helper: derive a type label string from a LeafType ─────────────────
+    fn leaf_type_label(leaf_type: &zetl::types::LeafType) -> String {
+        use zetl::types::LeafType;
+        match leaf_type {
+            LeafType::Heading { level } => format!("heading-{}", level),
+            LeafType::Paragraph => "paragraph".to_string(),
+            LeafType::CodeBlock { .. } => "code".to_string(),
+            LeafType::SplBlock => "spl".to_string(),
+            LeafType::List { .. } => "list".to_string(),
+            LeafType::BlockQuote => "blockquote".to_string(),
+            LeafType::Table => "table".to_string(),
+            LeafType::Frontmatter => "frontmatter".to_string(),
+            LeafType::ThematicBreak => "thematic-break".to_string(),
+            LeafType::HtmlBlock => "html".to_string(),
+        }
+    }
+
+    // ── Helper: check if a leaf type passes the filter ─────────────────────
+    fn leaf_matches_filter(leaf_type: &zetl::types::LeafType, filter: &BlockTypeFilter) -> bool {
+        use zetl::types::LeafType;
+        match filter {
+            BlockTypeFilter::All => true,
+            BlockTypeFilter::Heading => matches!(leaf_type, LeafType::Heading { .. }),
+            BlockTypeFilter::Paragraph => matches!(leaf_type, LeafType::Paragraph),
+            BlockTypeFilter::Spl => matches!(leaf_type, LeafType::SplBlock),
+            BlockTypeFilter::Code => matches!(leaf_type, LeafType::CodeBlock { .. }),
+            BlockTypeFilter::Table => matches!(leaf_type, LeafType::Table),
+            BlockTypeFilter::List => matches!(leaf_type, LeafType::List { .. }),
+            BlockTypeFilter::Blockquote => matches!(leaf_type, LeafType::BlockQuote),
+            BlockTypeFilter::Frontmatter => matches!(leaf_type, LeafType::Frontmatter),
+        }
+    }
+
+    // ── Helper: extract and normalise text from file lines ─────────────────
+    fn extract_block_text(
+        vault_root: &Path,
+        file_path: &std::path::Path,
+        start_line: u32,
+        end_line: u32,
+    ) -> Option<String> {
+        let full_path = vault_root.join(file_path);
+        let content = std::fs::read_to_string(&full_path).ok()?;
+        let lines: Vec<&str> = content.lines().collect();
+        let start = (start_line as usize).saturating_sub(1);
+        let end = (end_line as usize).min(lines.len());
+        if start >= end {
+            return Some(String::new());
+        }
+        let raw = lines[start..end].join("\n");
+        // Normalise: collapse whitespace runs to a single space, trim
+        let mut out = String::with_capacity(raw.len().min(210));
+        let mut prev_space = false;
+        for ch in raw.chars() {
+            if ch.is_whitespace() {
+                if !prev_space {
+                    out.push(' ');
+                }
+                prev_space = true;
+            } else {
+                out.push(ch);
+                prev_space = false;
+            }
+        }
+        let trimmed = out.trim().to_string();
+        // Take first 200 chars (char boundary safe)
+        if trimmed.chars().count() <= 200 {
+            Some(trimmed)
+        } else {
+            Some(trimmed.chars().take(200).collect())
+        }
+    }
+
+    #[derive(Serialize)]
+    struct SplHashesOutput {
+        content_hash: String,
+        ast_hash: String,
+    }
+
+    #[derive(Serialize)]
+    struct BlockEntry {
+        index: usize,
+        #[serde(rename = "type")]
+        block_type: String,
+        lines: [u32; 2],
+        hash: String,
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        spl_hashes: Option<SplHashesOutput>,
+    }
+
+    if let Some(page_input) = page {
+        // ── Forward mode: list blocks for a page ───────────────────────────
+        let resolved_page = find_page(page_input, &pipeline.file_index, false, &pipeline.files)
+            .unwrap_or_else(|e| {
+                exit_page_not_found(&cli.format, &e);
+            });
+
+        let file = pipeline
+            .files
+            .iter()
+            .find(|f| f.page_name == resolved_page)
+            .unwrap_or_else(|| {
+                exit_page_not_found(&cli.format, &format!("Page not found: '{resolved_page}'"));
+            });
+
+        let file_hash = file
+            .file_merkle
+            .as_ref()
+            .map(|fm| hash_to_hex(&fm.root_hash));
+
+        // Build filtered block entries
+        let mut blocks: Vec<BlockEntry> = Vec::new();
+        let mut index = 0usize;
+        for leaf in &file.merkle_leaves {
+            if !leaf_matches_filter(&leaf.node_type, block_type) {
+                continue;
+            }
+            let text = extract_block_text(
+                &pipeline.vault_root,
+                &file.path,
+                leaf.start_line,
+                leaf.end_line,
+            )
+            .unwrap_or_default();
+
+            let spl_hashes = leaf.spl_hashes.as_ref().map(|sh| SplHashesOutput {
+                content_hash: hash_to_hex(&sh.content_hash),
+                ast_hash: hash_to_hex(&sh.ast_hash),
+            });
+
+            blocks.push(BlockEntry {
+                index,
+                block_type: leaf_type_label(&leaf.node_type),
+                lines: [leaf.start_line, leaf.end_line],
+                hash: hash_to_hex(&leaf.hash),
+                text,
+                spl_hashes,
+            });
+            index += 1;
+        }
+
+        let block_count = blocks.len();
+
+        #[derive(Serialize)]
+        struct BlocksOutput {
+            page: String,
+            file_hash: Option<String>,
+            block_count: usize,
+            blocks: Vec<BlockEntry>,
+        }
+
+        let output = BlocksOutput {
+            page: resolved_page.clone(),
+            file_hash,
+            block_count,
+            blocks,
+        };
+
+        match cli.format {
+            OutputFormat::Json => print_json(&output)?,
+            OutputFormat::Table => {
+                println!("Blocks for '{}' ({} blocks):", output.page, output.block_count);
+                if output.block_count == 0 {
+                    println!("  (no blocks match filter)");
+                } else {
+                    let mut table = Table::new();
+                    table.set_header(vec!["#", "Type", "Lines", "Hash (prefix)", "Text"]);
+                    for b in &output.blocks {
+                        let hash_prefix = &b.hash[..8.min(b.hash.len())];
+                        let lines_str = format!("{}-{}", b.lines[0], b.lines[1]);
+                        let text_display = if b.text.len() > 60 {
+                            format!("{}…", &b.text[..60])
+                        } else {
+                            b.text.clone()
+                        };
+                        table.add_row(vec![
+                            Cell::new(b.index),
+                            Cell::new(&b.block_type),
+                            Cell::new(lines_str),
+                            Cell::new(hash_prefix),
+                            Cell::new(text_display),
+                        ]);
+                    }
+                    println!("{table}");
+                    if let Some(ref fh) = output.file_hash {
+                        println!("File hash: {fh}");
+                    }
+                }
+            }
+        }
+    } else if let Some(hash_prefix) = resolve {
+        // ── Resolve mode: find block by BLAKE3 hash prefix ─────────────────
+        let hash_lower = hash_prefix.to_lowercase();
+
+        #[derive(Serialize)]
+        struct ResolveOutput {
+            page: String,
+            file_hash: Option<String>,
+            block: BlockEntry,
+        }
+
+        let mut found: Option<(String, Option<String>, BlockEntry)> = None;
+
+        'outer: for file in &pipeline.files {
+            let file_hash = file
+                .file_merkle
+                .as_ref()
+                .map(|fm| hash_to_hex(&fm.root_hash));
+
+            for (raw_index, leaf) in file.merkle_leaves.iter().enumerate() {
+                let leaf_hex = hash_to_hex(&leaf.hash);
+                if leaf_hex.starts_with(&hash_lower) {
+                    // Count filtered index (index within filtered set matching block_type=all)
+                    let text = extract_block_text(
+                        &pipeline.vault_root,
+                        &file.path,
+                        leaf.start_line,
+                        leaf.end_line,
+                    )
+                    .unwrap_or_default();
+
+                    let spl_hashes = leaf.spl_hashes.as_ref().map(|sh| SplHashesOutput {
+                        content_hash: hash_to_hex(&sh.content_hash),
+                        ast_hash: hash_to_hex(&sh.ast_hash),
+                    });
+
+                    let entry = BlockEntry {
+                        index: raw_index,
+                        block_type: leaf_type_label(&leaf.node_type),
+                        lines: [leaf.start_line, leaf.end_line],
+                        hash: leaf_hex,
+                        text,
+                        spl_hashes,
+                    };
+                    found = Some((file.page_name.clone(), file_hash, entry));
+                    break 'outer;
+                }
+            }
+        }
+
+        match found {
+            Some((page_name, file_hash, block)) => {
+                let output = ResolveOutput { page: page_name, file_hash, block };
+                match cli.format {
+                    OutputFormat::Json => print_json(&output)?,
+                    OutputFormat::Table => {
+                        println!("Block resolved from page '{}':", output.page);
+                        println!("  Type:  {}", output.block.block_type);
+                        println!("  Lines: {}-{}", output.block.lines[0], output.block.lines[1]);
+                        println!("  Hash:  {}", output.block.hash);
+                        println!("  Text:  {}", output.block.text);
+                        if let Some(ref fh) = output.file_hash {
+                            println!("  File hash: {fh}");
+                        }
+                    }
+                }
+            }
+            None => {
+                let msg = format!("Block not found for hash prefix: '{hash_prefix}'");
+                match cli.format {
+                    OutputFormat::Json => exit_json_error(&msg, 1),
+                    OutputFormat::Table => {
+                        eprintln!("{msg}");
+                        std::process::exit(1);
+                    }
+                }
             }
         }
     }
@@ -5195,6 +5501,11 @@ fn main() -> anyhow::Result<()> {
             to,
             max_depth,
         } => cmd_path(&cli, from, to, *max_depth),
+        Command::Blocks {
+            page,
+            block_type,
+            resolve,
+        } => cmd_blocks(&cli, page.as_deref(), block_type, resolve.as_deref()),
         Command::Export => cmd_export(&cli),
         Command::Tui => cmd_tui(&cli),
         #[cfg(feature = "reason")]
