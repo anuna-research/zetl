@@ -1055,6 +1055,7 @@ mod tests {
                 spl_blocks: vec![blocks[0].clone()],
                 diagnostics: vec![],
                 mtime,
+                merkle_leaves: vec![],
             },
             ParsedFile {
                 path: PathBuf::from("B.md"),
@@ -1063,6 +1064,7 @@ mod tests {
                 spl_blocks: vec![blocks[1].clone()],
                 diagnostics: vec![],
                 mtime,
+                merkle_leaves: vec![],
             },
         ];
 
@@ -1123,6 +1125,7 @@ mod tests {
                 spl_blocks: vec![b.clone()],
                 diagnostics: vec![],
                 mtime,
+                merkle_leaves: vec![],
             })
             .collect();
 
@@ -1174,6 +1177,7 @@ mod tests {
                 spl_blocks: vec![b.clone()],
                 diagnostics: vec![],
                 mtime,
+                merkle_leaves: vec![],
             })
             .collect();
 

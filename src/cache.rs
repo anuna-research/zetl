@@ -284,6 +284,7 @@ mod tests {
             spl_blocks: vec![],
             diagnostics: vec![],
             mtime,
+            merkle_leaves: vec![],
         }
     }
 
@@ -453,6 +454,7 @@ mod tests {
             }],
             diagnostics: vec![],
             mtime,
+            merkle_leaves: vec![],
         }
     }
 
