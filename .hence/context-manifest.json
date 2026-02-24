@@ -1,12 +1,12 @@
 {
-  "task_id": "merkle-roots",
+  "task_id": "section-detection",
   "token_budget": 8000,
-  "tokens_used": 349,
+  "tokens_used": 443,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement BLAKE3 hashing for all leaf nodes and compute file and vault Merkle roots per §4.1-4.2 and §4.6. Leaf hashing: ContentHash = BLAKE3(type_tag_byte ‖ normalised_content_bytes) for all non-SPL leaves. The type_tag_byte is a unique sentinel per LeafType variant (e.g., Heading=0x01, Paragraph=0x02, etc.). File Merkle root: ContentHash = BLAKE3(leaf1_hash ‖ leaf2_hash ‖ … ‖ leafN_hash) in document order. Vault root: ContentHash = BLAKE3(file1_hash ‖ file2_hash ‖ … ‖ fileM_hash) sorted by canonical relative path (UTF-8 lexicographic, forward-slash normalised) per §4.6. Store per-file root in FileMerkle::root_hash. Store vault root in the cache index. Expose compute_leaf_hash, compute_file_root, compute_vault_root as testable functions in a new src/merkle.rs module (or inline in scanner.rs). SPL leaf hashing is handled separately in task-spl-dual-hashing — leave SplBlock leaves with a placeholder sentinel hash for now.",
-      "token_cost": 239,
+      "content": "Implement the section boundary detection algorithm from §4.5. For each file's Vec<MerkleLeaf>, compute the grounding_section for every SplBlock leaf. Algorithm: 1) Walk backwards from the SPL leaf index to find the nearest preceding Heading leaf — this is section_start; if no heading found, section starts at index 0, 2) Walk forward from section_start to find the next Heading at the same or higher level (lower numeric level number) — this is section_end; if not found, section_end = last leaf index, 3) The grounding hash = BLAKE3(concat of hashes of all non-SplBlock leaves in [section_start..=section_end]). If the SPL leaf is in the preamble (no heading above it), grounding context = all content before the first heading (or entire file if no headings). Store the result in SplLeafCached::section_index and in the Section struct. Implement as detect_sections(leaves: &[MerkleLeaf]) -> Vec<Section> and grounding_section(leaves: &[MerkleLeaf], spl_leaf_idx: usize) -> Section in src/merkle.rs. Each Section stores: heading_line, heading_text, heading_level, leaf_range, grounding_hash. Subsection headings (###) create a narrower context than parent sections (##) — this is by design per §4.5.",
+      "token_cost": 302,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 5 files (+741, -5): src/cache.rs, src/graph.rs, src/reason/mod.rs, src/scanner.rs, src/types.rs",
       "token_cost": 26,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-merkle-roots-changes",
+      "content": "Modified 8 files (+444, -18): .hence/context-manifest.json, src/cache.rs, src/graph.rs, src/lib.rs, src/merkle.rs and 3 more",
+      "token_cost": 31,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T01:54:37Z"
+  "constructed_at": "2026-02-24T02:03:27Z"
 }

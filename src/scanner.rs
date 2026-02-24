@@ -1,5 +1,5 @@
-use crate::merkle::{compute_file_root, compute_leaf_hash};
-use crate::types::{ContentHash, Diagnostic, DiagnosticLevel, FileMerkle, LeafType, MerkleLeaf, ParsedFile, SplBlock, WikiLink};
+use crate::merkle::{compute_file_root, compute_leaf_hash, detect_sections};
+use crate::types::{ContentHash, Diagnostic, DiagnosticLevel, FileMerkle, LeafType, MerkleLeaf, ParsedFile, SplBlock, SplLeafCached, WikiLink};
 use anyhow::Result;
 use ignore::WalkBuilder;
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
@@ -136,10 +136,53 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
 
     // Compute per-file Merkle root from the ordered leaf hashes (§4.2).
     let file_root = compute_file_root(&merkle_leaves);
+
+    // Detect grounding sections for all SplBlock leaves (§4.5).
+    let mut sections = detect_sections(&merkle_leaves);
+
+    // Fill in heading_text from the raw file content using each section's heading_line.
+    for section in &mut sections {
+        if section.heading_level > 0 {
+            section.heading_text = extract_heading_text(content, section.heading_line);
+        }
+    }
+
+    // Build the spl_leaves Vec: one SplLeafCached per SplBlock leaf in document order.
+    // Build a mapping from spl-leaf position (0-indexed) → section index.
+    let mut spl_to_section = Vec::new();
+    for (sec_idx, sec) in sections.iter().enumerate() {
+        for spl_pos in sec.leaf_range.0..sec.leaf_range.1 {
+            // Ensure the vec is large enough (spl positions arrive in order).
+            if spl_to_section.len() <= spl_pos {
+                spl_to_section.resize(spl_pos + 1, 0usize);
+            }
+            spl_to_section[spl_pos] = sec_idx;
+        }
+    }
+
+    let mut spl_leaves: Vec<SplLeafCached> = Vec::new();
+    for leaf in &merkle_leaves {
+        if matches!(leaf.node_type, LeafType::SplBlock) {
+            let spl_pos = spl_leaves.len();
+            let section_index = spl_to_section.get(spl_pos).copied().unwrap_or(0);
+            let (content_hash, ast_hash) = match &leaf.spl_hashes {
+                Some(h) => (h.content_hash, h.ast_hash),
+                None => (leaf.hash, [0u8; 32]),
+            };
+            spl_leaves.push(SplLeafCached {
+                start_line: leaf.start_line,
+                content_hash,
+                ast_hash,
+                section_index,
+                explicit_groundings: vec![],
+            });
+        }
+    }
+
     let file_merkle = Some(FileMerkle {
         root_hash: file_root,
-        sections: vec![],
-        spl_leaves: vec![],
+        sections,
+        spl_leaves,
     });
 
     // Validate syntax
@@ -907,6 +950,23 @@ pub fn build_merkle_leaves<'a>(
     }
 
     leaves
+}
+
+/// Extract heading text from a specific 1-indexed line in the file content.
+///
+/// Handles both ATX headings (`## Title`) by stripping leading `#` characters
+/// and the optional following space, and setext headings where the text is the
+/// entire line content.
+fn extract_heading_text(content: &str, line: u32) -> String {
+    let line_content = content.lines().nth((line as usize).saturating_sub(1)).unwrap_or("");
+    if line_content.starts_with('#') {
+        // ATX heading: strip leading '#' chars and one optional space.
+        let stripped = line_content.trim_start_matches('#');
+        stripped.strip_prefix(' ').unwrap_or(stripped).trim().to_string()
+    } else {
+        // Setext heading: the text is the full line.
+        line_content.trim().to_string()
+    }
 }
 
 /// Find byte ranges of HTML comments (`<!-- ... -->`) in content.
