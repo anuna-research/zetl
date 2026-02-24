@@ -1,12 +1,12 @@
 {
-  "task_id": "source-extraction",
+  "task_id": "test-vcs-independence",
   "token_budget": 8000,
-  "tokens_used": 463,
+  "tokens_used": 680,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend the SPL extraction pipeline to parse (meta label (source ...)) constructs from SPL blocks per REQ-042. The source key uses spindle-core's existing MetaValue API: MetaValue::String for single references, MetaValue::List for multiple references. After theory construction (via spindle-parser), walk the parsed AST to find all (meta LABEL (source VALUE)) forms. Extract: construct (the label), source_refs (Vec<String> — either a single string from MetaValue::String or list from MetaValue::List). Parse each source_ref to determine its type: hash_ref (8+ hex chars), local_ref (^block-id pattern), cross_file_ref ([[Page^block-id]] pattern). Store raw source_refs in ExplicitGrounding::source_refs in the SplLeafCached. No resolution yet — just extraction and classification. Implement in reason feature gate since it requires spindle-core MetaValue. Add extraction to the theory construction pipeline in src/reason/mod.rs.",
-      "token_cost": 233,
+      "content": "Write integration tests for TEST-050 (VCS Independence, NFR-017). Tests must explicitly verify that all commands work identically whether or not a .git directory is present. Three scenarios: 1) Vault in a plain directory (no .git) — run zetl index, zetl check, zetl blocks, zetl reason status; assert all succeed and git fields are absent or null, 2) Git metadata is optional enrichment — create a vault inside a tempfile git repo (git init), run zetl reason provenance, verify git_commit and git_dirty fields are present; then remove .git and re-run, verify identical output except git fields are null, 3) Cache validity is VCS-independent — index inside a git repo, then remove .git, run zetl index, verify cache is still valid (no re-indexing) and git fields become null. Use tempfile and std::process::Command to run zetl binary. Note: these tests do NOT require an actual git installation — use conditional compilation or skip gracefully when git is not available.",
+      "token_cost": 244,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T03:21:58Z"
+  "constructed_at": "2026-02-24T03:37:45Z"
 }
