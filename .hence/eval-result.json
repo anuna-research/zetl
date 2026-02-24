@@ -3,26 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 426,
-    "deletions": 14,
+    "files_changed": 4,
+    "insertions": 322,
+    "deletions": 13,
     "file_list": [
-      ".hence/context-manifest.json",
+      "src/cache.rs",
       "src/main.rs",
-      "tests/reason_integration.rs"
+      "src/reason/mod.rs",
+      "src/reason/types.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-provenance-grounding-changes",
-      "content": "Modified 3 files (+426, -14): .hence/context-manifest.json, src/main.rs, tests/reason_integration.rs",
+      "key": "task-source-extraction-changes",
+      "content": "Modified 4 files (+322, -13): src/cache.rs, src/main.rs, src/reason/mod.rs, src/reason/types.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/provenance-grounding-v1",
-  "evaluated_at": "2026-02-24T03:21:53Z",
+  "branch_name": "hence/source-extraction-v1",
+  "evaluated_at": "2026-02-24T03:37:40Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
