@@ -1,12 +1,12 @@
 {
-  "task_id": "cache-format-v2",
+  "task_id": "theory-cache-spl",
   "token_budget": 8000,
-  "tokens_used": 409,
+  "tokens_used": 395,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Upgrade both cache files to version 2 with Merkle fields per §12. index.json v2: increment CACHE_VERSION to 2, add merkle_root: String (hex ContentHash) to each file entry, add vault_root_hash: String at top level. theory.json v2: increment THEORY_CACHE_VERSION to 2, add vault_root_hash: String, built_at: String (RFC3339), spl_blocks: HashMap<String, SplBlockCache> where key is 'path:line' and value has ast_hash, content_hash, section_heading, section_grounding_hash, explicit_groundings fields per §12.2. When loading a v1 cache, return None (force full re-index/rebuild on first run after upgrade). When loading a v2 cache with missing merkle_root fields, treat that file as needing reparse. The git_commit/git_dirty fields in theory.json are Option<String>/Option<bool> per §1.6 and are absent in index.json per the VCS boundary contract. Implement FileMerkle serialisation/deserialisation as part of the cache schema.",
-      "token_cost": 232,
+      "content": "Implement SPL-specific theory cache invalidation using AST hashes per REQ-040. During zetl reason status (and any other theory-building command): 1) Collect the set of SPL leaf AST hashes from the current Merkle tree (from all SPL-containing files), 2) Compare against the set stored in theory.json spl_blocks (the ast_hash fields), 3) If the sets are identical (same labels, same hashes), the theory cache is valid — skip rebuild, 4) If any ast_hash differs or any file is added/removed, rebuild the theory. This means a prose-only edit (file Merkle root changes, but SPL AST hash unchanged) does NOT trigger a theory rebuild. Implement as a theory_cache_valid(current_spl_hashes, cached_theory) -> bool function in cache.rs. Wire this into cmd_reason_status in main.rs before the theory build step.",
+      "token_cost": 200,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,14 @@
       "content": "Modified 3 files (+395, -37): .hence/context-manifest.json, src/merkle.rs, src/scanner.rs",
       "token_cost": 22,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cache-format-v2-changes",
+      "content": "Modified 2 files (+324, -35): .hence/context-manifest.json, src/cache.rs",
+      "token_cost": 18,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T02:22:49Z"
+  "constructed_at": "2026-02-24T02:32:28Z"
 }
