@@ -3,26 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 348,
-    "deletions": 0,
+    "files_changed": 2,
+    "insertions": 1212,
+    "deletions": 5,
     "file_list": [
-      "Cargo.lock",
-      "Cargo.toml",
-      "tests/perf.rs"
+      ".hence/context-manifest.json",
+      "tests/reason_integration.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-perf-tests-changes",
-      "content": "Modified 3 files (+348, -0): Cargo.lock, Cargo.toml, tests/perf.rs",
+      "key": "task-unit-tests-p1-changes",
+      "content": "Modified 2 files (+1212, -5): .hence/context-manifest.json, tests/reason_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/perf-tests-v1",
-  "evaluated_at": "2026-02-24T05:09:30Z",
+  "branch_name": "hence/unit-tests-p1-v1",
+  "evaluated_at": "2026-02-24T05:38:54Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

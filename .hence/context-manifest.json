@@ -1,12 +1,12 @@
 {
-  "task_id": "perf-tests",
+  "task_id": "unit-tests-p1",
   "token_budget": 8000,
-  "tokens_used": 446,
+  "tokens_used": 461,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Write performance and memory benchmark tests for TEST-046 (Merkle construction overhead ≤ 20%), TEST-047 (memory overhead ≤ 30 MB for 10k files), TEST-048 (cache size ≤ 5 MB for 10k files). For TEST-046: generate a synthetic vault with 1,000+ Markdown files (using a loop in the test setup), time zetl index with and without Merkle construction; verify ratio ≤ 1.2. For TEST-047: measure peak RSS before and after Merkle construction on 10k synthetic files; verify delta ≤ 30 MB. For TEST-048: check .zetl/ directory size after indexing 10k files; verify additional size ≤ 5 MB over baseline. Mark perf tests with #[ignore] so they don't run in CI by default (run with cargo test -- --ignored). Document how to run: 'cargo test --features reason -- --ignored perf'. Note: these are smoke tests, not microbenchmarks — sufficient for regression detection.",
-      "token_cost": 216,
+      "content": "Write unit and integration tests for P1 features: TEST-042 (implicit section grounding), TEST-043 (explicit source grounding), TEST-044 (drift detection), TEST-045 (durable provenance). For TEST-042: test SPL in Section A is grounded only in Section A leaves; test SPL before first heading uses preamble; test subsection creates narrower context. For TEST-043: test same-file ^block-id grounding, cross-file [[Page^block-id]] grounding, multiple sources (MetaValue::List), broken ^block-id error, broken cross-file page error. For TEST-044: test section drift detection when prose edited; test explicit grounding drift; test no drift when SPL itself changed; test no drift when nothing changed; test --fail-on warning exit code. For TEST-045: test provenance includes grounding.fresh true; test fresh false with warning when section edited after build. Write as integration tests using tempfile vaults with realistic content.",
+      "token_cost": 231,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T04:52:11Z"
+  "constructed_at": "2026-02-24T05:09:35Z"
 }
