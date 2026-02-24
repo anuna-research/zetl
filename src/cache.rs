@@ -166,32 +166,74 @@ fn vault_root_hex(files: &[ParsedFile]) -> Option<String> {
     }
 }
 
-/// Determine which files need re-parsing based on mtime changes or missing Merkle roots.
+/// Determine which files need re-parsing using two-tier invalidation (REQ-039, ADR-009).
 ///
-/// A `.md` file is flagged for reparse when either:
-/// - its mtime has changed since the cache was written, or
-/// - its cached entry has no [`FileMerkle`] root (i.e. was stored without
-///   Merkle data, which must be backfilled).
+/// ## Tier 1 — fast mtime check
+/// If a file's mtime is unchanged since the cache was written (and its cached entry
+/// has a [`FileMerkle`] root for `.md` files), all cached Merkle nodes are reused
+/// without re-reading the file.
+///
+/// ## Tier 2 — authoritative content check
+/// If the mtime has changed, the freshly computed file Merkle root (supplied by the
+/// caller, who has already re-read and re-hashed the file) is compared with the
+/// cached root:
+/// - **Same root**: the file content is byte-for-byte identical. The file is placed
+///   in the *content-unchanged* vec — downstream processing (wikilink re-extraction,
+///   SPL re-extraction, theory cache invalidation) is skipped.
+/// - **Different root** (or no root to compare): the file is placed in the
+///   *needs-full-reparse* vec for complete reprocessing.
+///
+/// # Return value
+/// `(needs_full_reparse, content_unchanged)`
+/// - `needs_full_reparse`: use the freshly scanned [`ParsedFile`].
+/// - `content_unchanged`: mtime changed but file Merkle root matches cache — use the
+///   *cached* [`ParsedFile`] (the caller should update its stored `mtime` to avoid
+///   repeating the Tier 2 hash comparison on the next run).
 pub fn files_needing_reparse(
     cached: &HashMap<PathBuf, ParsedFile>,
-    current_files: &[(PathBuf, std::time::SystemTime)],
-) -> Vec<PathBuf> {
-    current_files
-        .iter()
-        .filter(|(path, mtime)| match cached.get(path) {
-            None => true,
-            Some(cached_file) => {
-                let mtime_changed = cached_file.mtime != *mtime;
-                let missing_merkle = path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map_or(false, |ext| ext == "md")
-                    && cached_file.file_merkle.is_none();
-                mtime_changed || missing_merkle
+    current_files: &[(PathBuf, std::time::SystemTime, Option<ContentHash>)],
+) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let mut needs_full_reparse = Vec::new();
+    let mut content_unchanged = Vec::new();
+
+    for (path, mtime, fresh_root) in current_files {
+        match cached.get(path) {
+            None => {
+                // New file: always needs full reparse.
+                needs_full_reparse.push(path.clone());
             }
-        })
-        .map(|(path, _)| path.clone())
-        .collect()
+            Some(cached_file) => {
+                if cached_file.mtime == *mtime {
+                    // Tier 1: mtime unchanged.
+                    // .md files missing a Merkle root need backfilling.
+                    let missing_merkle = path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .map_or(false, |ext| ext == "md")
+                        && cached_file.file_merkle.is_none();
+                    if missing_merkle {
+                        needs_full_reparse.push(path.clone());
+                    }
+                    // else: Tier 1 hit — no action needed.
+                } else {
+                    // Tier 2: mtime changed — compare file Merkle roots.
+                    let cached_root = cached_file.file_merkle.as_ref().map(|fm| fm.root_hash);
+                    match (cached_root, fresh_root) {
+                        (Some(cr), Some(fr)) if cr == *fr => {
+                            // Root hash unchanged: content is identical despite mtime change.
+                            content_unchanged.push(path.clone());
+                        }
+                        _ => {
+                            // Root hash differs or no root to compare: full reparse required.
+                            needs_full_reparse.push(path.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    (needs_full_reparse, content_unchanged)
 }
 
 // ── Theory cache ──────────────────────────────────────────────────────────
@@ -631,9 +673,9 @@ mod tests {
         let t1 = UNIX_EPOCH + Duration::from_secs(1_000_000);
         let t2 = UNIX_EPOCH + Duration::from_secs(2_000_000);
 
-        // a.md: same mtime AND has file_merkle → should NOT need reparse.
-        // b.md: changed mtime → should need reparse.
-        // c.md: new file → should need reparse.
+        // a.md: same mtime AND has file_merkle → Tier 1 hit, neither vec.
+        // b.md: changed mtime, no cached Merkle → full reparse.
+        // c.md: new file → full reparse.
         let cached: HashMap<PathBuf, ParsedFile> = [
             (
                 PathBuf::from("a.md"),
@@ -645,18 +687,20 @@ mod tests {
         .collect();
 
         let current_files = vec![
-            (PathBuf::from("a.md"), t1), // unchanged
-            (PathBuf::from("b.md"), t2), // mtime changed
-            (PathBuf::from("c.md"), t1), // new file, not in cache
+            (PathBuf::from("a.md"), t1, Some([1u8; 32])), // unchanged mtime
+            (PathBuf::from("b.md"), t2, None),            // mtime changed, no fresh root
+            (PathBuf::from("c.md"), t1, None),            // new file
         ];
 
-        let mut need_reparse = files_needing_reparse(&cached, &current_files);
-        need_reparse.sort();
+        let (mut full_reparse, content_unchanged) =
+            files_needing_reparse(&cached, &current_files);
+        full_reparse.sort();
 
         assert_eq!(
-            need_reparse,
+            full_reparse,
             vec![PathBuf::from("b.md"), PathBuf::from("c.md")]
         );
+        assert!(content_unchanged.is_empty());
     }
 
     #[test]
@@ -664,14 +708,18 @@ mod tests {
         let cached: HashMap<PathBuf, ParsedFile> = HashMap::new();
         let t = UNIX_EPOCH + Duration::from_secs(1_000_000);
 
-        let current_files = vec![(PathBuf::from("x.md"), t), (PathBuf::from("y.md"), t)];
+        let current_files = vec![
+            (PathBuf::from("x.md"), t, None),
+            (PathBuf::from("y.md"), t, None),
+        ];
 
-        let need_reparse = files_needing_reparse(&cached, &current_files);
+        let (full_reparse, content_unchanged) = files_needing_reparse(&cached, &current_files);
         assert_eq!(
-            need_reparse.len(),
+            full_reparse.len(),
             2,
             "all files should need parsing when cache is empty"
         );
+        assert!(content_unchanged.is_empty());
     }
 
     #[test]
@@ -686,13 +734,14 @@ mod tests {
         .into_iter()
         .collect();
 
-        let current_files = vec![(PathBuf::from("only.md"), t)];
+        let current_files = vec![(PathBuf::from("only.md"), t, Some([1u8; 32]))];
 
-        let need_reparse = files_needing_reparse(&cached, &current_files);
+        let (full_reparse, content_unchanged) = files_needing_reparse(&cached, &current_files);
         assert!(
-            need_reparse.is_empty(),
+            full_reparse.is_empty(),
             "unchanged .md file with merkle should not need reparse"
         );
+        assert!(content_unchanged.is_empty());
     }
 
     #[test]
@@ -705,14 +754,15 @@ mod tests {
                 .into_iter()
                 .collect();
 
-        let current_files = vec![(PathBuf::from("note.md"), t)];
+        let current_files = vec![(PathBuf::from("note.md"), t, None)];
 
-        let need_reparse = files_needing_reparse(&cached, &current_files);
+        let (full_reparse, content_unchanged) = files_needing_reparse(&cached, &current_files);
         assert_eq!(
-            need_reparse,
+            full_reparse,
             vec![PathBuf::from("note.md")],
             ".md file missing file_merkle should need reparse even if mtime unchanged"
         );
+        assert!(content_unchanged.is_empty());
     }
 
     #[test]
@@ -727,13 +777,54 @@ mod tests {
         .into_iter()
         .collect();
 
-        let current_files = vec![(PathBuf::from("theory.spl"), t)];
+        let current_files = vec![(PathBuf::from("theory.spl"), t, None)];
 
-        let need_reparse = files_needing_reparse(&cached, &current_files);
+        let (full_reparse, content_unchanged) = files_needing_reparse(&cached, &current_files);
         assert!(
-            need_reparse.is_empty(),
+            full_reparse.is_empty(),
             ".spl file without merkle and unchanged mtime should not need reparse"
         );
+        assert!(content_unchanged.is_empty());
+    }
+
+    #[test]
+    fn files_needing_reparse_tier2_content_unchanged() {
+        let t1 = UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let t2 = UNIX_EPOCH + Duration::from_secs(2_000_000);
+        let root = [42u8; 32];
+
+        // a.md: mtime changed but Merkle root is the same → content_unchanged.
+        // b.md: mtime changed and Merkle root differs → full reparse.
+        // c.md: mtime changed and no cached Merkle → full reparse.
+        let mut cached_a = make_parsed_file_with_merkle("a.md", t1);
+        cached_a.file_merkle.as_mut().unwrap().root_hash = root;
+
+        let cached: HashMap<PathBuf, ParsedFile> = [
+            (PathBuf::from("a.md"), cached_a),
+            (
+                PathBuf::from("b.md"),
+                make_parsed_file_with_merkle("b.md", t1),
+            ),
+            (PathBuf::from("c.md"), make_parsed_file("c.md", t1)),
+        ]
+        .into_iter()
+        .collect();
+
+        let current_files = vec![
+            (PathBuf::from("a.md"), t2, Some(root)),          // same root → content_unchanged
+            (PathBuf::from("b.md"), t2, Some([99u8; 32])),    // different root → full reparse
+            (PathBuf::from("c.md"), t2, None),                // no root → full reparse
+        ];
+
+        let (mut full_reparse, content_unchanged) =
+            files_needing_reparse(&cached, &current_files);
+        full_reparse.sort();
+
+        assert_eq!(
+            full_reparse,
+            vec![PathBuf::from("b.md"), PathBuf::from("c.md")]
+        );
+        assert_eq!(content_unchanged, vec![PathBuf::from("a.md")]);
     }
 
     #[test]
