@@ -1,12 +1,12 @@
 {
-  "task_id": "main-pane",
+  "task_id": "anchor-annotations",
   "token_budget": 8000,
-  "tokens_used": 260,
+  "tokens_used": 335,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement scrollable note content rendering in the main pane. Given the current page title, load the file content from disk (via the SPEC-006 index path). Render as a ratatui Paragraph with word-wrap disabled (preserve raw Markdown lines). Support scroll_offset: j/k scroll one line, Ctrl-d/Ctrl-u scroll half a page, g/G go to top/bottom. Render the page title as a styled header above the content. Track which lines are currently visible (viewport_start..viewport_start+height). REQ-063, REQ-067.",
-      "token_cost": 124,
+      "content": "Implement wikilink parsing and anchor glyph injection for the main pane. For each line of the note content: scan for [[wikilink]] patterns; assign each unique wikilink an ordinal N (document order, 1-indexed); inject a styled anchor glyph [N] (ratatui Span with color from LinkColors) immediately after the closing ]] of each wikilink occurrence. Dead links (wikilinks whose target is not in the index) render in red (ANSI red in 8-color, Color::Red in true-color) or with a '!' prefix in no-color mode: ![N]. Track the document-order list of (ordinal, page_title, is_dead, line_number) tuples as LinkMap — this structure is shared by the context pane, bridge column, and focus mode tasks. REQ-064, ADR-017.",
+      "token_cost": 177,
       "priority": "PlanMeta"
     },
     {
@@ -44,8 +44,14 @@
       "content": "Modified 2 files (+95, -12): .hence/context-manifest.json, src/view/app.rs",
       "token_cost": 18,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-main-pane-changes",
+      "content": "Modified 3 files (+110, -24): .hence/context-manifest.json, src/main.rs, src/view/app.rs",
+      "token_cost": 22,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T07:22:42Z"
+  "constructed_at": "2026-02-24T07:28:22Z"
 }
