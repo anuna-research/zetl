@@ -10,7 +10,7 @@ use serde::Serialize;
 use zetl::cache::{files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache};
 use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, OutputFormat};
 use zetl::graph::LinkGraph;
-use zetl::merkle::{build_vault_hash_index, validate_source_refs};
+use zetl::merkle::{build_vault_hash_index, resolve_hash_prefix, validate_source_refs, HashResolutionResult};
 use zetl::scanner::{resolve_page_name, scan_vault};
 use zetl::search::{search_vault, SearchConfig};
 use zetl::simhash::SimHashIndex;
@@ -1409,6 +1409,11 @@ fn cmd_blocks(
         }
     }
 
+    // ── Dispatch resolve mode to dedicated handler ──────────────────────────
+    if let Some(hash_prefix) = resolve {
+        return cmd_blocks_resolve(cli, hash_prefix);
+    }
+
     let pipeline = run_pipeline(cli)?;
 
     // ── Helper: convert hex ContentHash to string ──────────────────────────
@@ -1606,40 +1611,186 @@ fn cmd_blocks(
                 }
             }
         }
-    } else if let Some(hash_prefix) = resolve {
-        // ── Resolve mode: find block(s) by BLAKE3 hash prefix ──────────────
-        use zetl::merkle::{build_vault_hash_index, resolve_hash_prefix, HashResolutionResult};
+    }
 
-        let index = build_vault_hash_index(&pipeline.files);
+    Ok(())
+}
 
-        match resolve_hash_prefix(hash_prefix, &index) {
-            HashResolutionResult::Found { full_hash, locations } => {
+/// Implement REQ-045 / CON-020 reverse mode: resolve a BLAKE3 hash prefix to its
+/// source location(s) across the vault.
+///
+/// Resolution logic per §3.3:
+/// 1. Validate prefix is minimum 8 hex characters.
+/// 2. Search all Merkle leaves across the vault for prefix match.
+/// 3. Zero matches → exit 1, error JSON per CON-020 "hash not found" example.
+/// 4. Multiple matches with different full hashes (ambiguous prefix) → exit 1,
+///    error JSON with matches list and suggestion.
+/// 5. Multiple matches with identical full hashes (duplicate content) → exit 0,
+///    success JSON with locations array and note per CON-020 duplicate content example.
+/// 6. One match → exit 0, standard CON-020 resolve success JSON.
+fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
+    // ── §1 Validate minimum 8 hex characters ────────────────────────────────
+    if hash_prefix.len() < 8 {
+        #[derive(Serialize)]
+        struct E {
+            error: &'static str,
+        }
+        let msg = "hash prefix too short (minimum 8 hex characters)";
+        match cli.format {
+            OutputFormat::Json => {
+                let _ = print_json(&E { error: msg });
+                std::process::exit(1);
+            }
+            OutputFormat::Table => {
+                eprintln!("Error: {msg}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // ── §2 Scan vault and build hash index ───────────────────────────────────
+    let pipeline = run_pipeline(cli)?;
+    let index = build_vault_hash_index(&pipeline.files);
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    fn leaf_type_label(leaf_type: &zetl::types::LeafType) -> String {
+        use zetl::types::LeafType;
+        match leaf_type {
+            LeafType::Heading { level } => format!("heading-{level}"),
+            LeafType::Paragraph => "paragraph".to_string(),
+            LeafType::CodeBlock { .. } => "code".to_string(),
+            LeafType::SplBlock => "spl".to_string(),
+            LeafType::List { .. } => "list".to_string(),
+            LeafType::BlockQuote => "blockquote".to_string(),
+            LeafType::Table => "table".to_string(),
+            LeafType::Frontmatter => "frontmatter".to_string(),
+            LeafType::ThematicBreak => "thematic-break".to_string(),
+            LeafType::HtmlBlock => "html".to_string(),
+        }
+    }
+
+    fn extract_block_text(
+        vault_root: &Path,
+        file_path: &std::path::Path,
+        start_line: u32,
+        end_line: u32,
+    ) -> Option<String> {
+        let full_path = vault_root.join(file_path);
+        let content = std::fs::read_to_string(&full_path).ok()?;
+        let lines: Vec<&str> = content.lines().collect();
+        let start = (start_line as usize).saturating_sub(1);
+        let end = (end_line as usize).min(lines.len());
+        if start >= end {
+            return Some(String::new());
+        }
+        let raw = lines[start..end].join("\n");
+        let mut out = String::with_capacity(raw.len().min(210));
+        let mut prev_space = false;
+        for ch in raw.chars() {
+            if ch.is_whitespace() {
+                if !prev_space {
+                    out.push(' ');
+                }
+                prev_space = true;
+            } else {
+                out.push(ch);
+                prev_space = false;
+            }
+        }
+        let trimmed = out.trim().to_string();
+        if trimmed.chars().count() <= 200 {
+            Some(trimmed)
+        } else {
+            Some(trimmed.chars().take(200).collect())
+        }
+    }
+
+    // ── §3-6 Resolution logic ────────────────────────────────────────────────
+    match resolve_hash_prefix(hash_prefix, &index) {
+        HashResolutionResult::Found { full_hash, locations } => {
+            if locations.len() == 1 {
+                // §6 Single location — standard CON-020 resolve success JSON
+                let loc = &locations[0];
+                let file_str = loc.file.to_string_lossy().to_string();
+                let page = pipeline
+                    .files
+                    .iter()
+                    .find(|f| f.path == loc.file)
+                    .map(|f| f.page_name.clone())
+                    .unwrap_or_else(|| file_str.clone());
+                let block_type = leaf_type_label(&loc.leaf.node_type);
+                let text = extract_block_text(
+                    &pipeline.vault_root,
+                    &loc.file,
+                    loc.leaf.start_line,
+                    loc.leaf.end_line,
+                )
+                .unwrap_or_default();
+
                 #[derive(Serialize)]
-                struct ResolveLocation {
-                    page: String,
+                struct SingleResolveOutput {
+                    hash: String,
                     file: String,
-                    file_hash: Option<String>,
-                    block: BlockEntry,
+                    page: String,
+                    #[serde(rename = "type")]
+                    block_type: String,
+                    lines: [u32; 2],
+                    text: String,
+                }
+
+                let output = SingleResolveOutput {
+                    hash: full_hash,
+                    file: file_str,
+                    page,
+                    block_type,
+                    lines: [loc.leaf.start_line, loc.leaf.end_line],
+                    text,
+                };
+
+                match cli.format {
+                    OutputFormat::Json => print_json(&output)?,
+                    OutputFormat::Table => {
+                        println!(
+                            "{}  {}:{}-{}  {}",
+                            output.hash,
+                            output.file,
+                            output.lines[0],
+                            output.lines[1],
+                            output.block_type
+                        );
+                        println!("{}", output.text);
+                    }
+                }
+            } else {
+                // §5 Duplicate content — identical full hashes at multiple locations
+                #[derive(Serialize)]
+                struct DupLocation {
+                    file: String,
+                    page: String,
+                    lines: [u32; 2],
+                    #[serde(rename = "type")]
+                    block_type: String,
+                    text: String,
                 }
 
                 #[derive(Serialize)]
-                struct ResolveOutput {
-                    full_hash: String,
-                    location_count: usize,
-                    locations: Vec<ResolveLocation>,
+                struct DupResolveOutput {
+                    hash: String,
+                    locations: Vec<DupLocation>,
+                    note: &'static str,
                 }
 
-                let resolved_locations: Vec<ResolveLocation> = locations
+                let dup_locs: Vec<DupLocation> = locations
                     .iter()
                     .map(|loc| {
-                        let file = pipeline.files.iter().find(|f| f.path == loc.file);
-                        let file_hash = file.and_then(|f| {
-                            f.file_merkle.as_ref().map(|fm| hash_to_hex(&fm.root_hash))
-                        });
-                        let page = file
+                        let file_str = loc.file.to_string_lossy().to_string();
+                        let page = pipeline
+                            .files
+                            .iter()
+                            .find(|f| f.path == loc.file)
                             .map(|f| f.page_name.clone())
-                            .unwrap_or_else(|| loc.file.to_string_lossy().to_string());
-
+                            .unwrap_or_else(|| file_str.clone());
+                        let block_type = leaf_type_label(&loc.leaf.node_type);
                         let text = extract_block_text(
                             &pipeline.vault_root,
                             &loc.file,
@@ -1647,115 +1798,111 @@ fn cmd_blocks(
                             loc.leaf.end_line,
                         )
                         .unwrap_or_default();
-
-                        let spl_hashes = loc.leaf.spl_hashes.as_ref().map(|sh| SplHashesOutput {
-                            content_hash: hash_to_hex(&sh.content_hash),
-                            ast_hash: hash_to_hex(&sh.ast_hash),
-                        });
-
-                        let block = BlockEntry {
-                            index: loc.leaf_index,
-                            block_type: leaf_type_label(&loc.leaf.node_type),
-                            lines: [loc.leaf.start_line, loc.leaf.end_line],
-                            hash: full_hash.clone(),
-                            text,
-                            spl_hashes,
-                        };
-
-                        ResolveLocation {
+                        DupLocation {
+                            file: file_str,
                             page,
-                            file: loc.file.to_string_lossy().to_string(),
-                            file_hash,
-                            block,
+                            lines: [loc.leaf.start_line, loc.leaf.end_line],
+                            block_type,
+                            text,
                         }
                     })
                     .collect();
 
-                let location_count = resolved_locations.len();
-                let output = ResolveOutput {
-                    full_hash: full_hash.clone(),
-                    location_count,
-                    locations: resolved_locations,
+                let output = DupResolveOutput {
+                    hash: full_hash,
+                    locations: dup_locs,
+                    note: "identical content at multiple locations",
                 };
 
                 match cli.format {
                     OutputFormat::Json => print_json(&output)?,
                     OutputFormat::Table => {
-                        if output.location_count == 1 {
-                            let loc = &output.locations[0];
-                            println!("Block resolved from page '{}':", loc.page);
-                            println!("  Type:  {}", loc.block.block_type);
-                            println!(
-                                "  Lines: {}-{}",
-                                loc.block.lines[0], loc.block.lines[1]
-                            );
-                            println!("  Hash:  {}", output.full_hash);
-                            println!("  Text:  {}", loc.block.text);
-                            if let Some(ref fh) = loc.file_hash {
-                                println!("  File hash: {fh}");
-                            }
-                        } else {
-                            println!(
-                                "Block {} found at {} location(s) (identical content):",
-                                output.full_hash, output.location_count
-                            );
-                            for loc in &output.locations {
-                                println!(
-                                    "  {} (lines {}-{})",
-                                    loc.page, loc.block.lines[0], loc.block.lines[1]
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            HashResolutionResult::NotFound => {
-                let msg = format!("no block found for hash prefix '{hash_prefix}'");
-                match cli.format {
-                    OutputFormat::Json => exit_json_error(&msg, 1),
-                    OutputFormat::Table => {
-                        eprintln!("Error: {msg}");
-                        std::process::exit(1);
-                    }
-                }
-            }
-            HashResolutionResult::Ambiguous { prefix, candidates } => {
-                #[derive(Serialize)]
-                struct AmbiguousError {
-                    error: String,
-                    prefix: String,
-                    candidates: Vec<String>,
-                    suggestion: &'static str,
-                }
-
-                let err = AmbiguousError {
-                    error: format!(
-                        "ambiguous hash prefix '{}': matches {} distinct hashes",
-                        prefix,
-                        candidates.len()
-                    ),
-                    prefix: prefix.clone(),
-                    candidates: candidates.clone(),
-                    suggestion: "use a longer prefix to disambiguate",
-                };
-
-                match cli.format {
-                    OutputFormat::Json => {
-                        print_json(&err)?;
-                        std::process::exit(1);
-                    }
-                    OutputFormat::Table => {
-                        eprintln!(
-                            "Error: ambiguous hash prefix '{}': matches {} distinct hashes",
-                            prefix,
-                            candidates.len()
+                        println!(
+                            "Block {} found at {} location(s) (identical content):",
+                            output.hash,
+                            output.locations.len()
                         );
-                        for c in &candidates {
-                            eprintln!("  {c}");
+                        for loc in &output.locations {
+                            println!("  {} (lines {}-{})", loc.page, loc.lines[0], loc.lines[1]);
                         }
-                        eprintln!("Hint: use a longer prefix to disambiguate");
-                        std::process::exit(1);
                     }
+                }
+            }
+        }
+
+        HashResolutionResult::NotFound => {
+            // §3 Zero matches
+            #[derive(Serialize)]
+            struct NotFoundError {
+                error: String,
+            }
+            let err = NotFoundError {
+                error: format!(
+                    "content hash {hash_prefix} not found \u{2014} source content may have been modified or removed"
+                ),
+            };
+            match cli.format {
+                OutputFormat::Json => {
+                    let _ = print_json(&err);
+                    std::process::exit(1);
+                }
+                OutputFormat::Table => {
+                    eprintln!(
+                        "Error: content hash {hash_prefix} not found — source content may have been modified or removed"
+                    );
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        HashResolutionResult::Ambiguous { prefix, candidates } => {
+            // §4 Multiple matches with different full hashes
+            #[derive(Serialize)]
+            struct AmbiguousMatch {
+                file: String,
+                lines: [u32; 2],
+                hash: String,
+            }
+
+            #[derive(Serialize)]
+            struct AmbiguousError {
+                error: String,
+                matches: Vec<AmbiguousMatch>,
+                suggestion: &'static str,
+            }
+
+            // For each distinct candidate hash, pick its first representative location
+            let matches: Vec<AmbiguousMatch> = candidates
+                .iter()
+                .filter_map(|hash| {
+                    let locs = index.entries.get(hash)?;
+                    let first = locs.first()?;
+                    Some(AmbiguousMatch {
+                        file: first.file.to_string_lossy().to_string(),
+                        lines: [first.leaf.start_line, first.leaf.end_line],
+                        hash: hash.clone(),
+                    })
+                })
+                .collect();
+
+            let err = AmbiguousError {
+                error: format!("ambiguous hash prefix {prefix}"),
+                matches,
+                suggestion: "use a longer prefix to disambiguate",
+            };
+
+            match cli.format {
+                OutputFormat::Json => {
+                    let _ = print_json(&err);
+                    std::process::exit(1);
+                }
+                OutputFormat::Table => {
+                    eprintln!("Error: ambiguous hash prefix {prefix}");
+                    for m in &err.matches {
+                        eprintln!("  {} {}:{}-{}", m.hash, m.file, m.lines[0], m.lines[1]);
+                    }
+                    eprintln!("Hint: use a longer prefix to disambiguate");
+                    std::process::exit(1);
                 }
             }
         }

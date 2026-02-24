@@ -1,12 +1,12 @@
 {
-  "task_id": "unit-tests-p1",
+  "task_id": "blocks-reverse",
   "token_budget": 8000,
-  "tokens_used": 461,
+  "tokens_used": 463,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Write unit and integration tests for P1 features: TEST-042 (implicit section grounding), TEST-043 (explicit source grounding), TEST-044 (drift detection), TEST-045 (durable provenance). For TEST-042: test SPL in Section A is grounded only in Section A leaves; test SPL before first heading uses preamble; test subsection creates narrower context. For TEST-043: test same-file ^block-id grounding, cross-file [[Page^block-id]] grounding, multiple sources (MetaValue::List), broken ^block-id error, broken cross-file page error. For TEST-044: test section drift detection when prose edited; test explicit grounding drift; test no drift when SPL itself changed; test no drift when nothing changed; test --fail-on warning exit code. For TEST-045: test provenance includes grounding.fresh true; test fresh false with warning when section edited after build. Write as integration tests using tempfile vaults with realistic content.",
-      "token_cost": 231,
+      "content": "Implement zetl blocks --resolve <hash> (reverse mode) per REQ-045 and CON-020. Resolve a Merkle leaf hash prefix to its source location. Resolution logic per §3.3: 1) Validate prefix is minimum 8 hex characters — if shorter, exit 1 with 'hash prefix too short' error, 2) Search all Merkle leaves across the entire vault for prefix match, 3) Zero matches → exit 1, error JSON per CON-020 'hash not found' example, 4) Multiple matches with different full hashes (ambiguous prefix) → exit 1, error JSON with matches list and suggestion, 5) Multiple matches with identical full hashes (duplicate content) → exit 0, success JSON with locations array and note per CON-020 duplicate content example, 6) One match → exit 0, standard CON-020 resolve success JSON. Build a hash→location lookup index from all cached FileMerkle data. Implement in main.rs cmd_blocks_resolve. The page argument is mutually exclusive with --resolve.",
+      "token_cost": 233,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T05:09:35Z"
+  "constructed_at": "2026-02-24T05:38:59Z"
 }
