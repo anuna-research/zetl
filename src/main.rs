@@ -10,6 +10,7 @@ use serde::Serialize;
 use zetl::cache::{files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache};
 use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, OutputFormat};
 use zetl::graph::LinkGraph;
+use zetl::merkle::{build_vault_hash_index, validate_source_refs};
 use zetl::scanner::{resolve_page_name, scan_vault};
 use zetl::search::{search_vault, SearchConfig};
 use zetl::simhash::SimHashIndex;
@@ -724,11 +725,24 @@ fn cmd_check(
     };
 
     // Collect SPL diagnostics (requires "reason" feature)
-    let spl_diagnostics: Vec<zetl::types::Diagnostic> = if show_all || show_spl {
+    let mut spl_diagnostics: Vec<zetl::types::Diagnostic> = if show_all || show_spl {
         collect_spl_diagnostics(&pipeline.files)
     } else {
         vec![]
     };
+
+    // Validate source metadata references (REQ-042, CON-004).  These are static
+    // errors that do not require the "reason" feature — they run whenever SPL
+    // diagnostics are requested (show_all or show_spl).
+    if show_all || show_spl {
+        let vault_hash_index = build_vault_hash_index(&pipeline.files);
+        let source_errors = validate_source_refs(
+            &pipeline.files,
+            &pipeline.file_index,
+            &vault_hash_index,
+        );
+        spl_diagnostics.extend(source_errors);
+    }
 
     // Load theory cache once for drift detection, broken_groundings, and explicitly_grounded_facts.
     // Requires a prior `zetl reason status` that produced theory.json — if none exists,

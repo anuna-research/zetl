@@ -32,45 +32,6 @@ use self::types::{
     TheoryResult, TheorySummary,
 };
 
-// ── Source-ref classification (REQ-042) ──────────────────────────────────────
-
-/// The parsed type of a raw source reference string from a `(meta LABEL (source ...))` form.
-///
-/// Used to classify strings extracted from SPL `source` meta values before any
-/// resolution takes place.  Classification is purely syntactic — no file I/O
-/// or hash look-ups are performed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SourceRefType {
-    /// A BLAKE3 hash reference: 8 or more lowercase or uppercase hex characters.
-    HashRef,
-    /// A local block reference within the same file: starts with `^`.
-    LocalRef,
-    /// A cross-file block reference: `[[Page^block-id]]` pattern.
-    CrossFileRef,
-    /// Unrecognised format; preserved verbatim for forward-compatibility.
-    Unknown,
-}
-
-/// Classify a raw source reference string by its syntactic format (REQ-042).
-///
-/// Rules (checked in order):
-/// 1. `[[...^...]]` → [`SourceRefType::CrossFileRef`]
-/// 2. `^...`        → [`SourceRefType::LocalRef`]
-/// 3. 8+ hex chars  → [`SourceRefType::HashRef`]
-/// 4. anything else → [`SourceRefType::Unknown`]
-pub fn classify_source_ref(s: &str) -> SourceRefType {
-    if s.starts_with("[[") && s.ends_with("]]") && s.contains('^') {
-        return SourceRefType::CrossFileRef;
-    }
-    if s.starts_with('^') {
-        return SourceRefType::LocalRef;
-    }
-    if s.len() >= 8 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F')) {
-        return SourceRefType::HashRef;
-    }
-    SourceRefType::Unknown
-}
-
 /// Extract explicit source groundings from a locally-parsed SPL block theory (REQ-042).
 ///
 /// Walks the theory's metadata looking for `"source"` keys.  Each label that
@@ -1314,46 +1275,6 @@ mod tests {
     }
 
     // ── REQ-042: Source extraction tests ─────────────────────────────────────
-
-    #[test]
-    fn classify_source_ref_hash() {
-        // 8 or more hex chars → HashRef
-        assert_eq!(classify_source_ref("abcdef12"), SourceRefType::HashRef);
-        assert_eq!(
-            classify_source_ref("a1b2c3d4e5f6a7b8"),
-            SourceRefType::HashRef
-        );
-        // Upper-case hex is also accepted
-        assert_eq!(classify_source_ref("ABCDEF12"), SourceRefType::HashRef);
-        // Fewer than 8 hex chars → Unknown
-        assert_eq!(classify_source_ref("abcdef1"), SourceRefType::Unknown);
-    }
-
-    #[test]
-    fn classify_source_ref_local() {
-        assert_eq!(classify_source_ref("^block-id"), SourceRefType::LocalRef);
-        assert_eq!(classify_source_ref("^abc123"), SourceRefType::LocalRef);
-    }
-
-    #[test]
-    fn classify_source_ref_cross_file() {
-        assert_eq!(
-            classify_source_ref("[[Page^block-id]]"),
-            SourceRefType::CrossFileRef
-        );
-        assert_eq!(
-            classify_source_ref("[[Architecture^intro]]"),
-            SourceRefType::CrossFileRef
-        );
-    }
-
-    #[test]
-    fn classify_source_ref_unknown() {
-        assert_eq!(classify_source_ref("just-text"), SourceRefType::Unknown);
-        assert_eq!(classify_source_ref(""), SourceRefType::Unknown);
-        // [[...]] without ^ is not a valid cross-file ref
-        assert_eq!(classify_source_ref("[[Page]]"), SourceRefType::Unknown);
-    }
 
     #[test]
     fn source_extraction_single_string() {

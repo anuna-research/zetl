@@ -8,7 +8,7 @@
 //! (§3.3 rules 2–3, REQ-042b, REQ-042c) via [`resolve_local_block_id`] and
 //! [`resolve_cross_file_block_id`].
 
-use crate::types::{ContentHash, LeafType, MerkleLeaf, ParsedFile, Section, SplLeafHash};
+use crate::types::{ContentHash, Diagnostic, DiagnosticLevel, LeafType, MerkleLeaf, ParsedFile, Section, SplLeafHash};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -642,6 +642,214 @@ pub fn resolve_cross_file_block_id(
             file: target_path.clone(),
         }
     })
+}
+
+// ── Source-ref classification (REQ-042) ──────────────────────────────────────
+
+/// The parsed type of a raw source reference string from a `(meta LABEL (source ...))` form.
+///
+/// Used to classify strings extracted from SPL `source` meta values before any
+/// resolution takes place.  Classification is purely syntactic — no file I/O
+/// or hash look-ups are performed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SourceRefType {
+    /// A BLAKE3 hash reference: 8 or more lowercase or uppercase hex characters.
+    HashRef,
+    /// A local block reference within the same file: starts with `^`.
+    LocalRef,
+    /// A cross-file block reference: `[[Page^block-id]]` pattern.
+    CrossFileRef,
+    /// A page-only wikilink reference: `[[Page]]` pattern (no block-id anchor).
+    PageRef,
+    /// Unrecognised format; preserved verbatim for forward-compatibility.
+    Unknown,
+}
+
+/// Classify a raw source reference string by its syntactic format (REQ-042).
+///
+/// Rules (checked in order):
+/// 1. `[[...^...]]` → [`SourceRefType::CrossFileRef`]
+/// 2. `[[...]]`     → [`SourceRefType::PageRef`]
+/// 3. `^...`        → [`SourceRefType::LocalRef`]
+/// 4. 8+ hex chars  → [`SourceRefType::HashRef`]
+/// 5. anything else → [`SourceRefType::Unknown`]
+pub fn classify_source_ref(s: &str) -> SourceRefType {
+    if s.starts_with("[[") && s.ends_with("]]") {
+        if s.contains('^') {
+            return SourceRefType::CrossFileRef;
+        }
+        return SourceRefType::PageRef;
+    }
+    if s.starts_with('^') {
+        return SourceRefType::LocalRef;
+    }
+    if s.len() >= 8 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F')) {
+        return SourceRefType::HashRef;
+    }
+    SourceRefType::Unknown
+}
+
+// ── Source-ref validation (REQ-042, CON-004) ──────────────────────────────────
+
+/// Validate all explicit source-ref declarations across all SPL blocks in the vault.
+///
+/// For each [`ExplicitGrounding`] found in any `file_merkle.spl_leaves`, every
+/// raw `source_ref` string is classified and resolved:
+///
+/// | Ref type           | Outcome                    | Error message                                                                   |
+/// |--------------------|----------------------------|---------------------------------------------------------------------------------|
+/// | Hash prefix        | zero leaves matched        | `content hash X not found — source content may have been modified or removed`  |
+/// | Hash prefix        | ambiguous (>1 full hashes) | `ambiguous hash prefix X — use a longer prefix`                                 |
+/// | Hash prefix        | unique or duplicate match  | *(valid — no error)*                                                            |
+/// | `^block-id`        | not found in source file   | `source references ^X which does not exist in this file`                        |
+/// | `[[Page]]`         | page not in vault          | `page Page not found`                                                           |
+/// | `[[Page^block-id]]`| page not in vault          | `page Page not found`                                                           |
+/// | `[[Page^block-id]]`| block-id not found in page | `block-id not found in Page`                                                    |
+///
+/// All errors are reported as [`DiagnosticLevel::Error`] (spl_diagnostics, not drift_diagnostics).
+pub fn validate_source_refs(
+    files: &[ParsedFile],
+    file_index: &[(String, PathBuf)],
+    vault_hash_index: &VaultHashIndex,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+
+    for file in files {
+        let merkle = match file.file_merkle.as_ref() {
+            Some(m) => m,
+            None => continue,
+        };
+
+        for spl_leaf in &merkle.spl_leaves {
+            for grounding in &spl_leaf.explicit_groundings {
+                for source_ref in &grounding.source_refs {
+                    validate_one_source_ref(
+                        source_ref,
+                        &file.path,
+                        spl_leaf.start_line,
+                        &file.merkle_leaves,
+                        files,
+                        file_index,
+                        vault_hash_index,
+                        &mut diagnostics,
+                    );
+                }
+            }
+        }
+    }
+
+    diagnostics
+}
+
+/// Validate a single raw source-ref string and push any error onto `out`.
+fn validate_one_source_ref(
+    source_ref: &str,
+    source_file: &std::path::Path,
+    spl_line: u32,
+    source_leaves: &[MerkleLeaf],
+    files: &[ParsedFile],
+    file_index: &[(String, PathBuf)],
+    vault_hash_index: &VaultHashIndex,
+    out: &mut Vec<Diagnostic>,
+) {
+    match classify_source_ref(source_ref) {
+        SourceRefType::HashRef => {
+            match resolve_hash_prefix(source_ref, vault_hash_index) {
+                HashResolutionResult::NotFound => {
+                    out.push(Diagnostic {
+                        level: DiagnosticLevel::Error,
+                        message: format!(
+                            "content hash {} not found — source content may have been modified or removed",
+                            source_ref
+                        ),
+                        file: source_file.to_path_buf(),
+                        line: spl_line,
+                        column: 0,
+                    });
+                }
+                HashResolutionResult::Ambiguous { prefix, .. } => {
+                    out.push(Diagnostic {
+                        level: DiagnosticLevel::Error,
+                        message: format!(
+                            "ambiguous hash prefix {} — use a longer prefix",
+                            prefix
+                        ),
+                        file: source_file.to_path_buf(),
+                        line: spl_line,
+                        column: 0,
+                    });
+                }
+                HashResolutionResult::Found { .. } => {
+                    // Unique match or duplicate content — both are valid.
+                }
+            }
+        }
+        SourceRefType::LocalRef => {
+            // Strip the leading '^'.
+            let block_id = &source_ref[1..];
+            if resolve_local_block_id(source_leaves, block_id).is_none() {
+                out.push(Diagnostic {
+                    level: DiagnosticLevel::Error,
+                    message: format!(
+                        "source references ^{} which does not exist in this file",
+                        block_id
+                    ),
+                    file: source_file.to_path_buf(),
+                    line: spl_line,
+                    column: 0,
+                });
+            }
+        }
+        SourceRefType::PageRef => {
+            // Strip `[[` and `]]`.
+            let page_name = &source_ref[2..source_ref.len() - 2];
+            if crate::scanner::resolve_page_name(page_name, file_index).is_none() {
+                out.push(Diagnostic {
+                    level: DiagnosticLevel::Error,
+                    message: format!("page {} not found", page_name),
+                    file: source_file.to_path_buf(),
+                    line: spl_line,
+                    column: 0,
+                });
+            }
+        }
+        SourceRefType::CrossFileRef => {
+            // Strip `[[` and `]]`, then split on the first `^`.
+            let inner = &source_ref[2..source_ref.len() - 2];
+            let (page_name, block_id) = match inner.find('^') {
+                Some(pos) => (&inner[..pos], &inner[pos + 1..]),
+                None => {
+                    // Malformed — no '^' despite classify saying CrossFileRef.
+                    // This cannot happen given classify_source_ref logic, but be safe.
+                    return;
+                }
+            };
+            match resolve_cross_file_block_id(files, file_index, page_name, block_id) {
+                Ok(_) => {}
+                Err(BlockIdResolutionError::PageNotFound { page_name: ref pn }) => {
+                    out.push(Diagnostic {
+                        level: DiagnosticLevel::Error,
+                        message: format!("page {} not found", pn),
+                        file: source_file.to_path_buf(),
+                        line: spl_line,
+                        column: 0,
+                    });
+                }
+                Err(BlockIdResolutionError::BlockIdNotFound { .. }) => {
+                    out.push(Diagnostic {
+                        level: DiagnosticLevel::Error,
+                        message: format!("block-id not found in {}", page_name),
+                        file: source_file.to_path_buf(),
+                        line: spl_line,
+                        column: 0,
+                    });
+                }
+            }
+        }
+        SourceRefType::Unknown => {
+            // Unrecognised format — skip for forward-compatibility.
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1609,5 +1817,352 @@ mod tests {
             page_name: "Missing".to_string(),
         };
         assert!(e2.to_string().contains("Missing"));
+    }
+
+    // ── classify_source_ref ────────────────────────────────────────────────
+
+    #[test]
+    fn classify_source_ref_hash() {
+        assert_eq!(classify_source_ref("abcdef12"), SourceRefType::HashRef);
+        assert_eq!(classify_source_ref("a1b2c3d4e5f6a7b8"), SourceRefType::HashRef);
+        // Upper-case hex accepted
+        assert_eq!(classify_source_ref("ABCDEF12"), SourceRefType::HashRef);
+        // Fewer than 8 hex chars → Unknown
+        assert_eq!(classify_source_ref("abcdef1"), SourceRefType::Unknown);
+    }
+
+    #[test]
+    fn classify_source_ref_local() {
+        assert_eq!(classify_source_ref("^block-id"), SourceRefType::LocalRef);
+        assert_eq!(classify_source_ref("^abc123"), SourceRefType::LocalRef);
+    }
+
+    #[test]
+    fn classify_source_ref_cross_file() {
+        assert_eq!(classify_source_ref("[[Page^block-id]]"), SourceRefType::CrossFileRef);
+        assert_eq!(classify_source_ref("[[Architecture^intro]]"), SourceRefType::CrossFileRef);
+    }
+
+    #[test]
+    fn classify_source_ref_page_ref() {
+        // [[Page]] without ^ is a PageRef
+        assert_eq!(classify_source_ref("[[Page]]"), SourceRefType::PageRef);
+        assert_eq!(classify_source_ref("[[Redis vs Memcached]]"), SourceRefType::PageRef);
+    }
+
+    #[test]
+    fn classify_source_ref_unknown() {
+        assert_eq!(classify_source_ref("just-text"), SourceRefType::Unknown);
+        assert_eq!(classify_source_ref(""), SourceRefType::Unknown);
+    }
+
+    // ── validate_source_refs ───────────────────────────────────────────────
+
+    use crate::types::{ExplicitGrounding, FileMerkle, Section, SplLeafCached};
+
+    fn make_spl_leaf(
+        start_line: u32,
+        content_hash: ContentHash,
+        groundings: Vec<ExplicitGrounding>,
+    ) -> SplLeafCached {
+        SplLeafCached {
+            start_line,
+            content_hash,
+            ast_hash: [0u8; 32],
+            section_index: 0,
+            explicit_groundings: groundings,
+        }
+    }
+
+    fn make_file_merkle(spl_leaves: Vec<SplLeafCached>) -> FileMerkle {
+        FileMerkle {
+            root_hash: [0u8; 32],
+            sections: vec![Section {
+                heading_line: 1,
+                heading_text: "Test".to_string(),
+                heading_level: 1,
+                leaf_range: (0, spl_leaves.len()),
+                grounding_hash: [0u8; 32],
+            }],
+            spl_leaves,
+        }
+    }
+
+    fn make_file_with_merkle(
+        path: &str,
+        page_name: &str,
+        merkle_leaves: Vec<MerkleLeaf>,
+        spl_leaves: Vec<SplLeafCached>,
+    ) -> ParsedFile {
+        ParsedFile {
+            path: PathBuf::from(path),
+            page_name: page_name.to_string(),
+            links: vec![],
+            spl_blocks: vec![],
+            diagnostics: vec![],
+            mtime: std::time::SystemTime::UNIX_EPOCH,
+            merkle_leaves,
+            file_merkle: Some(make_file_merkle(spl_leaves)),
+        }
+    }
+
+    fn make_grounding(source_refs: Vec<&str>) -> ExplicitGrounding {
+        ExplicitGrounding {
+            construct: "r1".to_string(),
+            source_refs: source_refs.into_iter().map(str::to_string).collect(),
+            targets: vec![],
+        }
+    }
+
+    #[test]
+    fn validate_source_refs_hash_not_found() {
+        // A hash prefix that doesn't match anything → error
+        let grounding = make_grounding(vec!["deadbeef"]);
+        let file = make_file_with_merkle(
+            "notes/A.md", "A", vec![], vec![make_spl_leaf(5, [0u8; 32], vec![grounding])],
+        );
+        let files = vec![file];
+        let file_index: Vec<(String, PathBuf)> = vec![("A".to_string(), PathBuf::from("notes/A.md"))];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("deadbeef"));
+        assert!(diags[0].message.contains("not found"));
+        assert_eq!(diags[0].level, DiagnosticLevel::Error);
+        assert_eq!(diags[0].line, 5);
+    }
+
+    #[test]
+    fn validate_source_refs_hash_found() {
+        // Build a file with a leaf whose hash starts with "aa"
+        let leaf_hash = [0xaa_u8; 32];
+        let leaf = make_leaf(LeafType::Paragraph, leaf_hash);
+        let hex: String = leaf_hash.iter().map(|b| format!("{b:02x}")).collect();
+        let prefix = &hex[..8]; // first 8 chars
+        let grounding = make_grounding(vec![prefix]);
+        let spl_leaf = make_spl_leaf(3, [0u8; 32], vec![grounding]);
+        let file = make_file_with_merkle("A.md", "A", vec![leaf], vec![spl_leaf]);
+        let files = vec![file];
+        let file_index = vec![("A".to_string(), PathBuf::from("A.md"))];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert!(diags.is_empty(), "expected no errors but got: {:?}", diags);
+    }
+
+    #[test]
+    fn validate_source_refs_hash_ambiguous() {
+        // Two leaves with different hashes that share the same 8-char prefix.
+        // Construct two hashes that differ only beyond the 4th byte.
+        let mut hash_a = [0x01_u8; 32];
+        let mut hash_b = [0x01_u8; 32];
+        hash_a[4] = 0xAA;
+        hash_b[4] = 0xBB;
+        let leaf_a = make_leaf(LeafType::Paragraph, hash_a);
+        let leaf_b = make_leaf(LeafType::Paragraph, hash_b);
+
+        // Both share the first 8 hex chars ("01010101")
+        let prefix = "01010101";
+        let grounding = make_grounding(vec![prefix]);
+        let spl_leaf = make_spl_leaf(1, [0u8; 32], vec![grounding]);
+
+        let file = ParsedFile {
+            path: PathBuf::from("A.md"),
+            page_name: "A".to_string(),
+            links: vec![],
+            spl_blocks: vec![],
+            diagnostics: vec![],
+            mtime: std::time::SystemTime::UNIX_EPOCH,
+            merkle_leaves: vec![leaf_a, leaf_b],
+            file_merkle: Some(make_file_merkle(vec![spl_leaf])),
+        };
+        let files = vec![file];
+        let file_index = vec![("A".to_string(), PathBuf::from("A.md"))];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("ambiguous"));
+        assert_eq!(diags[0].level, DiagnosticLevel::Error);
+    }
+
+    #[test]
+    fn validate_source_refs_hash_duplicate_content_valid() {
+        // Two leaves with identical hashes (duplicate content) → valid, no error
+        let hash = [0xcc_u8; 32];
+        let leaf1 = make_leaf(LeafType::Paragraph, hash);
+        let leaf2 = make_leaf(LeafType::Paragraph, hash);
+        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+        let prefix = &hex[..8];
+        let grounding = make_grounding(vec![prefix]);
+        let spl_leaf = make_spl_leaf(1, [0u8; 32], vec![grounding]);
+
+        let file = ParsedFile {
+            path: PathBuf::from("A.md"),
+            page_name: "A".to_string(),
+            links: vec![],
+            spl_blocks: vec![],
+            diagnostics: vec![],
+            mtime: std::time::SystemTime::UNIX_EPOCH,
+            merkle_leaves: vec![leaf1, leaf2],
+            file_merkle: Some(make_file_merkle(vec![spl_leaf])),
+        };
+        let files = vec![file];
+        let file_index = vec![("A".to_string(), PathBuf::from("A.md"))];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert!(diags.is_empty(), "duplicate content should be valid; got: {:?}", diags);
+    }
+
+    #[test]
+    fn validate_source_refs_local_ref_not_found() {
+        let grounding = make_grounding(vec!["^missing-block"]);
+        // No leaf carries block_id "missing-block"
+        let leaf = make_leaf(LeafType::Paragraph, [0x01_u8; 32]);
+        let spl_leaf = make_spl_leaf(7, [0u8; 32], vec![grounding]);
+        let file = make_file_with_merkle("B.md", "B", vec![leaf], vec![spl_leaf]);
+        let files = vec![file];
+        let file_index = vec![("B".to_string(), PathBuf::from("B.md"))];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("missing-block"));
+        assert!(diags[0].message.contains("does not exist"));
+        assert_eq!(diags[0].level, DiagnosticLevel::Error);
+        assert_eq!(diags[0].line, 7);
+    }
+
+    #[test]
+    fn validate_source_refs_local_ref_found() {
+        let leaf = leaf_with_block_id([0x02_u8; 32], "present");
+        let grounding = make_grounding(vec!["^present"]);
+        let spl_leaf = make_spl_leaf(2, [0u8; 32], vec![grounding]);
+        let file = make_file_with_merkle("C.md", "C", vec![leaf], vec![spl_leaf]);
+        let files = vec![file];
+        let file_index = vec![("C".to_string(), PathBuf::from("C.md"))];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert!(diags.is_empty(), "found block-id should be valid; got: {:?}", diags);
+    }
+
+    #[test]
+    fn validate_source_refs_page_ref_not_found() {
+        let grounding = make_grounding(vec!["[[Missing Page]]"]);
+        let spl_leaf = make_spl_leaf(4, [0u8; 32], vec![grounding]);
+        let file = make_file_with_merkle("D.md", "D", vec![], vec![spl_leaf]);
+        let files = vec![file];
+        let file_index = vec![("D".to_string(), PathBuf::from("D.md"))];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("Missing Page"));
+        assert!(diags[0].message.contains("not found"));
+        assert_eq!(diags[0].level, DiagnosticLevel::Error);
+    }
+
+    #[test]
+    fn validate_source_refs_page_ref_found() {
+        let grounding = make_grounding(vec!["[[Existing Page]]"]);
+        let spl_leaf = make_spl_leaf(1, [0u8; 32], vec![grounding]);
+        let file = make_file_with_merkle("E.md", "E", vec![], vec![spl_leaf]);
+        let target = make_parsed_file_with_leaves("Existing Page.md", "Existing Page", vec![]);
+        let files = vec![file, target];
+        let file_index = vec![
+            ("E".to_string(), PathBuf::from("E.md")),
+            ("Existing Page".to_string(), PathBuf::from("Existing Page.md")),
+        ];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert!(diags.is_empty(), "existing page ref should be valid; got: {:?}", diags);
+    }
+
+    #[test]
+    fn validate_source_refs_cross_file_page_not_found() {
+        let grounding = make_grounding(vec!["[[NoSuchPage^block1]]"]);
+        let spl_leaf = make_spl_leaf(10, [0u8; 32], vec![grounding]);
+        let file = make_file_with_merkle("F.md", "F", vec![], vec![spl_leaf]);
+        let files = vec![file];
+        let file_index = vec![("F".to_string(), PathBuf::from("F.md"))];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("NoSuchPage"));
+        assert!(diags[0].message.contains("not found"));
+        assert_eq!(diags[0].level, DiagnosticLevel::Error);
+        assert_eq!(diags[0].line, 10);
+    }
+
+    #[test]
+    fn validate_source_refs_cross_file_block_id_not_found() {
+        let grounding = make_grounding(vec!["[[Target Page^ghost-id]]"]);
+        let spl_leaf = make_spl_leaf(8, [0u8; 32], vec![grounding]);
+        let src_file = make_file_with_merkle("src.md", "src", vec![], vec![spl_leaf]);
+        // Target page exists but has no leaf with "ghost-id"
+        let target_leaf = make_leaf(LeafType::Paragraph, [0x99_u8; 32]);
+        let target_file = make_parsed_file_with_leaves("Target Page.md", "Target Page", vec![target_leaf]);
+        let files = vec![src_file, target_file];
+        let file_index = vec![
+            ("src".to_string(), PathBuf::from("src.md")),
+            ("Target Page".to_string(), PathBuf::from("Target Page.md")),
+        ];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("block-id not found"));
+        assert!(diags[0].message.contains("Target Page"));
+        assert_eq!(diags[0].level, DiagnosticLevel::Error);
+        assert_eq!(diags[0].line, 8);
+    }
+
+    #[test]
+    fn validate_source_refs_cross_file_found() {
+        let grounding = make_grounding(vec!["[[Target Page^real-id]]"]);
+        let spl_leaf = make_spl_leaf(6, [0u8; 32], vec![grounding]);
+        let src_file = make_file_with_merkle("src.md", "src", vec![], vec![spl_leaf]);
+        let target_leaf = leaf_with_block_id([0x77_u8; 32], "real-id");
+        let target_file = make_parsed_file_with_leaves("Target Page.md", "Target Page", vec![target_leaf]);
+        let files = vec![src_file, target_file];
+        let file_index = vec![
+            ("src".to_string(), PathBuf::from("src.md")),
+            ("Target Page".to_string(), PathBuf::from("Target Page.md")),
+        ];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert!(diags.is_empty(), "valid cross-file ref should have no errors; got: {:?}", diags);
+    }
+
+    #[test]
+    fn validate_source_refs_unknown_skipped() {
+        // Unknown format → no error emitted
+        let grounding = make_grounding(vec!["some-plain-text"]);
+        let spl_leaf = make_spl_leaf(1, [0u8; 32], vec![grounding]);
+        let file = make_file_with_merkle("G.md", "G", vec![], vec![spl_leaf]);
+        let files = vec![file];
+        let file_index = vec![("G".to_string(), PathBuf::from("G.md"))];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert!(diags.is_empty(), "unknown refs should be silently skipped; got: {:?}", diags);
+    }
+
+    #[test]
+    fn validate_source_refs_no_file_merkle_skipped() {
+        // File with no file_merkle → no panics, no errors
+        let file = make_parsed_file_with_leaves("H.md", "H", vec![]);
+        let files = vec![file];
+        let file_index = vec![("H".to_string(), PathBuf::from("H.md"))];
+        let index = build_vault_hash_index(&files);
+
+        let diags = validate_source_refs(&files, &file_index, &index);
+        assert!(diags.is_empty());
     }
 }
