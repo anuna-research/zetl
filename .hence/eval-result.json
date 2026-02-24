@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 535,
-    "deletions": 111,
+    "insertions": 284,
+    "deletions": 5,
     "file_list": [
-      "src/main.rs",
+      ".hence/context-manifest.json",
       "tests/integration.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-blocks-reverse-changes",
-      "content": "Modified 2 files (+535, -111): src/main.rs, tests/integration.rs",
+      "key": "task-integration-tests-blocks-changes",
+      "content": "Modified 2 files (+284, -5): .hence/context-manifest.json, tests/integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/blocks-reverse-v1",
-  "evaluated_at": "2026-02-24T05:47:45Z",
+  "branch_name": "hence/integration-tests-blocks-v1",
+  "evaluated_at": "2026-02-24T05:52:04Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
