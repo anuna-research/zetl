@@ -11,6 +11,7 @@ reason = ["dep:spindle-core", "dep:spindle-parser"]
 
 [dependencies]
 anyhow = "1"
+blake3 = "1"
 clap = { version = "4", features = ["derive"] }
 comfy-table = "7"
 globset = "0.4"
