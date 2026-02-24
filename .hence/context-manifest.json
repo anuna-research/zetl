@@ -1,12 +1,12 @@
 {
-  "task_id": "blockid-resolution",
+  "task_id": "source-validation",
   "token_budget": 8000,
-  "tokens_used": 991,
+  "tokens_used": 541,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement ^block-id and [[Page^block-id]] resolution to Merkle leaves per REQ-042b and REQ-042c. Local block-id resolution (^block-id form): scan the source file's MerkleLeaf vec for a Paragraph or other leaf whose normalised content ends with '^block-id' (the Obsidian block-id syntax). The scanner already tracks WikiLink.block_ref — extend this to also record ^block-id annotations as part of MerkleLeaf metadata (add Option<String> block_id field to MerkleLeaf). During scan, when a paragraph or block-level element ends with ' ^identifier', extract the identifier and store it as the leaf's block_id. Resolution: find the leaf with matching block_id in the target file → return its ContentHash. Cross-file resolution ([[Page^block-id]] form): 1) Resolve the page name using standard wikilink matching, 2) Find the target file's leaf with matching block_id. For both forms, if not found: return an error (not a drift diagnostic — a static validation error). Implement in src/merkle.rs. Store resolved target_leaf_hash in ResolvedTarget.",
-      "token_cost": 261,
+      "content": "Extend zetl check to validate all source metadata references as static validation errors per REQ-042 and CON-004 extended. After extraction (task-source-extraction) and resolution infrastructure (task-blockid-resolution, task-hash-prefix-resolution): run validate_source_refs(spl_blocks, vault_hash_index) which for each ExplicitGrounding: 1) Attempt to resolve each source_ref, 2) Hash ref resolves to zero leaves → spl_diagnostics error: 'content hash X not found — source content may have been modified or removed', 3) Hash ref prefix ambiguous (different full hashes) → spl_diagnostics error: 'ambiguous hash prefix X — use a longer prefix', 4) Hash ref with duplicate content (identical full hashes) → valid, no error, 5) ^block-id not found in file → spl_diagnostics error: 'source references ^X which does not exist in this file', 6) [[Page]] not found → spl_diagnostics error: 'page Page not found', 7) [[Page^block-id]] block-id not found in page → spl_diagnostics error: 'block-id not found in Page'. Report in spl_diagnostics (not drift_diagnostics). These are static errors, not temporal drift. Wire into cmd_check in main.rs. No --fail-on changes needed — source validation errors use the existing spl error level.",
+      "token_cost": 311,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T04:21:55Z"
+  "constructed_at": "2026-02-24T04:35:14Z"
 }
