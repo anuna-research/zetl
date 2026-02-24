@@ -3,24 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 152,
-    "deletions": 0,
+    "files_changed": 5,
+    "insertions": 262,
+    "deletions": 5,
     "file_list": [
-      "src/types.rs"
+      ".hence/context-manifest.json",
+      "demo-vault/architecture/Performance.md",
+      "demo-vault/decisions/Deployment Decision.md",
+      "demo-vault/decisions/Redis vs Memcached.md",
+      "demo-vault/theories/caching.spl"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-merkle-types-changes",
-      "content": "Modified 1 files (+152, -0): src/types.rs",
+      "key": "task-demo-vault-merkle-changes",
+      "content": "Modified 5 files (+262, -5): .hence/context-manifest.json, demo-vault/architecture/Performance.md, demo-vault/decisions/Deployment Decision.md, demo-vault/decisions/Redis vs Memcached.md, demo-vault/theories/caching.spl",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/merkle-types-v1",
-  "evaluated_at": "2026-02-24T01:38:16Z",
+  "branch_name": "hence/demo-vault-merkle-v1",
+  "evaluated_at": "2026-02-24T01:41:32Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
