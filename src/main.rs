@@ -2180,62 +2180,51 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
     }
 
     // No-index fallback (REQ-072): ensure index exists before entering alternate screen.
-    // If the index was missing and was just built, reuse the pipeline so we don't scan twice.
     let prefetched = check_no_index_fallback(cli)?;
 
-    // Resolve the page title, file path, and vault metadata in one pass.
-    type ViewInit = (String, Option<PathBuf>, HashSet<String>, Vec<(String, PathBuf)>, PathBuf);
-    let (page_title, file_path, page_set, file_index, vault_root): ViewInit =
-        if let Some(page_input) = page {
-            let pipeline = prefetched
-                .map(Ok)
-                .unwrap_or_else(|| run_pipeline(cli))?;
+    // Always load the pipeline — needed for the page picker even when no <page> is given.
+    let pipeline = prefetched.map(Ok).unwrap_or_else(|| run_pipeline(cli))?;
 
-            let page_set: HashSet<String> = pipeline
+    let page_set: HashSet<String> =
+        pipeline.file_index.iter().map(|(name, _)| name.clone()).collect();
+
+    // Build backlink map: target_page → [(citing_page, line_number)] (REQ-070).
+    let mut backlink_map: HashMap<String, Vec<(String, u32)>> = HashMap::new();
+    for (name, _) in &pipeline.file_index {
+        for bl in pipeline.graph.backlinks(name) {
+            backlink_map.entry(name.clone()).or_default().push((bl.source, bl.line));
+        }
+    }
+
+    // Resolve the page title and file path.
+    let (page_title, file_path) = if let Some(page_input) = page {
+        let resolved = if let Some(r) = resolve_page_name(page_input, &pipeline.file_index) {
+            r
+        } else {
+            // Page not found — offer the top-5 SimHash-nearest suggestions (REQ-073).
+            let pages: Vec<(String, String)> = pipeline
                 .file_index
                 .iter()
-                .map(|(name, _)| name.clone())
+                .map(|(name, path)| (name.clone(), path.to_string_lossy().to_string()))
                 .collect();
 
-            let resolved = if let Some(r) = resolve_page_name(page_input, &pipeline.file_index) {
-                r
-            } else {
-                // Page not found — offer the top-5 SimHash-nearest suggestions (REQ-073).
-                let pages: Vec<(String, String)> = pipeline
-                    .file_index
-                    .iter()
-                    .map(|(name, path)| (name.clone(), path.to_string_lossy().to_string()))
-                    .collect();
-
-                match zetl::view::fuzzy_suggestion_prompt(page_input, &pages)? {
-                    Some(selected) => selected,
-                    None => std::process::exit(0),
-                }
-            };
-
-            let abs_path = pipeline
-                .file_index
-                .iter()
-                .find(|(name, _)| name == &resolved)
-                .map(|(_, rel_path)| pipeline.vault_root.join(rel_path));
-
-            (
-                resolved,
-                abs_path,
-                page_set,
-                pipeline.file_index,
-                pipeline.vault_root,
-            )
-        } else {
-            // No page argument — index already ensured by check_no_index_fallback.
-            (
-                "(no page selected)".to_string(),
-                None,
-                HashSet::new(),
-                Vec::new(),
-                PathBuf::new(),
-            )
+            match zetl::view::fuzzy_suggestion_prompt(page_input, &pages)? {
+                Some(selected) => selected,
+                None => std::process::exit(0),
+            }
         };
+
+        let abs_path = pipeline
+            .file_index
+            .iter()
+            .find(|(name, _)| name == &resolved)
+            .map(|(_, rel_path)| pipeline.vault_root.join(rel_path));
+
+        (resolved, abs_path)
+    } else {
+        // No page argument — open with empty title to trigger picker overlay (REQ-062).
+        (String::new(), None)
+    };
 
     let mut app = zetl::view::ViewApp::new(
         page_title,
@@ -2243,8 +2232,9 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
         context_lines,
         main_width,
         page_set,
-        file_index,
-        vault_root,
+        pipeline.file_index,
+        pipeline.vault_root,
+        backlink_map,
     );
     app.run()
 }

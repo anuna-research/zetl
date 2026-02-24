@@ -12,7 +12,7 @@ pub mod fuzzy;
 pub mod link_map;
 pub mod terminal;
 
-pub use app::{ContextMode, FocusState, ViewApp};
+pub use app::{ContextMode, FocusState, PickerState, ViewApp};
 pub use color::{detect_color_mode, no_color, ColorMode, LinkColor, LinkColors};
 pub use fuzzy::fuzzy_suggestion_prompt;
 pub use link_map::{build_annotated_lines, parse_wikilinks_in_line, LinkEntry, LinkMap};

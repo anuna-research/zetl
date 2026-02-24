@@ -535,3 +535,106 @@
   (normally r-cl-state-v1-context-cards-by-claude claim-v1-context-cards-by-claude state-claimed-v1-context-cards-by-claude)
   (normally r-cl-chain-v1-context-cards-by-claude state-claimed-v1-context-cards-by-claude claimed-context-cards)
 )
+
+(claims agent:claude
+  :at "2026-02-24T08:50:15Z"
+  (given completed-context-cards))
+
+(claims agent:claude
+  :at "2026-02-24T08:50:22Z"
+  (given claim-v1-bridge-column)
+  (normally r-cl-state-v1-bridge-column claim-v1-bridge-column state-claimed-v1-bridge-column)
+  (normally r-cl-chain-v1-bridge-column state-claimed-v1-bridge-column claimed-bridge-column)
+)
+
+(claims agent:claude
+  :at "2026-02-24T08:50:22Z"
+  (given completed-bridge-column))
+
+(claims agent:claude
+  :at "2026-02-24T08:50:29Z"
+  (given claim-v1-scroll-tracking)
+  (normally r-cl-state-v1-scroll-tracking claim-v1-scroll-tracking state-claimed-v1-scroll-tracking)
+  (normally r-cl-chain-v1-scroll-tracking state-claimed-v1-scroll-tracking claimed-scroll-tracking)
+)
+
+(claims agent:claude
+  :at "2026-02-24T08:50:29Z"
+  (given completed-scroll-tracking))
+
+(claims agent:claude
+  :at "2026-02-24T08:50:37Z"
+  (given claim-v1-focus-mode)
+  (normally r-cl-state-v1-focus-mode claim-v1-focus-mode state-claimed-v1-focus-mode)
+  (normally r-cl-chain-v1-focus-mode state-claimed-v1-focus-mode claimed-focus-mode)
+)
+
+(claims agent:claude
+  :at "2026-02-24T08:50:37Z"
+  (given completed-focus-mode))
+
+(claims agent:claude
+  :at "2026-02-24T08:50:37Z"
+  (given claim-v1-backlink-mode)
+  (normally r-cl-state-v1-backlink-mode claim-v1-backlink-mode state-claimed-v1-backlink-mode)
+  (normally r-cl-chain-v1-backlink-mode state-claimed-v1-backlink-mode claimed-backlink-mode)
+)
+
+(claims agent:claude
+  :at "2026-02-24T08:50:37Z"
+  (given completed-backlink-mode))
+
+(claims agent:claude
+  :at "2026-02-24T08:50:45Z"
+  (given claim-v1-nav-history)
+  (normally r-cl-state-v1-nav-history claim-v1-nav-history state-claimed-v1-nav-history)
+  (normally r-cl-chain-v1-nav-history state-claimed-v1-nav-history claimed-nav-history)
+)
+
+(claims agent:claude
+  :at "2026-02-24T08:50:45Z"
+  (given completed-nav-history))
+
+(claims agent:claude
+  :at "2026-02-24T08:50:45Z"
+  (given claim-v1-degradation)
+  (normally r-cl-state-v1-degradation claim-v1-degradation state-claimed-v1-degradation)
+  (normally r-cl-chain-v1-degradation state-claimed-v1-degradation claimed-degradation)
+)
+
+(claims agent:claude
+  :at "2026-02-24T08:50:45Z"
+  (given completed-degradation))
+
+(claims agent:claude
+  :at "2026-02-24T08:50:45Z"
+  (given claim-v1-debug-render)
+  (normally r-cl-state-v1-debug-render claim-v1-debug-render state-claimed-v1-debug-render)
+  (normally r-cl-chain-v1-debug-render state-claimed-v1-debug-render claimed-debug-render)
+)
+
+(claims agent:claude
+  :at "2026-02-24T08:50:45Z"
+  (given completed-debug-render))
+
+(claims agent:claude
+  :at "2026-02-24T08:50:53Z"
+  (given claim-v1-page-picker)
+  (normally r-cl-state-v1-page-picker claim-v1-page-picker state-claimed-v1-page-picker)
+  (normally r-cl-chain-v1-page-picker state-claimed-v1-page-picker claimed-page-picker)
+)
+
+(claims agent:claude
+  :at "2026-02-24T08:50:53Z"
+  (given completed-page-picker))
+
+(claims agent:claude
+  :at "2026-02-24T09:01:43Z"
+  (given claim-v1-tests)
+  (normally r-cl-state-v1-tests claim-v1-tests state-claimed-v1-tests)
+  (normally r-cl-chain-v1-tests state-claimed-v1-tests claimed-tests)
+)
+
+(claims agent:claude
+  :at "2026-02-24T09:01:43Z"
+  (given completed-tests))
