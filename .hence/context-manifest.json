@@ -1,12 +1,12 @@
 {
-  "task_id": "section-grounding",
+  "task_id": "drift-detection-section",
   "token_budget": 8000,
-  "tokens_used": 2451,
+  "tokens_used": 494,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Wire section grounding hashes from scan-time into the theory cache per REQ-041c. During zetl index (or the combined index+reason pipeline): after computing Merkle leaves and sections, populate SplLeafCached with section_index (which section the SPL leaf belongs to) and the section's grounding_hash. In the theory cache (theory.json v2), the spl_blocks map entry for each SPL block must include: section_heading (string), section_grounding_hash (hex). When the theory is built (reason engine), copy these values from the scan results into TheoryCache::spl_blocks. Implement the theory cache population in src/reason/mod.rs (or reason engine) by reading the FileMerkle data stored alongside the parsed SPL blocks. Ensure section grounding is computed for standalone .spl files too — since they have no Markdown sections, their grounding is empty (no section, no grounding hash). Section grounding does NOT apply to standalone .spl files per §4.7.",
-      "token_cost": 237,
+      "content": "Implement section-level drift detection per REQ-043a. Drift detection runs during zetl check after the scanner has produced current Merkle trees. Algorithm (from §6.5): for each SPL block in the current scan, compare: 1) current section grounding hash (freshly computed) vs cached section grounding hash (from theory.json spl_blocks), 2) current SPL AST hash (freshly computed) vs cached SPL AST hash. If section grounding hash changed AND SPL AST hash unchanged → section drift detected. Severity: Warning if immediately-adjacent leaves changed (leaves at section_start or section_end-1 are non-SPL and differ), Info if only distant leaves changed. The DriftDiagnostic includes: file, spl_line, DriftType::SectionDrift { section_heading }, severity, message per the CON-019 example. Drift requires a prior theory build to compare against — if no theory.json exists, skip drift detection (no baseline). Implement as detect_section_drift(current: &FileMerkle, cached_theory: &TheoryCache) -> Vec<DriftDiagnostic> in src/drift.rs (new) or src/merkle.rs.",
+      "token_cost": 264,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T02:43:01Z"
+  "constructed_at": "2026-02-24T02:53:53Z"
 }

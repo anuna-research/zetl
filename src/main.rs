@@ -13,7 +13,8 @@ use zetl::graph::LinkGraph;
 use zetl::scanner::{resolve_page_name, scan_vault};
 use zetl::search::{search_vault, SearchConfig};
 use zetl::simhash::SimHashIndex;
-use zetl::types::{DiagnosticLevel, ParsedFile};
+use zetl::drift::detect_section_drift;
+use zetl::types::{DiagnosticLevel, DriftDiagnostic, DriftSeverity, ParsedFile};
 
 // ── Common pipeline ────────────────────────────────────────────────────────
 
@@ -619,12 +620,32 @@ fn cmd_check(
         vec![]
     };
 
+    // Detect section-level drift (REQ-043a).
+    // Requires a prior `zetl build` that produced theory.json — if none exists,
+    // load_theory_cache returns None and we skip drift detection silently.
+    let drift_diagnostics: Vec<DriftDiagnostic> = if show_all || show_spl {
+        match load_theory_cache(&pipeline.vault_root) {
+            Ok(Some(ref theory)) => pipeline
+                .files
+                .iter()
+                .filter_map(|f| f.file_merkle.as_ref().map(|fm| (f, fm)))
+                .flat_map(|(f, fm)| {
+                    detect_section_drift(&f.path, fm, &f.merkle_leaves, theory)
+                })
+                .collect(),
+            _ => vec![],
+        }
+    } else {
+        vec![]
+    };
+
     #[derive(Serialize)]
     struct CheckOutput {
         dead_links: Vec<zetl::graph::DeadLink>,
         orphans: Vec<zetl::graph::Orphan>,
         syntax_errors: Vec<zetl::types::Diagnostic>,
         spl_diagnostics: Vec<zetl::types::Diagnostic>,
+        drift_diagnostics: Vec<DriftDiagnostic>,
     }
 
     let output = CheckOutput {
@@ -632,6 +653,7 @@ fn cmd_check(
         orphans: orphan_list,
         syntax_errors: diagnostics,
         spl_diagnostics,
+        drift_diagnostics,
     };
 
     match cli.format {
@@ -697,10 +719,31 @@ fn cmd_check(
                 println!();
             }
 
+            if !output.drift_diagnostics.is_empty() {
+                let mut table = Table::new();
+                table.set_header(vec!["Severity", "File", "SPL Line", "Message"]);
+                for d in &output.drift_diagnostics {
+                    let severity = match d.severity {
+                        DriftSeverity::Warning => "Warning",
+                        DriftSeverity::Info => "Info",
+                    };
+                    table.add_row(vec![
+                        Cell::new(severity),
+                        Cell::new(d.file.display()),
+                        Cell::new(d.spl_line),
+                        Cell::new(&d.message),
+                    ]);
+                }
+                println!("Drift Diagnostics:");
+                println!("{table}");
+                println!();
+            }
+
             if output.dead_links.is_empty()
                 && output.orphans.is_empty()
                 && output.syntax_errors.is_empty()
                 && output.spl_diagnostics.is_empty()
+                && output.drift_diagnostics.is_empty()
             {
                 println!("No issues found.");
             }
@@ -726,7 +769,11 @@ fn cmd_check(
         || output
             .spl_diagnostics
             .iter()
-            .any(|d| d.level == DiagnosticLevel::Warning);
+            .any(|d| d.level == DiagnosticLevel::Warning)
+        || output
+            .drift_diagnostics
+            .iter()
+            .any(|d| matches!(d.severity, DriftSeverity::Warning));
 
     let should_fail = match fail_on {
         FailLevel::Error => has_errors,
