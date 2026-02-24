@@ -179,6 +179,12 @@ pub enum Command {
     /// Launch interactive terminal UI
     Tui,
 
+    /// Launch the Xanadu-style two-pane view for a note (SPEC-009)
+    View {
+        /// Page title to open (launches a page picker when omitted)
+        page: Option<String>,
+    },
+
     /// Defeasible reasoning over vault-wide SPL
     #[cfg(feature = "reason")]
     Reason {
