@@ -1,75 +1,15 @@
 {
-  "task_id": "unit-tests-p0",
+  "task_id": "view-module",
   "token_budget": 8000,
-  "tokens_used": 496,
+  "tokens_used": 120,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Write unit tests for the P0 Merkle infrastructure covering TEST-038 (Merkle construction), TEST-039 (SPL dual hashing), TEST-040 (two-tier cache invalidation), TEST-041 (SPL theory cache invalidation). For TEST-038: test vault root determinism (scan in different orders → same root), test normalisation (two files with identical text but different whitespace → same Merkle root), test that wikilink changes alter Merkle hash. For TEST-039: test content_hash and ast_hash computed and non-zero, test reformatting changes content_hash but not ast_hash (compare two logically identical SPL blocks), test parse error → sentinel ast_hash + diagnostic. For TEST-040: use tempfile vaults, test Tier 1 hit (mtime unchanged → no hashing call), test Tier 2 hit (touch file, same content → no downstream reprocess), test Tier 2 miss (edit content → full reprocess). For TEST-041: test prose edit → theory cache valid (no rebuild), test SPL reformat → theory cache valid, test SPL add fact → theory cache invalid. Tests in tests/ or src/ inline as #[cfg(test)].",
-      "token_cost": 266,
+      "content": "Create src/view/ module (distinct from existing src/tui/). Includes: mod.rs declaring the module; app.rs with ViewApp struct holding state (current_page, scroll_offset, nav_history, context_mode, focus_state); event.rs with the crossterm event loop; terminal.rs with enter_alternate_screen / restore_terminal helpers using crossterm. Wire the module into src/lib.rs and src/main.rs. ratatui + crossterm are already in Cargo.toml (from IMPL-TUI); no new Cargo.toml changes required.",
+      "token_cost": 120,
       "priority": "PlanMeta"
-    },
-    {
-      "source": "memory/episodic/task-blake3-dep-changes",
-      "content": "Modified 3 files (+48, -65): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
-      "token_cost": 20,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-merkle-types-changes",
-      "content": "Modified 1 files (+152, -0): src/types.rs",
-      "token_cost": 10,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-demo-vault-merkle-changes",
-      "content": "Modified 5 files (+262, -5): .hence/context-manifest.json, demo-vault/architecture/Performance.md, demo-vault/decisions/Deployment Decision.md, demo-vault/decisions/Redis vs Memcached.md, demo-vault/theories/caching.spl",
-      "token_cost": 54,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-leaf-grouper-changes",
-      "content": "Modified 5 files (+741, -5): src/cache.rs, src/graph.rs, src/reason/mod.rs, src/scanner.rs, src/types.rs",
-      "token_cost": 26,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-merkle-roots-changes",
-      "content": "Modified 8 files (+444, -18): .hence/context-manifest.json, src/cache.rs, src/graph.rs, src/lib.rs, src/merkle.rs and 3 more",
-      "token_cost": 31,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-section-detection-changes",
-      "content": "Modified 2 files (+464, -5): src/merkle.rs, src/scanner.rs",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-spl-dual-hashing-changes",
-      "content": "Modified 3 files (+395, -37): .hence/context-manifest.json, src/merkle.rs, src/scanner.rs",
-      "token_cost": 22,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-cache-format-v2-changes",
-      "content": "Modified 2 files (+324, -35): .hence/context-manifest.json, src/cache.rs",
-      "token_cost": 18,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-theory-cache-spl-changes",
-      "content": "Modified 2 files (+200, -100): src/cache.rs, src/main.rs",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-stats-vault-hash-changes",
-      "content": "Modified 3 files (+87, -16): .hence/context-manifest.json, src/cache.rs, src/main.rs",
-      "token_cost": 21,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T05:52:10Z"
+  "constructed_at": "2026-02-24T06:51:06Z"
 }
