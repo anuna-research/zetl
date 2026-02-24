@@ -367,11 +367,16 @@ pub fn theory_cache_valid(
 ///
 /// Called after `build_theory()` succeeds to persist the parsed theory for
 /// subsequent queries.
+///
+/// `groundings_by_block` contains the explicit source groundings extracted from
+/// `(meta LABEL (source ...))` forms during theory construction (REQ-042).
+/// It is keyed by `"<path>:<start_line>"` matching each SPL block.
 #[cfg(feature = "reason")]
 pub fn build_theory_cache(
     theory: &spindle_core::prelude::Theory,
     diagnostics: &[Diagnostic],
     files: &[ParsedFile],
+    groundings_by_block: &HashMap<String, Vec<ExplicitGrounding>>,
 ) -> TheoryCache {
     use spindle_core::prelude::{MetaValue, RuleType as CoreRuleType};
 
@@ -450,7 +455,7 @@ pub fn build_theory_cache(
         diagnostics: diagnostics.to_vec(),
         vault_root_hash: vault_root_hex(files),
         built_at: Some(format_rfc3339_utc(std::time::SystemTime::now())),
-        spl_blocks: build_spl_block_cache(files),
+        spl_blocks: build_spl_block_cache(files, groundings_by_block),
         git_commit: None,
         git_dirty: None,
     }
@@ -465,8 +470,14 @@ pub fn build_theory_cache(
 /// Standalone `.spl` files produce entries with `section_heading: None` and
 /// `section_grounding_hash: [0u8; 32]` since section grounding does not apply
 /// to them (§4.7). Their entries are still required for theory cache invalidation.
+///
+/// `groundings_by_block` provides explicit source groundings extracted during
+/// theory construction (REQ-042), keyed by `"<path>:<start_line>"`.
 #[cfg(feature = "reason")]
-fn build_spl_block_cache(files: &[ParsedFile]) -> HashMap<String, SplBlockCache> {
+fn build_spl_block_cache(
+    files: &[ParsedFile],
+    groundings_by_block: &HashMap<String, Vec<ExplicitGrounding>>,
+) -> HashMap<String, SplBlockCache> {
     let mut result = HashMap::new();
     for f in files {
         if let Some(fm) = &f.file_merkle {
@@ -483,6 +494,11 @@ fn build_spl_block_cache(files: &[ParsedFile]) -> HashMap<String, SplBlockCache>
                 });
                 let section_grounding_hash =
                     section.map(|s| s.grounding_hash).unwrap_or([0u8; 32]);
+                // Prefer freshly-extracted groundings; fall back to cached leaf data.
+                let explicit_groundings = groundings_by_block
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| spl_leaf.explicit_groundings.clone());
                 result.insert(
                     key,
                     SplBlockCache {
@@ -490,7 +506,7 @@ fn build_spl_block_cache(files: &[ParsedFile]) -> HashMap<String, SplBlockCache>
                         content_hash: spl_leaf.content_hash,
                         section_heading,
                         section_grounding_hash,
-                        explicit_groundings: spl_leaf.explicit_groundings.clone(),
+                        explicit_groundings,
                     },
                 );
             }
@@ -500,6 +516,8 @@ fn build_spl_block_cache(files: &[ParsedFile]) -> HashMap<String, SplBlockCache>
             for block in &f.spl_blocks {
                 let key = format!("{}:{}", f.path.display(), block.start_line);
                 let hashes = compute_spl_hashes(&block.content);
+                let explicit_groundings =
+                    groundings_by_block.get(&key).cloned().unwrap_or_default();
                 result.insert(
                     key,
                     SplBlockCache {
@@ -507,7 +525,7 @@ fn build_spl_block_cache(files: &[ParsedFile]) -> HashMap<String, SplBlockCache>
                         content_hash: hashes.content_hash,
                         section_heading: None,
                         section_grounding_hash: [0u8; 32],
-                        explicit_groundings: vec![],
+                        explicit_groundings,
                     },
                 );
             }
@@ -1131,7 +1149,7 @@ mod tests {
         });
 
         let theory = Theory::new();
-        let cache = build_theory_cache(&theory, &[], &[f]);
+        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new());
 
         let block = cache
             .spl_blocks
@@ -1183,7 +1201,7 @@ mod tests {
         });
 
         let theory = Theory::new();
-        let cache = build_theory_cache(&theory, &[], &[f]);
+        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new());
 
         let block = cache
             .spl_blocks
@@ -1220,7 +1238,7 @@ mod tests {
         f.file_merkle = None; // standalone .spl has no Merkle tree
 
         let theory = Theory::new();
-        let cache = build_theory_cache(&theory, &[], &[f]);
+        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new());
 
         // Standalone .spl files appear in spl_blocks (tracked for cache invalidation)
         // but with null section fields (§4.7).
