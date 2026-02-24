@@ -1,12 +1,12 @@
 {
-  "task_id": "hash-prefix-resolution",
+  "task_id": "blockid-resolution",
   "token_budget": 8000,
-  "tokens_used": 473,
+  "tokens_used": 991,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement Merkle hash prefix resolution per §3.3 resolution rule 1 and REQ-042a. Build a resolution index: for each file in the vault, iterate all MerkleLeaf hashes and store (full_hash_hex → list of (file, leaf)) mappings. At resolution time: 1) Filter entries whose full_hash_hex starts with the given prefix (case-insensitive), 2) Check result set: zero → error 'not found', 3) Check if all matching full hashes are identical (duplicate content case) → success, return all locations, 4) Multiple matches with different full hashes → error 'ambiguous prefix', list all with suggestion to use longer prefix. Resolution is position-independent: same content at any location resolves. Implement as resolve_hash_prefix(prefix: &str, index: &VaultHashIndex) -> HashResolutionResult where VaultHashIndex is built from loaded FileMerkle data. This function is shared by both zetl blocks --resolve (direct use) and source metadata validation. Implement in src/merkle.rs.",
-      "token_cost": 243,
+      "content": "Implement ^block-id and [[Page^block-id]] resolution to Merkle leaves per REQ-042b and REQ-042c. Local block-id resolution (^block-id form): scan the source file's MerkleLeaf vec for a Paragraph or other leaf whose normalised content ends with '^block-id' (the Obsidian block-id syntax). The scanner already tracks WikiLink.block_ref — extend this to also record ^block-id annotations as part of MerkleLeaf metadata (add Option<String> block_id field to MerkleLeaf). During scan, when a paragraph or block-level element ends with ' ^identifier', extract the identifier and store it as the leaf's block_id. Resolution: find the leaf with matching block_id in the target file → return its ContentHash. Cross-file resolution ([[Page^block-id]] form): 1) Resolve the page name using standard wikilink matching, 2) Find the target file's leaf with matching block_id. For both forms, if not found: return an error (not a drift diagnostic — a static validation error). Implement in src/merkle.rs. Store resolved target_leaf_hash in ResolvedTarget.",
+      "token_cost": 261,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T04:15:43Z"
+  "constructed_at": "2026-02-24T04:21:55Z"
 }

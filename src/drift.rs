@@ -181,6 +181,7 @@ mod tests {
             end_line: start_line,
             hash: [0u8; 32],
             spl_hashes: None,
+            block_id: None,
         }
     }
 

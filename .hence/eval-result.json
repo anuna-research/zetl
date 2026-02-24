@@ -3,26 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 429,
-    "deletions": 64,
+    "files_changed": 5,
+    "insertions": 473,
+    "deletions": 11,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/main.rs",
-      "src/merkle.rs"
+      "src/drift.rs",
+      "src/merkle.rs",
+      "src/scanner.rs",
+      "src/types.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-hash-prefix-resolution-changes",
-      "content": "Modified 3 files (+429, -64): .hence/context-manifest.json, src/main.rs, src/merkle.rs",
+      "key": "task-blockid-resolution-changes",
+      "content": "Modified 5 files (+473, -11): .hence/context-manifest.json, src/drift.rs, src/merkle.rs, src/scanner.rs, src/types.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/hash-prefix-resolution-v1",
-  "evaluated_at": "2026-02-24T04:21:50Z",
+  "branch_name": "hence/blockid-resolution-v1",
+  "evaluated_at": "2026-02-24T04:35:09Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
