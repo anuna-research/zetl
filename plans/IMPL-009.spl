@@ -424,3 +424,114 @@
 (meta r-ready-tests
   (description "Tests require the entire feature set to be implemented")
   (justification "TEST-071–079 cover the complete SPEC-009 surface including all phases"))
+
+(claims agent:claude
+  :at "2026-02-24T06:51:06Z"
+  (given claim-v1-view-module-by-claude)
+  (normally r-cl-state-v1-view-module-by-claude claim-v1-view-module-by-claude state-claimed-v1-view-module-by-claude)
+  (normally r-cl-chain-v1-view-module-by-claude state-claimed-v1-view-module-by-claude claimed-view-module)
+)
+
+(claims agent:claude
+  :at "2026-02-24T06:57:13Z"
+  (given completed-view-module)
+  (given spawn-result-v1-view-module-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T06:57:18Z"
+  (given claim-v1-color-palette-by-claude)
+  (normally r-cl-state-v1-color-palette-by-claude claim-v1-color-palette-by-claude state-claimed-v1-color-palette-by-claude)
+  (normally r-cl-chain-v1-color-palette-by-claude state-claimed-v1-color-palette-by-claude claimed-color-palette)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:01:49Z"
+  (given completed-color-palette)
+  (given spawn-result-v1-color-palette-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:01:54Z"
+  (given claim-v1-cli-entry-by-claude)
+  (normally r-cl-state-v1-cli-entry-by-claude claim-v1-cli-entry-by-claude state-claimed-v1-cli-entry-by-claude)
+  (normally r-cl-chain-v1-cli-entry-by-claude state-claimed-v1-cli-entry-by-claude claimed-cli-entry)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:07:20Z"
+  (given completed-cli-entry)
+  (given spawn-result-v1-cli-entry-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:07:25Z"
+  (given claim-v1-fuzzy-suggestion-by-claude)
+  (normally r-cl-state-v1-fuzzy-suggestion-by-claude claim-v1-fuzzy-suggestion-by-claude state-claimed-v1-fuzzy-suggestion-by-claude)
+  (normally r-cl-chain-v1-fuzzy-suggestion-by-claude state-claimed-v1-fuzzy-suggestion-by-claude claimed-fuzzy-suggestion)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:12:56Z"
+  (given completed-fuzzy-suggestion)
+  (given spawn-result-v1-fuzzy-suggestion-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:13:01Z"
+  (given claim-v1-no-index-fallback-by-claude)
+  (normally r-cl-state-v1-no-index-fallback-by-claude claim-v1-no-index-fallback-by-claude state-claimed-v1-no-index-fallback-by-claude)
+  (normally r-cl-chain-v1-no-index-fallback-by-claude state-claimed-v1-no-index-fallback-by-claude claimed-no-index-fallback)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:18:24Z"
+  (given completed-no-index-fallback)
+  (given spawn-result-v1-no-index-fallback-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:18:29Z"
+  (given claim-v1-two-pane-layout-by-claude)
+  (normally r-cl-state-v1-two-pane-layout-by-claude claim-v1-two-pane-layout-by-claude state-claimed-v1-two-pane-layout-by-claude)
+  (normally r-cl-chain-v1-two-pane-layout-by-claude state-claimed-v1-two-pane-layout-by-claude claimed-two-pane-layout)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:22:37Z"
+  (given completed-two-pane-layout)
+  (given spawn-result-v1-two-pane-layout-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:22:42Z"
+  (given claim-v1-main-pane-by-claude)
+  (normally r-cl-state-v1-main-pane-by-claude claim-v1-main-pane-by-claude state-claimed-v1-main-pane-by-claude)
+  (normally r-cl-chain-v1-main-pane-by-claude state-claimed-v1-main-pane-by-claude claimed-main-pane)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:28:17Z"
+  (given completed-main-pane)
+  (given spawn-result-v1-main-pane-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:28:22Z"
+  (given claim-v1-anchor-annotations-by-claude)
+  (normally r-cl-state-v1-anchor-annotations-by-claude claim-v1-anchor-annotations-by-claude state-claimed-v1-anchor-annotations-by-claude)
+  (normally r-cl-chain-v1-anchor-annotations-by-claude state-claimed-v1-anchor-annotations-by-claude claimed-anchor-annotations)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:41:54Z"
+  (given completed-anchor-annotations)
+  (given spawn-result-v1-anchor-annotations-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T07:41:59Z"
+  (given claim-v1-context-cards-by-claude)
+  (normally r-cl-state-v1-context-cards-by-claude claim-v1-context-cards-by-claude state-claimed-v1-context-cards-by-claude)
+  (normally r-cl-chain-v1-context-cards-by-claude state-claimed-v1-context-cards-by-claude claimed-context-cards)
+)
