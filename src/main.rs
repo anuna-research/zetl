@@ -2124,7 +2124,7 @@ fn cmd_tui(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-fn cmd_view(page: Option<&str>, context_lines: u8, main_width: u8) -> Result<()> {
+fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) -> Result<()> {
     // Require an interactive terminal (REQ-062, CON-023).
     use std::io::IsTerminal as _;
     if !std::io::stdin().is_terminal() {
@@ -2134,7 +2134,30 @@ fn cmd_view(page: Option<&str>, context_lines: u8, main_width: u8) -> Result<()>
         std::process::exit(1);
     }
 
-    let page_title = page.unwrap_or("(no page selected)");
+    // Resolve the page title, running the fuzzy-suggestion prompt (REQ-073)
+    // when the requested page is not found in the index.
+    let page_title: String = if let Some(page_input) = page {
+        let pipeline = run_pipeline(cli)?;
+
+        if let Some(resolved) = resolve_page_name(page_input, &pipeline.file_index) {
+            resolved
+        } else {
+            // Page not found — offer the top-5 SimHash-nearest suggestions.
+            let pages: Vec<(String, String)> = pipeline
+                .file_index
+                .iter()
+                .map(|(name, path)| (name.clone(), path.to_string_lossy().to_string()))
+                .collect();
+
+            match zetl::view::fuzzy_suggestion_prompt(page_input, &pages)? {
+                Some(selected) => selected,
+                None => std::process::exit(0),
+            }
+        }
+    } else {
+        "(no page selected)".to_string()
+    };
+
     let mut app = zetl::view::ViewApp::new(page_title, context_lines, main_width);
     app.run()
 }
@@ -5774,7 +5797,7 @@ fn main() -> anyhow::Result<()> {
         Command::Export => cmd_export(&cli),
         Command::Tui => cmd_tui(&cli),
         Command::View { page, context_lines, main_width } => {
-            cmd_view(page.as_deref(), *context_lines, *main_width)
+            cmd_view(&cli, page.as_deref(), *context_lines, *main_width)
         }
         #[cfg(feature = "reason")]
         Command::Reason { command } => {

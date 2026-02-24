@@ -8,8 +8,10 @@
 pub mod app;
 pub mod color;
 pub mod event;
+pub mod fuzzy;
 pub mod terminal;
 
 pub use app::{ContextMode, FocusState, ViewApp};
 pub use color::{detect_color_mode, no_color, ColorMode, LinkColor, LinkColors};
+pub use fuzzy::fuzzy_suggestion_prompt;
 pub use terminal::{enter_alternate_screen, restore_terminal};
