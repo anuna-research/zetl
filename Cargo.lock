@@ -1660,6 +1660,7 @@ dependencies = [
  "crossterm 0.28.1",
  "globset",
  "ignore",
+ "libc",
  "petgraph",
  "predicates",
  "pulldown-cmark",
