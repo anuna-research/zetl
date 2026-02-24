@@ -1,4 +1,4 @@
-use crate::merkle::compute_vault_root;
+use crate::merkle::{compute_spl_hashes, compute_vault_root};
 use crate::types::{ContentHash, Diagnostic, ExplicitGrounding, ParsedFile};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -308,8 +308,13 @@ pub fn save_theory_cache(vault_root: &Path, cache: &TheoryCache) -> Result<()> {
 /// Collect the current set of SPL leaf AST hashes from all parsed files (REQ-040).
 ///
 /// Returns a map keyed by `"<path>:<start_line>"` to the AST-level BLAKE3 hash.
-/// Only files with a populated [`FileMerkle`] contribute entries — files without
-/// Merkle data are skipped (their SPL blocks haven't been hashed yet).
+///
+/// For Markdown files with a populated [`FileMerkle`], hashes come from
+/// the pre-computed [`SplLeafCached::ast_hash`] entries.
+///
+/// For standalone `.spl` files (`file_merkle` is `None`), hashes are computed
+/// on-the-fly from [`SplBlock::content`] so that mtime-triggered re-parses
+/// correctly invalidate the theory cache.
 pub fn collect_spl_ast_hashes(files: &[ParsedFile]) -> HashMap<String, ContentHash> {
     let mut map = HashMap::new();
     for f in files {
@@ -317,6 +322,13 @@ pub fn collect_spl_ast_hashes(files: &[ParsedFile]) -> HashMap<String, ContentHa
             for leaf in &fm.spl_leaves {
                 let key = format!("{}:{}", f.path.display(), leaf.start_line);
                 map.insert(key, leaf.ast_hash);
+            }
+        } else {
+            // Standalone .spl files: no FileMerkle; compute hash from content.
+            for block in &f.spl_blocks {
+                let key = format!("{}:{}", f.path.display(), block.start_line);
+                let hashes = compute_spl_hashes(&block.content);
+                map.insert(key, hashes.ast_hash);
             }
         }
     }
@@ -448,11 +460,17 @@ pub fn build_theory_cache(
 ///
 /// Each entry is keyed by `"<path>:<start_line>"` and stores the Merkle hashes
 /// and grounding metadata for a single SPL block.
+///
+/// Markdown files use [`FileMerkle`] data to populate section grounding fields.
+/// Standalone `.spl` files produce entries with `section_heading: None` and
+/// `section_grounding_hash: [0u8; 32]` since section grounding does not apply
+/// to them (§4.7). Their entries are still required for theory cache invalidation.
 #[cfg(feature = "reason")]
 fn build_spl_block_cache(files: &[ParsedFile]) -> HashMap<String, SplBlockCache> {
     let mut result = HashMap::new();
     for f in files {
         if let Some(fm) = &f.file_merkle {
+            // Markdown files: populate section grounding from FileMerkle.
             for spl_leaf in &fm.spl_leaves {
                 let key = format!("{}:{}", f.path.display(), spl_leaf.start_line);
                 let section = fm.sections.get(spl_leaf.section_index);
@@ -473,6 +491,23 @@ fn build_spl_block_cache(files: &[ParsedFile]) -> HashMap<String, SplBlockCache>
                         section_heading,
                         section_grounding_hash,
                         explicit_groundings: spl_leaf.explicit_groundings.clone(),
+                    },
+                );
+            }
+        } else {
+            // Standalone .spl files: no section grounding (§4.7), but still
+            // tracked for theory cache invalidation.
+            for block in &f.spl_blocks {
+                let key = format!("{}:{}", f.path.display(), block.start_line);
+                let hashes = compute_spl_hashes(&block.content);
+                result.insert(
+                    key,
+                    SplBlockCache {
+                        ast_hash: hashes.ast_hash,
+                        content_hash: hashes.content_hash,
+                        section_heading: None,
+                        section_grounding_hash: [0u8; 32],
+                        explicit_groundings: vec![],
                     },
                 );
             }
@@ -1056,5 +1091,151 @@ mod tests {
         assert_eq!(result.get("a.md:1"), Some(&hash1));
         assert_eq!(result.get("a.md:20"), Some(&hash2));
         assert_eq!(result.get("b.md:5"), Some(&hash3));
+    }
+
+    // ── TEST-042: Implicit Section Grounding ──────────────────────────────────
+
+    /// TEST-042 scenario: section grounding hash and heading are copied from FileMerkle
+    /// into the theory cache spl_blocks (REQ-041c).
+    #[cfg(feature = "reason")]
+    #[test]
+    fn build_theory_cache_section_grounding_populated_from_file_merkle() {
+        use crate::types::{FileMerkle, Section, SplLeafCached};
+        use spindle_core::prelude::Theory;
+        use std::time::UNIX_EPOCH;
+
+        let grounding_hash: ContentHash = [0xabu8; 32];
+        let ast_hash: ContentHash = [0x22u8; 32];
+        let content_hash: ContentHash = [0x11u8; 32];
+
+        // A file with one section ("Background") containing one SPL block.
+        let section = Section {
+            heading_line: 2,
+            heading_text: "Background".to_string(),
+            heading_level: 2,
+            leaf_range: (0, 1),
+            grounding_hash,
+        };
+        let spl_leaf = SplLeafCached {
+            start_line: 5,
+            content_hash,
+            ast_hash,
+            section_index: 0,
+            explicit_groundings: vec![],
+        };
+        let mut f = make_parsed_file("notes/theory.md", UNIX_EPOCH);
+        f.file_merkle = Some(FileMerkle {
+            root_hash: [0u8; 32],
+            sections: vec![section],
+            spl_leaves: vec![spl_leaf],
+        });
+
+        let theory = Theory::new();
+        let cache = build_theory_cache(&theory, &[], &[f]);
+
+        let block = cache
+            .spl_blocks
+            .get("notes/theory.md:5")
+            .expect("spl_blocks entry should exist for notes/theory.md:5");
+        assert_eq!(
+            block.section_heading,
+            Some("Background".to_string()),
+            "section_heading should be populated from Section::heading_text"
+        );
+        assert_eq!(
+            block.section_grounding_hash, grounding_hash,
+            "section_grounding_hash should match Section::grounding_hash"
+        );
+        assert_eq!(block.ast_hash, ast_hash);
+        assert_eq!(block.content_hash, content_hash);
+    }
+
+    /// TEST-042 scenario: SPL block in preamble (before first heading) has null
+    /// section_heading and a non-zero grounding_hash from preamble prose.
+    #[cfg(feature = "reason")]
+    #[test]
+    fn build_theory_cache_preamble_section_has_null_heading() {
+        use crate::types::{FileMerkle, Section, SplLeafCached};
+        use spindle_core::prelude::Theory;
+        use std::time::UNIX_EPOCH;
+
+        let preamble_grounding_hash: ContentHash = [0xffu8; 32];
+        // Preamble section: heading_level == 0, heading_text == "" (empty = None in spl_blocks).
+        let preamble_section = Section {
+            heading_line: 0,
+            heading_text: String::new(),
+            heading_level: 0,
+            leaf_range: (0, 1),
+            grounding_hash: preamble_grounding_hash,
+        };
+        let spl_leaf = SplLeafCached {
+            start_line: 3,
+            content_hash: [0x01u8; 32],
+            ast_hash: [0x02u8; 32],
+            section_index: 0,
+            explicit_groundings: vec![],
+        };
+        let mut f = make_parsed_file("notes/intro.md", UNIX_EPOCH);
+        f.file_merkle = Some(FileMerkle {
+            root_hash: [0u8; 32],
+            sections: vec![preamble_section],
+            spl_leaves: vec![spl_leaf],
+        });
+
+        let theory = Theory::new();
+        let cache = build_theory_cache(&theory, &[], &[f]);
+
+        let block = cache
+            .spl_blocks
+            .get("notes/intro.md:3")
+            .expect("spl_blocks entry should exist");
+        assert_eq!(
+            block.section_heading, None,
+            "empty heading_text should yield None section_heading"
+        );
+        assert_eq!(
+            block.section_grounding_hash, preamble_grounding_hash,
+            "preamble grounding hash should still be stored"
+        );
+    }
+
+    /// TEST-042 scenario: standalone .spl files produce spl_blocks entries with
+    /// null section fields since section grounding does not apply (§4.7), but
+    /// they are still tracked for theory cache invalidation.
+    #[cfg(feature = "reason")]
+    #[test]
+    fn build_theory_cache_standalone_spl_null_section_fields() {
+        use crate::types::SplBlock;
+        use spindle_core::prelude::Theory;
+        use std::time::UNIX_EPOCH;
+
+        let mut f = make_parsed_file("theories/caching.spl", UNIX_EPOCH);
+        f.spl_blocks = vec![SplBlock {
+            source_file: "theories/caching.spl".into(),
+            source_page: "theories/caching".to_string(),
+            start_line: 1,
+            end_line: 3,
+            content: "(given x)\n".to_string(),
+        }];
+        f.file_merkle = None; // standalone .spl has no Merkle tree
+
+        let theory = Theory::new();
+        let cache = build_theory_cache(&theory, &[], &[f]);
+
+        // Standalone .spl files appear in spl_blocks (tracked for cache invalidation)
+        // but with null section fields (§4.7).
+        let block = cache
+            .spl_blocks
+            .get("theories/caching.spl:1")
+            .expect("standalone .spl should have an spl_blocks entry for cache tracking");
+        assert_eq!(
+            block.section_heading, None,
+            "standalone .spl has no section heading"
+        );
+        assert_eq!(
+            block.section_grounding_hash,
+            [0u8; 32],
+            "standalone .spl has no section grounding hash"
+        );
     }
 }
