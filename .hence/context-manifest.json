@@ -1,12 +1,12 @@
 {
-  "task_id": "spl-dual-hashing",
+  "task_id": "cache-format-v2",
   "token_budget": 8000,
-  "tokens_used": 390,
+  "tokens_used": 409,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement dual hashing for SplBlock leaves per §4.4. For each SplBlock leaf: 1) content_hash = BLAKE3(normalised_raw_spl_text) — normalise whitespace and strip SPL comments (;; comment lines), 2) ast_hash = BLAKE3(canonically_serialised_spl_ast) where canonical serialisation means rules sorted by label, facts sorted by literal, superiority sorted by pair. Use spindle-parser to parse the SPL text; if parsing fails, ast_hash = [0u8; 32] (sentinel) and emit a diagnostic. The combined SplBlock leaf hash = BLAKE3(content_hash_bytes ‖ ast_hash_bytes) feeds into the file Merkle root. Implement this in the reason feature gate (#[cfg(feature = \"reason\")]) since it requires spindle-parser. When the reason feature is off, fall back to content_hash only for both content_hash and ast_hash. Store SplLeafHash { content_hash, ast_hash } in SplLeafCached. Expose compute_spl_hashes(content: &str) -> Result<SplLeafHash> as a testable function.",
-      "token_cost": 235,
+      "content": "Upgrade both cache files to version 2 with Merkle fields per §12. index.json v2: increment CACHE_VERSION to 2, add merkle_root: String (hex ContentHash) to each file entry, add vault_root_hash: String at top level. theory.json v2: increment THEORY_CACHE_VERSION to 2, add vault_root_hash: String, built_at: String (RFC3339), spl_blocks: HashMap<String, SplBlockCache> where key is 'path:line' and value has ast_hash, content_hash, section_heading, section_grounding_hash, explicit_groundings fields per §12.2. When loading a v1 cache, return None (force full re-index/rebuild on first run after upgrade). When loading a v2 cache with missing merkle_root fields, treat that file as needing reparse. The git_commit/git_dirty fields in theory.json are Option<String>/Option<bool> per §1.6 and are absent in index.json per the VCS boundary contract. Implement FileMerkle serialisation/deserialisation as part of the cache schema.",
+      "token_cost": 232,
       "priority": "PlanMeta"
     },
     {
@@ -44,8 +44,14 @@
       "content": "Modified 2 files (+464, -5): src/merkle.rs, src/scanner.rs",
       "token_cost": 14,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-spl-dual-hashing-changes",
+      "content": "Modified 3 files (+395, -37): .hence/context-manifest.json, src/merkle.rs, src/scanner.rs",
+      "token_cost": 22,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T02:13:07Z"
+  "constructed_at": "2026-02-24T02:22:49Z"
 }
