@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 65,
-    "deletions": 7,
+    "insertions": 95,
+    "deletions": 12,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/main.rs"
+      "src/view/app.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-no-index-fallback-changes",
-      "content": "Modified 2 files (+65, -7): .hence/context-manifest.json, src/main.rs",
+      "key": "task-two-pane-layout-changes",
+      "content": "Modified 2 files (+95, -12): .hence/context-manifest.json, src/view/app.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/no-index-fallback-v1",
-  "evaluated_at": "2026-02-24T07:18:24Z",
+  "branch_name": "hence/two-pane-layout-v1",
+  "evaluated_at": "2026-02-24T07:22:37Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
