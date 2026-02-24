@@ -1,6 +1,6 @@
 ---
 title: "SPEC-006: Content-Addressed Merkle Tree over Markdown and SPL AST"
-version: 0.3.0
+version: 0.4.0
 status: draft
 audience: agent, human
 date: 2026-02-24
@@ -100,7 +100,7 @@ The solution has two parts:
 | **Drift warnings** | `zetl check --drift` warns: "SPL in Redis.md §Benchmarks may be stale — section was edited" |
 | **Stale provenance detection** | `zetl reason provenance` warns when source content has changed since the theory was built |
 | **False invalidation elimination** | `zetl index` doesn't re-process files that were touched but not changed |
-| **Content-addressed references** | `zetl blocks` returns Merkle hashes for every content block; agents use hashes as read-only `:source` references without modifying files |
+| **Content-addressed references** | `zetl blocks` returns Merkle hashes for every content block; `zetl blocks --resolve` maps a hash back to its file and line; agents use hashes as read-only `:source` references without modifying files |
 | **Explicit content references** | SPL can pin facts to specific paragraphs via `:source "^block-id"` or `:source "e5f6a7b8"` (Merkle hash) |
 | **Cross-agent verification** | Agents can verify that prose grounding a theory hasn't changed since it was built |
 
@@ -122,7 +122,7 @@ The solution has two parts:
 - Two-tier cache invalidation (mtime + content hash)
 - Section grounding: implicit linking of SPL blocks to their containing Markdown section
 - Explicit grounding via `:source` — three forms: Merkle hash (agent-friendly, read-only), `^block-id` (human-friendly), `[[Page^block-id]]` (cross-file)
-- Content block discovery: `zetl blocks <page>` exposes Merkle leaf hashes for agent consumption
+- Content block discovery: `zetl blocks <page>` exposes Merkle leaf hashes for agent consumption; `zetl blocks --resolve <hash>` maps hashes back to source locations
 - Drift detection integrated into `zetl check`
 - Durable provenance: content hashes in theory provenance metadata
 
@@ -161,6 +161,8 @@ Daily workflow:
   5. Run `zetl reason status` (theory uses content hashes for caching)
   6. Later, another agent edits the source paragraph
   7. Run `zetl check --drift` — see that the grounding is stale
+  8. Run `zetl blocks --resolve e5f6a7b8` — find that the hash no longer
+     resolves (content changed), identify what file/line it used to reference
 ```
 
 ### 2.2 Human Knowledge Worker — Decision Documenter
@@ -205,7 +207,10 @@ Daily workflow:
   5. Hence post-edit hook: `zetl check --drift --fail-on drift`
      → Fails: "fact redis-fast-enough grounded in e5f6a7b8 — no matching
         content block found (original paragraph was modified)"
-  6. Hence assigns reconciliation task to resolve the drift
+  6. Reconciliation agent runs `zetl blocks --resolve e5f6a7b8` to see
+     what the hash referenced, discovers it no longer resolves
+  7. Agent runs `zetl blocks "Redis Benchmarks"` to get updated hashes,
+     rewrites the :source with the new hash
 ```
 
 ### 2.4 Happy Paths
@@ -848,19 +853,42 @@ Trace:
 ```
 
 ```
-REQ-045: Content Block Discovery
+REQ-045: Content Block Discovery and Hash Resolution
 
-The system SHALL provide a `zetl blocks <page>` command that returns
-the Merkle leaf nodes for a given file, including:
-  a) Leaf type (heading, paragraph, code block, SPL block, table, etc.)
-  b) Line range (start and end line numbers)
-  c) Merkle leaf hash (hex-encoded BLAKE3, usable as a :source reference)
-  d) Text preview (first 200 characters of normalised content)
+The system SHALL provide a `zetl blocks` command with two modes:
 
-The page argument SHALL use the same resolution as wikilinks (SPEC-001
-§3.2): case-insensitive, normalised matching.
+**Forward mode (file → blocks):**
 
-The command SHALL require that `zetl index` has been run (Merkle tree
+  `zetl blocks <page>` returns the Merkle leaf nodes for a given file,
+  including:
+    a) Leaf type (heading, paragraph, code block, SPL block, table, etc.)
+    b) Line range (start and end line numbers)
+    c) Merkle leaf hash (hex-encoded BLAKE3, usable as a :source reference)
+    d) Text preview (first 200 characters of normalised content)
+
+  The page argument SHALL use the same resolution as wikilinks (SPEC-001
+  §3.2): case-insensitive, normalised matching.
+
+**Reverse mode (hash → file:line):**
+
+  `zetl blocks --resolve <hash>` resolves a Merkle leaf hash prefix to
+  its source location, returning:
+    a) File path (relative to vault root)
+    b) Page name
+    c) Line range (start and end line numbers)
+    d) Leaf type
+    e) Text preview (first 200 characters of normalised content)
+    f) Full hash (hex-encoded BLAKE3)
+
+  The hash argument is a hex prefix (minimum 8 characters). Resolution
+  uses the same prefix-matching logic as :source hash references
+  (REQ-042):
+    - Zero matches → error: "content hash not found"
+    - One match → success: return the leaf's location
+    - Multiple matches → error: "ambiguous hash prefix" with list of
+      matching locations; suggest a longer prefix
+
+Both modes SHALL require that `zetl index` has been run (Merkle tree
 exists in cache). If the cache is stale or missing, the command SHALL
 index first (consistent with other query commands).
 
@@ -1283,20 +1311,26 @@ Verified by:
 ```
 CON-020: zetl blocks
 
-zetl blocks <PAGE> [OPTIONS]
+zetl blocks [PAGE] [OPTIONS]
 
-List the content blocks of a file with their Merkle leaf hashes.
+List the content blocks of a file with their Merkle leaf hashes,
+or resolve a hash to its source location.
 
 Arguments:
-  <PAGE>  Page name (case-insensitive, same resolution as wikilinks)
+  [PAGE]  Page name (case-insensitive, same resolution as wikilinks).
+          Required unless --resolve is used.
 
 Options:
-  --type <TYPE>  Filter by leaf type: heading, paragraph, spl, code,
-                 table, list, blockquote, frontmatter [default: all]
+  --type <TYPE>      Filter by leaf type: heading, paragraph, spl, code,
+                     table, list, blockquote, frontmatter [default: all]
+  --resolve <HASH>   Resolve a Merkle hash prefix to its source location.
+                     Minimum 8 hex characters. Mutually exclusive with PAGE.
 
 Exit codes:
-  0  Blocks listed
-  1  Page not found
+  0  Blocks listed / hash resolved
+  1  Page not found / hash not found / ambiguous hash prefix
+
+--- Forward mode: zetl blocks <PAGE> ---
 
 Example output (JSON):
 {
@@ -1359,9 +1393,44 @@ Example output (table):
   3  Table        11-14  c9d0e1f2  | Metric | Value | ...
   4  SplBlock     16-21  3a4b5c6d  (given redis-benchmarked) ...
 
+--- Reverse mode: zetl blocks --resolve <HASH> ---
+
+Example output (JSON):
+{
+  "hash": "e5f6a7b8c9d0e1f2",
+  "file": "decisions/Redis vs Memcached.md",
+  "page": "Redis vs Memcached",
+  "type": "Paragraph",
+  "lines": [7, 9],
+  "text": "We benchmarked Redis at 120k ops/sec under production workload. The test ran for 24 hours with..."
+}
+
+Example output (table):
+
+  e5f6a7b8c9d0e1f2  decisions/Redis vs Memcached.md:7-9  Paragraph
+  We benchmarked Redis at 120k ops/sec under production workload...
+
+Example error — hash not found (JSON):
+{
+  "error": "content hash e5f6a7b8 not found — source content may have been modified or removed"
+}
+
+Example error — ambiguous prefix (JSON):
+{
+  "error": "ambiguous hash prefix e5f6a7b8",
+  "matches": [
+    {"file": "decisions/Redis.md", "lines": [7, 9], "hash": "e5f6a7b8c9d0e1f2"},
+    {"file": "notes/Cache.md", "lines": [12, 14], "hash": "e5f6a7b8aabbccdd"}
+  ],
+  "suggestion": "use a longer prefix to disambiguate"
+}
+
 Usage:
   The hash values can be used directly as :source references in SPL:
     (given redis-fast-enough :source "e5f6a7b8")
+
+  Resolve a hash back to its source location:
+    zetl blocks --resolve e5f6a7b8
 
 Implements:
 - REQ-045
@@ -1700,7 +1769,9 @@ Verifies: REQ-044
 ```
 
 ```
-TEST-049: Content Block Discovery
+TEST-049: Content Block Discovery and Hash Resolution
+
+--- Forward mode ---
 
 Scenario: List blocks for a file
 Given: An indexed vault with file "Redis.md" containing a heading,
@@ -1710,7 +1781,7 @@ Then:
   - Returns 5+ blocks in document order
   - Each block has type, lines, hash, and text preview
   - SPL blocks include spl_hashes
-  - Output matches CON-020 schema
+  - Output matches CON-020 forward mode schema
 
 Scenario: Hash is usable as :source
 Given: `zetl blocks "Redis"` returns hash "e5f6a7b8" for a paragraph
@@ -1742,6 +1813,56 @@ Then: Exit code 1, page not found error
 Scenario: Filter by type
 When: `zetl blocks "Redis" --type paragraph` is run
 Then: Only paragraph blocks are returned
+
+--- Reverse mode ---
+
+Scenario: Resolve hash to source location
+Given: An indexed vault where "Redis.md" line 7-9 has a paragraph
+       with Merkle hash e5f6a7b8c9d0e1f2
+When: `zetl blocks --resolve e5f6a7b8` is run
+Then:
+  - Returns file "decisions/Redis vs Memcached.md"
+  - Returns page "Redis vs Memcached"
+  - Returns lines [7, 9]
+  - Returns type "Paragraph"
+  - Returns full hash "e5f6a7b8c9d0e1f2"
+  - Returns text preview
+  - Exit code 0
+
+Scenario: Resolve hash not found
+Given: No leaf in the vault matches prefix "deadbeef"
+When: `zetl blocks --resolve deadbeef` is run
+Then:
+  - Error: "content hash deadbeef not found"
+  - Exit code 1
+
+Scenario: Resolve ambiguous hash prefix
+Given: Two leaves in different files share the prefix "e5f6a7b8"
+When: `zetl blocks --resolve e5f6a7b8` is run
+Then:
+  - Error: "ambiguous hash prefix e5f6a7b8"
+  - Lists all matching locations with full hashes
+  - Suggests using a longer prefix
+  - Exit code 1
+
+Scenario: Resolve with full hash
+Given: A leaf with hash "e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0..."
+When: `zetl blocks --resolve e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0` is run
+Then:
+  - Resolves unambiguously
+  - Exit code 0
+
+Scenario: Resolve hash too short
+When: `zetl blocks --resolve e5f6` is run
+Then:
+  - Error: "hash prefix too short (minimum 8 hex characters)"
+  - Exit code 1
+
+Scenario: Roundtrip — forward then reverse
+Given: `zetl blocks "Redis"` returns a block with hash "e5f6a7b8"
+When: `zetl blocks --resolve e5f6a7b8` is run
+Then:
+  - Returns the same file, lines, type, and text as the forward mode
 
 Verifies: REQ-045
 ```
