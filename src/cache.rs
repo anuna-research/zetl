@@ -1,4 +1,5 @@
-use crate::types::{Diagnostic, ParsedFile};
+use crate::merkle::compute_vault_root;
+use crate::types::{ContentHash, Diagnostic, ParsedFile};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -7,7 +8,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 const CACHE_DIR: &str = ".zetl";
 const CACHE_FILE: &str = "index.json";
-const CACHE_VERSION: u32 = 1;
+const CACHE_VERSION: u32 = 2;
 
 const THEORY_CACHE_FILE: &str = "theory.json";
 const THEORY_CACHE_VERSION: u32 = 1;
@@ -16,6 +17,10 @@ const THEORY_CACHE_VERSION: u32 = 1;
 struct CacheIndex {
     version: u32,
     files: HashMap<PathBuf, ParsedFile>,
+    /// Vault-level Merkle root (§4.6). Stored as a 64-char lowercase hex string.
+    /// `None` if the vault has no hashed files yet.
+    #[serde(default)]
+    vault_root_hash: Option<String>,
 }
 
 /// Load cached index from .zetl/index.json
@@ -32,7 +37,10 @@ pub fn load_cache(vault_root: &Path) -> Result<Option<HashMap<PathBuf, ParsedFil
     Ok(Some(index.files))
 }
 
-/// Save parsed files to .zetl/index.json
+/// Save parsed files to .zetl/index.json.
+///
+/// Also computes and persists the vault-level Merkle root (§4.6) from the
+/// per-file roots stored in each file's [`FileMerkle::root_hash`].
 pub fn save_cache(vault_root: &Path, files: &[ParsedFile]) -> Result<()> {
     let cache_dir = vault_root.join(CACHE_DIR);
     std::fs::create_dir_all(&cache_dir)?;
@@ -43,14 +51,69 @@ pub fn save_cache(vault_root: &Path, files: &[ParsedFile]) -> Result<()> {
         file_map.insert(f.path.clone(), f.clone());
     }
 
+    // Compute vault root from per-file Merkle roots (sorted by canonical path, §4.6).
+    let file_hash_pairs: Vec<(&std::path::Path, ContentHash)> = files
+        .iter()
+        .filter_map(|f| {
+            f.file_merkle
+                .as_ref()
+                .map(|fm| (f.path.as_path(), fm.root_hash))
+        })
+        .collect();
+    let vault_hash = if file_hash_pairs.is_empty() {
+        None
+    } else {
+        let h = compute_vault_root(&file_hash_pairs);
+        Some(h.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+    };
+
     let index = CacheIndex {
         version: CACHE_VERSION,
         files: file_map,
+        vault_root_hash: vault_hash,
     };
 
     let json = serde_json::to_string_pretty(&index)?;
     std::fs::write(&cache_path, json)?;
     Ok(())
+}
+
+/// Load the vault-level Merkle root from `.zetl/index.json`.
+///
+/// Returns `None` if the cache does not exist, has a version mismatch, or
+/// does not yet contain a vault root hash.
+pub fn load_vault_root(vault_root: &Path) -> Result<Option<ContentHash>> {
+    let cache_path = vault_root.join(CACHE_DIR).join(CACHE_FILE);
+    if !cache_path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&cache_path)?;
+    let index: CacheIndex = serde_json::from_str(&content)?;
+    if index.version != CACHE_VERSION {
+        return Ok(None);
+    }
+    match index.vault_root_hash {
+        None => Ok(None),
+        Some(hex) if hex.len() != 64 => Ok(None),
+        Some(hex) => {
+            let mut bytes = [0u8; 32];
+            for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+                let high = nibble(chunk[0]).map_err(|e| anyhow::anyhow!(e))?;
+                let low = nibble(chunk[1]).map_err(|e| anyhow::anyhow!(e))?;
+                bytes[i] = (high << 4) | low;
+            }
+            Ok(Some(bytes))
+        }
+    }
+}
+
+fn nibble(c: u8) -> Result<u8, &'static str> {
+    match c {
+        b'0'..=b'9' => Ok(c - b'0'),
+        b'a'..=b'f' => Ok(c - b'a' + 10),
+        b'A'..=b'F' => Ok(c - b'A' + 10),
+        _ => Err("invalid hex character in vault root hash"),
+    }
 }
 
 /// Determine which files need re-parsing based on mtime changes
@@ -285,6 +348,7 @@ mod tests {
             diagnostics: vec![],
             mtime,
             merkle_leaves: vec![],
+            file_merkle: None,
         }
     }
 
@@ -455,6 +519,7 @@ mod tests {
             diagnostics: vec![],
             mtime,
             merkle_leaves: vec![],
+            file_merkle: None,
         }
     }
 

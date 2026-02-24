@@ -1,12 +1,12 @@
 {
-  "task_id": "leaf-grouper",
+  "task_id": "merkle-roots",
   "token_budget": 8000,
-  "tokens_used": 390,
+  "tokens_used": 349,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend src/scanner.rs to group pulldown-cmark events into block-level MerkleLeaf nodes during the existing file parse pass. The grouper processes the same pulldown-cmark event stream as wikilink and SPL extraction — no second parse pass (per §6.4). Map event sequences to leaf types per §4.3: Start(Heading)..End(Heading) → Heading{level}, Start(Paragraph)..End(Paragraph) → Paragraph, Start(CodeBlock(Fenced(\"spl\")))..End(CodeBlock) → SplBlock (flagged for dual hashing), other fenced code → CodeBlock{language}, Start(List)..End(List) → List{ordered}, Start(BlockQuote)..End(BlockQuote) → BlockQuote, Start(Table)..End(Table) → Table, Start(MetadataBlock)..End(MetadataBlock) → Frontmatter, Rule → ThematicBreak, block-level Html → HtmlBlock. Track byte ranges from pulldown-cmark's range output to compute start_line/end_line for each leaf. Apply normalisation rules from §4.3: collapse whitespace, trim, strip bold/italic/strikethrough but preserve [[wikilinks]], standard links, images; preserve case; normalise line endings to \\n. Return Vec<MerkleLeaf> from a new build_merkle_leaves(content: &str, events: &[(Event, Range<usize>)]) function. Add leaf_count to ParsedFile or return alongside it.",
-      "token_cost": 306,
+      "content": "Implement BLAKE3 hashing for all leaf nodes and compute file and vault Merkle roots per §4.1-4.2 and §4.6. Leaf hashing: ContentHash = BLAKE3(type_tag_byte ‖ normalised_content_bytes) for all non-SPL leaves. The type_tag_byte is a unique sentinel per LeafType variant (e.g., Heading=0x01, Paragraph=0x02, etc.). File Merkle root: ContentHash = BLAKE3(leaf1_hash ‖ leaf2_hash ‖ … ‖ leafN_hash) in document order. Vault root: ContentHash = BLAKE3(file1_hash ‖ file2_hash ‖ … ‖ fileM_hash) sorted by canonical relative path (UTF-8 lexicographic, forward-slash normalised) per §4.6. Store per-file root in FileMerkle::root_hash. Store vault root in the cache index. Expose compute_leaf_hash, compute_file_root, compute_vault_root as testable functions in a new src/merkle.rs module (or inline in scanner.rs). SPL leaf hashing is handled separately in task-spl-dual-hashing — leave SplBlock leaves with a placeholder sentinel hash for now.",
+      "token_cost": 239,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 5 files (+262, -5): .hence/context-manifest.json, demo-vault/architecture/Performance.md, demo-vault/decisions/Deployment Decision.md, demo-vault/decisions/Redis vs Memcached.md, demo-vault/theories/caching.spl",
       "token_cost": 54,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-leaf-grouper-changes",
+      "content": "Modified 5 files (+741, -5): src/cache.rs, src/graph.rs, src/reason/mod.rs, src/scanner.rs, src/types.rs",
+      "token_cost": 26,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T01:41:37Z"
+  "constructed_at": "2026-02-24T01:54:37Z"
 }

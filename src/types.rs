@@ -60,6 +60,10 @@ pub struct ParsedFile {
     /// Merkle leaf nodes built from block-level AST events (SPEC-006 §4.3)
     #[serde(default)]
     pub merkle_leaves: Vec<MerkleLeaf>,
+    /// Per-file Merkle tree with root hash (SPEC-006 §4.2). `None` for files
+    /// that have not been hashed yet (e.g. standalone `.spl` files).
+    #[serde(default)]
+    pub file_merkle: Option<FileMerkle>,
 }
 
 /// A syntax issue
