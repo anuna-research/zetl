@@ -694,3 +694,367 @@
 (normally r-assign-observability-claude
   (and ready-observability agent-claude-available)
   assign-to-observability-claude)
+
+(claims agent:claude
+  :at "2026-02-24T01:35:53Z"
+  (given claim-v1-blake3-dep-by-claude)
+  (normally r-cl-state-v1-blake3-dep-by-claude claim-v1-blake3-dep-by-claude state-claimed-v1-blake3-dep-by-claude)
+  (normally r-cl-chain-v1-blake3-dep-by-claude state-claimed-v1-blake3-dep-by-claude claimed-blake3-dep)
+)
+
+(claims agent:claude
+  :at "2026-02-24T01:36:38Z"
+  (given completed-blake3-dep)
+  (given spawn-result-v1-blake3-dep-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T01:36:43Z"
+  (given claim-v1-merkle-types-by-claude)
+  (normally r-cl-state-v1-merkle-types-by-claude claim-v1-merkle-types-by-claude state-claimed-v1-merkle-types-by-claude)
+  (normally r-cl-chain-v1-merkle-types-by-claude state-claimed-v1-merkle-types-by-claude claimed-merkle-types)
+)
+
+(claims agent:claude
+  :at "2026-02-24T01:38:16Z"
+  (given completed-merkle-types)
+  (given spawn-result-v1-merkle-types-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T01:38:21Z"
+  (given claim-v1-demo-vault-merkle-by-claude)
+  (normally r-cl-state-v1-demo-vault-merkle-by-claude claim-v1-demo-vault-merkle-by-claude state-claimed-v1-demo-vault-merkle-by-claude)
+  (normally r-cl-chain-v1-demo-vault-merkle-by-claude state-claimed-v1-demo-vault-merkle-by-claude claimed-demo-vault-merkle)
+)
+
+(claims agent:claude
+  :at "2026-02-24T01:41:32Z"
+  (given completed-demo-vault-merkle)
+  (given spawn-result-v1-demo-vault-merkle-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T01:41:37Z"
+  (given claim-v1-leaf-grouper-by-claude)
+  (normally r-cl-state-v1-leaf-grouper-by-claude claim-v1-leaf-grouper-by-claude state-claimed-v1-leaf-grouper-by-claude)
+  (normally r-cl-chain-v1-leaf-grouper-by-claude state-claimed-v1-leaf-grouper-by-claude claimed-leaf-grouper)
+)
+
+(claims agent:claude
+  :at "2026-02-24T01:54:31Z"
+  (given completed-leaf-grouper)
+  (given spawn-result-v1-leaf-grouper-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T01:54:37Z"
+  (given claim-v1-merkle-roots-by-claude)
+  (normally r-cl-state-v1-merkle-roots-by-claude claim-v1-merkle-roots-by-claude state-claimed-v1-merkle-roots-by-claude)
+  (normally r-cl-chain-v1-merkle-roots-by-claude state-claimed-v1-merkle-roots-by-claude claimed-merkle-roots)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:03:22Z"
+  (given completed-merkle-roots)
+  (given spawn-result-v1-merkle-roots-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:03:27Z"
+  (given claim-v1-section-detection-by-claude)
+  (normally r-cl-state-v1-section-detection-by-claude claim-v1-section-detection-by-claude state-claimed-v1-section-detection-by-claude)
+  (normally r-cl-chain-v1-section-detection-by-claude state-claimed-v1-section-detection-by-claude claimed-section-detection)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:13:02Z"
+  (given completed-section-detection)
+  (given spawn-result-v1-section-detection-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:13:07Z"
+  (given claim-v1-spl-dual-hashing-by-claude)
+  (normally r-cl-state-v1-spl-dual-hashing-by-claude claim-v1-spl-dual-hashing-by-claude state-claimed-v1-spl-dual-hashing-by-claude)
+  (normally r-cl-chain-v1-spl-dual-hashing-by-claude state-claimed-v1-spl-dual-hashing-by-claude claimed-spl-dual-hashing)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:22:44Z"
+  (given completed-spl-dual-hashing)
+  (given spawn-result-v1-spl-dual-hashing-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:22:49Z"
+  (given claim-v1-cache-format-v2-by-claude)
+  (normally r-cl-state-v1-cache-format-v2-by-claude claim-v1-cache-format-v2-by-claude state-claimed-v1-cache-format-v2-by-claude)
+  (normally r-cl-chain-v1-cache-format-v2-by-claude state-claimed-v1-cache-format-v2-by-claude claimed-cache-format-v2)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:32:23Z"
+  (given completed-cache-format-v2)
+  (given spawn-result-v1-cache-format-v2-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:32:28Z"
+  (given claim-v1-theory-cache-spl-by-claude)
+  (normally r-cl-state-v1-theory-cache-spl-by-claude claim-v1-theory-cache-spl-by-claude state-claimed-v1-theory-cache-spl-by-claude)
+  (normally r-cl-chain-v1-theory-cache-spl-by-claude state-claimed-v1-theory-cache-spl-by-claude claimed-theory-cache-spl)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:37:13Z"
+  (given completed-theory-cache-spl)
+  (given spawn-result-v1-theory-cache-spl-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:37:18Z"
+  (given claim-v1-stats-vault-hash-by-claude)
+  (normally r-cl-state-v1-stats-vault-hash-by-claude claim-v1-stats-vault-hash-by-claude state-claimed-v1-stats-vault-hash-by-claude)
+  (normally r-cl-chain-v1-stats-vault-hash-by-claude state-claimed-v1-stats-vault-hash-by-claude claimed-stats-vault-hash)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:42:56Z"
+  (given completed-stats-vault-hash)
+  (given spawn-result-v1-stats-vault-hash-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:43:01Z"
+  (given claim-v1-section-grounding-by-claude)
+  (normally r-cl-state-v1-section-grounding-by-claude claim-v1-section-grounding-by-claude state-claimed-v1-section-grounding-by-claude)
+  (normally r-cl-chain-v1-section-grounding-by-claude state-claimed-v1-section-grounding-by-claude claimed-section-grounding)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:53:47Z"
+  (given completed-section-grounding)
+  (given spawn-result-v1-section-grounding-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T02:53:52Z"
+  (given claim-v1-drift-detection-section-by-claude)
+  (normally r-cl-state-v1-drift-detection-section-by-claude claim-v1-drift-detection-section-by-claude state-claimed-v1-drift-detection-section-by-claude)
+  (normally r-cl-chain-v1-drift-detection-section-by-claude state-claimed-v1-drift-detection-section-by-claude claimed-drift-detection-section)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:04:21Z"
+  (given completed-drift-detection-section)
+  (given spawn-result-v1-drift-detection-section-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:04:26Z"
+  (given claim-v1-check-drift-flag-by-claude)
+  (normally r-cl-state-v1-check-drift-flag-by-claude claim-v1-check-drift-flag-by-claude state-claimed-v1-check-drift-flag-by-claude)
+  (normally r-cl-chain-v1-check-drift-flag-by-claude state-claimed-v1-check-drift-flag-by-claude claimed-check-drift-flag)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:09:15Z"
+  (given completed-check-drift-flag)
+  (given spawn-result-v1-check-drift-flag-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:09:20Z"
+  (given claim-v1-provenance-grounding-by-claude)
+  (normally r-cl-state-v1-provenance-grounding-by-claude claim-v1-provenance-grounding-by-claude state-claimed-v1-provenance-grounding-by-claude)
+  (normally r-cl-chain-v1-provenance-grounding-by-claude state-claimed-v1-provenance-grounding-by-claude claimed-provenance-grounding)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:21:53Z"
+  (given completed-provenance-grounding)
+  (given spawn-result-v1-provenance-grounding-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:21:58Z"
+  (given claim-v1-source-extraction-by-claude)
+  (normally r-cl-state-v1-source-extraction-by-claude claim-v1-source-extraction-by-claude state-claimed-v1-source-extraction-by-claude)
+  (normally r-cl-chain-v1-source-extraction-by-claude state-claimed-v1-source-extraction-by-claude claimed-source-extraction)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:37:40Z"
+  (given completed-source-extraction)
+  (given spawn-result-v1-source-extraction-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:37:45Z"
+  (given claim-v1-test-vcs-independence-by-claude)
+  (normally r-cl-state-v1-test-vcs-independence-by-claude claim-v1-test-vcs-independence-by-claude state-claimed-v1-test-vcs-independence-by-claude)
+  (normally r-cl-chain-v1-test-vcs-independence-by-claude state-claimed-v1-test-vcs-independence-by-claude claimed-test-vcs-independence)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:49:07Z"
+  (given completed-test-vcs-independence)
+  (given spawn-result-v1-test-vcs-independence-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:49:13Z"
+  (given claim-v1-two-tier-invalidation-by-claude)
+  (normally r-cl-state-v1-two-tier-invalidation-by-claude claim-v1-two-tier-invalidation-by-claude state-claimed-v1-two-tier-invalidation-by-claude)
+  (normally r-cl-chain-v1-two-tier-invalidation-by-claude state-claimed-v1-two-tier-invalidation-by-claude claimed-two-tier-invalidation)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:58:44Z"
+  (given completed-two-tier-invalidation)
+  (given spawn-result-v1-two-tier-invalidation-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T03:58:49Z"
+  (given claim-v1-observability-by-claude)
+  (normally r-cl-state-v1-observability-by-claude claim-v1-observability-by-claude state-claimed-v1-observability-by-claude)
+  (normally r-cl-chain-v1-observability-by-claude state-claimed-v1-observability-by-claude claimed-observability)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:10:43Z"
+  (given completed-observability)
+  (given spawn-result-v1-observability-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:10:49Z"
+  (given claim-v1-blocks-forward-by-claude)
+  (normally r-cl-state-v1-blocks-forward-by-claude claim-v1-blocks-forward-by-claude state-claimed-v1-blocks-forward-by-claude)
+  (normally r-cl-chain-v1-blocks-forward-by-claude state-claimed-v1-blocks-forward-by-claude claimed-blocks-forward)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:15:38Z"
+  (given completed-blocks-forward)
+  (given spawn-result-v1-blocks-forward-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:15:43Z"
+  (given claim-v1-hash-prefix-resolution-by-claude)
+  (normally r-cl-state-v1-hash-prefix-resolution-by-claude claim-v1-hash-prefix-resolution-by-claude state-claimed-v1-hash-prefix-resolution-by-claude)
+  (normally r-cl-chain-v1-hash-prefix-resolution-by-claude state-claimed-v1-hash-prefix-resolution-by-claude claimed-hash-prefix-resolution)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:21:50Z"
+  (given completed-hash-prefix-resolution)
+  (given spawn-result-v1-hash-prefix-resolution-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:21:55Z"
+  (given claim-v1-blockid-resolution-by-claude)
+  (normally r-cl-state-v1-blockid-resolution-by-claude claim-v1-blockid-resolution-by-claude state-claimed-v1-blockid-resolution-by-claude)
+  (normally r-cl-chain-v1-blockid-resolution-by-claude state-claimed-v1-blockid-resolution-by-claude claimed-blockid-resolution)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:35:09Z"
+  (given completed-blockid-resolution)
+  (given spawn-result-v1-blockid-resolution-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:35:14Z"
+  (given claim-v1-source-validation-by-claude)
+  (normally r-cl-state-v1-source-validation-by-claude claim-v1-source-validation-by-claude state-claimed-v1-source-validation-by-claude)
+  (normally r-cl-chain-v1-source-validation-by-claude state-claimed-v1-source-validation-by-claude claimed-source-validation)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:44:02Z"
+  (given completed-source-validation)
+  (given spawn-result-v1-source-validation-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:44:08Z"
+  (given claim-v1-explicit-grounding-drift-by-claude)
+  (normally r-cl-state-v1-explicit-grounding-drift-by-claude claim-v1-explicit-grounding-drift-by-claude state-claimed-v1-explicit-grounding-drift-by-claude)
+  (normally r-cl-chain-v1-explicit-grounding-drift-by-claude state-claimed-v1-explicit-grounding-drift-by-claude claimed-explicit-grounding-drift)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:52:06Z"
+  (given completed-explicit-grounding-drift)
+  (given spawn-result-v1-explicit-grounding-drift-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T04:52:11Z"
+  (given claim-v1-perf-tests-by-claude)
+  (normally r-cl-state-v1-perf-tests-by-claude claim-v1-perf-tests-by-claude state-claimed-v1-perf-tests-by-claude)
+  (normally r-cl-chain-v1-perf-tests-by-claude state-claimed-v1-perf-tests-by-claude claimed-perf-tests)
+)
+
+(claims agent:claude
+  :at "2026-02-24T05:09:30Z"
+  (given completed-perf-tests)
+  (given spawn-result-v1-perf-tests-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T05:09:35Z"
+  (given claim-v1-unit-tests-p1-by-claude)
+  (normally r-cl-state-v1-unit-tests-p1-by-claude claim-v1-unit-tests-p1-by-claude state-claimed-v1-unit-tests-p1-by-claude)
+  (normally r-cl-chain-v1-unit-tests-p1-by-claude state-claimed-v1-unit-tests-p1-by-claude claimed-unit-tests-p1)
+)
+
+(claims agent:claude
+  :at "2026-02-24T05:38:54Z"
+  (given completed-unit-tests-p1)
+  (given spawn-result-v1-unit-tests-p1-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T05:38:59Z"
+  (given claim-v1-blocks-reverse-by-claude)
+  (normally r-cl-state-v1-blocks-reverse-by-claude claim-v1-blocks-reverse-by-claude state-claimed-v1-blocks-reverse-by-claude)
+  (normally r-cl-chain-v1-blocks-reverse-by-claude state-claimed-v1-blocks-reverse-by-claude claimed-blocks-reverse)
+)
+
+(claims agent:claude
+  :at "2026-02-24T05:47:45Z"
+  (given completed-blocks-reverse)
+  (given spawn-result-v1-blocks-reverse-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T05:47:50Z"
+  (given claim-v1-integration-tests-blocks-by-claude)
+  (normally r-cl-state-v1-integration-tests-blocks-by-claude claim-v1-integration-tests-blocks-by-claude state-claimed-v1-integration-tests-blocks-by-claude)
+  (normally r-cl-chain-v1-integration-tests-blocks-by-claude state-claimed-v1-integration-tests-blocks-by-claude claimed-integration-tests-blocks)
+)
+
+(claims agent:claude
+  :at "2026-02-24T05:52:04Z"
+  (given completed-integration-tests-blocks)
+  (given spawn-result-v1-integration-tests-blocks-by-claude)
+)
+
+(claims agent:claude
+  :at "2026-02-24T05:52:10Z"
+  (given claim-v1-unit-tests-p0-by-claude)
+  (normally r-cl-state-v1-unit-tests-p0-by-claude claim-v1-unit-tests-p0-by-claude state-claimed-v1-unit-tests-p0-by-claude)
+  (normally r-cl-chain-v1-unit-tests-p0-by-claude state-claimed-v1-unit-tests-p0-by-claude claimed-unit-tests-p0)
+)
+
+(claims agent:claude
+  :at "2026-02-24T06:04:14Z"
+  (given completed-unit-tests-p0)
+  (given spawn-result-v1-unit-tests-p0-by-claude)
+)
