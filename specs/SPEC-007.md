@@ -1,6 +1,6 @@
 ---
 title: "SPEC-007: zetl diff — Git-Backed Graph Diff"
-version: 0.2.0
+version: 0.3.0
 status: draft
 audience: agent, human
 date: 2026-02-24
@@ -14,15 +14,15 @@ date: 2026-02-24
 | ------------ | ------------------------------------------------------------------ |
 | Document ID  | SPEC-007                                                           |
 | Title        | zetl diff — Git-Backed Graph Diff                                  |
-| Version      | 0.2.0                                                              |
+| Version      | 0.3.0                                                              |
 | Status       | Draft                                                              |
 | Author       | Agent (USDD Protocol v1.0.0)                                       |
 | Date         | 2026-02-24                                                         |
 | Audience     | Agent, Human                                                       |
 | Trace        | USDD Agent Protocol v1.0.0                                         |
 | Parent       | SPEC-001: zetl — Bi-directional Link Graph CLI                     |
-| Related      | SPEC-005: zetl reason, SPEC-006: Merkle Tree                       |
-| Dependencies | git (runtime), pulldown-cmark (Markdown parsing)                   |
+| Related      | SPEC-005: zetl reason                                              |
+| Dependencies | git (runtime), pulldown-cmark (Markdown parsing), SPEC-006 (index cache format) |
 
 ---
 
@@ -46,6 +46,10 @@ The key insight is that only files that *changed* between the baseline and the c
 
 This is efficient: for a 2,000-note vault where 12 files changed since yesterday, only 12 files are re-parsed from git history.
 
+**Reconstruction scope.** Step 3 extracts only **wikilinks** from old file content — the same extraction `zetl index` performs for link-graph construction. The full SPEC-006 pipeline (Merkle leaf construction, SPL block extraction, section grounding) is not run on the baseline state; those structures are not needed to compute a link-graph diff. SPL-level changes between refs are out of scope for `zetl diff` (see §1.2 and §11.2).
+
+**Current state.** The "current state" is the working tree as indexed by `zetl index`. `git diff --name-only <ref>` compares `<ref>` against the working tree, so files with uncommitted edits will appear in the diff. See CON-021 for details.
+
 ### 1.2 Scope
 
 **In scope:**
@@ -59,8 +63,11 @@ This is efficient: for a 2,000-note vault where 12 files changed since yesterday
 
 - Vaults not tracked in git (zetl diff requires git; the command errors gracefully when git is absent)
 - zetl-managed snapshot storage (explicitly rejected; see ADR-011)
+- SPL-level changes: added/removed facts, rules, or SPL blocks between refs (future SPEC; see §11.2; `zetl reason diff` is the intended surface for this)
 - Diffing reasoning conclusions across git history (future SPEC, builds on SPEC-005 + SPEC-007)
 - Page-level lifecycle timeline across all commits (future; requires scanning many commits)
+
+**VCS dependency scope.** `zetl diff` is the only zetl command that requires git. All other commands — `zetl index`, `zetl check`, `zetl blocks`, `zetl reason` — are VCS-independent and operate identically whether or not the vault is inside a git repository (SPEC-006 §1.6, NFR-017).
 
 ---
 
@@ -207,6 +214,8 @@ Trace:
 
 The system SHALL reconstruct the baseline graph by re-parsing only the files that differ between the baseline ref and the current working tree, as identified by `git diff --name-only <ref>`. Files not present in the diff SHALL be assumed unchanged and their current graph edges reused. Deleted files SHALL be identified via `git diff --diff-filter=D --name-only <ref>` and their edges excluded from the baseline graph.
 
+Re-parsing SHALL extract only **wikilinks** from old file content. Merkle tree construction, SPL block extraction, and section grounding computation (SPEC-006) SHALL NOT be performed on the baseline state; those structures are not required for a link-graph diff.
+
 Trace:
 - TEST-059
 - NFR-018
@@ -251,6 +260,8 @@ Trace:
 
 **Rejected alternative:** zetl-native snapshots as fallback for non-git vaults. Deferred — the use case of non-git vaults wanting temporal diffs is not well-understood yet; it should be specified separately if demand emerges.
 
+**VCS boundary note:** This decision makes `zetl diff` the only zetl command that requires git. It does not change the VCS-independence guarantee of all other commands (SPEC-006 §1.6, NFR-017). The git dependency is intentionally contained here.
+
 ### ADR-012: Reconstruct via Changed-Files Only, Not Full Checkout
 
 **Decision:** Reconstruct the baseline graph by re-parsing only changed files (via `git diff --name-only`), reusing current graph edges for unchanged files, rather than checking out the baseline ref in full or using `git archive`.
@@ -284,8 +295,10 @@ Trace:
 **Pre-conditions:**
 - Current directory is inside a git repository
 - `git` binary is available on PATH
-- `zetl index` has been run at least once (current index exists)
+- `zetl index` has been run at least once with the SPEC-006 cache format (Merkle tree data present in `.zetl/index.json`); an index built before SPEC-006 is in place will produce incomplete results
 - Baseline ref is resolvable by `git rev-parse`
+
+**Working-tree note:** The current state is the working tree as read by `zetl index`. `git diff --name-only <ref>` compares `<ref>` against the working tree; files with uncommitted edits will appear in the diff alongside committed changes. This is intentional — `zetl index` operates on the working tree, so the current state always reflects it.
 
 **Post-conditions:**
 - Exit 0 on success, including when diff is empty
@@ -503,6 +516,8 @@ If demand emerges for temporal diffs in non-git vaults, a minimal zetl-native sn
 ### 11.2 Reasoning Diff
 
 `zetl reason diff --from <ref>` would compute changes in SPL reasoning conclusions across git history. Requires combining SPEC-005 (reasoning) with SPEC-007's reconstruction approach: re-run the theory over the baseline graph and diff conclusions. Reserved for a future SPEC.
+
+SPEC-006's Merkle infrastructure provides a natural efficiency layer for this feature. The vault root hash (stored in `.zetl/theory.json`) offers a fast early exit: if the vault root hash at `<ref>` matches the current vault root hash, the theory is provably identical and no re-run is needed. Comparing only the SPL leaf AST hashes across the two states narrows reconstruction further to files where SPL content actually changed — avoiding a full theory rebuild when only prose was edited.
 
 ### 11.3 Page Timeline
 
