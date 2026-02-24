@@ -3,10 +3,11 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 200,
-    "deletions": 100,
+    "files_changed": 3,
+    "insertions": 87,
+    "deletions": 16,
     "file_list": [
+      ".hence/context-manifest.json",
       "src/cache.rs",
       "src/main.rs"
     ],
@@ -14,14 +15,14 @@
   },
   "learnings": [
     {
-      "key": "task-theory-cache-spl-changes",
-      "content": "Modified 2 files (+200, -100): src/cache.rs, src/main.rs",
+      "key": "task-stats-vault-hash-changes",
+      "content": "Modified 3 files (+87, -16): .hence/context-manifest.json, src/cache.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/theory-cache-spl-v1",
-  "evaluated_at": "2026-02-24T02:37:13Z",
+  "branch_name": "hence/stats-vault-hash-v1",
+  "evaluated_at": "2026-02-24T02:42:56Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
