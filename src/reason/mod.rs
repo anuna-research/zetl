@@ -17,7 +17,7 @@
 pub mod types;
 
 use crate::cache::{CachedRuleType, TheoryCache};
-use crate::types::{Diagnostic, DiagnosticLevel, SplBlock};
+use crate::types::{Diagnostic, DiagnosticLevel, ExplicitGrounding, SplBlock};
 use anyhow::{Context, Result};
 use spindle_core::prelude::{
     Conclusion, ConclusionType as CoreConclusionType, Literal, MetaValue, Rule,
@@ -31,6 +31,37 @@ use self::types::{
     ConclusionType, ProofSource, ProvenancedConclusion, ProvenancedFact, ProvenancedRule, RuleType,
     TheoryResult, TheorySummary,
 };
+
+/// Extract explicit source groundings from a locally-parsed SPL block theory (REQ-042).
+///
+/// Walks the theory's metadata looking for `"source"` keys.  Each label that
+/// carries a `MetaValue::String` or `MetaValue::List` under `"source"` becomes
+/// one [`ExplicitGrounding`] with the raw, unresolved `source_refs`.
+///
+/// Internal spindle labels (those starting with `_`) are skipped.
+fn extract_source_groundings(theory: &Theory) -> Vec<ExplicitGrounding> {
+    let mut result = Vec::new();
+    for (label, meta) in theory.metadata() {
+        // Skip internal provenance labels injected by the pipeline.
+        if label.starts_with('_') {
+            continue;
+        }
+        let source_refs: Vec<String> = match meta.properties.get("source") {
+            Some(MetaValue::String(s)) => vec![s.clone()],
+            Some(MetaValue::List(list)) => list.clone(),
+            _ => continue,
+        };
+        if source_refs.is_empty() {
+            continue;
+        }
+        result.push(ExplicitGrounding {
+            construct: label.clone(),
+            source_refs,
+            targets: vec![],
+        });
+    }
+    result
+}
 
 /// Build a combined theory from extracted SPL blocks, reason over it,
 /// and return provenanced conclusions with diagnostics.
@@ -57,6 +88,7 @@ pub fn build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> {
                 defeasibly_provable: 0,
                 defeasibly_not_provable: 0,
             },
+            groundings_by_block: HashMap::new(),
         });
     }
 
@@ -67,6 +99,8 @@ pub fn build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> {
     // label -> (file, line, page) for provenance lookup during conclusion annotation
     let mut label_origins: HashMap<String, (PathBuf, u32, String)> = HashMap::new();
     let mut fact_counter = 0u32;
+    // Explicit source groundings extracted per block (REQ-042).
+    let mut groundings_by_block: HashMap<String, Vec<ExplicitGrounding>> = HashMap::new();
 
     // ── Phase 1–3: Parse, annotate provenance, combine ────────────────
     for block in spl_blocks {
@@ -78,6 +112,13 @@ pub fn build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> {
                 continue;
             }
         };
+
+        // Extract explicit source groundings from this block's local theory (REQ-042).
+        let block_groundings = extract_source_groundings(&parsed);
+        if !block_groundings.is_empty() {
+            let key = format!("{}:{}", block.source_file.display(), block.start_line);
+            groundings_by_block.insert(key, block_groundings);
+        }
 
         // Phase 2: Scan source text for construct line numbers
         let constructs = scan_construct_lines(&block.content);
@@ -192,6 +233,7 @@ pub fn build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> {
         facts: provenanced_facts,
         diagnostics,
         summary,
+        groundings_by_block,
     })
 }
 
@@ -287,6 +329,14 @@ pub fn build_theory_from_cache(cache: &TheoryCache) -> Result<TheoryResult> {
     let provenanced_conclusions = annotate_conclusions(&combined, &conclusions, &label_origins);
     let summary = build_summary(&combined, &provenanced_conclusions);
 
+    // Restore explicit source groundings from the cached spl_blocks (REQ-042).
+    let groundings_by_block: HashMap<String, Vec<ExplicitGrounding>> = cache
+        .spl_blocks
+        .iter()
+        .filter(|(_, b)| !b.explicit_groundings.is_empty())
+        .map(|(k, b)| (k.clone(), b.explicit_groundings.clone()))
+        .collect();
+
     Ok(TheoryResult {
         theory: combined,
         conclusions: provenanced_conclusions,
@@ -294,6 +344,7 @@ pub fn build_theory_from_cache(cache: &TheoryCache) -> Result<TheoryResult> {
         facts: provenanced_facts,
         diagnostics: cache.diagnostics.clone(),
         summary,
+        groundings_by_block,
     })
 }
 
@@ -1055,6 +1106,8 @@ mod tests {
                 spl_blocks: vec![blocks[0].clone()],
                 diagnostics: vec![],
                 mtime,
+                merkle_leaves: vec![],
+                file_merkle: None,
             },
             ParsedFile {
                 path: PathBuf::from("B.md"),
@@ -1063,11 +1116,19 @@ mod tests {
                 spl_blocks: vec![blocks[1].clone()],
                 diagnostics: vec![],
                 mtime,
+                merkle_leaves: vec![],
+                file_merkle: None,
             },
         ];
 
         // Build cache.
-        let cache = build_theory_cache(&result.theory, &result.diagnostics, &files);
+        let cache = build_theory_cache(
+            &result.theory,
+            &result.diagnostics,
+            &files,
+            &result.groundings_by_block,
+            std::path::Path::new("."),
+        );
 
         // Reconstruct from cache and re-reason.
         let cached_result = build_theory_from_cache(&cache).unwrap();
@@ -1123,10 +1184,18 @@ mod tests {
                 spl_blocks: vec![b.clone()],
                 diagnostics: vec![],
                 mtime,
+                merkle_leaves: vec![],
+                file_merkle: None,
             })
             .collect();
 
-        let cache = build_theory_cache(&result.theory, &result.diagnostics, &files);
+        let cache = build_theory_cache(
+            &result.theory,
+            &result.diagnostics,
+            &files,
+            &result.groundings_by_block,
+            std::path::Path::new("."),
+        );
         let cached_result = build_theory_from_cache(&cache).unwrap();
 
         // ~flies should be +d in both
@@ -1153,7 +1222,8 @@ mod tests {
     #[test]
     fn theory_cache_round_trip_serialization() {
         use crate::cache::{
-            build_theory_cache, load_theory_cache, save_theory_cache, theory_cache_valid,
+            build_theory_cache, collect_spl_ast_hashes, load_theory_cache, save_theory_cache,
+            theory_cache_valid,
         };
         use crate::types::ParsedFile;
         use std::time::{Duration, UNIX_EPOCH};
@@ -1174,6 +1244,8 @@ mod tests {
                 spl_blocks: vec![b.clone()],
                 diagnostics: vec![],
                 mtime,
+                merkle_leaves: vec![],
+                file_merkle: None,
             })
             .collect();
 
@@ -1181,17 +1253,160 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let vault = dir.path();
 
-        let cache = build_theory_cache(&result.theory, &result.diagnostics, &files);
+        let cache = build_theory_cache(
+            &result.theory,
+            &result.diagnostics,
+            &files,
+            &result.groundings_by_block,
+            vault,
+        );
         save_theory_cache(vault, &cache).unwrap();
 
         let loaded = load_theory_cache(vault)
             .unwrap()
             .expect("cache should exist");
-        assert!(theory_cache_valid(&loaded, &files));
+        let current_hashes = collect_spl_ast_hashes(&files);
+        assert!(theory_cache_valid(&current_hashes, &loaded));
 
         let cached_result = build_theory_from_cache(&loaded).unwrap();
         assert_eq!(result.conclusions.len(), cached_result.conclusions.len());
         assert_eq!(result.facts.len(), cached_result.facts.len());
         assert_eq!(result.rules.len(), cached_result.rules.len());
+    }
+
+    // ── REQ-042: Source extraction tests ─────────────────────────────────────
+
+    #[test]
+    fn source_extraction_single_string() {
+        // A block with (meta r1 (source "abcdef1234567890"))
+        let spl = "(normally r1 bird flies)\n(meta r1 (source abcdef1234567890))\n";
+        let block = make_block("notes/A.md", "A", 10, spl);
+        let result = build_theory(&[block]).unwrap();
+
+        // One grounding for key "notes/A.md:10"
+        let groundings = result.groundings_by_block.get("notes/A.md:10");
+        assert!(groundings.is_some(), "should have groundings for the block");
+        let groundings = groundings.unwrap();
+        assert_eq!(groundings.len(), 1);
+        assert_eq!(groundings[0].construct, "r1");
+        assert_eq!(groundings[0].source_refs, vec!["abcdef1234567890"]);
+        assert!(groundings[0].targets.is_empty(), "no resolution yet");
+    }
+
+    #[test]
+    fn source_extraction_list_value() {
+        // A block with (meta r1 (source ("ref1" "ref2"))) — quoted strings
+        // because `^` and `[` are not valid SPL atom characters.
+        let spl =
+            "(normally r1 bird flies)\n(meta r1 (source (\"^block-id\" \"[[Page^other]]\")) )\n";
+        let block = make_block("notes/B.md", "B", 5, spl);
+        let result = build_theory(&[block]).unwrap();
+
+        let groundings = result
+            .groundings_by_block
+            .get("notes/B.md:5")
+            .expect("should have groundings");
+        assert_eq!(groundings.len(), 1);
+        assert_eq!(groundings[0].construct, "r1");
+        assert_eq!(
+            groundings[0].source_refs,
+            vec!["^block-id", "[[Page^other]]"]
+        );
+    }
+
+    #[test]
+    fn source_extraction_multiple_labels() {
+        // Two rules each with their own source meta.
+        // `^some-block` is quoted because `^` is not a valid SPL atom character.
+        let spl = "(normally r1 a b)\n(normally r2 c d)\n\
+                   (meta r1 (source abcdef1234567890))\n\
+                   (meta r2 (source \"^some-block\"))\n";
+        let block = make_block("notes/C.md", "C", 1, spl);
+        let result = build_theory(&[block]).unwrap();
+
+        let groundings = result
+            .groundings_by_block
+            .get("notes/C.md:1")
+            .expect("should have groundings");
+        assert_eq!(groundings.len(), 2, "one grounding per labelled meta");
+
+        let r1 = groundings.iter().find(|g| g.construct == "r1");
+        let r2 = groundings.iter().find(|g| g.construct == "r2");
+        assert!(r1.is_some(), "should have r1 grounding");
+        assert!(r2.is_some(), "should have r2 grounding");
+    }
+
+    #[test]
+    fn source_extraction_no_source_meta() {
+        // Block with meta but no "source" key — should not produce groundings
+        let spl = "(normally r1 bird flies)\n(meta r1 (description \"A bird rule\"))\n";
+        let block = make_block("notes/D.md", "D", 1, spl);
+        let result = build_theory(&[block]).unwrap();
+        assert!(
+            result.groundings_by_block.is_empty(),
+            "no source meta → no groundings"
+        );
+    }
+
+    #[test]
+    fn source_extraction_persists_through_cache() {
+        use crate::cache::{build_theory_cache, load_theory_cache, save_theory_cache};
+        use crate::types::ParsedFile;
+        use std::time::{Duration, UNIX_EPOCH};
+
+        let spl = "(normally r1 bird flies)\n(meta r1 (source abcdef1234567890))\n";
+        let block = make_block("notes/A.md", "A", 10, spl);
+        let result = build_theory(&[block.clone()]).unwrap();
+
+        assert!(
+            result.groundings_by_block.contains_key("notes/A.md:10"),
+            "groundings should be keyed by path:start_line"
+        );
+
+        let mtime = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let files = vec![ParsedFile {
+            path: PathBuf::from("notes/A.md"),
+            page_name: "A".to_string(),
+            links: vec![],
+            spl_blocks: vec![block],
+            diagnostics: vec![],
+            mtime,
+            merkle_leaves: vec![],
+            file_merkle: None,
+        }];
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let vault = dir.path();
+
+        let cache = build_theory_cache(
+            &result.theory,
+            &result.diagnostics,
+            &files,
+            &result.groundings_by_block,
+            vault,
+        );
+        save_theory_cache(vault, &cache).unwrap();
+
+        // Reload and verify groundings are in spl_blocks
+        let loaded = load_theory_cache(vault).unwrap().expect("cache should exist");
+        let spl_block = loaded
+            .spl_blocks
+            .get("notes/A.md:10")
+            .expect("should have spl_block entry");
+        assert_eq!(spl_block.explicit_groundings.len(), 1);
+        assert_eq!(spl_block.explicit_groundings[0].construct, "r1");
+        assert_eq!(
+            spl_block.explicit_groundings[0].source_refs,
+            vec!["abcdef1234567890"]
+        );
+
+        // Rebuild from cache — groundings_by_block should be populated
+        let from_cache = build_theory_from_cache(&loaded).unwrap();
+        let cached_groundings = from_cache
+            .groundings_by_block
+            .get("notes/A.md:10")
+            .expect("groundings should survive cache round-trip");
+        assert_eq!(cached_groundings[0].construct, "r1");
+        assert_eq!(cached_groundings[0].source_refs, vec!["abcdef1234567890"]);
     }
 }

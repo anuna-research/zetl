@@ -1,75 +1,75 @@
 {
-  "task_id": "verify-reason",
+  "task_id": "unit-tests-p0",
   "token_budget": 8000,
-  "tokens_used": 388,
+  "tokens_used": 496,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Run cargo test --features reason, cargo clippy --features reason -- -D warnings, and manual smoke tests against demo-vault. Verify: 1) All tests pass, 2) Zero clippy warnings, 3) zetl reason status on demo-vault shows correct conclusions, 4) zetl reason explain shows proof trees with correct provenance, 5) zetl reason conflicts reports no unresolved conflicts (or expected ones), 6) zetl check --spl reports no errors in demo-vault, 7) cargo build without --features reason still works, 8) Verbose output (--verbose) shows timing metrics per OBS-005/OBS-006.",
-      "token_cost": 140,
+      "content": "Write unit tests for the P0 Merkle infrastructure covering TEST-038 (Merkle construction), TEST-039 (SPL dual hashing), TEST-040 (two-tier cache invalidation), TEST-041 (SPL theory cache invalidation). For TEST-038: test vault root determinism (scan in different orders → same root), test normalisation (two files with identical text but different whitespace → same Merkle root), test that wikilink changes alter Merkle hash. For TEST-039: test content_hash and ast_hash computed and non-zero, test reformatting changes content_hash but not ast_hash (compare two logically identical SPL blocks), test parse error → sentinel ast_hash + diagnostic. For TEST-040: use tempfile vaults, test Tier 1 hit (mtime unchanged → no hashing call), test Tier 2 hit (touch file, same content → no downstream reprocess), test Tier 2 miss (edit content → full reprocess). For TEST-041: test prose edit → theory cache valid (no rebuild), test SPL reformat → theory cache valid, test SPL add fact → theory cache invalid. Tests in tests/ or src/ inline as #[cfg(test)].",
+      "token_cost": 266,
       "priority": "PlanMeta"
     },
     {
-      "source": "memory/episodic/task-feature-flag-changes",
-      "content": "Modified 4 files (+285, -0): Cargo.lock, Cargo.toml, src/lib.rs, src/reason.rs",
-      "token_cost": 19,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-spl-types-changes",
-      "content": "Modified 5 files (+127, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/reason/mod.rs, src/reason/types.rs",
-      "token_cost": 30,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-demo-vault-spl-changes",
-      "content": "Modified 5 files (+79, -5): .hence/context-manifest.json, demo-vault/audits/License Audit.md, demo-vault/decisions/Redis vs Memcached.md, demo-vault/processes/Deployment Checklist.md, demo-vault/theories/caching.spl",
-      "token_cost": 53,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-spl-extraction-changes",
-      "content": "Modified 5 files (+394, -20): .hence/context-manifest.json, src/cache.rs, src/graph.rs, src/scanner.rs, src/types.rs",
-      "token_cost": 29,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-reason-engine-changes",
-      "content": "Modified 3 files (+990, -23): .hence/context-manifest.json, src/reason/mod.rs, src/reason/types.rs",
-      "token_cost": 24,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-cmd-reason-status-changes",
-      "content": "Modified 3 files (+338, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs",
+      "source": "memory/episodic/task-blake3-dep-changes",
+      "content": "Modified 3 files (+48, -65): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
       "token_cost": 20,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-check-spl-changes",
-      "content": "Modified 3 files (+86, -9): .hence/context-manifest.json, src/cli.rs, src/main.rs",
-      "token_cost": 20,
+      "source": "memory/episodic/task-merkle-types-changes",
+      "content": "Modified 1 files (+152, -0): src/types.rs",
+      "token_cost": 10,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-cmd-reason-explain-changes",
-      "content": "Modified 2 files (+815, -2): src/cli.rs, src/main.rs",
-      "token_cost": 13,
+      "source": "memory/episodic/task-demo-vault-merkle-changes",
+      "content": "Modified 5 files (+262, -5): .hence/context-manifest.json, demo-vault/architecture/Performance.md, demo-vault/decisions/Deployment Decision.md, demo-vault/decisions/Redis vs Memcached.md, demo-vault/theories/caching.spl",
+      "token_cost": 54,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-cmd-reason-why-not-changes",
-      "content": "Modified 3 files (+489, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs",
-      "token_cost": 20,
+      "source": "memory/episodic/task-leaf-grouper-changes",
+      "content": "Modified 5 files (+741, -5): src/cache.rs, src/graph.rs, src/reason/mod.rs, src/scanner.rs, src/types.rs",
+      "token_cost": 26,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-cmd-reason-conflicts-changes",
-      "content": "Modified 3 files (+506, -7): .hence/context-manifest.json, src/cli.rs, src/main.rs",
-      "token_cost": 20,
+      "source": "memory/episodic/task-merkle-roots-changes",
+      "content": "Modified 8 files (+444, -18): .hence/context-manifest.json, src/cache.rs, src/graph.rs, src/lib.rs, src/merkle.rs and 3 more",
+      "token_cost": 31,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-section-detection-changes",
+      "content": "Modified 2 files (+464, -5): src/merkle.rs, src/scanner.rs",
+      "token_cost": 14,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-spl-dual-hashing-changes",
+      "content": "Modified 3 files (+395, -37): .hence/context-manifest.json, src/merkle.rs, src/scanner.rs",
+      "token_cost": 22,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cache-format-v2-changes",
+      "content": "Modified 2 files (+324, -35): .hence/context-manifest.json, src/cache.rs",
+      "token_cost": 18,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theory-cache-spl-changes",
+      "content": "Modified 2 files (+200, -100): src/cache.rs, src/main.rs",
+      "token_cost": 14,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-stats-vault-hash-changes",
+      "content": "Modified 3 files (+87, -16): .hence/context-manifest.json, src/cache.rs, src/main.rs",
+      "token_cost": 21,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-23T15:08:43Z"
+  "constructed_at": "2026-02-24T05:52:10Z"
 }

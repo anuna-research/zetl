@@ -373,6 +373,8 @@ mod tests {
             spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
         }
     }
 
@@ -464,6 +466,8 @@ mod tests {
             spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
         }];
         let mut resolved_pages = HashMap::new();
         resolved_pages.insert("note".to_string(), "My Note".to_string());
@@ -478,6 +482,8 @@ mod tests {
                 spl_blocks: vec![],
                 diagnostics: vec![],
                 mtime: SystemTime::now(),
+                merkle_leaves: vec![],
+                file_merkle: None,
             },
         ];
 
@@ -538,6 +544,8 @@ mod tests {
             spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
         }];
         let mut resolved = HashMap::new();
         resolved.insert("target".to_string(), "target".to_string());
@@ -549,6 +557,8 @@ mod tests {
             spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
         };
 
         let graph = LinkGraph::build(&[files[0].clone(), target_file], &resolved);
@@ -892,6 +902,8 @@ mod tests {
             spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
         }];
         let target_file = ParsedFile {
             path: PathBuf::from("target.md"),
@@ -900,6 +912,8 @@ mod tests {
             spl_blocks: vec![],
             diagnostics: vec![],
             mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
         };
         let resolved: HashMap<String, String> = [("target".to_string(), "target".to_string())]
             .into_iter()

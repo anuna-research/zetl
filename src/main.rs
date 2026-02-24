@@ -7,21 +7,46 @@ use clap::Parser;
 use comfy_table::{Cell, Table};
 use serde::Serialize;
 
-use zetl::cache::{files_needing_reparse, load_cache, save_cache};
-use zetl::cli::{Cli, Command, FailLevel, OutputFormat};
+use zetl::cache::{files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache};
+use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, OutputFormat};
 use zetl::graph::LinkGraph;
+use zetl::merkle::{build_vault_hash_index, resolve_hash_prefix, validate_source_refs, HashResolutionResult};
 use zetl::scanner::{resolve_page_name, scan_vault};
 use zetl::search::{search_vault, SearchConfig};
 use zetl::simhash::SimHashIndex;
-use zetl::types::{DiagnosticLevel, ParsedFile};
+use zetl::drift::{detect_explicit_drift, detect_section_drift};
+use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, ParsedFile};
 
 // ── Common pipeline ────────────────────────────────────────────────────────
+
+/// Scan and cache efficiency counters collected during run_pipeline (OBS-007, OBS-009).
+struct ScanStats {
+    /// Files that passed the Tier-1 mtime check (no re-read needed).
+    tier1_hits: usize,
+    /// Files whose mtime changed (fell through to Tier-2 hash comparison).
+    tier1_misses: usize,
+    /// Files whose mtime changed but whose content hash matched (touch hit).
+    tier2_hits: usize,
+    /// Files whose content hash differed — actual change, full reparse.
+    tier2_misses: usize,
+    /// Files that went through a full reparse (new + changed + backfill).
+    files_hashed: usize,
+    /// Total Merkle leaf nodes across all files in the final merged set.
+    total_leaf_nodes: usize,
+    /// Leaves that carry dual SPL hashes (content + AST).
+    spl_leaves_dual_hash: usize,
+    /// Wall-clock time for scan_vault (BLAKE3 hashing + section detection).
+    blake3_hashing_ms: u128,
+    /// Wall-clock time for section detection (subsumed in blake3_hashing_ms).
+    section_detection_ms: u128,
+}
 
 struct Pipeline {
     files: Vec<ParsedFile>,
     file_index: Vec<(String, PathBuf)>,
     graph: LinkGraph,
     vault_root: PathBuf,
+    scan_stats: ScanStats,
 }
 
 fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
@@ -35,35 +60,104 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
         load_cache(&vault_root)?
     };
 
-    // Scan vault for all markdown files
+    // Scan vault for all markdown files (timed for OBS-007).
+    let scan_start = Instant::now();
     let all_scanned = scan_vault(&vault_root, &[])?;
+    let scan_elapsed_ms = scan_start.elapsed().as_millis();
 
-    // Incremental re-parse: use cache to skip unchanged files
-    let files = if let Some(ref cached_map) = cached {
-        // Build current file mtime list
-        let current_files: Vec<(PathBuf, std::time::SystemTime)> = all_scanned
+    // Incremental re-parse: two-tier invalidation (REQ-039, ADR-009).
+    let (files, scan_stats) = if let Some(ref cached_map) = cached {
+        // Build current file list with freshly computed Merkle roots for Tier 2 comparison.
+        let current_files: Vec<(PathBuf, std::time::SystemTime, Option<ContentHash>)> =
+            all_scanned
+                .iter()
+                .map(|f| {
+                    let fresh_root = f.file_merkle.as_ref().map(|fm| fm.root_hash);
+                    (f.path.clone(), f.mtime, fresh_root)
+                })
+                .collect();
+
+        let (full_reparse, content_unchanged) =
+            files_needing_reparse(cached_map, &current_files);
+        let full_reparse_set: HashSet<PathBuf> = full_reparse.into_iter().collect();
+        let content_unchanged_set: HashSet<PathBuf> = content_unchanged.into_iter().collect();
+
+        // Compute OBS-009 tier counters from the two-tier invalidation results.
+        let tier2_hits = content_unchanged_set.len();
+        let tier2_misses = full_reparse_set
             .iter()
-            .map(|f| (f.path.clone(), f.mtime))
-            .collect();
+            .filter(|p| cached_map.contains_key(*p))
+            .count();
+        let tier1_misses = tier2_hits + tier2_misses;
+        let tier1_hits = all_scanned.len().saturating_sub(full_reparse_set.len() + tier2_hits);
 
-        let needs_reparse: HashSet<PathBuf> = files_needing_reparse(cached_map, &current_files)
-            .into_iter()
-            .collect();
-
-        // Merge: use cached data for unchanged files, freshly scanned data for changed ones
+        // Merge:
+        //   full reparse    → use freshly scanned ParsedFile (links/SPL re-extracted).
+        //   content_unchanged (Tier 2 hit) → use cached ParsedFile, update mtime only so
+        //                     downstream processing (wikilink/SPL re-extraction, theory
+        //                     cache invalidation) is skipped.
+        //   mtime unchanged (Tier 1 hit)   → use cached ParsedFile as-is.
         let mut merged = Vec::new();
         for scanned in &all_scanned {
-            if needs_reparse.contains(&scanned.path) {
+            if full_reparse_set.contains(&scanned.path) {
                 merged.push(scanned.clone());
+            } else if content_unchanged_set.contains(&scanned.path) {
+                // Tier 2 hit: content unchanged despite mtime change.
+                // Preserve cached links/SPL/Merkle; update mtime to avoid repeated Tier 2
+                // hash comparisons on subsequent runs.
+                if let Some(cached_file) = cached_map.get(&scanned.path) {
+                    let mut updated = cached_file.clone();
+                    updated.mtime = scanned.mtime;
+                    merged.push(updated);
+                } else {
+                    merged.push(scanned.clone());
+                }
             } else if let Some(cached_file) = cached_map.get(&scanned.path) {
                 merged.push(cached_file.clone());
             } else {
                 merged.push(scanned.clone());
             }
         }
-        merged
+
+        let files_hashed = full_reparse_set.len();
+        let total_leaf_nodes: usize = merged.iter().map(|f| f.merkle_leaves.len()).sum();
+        let spl_leaves_dual_hash: usize = merged
+            .iter()
+            .flat_map(|f| &f.merkle_leaves)
+            .filter(|l| l.spl_hashes.is_some())
+            .count();
+
+        (merged, ScanStats {
+            tier1_hits,
+            tier1_misses,
+            tier2_hits,
+            tier2_misses,
+            files_hashed,
+            total_leaf_nodes,
+            spl_leaves_dual_hash,
+            blake3_hashing_ms: scan_elapsed_ms,
+            section_detection_ms: scan_elapsed_ms,
+        })
     } else {
-        all_scanned
+        let total_leaf_nodes: usize = all_scanned.iter().map(|f| f.merkle_leaves.len()).sum();
+        let spl_leaves_dual_hash: usize = all_scanned
+            .iter()
+            .flat_map(|f| &f.merkle_leaves)
+            .filter(|l| l.spl_hashes.is_some())
+            .count();
+        let files_hashed = all_scanned.len();
+        let stats = ScanStats {
+            tier1_hits: 0,
+            tier1_misses: 0,
+            tier2_hits: 0,
+            tier2_misses: 0,
+            files_hashed,
+            total_leaf_nodes,
+            spl_leaves_dual_hash,
+            blake3_hashing_ms: scan_elapsed_ms,
+            section_detection_ms: scan_elapsed_ms,
+        };
+        (all_scanned, stats)
     };
 
     // Save updated cache
@@ -104,6 +198,7 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
         file_index,
         graph,
         vault_root,
+        scan_stats,
     })
 }
 
@@ -180,6 +275,22 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     let start = Instant::now();
     let pipeline = run_pipeline(cli)?;
     let elapsed = start.elapsed();
+
+    // OBS-007 + OBS-009: emit scan and cache-efficiency stats to stderr when --verbose.
+    if cli.verbose > 0 {
+        let s = &pipeline.scan_stats;
+        eprintln!("files hashed: {}", s.files_hashed);
+        eprintln!("files skipped (mtime hit): {}", s.tier1_hits);
+        eprintln!("files with content-hash match (touch hit): {}", s.tier2_hits);
+        eprintln!("total leaf nodes: {}", s.total_leaf_nodes);
+        eprintln!("SPL leaves with dual hashing: {}", s.spl_leaves_dual_hash);
+        eprintln!("BLAKE3 hashing time: {}ms", s.blake3_hashing_ms);
+        eprintln!("section detection and grounding hash time: {}ms", s.section_detection_ms);
+        eprintln!("tier1_hits: {}", s.tier1_hits);
+        eprintln!("tier1_misses: {}", s.tier1_misses);
+        eprintln!("tier2_hits: {}", s.tier2_hits);
+        eprintln!("tier2_misses: {}", s.tier2_misses);
+    }
 
     let total_links: usize = pipeline.files.iter().map(|f| f.links.len()).sum();
     let total_diagnostics: usize = pipeline.files.iter().map(|f| f.diagnostics.len()).sum();
@@ -578,6 +689,7 @@ fn cmd_check(
     show_orphans: bool,
     show_syntax: bool,
     show_spl: bool,
+    show_drift: bool,
     fail_on: &FailLevel,
 ) -> Result<()> {
     #[cfg(not(feature = "reason"))]
@@ -588,7 +700,7 @@ fn cmd_check(
     let pipeline = run_pipeline(cli)?;
 
     // If none of the flags are set, show all
-    let show_all = !show_dead_links && !show_orphans && !show_syntax && !show_spl;
+    let show_all = !show_dead_links && !show_orphans && !show_syntax && !show_spl && !show_drift;
 
     let dead = if show_all || show_dead_links {
         pipeline.graph.dead_links()
@@ -613,11 +725,111 @@ fn cmd_check(
     };
 
     // Collect SPL diagnostics (requires "reason" feature)
-    let spl_diagnostics: Vec<zetl::types::Diagnostic> = if show_all || show_spl {
+    let mut spl_diagnostics: Vec<zetl::types::Diagnostic> = if show_all || show_spl {
         collect_spl_diagnostics(&pipeline.files)
     } else {
         vec![]
     };
+
+    // Validate source metadata references (REQ-042, CON-004).  These are static
+    // errors that do not require the "reason" feature — they run whenever SPL
+    // diagnostics are requested (show_all or show_spl).
+    if show_all || show_spl {
+        let vault_hash_index = build_vault_hash_index(&pipeline.files);
+        let source_errors = validate_source_refs(
+            &pipeline.files,
+            &pipeline.file_index,
+            &vault_hash_index,
+        );
+        spl_diagnostics.extend(source_errors);
+    }
+
+    // Load theory cache once for drift detection, broken_groundings, and explicitly_grounded_facts.
+    // Requires a prior `zetl reason status` that produced theory.json — if none exists,
+    // load_theory_cache returns None and we skip the theory-cache-dependent checks silently.
+    let theory_cache = load_theory_cache(&pipeline.vault_root).unwrap_or(None);
+
+    // Detect section-level and explicit-grounding drift (REQ-043a, REQ-043b).
+    let drift_diagnostics: Vec<DriftDiagnostic> = if show_all || show_drift {
+        match theory_cache.as_ref() {
+            Some(theory) => {
+                // Build vault hash index once for explicit-grounding drift resolution.
+                let drift_hash_index = build_vault_hash_index(&pipeline.files);
+                pipeline
+                    .files
+                    .iter()
+                    .filter_map(|f| f.file_merkle.as_ref().map(|fm| (f, fm)))
+                    .flat_map(|(f, fm)| {
+                        let mut diags =
+                            detect_section_drift(&f.path, fm, &f.merkle_leaves, theory);
+                        diags.extend(detect_explicit_drift(
+                            &f.path,
+                            fm,
+                            theory,
+                            &pipeline.files,
+                            &pipeline.file_index,
+                            &drift_hash_index,
+                        ));
+                        diags
+                    })
+                    .collect()
+            }
+            None => vec![],
+        }
+    } else {
+        vec![]
+    };
+
+    // OBS-008: compute summary fields from theory cache.
+    let total_spl_blocks: usize = pipeline.files.iter().map(|f| f.spl_blocks.len()).sum();
+
+    let explicitly_grounded_facts: usize = theory_cache.as_ref().map_or(0, |tc| {
+        tc.spl_blocks
+            .values()
+            .map(|b| b.explicit_groundings.len())
+            .sum()
+    });
+
+    // Build a fast lookup from file path → set of leaf hashes for broken-grounding detection.
+    let leaf_hash_index: HashMap<std::path::PathBuf, std::collections::HashSet<ContentHash>> =
+        pipeline
+            .files
+            .iter()
+            .map(|f| {
+                let hashes = f.merkle_leaves.iter().map(|l| l.hash).collect();
+                (f.path.clone(), hashes)
+            })
+            .collect();
+
+    let broken_groundings: usize = theory_cache.as_ref().map_or(0, |tc| {
+        tc.spl_blocks
+            .values()
+            .flat_map(|b| &b.explicit_groundings)
+            .flat_map(|g| &g.targets)
+            .filter(|t| {
+                // A grounding is broken if the target file is gone or its leaf hash changed.
+                match leaf_hash_index.get(&t.target_file) {
+                    Some(hashes) => !hashes.contains(&t.target_leaf_hash),
+                    None => true,
+                }
+            })
+            .count()
+    });
+
+    #[derive(Serialize)]
+    struct CheckSummary {
+        dead_links: usize,
+        orphans: usize,
+        syntax_errors: usize,
+        spl_errors: usize,
+        drift_warnings: usize,
+        drift_info: usize,
+        total_spl_blocks: usize,
+        drifted_blocks_warning: usize,
+        drifted_blocks_info: usize,
+        explicitly_grounded_facts: usize,
+        broken_groundings: usize,
+    }
 
     #[derive(Serialize)]
     struct CheckOutput {
@@ -625,13 +837,43 @@ fn cmd_check(
         orphans: Vec<zetl::graph::Orphan>,
         syntax_errors: Vec<zetl::types::Diagnostic>,
         spl_diagnostics: Vec<zetl::types::Diagnostic>,
+        drift_diagnostics: Vec<DriftDiagnostic>,
+        summary: CheckSummary,
     }
+
+    let drifted_blocks_warning = drift_diagnostics
+        .iter()
+        .filter(|d| matches!(d.severity, DriftSeverity::Warning))
+        .count();
+    let drifted_blocks_info = drift_diagnostics
+        .iter()
+        .filter(|d| matches!(d.severity, DriftSeverity::Info))
+        .count();
+
+    let summary = CheckSummary {
+        dead_links: dead.len(),
+        orphans: orphan_list.len(),
+        syntax_errors: diagnostics.len(),
+        spl_errors: spl_diagnostics
+            .iter()
+            .filter(|d| d.level == DiagnosticLevel::Error)
+            .count(),
+        drift_warnings: drifted_blocks_warning,
+        drift_info: drifted_blocks_info,
+        total_spl_blocks,
+        drifted_blocks_warning,
+        drifted_blocks_info,
+        explicitly_grounded_facts,
+        broken_groundings,
+    };
 
     let output = CheckOutput {
         dead_links: dead,
         orphans: orphan_list,
         syntax_errors: diagnostics,
         spl_diagnostics,
+        drift_diagnostics,
+        summary,
     };
 
     match cli.format {
@@ -697,10 +939,60 @@ fn cmd_check(
                 println!();
             }
 
+            if !output.drift_diagnostics.is_empty() {
+                let mut table = Table::new();
+                table.set_header(vec!["Severity", "File", "SPL Line", "Message"]);
+                for d in &output.drift_diagnostics {
+                    let severity = match d.severity {
+                        DriftSeverity::Warning => "Warning",
+                        DriftSeverity::Info => "Info",
+                    };
+                    table.add_row(vec![
+                        Cell::new(severity),
+                        Cell::new(d.file.display()),
+                        Cell::new(d.spl_line),
+                        Cell::new(&d.message),
+                    ]);
+                }
+                println!("Drift Diagnostics:");
+                println!("{table}");
+                println!();
+            }
+
+            // OBS-008: always print summary stats table.
+            {
+                let mut sum_table = Table::new();
+                sum_table.set_header(vec!["Summary", "Count"]);
+                sum_table.add_row(vec![
+                    Cell::new("Total SPL blocks"),
+                    Cell::new(output.summary.total_spl_blocks),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Drifted blocks (warning)"),
+                    Cell::new(output.summary.drifted_blocks_warning),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Drifted blocks (info)"),
+                    Cell::new(output.summary.drifted_blocks_info),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Explicitly grounded facts"),
+                    Cell::new(output.summary.explicitly_grounded_facts),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Broken groundings"),
+                    Cell::new(output.summary.broken_groundings),
+                ]);
+                println!("Summary:");
+                println!("{sum_table}");
+                println!();
+            }
+
             if output.dead_links.is_empty()
                 && output.orphans.is_empty()
                 && output.syntax_errors.is_empty()
                 && output.spl_diagnostics.is_empty()
+                && output.drift_diagnostics.is_empty()
             {
                 println!("No issues found.");
             }
@@ -726,7 +1018,11 @@ fn cmd_check(
         || output
             .spl_diagnostics
             .iter()
-            .any(|d| d.level == DiagnosticLevel::Warning);
+            .any(|d| d.level == DiagnosticLevel::Warning)
+        || output
+            .drift_diagnostics
+            .iter()
+            .any(|d| matches!(d.severity, DriftSeverity::Warning));
 
     let should_fail = match fail_on {
         FailLevel::Error => has_errors,
@@ -822,32 +1118,80 @@ fn cmd_similar(cli: &Cli, query: &str, threshold: u32, limit: usize) -> Result<(
 
 fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
-    let stats = pipeline.graph.stats(top);
+    let graph_stats = pipeline.graph.stats(top);
+
+    // Vault content integrity fields (CON-006 §7)
+    let vault_content_hash = load_vault_root_hex(&pipeline.vault_root).unwrap_or(None);
+    let spl_blocks: usize = pipeline.files.iter().map(|f| f.spl_blocks.len()).sum();
+    let theory = load_theory_cache(&pipeline.vault_root).unwrap_or(None);
+    let grounded_spl_blocks = theory.as_ref().map_or(0, |tc| {
+        tc.spl_blocks
+            .values()
+            .filter(|b| b.section_grounding_hash != [0u8; 32])
+            .count()
+    });
+    let explicitly_grounded_facts = theory.as_ref().map_or(0, |tc| {
+        tc.spl_blocks
+            .values()
+            .map(|b| b.explicit_groundings.len())
+            .sum()
+    });
+
+    #[derive(Serialize)]
+    struct StatsOutput {
+        #[serde(flatten)]
+        graph: zetl::graph::GraphStats,
+        vault_content_hash: Option<String>,
+        spl_blocks: usize,
+        grounded_spl_blocks: usize,
+        explicitly_grounded_facts: usize,
+    }
+
+    let output = StatsOutput {
+        graph: graph_stats,
+        vault_content_hash,
+        spl_blocks,
+        grounded_spl_blocks,
+        explicitly_grounded_facts,
+    };
 
     match cli.format {
-        OutputFormat::Json => print_json(&stats)?,
+        OutputFormat::Json => print_json(&output)?,
         OutputFormat::Table => {
             let mut table = Table::new();
             table.set_header(vec!["Metric", "Value"]);
-            table.add_row(vec![Cell::new("Pages"), Cell::new(stats.pages)]);
-            table.add_row(vec![Cell::new("Links"), Cell::new(stats.links)]);
+            table.add_row(vec![Cell::new("Pages"), Cell::new(output.graph.pages)]);
+            table.add_row(vec![Cell::new("Links"), Cell::new(output.graph.links)]);
             table.add_row(vec![
                 Cell::new("Unique targets"),
-                Cell::new(stats.unique_targets),
+                Cell::new(output.graph.unique_targets),
             ]);
-            table.add_row(vec![Cell::new("Dead links"), Cell::new(stats.dead_links)]);
-            table.add_row(vec![Cell::new("Orphans"), Cell::new(stats.orphans)]);
+            table.add_row(vec![Cell::new("Dead links"), Cell::new(output.graph.dead_links)]);
+            table.add_row(vec![Cell::new("Orphans"), Cell::new(output.graph.orphans)]);
             table.add_row(vec![
                 Cell::new("Connected components"),
-                Cell::new(stats.connected_components),
+                Cell::new(output.graph.connected_components),
+            ]);
+            table.add_row(vec![
+                Cell::new("Vault content hash"),
+                Cell::new(output.vault_content_hash.as_deref().unwrap_or("N/A")),
+            ]);
+            table.add_row(vec![Cell::new("SPL blocks"), Cell::new(output.spl_blocks)]);
+            table.add_row(vec![
+                Cell::new("Grounded SPL blocks"),
+                Cell::new(output.grounded_spl_blocks),
+            ]);
+            table.add_row(vec![
+                Cell::new("Explicitly grounded facts"),
+                Cell::new(output.explicitly_grounded_facts),
             ]);
             println!("{table}");
 
-            if !stats.most_linked.is_empty() {
+            if !output.graph.most_linked.is_empty() {
                 println!();
                 let mut ml_table = Table::new();
                 ml_table.set_header(vec!["#", "Page", "Backlinks"]);
-                for (i, ml) in stats.most_linked.iter().enumerate() {
+                for (i, ml) in output.graph.most_linked.iter().enumerate() {
                     ml_table.add_row(vec![
                         Cell::new(i + 1),
                         Cell::new(&ml.page),
@@ -1032,6 +1376,534 @@ fn cmd_list(cli: &Cli) -> Result<()> {
                     table.add_row(vec![Cell::new(&p.page), Cell::new(&p.path)]);
                 }
                 println!("{table}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_blocks(
+    cli: &Cli,
+    page: Option<&str>,
+    block_type: &BlockTypeFilter,
+    resolve: Option<&str>,
+) -> Result<()> {
+    // Validate mutual exclusion
+    if page.is_some() && resolve.is_some() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("--resolve and page are mutually exclusive", 2),
+            OutputFormat::Table => {
+                eprintln!("Error: --resolve and page are mutually exclusive");
+                std::process::exit(2);
+            }
+        }
+    }
+    if page.is_none() && resolve.is_none() {
+        match cli.format {
+            OutputFormat::Json => exit_json_error("Either a page name or --resolve <HASH> is required", 2),
+            OutputFormat::Table => {
+                eprintln!("Error: Either a page name or --resolve <HASH> is required");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    // ── Dispatch resolve mode to dedicated handler ──────────────────────────
+    if let Some(hash_prefix) = resolve {
+        return cmd_blocks_resolve(cli, hash_prefix);
+    }
+
+    let pipeline = run_pipeline(cli)?;
+
+    // ── Helper: convert hex ContentHash to string ──────────────────────────
+    let hash_to_hex = |h: &zetl::types::ContentHash| -> String {
+        h.iter().map(|b| format!("{:02x}", b)).collect()
+    };
+
+    // ── Helper: derive a type label string from a LeafType ─────────────────
+    fn leaf_type_label(leaf_type: &zetl::types::LeafType) -> String {
+        use zetl::types::LeafType;
+        match leaf_type {
+            LeafType::Heading { level } => format!("heading-{}", level),
+            LeafType::Paragraph => "paragraph".to_string(),
+            LeafType::CodeBlock { .. } => "code".to_string(),
+            LeafType::SplBlock => "spl".to_string(),
+            LeafType::List { .. } => "list".to_string(),
+            LeafType::BlockQuote => "blockquote".to_string(),
+            LeafType::Table => "table".to_string(),
+            LeafType::Frontmatter => "frontmatter".to_string(),
+            LeafType::ThematicBreak => "thematic-break".to_string(),
+            LeafType::HtmlBlock => "html".to_string(),
+        }
+    }
+
+    // ── Helper: check if a leaf type passes the filter ─────────────────────
+    fn leaf_matches_filter(leaf_type: &zetl::types::LeafType, filter: &BlockTypeFilter) -> bool {
+        use zetl::types::LeafType;
+        match filter {
+            BlockTypeFilter::All => true,
+            BlockTypeFilter::Heading => matches!(leaf_type, LeafType::Heading { .. }),
+            BlockTypeFilter::Paragraph => matches!(leaf_type, LeafType::Paragraph),
+            BlockTypeFilter::Spl => matches!(leaf_type, LeafType::SplBlock),
+            BlockTypeFilter::Code => matches!(leaf_type, LeafType::CodeBlock { .. }),
+            BlockTypeFilter::Table => matches!(leaf_type, LeafType::Table),
+            BlockTypeFilter::List => matches!(leaf_type, LeafType::List { .. }),
+            BlockTypeFilter::Blockquote => matches!(leaf_type, LeafType::BlockQuote),
+            BlockTypeFilter::Frontmatter => matches!(leaf_type, LeafType::Frontmatter),
+        }
+    }
+
+    // ── Helper: extract and normalise text from file lines ─────────────────
+    fn extract_block_text(
+        vault_root: &Path,
+        file_path: &std::path::Path,
+        start_line: u32,
+        end_line: u32,
+    ) -> Option<String> {
+        let full_path = vault_root.join(file_path);
+        let content = std::fs::read_to_string(&full_path).ok()?;
+        let lines: Vec<&str> = content.lines().collect();
+        let start = (start_line as usize).saturating_sub(1);
+        let end = (end_line as usize).min(lines.len());
+        if start >= end {
+            return Some(String::new());
+        }
+        let raw = lines[start..end].join("\n");
+        // Normalise: collapse whitespace runs to a single space, trim
+        let mut out = String::with_capacity(raw.len().min(210));
+        let mut prev_space = false;
+        for ch in raw.chars() {
+            if ch.is_whitespace() {
+                if !prev_space {
+                    out.push(' ');
+                }
+                prev_space = true;
+            } else {
+                out.push(ch);
+                prev_space = false;
+            }
+        }
+        let trimmed = out.trim().to_string();
+        // Take first 200 chars (char boundary safe)
+        if trimmed.chars().count() <= 200 {
+            Some(trimmed)
+        } else {
+            Some(trimmed.chars().take(200).collect())
+        }
+    }
+
+    #[derive(Serialize)]
+    struct SplHashesOutput {
+        content_hash: String,
+        ast_hash: String,
+    }
+
+    #[derive(Serialize)]
+    struct BlockEntry {
+        index: usize,
+        #[serde(rename = "type")]
+        block_type: String,
+        lines: [u32; 2],
+        hash: String,
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        spl_hashes: Option<SplHashesOutput>,
+    }
+
+    if let Some(page_input) = page {
+        // ── Forward mode: list blocks for a page ───────────────────────────
+        let resolved_page = find_page(page_input, &pipeline.file_index, false, &pipeline.files)
+            .unwrap_or_else(|e| {
+                exit_page_not_found(&cli.format, &e);
+            });
+
+        let file = pipeline
+            .files
+            .iter()
+            .find(|f| f.page_name == resolved_page)
+            .unwrap_or_else(|| {
+                exit_page_not_found(&cli.format, &format!("Page not found: '{resolved_page}'"));
+            });
+
+        let file_hash = file
+            .file_merkle
+            .as_ref()
+            .map(|fm| hash_to_hex(&fm.root_hash));
+
+        // Build filtered block entries
+        let mut blocks: Vec<BlockEntry> = Vec::new();
+        let mut index = 0usize;
+        for leaf in &file.merkle_leaves {
+            if !leaf_matches_filter(&leaf.node_type, block_type) {
+                continue;
+            }
+            let text = extract_block_text(
+                &pipeline.vault_root,
+                &file.path,
+                leaf.start_line,
+                leaf.end_line,
+            )
+            .unwrap_or_default();
+
+            let spl_hashes = leaf.spl_hashes.as_ref().map(|sh| SplHashesOutput {
+                content_hash: hash_to_hex(&sh.content_hash),
+                ast_hash: hash_to_hex(&sh.ast_hash),
+            });
+
+            blocks.push(BlockEntry {
+                index,
+                block_type: leaf_type_label(&leaf.node_type),
+                lines: [leaf.start_line, leaf.end_line],
+                hash: hash_to_hex(&leaf.hash),
+                text,
+                spl_hashes,
+            });
+            index += 1;
+        }
+
+        let block_count = blocks.len();
+
+        #[derive(Serialize)]
+        struct BlocksOutput {
+            page: String,
+            file_hash: Option<String>,
+            block_count: usize,
+            blocks: Vec<BlockEntry>,
+        }
+
+        let output = BlocksOutput {
+            page: resolved_page.clone(),
+            file_hash,
+            block_count,
+            blocks,
+        };
+
+        match cli.format {
+            OutputFormat::Json => print_json(&output)?,
+            OutputFormat::Table => {
+                println!("Blocks for '{}' ({} blocks):", output.page, output.block_count);
+                if output.block_count == 0 {
+                    println!("  (no blocks match filter)");
+                } else {
+                    let mut table = Table::new();
+                    table.set_header(vec!["#", "Type", "Lines", "Hash (prefix)", "Text"]);
+                    for b in &output.blocks {
+                        let hash_prefix = &b.hash[..8.min(b.hash.len())];
+                        let lines_str = format!("{}-{}", b.lines[0], b.lines[1]);
+                        let text_display = if b.text.len() > 60 {
+                            format!("{}…", &b.text[..60])
+                        } else {
+                            b.text.clone()
+                        };
+                        table.add_row(vec![
+                            Cell::new(b.index),
+                            Cell::new(&b.block_type),
+                            Cell::new(lines_str),
+                            Cell::new(hash_prefix),
+                            Cell::new(text_display),
+                        ]);
+                    }
+                    println!("{table}");
+                    if let Some(ref fh) = output.file_hash {
+                        println!("File hash: {fh}");
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Implement REQ-045 / CON-020 reverse mode: resolve a BLAKE3 hash prefix to its
+/// source location(s) across the vault.
+///
+/// Resolution logic per §3.3:
+/// 1. Validate prefix is minimum 8 hex characters.
+/// 2. Search all Merkle leaves across the vault for prefix match.
+/// 3. Zero matches → exit 1, error JSON per CON-020 "hash not found" example.
+/// 4. Multiple matches with different full hashes (ambiguous prefix) → exit 1,
+///    error JSON with matches list and suggestion.
+/// 5. Multiple matches with identical full hashes (duplicate content) → exit 0,
+///    success JSON with locations array and note per CON-020 duplicate content example.
+/// 6. One match → exit 0, standard CON-020 resolve success JSON.
+fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
+    // ── §1 Validate minimum 8 hex characters ────────────────────────────────
+    if hash_prefix.len() < 8 {
+        #[derive(Serialize)]
+        struct E {
+            error: &'static str,
+        }
+        let msg = "hash prefix too short (minimum 8 hex characters)";
+        match cli.format {
+            OutputFormat::Json => {
+                let _ = print_json(&E { error: msg });
+                std::process::exit(1);
+            }
+            OutputFormat::Table => {
+                eprintln!("Error: {msg}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // ── §2 Scan vault and build hash index ───────────────────────────────────
+    let pipeline = run_pipeline(cli)?;
+    let index = build_vault_hash_index(&pipeline.files);
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    fn leaf_type_label(leaf_type: &zetl::types::LeafType) -> String {
+        use zetl::types::LeafType;
+        match leaf_type {
+            LeafType::Heading { level } => format!("heading-{level}"),
+            LeafType::Paragraph => "paragraph".to_string(),
+            LeafType::CodeBlock { .. } => "code".to_string(),
+            LeafType::SplBlock => "spl".to_string(),
+            LeafType::List { .. } => "list".to_string(),
+            LeafType::BlockQuote => "blockquote".to_string(),
+            LeafType::Table => "table".to_string(),
+            LeafType::Frontmatter => "frontmatter".to_string(),
+            LeafType::ThematicBreak => "thematic-break".to_string(),
+            LeafType::HtmlBlock => "html".to_string(),
+        }
+    }
+
+    fn extract_block_text(
+        vault_root: &Path,
+        file_path: &std::path::Path,
+        start_line: u32,
+        end_line: u32,
+    ) -> Option<String> {
+        let full_path = vault_root.join(file_path);
+        let content = std::fs::read_to_string(&full_path).ok()?;
+        let lines: Vec<&str> = content.lines().collect();
+        let start = (start_line as usize).saturating_sub(1);
+        let end = (end_line as usize).min(lines.len());
+        if start >= end {
+            return Some(String::new());
+        }
+        let raw = lines[start..end].join("\n");
+        let mut out = String::with_capacity(raw.len().min(210));
+        let mut prev_space = false;
+        for ch in raw.chars() {
+            if ch.is_whitespace() {
+                if !prev_space {
+                    out.push(' ');
+                }
+                prev_space = true;
+            } else {
+                out.push(ch);
+                prev_space = false;
+            }
+        }
+        let trimmed = out.trim().to_string();
+        if trimmed.chars().count() <= 200 {
+            Some(trimmed)
+        } else {
+            Some(trimmed.chars().take(200).collect())
+        }
+    }
+
+    // ── §3-6 Resolution logic ────────────────────────────────────────────────
+    match resolve_hash_prefix(hash_prefix, &index) {
+        HashResolutionResult::Found { full_hash, locations } => {
+            if locations.len() == 1 {
+                // §6 Single location — standard CON-020 resolve success JSON
+                let loc = &locations[0];
+                let file_str = loc.file.to_string_lossy().to_string();
+                let page = pipeline
+                    .files
+                    .iter()
+                    .find(|f| f.path == loc.file)
+                    .map(|f| f.page_name.clone())
+                    .unwrap_or_else(|| file_str.clone());
+                let block_type = leaf_type_label(&loc.leaf.node_type);
+                let text = extract_block_text(
+                    &pipeline.vault_root,
+                    &loc.file,
+                    loc.leaf.start_line,
+                    loc.leaf.end_line,
+                )
+                .unwrap_or_default();
+
+                #[derive(Serialize)]
+                struct SingleResolveOutput {
+                    hash: String,
+                    file: String,
+                    page: String,
+                    #[serde(rename = "type")]
+                    block_type: String,
+                    lines: [u32; 2],
+                    text: String,
+                }
+
+                let output = SingleResolveOutput {
+                    hash: full_hash,
+                    file: file_str,
+                    page,
+                    block_type,
+                    lines: [loc.leaf.start_line, loc.leaf.end_line],
+                    text,
+                };
+
+                match cli.format {
+                    OutputFormat::Json => print_json(&output)?,
+                    OutputFormat::Table => {
+                        println!(
+                            "{}  {}:{}-{}  {}",
+                            output.hash,
+                            output.file,
+                            output.lines[0],
+                            output.lines[1],
+                            output.block_type
+                        );
+                        println!("{}", output.text);
+                    }
+                }
+            } else {
+                // §5 Duplicate content — identical full hashes at multiple locations
+                #[derive(Serialize)]
+                struct DupLocation {
+                    file: String,
+                    page: String,
+                    lines: [u32; 2],
+                    #[serde(rename = "type")]
+                    block_type: String,
+                    text: String,
+                }
+
+                #[derive(Serialize)]
+                struct DupResolveOutput {
+                    hash: String,
+                    locations: Vec<DupLocation>,
+                    note: &'static str,
+                }
+
+                let dup_locs: Vec<DupLocation> = locations
+                    .iter()
+                    .map(|loc| {
+                        let file_str = loc.file.to_string_lossy().to_string();
+                        let page = pipeline
+                            .files
+                            .iter()
+                            .find(|f| f.path == loc.file)
+                            .map(|f| f.page_name.clone())
+                            .unwrap_or_else(|| file_str.clone());
+                        let block_type = leaf_type_label(&loc.leaf.node_type);
+                        let text = extract_block_text(
+                            &pipeline.vault_root,
+                            &loc.file,
+                            loc.leaf.start_line,
+                            loc.leaf.end_line,
+                        )
+                        .unwrap_or_default();
+                        DupLocation {
+                            file: file_str,
+                            page,
+                            lines: [loc.leaf.start_line, loc.leaf.end_line],
+                            block_type,
+                            text,
+                        }
+                    })
+                    .collect();
+
+                let output = DupResolveOutput {
+                    hash: full_hash,
+                    locations: dup_locs,
+                    note: "identical content at multiple locations",
+                };
+
+                match cli.format {
+                    OutputFormat::Json => print_json(&output)?,
+                    OutputFormat::Table => {
+                        println!(
+                            "Block {} found at {} location(s) (identical content):",
+                            output.hash,
+                            output.locations.len()
+                        );
+                        for loc in &output.locations {
+                            println!("  {} (lines {}-{})", loc.page, loc.lines[0], loc.lines[1]);
+                        }
+                    }
+                }
+            }
+        }
+
+        HashResolutionResult::NotFound => {
+            // §3 Zero matches
+            #[derive(Serialize)]
+            struct NotFoundError {
+                error: String,
+            }
+            let err = NotFoundError {
+                error: format!(
+                    "content hash {hash_prefix} not found \u{2014} source content may have been modified or removed"
+                ),
+            };
+            match cli.format {
+                OutputFormat::Json => {
+                    let _ = print_json(&err);
+                    std::process::exit(1);
+                }
+                OutputFormat::Table => {
+                    eprintln!(
+                        "Error: content hash {hash_prefix} not found — source content may have been modified or removed"
+                    );
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        HashResolutionResult::Ambiguous { prefix, candidates } => {
+            // §4 Multiple matches with different full hashes
+            #[derive(Serialize)]
+            struct AmbiguousMatch {
+                file: String,
+                lines: [u32; 2],
+                hash: String,
+            }
+
+            #[derive(Serialize)]
+            struct AmbiguousError {
+                error: String,
+                matches: Vec<AmbiguousMatch>,
+                suggestion: &'static str,
+            }
+
+            // For each distinct candidate hash, pick its first representative location
+            let matches: Vec<AmbiguousMatch> = candidates
+                .iter()
+                .filter_map(|hash| {
+                    let locs = index.entries.get(hash)?;
+                    let first = locs.first()?;
+                    Some(AmbiguousMatch {
+                        file: first.file.to_string_lossy().to_string(),
+                        lines: [first.leaf.start_line, first.leaf.end_line],
+                        hash: hash.clone(),
+                    })
+                })
+                .collect();
+
+            let err = AmbiguousError {
+                error: format!("ambiguous hash prefix {prefix}"),
+                matches,
+                suggestion: "use a longer prefix to disambiguate",
+            };
+
+            match cli.format {
+                OutputFormat::Json => {
+                    let _ = print_json(&err);
+                    std::process::exit(1);
+                }
+                OutputFormat::Table => {
+                    eprintln!("Error: ambiguous hash prefix {prefix}");
+                    for m in &err.matches {
+                        eprintln!("  {} {}:{}-{}", m.hash, m.file, m.lines[0], m.lines[1]);
+                    }
+                    eprintln!("Hint: use a longer prefix to disambiguate");
+                    std::process::exit(1);
+                }
             }
         }
     }
@@ -1278,14 +2150,18 @@ fn literal_matches(literal: &str, pattern: &str) -> bool {
 /// On cache hit (no SPL-containing file has changed), reconstructs the theory
 /// from `.zetl/theory.json` and re-reasons (~100ms).  On cache miss, runs the
 /// full parse + combine + validate + reason pipeline and saves the cache.
+///
+/// Returns `(TheoryResult, theory_cache_hit)` where `theory_cache_hit` is `true`
+/// when the cached theory was reused (OBS-009).
 #[cfg(feature = "reason")]
 fn build_or_load_theory(
     pipeline: &Pipeline,
     no_cache: bool,
     verbose: u8,
-) -> Result<zetl::reason::types::TheoryResult> {
+) -> Result<(zetl::reason::types::TheoryResult, bool)> {
     use zetl::cache::{
-        build_theory_cache, load_theory_cache, save_theory_cache, theory_cache_valid,
+        build_theory_cache, collect_spl_ast_hashes, load_theory_cache, save_theory_cache,
+        theory_cache_valid,
     };
     use zetl::reason::{build_theory, build_theory_from_cache};
 
@@ -1306,7 +2182,8 @@ fn build_or_load_theory(
     // Try loading from theory cache (unless --no-cache).
     if !no_cache {
         if let Ok(Some(cache)) = load_theory_cache(&pipeline.vault_root) {
-            if theory_cache_valid(&cache, &pipeline.files) {
+            let current_spl_hashes = collect_spl_ast_hashes(&pipeline.files);
+            if theory_cache_valid(&current_spl_hashes, &cache) {
                 if verbose > 0 {
                     eprintln!("Theory cache hit — re-reasoning from cached theory");
                 }
@@ -1324,7 +2201,7 @@ fn build_or_load_theory(
                         total_start.elapsed().as_millis(),
                     );
                 }
-                return Ok(result);
+                return Ok((result, true));
             }
         }
     }
@@ -1336,7 +2213,13 @@ fn build_or_load_theory(
 
     // Save to theory cache.
     if !no_cache {
-        let cache = build_theory_cache(&result.theory, &result.diagnostics, &pipeline.files);
+        let cache = build_theory_cache(
+            &result.theory,
+            &result.diagnostics,
+            &pipeline.files,
+            &result.groundings_by_block,
+            &pipeline.vault_root,
+        );
         if let Err(e) = save_theory_cache(&pipeline.vault_root, &cache) {
             if verbose > 0 {
                 eprintln!("Warning: failed to save theory cache: {e}");
@@ -1356,7 +2239,7 @@ fn build_or_load_theory(
         );
     }
 
-    Ok(result)
+    Ok((result, false))
 }
 
 /// Emit OBS-005 timing metrics to stderr.
@@ -1510,7 +2393,18 @@ fn cmd_reason_status(
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+
+    // OBS-009: emit cache efficiency stats to stderr when --verbose.
+    if cli.verbose > 0 {
+        let s = &pipeline.scan_stats;
+        eprintln!("tier1_hits: {}", s.tier1_hits);
+        eprintln!("tier1_misses: {}", s.tier1_misses);
+        eprintln!("tier2_hits: {}", s.tier2_hits);
+        eprintln!("tier2_misses: {}", s.tier2_misses);
+        eprintln!("theory_cache_hit: {}", theory_cache_hit);
+        eprintln!("theory_cache_miss: {}", !theory_cache_hit);
+    }
 
     // Determine if there were parse errors
     let parse_error_count = result
@@ -1761,7 +2655,7 @@ fn cmd_reason_explain(
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Parse the literal input: handle ~negation prefix
     let (is_negated, lit_name) = if let Some(name) = literal_input.strip_prefix('~') {
@@ -1902,7 +2796,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Check if the literal appears anywhere in the theory (as a head, body, or fact)
     let all_head_literals: HashSet<String> = result
@@ -2312,7 +3206,7 @@ fn cmd_reason_require(
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Parse --assume facts if provided, and inject them into the theory for reasoning
     let assumed_literals: HashSet<String> = if let Some(assume_input) = assume_spl {
@@ -2672,7 +3566,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Build a set of all rule heads grouped by their base literal name.
     // A conflict exists when there are rules for both `p` and `~p`.
@@ -3214,7 +4108,7 @@ fn cmd_reason_what_if(
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Build baseline conclusion set: (literal, type_symbol) pairs
     let conclusion_symbol = |ct: &zetl::reason::types::ConclusionType| -> &'static str {
@@ -3429,7 +4323,19 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+
+    // Load theory cache for grounding freshness (REQ-044).
+    let theory_cache = load_theory_cache(&pipeline.vault_root).unwrap_or(None);
+
+    // Current vault Merkle root hex (written by run_pipeline → save_cache).
+    let vault_root_hash = load_vault_root_hex(&pipeline.vault_root).unwrap_or(None);
+
+    // theory_built_at comes from the theory cache's built_at field.
+    let theory_built_at = theory_cache.as_ref().and_then(|tc| tc.built_at.clone());
+
+    // Read fresh VCS metadata (§1.6). Always reflects current environment, not cached state.
+    let (git_commit, git_dirty) = zetl::vcs::get_git_metadata(&pipeline.vault_root);
 
     // Normalize literal input: handle ~ prefix for negation
     let literal_str = literal_input.trim();
@@ -3501,7 +4407,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
     cross_refs
         .dedup_by(|a, b| a.from_page == b.from_page && a.to_page == b.to_page && a.line == b.line);
 
-    // Build per-conclusion output
+    // Build per-conclusion output — enrich each proof source with grounding freshness.
     let conclusion_entries: Vec<ProvenanceConclusionEntry> = matching
         .iter()
         .map(|c| {
@@ -3511,16 +4417,36 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
                 ConclusionType::DefeasiblyProvable => "+d",
                 ConclusionType::DefeasiblyNotProvable => "-d",
             };
+            let enriched_sources: Vec<EnrichedProofSource> = c
+                .proof_sources
+                .iter()
+                .map(|ps| {
+                    let grounding =
+                        compute_grounding(ps, &pipeline.files, theory_cache.as_ref());
+                    EnrichedProofSource {
+                        page: ps.page.clone(),
+                        path: ps.path.clone(),
+                        line: ps.line,
+                        rule_label: ps.rule_label.clone(),
+                        contribution: ps.contribution.clone(),
+                        grounding,
+                    }
+                })
+                .collect();
             ProvenanceConclusionEntry {
                 conclusion_type: tag.to_string(),
                 literal: c.literal.clone(),
-                proof_sources: c.proof_sources.clone(),
+                proof_sources: enriched_sources,
             }
         })
         .collect();
 
     let output = ProvenanceOutput {
         literal: literal_str.to_string(),
+        vault_root_hash,
+        theory_built_at,
+        git_commit,
+        git_dirty,
         conclusions: conclusion_entries,
         source_pages: source_pages.clone(),
         cross_references: cross_refs.clone(),
@@ -3531,17 +4457,36 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
         OutputFormat::Table => {
             println!("Provenance for '{}':\n", literal_str);
 
+            if let Some(ref vr) = output.vault_root_hash {
+                println!("  Vault root hash: {vr}");
+            }
+            if let Some(ref ts) = output.theory_built_at {
+                println!("  Theory built at: {ts}");
+            }
+            if output.vault_root_hash.is_some() || output.theory_built_at.is_some() {
+                println!();
+            }
+
             for entry in &output.conclusions {
                 println!("  {} {}", entry.conclusion_type, entry.literal);
                 println!("  Proof sources:");
                 for ps in &entry.proof_sources {
-                    if let Some(ref label) = ps.rule_label {
-                        println!(
-                            "    [[{}]]:{} — {} ({})",
-                            ps.page, ps.line, ps.contribution, label
-                        );
+                    let label_part = if let Some(ref label) = ps.rule_label {
+                        format!(" ({})", label)
                     } else {
-                        println!("    [[{}]]:{} — {}", ps.page, ps.line, ps.contribution);
+                        String::new()
+                    };
+                    let freshness = match ps.grounding.fresh {
+                        Some(true) => " [fresh]",
+                        Some(false) => " [STALE]",
+                        None => "",
+                    };
+                    println!(
+                        "    [[{}]]:{} — {}{}{}",
+                        ps.page, ps.line, ps.contribution, label_part, freshness
+                    );
+                    if let Some(ref w) = ps.grounding.warning {
+                        println!("      Warning: {w}");
                     }
                 }
                 println!();
@@ -3568,6 +4513,12 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
 #[derive(Debug, Clone, Serialize)]
 struct ProvenanceOutput {
     literal: String,
+    vault_root_hash: Option<String>,
+    theory_built_at: Option<String>,
+    /// Current HEAD commit hash, or `null` when the vault is not in a Git repo (§1.6).
+    git_commit: Option<String>,
+    /// `true` if the working tree has uncommitted changes; `null` outside a Git repo (§1.6).
+    git_dirty: Option<bool>,
     conclusions: Vec<ProvenanceConclusionEntry>,
     source_pages: Vec<String>,
     cross_references: Vec<ProvenanceCrossRef>,
@@ -3578,7 +4529,7 @@ struct ProvenanceOutput {
 struct ProvenanceConclusionEntry {
     conclusion_type: String,
     literal: String,
-    proof_sources: Vec<zetl::reason::types::ProofSource>,
+    proof_sources: Vec<EnrichedProofSource>,
 }
 
 #[cfg(feature = "reason")]
@@ -3588,6 +4539,174 @@ struct ProvenanceCrossRef {
     to_page: String,
     direction: String,
     line: u32,
+}
+
+/// Grounding freshness info for a single proof source (REQ-044 / CON-012).
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct ProvenanceGrounding {
+    /// Grounding type: "section" (implicit, enclosing heading) or "explicit" (declared grounding).
+    #[serde(rename = "type")]
+    grounding_type: String,
+    /// Heading of the enclosing section (only present when type == "section").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    section_heading: Option<String>,
+    /// Source reference identifiers (only present when type == "explicit").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_refs: Option<Vec<String>>,
+    /// Whether the current grounding hash matches the one stored at theory-build time.
+    /// `null` when the theory cache has no stored grounding hash (first run or old cache).
+    fresh: Option<bool>,
+    /// Human-readable warning when `fresh` is false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warning: Option<String>,
+}
+
+/// A proof source enriched with grounding freshness (REQ-044).
+#[cfg(feature = "reason")]
+#[derive(Debug, Clone, Serialize)]
+struct EnrichedProofSource {
+    page: String,
+    path: std::path::PathBuf,
+    line: u32,
+    rule_label: Option<String>,
+    contribution: String,
+    grounding: ProvenanceGrounding,
+}
+
+/// Look up the current section grounding hash for an SPL block (identified by its
+/// start line) from the in-memory `ParsedFile` (REQ-044).
+///
+/// Returns `None` when the file has no `FileMerkle`, the SPL leaf is not found,
+/// or the section index is out of range.
+#[cfg(feature = "reason")]
+fn get_current_grounding_hash(
+    file: &zetl::types::ParsedFile,
+    spl_start_line: u32,
+) -> Option<zetl::types::ContentHash> {
+    let fm = file.file_merkle.as_ref()?;
+    let spl_leaf = fm.spl_leaves.iter().find(|l| l.start_line == spl_start_line)?;
+    let section = fm.sections.get(spl_leaf.section_index)?;
+    Some(section.grounding_hash)
+}
+
+/// Build a `ProvenanceGrounding` for one proof source by comparing the current
+/// scanner data against the theory cache (REQ-044 / CON-012).
+///
+/// The grounding type is determined by the theory cache entry:
+/// - "explicit" when the SPL block carries explicit grounding declarations
+/// - "section"  otherwise (implicit, enclosing heading-delimited section)
+///
+/// Freshness is computed by comparing the current section grounding hash
+/// (from the scanner-populated `FileMerkle`) against the hash stored in the
+/// theory cache at build time. `fresh = null` when the cache has no stored
+/// hash (first run or pre-v2 cache).
+#[cfg(feature = "reason")]
+fn compute_grounding(
+    proof_source: &zetl::reason::types::ProofSource,
+    files: &[zetl::types::ParsedFile],
+    theory_cache: Option<&zetl::cache::TheoryCache>,
+) -> ProvenanceGrounding {
+    use zetl::types::ContentHash;
+
+    // Find the ParsedFile for this proof source.
+    let Some(file) = files.iter().find(|f| f.path == proof_source.path) else {
+        return ProvenanceGrounding {
+            grounding_type: "section".to_string(),
+            section_heading: None,
+            source_refs: None,
+            fresh: None,
+            warning: None,
+        };
+    };
+
+    // Find the SplBlock whose fence range contains the rule/fact line.
+    let Some(spl_block) = file.spl_blocks.iter().find(|b| {
+        b.start_line <= proof_source.line && proof_source.line <= b.end_line
+    }) else {
+        return ProvenanceGrounding {
+            grounding_type: "section".to_string(),
+            section_heading: None,
+            source_refs: None,
+            fresh: None,
+            warning: None,
+        };
+    };
+
+    // Build the theory cache key used in `build_spl_block_cache`.
+    let key = format!("{}:{}", spl_block.source_file.display(), spl_block.start_line);
+
+    let Some(tc) = theory_cache else {
+        // No theory cache available — cannot determine freshness.
+        return ProvenanceGrounding {
+            grounding_type: "section".to_string(),
+            section_heading: None,
+            source_refs: None,
+            fresh: None,
+            warning: None,
+        };
+    };
+
+    let Some(cached) = tc.spl_blocks.get(&key) else {
+        // SPL block not present in theory cache (e.g. first run).
+        return ProvenanceGrounding {
+            grounding_type: "section".to_string(),
+            section_heading: None,
+            source_refs: None,
+            fresh: None,
+            warning: None,
+        };
+    };
+
+    // Determine grounding type from the cached entry.
+    let is_explicit = !cached.explicit_groundings.is_empty();
+    let grounding_type = if is_explicit { "explicit" } else { "section" };
+
+    let section_heading = if !is_explicit {
+        cached.section_heading.clone()
+    } else {
+        None
+    };
+
+    let source_refs: Option<Vec<String>> = if is_explicit {
+        let refs: Vec<String> = cached
+            .explicit_groundings
+            .iter()
+            .flat_map(|eg| eg.source_refs.iter().cloned())
+            .collect();
+        if refs.is_empty() { None } else { Some(refs) }
+    } else {
+        None
+    };
+
+    // Determine freshness: compare current section grounding hash vs cached.
+    let zero_hash: ContentHash = [0u8; 32];
+    let fresh: Option<bool> = if cached.section_grounding_hash == zero_hash {
+        // Zero hash means no grounding data was stored — fresh is indeterminate.
+        None
+    } else {
+        let current_hash = get_current_grounding_hash(file, spl_block.start_line);
+        current_hash.map(|h| h == cached.section_grounding_hash)
+    };
+
+    let warning = if fresh == Some(false) {
+        let msg = if is_explicit {
+            "Source content changed since theory was built"
+        } else {
+            "Section prose changed since theory was built"
+        };
+        Some(msg.to_string())
+    } else {
+        None
+    };
+
+    ProvenanceGrounding {
+        grounding_type: grounding_type.to_string(),
+        section_heading,
+        source_refs,
+        fresh,
+        warning,
+    }
 }
 
 /// Find documents that could potentially provide a given literal.
@@ -4339,7 +5458,7 @@ fn cmd_reason_export(
         return Ok(());
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     match format {
         ExportFormat::Spl => {
@@ -4599,8 +5718,9 @@ fn main() -> anyhow::Result<()> {
             orphans,
             syntax,
             spl,
+            drift,
             fail_on,
-        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, fail_on),
+        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, *drift, fail_on),
         Command::Similar {
             query,
             threshold,
@@ -4631,6 +5751,11 @@ fn main() -> anyhow::Result<()> {
             to,
             max_depth,
         } => cmd_path(&cli, from, to, *max_depth),
+        Command::Blocks {
+            page,
+            block_type,
+            resolve,
+        } => cmd_blocks(&cli, page.as_deref(), block_type, resolve.as_deref()),
         Command::Export => cmd_export(&cli),
         Command::Tui => cmd_tui(&cli),
         #[cfg(feature = "reason")]

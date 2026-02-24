@@ -96,6 +96,9 @@ pub enum Command {
         /// Show only SPL diagnostics (parse errors, duplicate labels, undefined references, unreachable literals)
         #[arg(long)]
         spl: bool,
+        /// Show only drift diagnostics (SPL blocks with changed grounding since last theory build)
+        #[arg(long)]
+        drift: bool,
         /// Exit non-zero if issues at level
         #[arg(long, default_value = "error")]
         fail_on: FailLevel,
@@ -160,6 +163,18 @@ pub enum Command {
 
     /// Export the complete link graph
     Export,
+
+    /// List Merkle blocks for a page (forward mode) or resolve a block by hash
+    Blocks {
+        /// Page name (case-insensitive). Omit when using --resolve.
+        page: Option<String>,
+        /// Filter by block type
+        #[arg(long = "type", value_name = "TYPE", default_value = "all")]
+        block_type: BlockTypeFilter,
+        /// Look up a block by its BLAKE3 hash (hex prefix or full). Mutually exclusive with page.
+        #[arg(long, value_name = "HASH")]
+        resolve: Option<String>,
+    },
 
     /// Launch interactive terminal UI
     Tui,
@@ -283,4 +298,18 @@ pub enum ExplainFormat {
 pub enum FailLevel {
     Error,
     Warning,
+}
+
+/// Block type filter for the `blocks` command.
+#[derive(Clone, ValueEnum)]
+pub enum BlockTypeFilter {
+    Heading,
+    Paragraph,
+    Spl,
+    Code,
+    Table,
+    List,
+    Blockquote,
+    Frontmatter,
+    All,
 }

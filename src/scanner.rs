@@ -1,8 +1,10 @@
-use crate::types::{Diagnostic, DiagnosticLevel, ParsedFile, SplBlock, WikiLink};
+use crate::merkle::{compute_file_root, compute_leaf_hash, compute_spl_hashes, detect_sections, spl_combined_hash};
+use crate::types::{ContentHash, Diagnostic, DiagnosticLevel, FileMerkle, LeafType, MerkleLeaf, ParsedFile, SplBlock, SplLeafCached, WikiLink};
 use anyhow::Result;
 use ignore::WalkBuilder;
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use regex::Regex;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 /// Scan a vault directory and parse all markdown files.
@@ -79,6 +81,8 @@ pub fn scan_vault(root: &Path, ignore_patterns: &[String]) -> Result<Vec<ParsedF
                     spl_blocks: vec![spl_block],
                     diagnostics: vec![],
                     mtime,
+                    merkle_leaves: vec![],
+                    file_merkle: None,
                 };
                 parsed_files.push(parsed);
             }
@@ -91,9 +95,13 @@ pub fn scan_vault(root: &Path, ignore_patterns: &[String]) -> Result<Vec<ParsedF
 
 /// Parse wikilinks from markdown content, respecting code blocks and comments.
 ///
-/// Composes `body_text_ranges`, `extract_wikilinks`, `extract_spl_blocks`, and
-/// `validate_syntax` to produce a complete `ParsedFile` with only links from body text,
-/// extracted SPL blocks, and all syntax diagnostics.
+/// Composes `body_text_ranges`, `extract_wikilinks`, `extract_spl_blocks`,
+/// `build_merkle_leaves`, and `validate_syntax` to produce a complete `ParsedFile`
+/// with only links from body text, extracted SPL blocks, Merkle leaf nodes, and all
+/// syntax diagnostics.
+///
+/// The pulldown-cmark event stream is collected once and passed to `build_merkle_leaves`
+/// per §6.4 (no second parse pass for Merkle leaf construction).
 pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
     // Get body text ranges (excludes code blocks, comments, frontmatter)
     let ranges = body_text_ranges(content);
@@ -114,8 +122,95 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
     // Extract SPL blocks
     let spl_blocks = extract_spl_blocks(path, content, page_name);
 
+    // Collect events once for Merkle leaf construction (§6.4: same parse pass).
+    // Enable GFM-compatible extensions so that tables and strikethrough are parsed.
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    let events: Vec<(Event<'_>, Range<usize>)> =
+        Parser::new_ext(content, options).into_offset_iter().collect();
+
+    // Build Merkle leaves from the collected event stream.
+    let merkle_leaves = build_merkle_leaves(content, &events);
+
+    // Compute per-file Merkle root from the ordered leaf hashes (§4.2).
+    let file_root = compute_file_root(&merkle_leaves);
+
+    // Detect grounding sections for all SplBlock leaves (§4.5).
+    let mut sections = detect_sections(&merkle_leaves);
+
+    // Fill in heading_text from the raw file content using each section's heading_line.
+    for section in &mut sections {
+        if section.heading_level > 0 {
+            section.heading_text = extract_heading_text(content, section.heading_line);
+        }
+    }
+
+    // Build the spl_leaves Vec: one SplLeafCached per SplBlock leaf in document order.
+    // Build a mapping from spl-leaf position (0-indexed) → section index.
+    let mut spl_to_section = Vec::new();
+    for (sec_idx, sec) in sections.iter().enumerate() {
+        for spl_pos in sec.leaf_range.0..sec.leaf_range.1 {
+            // Ensure the vec is large enough (spl positions arrive in order).
+            if spl_to_section.len() <= spl_pos {
+                spl_to_section.resize(spl_pos + 1, 0usize);
+            }
+            spl_to_section[spl_pos] = sec_idx;
+        }
+    }
+
+    let mut spl_leaves: Vec<SplLeafCached> = Vec::new();
+    for leaf in &merkle_leaves {
+        if matches!(leaf.node_type, LeafType::SplBlock) {
+            let spl_pos = spl_leaves.len();
+            let section_index = spl_to_section.get(spl_pos).copied().unwrap_or(0);
+            let (content_hash, ast_hash) = match &leaf.spl_hashes {
+                Some(h) => (h.content_hash, h.ast_hash),
+                None => (leaf.hash, [0u8; 32]),
+            };
+            spl_leaves.push(SplLeafCached {
+                start_line: leaf.start_line,
+                content_hash,
+                ast_hash,
+                section_index,
+                explicit_groundings: vec![],
+            });
+        }
+    }
+
+    let file_merkle = Some(FileMerkle {
+        root_hash: file_root,
+        sections,
+        spl_leaves,
+    });
+
     // Validate syntax
     let diagnostics = validate_syntax(path, content);
+
+    // When the `reason` feature is enabled, emit a warning for any SPL block
+    // whose AST could not be parsed (signalled by ast_hash == [0u8; 32]).
+    #[cfg(feature = "reason")]
+    let diagnostics = {
+        let mut d = diagnostics;
+        for leaf in &merkle_leaves {
+            if matches!(leaf.node_type, LeafType::SplBlock) {
+                if let Some(h) = &leaf.spl_hashes {
+                    if h.ast_hash == [0u8; 32] {
+                        d.push(Diagnostic {
+                            level: DiagnosticLevel::Warning,
+                            message: "SPL parse failed; ast_hash set to sentinel [0u8; 32]"
+                                .to_string(),
+                            file: path.to_path_buf(),
+                            line: leaf.start_line,
+                            column: 0,
+                        });
+                    }
+                }
+            }
+        }
+        d
+    };
 
     ParsedFile {
         path: path.to_path_buf(),
@@ -124,6 +219,8 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
         spl_blocks,
         diagnostics,
         mtime: std::time::SystemTime::UNIX_EPOCH, // caller sets real mtime
+        merkle_leaves,
+        file_merkle,
     }
 }
 
@@ -488,6 +585,28 @@ pub fn page_name_from_path(path: &Path) -> String {
         .to_string()
 }
 
+/// Extract an Obsidian block-id annotation from normalised leaf text (REQ-042b).
+///
+/// Obsidian block IDs are written as ` ^identifier` at the end of a block's
+/// content, where `identifier` consists solely of ASCII alphanumeric characters
+/// and hyphens.  Returns `Some(identifier)` if the pattern is found at the
+/// tail of `normalized_text`, `None` otherwise.
+pub(crate) fn extract_block_id(normalized_text: &str) -> Option<String> {
+    // Locate the last " ^" sequence.
+    let caret_pos = normalized_text.rfind(" ^")?;
+    let identifier = &normalized_text[caret_pos + 2..]; // skip the " ^"
+    // Identifier must be non-empty and only contain alphanumerics / hyphens.
+    if !identifier.is_empty()
+        && identifier
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        Some(identifier.to_string())
+    } else {
+        None
+    }
+}
+
 /// Extract SPL blocks from markdown content.
 ///
 /// Identifies fenced code blocks tagged `spl` or `spindle` (both backtick and tilde fences)
@@ -562,6 +681,373 @@ pub fn extract_spl_blocks(path: &Path, content: &str, page_name: &str) -> Vec<Sp
     }
 
     blocks
+}
+
+/// Group pulldown-cmark events into block-level [`MerkleLeaf`] nodes.
+///
+/// Processes the event stream produced by a single pulldown-cmark parse pass and maps
+/// each top-level block element to a [`MerkleLeaf`] per SPEC-006 §4.3. The function is
+/// designed to be called with events collected during the same parse pass used for
+/// wikilink and SPL extraction (§6.4 — no second parse pass).
+///
+/// **Leaf type mapping** (§4.3):
+/// - `Start(Heading)..End(Heading)` → `Heading { level }`
+/// - `Start(Paragraph)..End(Paragraph)` → `Paragraph`
+/// - `Start(CodeBlock(Fenced("spl"|"spindle")))..End(CodeBlock)` → `SplBlock` (flagged for dual hashing)
+/// - `Start(CodeBlock(..))..End(CodeBlock)` → `CodeBlock { language }`
+/// - `Start(List)..End(List)` → `List { ordered }`
+/// - `Start(BlockQuote)..End(BlockQuote)` → `BlockQuote`
+/// - `Start(Table)..End(Table)` → `Table`
+/// - `Start(MetadataBlock)..End(MetadataBlock)` → `Frontmatter`
+/// - `Rule` → `ThematicBreak`
+/// - `Html(..)` (block-level) → `HtmlBlock`
+///
+/// **Normalisation** (§4.3):
+/// - Line endings normalised to `\n`
+/// - Consecutive whitespace collapsed to a single space
+/// - Leading/trailing whitespace trimmed
+/// - Bold/italic/strikethrough markers stripped (they are structural events, not text)
+/// - `[[wikilinks]]` preserved (appear as raw `Text` events in pulldown-cmark)
+/// - `[text](url)` links reconstructed into their markdown form
+/// - `![alt](url)` images reconstructed into their markdown form
+/// - Case preserved
+///
+/// For code blocks and frontmatter, the raw text is used unchanged (whitespace is
+/// significant in code). For all other block types, the normalised text is used.
+pub fn build_merkle_leaves<'a>(
+    content: &str,
+    events: &[(Event<'a>, Range<usize>)],
+) -> Vec<MerkleLeaf> {
+    if content.is_empty() || events.is_empty() {
+        return vec![];
+    }
+
+    // Pre-compute line start byte offsets for byte → 1-indexed line number conversion.
+    let line_starts: Vec<usize> = std::iter::once(0)
+        .chain(content.match_indices('\n').map(|(i, _)| i + 1))
+        .collect();
+
+    let byte_to_line = |byte_offset: usize| -> u32 {
+        // partition_point returns the count of elements ≤ byte_offset, which equals
+        // the 1-indexed line number.
+        line_starts.partition_point(|&start| start <= byte_offset) as u32
+    };
+
+    // Hash a leaf: BLAKE3(type_tag_byte ‖ content_bytes) per §4.2.
+    // For ThematicBreak and HtmlBlock (standalone events), we need a type-aware wrapper.
+    let hash_leaf = |lt: &LeafType, input: &[u8]| -> ContentHash { compute_leaf_hash(lt, input) };
+
+    // Normalise body text: collapse all whitespace to single space, trim.
+    // Line endings are already handled (SoftBreak→space, HardBreak→\n which then collapses).
+    let normalize = |s: &str| -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut prev_space = false;
+        for ch in s.chars() {
+            if ch.is_whitespace() {
+                if !prev_space {
+                    out.push(' ');
+                }
+                prev_space = true;
+            } else {
+                out.push(ch);
+                prev_space = false;
+            }
+        }
+        // Trim by stripping a single leading/trailing space produced by the loop.
+        let trimmed = out.trim();
+        trimmed.to_string()
+    };
+
+    let mut leaves: Vec<MerkleLeaf> = Vec::new();
+
+    // ── State machine variables ───────────────────────────────────────────────
+    // `current_leaf_type` being Some(_) indicates we are inside a block.
+    let mut current_leaf_type: Option<LeafType> = None;
+    let mut current_start_byte: usize = 0;
+    let mut current_depth: usize = 0; // block-nesting depth; 0 = top-level
+    let mut text_buf: String = String::new(); // normalised body text for hash
+    let mut raw_buf: String = String::new(); // raw content (code / frontmatter / HTML)
+    // Stack of link/image URLs for reconstructing `[text](url)` / `![alt](url)`.
+    let mut link_url_stack: Vec<String> = Vec::new();
+
+    // Helper closure: build and push a MerkleLeaf, then reset mutable state.
+    // Because we cannot use a closure that mutates multiple captured vars, we inline
+    // the finalization logic inline in the End-event branch below.
+
+    for (event, range) in events {
+        if current_leaf_type.is_none() {
+            // ── Top-level: waiting for a block to start ───────────────────────
+            match event {
+                Event::Start(tag) => {
+                    let leaf_type = match tag {
+                        Tag::Heading { level, .. } => {
+                            let lvl: u8 = match level {
+                                HeadingLevel::H1 => 1,
+                                HeadingLevel::H2 => 2,
+                                HeadingLevel::H3 => 3,
+                                HeadingLevel::H4 => 4,
+                                HeadingLevel::H5 => 5,
+                                HeadingLevel::H6 => 6,
+                            };
+                            Some(LeafType::Heading { level: lvl })
+                        }
+                        Tag::Paragraph => Some(LeafType::Paragraph),
+                        Tag::CodeBlock(CodeBlockKind::Fenced(info)) => {
+                            let lang_tag = info.split_whitespace().next().unwrap_or("");
+                            if lang_tag == "spl" || lang_tag == "spindle" {
+                                Some(LeafType::SplBlock)
+                            } else {
+                                let language = if info.is_empty() || lang_tag.is_empty() {
+                                    None
+                                } else {
+                                    Some(lang_tag.to_string())
+                                };
+                                Some(LeafType::CodeBlock { language })
+                            }
+                        }
+                        Tag::CodeBlock(CodeBlockKind::Indented) => {
+                            Some(LeafType::CodeBlock { language: None })
+                        }
+                        Tag::List(ordered) => Some(LeafType::List {
+                            ordered: ordered.is_some(),
+                        }),
+                        Tag::BlockQuote(_) => Some(LeafType::BlockQuote),
+                        Tag::Table(_) => Some(LeafType::Table),
+                        Tag::MetadataBlock(_) => Some(LeafType::Frontmatter),
+                        _ => None, // sub-block tags (Item, TableRow, …) — shouldn't appear at depth 0
+                    };
+                    if let Some(lt) = leaf_type {
+                        current_leaf_type = Some(lt);
+                        current_start_byte = range.start;
+                        current_depth = 1;
+                        text_buf.clear();
+                        raw_buf.clear();
+                        link_url_stack.clear();
+                    }
+                }
+
+                // Thematic break — standalone event, no Start/End wrapper.
+                Event::Rule => {
+                    let start_line = byte_to_line(range.start);
+                    let end_line = byte_to_line(range.end.saturating_sub(1)).max(start_line);
+                    leaves.push(MerkleLeaf {
+                        node_type: LeafType::ThematicBreak,
+                        start_line,
+                        end_line,
+                        hash: hash_leaf(&LeafType::ThematicBreak, b"---"),
+                        spl_hashes: None,
+                        block_id: None,
+                    });
+                }
+
+                // Block-level HTML — `Event::Html` (as opposed to `Event::InlineHtml`).
+                Event::Html(html) => {
+                    let start_line = byte_to_line(range.start);
+                    let end_line = byte_to_line(range.end.saturating_sub(1)).max(start_line);
+                    leaves.push(MerkleLeaf {
+                        node_type: LeafType::HtmlBlock,
+                        start_line,
+                        end_line,
+                        hash: hash_leaf(&LeafType::HtmlBlock, html.as_bytes()),
+                        spl_hashes: None,
+                        block_id: None,
+                    });
+                }
+
+                _ => {} // other standalone events at the top level (soft/hard breaks between blocks, etc.)
+            }
+        } else {
+            // ── Inside a block: accumulate content and track nesting depth ────
+            match event {
+                Event::Start(tag) => {
+                    match tag {
+                        // Links: push `[` and remember the destination URL.
+                        Tag::Link { dest_url, .. } => {
+                            text_buf.push('[');
+                            link_url_stack.push(dest_url.to_string());
+                            // Do NOT increment depth — links are inline and their End
+                            // event is handled specially (it does not decrement depth).
+                        }
+                        // Images: push `![` and remember the destination URL.
+                        Tag::Image { dest_url, .. } => {
+                            text_buf.push_str("![");
+                            link_url_stack.push(dest_url.to_string());
+                            // Do NOT increment depth (same reason as Link).
+                        }
+                        // All other Start events (block-level sub-elements like Item,
+                        // TableRow, TableCell, and inline like Strong, Emphasis,
+                        // Strikethrough) increment the nesting counter.
+                        // Bold/italic/strikethrough markers are intentionally NOT
+                        // written to text_buf — only Text events are collected.
+                        _ => {
+                            current_depth += 1;
+                        }
+                    }
+                }
+
+                Event::End(tag_end) => {
+                    match tag_end {
+                        // Close a link: append `](url)`.
+                        TagEnd::Link => {
+                            let url = link_url_stack.pop().unwrap_or_default();
+                            text_buf.push_str(&format!("]({})", url));
+                            // Do NOT decrement depth.
+                        }
+                        // Close an image: append `](url)`.
+                        TagEnd::Image => {
+                            let url = link_url_stack.pop().unwrap_or_default();
+                            text_buf.push_str(&format!("]({})", url));
+                            // Do NOT decrement depth.
+                        }
+                        _ => {
+                            current_depth -= 1;
+                            if current_depth == 0 {
+                                // The outermost block has closed — finalise the leaf.
+                                let end_byte = range.end;
+                                let start_line = byte_to_line(current_start_byte);
+                                let end_line =
+                                    byte_to_line(end_byte.saturating_sub(1)).max(start_line);
+
+                                let leaf_type = current_leaf_type.take().unwrap();
+
+                                // Pre-compute normalised body text once so we can
+                                // both use it in the hash and inspect it for block IDs.
+                                let normalized_text = normalize(&text_buf);
+
+                                // Extract Obsidian block-id annotation (REQ-042b).
+                                // Only applicable to body-text leaf types; code/SPL/
+                                // frontmatter/HTML blocks cannot carry block IDs.
+                                let block_id: Option<String> = match &leaf_type {
+                                    LeafType::Paragraph
+                                    | LeafType::Heading { .. }
+                                    | LeafType::List { .. }
+                                    | LeafType::BlockQuote
+                                    | LeafType::Table => extract_block_id(&normalized_text),
+                                    _ => None,
+                                };
+
+                                // Compute hash input per §4.3.
+                                let hash_input: String = match &leaf_type {
+                                    LeafType::Heading { level } => {
+                                        format!("{}{}", level, &normalized_text)
+                                    }
+                                    LeafType::Paragraph => normalized_text.clone(),
+                                    LeafType::List { ordered } => {
+                                        let flag = if *ordered { "1" } else { "0" };
+                                        format!("{}{}", flag, &normalized_text)
+                                    }
+                                    LeafType::BlockQuote => normalized_text.clone(),
+                                    LeafType::Table => normalized_text.clone(),
+                                    // Code blocks: language tag + raw content (whitespace-significant).
+                                    LeafType::CodeBlock { language } => {
+                                        let lang = language.as_deref().unwrap_or("");
+                                        format!("{}\n{}", lang, raw_buf)
+                                    }
+                                    // SPL: raw content hash (dual AST hash is a separate pass).
+                                    LeafType::SplBlock => raw_buf.clone(),
+                                    // Frontmatter: raw YAML text.
+                                    LeafType::Frontmatter => raw_buf.clone(),
+                                    // Shouldn't reach these via the End branch, but handle for completeness.
+                                    LeafType::ThematicBreak => "---".to_string(),
+                                    LeafType::HtmlBlock => raw_buf.clone(),
+                                };
+
+                                // SplBlock leaves use dual hashing (§4.4):
+                                // combined hash = BLAKE3(content_hash ‖ ast_hash).
+                                // All other leaves use BLAKE3(type_tag ‖ content).
+                                if matches!(leaf_type, LeafType::SplBlock) {
+                                    let spl = compute_spl_hashes(&raw_buf);
+                                    let combined = spl_combined_hash(&spl);
+                                    leaves.push(MerkleLeaf {
+                                        node_type: leaf_type,
+                                        start_line,
+                                        end_line,
+                                        hash: combined,
+                                        spl_hashes: Some(spl),
+                                        block_id: None,
+                                    });
+                                } else {
+                                    let hash = hash_leaf(&leaf_type, hash_input.as_bytes());
+                                    leaves.push(MerkleLeaf {
+                                        node_type: leaf_type,
+                                        start_line,
+                                        end_line,
+                                        hash,
+                                        spl_hashes: None,
+                                        block_id,
+                                    });
+                                }
+
+                                // Reset accumulators for the next leaf.
+                                text_buf.clear();
+                                raw_buf.clear();
+                                link_url_stack.clear();
+                            }
+                        }
+                    }
+                }
+
+                // Plain text — the primary content carrier.
+                // For code blocks and frontmatter, accumulate into raw_buf (preserves whitespace).
+                // For all other leaf types, accumulate into text_buf (will be normalised).
+                Event::Text(t) => match &current_leaf_type {
+                    Some(LeafType::CodeBlock { .. })
+                    | Some(LeafType::SplBlock)
+                    | Some(LeafType::Frontmatter) => {
+                        raw_buf.push_str(t);
+                    }
+                    _ => {
+                        text_buf.push_str(t);
+                    }
+                },
+
+                // Inline code span — preserve with backtick delimiters.
+                Event::Code(code) => {
+                    text_buf.push('`');
+                    text_buf.push_str(code);
+                    text_buf.push('`');
+                }
+
+                // Soft break (source newline within a paragraph) → single space.
+                Event::SoftBreak => {
+                    text_buf.push(' ');
+                }
+
+                // Hard break (two trailing spaces or `\` at end of line) → newline,
+                // which the normaliser will later collapse to a space.
+                Event::HardBreak => {
+                    text_buf.push('\n');
+                }
+
+                // Inline HTML inside a block — include as-is in text_buf so it
+                // affects the hash (change to inline HTML is a content change).
+                Event::InlineHtml(html) => {
+                    text_buf.push_str(html);
+                }
+
+                _ => {} // rule, block Html, etc. cannot appear inside a block
+            }
+        }
+    }
+
+    leaves
+}
+
+/// Extract heading text from a specific 1-indexed line in the file content.
+///
+/// Handles both ATX headings (`## Title`) by stripping leading `#` characters
+/// and the optional following space, and setext headings where the text is the
+/// entire line content.
+fn extract_heading_text(content: &str, line: u32) -> String {
+    let line_content = content.lines().nth((line as usize).saturating_sub(1)).unwrap_or("");
+    if line_content.starts_with('#') {
+        // ATX heading: strip leading '#' chars and one optional space.
+        let stripped = line_content.trim_start_matches('#');
+        stripped.strip_prefix(' ').unwrap_or(stripped).trim().to_string()
+    } else {
+        // Setext heading: the text is the full line.
+        line_content.trim().to_string()
+    }
 }
 
 /// Find byte ranges of HTML comments (`<!-- ... -->`) in content.
@@ -1831,5 +2317,522 @@ After
         let spl_file = files.iter().find(|f| f.page_name == "theory").unwrap();
         assert_eq!(spl_file.spl_blocks.len(), 1);
         assert_eq!(spl_file.spl_blocks[0].content, spl_content);
+    }
+
+    // ── build_merkle_leaves tests ─────────────────────────────────────────
+
+    /// Helper: parse content and return leaves (mirrors the options used in `parse_file`).
+    fn parse_leaves(content: &str) -> Vec<crate::types::MerkleLeaf> {
+        use pulldown_cmark::{Event, Options, Parser};
+        use std::ops::Range;
+
+        let mut opts = Options::empty();
+        opts.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+        opts.insert(Options::ENABLE_TABLES);
+        opts.insert(Options::ENABLE_STRIKETHROUGH);
+        let events: Vec<(Event<'_>, Range<usize>)> =
+            Parser::new_ext(content, opts).into_offset_iter().collect();
+        build_merkle_leaves(content, &events)
+    }
+
+    /// Return the variant name of a LeafType for concise assertions.
+    fn leaf_variant(leaf: &crate::types::MerkleLeaf) -> &'static str {
+        match &leaf.node_type {
+            crate::types::LeafType::Heading { .. } => "Heading",
+            crate::types::LeafType::Paragraph => "Paragraph",
+            crate::types::LeafType::CodeBlock { .. } => "CodeBlock",
+            crate::types::LeafType::SplBlock => "SplBlock",
+            crate::types::LeafType::List { .. } => "List",
+            crate::types::LeafType::BlockQuote => "BlockQuote",
+            crate::types::LeafType::Table => "Table",
+            crate::types::LeafType::Frontmatter => "Frontmatter",
+            crate::types::LeafType::ThematicBreak => "ThematicBreak",
+            crate::types::LeafType::HtmlBlock => "HtmlBlock",
+        }
+    }
+
+    // ── Empty / trivial content ───────────────────────────────────────────
+
+    #[test]
+    fn leaves_empty_content_returns_empty() {
+        let leaves = parse_leaves("");
+        assert!(leaves.is_empty());
+    }
+
+    #[test]
+    fn leaves_whitespace_only_returns_empty() {
+        let leaves = parse_leaves("   \n\n  \n");
+        assert!(leaves.is_empty());
+    }
+
+    // ── Heading ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_heading_h1() {
+        let leaves = parse_leaves("# Hello World\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "Heading");
+        if let crate::types::LeafType::Heading { level } = &leaves[0].node_type {
+            assert_eq!(*level, 1);
+        }
+        assert_eq!(leaves[0].start_line, 1);
+        assert_eq!(leaves[0].end_line, 1);
+    }
+
+    #[test]
+    fn leaves_heading_h3() {
+        let leaves = parse_leaves("### Sub section\n");
+        assert_eq!(leaves.len(), 1);
+        if let crate::types::LeafType::Heading { level } = &leaves[0].node_type {
+            assert_eq!(*level, 3);
+        }
+    }
+
+    #[test]
+    fn leaves_heading_hash_changes_for_different_levels() {
+        let l1 = parse_leaves("# Heading\n");
+        let l2 = parse_leaves("## Heading\n");
+        // Level is included in the hash input, so hashes must differ.
+        assert_ne!(l1[0].hash, l2[0].hash);
+    }
+
+    // ── Paragraph ────────────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_paragraph() {
+        let leaves = parse_leaves("Hello, world.\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "Paragraph");
+        assert_eq!(leaves[0].start_line, 1);
+    }
+
+    #[test]
+    fn leaves_paragraph_hash_stable_across_whitespace() {
+        // Extra trailing space / single vs double blank line separating paras.
+        let a = parse_leaves("Hello world.\n");
+        let b = parse_leaves("Hello  world.\n"); // extra space inside
+        // Consecutive whitespace is collapsed → hashes must match.
+        assert_eq!(a[0].hash, b[0].hash);
+    }
+
+    #[test]
+    fn leaves_paragraph_hash_differs_on_content_change() {
+        let a = parse_leaves("Hello world.\n");
+        let b = parse_leaves("Hello earth.\n");
+        assert_ne!(a[0].hash, b[0].hash);
+    }
+
+    // ── Code blocks ───────────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_fenced_code_block_rust() {
+        let content = "```rust\nlet x = 1;\n```\n";
+        let leaves = parse_leaves(content);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "CodeBlock");
+        if let crate::types::LeafType::CodeBlock { language } = &leaves[0].node_type {
+            assert_eq!(language.as_deref(), Some("rust"));
+        }
+    }
+
+    #[test]
+    fn leaves_fenced_code_block_no_language() {
+        let leaves = parse_leaves("```\nplain code\n```\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "CodeBlock");
+        if let crate::types::LeafType::CodeBlock { language } = &leaves[0].node_type {
+            assert!(language.is_none());
+        }
+    }
+
+    #[test]
+    fn leaves_spl_block() {
+        let content = "```spl\n(given foo)\n```\n";
+        let leaves = parse_leaves(content);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "SplBlock");
+        assert!(leaves[0].spl_hashes.is_some()); // dual hashing done during build_merkle_leaves
+    }
+
+    #[test]
+    fn leaves_spindle_block() {
+        let content = "```spindle\n(normally r1 a b)\n```\n";
+        let leaves = parse_leaves(content);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "SplBlock");
+    }
+
+    #[test]
+    fn leaves_spl_hash_differs_from_same_content_code_block() {
+        // Same content, different fence tag → different leaf type → different hash.
+        let spl = parse_leaves("```spl\n(given foo)\n```\n");
+        let rust = parse_leaves("```rust\n(given foo)\n```\n");
+        assert_ne!(spl[0].hash, rust[0].hash);
+    }
+
+    #[test]
+    fn leaves_code_block_language_affects_hash() {
+        let rust = parse_leaves("```rust\nfoo\n```\n");
+        let py = parse_leaves("```python\nfoo\n```\n");
+        assert_ne!(rust[0].hash, py[0].hash);
+    }
+
+    // ── List ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_unordered_list() {
+        let leaves = parse_leaves("- item one\n- item two\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "List");
+        if let crate::types::LeafType::List { ordered } = &leaves[0].node_type {
+            assert!(!ordered);
+        }
+    }
+
+    #[test]
+    fn leaves_ordered_list() {
+        let leaves = parse_leaves("1. first\n2. second\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "List");
+        if let crate::types::LeafType::List { ordered } = &leaves[0].node_type {
+            assert!(ordered);
+        }
+    }
+
+    #[test]
+    fn leaves_ordered_vs_unordered_hash_differ() {
+        let ordered = parse_leaves("1. item\n");
+        let unordered = parse_leaves("- item\n");
+        // The ordered flag is included in the hash input.
+        assert_ne!(ordered[0].hash, unordered[0].hash);
+    }
+
+    // ── BlockQuote ────────────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_block_quote() {
+        let leaves = parse_leaves("> a quoted paragraph\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "BlockQuote");
+    }
+
+    // ── Table ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_table() {
+        let content = "| A | B |\n|---|---|\n| 1 | 2 |\n";
+        let leaves = parse_leaves(content);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "Table");
+    }
+
+    // ── Frontmatter ───────────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_frontmatter() {
+        let content = "---\ntitle: test\ndate: 2024-01-01\n---\n\nBody text.\n";
+        let leaves = parse_leaves(content);
+        // Must have a Frontmatter leaf and a Paragraph leaf.
+        assert!(leaves.iter().any(|l| leaf_variant(l) == "Frontmatter"));
+        assert!(leaves.iter().any(|l| leaf_variant(l) == "Paragraph"));
+    }
+
+    // ── ThematicBreak ─────────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_thematic_break() {
+        let leaves = parse_leaves("---\n");
+        // pulldown-cmark parses `---` alone as a ThematicBreak (not frontmatter).
+        let has_break = leaves.iter().any(|l| leaf_variant(l) == "ThematicBreak");
+        assert!(has_break, "Expected ThematicBreak leaf, got: {:?}", leaves.iter().map(leaf_variant).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn leaves_thematic_break_constant_hash() {
+        // All thematic breaks hash the same sentinel.
+        let a = parse_leaves("---\n");
+        let b = parse_leaves("***\n");
+        let breaks_a: Vec<_> = a.iter().filter(|l| leaf_variant(l) == "ThematicBreak").collect();
+        let breaks_b: Vec<_> = b.iter().filter(|l| leaf_variant(l) == "ThematicBreak").collect();
+        if !breaks_a.is_empty() && !breaks_b.is_empty() {
+            assert_eq!(breaks_a[0].hash, breaks_b[0].hash);
+        }
+    }
+
+    // ── HtmlBlock ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_html_block() {
+        let content = "<div class=\"note\">\nsome content\n</div>\n\n";
+        let leaves = parse_leaves(content);
+        assert!(
+            leaves.iter().any(|l| leaf_variant(l) == "HtmlBlock"),
+            "Expected HtmlBlock, got: {:?}", leaves.iter().map(leaf_variant).collect::<Vec<_>>()
+        );
+    }
+
+    // ── Mixed document ────────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_mixed_document_order() {
+        let content = "\
+# Title
+
+Some paragraph.
+
+```rust
+code here
+```
+
+- list item
+
+---
+
+> blockquote
+";
+        let leaves = parse_leaves(content);
+        let types: Vec<_> = leaves.iter().map(leaf_variant).collect();
+        assert!(types.contains(&"Heading"), "Missing Heading");
+        assert!(types.contains(&"Paragraph"), "Missing Paragraph");
+        assert!(types.contains(&"CodeBlock"), "Missing CodeBlock");
+        assert!(types.contains(&"List"), "Missing List");
+        assert!(types.contains(&"ThematicBreak"), "Missing ThematicBreak");
+        assert!(types.contains(&"BlockQuote"), "Missing BlockQuote");
+
+        // Verify document order: Heading comes before Paragraph.
+        let heading_idx = types.iter().position(|&t| t == "Heading").unwrap();
+        let para_idx = types.iter().position(|&t| t == "Paragraph").unwrap();
+        assert!(heading_idx < para_idx);
+    }
+
+    #[test]
+    fn leaves_line_numbers_are_correct() {
+        // Line 1: heading
+        // Line 3: paragraph (blank line between)
+        let content = "# Heading\n\nParagraph text.\n";
+        let leaves = parse_leaves(content);
+        assert_eq!(leaves.len(), 2);
+        assert_eq!(leaves[0].start_line, 1, "Heading should start on line 1");
+        assert_eq!(leaves[1].start_line, 3, "Paragraph should start on line 3");
+    }
+
+    #[test]
+    fn leaves_multiline_paragraph_line_range() {
+        let content = "Line one.\nLine two.\nLine three.\n";
+        let leaves = parse_leaves(content);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].start_line, 1);
+        assert!(leaves[0].end_line >= 1);
+    }
+
+    // ── Normalisation: formatting markers stripped ─────────────────────────
+
+    #[test]
+    fn leaves_bold_stripped_from_hash() {
+        // Bold markers should be stripped; hash should be the same as plain text.
+        let bold = parse_leaves("**Hello world**\n");
+        let plain = parse_leaves("Hello world\n");
+        assert_eq!(bold[0].hash, plain[0].hash, "Bold should be stripped from hash input");
+    }
+
+    #[test]
+    fn leaves_italic_stripped_from_hash() {
+        let italic = parse_leaves("_Hello world_\n");
+        let plain = parse_leaves("Hello world\n");
+        assert_eq!(italic[0].hash, plain[0].hash, "Italic should be stripped from hash input");
+    }
+
+    // ── Normalisation: links preserved ────────────────────────────────────
+
+    #[test]
+    fn leaves_standard_link_preserved_in_hash() {
+        // A paragraph with a link should hash differently from the same text without it.
+        let with_link = parse_leaves("See [the page](https://example.com) for details.\n");
+        let without_link = parse_leaves("See the page for details.\n");
+        assert_ne!(
+            with_link[0].hash, without_link[0].hash,
+            "Link syntax should be preserved in hash (content change)"
+        );
+    }
+
+    #[test]
+    fn leaves_wikilink_preserved_in_hash() {
+        // Wikilinks appear as raw Text in pulldown-cmark and are naturally preserved.
+        let with_link = parse_leaves("See [[My Page]] for details.\n");
+        let without_link = parse_leaves("See My Page for details.\n");
+        assert_ne!(
+            with_link[0].hash, without_link[0].hash,
+            "[[wikilinks]] should be preserved in hash"
+        );
+    }
+
+    // ── Hash consistency ──────────────────────────────────────────────────
+
+    #[test]
+    fn leaves_same_content_same_hash() {
+        let a = parse_leaves("# My Heading\n");
+        let b = parse_leaves("# My Heading\n");
+        assert_eq!(a[0].hash, b[0].hash);
+    }
+
+    #[test]
+    fn leaves_different_content_different_hash() {
+        let a = parse_leaves("# Alpha\n");
+        let b = parse_leaves("# Beta\n");
+        assert_ne!(a[0].hash, b[0].hash);
+    }
+
+    // ── parse_file integration ────────────────────────────────────────────
+
+    #[test]
+    fn parse_file_populates_merkle_leaves() {
+        let content = "# Title\n\nParagraph.\n\n```spl\n(given fact)\n```\n";
+        let parsed = parse_file(Path::new("test.md"), content, "test");
+        // Should have: Heading, Paragraph, SplBlock
+        assert_eq!(parsed.merkle_leaves.len(), 3);
+        assert_eq!(leaf_variant(&parsed.merkle_leaves[0]), "Heading");
+        assert_eq!(leaf_variant(&parsed.merkle_leaves[1]), "Paragraph");
+        assert_eq!(leaf_variant(&parsed.merkle_leaves[2]), "SplBlock");
+    }
+
+    #[test]
+    fn parse_file_leaf_count_matches() {
+        let content = "# H1\n\n## H2\n\nPara.\n";
+        let parsed = parse_file(Path::new("test.md"), content, "test");
+        assert_eq!(parsed.merkle_leaves.len(), 3); // H1, H2, Para
+    }
+
+    // ── extract_block_id ──────────────────────────────────────────────────
+
+    #[test]
+    fn extract_block_id_basic() {
+        assert_eq!(
+            extract_block_id("Hello world ^my-block"),
+            Some("my-block".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_block_id_alphanumeric() {
+        assert_eq!(
+            extract_block_id("Some text ^abc123"),
+            Some("abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_block_id_dashes_only() {
+        assert_eq!(
+            extract_block_id("Text ^a-b-c"),
+            Some("a-b-c".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_block_id_no_annotation_returns_none() {
+        assert_eq!(extract_block_id("Plain paragraph text."), None);
+    }
+
+    #[test]
+    fn extract_block_id_caret_mid_sentence_not_trailing_returns_none() {
+        // The " ^" must be followed by the identifier to the end of string.
+        assert_eq!(extract_block_id("foo ^bar baz"), None);
+    }
+
+    #[test]
+    fn extract_block_id_empty_identifier_returns_none() {
+        assert_eq!(extract_block_id("Text ^"), None);
+    }
+
+    #[test]
+    fn extract_block_id_invalid_chars_in_identifier_returns_none() {
+        // Spaces inside the identifier are invalid.
+        assert_eq!(extract_block_id("Text ^foo bar"), None);
+    }
+
+    #[test]
+    fn extract_block_id_uppercase_and_digits() {
+        assert_eq!(
+            extract_block_id("Heading text ^Ref2024"),
+            Some("Ref2024".to_string())
+        );
+    }
+
+    // ── block_id extraction in build_merkle_leaves ────────────────────────
+
+    #[test]
+    fn leaf_paragraph_with_block_id() {
+        let leaves = parse_leaves("Hello world ^my-block\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "Paragraph");
+        assert_eq!(leaves[0].block_id, Some("my-block".to_string()));
+    }
+
+    #[test]
+    fn leaf_paragraph_without_block_id() {
+        let leaves = parse_leaves("Hello world.\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].block_id, None);
+    }
+
+    #[test]
+    fn leaf_heading_with_block_id() {
+        let leaves = parse_leaves("# My Heading ^heading-ref\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "Heading");
+        assert_eq!(leaves[0].block_id, Some("heading-ref".to_string()));
+    }
+
+    #[test]
+    fn leaf_list_with_block_id() {
+        // Obsidian block IDs on list items appear at the end of the list block.
+        let leaves = parse_leaves("- item one\n- item two ^list-id\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "List");
+        assert_eq!(leaves[0].block_id, Some("list-id".to_string()));
+    }
+
+    #[test]
+    fn leaf_code_block_no_block_id() {
+        // Code blocks never have block IDs extracted.
+        let leaves = parse_leaves("```rust\nfn main() {} ^not-an-id\n```\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "CodeBlock");
+        assert_eq!(leaves[0].block_id, None);
+    }
+
+    #[test]
+    fn leaf_spl_block_no_block_id() {
+        let leaves = parse_leaves("```spl\n(given foo)\n```\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "SplBlock");
+        assert_eq!(leaves[0].block_id, None);
+    }
+
+    #[test]
+    fn leaf_thematic_break_no_block_id() {
+        let leaves = parse_leaves("---\n");
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaf_variant(&leaves[0]), "ThematicBreak");
+        assert_eq!(leaves[0].block_id, None);
+    }
+
+    #[test]
+    fn leaf_block_id_does_not_affect_hash_differently_from_content() {
+        // Two paragraphs with the same text but different block IDs should
+        // produce different hashes (block_id is part of the normalized content).
+        let a = parse_leaves("Same text ^id-alpha\n");
+        let b = parse_leaves("Same text ^id-beta\n");
+        assert_ne!(a[0].hash, b[0].hash);
+    }
+
+    #[test]
+    fn leaf_block_id_preserved_and_hash_includes_it() {
+        // The hash should differ from the same text without the block ID.
+        let with_id = parse_leaves("Some content ^myid\n");
+        let without = parse_leaves("Some content\n");
+        assert_ne!(with_id[0].hash, without[0].hash);
+        assert_eq!(with_id[0].block_id, Some("myid".to_string()));
+        assert_eq!(without[0].block_id, None);
     }
 }

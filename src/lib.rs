@@ -1,6 +1,8 @@
 pub mod cache;
 pub mod cli;
+pub mod drift;
 pub mod graph;
+pub mod merkle;
 #[cfg(feature = "reason")]
 pub mod reason;
 pub mod scanner;
@@ -8,3 +10,4 @@ pub mod search;
 pub mod simhash;
 pub mod tui;
 pub mod types;
+pub mod vcs;
