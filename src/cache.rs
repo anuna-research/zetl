@@ -1,5 +1,5 @@
 use crate::merkle::compute_vault_root;
-use crate::types::{ContentHash, Diagnostic, ParsedFile};
+use crate::types::{ContentHash, Diagnostic, ExplicitGrounding, ParsedFile};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ const CACHE_FILE: &str = "index.json";
 const CACHE_VERSION: u32 = 2;
 
 const THEORY_CACHE_FILE: &str = "theory.json";
-const THEORY_CACHE_VERSION: u32 = 1;
+const THEORY_CACHE_VERSION: u32 = 2;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CacheIndex {
@@ -51,26 +51,11 @@ pub fn save_cache(vault_root: &Path, files: &[ParsedFile]) -> Result<()> {
         file_map.insert(f.path.clone(), f.clone());
     }
 
-    // Compute vault root from per-file Merkle roots (sorted by canonical path, §4.6).
-    let file_hash_pairs: Vec<(&std::path::Path, ContentHash)> = files
-        .iter()
-        .filter_map(|f| {
-            f.file_merkle
-                .as_ref()
-                .map(|fm| (f.path.as_path(), fm.root_hash))
-        })
-        .collect();
-    let vault_hash = if file_hash_pairs.is_empty() {
-        None
-    } else {
-        let h = compute_vault_root(&file_hash_pairs);
-        Some(h.iter().map(|b| format!("{:02x}", b)).collect::<String>())
-    };
-
     let index = CacheIndex {
         version: CACHE_VERSION,
         files: file_map,
-        vault_root_hash: vault_hash,
+        // Compute vault root from per-file Merkle roots (sorted by canonical path, §4.6).
+        vault_root_hash: vault_root_hex(files),
     };
 
     let json = serde_json::to_string_pretty(&index)?;
@@ -116,18 +101,76 @@ fn nibble(c: u8) -> Result<u8, &'static str> {
     }
 }
 
-/// Determine which files need re-parsing based on mtime changes
+/// Format a `SystemTime` as an RFC 3339 UTC timestamp (`YYYY-MM-DDThh:mm:ssZ`).
+///
+/// Uses the Howard Hinnant civil calendar algorithm to convert Unix seconds to
+/// a proleptic Gregorian date without requiring an external crate.
+#[cfg(any(feature = "reason", test))]
+fn format_rfc3339_utc(t: std::time::SystemTime) -> String {
+    let secs = t.duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs();
+
+    let sec = (secs % 60) as u32;
+    let min = ((secs / 60) % 60) as u32;
+    let hour = ((secs / 3600) % 24) as u32;
+
+    // Days since Unix epoch (1970-01-01).
+    // Civil calendar algorithm: http://howardhinnant.github.io/date_algorithms.html
+    let z = (secs / 86400) as i64 + 719_468;
+    let era: i64 = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { y + 1 } else { y };
+
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        year, month, day, hour, min, sec
+    )
+}
+
+/// Compute the vault-level Merkle root from a slice of parsed files and
+/// return it as a 64-character lowercase hex string, or `None` if no file
+/// has a Merkle root.
+fn vault_root_hex(files: &[ParsedFile]) -> Option<String> {
+    let pairs: Vec<(&Path, ContentHash)> = files
+        .iter()
+        .filter_map(|f| f.file_merkle.as_ref().map(|fm| (f.path.as_path(), fm.root_hash)))
+        .collect();
+    if pairs.is_empty() {
+        None
+    } else {
+        let h = compute_vault_root(&pairs);
+        Some(h.iter().map(|b| format!("{:02x}", b)).collect())
+    }
+}
+
+/// Determine which files need re-parsing based on mtime changes or missing Merkle roots.
+///
+/// A `.md` file is flagged for reparse when either:
+/// - its mtime has changed since the cache was written, or
+/// - its cached entry has no [`FileMerkle`] root (i.e. was stored without
+///   Merkle data, which must be backfilled).
 pub fn files_needing_reparse(
     cached: &HashMap<PathBuf, ParsedFile>,
     current_files: &[(PathBuf, std::time::SystemTime)],
 ) -> Vec<PathBuf> {
     current_files
         .iter()
-        .filter(|(path, mtime)| {
-            cached
-                .get(path)
-                .map(|cached_file| cached_file.mtime != *mtime)
-                .unwrap_or(true)
+        .filter(|(path, mtime)| match cached.get(path) {
+            None => true,
+            Some(cached_file) => {
+                let mtime_changed = cached_file.mtime != *mtime;
+                let missing_merkle = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map_or(false, |ext| ext == "md")
+                    && cached_file.file_merkle.is_none();
+                mtime_changed || missing_merkle
+            }
         })
         .map(|(path, _)| path.clone())
         .collect()
@@ -164,6 +207,28 @@ pub enum CachedRuleType {
     Defeater,
 }
 
+/// Cached Merkle data for a single SPL block (§12.2).
+///
+/// Stored in [`TheoryCache::spl_blocks`] keyed by `"path:line"` where
+/// `path` is the relative path from vault root and `line` is the
+/// 1-indexed start line of the SPL block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplBlockCache {
+    /// AST-level BLAKE3 hash (§4.4).
+    #[serde(with = "crate::types::content_hash_serde")]
+    pub ast_hash: ContentHash,
+    /// Normalised-content BLAKE3 hash (§4.4).
+    #[serde(with = "crate::types::content_hash_serde")]
+    pub content_hash: ContentHash,
+    /// Heading text of the grounding section, if any.
+    pub section_heading: Option<String>,
+    /// Grounding hash of the enclosing section (§4.5).
+    #[serde(with = "crate::types::content_hash_serde")]
+    pub section_grounding_hash: ContentHash,
+    /// Explicit grounding declarations attached to this block.
+    pub explicit_groundings: Vec<ExplicitGrounding>,
+}
+
 /// Serialized theory cache stored in `.zetl/theory.json`.
 ///
 /// Contains everything needed to reconstruct a spindle-core `Theory` without
@@ -181,6 +246,22 @@ pub struct TheoryCache {
     pub superiorities: Vec<(String, String)>,
     /// Diagnostics collected during phases 1–4 (parse, annotate, combine, validate).
     pub diagnostics: Vec<Diagnostic>,
+    /// Vault-level Merkle root at build time (§12). Stored as a 64-char hex string.
+    /// `None` if no files were hashed.
+    #[serde(default)]
+    pub vault_root_hash: Option<String>,
+    /// RFC 3339 UTC timestamp when this cache was built.
+    #[serde(default)]
+    pub built_at: Option<String>,
+    /// Per-SPL-block Merkle cache keyed by `"path:line"` (§12.2).
+    #[serde(default)]
+    pub spl_blocks: HashMap<String, SplBlockCache>,
+    /// VCS commit hash at build time (§1.6). `None` outside a git repo.
+    #[serde(default)]
+    pub git_commit: Option<String>,
+    /// VCS dirty flag at build time (§1.6). `None` outside a git repo.
+    #[serde(default)]
+    pub git_dirty: Option<bool>,
 }
 
 /// Load theory cache from `.zetl/theory.json`.
@@ -328,13 +409,55 @@ pub fn build_theory_cache(
         rules,
         superiorities,
         diagnostics: diagnostics.to_vec(),
+        vault_root_hash: vault_root_hex(files),
+        built_at: Some(format_rfc3339_utc(std::time::SystemTime::now())),
+        spl_blocks: build_spl_block_cache(files),
+        git_commit: None,
+        git_dirty: None,
     }
+}
+
+/// Build the per-SPL-block cache from the current set of parsed files (§12.2).
+///
+/// Each entry is keyed by `"<path>:<start_line>"` and stores the Merkle hashes
+/// and grounding metadata for a single SPL block.
+#[cfg(feature = "reason")]
+fn build_spl_block_cache(files: &[ParsedFile]) -> HashMap<String, SplBlockCache> {
+    let mut result = HashMap::new();
+    for f in files {
+        if let Some(fm) = &f.file_merkle {
+            for spl_leaf in &fm.spl_leaves {
+                let key = format!("{}:{}", f.path.display(), spl_leaf.start_line);
+                let section = fm.sections.get(spl_leaf.section_index);
+                let section_heading = section.and_then(|s| {
+                    if s.heading_text.is_empty() {
+                        None
+                    } else {
+                        Some(s.heading_text.clone())
+                    }
+                });
+                let section_grounding_hash =
+                    section.map(|s| s.grounding_hash).unwrap_or([0u8; 32]);
+                result.insert(
+                    key,
+                    SplBlockCache {
+                        ast_hash: spl_leaf.ast_hash,
+                        content_hash: spl_leaf.content_hash,
+                        section_heading,
+                        section_grounding_hash,
+                        explicit_groundings: spl_leaf.explicit_groundings.clone(),
+                    },
+                );
+            }
+        }
+    }
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ParsedFile;
+    use crate::types::{FileMerkle, ParsedFile};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tempfile::TempDir;
 
@@ -350,6 +473,17 @@ mod tests {
             merkle_leaves: vec![],
             file_merkle: None,
         }
+    }
+
+    /// Helper: build a ParsedFile with a populated (non-empty) `file_merkle`.
+    fn make_parsed_file_with_merkle(rel_path: &str, mtime: SystemTime) -> ParsedFile {
+        let mut f = make_parsed_file(rel_path, mtime);
+        f.file_merkle = Some(FileMerkle {
+            root_hash: [1u8; 32],
+            sections: vec![],
+            spl_leaves: vec![],
+        });
+        f
     }
 
     #[test]
@@ -413,8 +547,14 @@ mod tests {
         let t1 = UNIX_EPOCH + Duration::from_secs(1_000_000);
         let t2 = UNIX_EPOCH + Duration::from_secs(2_000_000);
 
+        // a.md: same mtime AND has file_merkle → should NOT need reparse.
+        // b.md: changed mtime → should need reparse.
+        // c.md: new file → should need reparse.
         let cached: HashMap<PathBuf, ParsedFile> = [
-            (PathBuf::from("a.md"), make_parsed_file("a.md", t1)),
+            (
+                PathBuf::from("a.md"),
+                make_parsed_file_with_merkle("a.md", t1),
+            ),
             (PathBuf::from("b.md"), make_parsed_file("b.md", t1)),
         ]
         .into_iter()
@@ -454,17 +594,61 @@ mod tests {
     fn files_needing_reparse_unchanged_returns_empty() {
         let t = UNIX_EPOCH + Duration::from_secs(1_500_000);
 
-        let cached: HashMap<PathBuf, ParsedFile> =
-            [(PathBuf::from("only.md"), make_parsed_file("only.md", t))]
-                .into_iter()
-                .collect();
+        // Use a file with a populated file_merkle so mtime match + merkle present → no reparse.
+        let cached: HashMap<PathBuf, ParsedFile> = [(
+            PathBuf::from("only.md"),
+            make_parsed_file_with_merkle("only.md", t),
+        )]
+        .into_iter()
+        .collect();
 
         let current_files = vec![(PathBuf::from("only.md"), t)];
 
         let need_reparse = files_needing_reparse(&cached, &current_files);
         assert!(
             need_reparse.is_empty(),
-            "unchanged file should not need reparse"
+            "unchanged .md file with merkle should not need reparse"
+        );
+    }
+
+    #[test]
+    fn files_needing_reparse_md_missing_merkle_returns_file() {
+        let t = UNIX_EPOCH + Duration::from_secs(1_500_000);
+
+        // Same mtime but file_merkle: None → needs reparse for .md files.
+        let cached: HashMap<PathBuf, ParsedFile> =
+            [(PathBuf::from("note.md"), make_parsed_file("note.md", t))]
+                .into_iter()
+                .collect();
+
+        let current_files = vec![(PathBuf::from("note.md"), t)];
+
+        let need_reparse = files_needing_reparse(&cached, &current_files);
+        assert_eq!(
+            need_reparse,
+            vec![PathBuf::from("note.md")],
+            ".md file missing file_merkle should need reparse even if mtime unchanged"
+        );
+    }
+
+    #[test]
+    fn files_needing_reparse_spl_missing_merkle_unchanged_ok() {
+        let t = UNIX_EPOCH + Duration::from_secs(1_500_000);
+
+        // .spl files with file_merkle: None and unchanged mtime should NOT trigger reparse.
+        let cached: HashMap<PathBuf, ParsedFile> = [(
+            PathBuf::from("theory.spl"),
+            make_parsed_file("theory.spl", t),
+        )]
+        .into_iter()
+        .collect();
+
+        let current_files = vec![(PathBuf::from("theory.spl"), t)];
+
+        let need_reparse = files_needing_reparse(&cached, &current_files);
+        assert!(
+            need_reparse.is_empty(),
+            ".spl file without merkle and unchanged mtime should not need reparse"
         );
     }
 
@@ -500,6 +684,11 @@ mod tests {
             rules,
             superiorities: vec![],
             diagnostics: vec![],
+            vault_root_hash: None,
+            built_at: None,
+            spl_blocks: HashMap::new(),
+            git_commit: None,
+            git_dirty: None,
         }
     }
 
@@ -639,6 +828,100 @@ mod tests {
         let files = vec![make_spl_file("a.md", t)];
 
         assert!(!theory_cache_valid(&cache, &files));
+    }
+
+    #[test]
+    fn theory_cache_v2_fields_round_trip() {
+        let dir = TempDir::new().unwrap();
+        let vault = dir.path();
+
+        let mut mtimes = HashMap::new();
+        mtimes.insert(PathBuf::from("a.md"), 1_700_000_000.0);
+
+        let mut spl_blocks = HashMap::new();
+        spl_blocks.insert(
+            "a.md:5".to_string(),
+            SplBlockCache {
+                ast_hash: [0xabu8; 32],
+                content_hash: [0xcdu8; 32],
+                section_heading: Some("Background".to_string()),
+                section_grounding_hash: [0xefu8; 32],
+                explicit_groundings: vec![],
+            },
+        );
+
+        let cache = TheoryCache {
+            version: THEORY_CACHE_VERSION,
+            spl_file_mtimes: mtimes,
+            rules: vec![],
+            superiorities: vec![],
+            diagnostics: vec![],
+            vault_root_hash: Some("ab".repeat(32)),
+            built_at: Some("2024-01-15T12:34:56Z".to_string()),
+            spl_blocks,
+            git_commit: Some("abc123".to_string()),
+            git_dirty: Some(false),
+        };
+
+        save_theory_cache(vault, &cache).unwrap();
+        let loaded = load_theory_cache(vault)
+            .unwrap()
+            .expect("theory cache should exist");
+
+        assert_eq!(loaded.vault_root_hash, Some("ab".repeat(32)));
+        assert_eq!(loaded.built_at, Some("2024-01-15T12:34:56Z".to_string()));
+        assert_eq!(loaded.git_commit, Some("abc123".to_string()));
+        assert_eq!(loaded.git_dirty, Some(false));
+
+        let block = loaded.spl_blocks.get("a.md:5").expect("spl block should exist");
+        assert_eq!(block.ast_hash, [0xabu8; 32]);
+        assert_eq!(block.content_hash, [0xcdu8; 32]);
+        assert_eq!(block.section_heading, Some("Background".to_string()));
+        assert_eq!(block.section_grounding_hash, [0xefu8; 32]);
+    }
+
+    #[test]
+    fn format_rfc3339_utc_epoch() {
+        let t = UNIX_EPOCH;
+        assert_eq!(format_rfc3339_utc(t), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn format_rfc3339_utc_known_date() {
+        // 2024-01-15T00:00:00Z = 1705276800 seconds since epoch
+        let t = UNIX_EPOCH + Duration::from_secs(1_705_276_800);
+        assert_eq!(format_rfc3339_utc(t), "2024-01-15T00:00:00Z");
+    }
+
+    #[test]
+    fn theory_cache_v2_missing_optional_fields_deserialise_ok() {
+        // A v2 cache written without the optional fields should still load.
+        let dir = TempDir::new().unwrap();
+        let cache_dir = dir.path().join(CACHE_DIR);
+        std::fs::create_dir_all(&cache_dir).unwrap();
+
+        let json = serde_json::json!({
+            "version": THEORY_CACHE_VERSION,
+            "spl_file_mtimes": {},
+            "rules": [],
+            "superiorities": [],
+            "diagnostics": []
+            // vault_root_hash, built_at, spl_blocks, git_commit, git_dirty absent
+        });
+        std::fs::write(
+            cache_dir.join(THEORY_CACHE_FILE),
+            serde_json::to_string(&json).unwrap(),
+        )
+        .unwrap();
+
+        let loaded = load_theory_cache(dir.path())
+            .unwrap()
+            .expect("should load despite missing optional fields");
+        assert!(loaded.vault_root_hash.is_none());
+        assert!(loaded.built_at.is_none());
+        assert!(loaded.spl_blocks.is_empty());
+        assert!(loaded.git_commit.is_none());
+        assert!(loaded.git_dirty.is_none());
     }
 
     #[test]
