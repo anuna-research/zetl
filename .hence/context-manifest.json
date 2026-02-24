@@ -1,12 +1,12 @@
 {
-  "task_id": "explicit-grounding-drift",
+  "task_id": "perf-tests",
   "token_budget": 8000,
-  "tokens_used": 473,
+  "tokens_used": 446,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend drift detection to cover explicit source metadata groundings per REQ-043b. For each SPL block with explicit groundings (in ExplicitGrounding): 1) Resolve each source_ref to a current Merkle leaf hash (re-resolve against current vault state), 2) Compare to cached target_leaf_hash in theory.json spl_blocks explicit_groundings, 3) If target hash changed AND the SPL construct (fact or rule) is unchanged → explicit drift Warning. The DriftDiagnostic has DriftType::ExplicitDrift { construct, source_ref }. If target not found (hash no longer in vault) — this is a static validation error (source_validation), NOT drift. Only report explicit drift when the target EXISTS but has a different hash. Update detect_section_drift to also handle explicit groundings, or create detect_explicit_drift as a separate function. Merge explicit drift results into the same Vec<DriftDiagnostic> returned by the drift detection phase. Wire into cmd_check alongside section drift.",
-      "token_cost": 243,
+      "content": "Write performance and memory benchmark tests for TEST-046 (Merkle construction overhead ≤ 20%), TEST-047 (memory overhead ≤ 30 MB for 10k files), TEST-048 (cache size ≤ 5 MB for 10k files). For TEST-046: generate a synthetic vault with 1,000+ Markdown files (using a loop in the test setup), time zetl index with and without Merkle construction; verify ratio ≤ 1.2. For TEST-047: measure peak RSS before and after Merkle construction on 10k synthetic files; verify delta ≤ 30 MB. For TEST-048: check .zetl/ directory size after indexing 10k files; verify additional size ≤ 5 MB over baseline. Mark perf tests with #[ignore] so they don't run in CI by default (run with cargo test -- --ignored). Document how to run: 'cargo test --features reason -- --ignored perf'. Note: these are smoke tests, not microbenchmarks — sufficient for regression detection.",
+      "token_cost": 216,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T04:44:08Z"
+  "constructed_at": "2026-02-24T04:52:11Z"
 }
