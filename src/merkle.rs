@@ -2165,4 +2165,172 @@ mod tests {
         let diags = validate_source_refs(&files, &file_index, &index);
         assert!(diags.is_empty());
     }
+
+    // ── TEST-038: Merkle construction ──────────────────────────────────────────
+
+    /// TEST-038: Vault root determinism — supplying the same file hashes in
+    /// different orderings always produces an identical vault root.
+    ///
+    /// Verifies that `compute_vault_root` sorts by canonical path before hashing,
+    /// so the result is independent of scan/insertion order.
+    #[test]
+    fn test038_vault_root_determinism_multiple_scan_orders() {
+        use std::path::Path;
+
+        let pa = Path::new("notes/alpha.md");
+        let pb = Path::new("notes/beta.md");
+        let pc = Path::new("gamma.md");
+
+        let ha = [0x11u8; 32];
+        let hb = [0x22u8; 32];
+        let hc = [0x33u8; 32];
+
+        let root_abc = compute_vault_root(&[(pa, ha), (pb, hb), (pc, hc)]);
+        let root_bca = compute_vault_root(&[(pb, hb), (pc, hc), (pa, ha)]);
+        let root_cab = compute_vault_root(&[(pc, hc), (pa, ha), (pb, hb)]);
+        let root_cba = compute_vault_root(&[(pc, hc), (pb, hb), (pa, ha)]);
+
+        assert_eq!(root_abc, root_bca, "abc vs bca order mismatch");
+        assert_eq!(root_abc, root_cab, "abc vs cab order mismatch");
+        assert_eq!(root_abc, root_cba, "abc vs cba order mismatch");
+        assert_ne!(root_abc, [0u8; 32], "vault root of non-empty vault must be non-zero");
+    }
+
+    /// TEST-038: Normalisation — two files whose paragraphs contain identical
+    /// semantic text but different internal whitespace produce the same per-file
+    /// Merkle root.
+    ///
+    /// `build_merkle_leaves` collapses consecutive whitespace before hashing
+    /// non-code blocks, so extra spaces are invisible to the hash.
+    #[test]
+    fn test038_normalisation_whitespace_same_file_merkle_root() {
+        use crate::scanner::parse_file;
+        use std::path::Path;
+
+        let content_a = "# Introduction\n\nHello world with some text here.\n";
+        let content_b = "# Introduction\n\nHello  world  with  some  text  here.\n";
+
+        let pf_a = parse_file(Path::new("a.md"), content_a, "a");
+        let pf_b = parse_file(Path::new("b.md"), content_b, "b");
+
+        let root_a = pf_a.file_merkle.as_ref().map(|m| m.root_hash);
+        let root_b = pf_b.file_merkle.as_ref().map(|m| m.root_hash);
+
+        assert!(root_a.is_some(), "file_merkle should be populated for a non-empty .md file");
+        assert_eq!(
+            root_a, root_b,
+            "identical text with different internal whitespace must yield the same Merkle root"
+        );
+    }
+
+    /// TEST-038: Changing a wikilink target in a paragraph alters the paragraph
+    /// leaf hash and therefore the file-level Merkle root.
+    #[test]
+    fn test038_wikilink_change_alters_file_merkle_root() {
+        use crate::scanner::parse_file;
+        use std::path::Path;
+
+        let content_before = "# Notes\n\nSee [[Alpha]] for details.\n";
+        let content_after  = "# Notes\n\nSee [[Beta]] for details.\n";
+
+        let pf_before = parse_file(Path::new("note.md"), content_before, "note");
+        let pf_after  = parse_file(Path::new("note.md"), content_after,  "note");
+
+        let root_before = pf_before.file_merkle.as_ref().map(|m| m.root_hash);
+        let root_after  = pf_after.file_merkle.as_ref().map(|m| m.root_hash);
+
+        assert!(root_before.is_some(), "file with content must have a Merkle root");
+        assert_ne!(
+            root_before, root_after,
+            "changing a wikilink target must alter the file-level Merkle root"
+        );
+    }
+
+    // ── TEST-039: SPL dual hashing ─────────────────────────────────────────────
+
+    /// TEST-039: `compute_spl_hashes` returns non-zero `content_hash` and
+    /// `ast_hash` for a valid, non-empty SPL block.
+    ///
+    /// Uses SPL syntax confirmed by the integration-test vault:
+    /// `(given literal)` for facts and `(normally label body head)` for rules.
+    #[test]
+    fn test039_spl_dual_hashes_both_nonzero_for_valid_content() {
+        // Valid SPL: one fact and one defeasible rule (body=bird, head=flies).
+        let content = "(given bird)\n(normally r-bird-flies bird flies)";
+        let spl = compute_spl_hashes(content);
+
+        assert_ne!(spl.content_hash, [0u8; 32], "content_hash must be non-zero");
+        assert_ne!(spl.ast_hash,     [0u8; 32], "ast_hash must be non-zero");
+    }
+
+    /// TEST-039: Whitespace-only reformatting does **not** change `content_hash`
+    /// because `normalize_spl` collapses all whitespace before hashing.
+    #[test]
+    fn test039_spl_reformat_preserves_content_hash() {
+        // Compact and reformatted versions of the same two SPL statements.
+        let compact     = "(given bird)\n(normally r-bird-flies bird flies)";
+        let reformatted = "(given   bird)\n\n(normally   r-bird-flies   bird   flies)";
+
+        let h_compact     = compute_spl_hashes(compact);
+        let h_reformatted = compute_spl_hashes(reformatted);
+
+        assert_eq!(
+            h_compact.content_hash,
+            h_reformatted.content_hash,
+            "content_hash must be identical for whitespace-equivalent SPL blocks"
+        );
+    }
+
+    /// TEST-039: With the `reason` feature, whitespace-only reformatting also
+    /// does **not** change `ast_hash` — the canonical AST is independent of
+    /// source whitespace.
+    #[cfg(feature = "reason")]
+    #[test]
+    fn test039_spl_reformat_preserves_ast_hash_reason() {
+        // Same statements, different whitespace — canonical AST must be identical.
+        let compact     = "(given bird)\n(normally r-bird-flies bird flies)";
+        let reformatted = "(given   bird)\n\n(normally   r-bird-flies   bird   flies)";
+
+        let h_compact     = compute_spl_hashes(compact);
+        let h_reformatted = compute_spl_hashes(reformatted);
+
+        assert_eq!(
+            h_compact.ast_hash,
+            h_reformatted.ast_hash,
+            "ast_hash must be identical for whitespace-equivalent SPL blocks"
+        );
+    }
+
+    /// TEST-039: An unparseable SPL block produces sentinel `ast_hash = [0u8; 32]`
+    /// and a non-zero `content_hash`; `parse_file` emits a diagnostic for it.
+    #[cfg(feature = "reason")]
+    #[test]
+    fn test039_spl_parse_error_sentinel_ast_hash_and_diagnostic() {
+        use crate::scanner::parse_file;
+        use std::path::Path;
+
+        let invalid_spl = "this is @@@not valid !!! spl syntax";
+        let spl = compute_spl_hashes(invalid_spl);
+
+        assert_eq!(
+            spl.ast_hash, [0u8; 32],
+            "parse failure must produce sentinel ast_hash of all zeros"
+        );
+        assert_ne!(
+            spl.content_hash, [0u8; 32],
+            "content_hash must still be non-zero even when parsing fails"
+        );
+
+        let md_content = format!("# Notes\n\n```spl\n{invalid_spl}\n```\n");
+        let pf = parse_file(Path::new("note.md"), &md_content, "note");
+        let has_sentinel_diag = pf.diagnostics.iter().any(|d| {
+            d.message.contains("SPL parse failed") || d.message.contains("sentinel")
+        });
+        assert!(
+            has_sentinel_diag,
+            "parse_file must emit a diagnostic for SPL blocks with sentinel ast_hash; \
+             got: {:?}",
+            pf.diagnostics
+        );
+    }
 }

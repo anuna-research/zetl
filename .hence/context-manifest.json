@@ -1,12 +1,12 @@
 {
-  "task_id": "integration-tests-blocks",
+  "task_id": "unit-tests-p0",
   "token_budget": 8000,
-  "tokens_used": 420,
+  "tokens_used": 496,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Write integration tests for the zetl blocks command covering all TEST-049 scenarios. Use assert_cmd + tempfile to create vault fixtures. Forward mode tests: list blocks for a file with heading/paragraph/table/spl leaf types; verify SPL leaves have spl_hashes; verify --type paragraph filter; verify page not found exits 1; verify hash from forward mode is usable as source metadata (roundtrip). Reverse mode tests: resolve known hash to correct file/lines/type; hash not found exits 1; ambiguous prefix exits 1 with candidates; duplicate content (create two identical paragraphs) exits 0 with both locations; prefix < 8 chars exits 1; full hash roundtrip (forward → resolve → same block). Use the demo-vault/decisions/Redis vs Memcached.md file as a fixture.",
-      "token_cost": 190,
+      "content": "Write unit tests for the P0 Merkle infrastructure covering TEST-038 (Merkle construction), TEST-039 (SPL dual hashing), TEST-040 (two-tier cache invalidation), TEST-041 (SPL theory cache invalidation). For TEST-038: test vault root determinism (scan in different orders → same root), test normalisation (two files with identical text but different whitespace → same Merkle root), test that wikilink changes alter Merkle hash. For TEST-039: test content_hash and ast_hash computed and non-zero, test reformatting changes content_hash but not ast_hash (compare two logically identical SPL blocks), test parse error → sentinel ast_hash + diagnostic. For TEST-040: use tempfile vaults, test Tier 1 hit (mtime unchanged → no hashing call), test Tier 2 hit (touch file, same content → no downstream reprocess), test Tier 2 miss (edit content → full reprocess). For TEST-041: test prose edit → theory cache valid (no rebuild), test SPL reformat → theory cache valid, test SPL add fact → theory cache invalid. Tests in tests/ or src/ inline as #[cfg(test)].",
+      "token_cost": 266,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T05:47:50Z"
+  "constructed_at": "2026-02-24T05:52:10Z"
 }

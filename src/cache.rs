@@ -1351,4 +1351,186 @@ mod tests {
             "standalone .spl has no section grounding hash"
         );
     }
+
+    // ── TEST-040: Two-tier cache invalidation with tempfile vaults ────────────
+
+    /// TEST-040 Tier 1 hit: mtime unchanged and `file_merkle` populated →
+    /// the file appears in neither `needs_full_reparse` nor `content_unchanged`.
+    ///
+    /// Uses a real tempfile vault so that `scan_vault` populates a genuine
+    /// `ParsedFile` with a real mtime, mirroring production behaviour.
+    #[test]
+    fn test040_tier1_hit_mtime_unchanged_no_reparse() {
+        use crate::scanner::scan_vault;
+
+        let dir = TempDir::new().unwrap();
+        let vault = dir.path();
+
+        std::fs::write(vault.join("note.md"), "# Hello\n\nWorld.\n").unwrap();
+
+        // Scan once to obtain the real ParsedFile (with genuine mtime).
+        let files = scan_vault(vault, &[]).unwrap();
+        assert_eq!(files.len(), 1, "vault must contain exactly one file");
+        let parsed = &files[0];
+
+        // Build the cached map from that scan result.
+        let cached: HashMap<PathBuf, ParsedFile> =
+            [(parsed.path.clone(), parsed.clone())].into_iter().collect();
+
+        // Re-present the same file with unchanged mtime and the same Merkle root.
+        let fresh_root = parsed.file_merkle.as_ref().map(|fm| fm.root_hash);
+        let current_files = vec![(parsed.path.clone(), parsed.mtime, fresh_root)];
+
+        let (full_reparse, content_unchanged) = files_needing_reparse(&cached, &current_files);
+
+        assert!(
+            full_reparse.is_empty(),
+            "Tier 1 hit: unchanged mtime must not trigger full reparse"
+        );
+        assert!(
+            content_unchanged.is_empty(),
+            "Tier 1 hit: unchanged mtime must not appear in content_unchanged either"
+        );
+    }
+
+    /// TEST-040 Tier 2 hit: mtime changed but Merkle root identical (file was
+    /// touched without editing) → file appears in `content_unchanged`, not in
+    /// `needs_full_reparse`.
+    #[test]
+    fn test040_tier2_hit_touch_same_content_no_reprocess() {
+        let t1 = UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let t2 = UNIX_EPOCH + Duration::from_secs(2_000_000); // later mtime (touch)
+        let root = [0x55u8; 32];
+
+        let mut cached_file = make_parsed_file_with_merkle("doc.md", t1);
+        cached_file.file_merkle.as_mut().unwrap().root_hash = root;
+
+        let cached: HashMap<PathBuf, ParsedFile> =
+            [(PathBuf::from("doc.md"), cached_file)].into_iter().collect();
+
+        // Same Merkle root despite newer mtime — content is byte-for-byte identical.
+        let current_files = vec![(PathBuf::from("doc.md"), t2, Some(root))];
+
+        let (full_reparse, content_unchanged) = files_needing_reparse(&cached, &current_files);
+
+        assert!(
+            full_reparse.is_empty(),
+            "Tier 2 hit: same Merkle root must not trigger full reparse"
+        );
+        assert_eq!(
+            content_unchanged,
+            vec![PathBuf::from("doc.md")],
+            "Tier 2 hit: file with same Merkle root must appear in content_unchanged"
+        );
+    }
+
+    /// TEST-040 Tier 2 miss: mtime changed **and** Merkle root differs (file was
+    /// genuinely edited) → file appears in `needs_full_reparse`.
+    #[test]
+    fn test040_tier2_miss_content_edited_full_reprocess() {
+        let t1 = UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let t2 = UNIX_EPOCH + Duration::from_secs(2_000_000);
+        let old_root = [0x11u8; 32];
+        let new_root = [0x22u8; 32]; // different → file was edited
+
+        let mut cached_file = make_parsed_file_with_merkle("report.md", t1);
+        cached_file.file_merkle.as_mut().unwrap().root_hash = old_root;
+
+        let cached: HashMap<PathBuf, ParsedFile> =
+            [(PathBuf::from("report.md"), cached_file)].into_iter().collect();
+
+        let current_files = vec![(PathBuf::from("report.md"), t2, Some(new_root))];
+
+        let (full_reparse, content_unchanged) = files_needing_reparse(&cached, &current_files);
+
+        assert_eq!(
+            full_reparse,
+            vec![PathBuf::from("report.md")],
+            "Tier 2 miss: changed Merkle root must trigger full reparse"
+        );
+        assert!(
+            content_unchanged.is_empty(),
+            "Tier 2 miss: file must not appear in content_unchanged"
+        );
+    }
+
+    // ── TEST-041: Theory cache SPL invalidation ───────────────────────────────
+
+    /// TEST-041: A prose-only edit (file Merkle root changes, SPL AST hashes
+    /// unchanged) must leave the theory cache valid.
+    ///
+    /// The `theory_cache_valid` function compares only SPL AST hashes, not the
+    /// overall file Merkle root, so prose edits are transparent to it.
+    #[test]
+    fn test041_prose_edit_theory_cache_valid() {
+        // SPL block hash at "notes/theory.md:12" is the same before and after.
+        let ast_hash: ContentHash = [0xabu8; 32];
+
+        let current = make_spl_hashes(&[("notes/theory.md:12", ast_hash)]);
+
+        let mut spl_blocks = HashMap::new();
+        spl_blocks.insert("notes/theory.md:12".to_string(), make_cached_spl_block(ast_hash));
+        let theory = make_theory_cache_spl(spl_blocks);
+
+        assert!(
+            theory_cache_valid(&current, &theory),
+            "prose-only edit must not invalidate the theory cache"
+        );
+    }
+
+    /// TEST-041: Whitespace-only reformatting of an SPL block (same `ast_hash`
+    /// under the `reason` feature) must leave the theory cache valid.
+    ///
+    /// The `reason` feature computes `ast_hash` from the canonical parsed AST,
+    /// so pure whitespace changes do not alter it and the cache stays valid.
+    #[cfg(feature = "reason")]
+    #[test]
+    fn test041_spl_reformat_theory_cache_valid_reason() {
+        use crate::merkle::compute_spl_hashes;
+
+        // Valid SPL using spindle syntax: (normally label body head).
+        let compact     = "(given bird)\n(normally r-bird-flies bird flies)";
+        let reformatted = "(given   bird)\n\n(normally   r-bird-flies   bird   flies)";
+
+        let ast_hash_before = compute_spl_hashes(compact).ast_hash;
+        let ast_hash_after  = compute_spl_hashes(reformatted).ast_hash;
+
+        // Sanity: the reason feature must preserve ast_hash across whitespace changes.
+        assert_eq!(
+            ast_hash_before, ast_hash_after,
+            "ast_hash must be stable across whitespace-only changes (reason feature)"
+        );
+
+        // The theory cache was built with the pre-reformat hash.
+        let current = make_spl_hashes(&[("theory.md:5", ast_hash_after)]);
+        let mut spl_blocks = HashMap::new();
+        spl_blocks.insert("theory.md:5".to_string(), make_cached_spl_block(ast_hash_before));
+
+        assert!(
+            theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)),
+            "SPL whitespace-only reformat must not invalidate the theory cache (reason feature)"
+        );
+    }
+
+    /// TEST-041: Adding a new fact to an existing SPL block changes its `ast_hash`
+    /// and therefore invalidates the theory cache.
+    #[test]
+    fn test041_spl_add_fact_invalidates_theory_cache() {
+        // Simulate two scans: before and after adding a new fact.
+        let before_ast: ContentHash = [0x01u8; 32]; // old ast_hash
+        let after_ast:  ContentHash = [0x02u8; 32]; // new ast_hash (fact was added)
+
+        // Theory cache records the pre-change hash.
+        let mut spl_blocks = HashMap::new();
+        spl_blocks.insert("theory.md:5".to_string(), make_cached_spl_block(before_ast));
+        let theory = make_theory_cache_spl(spl_blocks);
+
+        // Current scan sees the post-change hash.
+        let current = make_spl_hashes(&[("theory.md:5", after_ast)]);
+
+        assert!(
+            !theory_cache_valid(&current, &theory),
+            "adding a fact to an SPL block must invalidate the theory cache"
+        );
+    }
 }
