@@ -1,12 +1,12 @@
 {
-  "task_id": "observability",
+  "task_id": "blocks-forward",
   "token_budget": 8000,
-  "tokens_used": 449,
+  "tokens_used": 484,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement verbose observability output per OBS-007, OBS-008, OBS-009. OBS-007 (zetl index --verbose): emit to stderr: files hashed / files skipped (mtime hit) / files with content-hash match (touch hit); total leaf nodes; SPL leaves with dual hashing; BLAKE3 hashing time (ms); section detection and grounding hash time (ms). OBS-008 (zetl check summary): add to summary JSON and table: total_spl_blocks, drifted_blocks_warning, drifted_blocks_info, explicitly_grounded_facts, broken_groundings. OBS-009 (zetl index --verbose and zetl reason status --verbose): emit cache efficiency stats: tier1_hits (mtime), tier1_misses, tier2_hits (hash match), tier2_misses (actual change), theory_cache_hit / theory_cache_miss. Add these counters to the scan/index pipeline. Output to stderr so JSON stdout is unaffected. Wire --verbose flag into cmd_index and cmd_reason_status in main.rs.",
-      "token_cost": 219,
+      "content": "Implement the zetl blocks <page> command (forward mode) per REQ-045 and CON-020. New subcommand BlocksArgs in cli.rs with: page: Option<String>, --type <TYPE> filter (heading/paragraph/spl/code/table/list/blockquote/frontmatter/all), --resolve <HASH> (mutex with page). Forward mode implementation in main.rs cmd_blocks: 1) Resolve page name using same case-insensitive wikilink matching as SPEC-001 §3.2, 2) Load the Merkle leaf data from the index cache (or re-index if stale), 3) For each leaf, output: index (0-based), type (with level for headings), lines [start, end], hash (hex BLAKE3), text (first 200 chars of normalised content), spl_hashes if SplBlock. JSON output matches CON-020 forward mode schema exactly, including file_hash and block_count at top level. Table output per CON-020 example. Apply --type filter before outputting. Exit code 0 on success, 1 if page not found. Require zetl index to have been run — if cache is stale or missing, auto-re-index first (consistent with other query commands).",
+      "token_cost": 254,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T03:58:49Z"
+  "constructed_at": "2026-02-24T04:10:49Z"
 }
