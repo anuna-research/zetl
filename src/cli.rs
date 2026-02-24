@@ -183,6 +183,12 @@ pub enum Command {
     View {
         /// Page title to open (launches a page picker when omitted)
         page: Option<String>,
+        /// Lines shown per context card in non-focused mode (1–20)
+        #[arg(long, default_value = "5", value_parser = clap::value_parser!(u8).range(1..=20), value_name = "N")]
+        context_lines: u8,
+        /// Percentage of terminal columns allocated to the main pane (30–80)
+        #[arg(long, default_value = "58", value_parser = clap::value_parser!(u8).range(30..=80), value_name = "pct")]
+        main_width: u8,
     },
 
     /// Defeasible reasoning over vault-wide SPL
