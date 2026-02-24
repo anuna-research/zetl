@@ -36,3 +36,7 @@ tempfile = "3"
 [[test]]
 name = "reason_integration"
 required-features = ["reason"]
+
+[[test]]
+name = "vcs_independence"
+required-features = ["reason"]

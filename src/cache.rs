@@ -1,5 +1,6 @@
 use crate::merkle::{compute_spl_hashes, compute_vault_root};
 use crate::types::{ContentHash, Diagnostic, ExplicitGrounding, ParsedFile};
+use crate::vcs::get_git_metadata;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -377,6 +378,7 @@ pub fn build_theory_cache(
     diagnostics: &[Diagnostic],
     files: &[ParsedFile],
     groundings_by_block: &HashMap<String, Vec<ExplicitGrounding>>,
+    vault_root: &Path,
 ) -> TheoryCache {
     use spindle_core::prelude::{MetaValue, RuleType as CoreRuleType};
 
@@ -447,6 +449,8 @@ pub fn build_theory_cache(
         .map(|s| (s.superior.clone(), s.inferior.clone()))
         .collect();
 
+    let (git_commit, git_dirty) = get_git_metadata(vault_root);
+
     TheoryCache {
         version: THEORY_CACHE_VERSION,
         spl_file_mtimes,
@@ -456,8 +460,8 @@ pub fn build_theory_cache(
         vault_root_hash: vault_root_hex(files),
         built_at: Some(format_rfc3339_utc(std::time::SystemTime::now())),
         spl_blocks: build_spl_block_cache(files, groundings_by_block),
-        git_commit: None,
-        git_dirty: None,
+        git_commit,
+        git_dirty,
     }
 }
 
@@ -1149,7 +1153,7 @@ mod tests {
         });
 
         let theory = Theory::new();
-        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new());
+        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new(), std::path::Path::new("."));
 
         let block = cache
             .spl_blocks
@@ -1201,7 +1205,7 @@ mod tests {
         });
 
         let theory = Theory::new();
-        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new());
+        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new(), std::path::Path::new("."));
 
         let block = cache
             .spl_blocks
@@ -1238,7 +1242,7 @@ mod tests {
         f.file_merkle = None; // standalone .spl has no Merkle tree
 
         let theory = Theory::new();
-        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new());
+        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new(), std::path::Path::new("."));
 
         // Standalone .spl files appear in spl_blocks (tracked for cache invalidation)
         // but with null section fields (§4.7).

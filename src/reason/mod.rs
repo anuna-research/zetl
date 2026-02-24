@@ -1166,6 +1166,7 @@ mod tests {
             &result.diagnostics,
             &files,
             &result.groundings_by_block,
+            std::path::Path::new("."),
         );
 
         // Reconstruct from cache and re-reason.
@@ -1232,6 +1233,7 @@ mod tests {
             &result.diagnostics,
             &files,
             &result.groundings_by_block,
+            std::path::Path::new("."),
         );
         let cached_result = build_theory_from_cache(&cache).unwrap();
 
@@ -1295,6 +1297,7 @@ mod tests {
             &result.diagnostics,
             &files,
             &result.groundings_by_block,
+            vault,
         );
         save_theory_cache(vault, &cache).unwrap();
 
@@ -1459,6 +1462,7 @@ mod tests {
             &result.diagnostics,
             &files,
             &result.groundings_by_block,
+            vault,
         );
         save_theory_cache(vault, &cache).unwrap();
 

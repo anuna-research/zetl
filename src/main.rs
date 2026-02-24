@@ -1469,6 +1469,7 @@ fn build_or_load_theory(
             &result.diagnostics,
             &pipeline.files,
             &result.groundings_by_block,
+            &pipeline.vault_root,
         );
         if let Err(e) = save_theory_cache(&pipeline.vault_root, &cache) {
             if verbose > 0 {
@@ -3573,6 +3574,9 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
     // theory_built_at comes from the theory cache's built_at field.
     let theory_built_at = theory_cache.as_ref().and_then(|tc| tc.built_at.clone());
 
+    // Read fresh VCS metadata (§1.6). Always reflects current environment, not cached state.
+    let (git_commit, git_dirty) = zetl::vcs::get_git_metadata(&pipeline.vault_root);
+
     // Normalize literal input: handle ~ prefix for negation
     let literal_str = literal_input.trim();
 
@@ -3681,6 +3685,8 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
         literal: literal_str.to_string(),
         vault_root_hash,
         theory_built_at,
+        git_commit,
+        git_dirty,
         conclusions: conclusion_entries,
         source_pages: source_pages.clone(),
         cross_references: cross_refs.clone(),
@@ -3749,6 +3755,10 @@ struct ProvenanceOutput {
     literal: String,
     vault_root_hash: Option<String>,
     theory_built_at: Option<String>,
+    /// Current HEAD commit hash, or `null` when the vault is not in a Git repo (§1.6).
+    git_commit: Option<String>,
+    /// `true` if the working tree has uncommitted changes; `null` outside a Git repo (§1.6).
+    git_dirty: Option<bool>,
     conclusions: Vec<ProvenanceConclusionEntry>,
     source_pages: Vec<String>,
     cross_references: Vec<ProvenanceCrossRef>,
