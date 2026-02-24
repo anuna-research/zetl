@@ -22,30 +22,6 @@ const BRIDGE_WIDTH: u16 = 3;
 /// Maximum navigation history depth (REQ-069).
 const MAX_HISTORY_DEPTH: usize = 50;
 
-// ── ContextMode ───────────────────────────────────────────────────────────
-
-/// Which set of context cards to display in the right pane.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ContextMode {
-    /// Show forward links from the current page (default).
-    #[default]
-    Forward,
-    /// Show backlinks — pages that link to the current page.
-    Back,
-    /// Show both forward links and backlinks separated by a divider.
-    Both,
-}
-
-impl ContextMode {
-    pub fn cycle(self) -> Self {
-        match self {
-            ContextMode::Forward => ContextMode::Back,
-            ContextMode::Back => ContextMode::Both,
-            ContextMode::Both => ContextMode::Forward,
-        }
-    }
-}
-
 // ── FocusState ────────────────────────────────────────────────────────────
 
 /// Whether the user is scrolling freely or has focused a specific wikilink.
@@ -171,9 +147,6 @@ pub struct ViewApp {
     /// Complete set of vault page titles for dead-link detection.
     pub page_set: HashSet<String>,
 
-    /// Which context cards to show in the right pane.
-    pub context_mode: ContextMode,
-
     /// Whether a wikilink is focused for navigation.
     pub focus_state: FocusState,
 
@@ -297,7 +270,6 @@ impl ViewApp {
             vault_root,
             file_index,
             page_set,
-            context_mode: ContextMode::default(),
             focus_state: FocusState::default(),
             context_lines,
             main_width,
@@ -446,6 +418,9 @@ impl ViewApp {
     // ── Context pane ──────────────────────────────────────────────────────
 
     /// Render context cards in the right pane and populate `card_rows` (REQ-065).
+    ///
+    /// The pane is split: forward-link cards fill the upper portion, and a
+    /// compact backlinks list is pinned to the bottom.
     fn draw_context_pane(&mut self, frame: &mut Frame) {
         let area = self.context_pane;
         if area.is_empty() {
@@ -453,26 +428,77 @@ impl ViewApp {
         }
         self.card_rows.clear();
 
-        match self.context_mode {
-            ContextMode::Forward => {
-                let cards = self.compute_forward_card_data();
-                self.render_cards(frame, area, &cards);
-            }
-            ContextMode::Back => {
-                let cards = self.compute_back_card_data();
-                self.render_back_cards(frame, area, &cards);
-            }
-            ContextMode::Both => {
-                // Forward links in top half, separator, backlinks in lower portion.
-                let fwd_cards = self.compute_forward_card_data();
-                let back_cards = self.compute_back_card_data();
-                self.render_both_cards(frame, area, &fwd_cards, &back_cards);
-            }
+        // Compute how much vertical space the backlinks section needs.
+        let back_count = self
+            .backlink_map
+            .get(&self.current_page.clone())
+            .map(|v| v.len())
+            .unwrap_or(0);
+        const MAX_BACK_VISIBLE: usize = 5;
+        let back_section_h: u16 = if back_count == 0 {
+            0
+        } else {
+            let rows = back_count.min(MAX_BACK_VISIBLE);
+            let overflow = usize::from(back_count > MAX_BACK_VISIBLE);
+            (1 + rows + overflow) as u16 // header + entries + optional "↓ N more"
+        };
+
+        let fwd_h = area.height.saturating_sub(back_section_h);
+        let fwd_area = Rect { height: fwd_h, ..area };
+        let back_area = Rect { y: area.y + fwd_h, height: back_section_h, ..area };
+
+        let cards = self.compute_forward_card_data(fwd_h);
+        self.render_cards(frame, fwd_area, &cards);
+
+        if back_section_h > 0 {
+            self.render_backlinks_list(frame, back_area, MAX_BACK_VISIBLE);
         }
     }
 
+    /// Render the compact backlinks section pinned to the bottom of the context pane.
+    fn render_backlinks_list(&self, frame: &mut Frame, area: Rect, max_visible: usize) {
+        if area.height == 0 {
+            return;
+        }
+        let mut entries: Vec<(String, u32)> = self
+            .backlink_map
+            .get(&self.current_page)
+            .cloned()
+            .unwrap_or_default();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let mut lines: Vec<Line<'static>> = Vec::new();
+
+        // Section header doubles as a visual separator from the cards above.
+        lines.push(Line::styled(
+            format!(" ← {} backlink{} ", entries.len(), if entries.len() == 1 { "" } else { "s" }),
+            Style::default().bold().reversed(),
+        ));
+
+        for (page, line_num) in entries.iter().take(max_visible) {
+            let text = if *line_num > 0 {
+                format!("  ← {}  · {}", page, line_num)
+            } else {
+                format!("  ← {}", page)
+            };
+            lines.push(Line::raw(text));
+        }
+
+        if entries.len() > max_visible {
+            lines.push(Line::styled(
+                format!("  ↓ {} more", entries.len() - max_visible),
+                Style::default().dim(),
+            ));
+        }
+
+        frame.render_widget(Paragraph::new(lines), area);
+    }
+
     /// Compute card data for forward-link mode.
-    fn compute_forward_card_data(&mut self) -> Vec<CardData> {
+    ///
+    /// `fwd_pane_height` is the height of the forward-card area (which may be
+    /// smaller than the full context pane when a backlinks section is present).
+    fn compute_forward_card_data(&mut self, fwd_pane_height: u16) -> Vec<CardData> {
         let visible = self.visible_links_snapshot();
         let link_colors = LinkColors::new(self.color_mode);
         let is_no_color = self.color_mode == ColorMode::NoColor;
@@ -484,11 +510,10 @@ impl ViewApp {
         let mut cards = Vec::new();
         for (vis_idx, entry) in visible.iter().enumerate() {
             let is_focused = focused_vis_idx == Some(vis_idx);
-            // Focused card fills 80 % of the context pane; non-focused cards
-            // stay compact at `context_lines` rows.
+            // Focused card fills 80 % of the forward-card area; non-focused
+            // cards stay compact at `context_lines` rows.
             let excerpt_n = if is_focused {
-                let pane_h = self.context_pane.height as usize;
-                let target = (pane_h * 4 / 5).saturating_sub(3); // subtract borders
+                let target = (fwd_pane_height as usize * 4 / 5).saturating_sub(3);
                 target.max(1)
             } else {
                 self.context_lines as usize
@@ -524,45 +549,6 @@ impl ViewApp {
                 excerpt,
                 card_height,
                 is_focused,
-            });
-        }
-        cards
-    }
-
-    /// Compute card data for back-link mode (REQ-070).
-    fn compute_back_card_data(&mut self) -> Vec<CardData> {
-        let current = self.current_page.clone();
-        let back_entries: Vec<(String, u32)> = self
-            .backlink_map
-            .get(&current)
-            .cloned()
-            .unwrap_or_default();
-
-        // Sort by citing page title alphabetically.
-        let mut sorted = back_entries;
-        sorted.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let is_no_color = self.color_mode == ColorMode::NoColor;
-        let link_colors = LinkColors::new(self.color_mode);
-        let excerpt_n = self.context_lines as usize;
-        let mut cards = Vec::new();
-
-        for (idx, (citing_page, line_num)) in sorted.iter().enumerate() {
-            let excerpt = self.load_backlink_excerpt(citing_page, &current, *line_num);
-            let color = if is_no_color {
-                Color::Reset
-            } else {
-                link_colors.get(idx + 1).color()
-            };
-
-            cards.push(CardData {
-                ordinal: idx + 1, // synthetic ordinal for backlink cards
-                page_title: citing_page.clone(),
-                is_dead: false,
-                color,
-                excerpt,
-                card_height: excerpt_n as u16 + 2,
-                is_focused: false,
             });
         }
         cards
@@ -675,78 +661,6 @@ impl ViewApp {
                 Paragraph::new(format!("↓ {} more", n_more)).style(Style::default().dim()),
                 Rect { x: area.x, y: area.y + area.height - 1, width: area.width, height: 1 },
             );
-        }
-    }
-
-    /// Render backlink cards (Back mode) — bridge connectors point from page title area.
-    fn render_back_cards(
-        &mut self,
-        frame: &mut Frame,
-        area: Rect,
-        cards: &[CardData],
-    ) {
-        if cards.is_empty() {
-            let msg = Paragraph::new("no backlinks — this page is an orphan").dim();
-            frame.render_widget(msg, area);
-            return;
-        }
-        // Header line showing mode.
-        let header_area =
-            Rect { x: area.x, y: area.y, width: area.width, height: 1 };
-        frame.render_widget(
-            Paragraph::new(format!("Context — back ({} backlinks)", cards.len()))
-                .style(Style::default().bold()),
-            header_area,
-        );
-        let cards_area = Rect {
-            x: area.x,
-            y: area.y + 1,
-            width: area.width,
-            height: area.height.saturating_sub(1),
-        };
-        self.render_cards(frame, cards_area, cards);
-    }
-
-    /// Render both forward and back cards with a separator.
-    fn render_both_cards(
-        &mut self,
-        frame: &mut Frame,
-        area: Rect,
-        fwd_cards: &[CardData],
-        back_cards: &[CardData],
-    ) {
-        // Split the area: forward cards fill upper portion, backlinks fill lower.
-        let fwd_h = (area.height / 2).max(3);
-        let fwd_area = Rect { x: area.x, y: area.y, width: area.width, height: fwd_h };
-        self.render_cards(frame, fwd_area, fwd_cards);
-
-        let sep_y = area.y + fwd_h;
-        if sep_y < area.y + area.height {
-            let sep_area =
-                Rect { x: area.x, y: sep_y, width: area.width, height: 1 };
-            let sep_str = "─".repeat(area.width as usize);
-            frame.render_widget(
-                Paragraph::new(sep_str).style(Style::default().dim()),
-                sep_area,
-            );
-        }
-
-        let back_y = area.y + fwd_h + 1;
-        if back_y < area.y + area.height {
-            let back_area = Rect {
-                x: area.x,
-                y: back_y,
-                width: area.width,
-                height: area.height.saturating_sub(fwd_h + 1),
-            };
-            if back_cards.is_empty() {
-                frame.render_widget(
-                    Paragraph::new("no backlinks").dim(),
-                    back_area,
-                );
-            } else {
-                self.render_cards(frame, back_area, back_cards);
-            }
         }
     }
 
@@ -892,12 +806,6 @@ impl ViewApp {
 
     /// Render the single-line status bar at `area`.
     fn draw_status_bar(&self, frame: &mut Frame, area: Rect) {
-        let mode_str = match self.context_mode {
-            ContextMode::Forward => "forward",
-            ContextMode::Back => "back",
-            ContextMode::Both => "both",
-        };
-
         let focused_segment = match self.focus_state {
             FocusState::ScrollMode => String::new(),
             FocusState::FocusMode { focused_index } => {
@@ -918,9 +826,8 @@ impl ViewApp {
         };
 
         let status = format!(
-            " zetl view │ {} │ {} │{} {} links │ {}",
+            " zetl view │ {} │{} {} links │ {}",
             self.current_page,
-            mode_str,
             focused_segment,
             self.link_map.len(),
             hint,
@@ -935,18 +842,12 @@ impl ViewApp {
     /// Render the context-pane full-screen overlay (Ctrl-R, single-pane fallback).
     fn draw_context_overlay(&mut self, frame: &mut Frame, area: Rect) {
         let popup = centered_rect(80, 90, area);
-        let mode_str = match self.context_mode {
-            ContextMode::Forward => "Forward links",
-            ContextMode::Back => "Backlinks",
-            ContextMode::Both => "Forward links & Backlinks",
-        };
-        let block = Block::bordered().title(format!(" Context pane — {} ", mode_str));
+        let block = Block::bordered().title(" Context pane ");
         let inner = block.inner(popup);
         frame.render_widget(Clear, popup);
         frame.render_widget(block, popup);
 
-        // Render the same cards inside the overlay.
-        let cards = self.compute_forward_card_data();
+        let cards = self.compute_forward_card_data(inner.height);
         self.render_cards(frame, inner, &cards);
     }
 
@@ -1178,9 +1079,6 @@ impl ViewApp {
                         }
                     }
                 }
-            }
-            KeyCode::Char('b') => {
-                self.context_mode = self.context_mode.cycle();
             }
             KeyCode::Char('[') => {
                 self.navigate_back();
