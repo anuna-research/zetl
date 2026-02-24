@@ -14,7 +14,7 @@ date: 2026-02-24
 | -------------- | ------------------------------------------------------------------ |
 | Document ID    | SPEC-006                                                           |
 | Title          | Content-Addressed Merkle Tree over Markdown and SPL AST            |
-| Version        | 0.3.0                                                              |
+| Version        | 0.5.0                                                              |
 | Status         | Draft                                                              |
 | Author         | Agent (USDD Protocol v1.0.0)                                       |
 | Date           | 2026-02-24                                                         |
@@ -30,7 +30,7 @@ date: 2026-02-24
 
 SPEC-001 established zetl's cache invalidation on file-level modification timestamps (mtime). SPEC-005 extended this to the theory cache: if any SPL-containing file's mtime changes, the entire theory is rebuilt. This works for performance — but it says nothing about **what changed**. Mtime tells you *when* a file was touched, not *whether the content that matters actually differs*.
 
-This specification introduces a **content-addressed Merkle tree** built transparently during `zetl index`, where every block-level node in the Markdown AST is content-hashed into a hierarchical structure. The Merkle tree is invisible infrastructure — users never interact with it directly. Instead, it enables three user-visible capabilities:
+This specification introduces a **content-addressed Merkle tree** built transparently during `zetl index`, where every block-level node in the Markdown AST is content-hashed into a hierarchical structure. The Merkle tree is invisible infrastructure — users never interact with it directly. Instead, it enables four user-visible capabilities:
 
 1. **Smarter caching** — theory rebuilds only when SPL content actually changes, not when surrounding prose is edited
 2. **Drift detection** — `zetl check` warns when prose surrounding an SPL block has changed but the SPL hasn't been updated
@@ -135,6 +135,77 @@ The solution has two parts:
 - Embedding-based semantic drift detection (future SPEC; this spec covers structural drift only)
 - Git-style content-addressable object storage
 
+### 1.6 Version Control System Boundary
+
+All Merkle tree, grounding, drift detection, and caching behaviour specified in this document SHALL operate without any version control system present. Git (or any other VCS) is an optional enrichment layer, never a dependency.
+
+**Core mode (no VCS).** When the vault is not inside a Git repository, all commands — `zetl index`, `zetl check`, `zetl blocks`, `zetl reason` — SHALL function identically to when Git is present. Cache validity, Merkle tree construction, drift detection, and grounding resolution MUST NOT depend on Git availability, commit history, or working-tree status.
+
+**VCS-aware mode (Git present).** When the vault is inside a Git repository, zetl MAY attach commit metadata to provenance and reporting output for informational purposes. This metadata is supplementary — it enriches output but does not alter correctness or cache decisions.
+
+**Contract rule.** No CLI contract (CON-004, CON-006, CON-012, CON-019, CON-020) SHALL require Git to produce its specified output. All required fields MUST be populated from zetl's own Merkle tree and cache. Git-derived fields are always additive.
+
+**Schema rule.** Any Git-derived field in cache or output schemas SHALL be nullable or optional. Implementations MUST NOT fail or degrade when these fields are absent. Specifically:
+
+| Field | Type | Present when |
+| --- | --- | --- |
+| `git_commit` | `Option<String>` | Vault is a Git repo and HEAD is resolvable |
+| `git_dirty` | `Option<bool>` | Vault is a Git repo |
+
+These fields MAY appear in the theory cache (`theory.json`) and in provenance output. They SHALL NOT appear in the index cache (`index.json`), which is purely content-derived.
+
+**Test rule.** Every test scenario in this spec SHALL pass in both "no Git repo" and "Git repo present" environments. Test suites SHOULD include explicit scenarios for:
+
+- Vault in a plain directory (no `.git`)
+- Vault in a Git repo with uncommitted changes (`git_dirty: true`)
+- Vault in a Git repo with a clean working tree (`git_dirty: false`)
+
+```
+NFR-017: VCS Independence
+
+All Merkle tree construction, cache invalidation, drift detection, and
+grounding resolution SHALL produce identical results whether or not the
+vault is inside a Git repository UNDER all operating conditions WITH no
+exceptions.
+
+VCS metadata (git_commit, git_dirty) is informational-only and SHALL
+NOT affect cache validity, drift detection outcomes, or command exit codes.
+
+Trace:
+- TEST-050
+```
+
+```
+TEST-050: VCS Independence
+
+Scenario: All commands work without Git
+Given: A vault in a plain directory (no .git)
+When: `zetl index`, `zetl check`, `zetl blocks`, `zetl reason status`
+      are run
+Then:
+  - All commands succeed
+  - Output matches contract schemas (git fields absent or null)
+  - Cache is valid and reusable
+
+Scenario: Git metadata is optional enrichment
+Given: A vault inside a Git repository with HEAD at commit abc123
+When: `zetl reason provenance "literal"` is run
+Then:
+  - Output includes git_commit: "abc123" and git_dirty: false/true
+  - Removing .git and re-running produces identical provenance
+    except git_commit and git_dirty are null
+
+Scenario: Cache validity is VCS-independent
+Given: A vault indexed inside a Git repo
+When: The .git directory is removed and `zetl index` is run
+Then:
+  - Cache is still valid (mtime + content hash unchanged)
+  - No re-indexing occurs
+  - git_commit and git_dirty become null in subsequent output
+
+Verifies: NFR-017
+```
+
 ---
 
 ## 2. User Profiles
@@ -195,7 +266,7 @@ Goals:
   - Detect when concurrent edits create drift in shared documents
 Constraints:
   - Agents write concurrently (append-only)
-  - Hence lifecycle hooks can run `zetl check --drift --fail-on drift`
+  - Hence lifecycle hooks can run `zetl check --drift --fail-on warning`
   - Content hashes serve as coordination checkpoints
 Daily workflow:
   1. Hence assigns research task to agent-A
@@ -206,7 +277,7 @@ Daily workflow:
      (meta redis-fast-enough (source "e5f6a7b8"))
      No file modification needed — the hash references content as-is.
   4. Agent-B later edits the benchmark paragraph
-  5. Hence post-edit hook: `zetl check --drift --fail-on drift`
+  5. Hence post-edit hook: `zetl check --drift --fail-on warning`
      → Fails: "fact redis-fast-enough grounded in e5f6a7b8 — no matching
         content block found (original paragraph was modified)"
   6. Reconciliation agent runs `zetl blocks --resolve e5f6a7b8` to see
@@ -461,14 +532,17 @@ No parser changes are required — `(meta label (key "value"))` and `(meta label
 
 **Resolution rules:**
 
-1. **`"e5f6a7b8"` (Merkle hash)** — resolve by prefix match against all Merkle leaf hashes in the vault. The hash is the hex-encoded prefix (minimum 8 characters) of a BLAKE3 leaf hash returned by `zetl blocks`. Resolution is position-independent: the same content at a different line number or even a different file still matches. If the prefix is ambiguous (matches multiple leaves), `zetl check` reports an error suggesting a longer prefix.
+1. **`"e5f6a7b8"` (Merkle hash)** — resolve by prefix match against all Merkle leaf hashes in the vault. The hash is the hex-encoded prefix (minimum 8 characters) of a BLAKE3 leaf hash returned by `zetl blocks`. Resolution is position-independent: the same content at a different line number or even a different file still matches. Two multi-match cases are distinguished:
+   - **Ambiguous prefix** — the prefix matches leaves with *different* full hashes. This is a prefix collision; the user should supply a longer prefix.
+   - **Duplicate content** — the prefix (or full hash) matches leaves with *identical* full hashes at different locations. This occurs naturally when two blocks have identical normalised content. For **grounding**, this is valid: the hash is a content-identity reference, so any matching location satisfies the grounding. For **`zetl blocks --resolve`**, all matching locations are returned (see CON-020).
 2. **`"^block-id"` (local block-id)** — resolve within the same file. Matched to the Merkle leaf containing the `^block-id` suffix.
 3. **`"[[Page^block-id]]"` (cross-file block-id)** — resolve across files. Page name resolved via standard wikilink matching (SPEC-001 §3.2).
 
 **Validation:**
 
 - Hash reference matches zero leaves → error: "content hash e5f6a7b8 not found — source content may have been modified or removed"
-- Hash reference matches multiple leaves → error: "ambiguous hash prefix e5f6 — use a longer prefix (found in File A line 5, File B line 12)"
+- Hash prefix matches leaves with different full hashes → error: "ambiguous hash prefix e5f6 — use a longer prefix (found in File A line 5, File B line 12)"
+- Hash matches multiple leaves with identical full hashes (duplicate content) → valid for grounding; informational for `zetl blocks --resolve` (all locations returned, exit code 0)
 - `^block-id` doesn't exist → error (analogous to dead wikilinks)
 - `[[Page^block-id]]` page doesn't exist → error
 
@@ -513,12 +587,14 @@ Grounding hashes are stored in the theory cache (`.zetl/theory.json`), not in a 
       "ast_hash": "d5e6f7a8...",
       "content_hash": "c4d5e6f7...",
       "section_grounding_hash": "e7f8a9b0...",
-      "explicit_groundings": {
-        "redis-fast-enough": {
-          "source": "^benchmark-results",
+      "explicit_groundings": [
+        {
+          "construct": "redis-fast-enough",
+          "source_ref": "^benchmark-results",
+          "target_file": "decisions/Redis.md",
           "target_hash": "f8a9b0c1..."
         }
-      }
+      ]
     }
   },
   "rules": [ ... ],
@@ -627,9 +703,11 @@ pulldown-cmark produces a stream of `(Event, Range<usize>)` tuples. The Merkle t
 
 1. Collapse consecutive whitespace to a single space
 2. Trim leading/trailing whitespace
-3. Strip inline formatting markers (bold, italic) — hash plain text content
+3. Strip visual formatting markers (bold, italic, strikethrough) — but **preserve** link syntax (`[[wikilinks]]`, `[text](url)`, image references) and other semantic inline elements. This ensures that adding or removing a wikilink changes the Merkle hash and triggers re-extraction of links.
 4. Preserve case (case changes are content changes)
 5. Normalise line endings to `\n`
+
+**Note:** Wikilink extraction always runs on the raw file content during the scan pass, independent of Merkle normalisation. The normalisation rules above govern only the hash input for content-change detection.
 
 ### 4.4 SPL Leaf Dual Hashing
 
@@ -642,35 +720,51 @@ The **combined hash** (`BLAKE3(content_hash ‖ ast_hash)`) feeds into the file-
 
 ### 4.5 Section Boundary Detection
 
-Sections are detected by tracking heading levels during the Merkle leaf construction pass:
+For grounding purposes, the **section** of an SPL block is defined by its nearest preceding heading (§3.1). Sections are computed per-SPL-block, not as a flat partition of the file, because subsections nest:
 
 ```
 Input: ordered Vec<MerkleLeaf> for a file
 
-Algorithm:
-  sections = []
-  current_section_start = 0
-  current_level = 0  (0 = before first heading)
+Algorithm — grounding_section(spl_leaf_index):
 
-  for (index, leaf) in leaves:
-    if leaf.type is Heading(level):
-      if level <= current_level or current_level == 0:
-        // New section: same or higher level heading
-        sections.push(Section {
-          start: current_section_start,
-          end: index - 1,
-          heading_level: current_level,
-        })
-        current_section_start = index
-        current_level = level
+  // Step 1: Find the nearest preceding heading (any level).
+  nearest_heading = None
+  for i in (0..spl_leaf_index).rev():
+    if leaves[i].type is Heading(level):
+      nearest_heading = Some((i, level))
+      break
 
-  // Final section extends to end of file
-  sections.push(Section {
-    start: current_section_start,
-    end: leaves.len() - 1,
-    heading_level: current_level,
-  })
+  // Step 2: Determine section boundaries.
+  if nearest_heading is None:
+    // SPL block is before the first heading.
+    section_start = 0
+    section_end = first heading index - 1, or leaves.len() - 1 if no headings
+  else:
+    (start_idx, start_level) = nearest_heading
+    section_start = start_idx
+    // Section extends to the next heading at the same or higher level,
+    // or end of file.
+    section_end = leaves.len() - 1  // default: EOF
+    for j in (start_idx + 1)..leaves.len():
+      if leaves[j].type is Heading(level) and level <= start_level:
+        section_end = j - 1
+        break
+
+  // Step 3: Grounding hash = BLAKE3 of non-SPL leaf hashes in range.
+  return Section {
+    start: section_start,
+    end: section_end,
+    heading_level: nearest_heading.map(|(_, l)| l).unwrap_or(0),
+    grounding_hash: BLAKE3(
+      leaves[section_start..=section_end]
+        .filter(|l| l.type is not SplBlock)
+        .map(|l| l.hash)
+        .concat()
+    ),
+  }
 ```
+
+This means a `### Subsection` heading creates a narrower grounding context than its parent `## Section`. An SPL block under `### Subsection` is grounded only in that subsection's prose, not the entire parent section. This matches §3.1's definition ("nearest preceding heading") and provides tighter, more accurate drift detection.
 
 Each section's **grounding hash** is computed by concatenating the hashes of all non-SPL leaves within the section's range and hashing the result.
 
@@ -822,7 +916,10 @@ Reference forms:
 The system SHALL:
   - Resolve hash references by prefix match across all vault leaves
   - Resolve ^block-id references to specific Merkle leaves
-  - Report an error if a hash prefix matches zero leaves or is ambiguous
+  - Report an error if a hash prefix matches zero leaves
+  - Report an error if a hash prefix matches leaves with different full
+    hashes (ambiguous prefix); duplicate content (identical full hashes
+    at different locations) is valid for grounding purposes
   - Report an error if a ^block-id or page does not exist
   - Compute a grounding hash from the referenced leaf's content hash
   - For MetaValue::List, compute a combined grounding hash from all
@@ -931,8 +1028,10 @@ The system SHALL provide a `zetl blocks` command with two modes:
   (REQ-042):
     - Zero matches → error: "content hash not found"
     - One match → success: return the leaf's location
-    - Multiple matches → error: "ambiguous hash prefix" with list of
-      matching locations; suggest a longer prefix
+    - Multiple matches with different full hashes (ambiguous prefix)
+      → error: suggest a longer prefix
+    - Multiple matches with identical full hashes (duplicate content)
+      → success: return all locations (content-identity is by design)
 
 Both modes SHALL require that `zetl index` has been run (Merkle tree
 exists in cache). If the cache is stale or missing, the command SHALL
@@ -1233,17 +1332,16 @@ enum DriftType {
         construct: String,
         source_ref: String,
     },
-    /// Explicit source metadata target not found
-    BrokenGrounding {
-        construct: String,
-        source_ref: String,
-    },
+    // Note: broken grounding (target not found) is a static validation
+    // error reported via spl_diagnostics (CON-004), not a drift diagnostic.
+    // Drift diagnostics require a prior theory build to compare against.
 }
 
 enum DriftSeverity {
-    Info,     // distant changes in section
-    Warning,  // adjacent changes or explicit grounding broken
-    Error,    // source target not found
+    Info,     // distant changes in section (non-adjacent leaves changed)
+    Warning,  // adjacent changes or explicit grounding target changed
+    // Note: Error severity for "source target not found" is handled by
+    // spl_diagnostics (CON-004), not drift diagnostics.
 }
 ```
 
@@ -1293,7 +1391,8 @@ For each SPL block in current trees:
      c. If target changed AND the SPL construct is unchanged:
         → Explicit drift detected (severity: Warning)
      d. If target not found:
-        → Broken grounding (severity: Error)
+        → Not a drift diagnostic. This is a static validation error
+          reported via spl_diagnostics (CON-004 extended).
 
 Output: Vec<DriftDiagnostic> (merged into zetl check results)
 ```
@@ -1341,23 +1440,13 @@ Example output (JSON, drift diagnostics):
       "source_ref": "[[Benchmarks^perf-numbers]]",
       "message": "Fact 'performance-acceptable' grounded in [[Benchmarks]]^perf-numbers — target content changed since the theory was built."
     },
-    {
-      "level": "error",
-      "file": "decisions/Old Decision.md",
-      "spl_line": 15,
-      "type": "broken_grounding",
-      "construct": "legacy-compatible",
-      "source_ref": "^removed-section",
-      "message": "Fact 'legacy-compatible' references ^removed-section which no longer exists."
-    }
   ],
   "summary": {
     "dead_links": 0,
     "orphans": 0,
     "syntax_errors": 0,
-    "spl_errors": 0,
-    "drift_warnings": 2,
-    "drift_errors": 1
+    "spl_errors": 1,
+    "drift_warnings": 2
   }
 }
 
@@ -1387,8 +1476,10 @@ Options:
                      Minimum 8 hex characters. Mutually exclusive with PAGE.
 
 Exit codes:
-  0  Blocks listed / hash resolved
-  1  Page not found / hash not found / ambiguous hash prefix
+  0  Blocks listed / hash resolved (including duplicate content — multiple
+     locations with identical hash)
+  1  Page not found / hash not found / ambiguous hash prefix (different
+     full hashes sharing a prefix)
 
 --- Forward mode: zetl blocks <PAGE> ---
 
@@ -1475,7 +1566,7 @@ Example error — hash not found (JSON):
   "error": "content hash e5f6a7b8 not found — source content may have been modified or removed"
 }
 
-Example error — ambiguous prefix (JSON):
+Example error — ambiguous prefix (different full hashes, JSON):
 {
   "error": "ambiguous hash prefix e5f6a7b8",
   "matches": [
@@ -1484,6 +1575,21 @@ Example error — ambiguous prefix (JSON):
   ],
   "suggestion": "use a longer prefix to disambiguate"
 }
+
+Example success — duplicate content (identical full hashes, JSON):
+{
+  "hash": "e5f6a7b8c9d0e1f2",
+  "locations": [
+    {"file": "decisions/Redis.md", "page": "Redis", "lines": [7, 9], "type": "Paragraph", "text": "We benchmarked Redis at 120k ops/sec..."},
+    {"file": "notes/Cache.md", "page": "Cache", "lines": [3, 5], "type": "Paragraph", "text": "We benchmarked Redis at 120k ops/sec..."}
+  ],
+  "note": "identical content at multiple locations"
+}
+
+Duplicate content (identical normalised text at different locations) produces
+identical full hashes. This is NOT an error — it is a natural consequence of
+content-addressed hashing. `--resolve` returns all locations (exit code 0).
+For source grounding, any matching location satisfies the reference.
 
 Usage:
   The hash values can be used as source metadata in SPL:
@@ -1504,8 +1610,11 @@ Verified by:
 CON-004 (extended): zetl check source metadata validation
 
 Broken source references (^block-id that doesn't exist, [[Page]] that
-doesn't exist, Merkle hash that doesn't match) are reported as errors
-in the spl_diagnostics section, consistent with dead wikilink detection:
+doesn't exist, Merkle hash that doesn't match any leaf) are reported as
+errors in the spl_diagnostics section, consistent with dead wikilink
+detection. These are static validation errors — they do not require a
+prior theory build. Drift diagnostics (CON-019) are separate: they
+detect temporal changes in content that WAS previously valid.
 
 {
   "spl_diagnostics": [
@@ -1875,10 +1984,11 @@ Then:
 
 Scenario: Hash becomes stale after edit
 Given: An SPL fact grounded in hash "e5f6a7b8"
-When: The target paragraph is edited and `zetl check --drift` is run
+When: The target paragraph is edited and `zetl check` is run
 Then:
   - Hash no longer matches any leaf
-  - Broken grounding error is reported
+  - Broken grounding error is reported in spl_diagnostics (not
+    drift_diagnostics) — this is a static validation failure
 
 Scenario: Position-independent resolution
 Given: A paragraph with hash "e5f6a7b8" is moved from line 7 to line 20
@@ -1918,20 +2028,30 @@ Then:
   - Error: "content hash deadbeef not found"
   - Exit code 1
 
-Scenario: Resolve ambiguous hash prefix
-Given: Two leaves in different files share the prefix "e5f6a7b8"
+Scenario: Resolve ambiguous hash prefix (different full hashes)
+Given: Two leaves in different files share the prefix "e5f6a7b8" but have
+       different full hashes (e5f6a7b8c9d0e1f2 vs e5f6a7b8aabbccdd)
 When: `zetl blocks --resolve e5f6a7b8` is run
 Then:
   - Error: "ambiguous hash prefix e5f6a7b8"
-  - Lists all matching locations with full hashes
+  - Lists all matching locations with their distinct full hashes
   - Suggests using a longer prefix
   - Exit code 1
 
-Scenario: Resolve with full hash
-Given: A leaf with hash "e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0..."
+Scenario: Resolve duplicate content (identical full hashes)
+Given: Two paragraphs in different files have identical normalised content,
+       producing the same full hash "e5f6a7b8c9d0e1f2"
+When: `zetl blocks --resolve e5f6a7b8` is run
+Then:
+  - Returns all matching locations (both files)
+  - Exit code 0 (not an error — content-identity is by design)
+
+Scenario: Resolve with full hash — unique content
+Given: A leaf with hash "e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0..." and no
+       other leaf shares that hash
 When: `zetl blocks --resolve e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0` is run
 Then:
-  - Resolves unambiguously
+  - Returns exactly one location
   - Exit code 0
 
 Scenario: Resolve hash too short
@@ -2033,6 +2153,7 @@ SHALL emit:
 | NFR-014 | —                | TEST-046 | ADR-008  | OBS-007 |
 | NFR-015 | —                | TEST-047 | —        | —       |
 | NFR-016 | —                | TEST-048 | —        | —       |
+| NFR-017 | —                | TEST-050 | —        | —       |
 
 ---
 
@@ -2156,7 +2277,7 @@ No separate `merkle.json` file — Merkle data is folded into the existing cache
 
 3. ~~**Should `source` be a spindle-core `(meta ...)` construct or inline syntax?**~~ **Resolved:** Use spindle-core's existing `(meta label (source "value"))` construct. This requires no parser changes and supports both single values (`MetaValue::String`) and multiple values (`MetaValue::List`). Inline syntax is not needed — the meta construct is sufficient and consistent with how spindle-core already handles metadata (e.g., `_source_file`, `_source_line`).
 
-7. **What is the minimum hash prefix length for unambiguous resolution?** 8 hex characters (32 bits) provides 4 billion distinct values, which is sufficient for typical vaults. For very large vaults, longer prefixes may be needed. Recommendation: minimum 8 characters, `zetl check` reports ambiguity if a prefix matches multiple leaves and suggests a longer prefix.
+7. ~~**What is the minimum hash prefix length for unambiguous resolution?**~~ **Resolved:** Minimum 8 hex characters (32 bits). Ambiguity is defined as a prefix matching leaves with *different* full hashes. Duplicate content (identical normalised text at different locations) produces identical full hashes by design — this is not ambiguity but content-identity, and is valid for both grounding and resolution (see §3.3).
 
 4. **Should drift detection have a "grace period" for new files?** A newly-created file has no baseline — everything is "new." Should the first check after file creation report drift? Recommendation: no. Drift requires a baseline from a previous theory build. New files have no baseline and are not flagged.
 
