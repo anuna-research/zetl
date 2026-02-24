@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod cli;
 pub mod graph;
+pub mod merkle;
 #[cfg(feature = "reason")]
 pub mod reason;
 pub mod scanner;

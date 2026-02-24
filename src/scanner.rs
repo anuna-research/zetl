@@ -1,4 +1,5 @@
-use crate::types::{ContentHash, Diagnostic, DiagnosticLevel, LeafType, MerkleLeaf, ParsedFile, SplBlock, WikiLink};
+use crate::merkle::{compute_file_root, compute_leaf_hash};
+use crate::types::{ContentHash, Diagnostic, DiagnosticLevel, FileMerkle, LeafType, MerkleLeaf, ParsedFile, SplBlock, WikiLink};
 use anyhow::Result;
 use ignore::WalkBuilder;
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
@@ -81,6 +82,7 @@ pub fn scan_vault(root: &Path, ignore_patterns: &[String]) -> Result<Vec<ParsedF
                     diagnostics: vec![],
                     mtime,
                     merkle_leaves: vec![],
+                    file_merkle: None,
                 };
                 parsed_files.push(parsed);
             }
@@ -132,6 +134,14 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
     // Build Merkle leaves from the collected event stream.
     let merkle_leaves = build_merkle_leaves(content, &events);
 
+    // Compute per-file Merkle root from the ordered leaf hashes (§4.2).
+    let file_root = compute_file_root(&merkle_leaves);
+    let file_merkle = Some(FileMerkle {
+        root_hash: file_root,
+        sections: vec![],
+        spl_leaves: vec![],
+    });
+
     // Validate syntax
     let diagnostics = validate_syntax(path, content);
 
@@ -143,6 +153,7 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
         diagnostics,
         mtime: std::time::SystemTime::UNIX_EPOCH, // caller sets real mtime
         merkle_leaves,
+        file_merkle,
     }
 }
 
@@ -633,12 +644,9 @@ pub fn build_merkle_leaves<'a>(
         line_starts.partition_point(|&start| start <= byte_offset) as u32
     };
 
-    // Hash a string with BLAKE3 and return a 32-byte digest.
-    let hash_bytes = |input: &str| -> ContentHash {
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(input.as_bytes());
-        *hasher.finalize().as_bytes()
-    };
+    // Hash a leaf: BLAKE3(type_tag_byte ‖ content_bytes) per §4.2.
+    // For ThematicBreak and HtmlBlock (standalone events), we need a type-aware wrapper.
+    let hash_leaf = |lt: &LeafType, input: &[u8]| -> ContentHash { compute_leaf_hash(lt, input) };
 
     // Normalise body text: collapse all whitespace to single space, trim.
     // Line endings are already handled (SoftBreak→space, HardBreak→\n which then collapses).
@@ -737,7 +745,7 @@ pub fn build_merkle_leaves<'a>(
                         node_type: LeafType::ThematicBreak,
                         start_line,
                         end_line,
-                        hash: hash_bytes("---"),
+                        hash: hash_leaf(&LeafType::ThematicBreak, b"---"),
                         spl_hashes: None,
                     });
                 }
@@ -750,7 +758,7 @@ pub fn build_merkle_leaves<'a>(
                         node_type: LeafType::HtmlBlock,
                         start_line,
                         end_line,
-                        hash: hash_bytes(html),
+                        hash: hash_leaf(&LeafType::HtmlBlock, html.as_bytes()),
                         spl_hashes: None,
                     });
                 }
@@ -837,7 +845,7 @@ pub fn build_merkle_leaves<'a>(
                                     LeafType::HtmlBlock => raw_buf.clone(),
                                 };
 
-                                let hash = hash_bytes(&hash_input);
+                                let hash = hash_leaf(&leaf_type, hash_input.as_bytes());
                                 leaves.push(MerkleLeaf {
                                     node_type: leaf_type,
                                     start_line,

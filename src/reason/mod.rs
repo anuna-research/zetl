@@ -1056,6 +1056,7 @@ mod tests {
                 diagnostics: vec![],
                 mtime,
                 merkle_leaves: vec![],
+                file_merkle: None,
             },
             ParsedFile {
                 path: PathBuf::from("B.md"),
@@ -1065,6 +1066,7 @@ mod tests {
                 diagnostics: vec![],
                 mtime,
                 merkle_leaves: vec![],
+                file_merkle: None,
             },
         ];
 
@@ -1126,6 +1128,7 @@ mod tests {
                 diagnostics: vec![],
                 mtime,
                 merkle_leaves: vec![],
+                file_merkle: None,
             })
             .collect();
 
@@ -1178,6 +1181,7 @@ mod tests {
                 diagnostics: vec![],
                 mtime,
                 merkle_leaves: vec![],
+                file_merkle: None,
             })
             .collect();
 
