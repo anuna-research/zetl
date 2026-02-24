@@ -57,6 +57,9 @@ pub struct ParsedFile {
     /// File modification time
     #[serde(with = "system_time_serde")]
     pub mtime: SystemTime,
+    /// Merkle leaf nodes built from block-level AST events (SPEC-006 §4.3)
+    #[serde(default)]
+    pub merkle_leaves: Vec<MerkleLeaf>,
 }
 
 /// A syntax issue

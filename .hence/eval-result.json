@@ -4,27 +4,27 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 5,
-    "insertions": 262,
+    "insertions": 741,
     "deletions": 5,
     "file_list": [
-      ".hence/context-manifest.json",
-      "demo-vault/architecture/Performance.md",
-      "demo-vault/decisions/Deployment Decision.md",
-      "demo-vault/decisions/Redis vs Memcached.md",
-      "demo-vault/theories/caching.spl"
+      "src/cache.rs",
+      "src/graph.rs",
+      "src/reason/mod.rs",
+      "src/scanner.rs",
+      "src/types.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-demo-vault-merkle-changes",
-      "content": "Modified 5 files (+262, -5): .hence/context-manifest.json, demo-vault/architecture/Performance.md, demo-vault/decisions/Deployment Decision.md, demo-vault/decisions/Redis vs Memcached.md, demo-vault/theories/caching.spl",
+      "key": "task-leaf-grouper-changes",
+      "content": "Modified 5 files (+741, -5): src/cache.rs, src/graph.rs, src/reason/mod.rs, src/scanner.rs, src/types.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/demo-vault-merkle-v1",
-  "evaluated_at": "2026-02-24T01:41:32Z",
+  "branch_name": "hence/leaf-grouper-v1",
+  "evaluated_at": "2026-02-24T01:54:31Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
