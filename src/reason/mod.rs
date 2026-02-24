@@ -1159,7 +1159,8 @@ mod tests {
     #[test]
     fn theory_cache_round_trip_serialization() {
         use crate::cache::{
-            build_theory_cache, load_theory_cache, save_theory_cache, theory_cache_valid,
+            build_theory_cache, collect_spl_ast_hashes, load_theory_cache, save_theory_cache,
+            theory_cache_valid,
         };
         use crate::types::ParsedFile;
         use std::time::{Duration, UNIX_EPOCH};
@@ -1195,7 +1196,8 @@ mod tests {
         let loaded = load_theory_cache(vault)
             .unwrap()
             .expect("cache should exist");
-        assert!(theory_cache_valid(&loaded, &files));
+        let current_hashes = collect_spl_ast_hashes(&files);
+        assert!(theory_cache_valid(&current_hashes, &loaded));
 
         let cached_result = build_theory_from_cache(&loaded).unwrap();
         assert_eq!(result.conclusions.len(), cached_result.conclusions.len());

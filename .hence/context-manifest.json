@@ -1,12 +1,12 @@
 {
-  "task_id": "stats-vault-hash",
+  "task_id": "section-grounding",
   "token_budget": 8000,
-  "tokens_used": 368,
+  "tokens_used": 2451,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend the zetl stats command output to include vault content integrity data per CON-006 extended. Add to stats JSON output: vault_content_hash (hex string of vault Merkle root from index.json), spl_blocks (count of all SPL blocks across vault), grounded_spl_blocks (count of SPL blocks with section grounding recorded in theory cache), explicitly_grounded_facts (count of SPL facts/rules with explicit source metadata). Read vault_root_hash from the loaded index cache. The count fields require the index to be loaded. If index not present, vault_content_hash is null. Add the same fields to table output. Per CON-006 extension in §7.",
-      "token_cost": 159,
+      "content": "Wire section grounding hashes from scan-time into the theory cache per REQ-041c. During zetl index (or the combined index+reason pipeline): after computing Merkle leaves and sections, populate SplLeafCached with section_index (which section the SPL leaf belongs to) and the section's grounding_hash. In the theory cache (theory.json v2), the spl_blocks map entry for each SPL block must include: section_heading (string), section_grounding_hash (hex). When the theory is built (reason engine), copy these values from the scan results into TheoryCache::spl_blocks. Implement the theory cache population in src/reason/mod.rs (or reason engine) by reading the FileMerkle data stored alongside the parsed SPL blocks. Ensure section grounding is computed for standalone .spl files too — since they have no Markdown sections, their grounding is empty (no section, no grounding hash). Section grounding does NOT apply to standalone .spl files per §4.7.",
+      "token_cost": 237,
       "priority": "PlanMeta"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 2 files (+200, -100): src/cache.rs, src/main.rs",
       "token_cost": 14,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-stats-vault-hash-changes",
+      "content": "Modified 3 files (+87, -16): .hence/context-manifest.json, src/cache.rs, src/main.rs",
+      "token_cost": 21,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T02:37:18Z"
+  "constructed_at": "2026-02-24T02:43:01Z"
 }
