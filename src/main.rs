@@ -14,7 +14,7 @@ use zetl::merkle::{build_vault_hash_index, validate_source_refs};
 use zetl::scanner::{resolve_page_name, scan_vault};
 use zetl::search::{search_vault, SearchConfig};
 use zetl::simhash::SimHashIndex;
-use zetl::drift::detect_section_drift;
+use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, ParsedFile};
 
 // ── Common pipeline ────────────────────────────────────────────────────────
@@ -749,17 +749,31 @@ fn cmd_check(
     // load_theory_cache returns None and we skip the theory-cache-dependent checks silently.
     let theory_cache = load_theory_cache(&pipeline.vault_root).unwrap_or(None);
 
-    // Detect section-level drift (REQ-043a).
+    // Detect section-level and explicit-grounding drift (REQ-043a, REQ-043b).
     let drift_diagnostics: Vec<DriftDiagnostic> = if show_all || show_drift {
         match theory_cache.as_ref() {
-            Some(theory) => pipeline
-                .files
-                .iter()
-                .filter_map(|f| f.file_merkle.as_ref().map(|fm| (f, fm)))
-                .flat_map(|(f, fm)| {
-                    detect_section_drift(&f.path, fm, &f.merkle_leaves, theory)
-                })
-                .collect(),
+            Some(theory) => {
+                // Build vault hash index once for explicit-grounding drift resolution.
+                let drift_hash_index = build_vault_hash_index(&pipeline.files);
+                pipeline
+                    .files
+                    .iter()
+                    .filter_map(|f| f.file_merkle.as_ref().map(|fm| (f, fm)))
+                    .flat_map(|(f, fm)| {
+                        let mut diags =
+                            detect_section_drift(&f.path, fm, &f.merkle_leaves, theory);
+                        diags.extend(detect_explicit_drift(
+                            &f.path,
+                            fm,
+                            theory,
+                            &pipeline.files,
+                            &pipeline.file_index,
+                            &drift_hash_index,
+                        ));
+                        diags
+                    })
+                    .collect()
+            }
             None => vec![],
         }
     } else {
