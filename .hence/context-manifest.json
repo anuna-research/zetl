@@ -1,12 +1,12 @@
 {
-  "task_id": "fuzzy-suggestion",
+  "task_id": "no-index-fallback",
   "token_budget": 8000,
-  "tokens_used": 224,
+  "tokens_used": 270,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement the page-not-found fuzzy suggestion prompt (REQ-073). When the <page> argument does not match any indexed page title exactly: use the SimHash + Hamming distance matching from SPEC-001 (already implemented in src/simhash.rs) to find the top 5 closest page titles; display them as a numbered selection prompt in a TUI overlay (or plain text if alternate screen not yet entered): '1. <title>  2. <title>  ...' with a 'Select [1-5] or q to quit:' prompt. If the user selects a number 1–5, open the TUI on that page. If the user presses 'q' or Esc, exit 0 with no output. REQ-073, CON-023.",
-      "token_cost": 149,
+      "content": "Implement the no-index graceful fallback (REQ-072). Before opening the TUI: check for the existence of .zetl/index.json (or equivalent per SPEC-006). If missing: display a status message 'Building index…' on stderr (before entering alternate screen); run the SPEC-006 index pipeline in-process (call the same function as 'zetl index'); if indexing succeeds, proceed to open the TUI; if indexing fails, exit non-zero with a plain-text error and JSON error code INDEX_BUILD_FAILED. REQ-072, CON-023.",
+      "token_cost": 124,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 4 files (+226, -19): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/view/app.rs",
       "token_cost": 25,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-fuzzy-suggestion-changes",
+      "content": "Modified 4 files (+127, -8): .hence/context-manifest.json, src/main.rs, src/view/fuzzy.rs, src/view/mod.rs",
+      "token_cost": 26,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T07:07:26Z"
+  "constructed_at": "2026-02-24T07:13:01Z"
 }

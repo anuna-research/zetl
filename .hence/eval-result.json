@@ -3,27 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 127,
-    "deletions": 8,
+    "files_changed": 2,
+    "insertions": 65,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/main.rs",
-      "src/view/fuzzy.rs",
-      "src/view/mod.rs"
+      "src/main.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-fuzzy-suggestion-changes",
-      "content": "Modified 4 files (+127, -8): .hence/context-manifest.json, src/main.rs, src/view/fuzzy.rs, src/view/mod.rs",
+      "key": "task-no-index-fallback-changes",
+      "content": "Modified 2 files (+65, -7): .hence/context-manifest.json, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/fuzzy-suggestion-v1",
-  "evaluated_at": "2026-02-24T07:12:56Z",
+  "branch_name": "hence/no-index-fallback-v1",
+  "evaluated_at": "2026-02-24T07:18:24Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
