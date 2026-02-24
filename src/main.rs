@@ -579,6 +579,7 @@ fn cmd_check(
     show_orphans: bool,
     show_syntax: bool,
     show_spl: bool,
+    show_drift: bool,
     fail_on: &FailLevel,
 ) -> Result<()> {
     #[cfg(not(feature = "reason"))]
@@ -589,7 +590,7 @@ fn cmd_check(
     let pipeline = run_pipeline(cli)?;
 
     // If none of the flags are set, show all
-    let show_all = !show_dead_links && !show_orphans && !show_syntax && !show_spl;
+    let show_all = !show_dead_links && !show_orphans && !show_syntax && !show_spl && !show_drift;
 
     let dead = if show_all || show_dead_links {
         pipeline.graph.dead_links()
@@ -623,7 +624,7 @@ fn cmd_check(
     // Detect section-level drift (REQ-043a).
     // Requires a prior `zetl build` that produced theory.json — if none exists,
     // load_theory_cache returns None and we skip drift detection silently.
-    let drift_diagnostics: Vec<DriftDiagnostic> = if show_all || show_spl {
+    let drift_diagnostics: Vec<DriftDiagnostic> = if show_all || show_drift {
         match load_theory_cache(&pipeline.vault_root) {
             Ok(Some(ref theory)) => pipeline
                 .files
@@ -640,13 +641,42 @@ fn cmd_check(
     };
 
     #[derive(Serialize)]
+    struct CheckSummary {
+        dead_links: usize,
+        orphans: usize,
+        syntax_errors: usize,
+        spl_errors: usize,
+        drift_warnings: usize,
+        drift_info: usize,
+    }
+
+    #[derive(Serialize)]
     struct CheckOutput {
         dead_links: Vec<zetl::graph::DeadLink>,
         orphans: Vec<zetl::graph::Orphan>,
         syntax_errors: Vec<zetl::types::Diagnostic>,
         spl_diagnostics: Vec<zetl::types::Diagnostic>,
         drift_diagnostics: Vec<DriftDiagnostic>,
+        summary: CheckSummary,
     }
+
+    let summary = CheckSummary {
+        dead_links: dead.len(),
+        orphans: orphan_list.len(),
+        syntax_errors: diagnostics.len(),
+        spl_errors: spl_diagnostics
+            .iter()
+            .filter(|d| d.level == DiagnosticLevel::Error)
+            .count(),
+        drift_warnings: drift_diagnostics
+            .iter()
+            .filter(|d| matches!(d.severity, DriftSeverity::Warning))
+            .count(),
+        drift_info: drift_diagnostics
+            .iter()
+            .filter(|d| matches!(d.severity, DriftSeverity::Info))
+            .count(),
+    };
 
     let output = CheckOutput {
         dead_links: dead,
@@ -654,6 +684,7 @@ fn cmd_check(
         syntax_errors: diagnostics,
         spl_diagnostics,
         drift_diagnostics,
+        summary,
     };
 
     match cli.format {
@@ -4696,8 +4727,9 @@ fn main() -> anyhow::Result<()> {
             orphans,
             syntax,
             spl,
+            drift,
             fail_on,
-        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, fail_on),
+        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, *drift, fail_on),
         Command::Similar {
             query,
             threshold,

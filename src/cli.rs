@@ -96,6 +96,9 @@ pub enum Command {
         /// Show only SPL diagnostics (parse errors, duplicate labels, undefined references, unreachable literals)
         #[arg(long)]
         spl: bool,
+        /// Show only drift diagnostics (SPL blocks with changed grounding since last theory build)
+        #[arg(long)]
+        drift: bool,
         /// Exit non-zero if issues at level
         #[arg(long, default_value = "error")]
         fail_on: FailLevel,
