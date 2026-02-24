@@ -1579,78 +1579,153 @@ fn cmd_blocks(
             }
         }
     } else if let Some(hash_prefix) = resolve {
-        // ── Resolve mode: find block by BLAKE3 hash prefix ─────────────────
-        let hash_lower = hash_prefix.to_lowercase();
+        // ── Resolve mode: find block(s) by BLAKE3 hash prefix ──────────────
+        use zetl::merkle::{build_vault_hash_index, resolve_hash_prefix, HashResolutionResult};
 
-        #[derive(Serialize)]
-        struct ResolveOutput {
-            page: String,
-            file_hash: Option<String>,
-            block: BlockEntry,
-        }
+        let index = build_vault_hash_index(&pipeline.files);
 
-        let mut found: Option<(String, Option<String>, BlockEntry)> = None;
-
-        'outer: for file in &pipeline.files {
-            let file_hash = file
-                .file_merkle
-                .as_ref()
-                .map(|fm| hash_to_hex(&fm.root_hash));
-
-            for (raw_index, leaf) in file.merkle_leaves.iter().enumerate() {
-                let leaf_hex = hash_to_hex(&leaf.hash);
-                if leaf_hex.starts_with(&hash_lower) {
-                    // Count filtered index (index within filtered set matching block_type=all)
-                    let text = extract_block_text(
-                        &pipeline.vault_root,
-                        &file.path,
-                        leaf.start_line,
-                        leaf.end_line,
-                    )
-                    .unwrap_or_default();
-
-                    let spl_hashes = leaf.spl_hashes.as_ref().map(|sh| SplHashesOutput {
-                        content_hash: hash_to_hex(&sh.content_hash),
-                        ast_hash: hash_to_hex(&sh.ast_hash),
-                    });
-
-                    let entry = BlockEntry {
-                        index: raw_index,
-                        block_type: leaf_type_label(&leaf.node_type),
-                        lines: [leaf.start_line, leaf.end_line],
-                        hash: leaf_hex,
-                        text,
-                        spl_hashes,
-                    };
-                    found = Some((file.page_name.clone(), file_hash, entry));
-                    break 'outer;
+        match resolve_hash_prefix(hash_prefix, &index) {
+            HashResolutionResult::Found { full_hash, locations } => {
+                #[derive(Serialize)]
+                struct ResolveLocation {
+                    page: String,
+                    file: String,
+                    file_hash: Option<String>,
+                    block: BlockEntry,
                 }
-            }
-        }
 
-        match found {
-            Some((page_name, file_hash, block)) => {
-                let output = ResolveOutput { page: page_name, file_hash, block };
+                #[derive(Serialize)]
+                struct ResolveOutput {
+                    full_hash: String,
+                    location_count: usize,
+                    locations: Vec<ResolveLocation>,
+                }
+
+                let resolved_locations: Vec<ResolveLocation> = locations
+                    .iter()
+                    .map(|loc| {
+                        let file = pipeline.files.iter().find(|f| f.path == loc.file);
+                        let file_hash = file.and_then(|f| {
+                            f.file_merkle.as_ref().map(|fm| hash_to_hex(&fm.root_hash))
+                        });
+                        let page = file
+                            .map(|f| f.page_name.clone())
+                            .unwrap_or_else(|| loc.file.to_string_lossy().to_string());
+
+                        let text = extract_block_text(
+                            &pipeline.vault_root,
+                            &loc.file,
+                            loc.leaf.start_line,
+                            loc.leaf.end_line,
+                        )
+                        .unwrap_or_default();
+
+                        let spl_hashes = loc.leaf.spl_hashes.as_ref().map(|sh| SplHashesOutput {
+                            content_hash: hash_to_hex(&sh.content_hash),
+                            ast_hash: hash_to_hex(&sh.ast_hash),
+                        });
+
+                        let block = BlockEntry {
+                            index: loc.leaf_index,
+                            block_type: leaf_type_label(&loc.leaf.node_type),
+                            lines: [loc.leaf.start_line, loc.leaf.end_line],
+                            hash: full_hash.clone(),
+                            text,
+                            spl_hashes,
+                        };
+
+                        ResolveLocation {
+                            page,
+                            file: loc.file.to_string_lossy().to_string(),
+                            file_hash,
+                            block,
+                        }
+                    })
+                    .collect();
+
+                let location_count = resolved_locations.len();
+                let output = ResolveOutput {
+                    full_hash: full_hash.clone(),
+                    location_count,
+                    locations: resolved_locations,
+                };
+
                 match cli.format {
                     OutputFormat::Json => print_json(&output)?,
                     OutputFormat::Table => {
-                        println!("Block resolved from page '{}':", output.page);
-                        println!("  Type:  {}", output.block.block_type);
-                        println!("  Lines: {}-{}", output.block.lines[0], output.block.lines[1]);
-                        println!("  Hash:  {}", output.block.hash);
-                        println!("  Text:  {}", output.block.text);
-                        if let Some(ref fh) = output.file_hash {
-                            println!("  File hash: {fh}");
+                        if output.location_count == 1 {
+                            let loc = &output.locations[0];
+                            println!("Block resolved from page '{}':", loc.page);
+                            println!("  Type:  {}", loc.block.block_type);
+                            println!(
+                                "  Lines: {}-{}",
+                                loc.block.lines[0], loc.block.lines[1]
+                            );
+                            println!("  Hash:  {}", output.full_hash);
+                            println!("  Text:  {}", loc.block.text);
+                            if let Some(ref fh) = loc.file_hash {
+                                println!("  File hash: {fh}");
+                            }
+                        } else {
+                            println!(
+                                "Block {} found at {} location(s) (identical content):",
+                                output.full_hash, output.location_count
+                            );
+                            for loc in &output.locations {
+                                println!(
+                                    "  {} (lines {}-{})",
+                                    loc.page, loc.block.lines[0], loc.block.lines[1]
+                                );
+                            }
                         }
                     }
                 }
             }
-            None => {
-                let msg = format!("Block not found for hash prefix: '{hash_prefix}'");
+            HashResolutionResult::NotFound => {
+                let msg = format!("no block found for hash prefix '{hash_prefix}'");
                 match cli.format {
                     OutputFormat::Json => exit_json_error(&msg, 1),
                     OutputFormat::Table => {
-                        eprintln!("{msg}");
+                        eprintln!("Error: {msg}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            HashResolutionResult::Ambiguous { prefix, candidates } => {
+                #[derive(Serialize)]
+                struct AmbiguousError {
+                    error: String,
+                    prefix: String,
+                    candidates: Vec<String>,
+                    suggestion: &'static str,
+                }
+
+                let err = AmbiguousError {
+                    error: format!(
+                        "ambiguous hash prefix '{}': matches {} distinct hashes",
+                        prefix,
+                        candidates.len()
+                    ),
+                    prefix: prefix.clone(),
+                    candidates: candidates.clone(),
+                    suggestion: "use a longer prefix to disambiguate",
+                };
+
+                match cli.format {
+                    OutputFormat::Json => {
+                        print_json(&err)?;
+                        std::process::exit(1);
+                    }
+                    OutputFormat::Table => {
+                        eprintln!(
+                            "Error: ambiguous hash prefix '{}': matches {} distinct hashes",
+                            prefix,
+                            candidates.len()
+                        );
+                        for c in &candidates {
+                            eprintln!("  {c}");
+                        }
+                        eprintln!("Hint: use a longer prefix to disambiguate");
                         std::process::exit(1);
                     }
                 }

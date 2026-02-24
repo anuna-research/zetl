@@ -1,12 +1,12 @@
 {
-  "task_id": "blocks-forward",
+  "task_id": "hash-prefix-resolution",
   "token_budget": 8000,
-  "tokens_used": 484,
+  "tokens_used": 473,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement the zetl blocks <page> command (forward mode) per REQ-045 and CON-020. New subcommand BlocksArgs in cli.rs with: page: Option<String>, --type <TYPE> filter (heading/paragraph/spl/code/table/list/blockquote/frontmatter/all), --resolve <HASH> (mutex with page). Forward mode implementation in main.rs cmd_blocks: 1) Resolve page name using same case-insensitive wikilink matching as SPEC-001 §3.2, 2) Load the Merkle leaf data from the index cache (or re-index if stale), 3) For each leaf, output: index (0-based), type (with level for headings), lines [start, end], hash (hex BLAKE3), text (first 200 chars of normalised content), spl_hashes if SplBlock. JSON output matches CON-020 forward mode schema exactly, including file_hash and block_count at top level. Table output per CON-020 example. Apply --type filter before outputting. Exit code 0 on success, 1 if page not found. Require zetl index to have been run — if cache is stale or missing, auto-re-index first (consistent with other query commands).",
-      "token_cost": 254,
+      "content": "Implement Merkle hash prefix resolution per §3.3 resolution rule 1 and REQ-042a. Build a resolution index: for each file in the vault, iterate all MerkleLeaf hashes and store (full_hash_hex → list of (file, leaf)) mappings. At resolution time: 1) Filter entries whose full_hash_hex starts with the given prefix (case-insensitive), 2) Check result set: zero → error 'not found', 3) Check if all matching full hashes are identical (duplicate content case) → success, return all locations, 4) Multiple matches with different full hashes → error 'ambiguous prefix', list all with suggestion to use longer prefix. Resolution is position-independent: same content at any location resolves. Implement as resolve_hash_prefix(prefix: &str, index: &VaultHashIndex) -> HashResolutionResult where VaultHashIndex is built from loaded FileMerkle data. This function is shared by both zetl blocks --resolve (direct use) and source metadata validation. Implement in src/merkle.rs.",
+      "token_cost": 243,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T04:10:49Z"
+  "constructed_at": "2026-02-24T04:15:43Z"
 }
