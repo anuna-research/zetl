@@ -1,4 +1,4 @@
-use crate::merkle::{compute_file_root, compute_leaf_hash, detect_sections};
+use crate::merkle::{compute_file_root, compute_leaf_hash, compute_spl_hashes, detect_sections, spl_combined_hash};
 use crate::types::{ContentHash, Diagnostic, DiagnosticLevel, FileMerkle, LeafType, MerkleLeaf, ParsedFile, SplBlock, SplLeafCached, WikiLink};
 use anyhow::Result;
 use ignore::WalkBuilder;
@@ -187,6 +187,30 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
 
     // Validate syntax
     let diagnostics = validate_syntax(path, content);
+
+    // When the `reason` feature is enabled, emit a warning for any SPL block
+    // whose AST could not be parsed (signalled by ast_hash == [0u8; 32]).
+    #[cfg(feature = "reason")]
+    let diagnostics = {
+        let mut d = diagnostics;
+        for leaf in &merkle_leaves {
+            if matches!(leaf.node_type, LeafType::SplBlock) {
+                if let Some(h) = &leaf.spl_hashes {
+                    if h.ast_hash == [0u8; 32] {
+                        d.push(Diagnostic {
+                            level: DiagnosticLevel::Warning,
+                            message: "SPL parse failed; ast_hash set to sentinel [0u8; 32]"
+                                .to_string(),
+                            file: path.to_path_buf(),
+                            line: leaf.start_line,
+                            column: 0,
+                        });
+                    }
+                }
+            }
+        }
+        d
+    };
 
     ParsedFile {
         path: path.to_path_buf(),
@@ -888,14 +912,29 @@ pub fn build_merkle_leaves<'a>(
                                     LeafType::HtmlBlock => raw_buf.clone(),
                                 };
 
-                                let hash = hash_leaf(&leaf_type, hash_input.as_bytes());
-                                leaves.push(MerkleLeaf {
-                                    node_type: leaf_type,
-                                    start_line,
-                                    end_line,
-                                    hash,
-                                    spl_hashes: None, // dual hashing handled in a subsequent pass
-                                });
+                                // SplBlock leaves use dual hashing (§4.4):
+                                // combined hash = BLAKE3(content_hash ‖ ast_hash).
+                                // All other leaves use BLAKE3(type_tag ‖ content).
+                                if matches!(leaf_type, LeafType::SplBlock) {
+                                    let spl = compute_spl_hashes(&raw_buf);
+                                    let combined = spl_combined_hash(&spl);
+                                    leaves.push(MerkleLeaf {
+                                        node_type: leaf_type,
+                                        start_line,
+                                        end_line,
+                                        hash: combined,
+                                        spl_hashes: Some(spl),
+                                    });
+                                } else {
+                                    let hash = hash_leaf(&leaf_type, hash_input.as_bytes());
+                                    leaves.push(MerkleLeaf {
+                                        node_type: leaf_type,
+                                        start_line,
+                                        end_line,
+                                        hash,
+                                        spl_hashes: None,
+                                    });
+                                }
 
                                 // Reset accumulators for the next leaf.
                                 text_buf.clear();
@@ -2370,7 +2409,7 @@ After
         let leaves = parse_leaves(content);
         assert_eq!(leaves.len(), 1);
         assert_eq!(leaf_variant(&leaves[0]), "SplBlock");
-        assert!(leaves[0].spl_hashes.is_none()); // dual hashing is a later pass
+        assert!(leaves[0].spl_hashes.is_some()); // dual hashing done during build_merkle_leaves
     }
 
     #[test]
