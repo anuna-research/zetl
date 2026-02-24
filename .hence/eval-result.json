@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 167,
-    "deletions": 55,
+    "insertions": 216,
+    "deletions": 33,
     "file_list": [
-      "src/cache.rs",
+      ".hence/context-manifest.json",
       "src/main.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 2
   },
   "learnings": [
     {
-      "key": "task-two-tier-invalidation-changes",
-      "content": "Modified 2 files (+167, -55): src/cache.rs, src/main.rs",
+      "key": "task-observability-changes",
+      "content": "Modified 2 files (+216, -33): .hence/context-manifest.json, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/two-tier-invalidation-v1",
-  "evaluated_at": "2026-02-24T03:58:44Z",
+  "branch_name": "hence/observability-v1",
+  "evaluated_at": "2026-02-24T04:10:43Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

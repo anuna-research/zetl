@@ -18,11 +18,34 @@ use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, 
 
 // ── Common pipeline ────────────────────────────────────────────────────────
 
+/// Scan and cache efficiency counters collected during run_pipeline (OBS-007, OBS-009).
+struct ScanStats {
+    /// Files that passed the Tier-1 mtime check (no re-read needed).
+    tier1_hits: usize,
+    /// Files whose mtime changed (fell through to Tier-2 hash comparison).
+    tier1_misses: usize,
+    /// Files whose mtime changed but whose content hash matched (touch hit).
+    tier2_hits: usize,
+    /// Files whose content hash differed — actual change, full reparse.
+    tier2_misses: usize,
+    /// Files that went through a full reparse (new + changed + backfill).
+    files_hashed: usize,
+    /// Total Merkle leaf nodes across all files in the final merged set.
+    total_leaf_nodes: usize,
+    /// Leaves that carry dual SPL hashes (content + AST).
+    spl_leaves_dual_hash: usize,
+    /// Wall-clock time for scan_vault (BLAKE3 hashing + section detection).
+    blake3_hashing_ms: u128,
+    /// Wall-clock time for section detection (subsumed in blake3_hashing_ms).
+    section_detection_ms: u128,
+}
+
 struct Pipeline {
     files: Vec<ParsedFile>,
     file_index: Vec<(String, PathBuf)>,
     graph: LinkGraph,
     vault_root: PathBuf,
+    scan_stats: ScanStats,
 }
 
 fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
@@ -36,11 +59,13 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
         load_cache(&vault_root)?
     };
 
-    // Scan vault for all markdown files
+    // Scan vault for all markdown files (timed for OBS-007).
+    let scan_start = Instant::now();
     let all_scanned = scan_vault(&vault_root, &[])?;
+    let scan_elapsed_ms = scan_start.elapsed().as_millis();
 
     // Incremental re-parse: two-tier invalidation (REQ-039, ADR-009).
-    let files = if let Some(ref cached_map) = cached {
+    let (files, scan_stats) = if let Some(ref cached_map) = cached {
         // Build current file list with freshly computed Merkle roots for Tier 2 comparison.
         let current_files: Vec<(PathBuf, std::time::SystemTime, Option<ContentHash>)> =
             all_scanned
@@ -55,6 +80,15 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
             files_needing_reparse(cached_map, &current_files);
         let full_reparse_set: HashSet<PathBuf> = full_reparse.into_iter().collect();
         let content_unchanged_set: HashSet<PathBuf> = content_unchanged.into_iter().collect();
+
+        // Compute OBS-009 tier counters from the two-tier invalidation results.
+        let tier2_hits = content_unchanged_set.len();
+        let tier2_misses = full_reparse_set
+            .iter()
+            .filter(|p| cached_map.contains_key(*p))
+            .count();
+        let tier1_misses = tier2_hits + tier2_misses;
+        let tier1_hits = all_scanned.len().saturating_sub(full_reparse_set.len() + tier2_hits);
 
         // Merge:
         //   full reparse    → use freshly scanned ParsedFile (links/SPL re-extracted).
@@ -83,9 +117,46 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
                 merged.push(scanned.clone());
             }
         }
-        merged
+
+        let files_hashed = full_reparse_set.len();
+        let total_leaf_nodes: usize = merged.iter().map(|f| f.merkle_leaves.len()).sum();
+        let spl_leaves_dual_hash: usize = merged
+            .iter()
+            .flat_map(|f| &f.merkle_leaves)
+            .filter(|l| l.spl_hashes.is_some())
+            .count();
+
+        (merged, ScanStats {
+            tier1_hits,
+            tier1_misses,
+            tier2_hits,
+            tier2_misses,
+            files_hashed,
+            total_leaf_nodes,
+            spl_leaves_dual_hash,
+            blake3_hashing_ms: scan_elapsed_ms,
+            section_detection_ms: scan_elapsed_ms,
+        })
     } else {
-        all_scanned
+        let total_leaf_nodes: usize = all_scanned.iter().map(|f| f.merkle_leaves.len()).sum();
+        let spl_leaves_dual_hash: usize = all_scanned
+            .iter()
+            .flat_map(|f| &f.merkle_leaves)
+            .filter(|l| l.spl_hashes.is_some())
+            .count();
+        let files_hashed = all_scanned.len();
+        let stats = ScanStats {
+            tier1_hits: 0,
+            tier1_misses: 0,
+            tier2_hits: 0,
+            tier2_misses: 0,
+            files_hashed,
+            total_leaf_nodes,
+            spl_leaves_dual_hash,
+            blake3_hashing_ms: scan_elapsed_ms,
+            section_detection_ms: scan_elapsed_ms,
+        };
+        (all_scanned, stats)
     };
 
     // Save updated cache
@@ -126,6 +197,7 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
         file_index,
         graph,
         vault_root,
+        scan_stats,
     })
 }
 
@@ -202,6 +274,22 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     let start = Instant::now();
     let pipeline = run_pipeline(cli)?;
     let elapsed = start.elapsed();
+
+    // OBS-007 + OBS-009: emit scan and cache-efficiency stats to stderr when --verbose.
+    if cli.verbose > 0 {
+        let s = &pipeline.scan_stats;
+        eprintln!("files hashed: {}", s.files_hashed);
+        eprintln!("files skipped (mtime hit): {}", s.tier1_hits);
+        eprintln!("files with content-hash match (touch hit): {}", s.tier2_hits);
+        eprintln!("total leaf nodes: {}", s.total_leaf_nodes);
+        eprintln!("SPL leaves with dual hashing: {}", s.spl_leaves_dual_hash);
+        eprintln!("BLAKE3 hashing time: {}ms", s.blake3_hashing_ms);
+        eprintln!("section detection and grounding hash time: {}ms", s.section_detection_ms);
+        eprintln!("tier1_hits: {}", s.tier1_hits);
+        eprintln!("tier1_misses: {}", s.tier1_misses);
+        eprintln!("tier2_hits: {}", s.tier2_hits);
+        eprintln!("tier2_misses: {}", s.tier2_misses);
+    }
 
     let total_links: usize = pipeline.files.iter().map(|f| f.links.len()).sum();
     let total_diagnostics: usize = pipeline.files.iter().map(|f| f.diagnostics.len()).sum();
@@ -642,12 +730,15 @@ fn cmd_check(
         vec![]
     };
 
+    // Load theory cache once for drift detection, broken_groundings, and explicitly_grounded_facts.
+    // Requires a prior `zetl reason status` that produced theory.json — if none exists,
+    // load_theory_cache returns None and we skip the theory-cache-dependent checks silently.
+    let theory_cache = load_theory_cache(&pipeline.vault_root).unwrap_or(None);
+
     // Detect section-level drift (REQ-043a).
-    // Requires a prior `zetl build` that produced theory.json — if none exists,
-    // load_theory_cache returns None and we skip drift detection silently.
     let drift_diagnostics: Vec<DriftDiagnostic> = if show_all || show_drift {
-        match load_theory_cache(&pipeline.vault_root) {
-            Ok(Some(ref theory)) => pipeline
+        match theory_cache.as_ref() {
+            Some(theory) => pipeline
                 .files
                 .iter()
                 .filter_map(|f| f.file_merkle.as_ref().map(|fm| (f, fm)))
@@ -655,11 +746,47 @@ fn cmd_check(
                     detect_section_drift(&f.path, fm, &f.merkle_leaves, theory)
                 })
                 .collect(),
-            _ => vec![],
+            None => vec![],
         }
     } else {
         vec![]
     };
+
+    // OBS-008: compute summary fields from theory cache.
+    let total_spl_blocks: usize = pipeline.files.iter().map(|f| f.spl_blocks.len()).sum();
+
+    let explicitly_grounded_facts: usize = theory_cache.as_ref().map_or(0, |tc| {
+        tc.spl_blocks
+            .values()
+            .map(|b| b.explicit_groundings.len())
+            .sum()
+    });
+
+    // Build a fast lookup from file path → set of leaf hashes for broken-grounding detection.
+    let leaf_hash_index: HashMap<std::path::PathBuf, std::collections::HashSet<ContentHash>> =
+        pipeline
+            .files
+            .iter()
+            .map(|f| {
+                let hashes = f.merkle_leaves.iter().map(|l| l.hash).collect();
+                (f.path.clone(), hashes)
+            })
+            .collect();
+
+    let broken_groundings: usize = theory_cache.as_ref().map_or(0, |tc| {
+        tc.spl_blocks
+            .values()
+            .flat_map(|b| &b.explicit_groundings)
+            .flat_map(|g| &g.targets)
+            .filter(|t| {
+                // A grounding is broken if the target file is gone or its leaf hash changed.
+                match leaf_hash_index.get(&t.target_file) {
+                    Some(hashes) => !hashes.contains(&t.target_leaf_hash),
+                    None => true,
+                }
+            })
+            .count()
+    });
 
     #[derive(Serialize)]
     struct CheckSummary {
@@ -669,6 +796,11 @@ fn cmd_check(
         spl_errors: usize,
         drift_warnings: usize,
         drift_info: usize,
+        total_spl_blocks: usize,
+        drifted_blocks_warning: usize,
+        drifted_blocks_info: usize,
+        explicitly_grounded_facts: usize,
+        broken_groundings: usize,
     }
 
     #[derive(Serialize)]
@@ -681,6 +813,15 @@ fn cmd_check(
         summary: CheckSummary,
     }
 
+    let drifted_blocks_warning = drift_diagnostics
+        .iter()
+        .filter(|d| matches!(d.severity, DriftSeverity::Warning))
+        .count();
+    let drifted_blocks_info = drift_diagnostics
+        .iter()
+        .filter(|d| matches!(d.severity, DriftSeverity::Info))
+        .count();
+
     let summary = CheckSummary {
         dead_links: dead.len(),
         orphans: orphan_list.len(),
@@ -689,14 +830,13 @@ fn cmd_check(
             .iter()
             .filter(|d| d.level == DiagnosticLevel::Error)
             .count(),
-        drift_warnings: drift_diagnostics
-            .iter()
-            .filter(|d| matches!(d.severity, DriftSeverity::Warning))
-            .count(),
-        drift_info: drift_diagnostics
-            .iter()
-            .filter(|d| matches!(d.severity, DriftSeverity::Info))
-            .count(),
+        drift_warnings: drifted_blocks_warning,
+        drift_info: drifted_blocks_info,
+        total_spl_blocks,
+        drifted_blocks_warning,
+        drifted_blocks_info,
+        explicitly_grounded_facts,
+        broken_groundings,
     };
 
     let output = CheckOutput {
@@ -788,6 +928,35 @@ fn cmd_check(
                 }
                 println!("Drift Diagnostics:");
                 println!("{table}");
+                println!();
+            }
+
+            // OBS-008: always print summary stats table.
+            {
+                let mut sum_table = Table::new();
+                sum_table.set_header(vec!["Summary", "Count"]);
+                sum_table.add_row(vec![
+                    Cell::new("Total SPL blocks"),
+                    Cell::new(output.summary.total_spl_blocks),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Drifted blocks (warning)"),
+                    Cell::new(output.summary.drifted_blocks_warning),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Drifted blocks (info)"),
+                    Cell::new(output.summary.drifted_blocks_info),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Explicitly grounded facts"),
+                    Cell::new(output.summary.explicitly_grounded_facts),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Broken groundings"),
+                    Cell::new(output.summary.broken_groundings),
+                ]);
+                println!("Summary:");
+                println!("{sum_table}");
                 println!();
             }
 
@@ -1425,12 +1594,15 @@ fn literal_matches(literal: &str, pattern: &str) -> bool {
 /// On cache hit (no SPL-containing file has changed), reconstructs the theory
 /// from `.zetl/theory.json` and re-reasons (~100ms).  On cache miss, runs the
 /// full parse + combine + validate + reason pipeline and saves the cache.
+///
+/// Returns `(TheoryResult, theory_cache_hit)` where `theory_cache_hit` is `true`
+/// when the cached theory was reused (OBS-009).
 #[cfg(feature = "reason")]
 fn build_or_load_theory(
     pipeline: &Pipeline,
     no_cache: bool,
     verbose: u8,
-) -> Result<zetl::reason::types::TheoryResult> {
+) -> Result<(zetl::reason::types::TheoryResult, bool)> {
     use zetl::cache::{
         build_theory_cache, collect_spl_ast_hashes, load_theory_cache, save_theory_cache,
         theory_cache_valid,
@@ -1473,7 +1645,7 @@ fn build_or_load_theory(
                         total_start.elapsed().as_millis(),
                     );
                 }
-                return Ok(result);
+                return Ok((result, true));
             }
         }
     }
@@ -1511,7 +1683,7 @@ fn build_or_load_theory(
         );
     }
 
-    Ok(result)
+    Ok((result, false))
 }
 
 /// Emit OBS-005 timing metrics to stderr.
@@ -1665,7 +1837,18 @@ fn cmd_reason_status(
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+
+    // OBS-009: emit cache efficiency stats to stderr when --verbose.
+    if cli.verbose > 0 {
+        let s = &pipeline.scan_stats;
+        eprintln!("tier1_hits: {}", s.tier1_hits);
+        eprintln!("tier1_misses: {}", s.tier1_misses);
+        eprintln!("tier2_hits: {}", s.tier2_hits);
+        eprintln!("tier2_misses: {}", s.tier2_misses);
+        eprintln!("theory_cache_hit: {}", theory_cache_hit);
+        eprintln!("theory_cache_miss: {}", !theory_cache_hit);
+    }
 
     // Determine if there were parse errors
     let parse_error_count = result
@@ -1916,7 +2099,7 @@ fn cmd_reason_explain(
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Parse the literal input: handle ~negation prefix
     let (is_negated, lit_name) = if let Some(name) = literal_input.strip_prefix('~') {
@@ -2057,7 +2240,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Check if the literal appears anywhere in the theory (as a head, body, or fact)
     let all_head_literals: HashSet<String> = result
@@ -2467,7 +2650,7 @@ fn cmd_reason_require(
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Parse --assume facts if provided, and inject them into the theory for reasoning
     let assumed_literals: HashSet<String> = if let Some(assume_input) = assume_spl {
@@ -2827,7 +3010,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Build a set of all rule heads grouped by their base literal name.
     // A conflict exists when there are rules for both `p` and `~p`.
@@ -3369,7 +3552,7 @@ fn cmd_reason_what_if(
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Build baseline conclusion set: (literal, type_symbol) pairs
     let conclusion_symbol = |ct: &zetl::reason::types::ConclusionType| -> &'static str {
@@ -3584,7 +3767,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
         }
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     // Load theory cache for grounding freshness (REQ-044).
     let theory_cache = load_theory_cache(&pipeline.vault_root).unwrap_or(None);
@@ -4719,7 +4902,7 @@ fn cmd_reason_export(
         return Ok(());
     }
 
-    let result = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
+    let (result, _theory_cache_hit) = build_or_load_theory(&pipeline, cli.no_cache, cli.verbose)?;
 
     match format {
         ExportFormat::Spl => {

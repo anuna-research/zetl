@@ -1,12 +1,12 @@
 {
-  "task_id": "two-tier-invalidation",
+  "task_id": "observability",
   "token_budget": 8000,
-  "tokens_used": 479,
+  "tokens_used": 449,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Replace the existing mtime-only cache invalidation with two-tier invalidation per REQ-039 and ADR-009. Tier 1 (fast): check file mtime. If unchanged since cache, skip hashing — reuse all cached Merkle nodes. Tier 2 (authoritative): if mtime changed, re-read and re-hash the file. If the computed file Merkle root equals the cached root, skip all downstream processing (wikilink re-extraction, SPL re-extraction, theory cache invalidation). Only if the root differs does full reprocessing occur. Implement in cache.rs files_needing_reparse, updating the signature to return (Vec<PathBuf>, Vec<PathBuf>) where the first vec is 'needs full reparse' and the second is 'mtime changed but content unchanged'. Update src/main.rs cmd_index to use the two-tier result and skip downstream processing for tier-2 hits. Also update cmd_reason_status to use the new invalidation path: a file with unchanged SPL AST hashes does not trigger theory rebuild even if its file Merkle root changed (prose edit only).",
-      "token_cost": 249,
+      "content": "Implement verbose observability output per OBS-007, OBS-008, OBS-009. OBS-007 (zetl index --verbose): emit to stderr: files hashed / files skipped (mtime hit) / files with content-hash match (touch hit); total leaf nodes; SPL leaves with dual hashing; BLAKE3 hashing time (ms); section detection and grounding hash time (ms). OBS-008 (zetl check summary): add to summary JSON and table: total_spl_blocks, drifted_blocks_warning, drifted_blocks_info, explicitly_grounded_facts, broken_groundings. OBS-009 (zetl index --verbose and zetl reason status --verbose): emit cache efficiency stats: tier1_hits (mtime), tier1_misses, tier2_hits (hash match), tier2_misses (actual change), theory_cache_hit / theory_cache_miss. Add these counters to the scan/index pipeline. Output to stderr so JSON stdout is unaffected. Wire --verbose flag into cmd_index and cmd_reason_status in main.rs.",
+      "token_cost": 219,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T03:49:13Z"
+  "constructed_at": "2026-02-24T03:58:49Z"
 }
