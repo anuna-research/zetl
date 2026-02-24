@@ -1,12 +1,12 @@
 {
-  "task_id": "no-index-fallback",
+  "task_id": "two-pane-layout",
   "token_budget": 8000,
-  "tokens_used": 270,
+  "tokens_used": 238,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement the no-index graceful fallback (REQ-072). Before opening the TUI: check for the existence of .zetl/index.json (or equivalent per SPEC-006). If missing: display a status message 'Building index…' on stderr (before entering alternate screen); run the SPEC-006 index pipeline in-process (call the same function as 'zetl index'); if indexing succeeds, proceed to open the TUI; if indexing fails, exit non-zero with a plain-text error and JSON error code INDEX_BUILD_FAILED. REQ-072, CON-023.",
-      "token_cost": 124,
+      "content": "Implement the ratatui Layout that divides the terminal into three columns: main pane (default 58% of terminal width, configurable via --main-width), bridge column (exactly 3 characters wide), and context pane (remaining width). Add a status bar row pinned to the bottom (1 row). When terminal width < 60 columns, switch to single-pane mode (main pane only; context overlay is a separate task). Store computed pane rects in ViewApp for use by all rendering tasks. REQ-063, NFR-025.",
+      "token_cost": 120,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 4 files (+127, -8): .hence/context-manifest.json, src/main.rs, src/view/fuzzy.rs, src/view/mod.rs",
       "token_cost": 26,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-no-index-fallback-changes",
+      "content": "Modified 2 files (+65, -7): .hence/context-manifest.json, src/main.rs",
+      "token_cost": 17,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T07:13:01Z"
+  "constructed_at": "2026-02-24T07:18:29Z"
 }

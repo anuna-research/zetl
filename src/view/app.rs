@@ -6,6 +6,12 @@ use ratatui::widgets::{Block, Clear, Paragraph};
 use super::terminal::{enter_alternate_screen, restore_terminal};
 use crate::view::event::run_event_loop;
 
+/// Terminal width below which the view switches to single-pane mode (REQ-063).
+const SINGLE_PANE_THRESHOLD: u16 = 60;
+
+/// Width of the bridge column separating the two panes (NFR-025).
+const BRIDGE_WIDTH: u16 = 3;
+
 // ── ContextMode ───────────────────────────────────────────────────────────
 
 /// Which set of context cards to display in the right pane.
@@ -83,6 +89,23 @@ pub struct ViewApp {
 
     /// Set to `true` to break out of the event loop.
     pub should_quit: bool,
+
+    // ── Computed layout rects (refreshed every draw call) ─────────────────
+
+    /// Rect of the main note pane (left column).
+    pub main_pane: Rect,
+
+    /// Rect of the 3-column bridge strip between the two panes.
+    pub bridge_col: Rect,
+
+    /// Rect of the context pane (right column).  Empty in single-pane mode.
+    pub context_pane: Rect,
+
+    /// Rect of the single-row status bar pinned to the bottom.
+    pub status_bar: Rect,
+
+    /// `true` when the terminal is narrower than [`SINGLE_PANE_THRESHOLD`].
+    pub single_pane: bool,
 }
 
 impl ViewApp {
@@ -99,6 +122,11 @@ impl ViewApp {
             show_help: false,
             context_overlay: false,
             should_quit: false,
+            main_pane: Rect::default(),
+            bridge_col: Rect::default(),
+            context_pane: Rect::default(),
+            status_bar: Rect::default(),
+            single_pane: false,
         }
     }
 
@@ -110,20 +138,50 @@ impl ViewApp {
         result
     }
 
-    /// Render a single frame into `frame`.
-    pub fn draw(&self, frame: &mut Frame) {
+    /// Render a single frame into `frame`, updating stored pane rects (REQ-063, NFR-025).
+    pub fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
 
-        // Reserve the bottom row for the status bar.
-        let [main_area, status_area] =
+        // ── Step 1: vertical split — content + 1-row status bar ──────────
+        let [content_area, status_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
+        self.status_bar = status_area;
 
-        // Main content placeholder.
+        // ── Step 2: horizontal split based on terminal width ─────────────
+        if content_area.width < SINGLE_PANE_THRESHOLD {
+            // Single-pane mode: main pane fills the whole content area.
+            self.single_pane = true;
+            self.main_pane = content_area;
+            self.bridge_col = Rect::default();
+            self.context_pane = Rect::default();
+        } else {
+            // Two-pane mode: main | bridge | context.
+            self.single_pane = false;
+            let [main_area, bridge_area, context_area] = Layout::horizontal([
+                Constraint::Percentage(self.main_width as u16),
+                Constraint::Length(BRIDGE_WIDTH),
+                Constraint::Fill(1),
+            ])
+            .areas(content_area);
+            self.main_pane = main_area;
+            self.bridge_col = bridge_area;
+            self.context_pane = context_area;
+        }
+
+        // ── Step 3: render panes ─────────────────────────────────────────
+
+        // Main pane placeholder.
         let title = format!(" zetl view — {} ", self.current_page);
         let block = Block::bordered().title(title);
-        frame.render_widget(block, main_area);
+        frame.render_widget(block, self.main_pane);
 
-        // Status bar.
+        if !self.single_pane {
+            self.draw_bridge_col(frame);
+            self.draw_context_pane(frame);
+        }
+
+        // ── Step 4: status bar and overlays ──────────────────────────────
+        let status_area = self.status_bar;
         self.draw_status_bar(frame, status_area);
 
         // Overlays are drawn last so they appear on top.
@@ -133,6 +191,25 @@ impl ViewApp {
         if self.show_help {
             self.draw_help_overlay(frame, area);
         }
+    }
+
+    /// Render the 3-column bridge strip separating the two panes.
+    fn draw_bridge_col(&self, frame: &mut Frame) {
+        let area = self.bridge_col;
+        // Fill each row with " │ " — a centred vertical bar.
+        let lines: Vec<Line> = (0..area.height).map(|_| Line::from(" │ ")).collect();
+        frame.render_widget(Paragraph::new(lines), area);
+    }
+
+    /// Render the context pane (placeholder until context-card rendering is implemented).
+    fn draw_context_pane(&self, frame: &mut Frame) {
+        let mode_str = match self.context_mode {
+            ContextMode::Forward => "Forward links",
+            ContextMode::Back => "Backlinks",
+            ContextMode::Both => "Forward links & Backlinks",
+        };
+        let block = Block::bordered().title(format!(" {} ", mode_str));
+        frame.render_widget(block, self.context_pane);
     }
 
     /// Render the single-line status bar at `area`.
