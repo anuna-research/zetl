@@ -1,6 +1,6 @@
 ---
 title: "SPEC-006: Content-Addressed Merkle Tree over Markdown and SPL AST"
-version: 0.1.0
+version: 0.3.0
 status: draft
 audience: agent, human
 date: 2026-02-24
@@ -14,7 +14,7 @@ date: 2026-02-24
 | -------------- | ------------------------------------------------------------------ |
 | Document ID    | SPEC-006                                                           |
 | Title          | Content-Addressed Merkle Tree over Markdown and SPL AST            |
-| Version        | 0.1.0                                                              |
+| Version        | 0.3.0                                                              |
 | Status         | Draft                                                              |
 | Author         | Agent (USDD Protocol v1.0.0)                                       |
 | Date           | 2026-02-24                                                         |
@@ -22,7 +22,7 @@ date: 2026-02-24
 | Trace          | USDD Agent Protocol v1.0.0                                         |
 | Parent         | SPEC-001: zetl — Bi-directional Link Graph CLI                     |
 | Related        | SPEC-005: zetl reason — Defeasible Logic over Markdown Vaults      |
-| Dependencies   | pulldown-cmark (Markdown AST), spindle-parser (SPL AST), sha2/blake3 |
+| Dependencies   | pulldown-cmark (Markdown AST), spindle-parser (SPL AST), blake3    |
 
 ---
 
@@ -30,13 +30,20 @@ date: 2026-02-24
 
 SPEC-001 established zetl's cache invalidation on file-level modification timestamps (mtime). SPEC-005 extended this to the theory cache: if any SPL-containing file's mtime changes, the entire theory is rebuilt. This works for performance — but it says nothing about **what changed**. Mtime tells you *when* a file was touched, not *whether the content that matters actually differs*.
 
-This specification introduces a **content-addressed Merkle tree** rooted at the vault level, where every node in the Markdown and SPL abstract syntax trees is content-hashed into a hierarchical structure. The result is a durable, verifiable fingerprint for every piece of content in the vault — from individual paragraphs and SPL facts up to the entire vault as a whole.
+This specification introduces a **content-addressed Merkle tree** built transparently during `zetl index`, where every block-level node in the Markdown AST is content-hashed into a hierarchical structure. The Merkle tree is invisible infrastructure — users never interact with it directly. Instead, it enables three user-visible capabilities:
+
+1. **Smarter caching** — theory rebuilds only when SPL content actually changes, not when surrounding prose is edited
+2. **Drift detection** — `zetl check` warns when prose surrounding an SPL block has changed but the SPL hasn't been updated
+3. **Content grounding** — SPL facts and rules are automatically linked to the Markdown prose they formalise, creating a verifiable connection between informal claims and formal logic
+4. **Content-addressed references** — `zetl blocks` exposes the Merkle leaf hashes of every content block in a file, giving agents read-only, position-independent references to specific paragraphs, headings, and tables without modifying source files
 
 ### 1.1 The Drift Problem
 
 SPL theories embedded in Markdown files make claims that are grounded in the surrounding prose. A note titled "Redis vs Memcached" might contain:
 
 ````markdown
+## Benchmark Results
+
 We benchmarked Redis at 120k ops/sec under our workload profile.
 
 ```spl
@@ -48,181 +55,184 @@ We benchmarked Redis at 120k ops/sec under our workload profile.
 ```
 ````
 
-The SPL block formalises the note's claim. But what happens when the prose changes?
+The SPL block formalises the section's claim. But what happens when the prose changes?
 
-- **Scenario A:** The author updates the benchmark to 85k ops/sec and adds "below our threshold." The SPL still asserts `redis-fast-enough`. The theory now contradicts its own source document. The SPL has **drifted** from its grounding prose.
-- **Scenario B:** The author fixes a typo in a paragraph above the SPL block. The file's mtime changes. The theory cache is invalidated and rebuilt — unnecessarily, since the SPL content is identical. This is a **false invalidation**.
-- **Scenario C:** An agent creates a note with SPL, then a different agent modifies the prose months later. The second agent has no way to know whether the SPL is still consistent with the updated prose. There is no **content provenance** linking the theory to a specific version of the document.
+- **Scenario A — Semantic drift:** The author updates the benchmark to 85k ops/sec and adds "below our threshold." The SPL still asserts `redis-fast-enough`. The theory now contradicts its own source document. The SPL has **drifted** from its grounding prose.
+- **Scenario B — False invalidation:** The author fixes a typo in a different section. The file's mtime changes. The theory cache is invalidated and rebuilt — unnecessarily, since the SPL content is identical.
+- **Scenario C — No content provenance:** An agent creates a note with SPL, then a different agent modifies the prose months later. The second agent has no way to know whether the SPL is still consistent with the updated prose. There is no verifiable link between the theory and a specific version of the prose.
 
 Mtime-based caching handles none of these. It is a performance optimisation, not a correctness mechanism.
 
-### 1.2 The Solution: Content-Addressed Merkle Tree
+### 1.2 The Solution: Content-Addressed Merkle Tree with Grounding
 
-A Merkle tree hashes content from leaves upward: each leaf node is the hash of an atomic content unit; each interior node is the hash of its children's hashes. Any change to any leaf propagates to the root. Comparing roots tells you instantly whether *anything* changed; comparing interior nodes tells you *where*.
+The solution has two parts:
 
-Applied to a Markdown vault:
+**Part 1: Merkle tree as infrastructure.** A Merkle tree is built during `zetl index` by hashing block-level AST nodes from pulldown-cmark. It propagates upward: leaf hashes → file hashes → vault root hash. This replaces mtime as the authoritative cache invalidation signal and enables precise change detection at the block level.
+
+**Part 2: Section grounding.** Each SPL block is automatically "grounded in" its containing Markdown section — the heading above it through to the next heading at the same or higher level. The section's content hash (computed from its non-SPL Merkle leaves) is stored as the SPL block's **grounding hash**. When the section prose changes but the SPL doesn't, `zetl check` reports a drift warning. For precision, authors can explicitly ground individual SPL facts in specific content blocks using Obsidian's `^block-id` syntax.
 
 ```
-                        ┌─────────────────────┐
-                        │    Vault Root Hash   │
-                        │  H(file₁ ‖ file₂ ‖ …)│
-                        └──────────┬──────────┘
-                                   │
-                  ┌────────────────┼────────────────┐
-                  │                │                 │
-           ┌──────▼──────┐ ┌──────▼──────┐  ┌──────▼──────┐
-           │  File Hash₁  │ │  File Hash₂  │  │  File Hash₃  │
-           │  H(node₁‖…)  │ │  H(node₁‖…)  │  │  H(node₁‖…)  │
-           └──────┬───────┘ └──────┬───────┘  └─────────────┘
-                  │                │
-        ┌─────┬──┴──┬─────┐      ┌┴─────┬──────┐
-        │     │     │     │      │      │      │
-       ┌▼┐  ┌▼┐  ┌─▼─┐ ┌▼┐   ┌─▼─┐  ┌▼┐  ┌─▼─┐
-       │H│  │P│  │SPL│ │P│   │ H │  │P│  │SPL│
-       │1│  │ │  │   │ │ │   │   │  │ │  │   │
-       └─┘  └─┘  └───┘ └─┘   └───┘  └─┘  └───┘
-
-       H = Heading leaf          SPL = SPL block leaf (tagged)
-       P = Paragraph leaf
+              ┌─────────────────────┐
+              │    Vault Root Hash   │
+              └──────────┬──────────┘
+                         │
+           ┌─────────────┼─────────────┐
+           │             │              │
+     ┌─────▼─────┐ ┌────▼────┐  ┌─────▼─────┐
+     │ File Hash₁ │ │File Hash₂│  │ File Hash₃ │
+     └─────┬─────┘ └────┬────┘  └───────────┘
+           │             │
+     ┌──┬──┴──┬──┐    ┌──┴──┬─────┐
+     │  │     │  │    │     │     │
+    ┌▼┐┌▼┐ ┌─▼┐┌▼┐  ┌▼┐  ┌▼┐  ┌─▼┐
+    │H││P│ │SP││P│  │H│  │P│  │SP│
+    └─┘└─┘ └──┘└─┘  └─┘  └─┘  └──┘
+     ╰──section──╯    ╰──section──╯
+       grounding        grounding
+       context          context
 ```
-
-**Leaves** are the atomic AST nodes produced by pulldown-cmark (headings, paragraphs, code blocks, lists, etc.) and spindle-parser (facts, rules, defeaters, superiority relations). Each leaf is content-hashed independently.
-
-**SPL block leaves are tagged.** When the scanner encounters an `spl`-tagged code block, it produces a special leaf node that contains both the raw SPL content hash and the parsed SPL AST hash. This dual hashing means: (a) changes to SPL block formatting without semantic change can be detected, and (b) changes to the logical content are tracked separately from the surrounding Markdown.
-
-**File nodes** are interior nodes whose hash is derived from the ordered concatenation of their children's hashes. Reordering paragraphs changes the file hash. Adding a paragraph changes the file hash. Modifying a single character in any paragraph changes the file hash.
-
-**The vault root** is the top-level interior node whose hash is derived from all file hashes, sorted by canonical path. Adding, removing, or modifying any file changes the vault root hash.
 
 ### 1.3 What This Enables
 
-| Capability | Mechanism |
+| Capability | How Users See It |
 | --- | --- |
-| **O(1) vault change detection** | Compare vault root hashes |
-| **O(log n) change localisation** | Walk the tree to the first divergent node |
-| **SPL drift detection** | Compare the SPL leaf hash against the hashes of its sibling prose nodes. If prose changed but SPL didn't, flag as potential drift |
-| **Conclusion freshness** | Each conclusion's provenance includes the content hashes of the rules/facts that derived it. Re-verify without re-reasoning by checking hashes |
-| **False invalidation elimination** | Mtime changed but content hash is identical → skip rebuild |
-| **Durable provenance references** | Theory provenance stores content hashes alongside file paths and line numbers. Even if the file is later modified, the provenance references a specific, verifiable content state |
-| **Cross-agent content verification** | Agent B can verify that the prose Agent A based its SPL on has not changed since the theory was built |
+| **Smarter theory caching** | `zetl reason status` is faster — skips rebuilds when only prose changed |
+| **Drift warnings** | `zetl check --drift` warns: "SPL in Redis.md §Benchmarks may be stale — section was edited" |
+| **Stale provenance detection** | `zetl reason provenance` warns when source content has changed since the theory was built |
+| **False invalidation elimination** | `zetl index` doesn't re-process files that were touched but not changed |
+| **Content-addressed references** | `zetl blocks` returns Merkle hashes for every content block; agents use hashes as read-only `:source` references without modifying files |
+| **Explicit content references** | SPL can pin facts to specific paragraphs via `:source "^block-id"` or `:source "e5f6a7b8"` (Merkle hash) |
+| **Cross-agent verification** | Agents can verify that prose grounding a theory hasn't changed since it was built |
 
 ### 1.4 Design Philosophy
 
-1. **Content over time.** Mtime answers "when was this touched?" Content hashing answers "what does it say?" Both are useful; content hashing is authoritative.
-2. **Mtime as pre-filter.** Hashing is more expensive than stat(). Mtime remains the first check: if mtime hasn't changed, skip hashing. If mtime changed but the hash is the same, skip reprocessing. This is a two-tier invalidation strategy.
-3. **Trees, not flat hashes.** A flat per-file hash (SHA-256 of file content) would detect changes but not localise them. The Merkle tree structure enables targeted questions: "did the SPL block change?" "did the heading change?" "which paragraph changed?"
-4. **AST boundaries, not byte boundaries.** Hashing raw bytes is fragile — trailing whitespace, BOM markers, and line endings cause false positives. Hashing normalised AST nodes is semantically stable.
-5. **Tagged leaves.** SPL blocks are not just code blocks — they are semantically significant content that feeds the reasoning engine. Tagging them in the Merkle tree enables SPL-specific queries (drift detection, conclusion freshness) without scanning the full tree.
+1. **Invisible infrastructure.** The Merkle tree is an implementation detail of the scanner and cache. Users never see hashes, never run `merkle` commands, never think about tree structure. They see faster caching, drift warnings, and content references.
+2. **Content over time.** Mtime answers "when was this touched?" Content hashing answers "what does it say?" Both are useful; content hashing is authoritative.
+3. **Mtime as pre-filter.** Hashing is more expensive than stat(). Mtime remains the first check: if mtime hasn't changed, skip hashing. Two-tier invalidation.
+4. **Section grounding by default, precision on demand.** SPL blocks are automatically grounded in their containing section — this handles the 80% case. Authors who need tighter coupling use `:source "^block-id"` — this handles the 20%.
+5. **AST boundaries, not byte boundaries.** Hashing normalised AST nodes is semantically stable across whitespace and formatting changes.
 
 ### 1.5 Scope
 
 **In scope:**
 
-- Merkle tree construction from pulldown-cmark AST events
+- Merkle tree construction from pulldown-cmark AST events, built during `zetl index`
 - SPL block leaves with dual hashing (raw content + parsed SPL AST)
 - File-level and vault-level Merkle roots
-- Integration with existing cache system (mtime + content hash two-tier invalidation)
-- SPL drift detection: flagging SPL blocks whose sibling prose has changed since the theory was last built
-- Durable provenance: attaching content hashes to theory provenance metadata
-- CLI commands for inspecting and comparing Merkle trees
+- Two-tier cache invalidation (mtime + content hash)
+- Section grounding: implicit linking of SPL blocks to their containing Markdown section
+- Explicit grounding via `:source` — three forms: Merkle hash (agent-friendly, read-only), `^block-id` (human-friendly), `[[Page^block-id]]` (cross-file)
+- Content block discovery: `zetl blocks <page>` exposes Merkle leaf hashes for agent consumption
+- Drift detection integrated into `zetl check`
+- Durable provenance: content hashes in theory provenance metadata
 
 **Out of scope:**
 
-- Cryptographic signing of Merkle proofs (future SPEC, builds on spindle-core's trust module)
-- Distributed Merkle tree synchronisation across vaults (future SPEC, builds on SPEC-004 sync)
+- Low-level Merkle tree inspection commands (no `zetl merkle` subcommand)
+- Cryptographic signing of Merkle proofs (future SPEC)
+- Distributed Merkle tree synchronisation across vaults (future SPEC)
 - Incremental Merkle tree updates (future optimisation; v1 rebuilds file trees from scratch)
 - Embedding-based semantic drift detection (future SPEC; this spec covers structural drift only)
-- Git-style object storage (the Merkle tree is computed in-memory and cached as metadata, not stored as a content-addressable object store)
+- Git-style content-addressable object storage
 
 ---
 
 ## 2. User Profiles
 
-### 2.1 Agent Operator — Theory Integrity Verifier
+### 2.1 Agent Operator — Knowledge Builder
 
 ```
 Role: LLM agent maintaining a knowledge base with SPL theories
 Goals:
-  - Verify that SPL theories are still consistent with their source prose
-  - Detect when prose changes invalidate existing SPL claims
-  - Avoid unnecessary theory rebuilds when non-SPL content changes
-  - Reference specific content states in provenance metadata
+  - Write notes with SPL blocks that formalise the surrounding prose
+  - Get warned when edits to prose invalidate existing SPL claims
+  - Avoid unnecessary theory rebuilds when editing non-SPL content
+  - Ground SPL facts in specific content blocks without modifying files
 Constraints:
   - Requires structured JSON output
   - Invokes CLI commands non-interactively
   - May operate on the same vault as other agents concurrently
 Daily workflow:
-  1. Run `zetl merkle status` to get the current vault root hash
-  2. Run `zetl merkle drift` to check for SPL blocks whose surrounding
-     prose has changed since the theory was last built
-  3. If drift detected, run `zetl reason status` to rebuild with fresh hashes
-  4. Store vault root hash as a checkpoint for future comparison
+  1. Read an existing note and want to formalise a claim
+  2. Run `zetl blocks "Redis vs Memcached"` to see content blocks with hashes
+  3. Write SPL grounding a fact in a specific paragraph:
+     (given redis-fast-enough :source "e5f6a7b8")
+  4. Run `zetl index` (Merkle tree built transparently)
+  5. Run `zetl reason status` (theory uses content hashes for caching)
+  6. Later, another agent edits the source paragraph
+  7. Run `zetl check --drift` — see that the grounding is stale
 ```
 
-### 2.2 Human Knowledge Worker — Content Auditor
+### 2.2 Human Knowledge Worker — Decision Documenter
 
 ```
-Role: Researcher auditing the evolution of their knowledge base
+Role: Researcher documenting decisions with formal justification
 Goals:
-  - Understand what changed between vault states
-  - Verify that formal claims (SPL) are still grounded in current prose
-  - See which conclusions may be stale due to prose changes
+  - Write decision documents where conclusions are formally expressed
+  - Get warned when revisiting old decisions that the SPL may be stale
+  - Understand which conclusions are grounded in current prose
 Constraints:
   - Prefers human-readable table output
-  - May not understand Merkle trees — needs actionable summaries
-  - Works from the terminal alongside a text editor
+  - Doesn't know or care about Merkle trees
+  - Wants actionable warnings, not hash values
 Daily workflow:
-  1. Run `zetl merkle drift -f table` after editing notes
-  2. Review flagged SPL blocks and update or confirm them
-  3. Run `zetl reason status` to see updated conclusions
+  1. Write notes in Obsidian with ```spl blocks
+  2. Run `zetl check` — sees drift warnings alongside dead links and orphans
+  3. Review flagged SPL blocks and update or confirm them
+  4. Run `zetl reason status` — sees which conclusions are current
 ```
 
-### 2.3 Agent Team — Coordinated Knowledge Verification
+### 2.3 Agent Team — Multi-Agent Knowledge Coordination
 
 ```
 Role: Multiple LLM agents contributing to a shared knowledge base (via hence)
 Goals:
-  - Verify that another agent's edits haven't invalidated existing theories
-  - Use content hashes as durable references in task coordination
-  - Detect conflicts arising from concurrent edits to shared documents
+  - Verify that another agent's prose edits haven't invalidated theories
+  - Ground facts in specific evidence using content-addressed references
+  - Detect when concurrent edits create drift in shared documents
 Constraints:
-  - Agents write concurrently (append-only, no lock contention)
-  - Vault root hash serves as a coordination checkpoint
-  - Hence can compare pre/post hashes to validate agent contributions
+  - Agents write concurrently (append-only)
+  - Hence lifecycle hooks can run `zetl check --drift --fail-on drift`
+  - Content hashes serve as coordination checkpoints
 Daily workflow:
-  1. Hence records vault root hash before assigning task to agent-A
-  2. Agent-A edits files and runs `zetl merkle status`
-  3. Hence compares pre/post vault root hashes
-  4. If changed, hence runs `zetl merkle diff <hash-before> <hash-after>`
-     to understand what changed
-  5. Hence runs `zetl merkle drift` to verify no SPL drift
+  1. Hence assigns research task to agent-A
+  2. Agent-A reads existing notes, runs `zetl blocks "Redis Benchmarks"`
+     to get content hashes for the evidence paragraphs
+  3. Agent-A writes SPL grounding facts in those hashes:
+     (given redis-fast-enough :source "e5f6a7b8")
+     No file modification needed — the hash references content as-is.
+  4. Agent-B later edits the benchmark paragraph
+  5. Hence post-edit hook: `zetl check --drift --fail-on drift`
+     → Fails: "fact redis-fast-enough grounded in e5f6a7b8 — no matching
+        content block found (original paragraph was modified)"
+  6. Hence assigns reconciliation task to resolve the drift
 ```
 
 ### 2.4 Happy Paths
 
 ```
-Happy Path: Agent Detects SPL Drift After Prose Edit
+Happy Path: Drift Detected During Routine Check
 
 Preconditions:
-  - Vault has a file "Redis.md" with prose and an SPL block
-  - Theory was built with content hashes recorded in provenance
-  - Another agent modifies the benchmark numbers in the prose
+  - Vault has "Redis.md" with section "## Benchmarks" containing prose
+    and an SPL block
+  - Theory was built with section grounding hashes recorded
+  - Author modifies the benchmark numbers in the prose paragraph
 Steps:
-  1. `zetl merkle drift -d ./vault`
-     → Returns: "Redis.md: SPL block at line 8 — surrounding prose changed
-        (heading hash changed, paragraph hash changed), SPL content unchanged.
-        Theory provenance may be stale."
-  2. Agent reads the file and evaluates whether SPL still holds
-  3. If SPL is still valid: `zetl merkle acknowledge "Redis.md" --block 8`
-     → Updates the drift baseline without modifying the file
-  4. If SPL needs updating: agent edits the SPL block
-  5. `zetl reason status` — theory rebuilt with fresh hashes
+  1. `zetl check -d ./vault`
+     → Reports alongside dead links and orphans:
+       "drift: Redis.md:8 — SPL block in section '## Benchmarks' may be
+        stale. Adjacent paragraph (line 5) was modified since the theory
+        was built. Review whether SPL claims still hold."
+  2. Author reads the file, confirms the SPL needs updating
+  3. Author updates the SPL block
+  4. `zetl reason status` — theory rebuilt with fresh grounding hashes
 Postconditions:
-  - All SPL blocks are confirmed consistent with their prose
-  - Provenance metadata references current content hashes
+  - All SPL blocks are grounded in current prose
+  - No drift warnings on next check
 Failure modes:
-  - SPL block references a line that no longer exists (file was
-    restructured) → diagnostic with old and new line numbers
+  - SPL block was moved to a different section → grounding is
+    recomputed for the new section; old grounding baseline is discarded
 ```
 
 ```
@@ -232,12 +242,11 @@ Preconditions:
   - Vault was indexed with Merkle hashes cached
   - User edits a file that has no SPL blocks
 Steps:
-  1. File mtime changes, triggering a reparse
-  2. Scanner re-extracts wikilinks and computes new AST hash
+  1. File mtime changes, triggering a reparse by the scanner
+  2. Scanner re-extracts wikilinks and computes new Merkle tree
   3. File's Merkle root changes (prose was edited)
-  4. Vault root changes
-  5. Theory cache check: no SPL-containing file's SPL leaf hash changed
-  6. Theory cache remains valid — no reasoning rebuild
+  4. Theory cache check: no SPL-containing file's SPL leaf AST hash changed
+  5. Theory cache remains valid — no reasoning rebuild
 Postconditions:
   - Link index is updated (new prose might have new wikilinks)
   - Theory cache is NOT rebuilt (SPL unchanged)
@@ -246,11 +255,245 @@ Failure modes:
   - None — this is the optimal fast path
 ```
 
+```
+Happy Path: Agent Discovers Content Blocks and Grounds SPL
+
+Preconditions:
+  - Vault has "Redis.md" with several sections of prose
+  - The vault has been indexed (Merkle tree exists in cache)
+Steps:
+  1. Agent reads "Redis.md" and decides to formalise the benchmark claim
+  2. `zetl blocks "Redis vs Memcached"`
+     → Returns content blocks with hashes and text previews:
+       [
+         {"type": "Heading", "lines": [5,5], "hash": "a1b2...", "text": "## Benchmark Results"},
+         {"type": "Paragraph", "lines": [7,9], "hash": "e5f6a7b8", "text": "We benchmarked Redis at 120k ops/sec..."},
+         {"type": "Table", "lines": [11,14], "hash": "c9d0...", "text": "| Metric | Value | ..."},
+         ...
+       ]
+  3. Agent identifies the paragraph at hash "e5f6a7b8" as the evidence
+  4. Agent writes an SPL block in another file (or the same file):
+     (given redis-fast-enough :source "e5f6a7b8")
+  5. `zetl index` — reindexes, resolves the hash reference
+  6. `zetl check` — no errors, grounding is valid
+Postconditions:
+  - The fact is grounded in a specific paragraph via content hash
+  - No files were modified to add block-id tags
+  - If the paragraph is later edited, the hash won't match and
+    drift is detected automatically
+Failure modes:
+  - Hash references a block that was deleted between discovery and
+    indexing → zetl check reports broken grounding error
+```
+
+```
+Happy Path: Explicit Grounding Catches Cross-Section Drift
+
+Preconditions:
+  - "Architecture.md" has a section "## Performance" with paragraph
+    tagged ^perf-numbers
+  - "Decisions.md" has SPL grounded in that paragraph:
+    (given performance-acceptable :source "[[Architecture^perf-numbers]]")
+  - The performance paragraph in Architecture.md is edited
+Steps:
+  1. `zetl check --drift`
+     → Reports: "drift: Decisions.md:12 — fact 'performance-acceptable'
+        grounded in [[Architecture]]^perf-numbers — target content changed"
+  2. Agent reviews whether the fact still holds given the new numbers
+Postconditions:
+  - Cross-file grounding drift is detected
+Failure modes:
+  - ^perf-numbers block-id no longer exists → error diagnostic:
+    "grounding target ^perf-numbers not found in Architecture.md"
+```
+
 ---
 
-## 3. Merkle Tree Structure
+## 3. Content Grounding Model
 
-### 3.1 Hash Algorithm
+This section defines how SPL blocks are linked to the Markdown prose they formalise. The grounding model is the primary user-facing feature enabled by the Merkle tree.
+
+### 3.1 Section Grounding (Implicit, Default)
+
+Every SPL block is automatically grounded in its **containing section**. A section is defined as:
+
+1. The nearest preceding heading (any level: `#`, `##`, `###`, etc.)
+2. All content between that heading and the next heading at the **same or higher level**, or end of file
+3. If no preceding heading exists (SPL block is before the first heading), the grounding context is all content from the start of file to the first heading
+
+The **section grounding hash** is computed as:
+
+```
+section_grounding_hash = BLAKE3(
+    non_spl_leaf₁_hash ‖ non_spl_leaf₂_hash ‖ … ‖ non_spl_leafₖ_hash
+)
+```
+
+Only non-SPL leaves within the section contribute to the grounding hash. This means the grounding hash captures the prose, headings, lists, tables, and other content that the SPL block is "about" — but not the SPL block itself. When the prose changes, the grounding hash changes, triggering a drift warning. When only the SPL block changes, the grounding hash is unaffected.
+
+**Example:**
+
+````markdown
+## Benchmark Results             ← section start (heading leaf)
+
+We tested Redis at 120k ops/sec  ← paragraph leaf (in grounding context)
+under production workload.
+
+| Metric | Value |               ← table leaf (in grounding context)
+| ops/sec | 120,000 |
+| p99 latency | 2.1ms |
+
+```spl                            ← SPL leaf (NOT in grounding context)
+(given redis-benchmarked)
+(given redis-fast-enough)
+```
+
+More discussion of results.      ← paragraph leaf (in grounding context)
+
+## Next Steps                    ← next section starts (same heading level)
+````
+
+The grounding hash for the SPL block at line 10 is computed from the hashes of: the "## Benchmark Results" heading, the paragraph about testing Redis, the metrics table, and the "More discussion" paragraph. Not the SPL block itself.
+
+### 3.2 Explicit Grounding via `:source`
+
+For cases where implicit section grounding is too coarse, authors can explicitly ground individual SPL constructs to specific content blocks using the `:source` metadata key and Obsidian's `^block-id` syntax:
+
+**Content-addressed grounding (agent-friendly, read-only):**
+
+````markdown
+```spl
+(given redis-fast-enough :source "e5f6a7b8")
+```
+````
+
+The hash `e5f6a7b8` is a truncated Merkle leaf hash obtained from `zetl blocks`. The system resolves it by searching all Merkle leaves in the vault for a matching prefix. No file modification is needed — the agent references content as-is. If the content changes, the hash no longer matches and drift is detected.
+
+This is the primary mechanism for agents. An agent reads a file, runs `zetl blocks` to discover content hashes, and writes SPL referencing the hashes it cares about.
+
+**Same-file block-id grounding (human-friendly):**
+
+````markdown
+We benchmarked Redis at 120k ops/sec under production workload. ^benchmark-results
+
+```spl
+(given redis-fast-enough :source "^benchmark-results")
+```
+````
+
+The fact `redis-fast-enough` is pinned to the paragraph tagged `^benchmark-results`. This requires the `^block-id` tag to exist in the source file. Humans writing in Obsidian naturally use this syntax.
+
+**Cross-file grounding:**
+
+````markdown
+```spl
+(given performance-acceptable :source "[[Architecture^perf-numbers]]")
+```
+````
+
+The fact `performance-acceptable` is grounded in the `^perf-numbers` block in `Architecture.md`. Drift detection crosses file boundaries.
+
+**Rule-level grounding:**
+
+````markdown
+```spl
+(normally r-prefer-redis
+  (and redis-benchmarked redis-fast-enough)
+  decided-use-redis
+  :source "e5f6a7b8")
+```
+````
+
+An entire rule can be grounded in a specific content block identified by its Merkle hash.
+
+### 3.3 `:source` Syntax
+
+The `:source` key follows spindle-core's existing metadata syntax (SPEC-005 §3.2):
+
+```
+source_ref      ::= ':source' '"' target '"'
+target          ::= hash_ref | local_ref | cross_file_ref
+hash_ref        ::= hex_chars                          (8+ hex characters, Merkle leaf hash prefix)
+local_ref       ::= '^' block_id
+cross_file_ref  ::= '[[' page_name '^' block_id ']]'
+block_id        ::= [a-zA-Z0-9-]+
+hex_chars       ::= [0-9a-f]{8,64}
+```
+
+**Resolution rules:**
+
+1. **`"e5f6a7b8"` (Merkle hash)** — resolve by prefix match against all Merkle leaf hashes in the vault. The hash is the hex-encoded prefix (minimum 8 characters) of a BLAKE3 leaf hash returned by `zetl blocks`. Resolution is position-independent: the same content at a different line number or even a different file still matches. If the prefix is ambiguous (matches multiple leaves), `zetl check` reports an error suggesting a longer prefix.
+2. **`"^block-id"` (local block-id)** — resolve within the same file. Matched to the Merkle leaf containing the `^block-id` suffix.
+3. **`"[[Page^block-id]]"` (cross-file block-id)** — resolve across files. Page name resolved via standard wikilink matching (SPEC-001 §3.2).
+
+**Validation:**
+
+- Hash reference matches zero leaves → error: "content hash e5f6a7b8 not found — source content may have been modified or removed"
+- Hash reference matches multiple leaves → error: "ambiguous hash prefix e5f6 — use a longer prefix (found in File A line 5, File B line 12)"
+- `^block-id` doesn't exist → error (analogous to dead wikilinks)
+- `[[Page^block-id]]` page doesn't exist → error
+
+**Why Merkle hashes as the primary agent mechanism:**
+
+- **Read-only** — agents don't need to modify source files to add `^block-id` tags, which is consistent with zetl's read-only design philosophy (SPEC-001 §1.1)
+- **Position-independent** — if a paragraph moves within or between files, the hash still resolves as long as the content is unchanged
+- **Self-validating** — if the content changes, the hash stops matching, and drift is detected automatically
+- **Discoverable** — `zetl blocks <page>` provides all hashes for a file, making it trivial for an agent to pick the right reference
+
+**Multiple sources:**
+
+A single fact or rule can have multiple `:source` references:
+
+```spl
+(given meets-requirements
+  :source "^perf-numbers"
+  :source "[[Security Audit^findings]]")
+```
+
+The grounding hash is the combination of all referenced blocks. Drift is detected if any one changes.
+
+### 3.4 Grounding Precedence
+
+When both implicit section grounding and explicit `:source` grounding apply to the same SPL block:
+
+1. **If any construct in the block has an explicit `:source`**, that construct uses only explicit grounding for drift detection. Section grounding still applies to constructs without `:source`.
+2. **If no construct has `:source`**, the entire block uses section grounding.
+3. **Mixed blocks** (some constructs with `:source`, some without) are valid. Each construct is tracked independently.
+
+This means adding `:source` to one fact doesn't disable section grounding for the other facts in the same block.
+
+### 3.5 Grounding Hash Storage
+
+Grounding hashes are stored in the theory cache (`.zetl/theory.json`), not in a separate file:
+
+```json
+{
+  "version": 2,
+  "vault_root_hash": "a1b2c3d4...",
+  "spl_blocks": {
+    "decisions/Redis.md:10": {
+      "ast_hash": "d5e6f7a8...",
+      "content_hash": "c4d5e6f7...",
+      "section_grounding_hash": "e7f8a9b0...",
+      "explicit_groundings": {
+        "redis-fast-enough": {
+          "source": "^benchmark-results",
+          "target_hash": "f8a9b0c1..."
+        }
+      }
+    }
+  },
+  "rules": [ ... ],
+  "superiorities": [ ... ],
+  "diagnostics": [ ... ]
+}
+```
+
+---
+
+## 4. Merkle Tree Structure
+
+### 4.1 Hash Algorithm
 
 ```
 ADR-008: Hash Algorithm Selection — BLAKE3
@@ -275,7 +518,7 @@ Context:
      + Extremely fast (~5 GB/s, 10x SHA-256 on modern hardware)
      + Built-in keyed hashing and key derivation
      + 32 bytes default, extendable output
-     + Merkle tree mode is built into the design (BLAKE3 IS a Merkle tree internally)
+     + Merkle tree mode is built into the design
      + Well-maintained Rust crate (blake3)
      - Less universally recognised than SHA-256
 
@@ -292,8 +535,6 @@ Decision:
 Rationale:
   - 10x speed advantage over SHA-256 matters when hashing every AST
     node in a large vault (10,000+ files × 50+ nodes per file)
-  - BLAKE3's internal Merkle tree structure means our application-level
-    Merkle tree benefits from optimal cache behaviour
   - 32 bytes (256 bits) provides collision resistance well beyond our
     needs (birthday bound at 2^128)
   - The blake3 crate is pure Rust with optional SIMD acceleration
@@ -302,19 +543,16 @@ Consequences:
   + Sub-millisecond hashing for typical files (<10 KB)
   + Compact hash storage: 32 bytes per node
   - Adds blake3 as a dependency (~100 KB to binary size)
-  - Hashes are not directly comparable with git SHA-1 objects
 ```
 
-### 3.2 Node Types
-
-The Merkle tree has four kinds of nodes, corresponding to increasing levels of aggregation:
+### 4.2 Node Types
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                       Node Types                          │
 ├───────────────┬──────────────────────────────────────────┤
 │ Leaf          │ Atomic content unit from the AST.        │
-│               │ Hash = BLAKE3(normalised_content)        │
+│               │ Hash = BLAKE3(type_tag ‖ normalised_content) │
 ├───────────────┼──────────────────────────────────────────┤
 │ SPL Leaf      │ Special leaf for `spl`-tagged blocks.    │
 │               │ Hash = BLAKE3(content_hash ‖ ast_hash)   │
@@ -322,154 +560,119 @@ The Merkle tree has four kinds of nodes, corresponding to increasing levels of a
 │               │   ast_hash = BLAKE3(serialised_spl_ast)  │
 ├───────────────┼──────────────────────────────────────────┤
 │ File Interior │ Intermediate node for one file.          │
-│               │ Hash = BLAKE3(child₁_hash ‖ child₂_hash │
-│               │        ‖ … ‖ childₙ_hash)               │
+│               │ Hash = BLAKE3(child₁_hash ‖ … ‖ childₙ) │
 ├───────────────┼──────────────────────────────────────────┤
 │ Vault Root    │ Top-level node for the entire vault.     │
-│               │ Hash = BLAKE3(file₁_hash ‖ file₂_hash   │
-│               │        ‖ … ‖ fileₘ_hash)                │
+│               │ Hash = BLAKE3(file₁_hash ‖ … ‖ fileₘ)   │
 │               │ Files sorted by canonical relative path. │
 └───────────────┴──────────────────────────────────────────┘
 ```
 
-### 3.3 Leaf Node Construction from pulldown-cmark Events
+### 4.3 Leaf Node Construction from pulldown-cmark Events
 
-pulldown-cmark produces a stream of `(Event, Range<usize>)` tuples. The Merkle tree groups these into leaf nodes at the **block level** — each top-level block element in the Markdown AST becomes one leaf:
+pulldown-cmark produces a stream of `(Event, Range<usize>)` tuples. The Merkle tree groups these into leaf nodes at the **block level** — each top-level block element becomes one leaf:
 
 | pulldown-cmark Event Sequence | Leaf Type | Hash Input |
 | --- | --- | --- |
-| `Start(Heading)` … `End(Heading)` | `Heading` | Normalised text content, heading level |
-| `Start(Paragraph)` … `End(Paragraph)` | `Paragraph` | Normalised text content |
-| `Start(CodeBlock(Fenced("spl")))` … `End(CodeBlock)` | `SplBlock` | Dual hash (see §3.2) |
-| `Start(CodeBlock(…))` … `End(CodeBlock)` | `CodeBlock` | Raw content, language tag |
-| `Start(List)` … `End(List)` | `List` | Normalised items text |
+| `Start(Heading)` … `End(Heading)` | `Heading` | Level byte + normalised text |
+| `Start(Paragraph)` … `End(Paragraph)` | `Paragraph` | Normalised text |
+| `Start(CodeBlock(Fenced("spl")))` … `End(CodeBlock)` | `SplBlock` | Dual hash (see §4.2) |
+| `Start(CodeBlock(…))` … `End(CodeBlock)` | `CodeBlock` | Language tag + raw content |
+| `Start(List)` … `End(List)` | `List` | Ordered flag + normalised items |
 | `Start(BlockQuote)` … `End(BlockQuote)` | `BlockQuote` | Normalised content |
 | `Start(Table)` … `End(Table)` | `Table` | Normalised cells |
-| `Start(MetadataBlock)` … `End(MetadataBlock)` | `Frontmatter` | Raw YAML content |
-| `Rule` (thematic break) | `ThematicBreak` | Constant sentinel |
-| `Html(…)` (block-level) | `HtmlBlock` | Raw HTML content |
+| `Start(MetadataBlock)` … `End(MetadataBlock)` | `Frontmatter` | Raw YAML |
+| `Rule` | `ThematicBreak` | Constant sentinel |
+| `Html(…)` (block-level) | `HtmlBlock` | Raw HTML |
 
-**Normalisation rules for text content:**
+**Normalisation rules:**
 
 1. Collapse consecutive whitespace to a single space
 2. Trim leading/trailing whitespace
-3. Strip inline formatting markers (bold, italic, etc.) — hash the plain text content, not the Markdown syntax
-4. Preserve case (case changes ARE content changes)
+3. Strip inline formatting markers (bold, italic) — hash plain text content
+4. Preserve case (case changes are content changes)
 5. Normalise line endings to `\n`
 
-**Rationale for block-level granularity:** Finer granularity (individual inline elements) would produce deeper trees with more nodes but minimal practical benefit — drift detection operates at the block level ("did the paragraph above the SPL block change?"), not at the word level. Coarser granularity (entire file as one leaf) would lose the ability to localise changes within a file.
+### 4.4 SPL Leaf Dual Hashing
 
-### 3.4 SPL Leaf Dual Hashing
+An SPL leaf contains two hashes:
 
-An SPL leaf contains two hashes that serve different purposes:
+- **`content_hash`** — BLAKE3 of the raw SPL text after normalising whitespace and stripping comments. Changes when the text is edited in any way.
+- **`ast_hash`** — BLAKE3 of the canonically-serialised SPL AST (rules sorted by label, facts sorted by literal, superiority sorted by pair). Changes only when the logical content changes. Reformatting and comment edits are invisible.
 
-```rust
-struct SplLeafHash {
-    /// BLAKE3 hash of the raw SPL text between the fences, after
-    /// normalising whitespace and comments. Detects textual changes
-    /// (renamed labels, added facts, reformatted expressions).
-    content_hash: [u8; 32],
+The **combined hash** (`BLAKE3(content_hash ‖ ast_hash)`) feeds into the file-level Merkle tree. The `ast_hash` alone is used for theory cache invalidation (REQ-041).
 
-    /// BLAKE3 hash of the serialised SPL AST produced by spindle-parser.
-    /// Detects semantic changes (new rules, removed facts, changed
-    /// superiority) even if the textual representation is reformatted.
-    /// Computed by serialising the parsed Theory fragment to a
-    /// canonical byte representation and hashing it.
-    ast_hash: [u8; 32],
+### 4.5 Section Boundary Detection
 
-    /// The combined hash used as this leaf's contribution to the
-    /// parent file node: BLAKE3(content_hash ‖ ast_hash).
-    combined_hash: [u8; 32],
-}
-```
-
-**Why dual hashing?**
-
-- `content_hash` changes when the SPL text is reformatted (comment added, whitespace changed) even if the logical meaning is identical. This is useful for detecting **any** edit to the block.
-- `ast_hash` changes only when the parsed AST changes — a new fact, removed rule, or changed superiority relation. Reformatting without semantic change leaves `ast_hash` unchanged. This is useful for detecting **meaningful** edits.
-- The combined hash feeds into the file-level Merkle tree, ensuring that any change to the SPL block propagates upward.
-
-**SPL AST canonical serialisation:**
-
-The parsed SPL fragment is serialised to a canonical byte representation by:
-
-1. Sorting rules by label (lexicographic)
-2. Sorting facts by literal name
-3. Sorting superiority relations by (superior, inferior) pair
-4. For each element, encoding: `type_tag | label_bytes | body_bytes | head_bytes`
-5. Concatenating all encoded elements
-6. Hashing the concatenation with BLAKE3
-
-This ensures that logically equivalent SPL fragments (same facts, rules, superiority) with different textual orderings produce the same `ast_hash`.
-
-### 3.5 File Interior Node
-
-Each file's Merkle root is computed from its ordered list of leaf hashes:
+Sections are detected by tracking heading levels during the Merkle leaf construction pass:
 
 ```
-file_hash = BLAKE3(leaf₁_hash ‖ leaf₂_hash ‖ … ‖ leafₙ_hash)
+Input: ordered Vec<MerkleLeaf> for a file
+
+Algorithm:
+  sections = []
+  current_section_start = 0
+  current_level = 0  (0 = before first heading)
+
+  for (index, leaf) in leaves:
+    if leaf.type is Heading(level):
+      if level <= current_level or current_level == 0:
+        // New section: same or higher level heading
+        sections.push(Section {
+          start: current_section_start,
+          end: index - 1,
+          heading_level: current_level,
+        })
+        current_section_start = index
+        current_level = level
+
+  // Final section extends to end of file
+  sections.push(Section {
+    start: current_section_start,
+    end: leaves.len() - 1,
+    heading_level: current_level,
+  })
 ```
 
-The leaves are in **document order** — the order in which pulldown-cmark produces them, which corresponds to the top-to-bottom order of the Markdown file. This means:
+Each section's **grounding hash** is computed by concatenating the hashes of all non-SPL leaves within the section's range and hashing the result.
 
-- Reordering sections (moving a heading + paragraph above another) changes the file hash
-- Inserting a new paragraph between existing ones changes the file hash
-- Deleting a section changes the file hash
-- Editing a single paragraph changes only that leaf's hash, which propagates to the file hash
+### 4.6 Vault Root
 
-### 3.6 Vault Root Node
+File hashes are sorted by canonical relative path (UTF-8 lexicographic, forward-slash normalised) before computing the vault root. This ensures deterministic hashes regardless of filesystem scan order.
 
-The vault root is computed from file hashes, sorted by canonical relative path:
+### 4.7 Standalone SPL Files
 
-```
-vault_hash = BLAKE3(
-    file_hash("architecture/Cache.md") ‖
-    file_hash("architecture/Scanner.md") ‖
-    file_hash("concepts/Wikilinks.md") ‖
-    …
-)
-```
-
-**Canonical path sorting:** paths are sorted lexicographically by their UTF-8 bytes after normalisation to forward slashes. This ensures the vault root is deterministic regardless of filesystem iteration order.
-
-### 3.7 Standalone SPL Files
-
-Standalone `.spl` files (not embedded in Markdown) are treated as single-leaf files:
-
-1. The entire file content is parsed by spindle-parser
-2. One SPL leaf is produced with dual hashing (content + AST)
-3. The file interior node has exactly one child — the SPL leaf
-4. `file_hash = BLAKE3(spl_leaf_combined_hash)` (single-child degenerate case)
+Standalone `.spl` files produce a single SPL leaf with dual hashing. Since there is no surrounding Markdown prose, section grounding does not apply. Standalone SPL files can still use explicit `:source` references to ground their content in other Markdown files.
 
 ---
 
-## 4. Requirements
+## 5. Requirements
 
-### 4.1 Functional Requirements
+### 5.1 Functional Requirements
 
 ```
 REQ-037: Merkle Tree Construction from Markdown AST
 
-The system SHALL construct a Merkle tree for each Markdown file in the
-vault by:
+The system SHALL construct a Merkle tree for each file during
+`zetl index` by:
   a) Parsing the file with pulldown-cmark to produce an AST event stream
   b) Grouping events into block-level leaf nodes (headings, paragraphs,
      code blocks, lists, blockquotes, tables, frontmatter, thematic breaks,
      HTML blocks)
-  c) Computing a BLAKE3 hash for each leaf node from its normalised content
-  d) Computing the file's Merkle root as BLAKE3 of the ordered concatenation
-     of leaf hashes
+  c) Computing a BLAKE3 hash for each leaf from its normalised content
+  d) Computing the file's Merkle root from the ordered leaf hashes
+  e) Computing the vault root from sorted file hashes
 
-The leaf node construction SHALL occur during the same scan pass as
-wikilink and SPL extraction (SPEC-001 REQ-001, SPEC-005 REQ-026).
+Merkle tree construction SHALL occur during the same scan pass as
+wikilink and SPL extraction. It SHALL NOT require a separate command
+or user action.
 
 FOR all user roles
-WITH the Merkle tree computed incrementally alongside existing parsing
-AND no modification to the source files.
+WITH no modification to the source files
+AND no user-visible Merkle tree commands.
 
 Trace:
 - TEST-038
-- CON-019
 - ADR-008
 ```
 
@@ -478,66 +681,57 @@ REQ-038: SPL Block Dual Hashing
 
 The system SHALL produce a dual-hash SPL leaf node for every `spl`-tagged
 fenced code block by:
-  a) Computing a content hash: BLAKE3 of the raw SPL text, normalised
-     (whitespace-collapsed, comments stripped, line endings normalised)
+  a) Computing a content hash: BLAKE3 of normalised raw SPL text
   b) Computing an AST hash: BLAKE3 of the canonically-serialised SPL AST
-     produced by spindle-parser (rules sorted by label, facts sorted by
-     literal, superiority sorted by pair)
-  c) Computing a combined hash: BLAKE3(content_hash ‖ ast_hash) as the
-     leaf's contribution to the file Merkle tree
+  c) Computing a combined hash: BLAKE3(content_hash ‖ ast_hash)
 
 If spindle-parser fails to parse the SPL block, the AST hash SHALL be
-a sentinel value (all zeros) and a diagnostic SHALL be emitted. The
-content hash is still computed from the raw text.
+a sentinel value (all zeros) and a diagnostic SHALL be emitted.
 
 FOR all user roles
 WITH dual hashing enabling both textual and semantic change detection.
 
 Trace:
 - TEST-039
-- CON-019
 ```
 
 ```
-REQ-039: Vault-Level Merkle Root
+REQ-039: Two-Tier Cache Invalidation (Mtime + Content Hash)
 
-The system SHALL compute a vault-level Merkle root hash by:
-  a) Collecting file Merkle roots for all indexed files (Markdown and
-     standalone SPL)
-  b) Sorting files by canonical relative path (UTF-8 lexicographic,
-     forward-slash normalised)
-  c) Computing BLAKE3 of the ordered concatenation of file hashes
+The system SHALL implement a two-tier cache invalidation strategy:
+  a) Tier 1 (fast): Check file mtime. If unchanged, skip hashing and
+     reuse cached Merkle nodes.
+  b) Tier 2 (authoritative): If mtime changed, recompute the file's
+     Merkle tree. If the file Merkle root equals the cached root,
+     skip downstream processing.
 
-The vault root hash SHALL be stored in the cache alongside the existing
-index and theory caches.
+This SHALL replace the existing mtime-only invalidation for both the
+link index and the theory cache.
 
 FOR all user roles
-WITH the vault root serving as a single-value integrity fingerprint
-for the entire vault state.
+WITH mtime as a pre-filter and content hash as the authority.
 
 Trace:
 - TEST-040
-- CON-019
+- ADR-009
 ```
 
 ```
-REQ-040: Two-Tier Cache Invalidation (Mtime + Content Hash)
+REQ-040: SPL-Specific Theory Cache Invalidation
 
-The system SHALL implement a two-tier cache invalidation strategy:
-  a) Tier 1 (fast): Check file mtime against cached mtime. If unchanged,
-     skip hashing and reuse cached Merkle tree nodes.
-  b) Tier 2 (authoritative): If mtime changed, recompute the file's
-     Merkle tree. If the new file Merkle root equals the cached root,
-     the file's content is semantically unchanged — skip downstream
-     processing (link resolution, theory rebuild).
+The system SHALL use SPL leaf AST hashes to determine theory cache
+validity:
+  a) Collect all SPL leaf AST hashes from the current Merkle tree
+  b) Compare against the cached set
+  c) If identical, skip theory rebuild
+  d) If different, rebuild the theory
 
-This two-tier strategy SHALL replace the existing mtime-only invalidation
-for both the link index (SPEC-001 REQ-011) and the theory cache
-(SPEC-005 NFR-011).
+This means editing prose around an SPL block does NOT trigger a
+theory rebuild. Only changes to the logical content of SPL blocks
+(new facts, removed rules, changed superiority) invalidate the theory.
 
 FOR all user roles
-WITH the mtime check as a performance pre-filter and the content hash
-as the authoritative invalidation signal.
+WITH theory rebuilds occurring only when SPL content actually changed.
 
 Trace:
 - TEST-041
@@ -545,110 +739,141 @@ Trace:
 ```
 
 ```
-REQ-041: SPL-Specific Theory Cache Invalidation
+REQ-041: Implicit Section Grounding
 
-The system SHALL use SPL leaf AST hashes (not file-level hashes or mtime)
-to determine whether the theory cache is valid:
-  a) Collect all SPL leaf AST hashes from the current Merkle tree
-  b) Compare against the SPL leaf AST hashes stored in the theory cache
-  c) If the set of AST hashes is identical, the theory cache is valid —
-     skip theory reconstruction and re-reasoning
-  d) If any AST hash differs (or the set of SPL blocks changed), invalidate
-     the theory cache and rebuild
+The system SHALL automatically compute a section grounding hash for
+each SPL block by:
+  a) Identifying the containing section (nearest preceding heading
+     through to the next heading at the same or higher level, or EOF)
+  b) Computing the section grounding hash from the ordered hashes of
+     all non-SPL leaves within the section
+  c) Storing the grounding hash in the theory cache alongside the
+     SPL block's dual hashes
 
-This means:
-  - Editing prose around an SPL block does NOT invalidate the theory cache
-    (file hash changes, but SPL AST hash does not)
-  - Reformatting an SPL block without changing its logical content does NOT
-    invalidate the theory cache (content hash changes, but AST hash does not)
-  - Adding, removing, or modifying an SPL block's logical content DOES
-    invalidate the theory cache (AST hash changes)
+The section grounding hash SHALL be used for drift detection (REQ-043).
 
 FOR all user roles
-WITH theory rebuilds occurring only when the logical content of SPL blocks
-has actually changed.
+WITH grounding computed automatically during indexing
+AND no user configuration required.
 
 Trace:
 - TEST-042
-- ADR-009
 ```
 
 ```
-REQ-042: SPL Drift Detection
+REQ-042: Explicit Grounding via :source
 
-The system SHALL detect and report "drift" — cases where the Markdown
-prose surrounding an SPL block has changed since the theory was last
-built, while the SPL block itself has not.
+The system SHALL support explicit content grounding for individual
+SPL facts and rules using the :source metadata key in three forms:
+  a) :source "e5f6a7b8" — ground in a specific content block identified
+     by its Merkle leaf hash prefix (minimum 8 hex characters). Resolved
+     by prefix match against all Merkle leaves in the vault.
+  b) :source "^block-id" — ground in a specific ^block-id within the
+     same file
+  c) :source "[[Page^block-id]]" — ground in a specific ^block-id in
+     another file
 
-For each SPL block in the vault, drift is detected by:
-  a) Retrieving the file's Merkle tree from the last theory build
-     (stored in the theory cache)
-  b) Comparing each non-SPL leaf hash (headings, paragraphs, etc.)
-     in the current tree against the cached tree for the same file
-  c) If any non-SPL sibling leaf has changed AND the SPL leaf's
-     AST hash is unchanged, the block is flagged as "potentially drifted"
+The system SHALL:
+  - Resolve hash references by prefix match across all vault leaves
+  - Resolve ^block-id references to specific Merkle leaves
+  - Report an error if a hash prefix matches zero leaves or is ambiguous
+  - Report an error if a ^block-id or page does not exist
+  - Compute a grounding hash from the referenced leaf's content hash
+  - Store explicit groundings in the theory cache
 
-Drift reports SHALL include:
-  - File path and SPL block line number
-  - Which sibling nodes changed (heading, paragraph, etc.)
-  - The SPL block's content (for human review)
-  - A severity level: "info" if only distant siblings changed, "warning"
-    if immediately adjacent siblings changed
+Hash-based references (:source "e5f6a7b8") are position-independent:
+the same content at a different line or file still resolves. This is
+the primary mechanism for agents, who discover hashes via `zetl blocks`.
+
+When explicit :source is present, it takes precedence over implicit
+section grounding for that specific fact or rule (see §3.4).
 
 FOR all user roles
-WITH output via `zetl merkle drift`.
+WITH validation of :source targets alongside dead link detection.
 
 Trace:
 - TEST-043
-- CON-020
+- CON-019
 ```
 
 ```
-REQ-043: Durable Provenance with Content Hashes
+REQ-043: Drift Detection in Check
 
-The system SHALL extend theory provenance metadata (SPEC-005 ADR-007)
-to include content hashes:
-  a) Each provenanced rule and fact SHALL include the SPL leaf's
-     content_hash and ast_hash from the Merkle tree at the time
-     the theory was built
-  b) Each provenanced conclusion SHALL include the vault root hash
-     at the time reasoning was performed
-  c) The provenance command (`zetl reason provenance`) SHALL display
-     content hashes alongside file paths and line numbers
+The system SHALL detect and report SPL drift as part of `zetl check`:
+  a) For each SPL block with section grounding: compare the current
+     section grounding hash against the cached version from the last
+     theory build. If different (prose changed) and the SPL AST hash
+     is unchanged, report drift.
+  b) For each SPL fact/rule with explicit :source grounding: compare
+     the current target leaf hash against the cached version. If
+     different and the SPL construct is unchanged, report drift.
 
-This enables verification: given a conclusion's provenance, one can
-check whether the source content has changed by comparing the stored
-hash against the current Merkle tree's hash for the same node.
+Drift diagnostics SHALL include:
+  - File path and SPL block line number
+  - Section heading (for section-grounded drift)
+  - Target reference (for explicitly-grounded drift)
+  - Severity: "warning" for adjacent changes, "info" for distant changes
+  - Human-readable message describing what changed
+
+Drift diagnostics SHALL appear in the existing `zetl check` output
+alongside dead links, orphans, and syntax errors.
+
+A `--drift` flag SHALL filter check output to drift diagnostics only.
+The existing `--fail-on` flag SHALL apply to drift diagnostics.
 
 FOR all user roles
-WITH content hashes stored in the theory cache and accessible via
-existing provenance commands.
+WITH drift detection integrated into the existing check workflow.
 
 Trace:
 - TEST-044
-- CON-021
+- CON-019
 ```
 
 ```
-REQ-044: Merkle Tree Inspection
+REQ-044: Durable Provenance with Content Hashes
 
-The system SHALL provide commands to inspect the Merkle tree:
-  a) `zetl merkle status` — display the current vault root hash,
-     file count, total leaf count, and SPL leaf count
-  b) `zetl merkle tree <file>` — display the leaf-level Merkle tree
-     for a specific file, showing each leaf's type, line range, and hash
-  c) `zetl merkle diff <file>` — compare the current file Merkle tree
-     against the cached version, showing which leaves changed
+The system SHALL extend theory provenance metadata to include:
+  a) Each provenanced rule and fact: the SPL leaf's content_hash,
+     ast_hash, and section grounding hash
+  b) Each provenanced conclusion: the vault root hash at reasoning time
+  c) `zetl reason provenance` SHALL display a "stale" warning when
+     the stored grounding hash no longer matches the current hash
 
 FOR all user roles
-WITH output in JSON (default) or table format.
+WITH content hashes stored in the theory cache and surfaced via
+existing provenance commands.
 
 Trace:
 - TEST-045
-- CON-019, CON-020
 ```
 
-### 4.2 Non-Functional Requirements
+```
+REQ-045: Content Block Discovery
+
+The system SHALL provide a `zetl blocks <page>` command that returns
+the Merkle leaf nodes for a given file, including:
+  a) Leaf type (heading, paragraph, code block, SPL block, table, etc.)
+  b) Line range (start and end line numbers)
+  c) Merkle leaf hash (hex-encoded BLAKE3, usable as a :source reference)
+  d) Text preview (first 200 characters of normalised content)
+
+The page argument SHALL use the same resolution as wikilinks (SPEC-001
+§3.2): case-insensitive, normalised matching.
+
+The command SHALL require that `zetl index` has been run (Merkle tree
+exists in cache). If the cache is stale or missing, the command SHALL
+index first (consistent with other query commands).
+
+FOR agent and human user roles
+WITH output in JSON (default) or table format
+AND hashes usable directly as :source values in SPL.
+
+Trace:
+- TEST-049
+- CON-020
+```
+
+### 5.2 Non-Functional Requirements
 
 ```
 NFR-014: Merkle Tree Construction Performance
@@ -657,9 +882,9 @@ Merkle tree construction SHALL add ≤ 20% overhead to the existing
 scan pass for a vault with ≤ 10,000 files UNDER single-threaded
 execution on commodity hardware WITH 95th percentile.
 
-Rationale: BLAKE3 hashing at 5 GB/s is negligible compared to file
-I/O and Markdown parsing. The overhead is primarily from AST node
-grouping and memory allocation for the tree structure.
+Rationale: BLAKE3 at ~5 GB/s is negligible compared to file I/O
+and Markdown parsing. Overhead is from AST node grouping and
+memory allocation.
 
 Trace:
 - TEST-046
@@ -669,13 +894,10 @@ Trace:
 NFR-015: Merkle Tree Memory Overhead
 
 Peak memory increase from Merkle tree construction SHALL be ≤ 30 MB
-above the baseline (SPEC-001 NFR-003: 200 MB) for a vault with
-10,000 files at an average of 50 leaf nodes per file.
+above baseline for 10,000 files at ~50 leaves per file.
 
-Rationale: Each leaf stores a 32-byte hash, node type tag (1 byte),
-and line range (8 bytes) = ~41 bytes per leaf. 10,000 files × 50
-leaves = 500,000 leaves × 41 bytes = ~20 MB. Interior nodes and
-overhead account for the remaining 10 MB.
+Rationale: ~41 bytes per leaf × 500,000 leaves ≈ 20 MB. Interior
+nodes and overhead account for the remaining 10 MB.
 
 Trace:
 - TEST-047
@@ -684,15 +906,10 @@ Trace:
 ```
 NFR-016: Merkle Cache Size
 
-The serialised Merkle tree cache SHALL add ≤ 5 MB to the existing
-cache files (.zetl/) for a vault with 10,000 files.
+Merkle data stored in .zetl/ SHALL add ≤ 5 MB for 10,000 files.
 
-Rationale: Stored data per file is the file hash (32 bytes) plus
-per-leaf hash and metadata (~50 bytes × 50 leaves = 2,500 bytes
-per file). 10,000 × 2,532 bytes ≈ 25 MB. Compressing with the
-existing JSON format and omitting full leaf data for non-SPL leaves
-(storing only the file root + SPL leaf hashes) brings this under
-5 MB.
+Rationale: Only file roots and SPL leaf hashes are persisted. Full
+leaf trees are recomputed on demand.
 
 Trace:
 - TEST-048
@@ -700,9 +917,9 @@ Trace:
 
 ---
 
-## 5. Architecture
+## 6. Architecture
 
-### 5.1 Technology Decisions
+### 6.1 Technology Decisions
 
 ```
 ADR-009: Two-Tier Cache Invalidation — Mtime + Content Hash
@@ -710,117 +927,137 @@ ADR-009: Two-Tier Cache Invalidation — Mtime + Content Hash
 Status: Proposed
 
 Context:
-  The existing cache system (SPEC-001 REQ-011, SPEC-005 NFR-011) uses
-  mtime-only invalidation. This has two weaknesses:
+  The existing cache uses mtime-only invalidation (SPEC-001 REQ-011,
+  SPEC-005 NFR-011). This has two weaknesses:
 
   1. False positives: mtime changes when a file is touched but not
-     modified (e.g., `touch file.md`, backup restoration, git checkout).
-     This triggers unnecessary reparsing and theory rebuilds.
+     modified (touch, backup restoration, git checkout). Triggers
+     unnecessary reparsing and theory rebuilds.
 
   2. Inability to distinguish content types: when a file containing
      both prose and SPL is edited, mtime cannot tell whether the SPL
-     changed. The theory cache is invalidated even if only prose changed.
-
-  Options:
-  A. Replace mtime with content hashing:
-     + Authoritative — no false positives
-     - Slower: must read and hash every file on every invocation
-     - Defeats the purpose of caching for unchanged files
-
-  B. Keep mtime as first tier, add content hash as second tier:
-     + Fast path: mtime unchanged → skip entirely (same as today)
-     + Accurate path: mtime changed → hash to determine if content
-       actually differs
-     + SPL-specific: compare SPL AST hashes to determine if theory
-       needs rebuilding, independent of prose changes
-     - Slightly more complex cache format
-     - Must store hashes alongside mtimes
-
-  C. Use filesystem watch events (inotify/kqueue):
-     + Real-time notification of changes
-     - Requires a persistent process (incompatible with CLI model)
-     - Platform-specific complexity
-     - Doesn't solve the prose-vs-SPL distinction
+     changed. Theory cache is invalidated even for prose-only edits.
 
 Decision:
-  Implement Option B — two-tier invalidation with mtime pre-filter
-  and content-hash authority.
+  Keep mtime as tier 1 pre-filter, add content hash as tier 2
+  authority. SPL AST hashes determine theory cache validity
+  independent of prose changes.
 
 Rationale:
-  - The fast path (mtime unchanged) adds zero overhead to the common
-    case where files haven't been touched
-  - The accurate path (mtime changed, rehash) only applies to modified
+  - Fast path (mtime unchanged) adds zero overhead
+  - Accurate path (mtime changed, rehash) only applies to modified
     files — typically a small fraction of the vault
-  - SPL AST hash comparison enables the key insight: theory rebuilds
-    are triggered only by logical content changes to SPL blocks, not
-    by prose edits or SPL reformatting
-  - The cache format change is additive (new fields alongside existing
-    mtime), preserving backward compatibility with the v1 cache
+  - SPL AST hash comparison means theory rebuilds are triggered only
+    by logical changes to SPL, not prose edits or SPL reformatting
 
 Consequences:
   + Eliminates false theory rebuilds from prose-only edits
   + Eliminates false rebuilds from file touches without content changes
-  + Enables SPL drift detection as a natural byproduct
-  - Cache size increases (32 bytes per file for file hash, 64 bytes
-    per SPL leaf for dual hash)
-  - First run after cache format upgrade triggers a full rehash
+  + Enables drift detection as a natural byproduct
+  - Cache size increases (~96 bytes per SPL block)
+  - First run after format upgrade triggers a full rehash
 ```
 
-### 5.2 Component Architecture
+```
+ADR-010: Section Grounding with Explicit Override
+
+Status: Proposed
+
+Context:
+  SPL blocks formalise claims made in surrounding prose. The system
+  needs a mechanism to link SPL to the prose it's based on, so that
+  changes to the prose can trigger drift warnings.
+
+  Options:
+  A. No grounding — detect drift based on any change in the same file:
+     + Simplest implementation
+     - Too noisy: editing a different section triggers false drift
+
+  B. Section grounding only — SPL grounded in containing section:
+     + Automatic, zero ceremony
+     + Sections are the natural semantic unit in a Zettelkasten
+     - Cannot ground in specific paragraphs
+     - Cannot ground across files
+
+  C. Explicit grounding only — require :source on every fact:
+     + Precise control
+     - Too much ceremony for the common case
+     - Most users won't annotate every fact
+
+  D. Section grounding by default + explicit :source override:
+     + Automatic for 80% of cases
+     + Precise when needed (20%)
+     + Cross-file grounding via [[Page^block-id]]
+     + Zero ceremony for basic use, progressive disclosure
+     - Slightly more complex grounding resolution logic
+
+Decision:
+  Implement Option D — implicit section grounding with explicit
+  :source override.
+
+Rationale:
+  - Section grounding handles the common case where an SPL block
+    formalises the prose in its immediate context
+  - :source handles precision grounding and cross-file references
+  - The ^block-id syntax already exists in the Obsidian ecosystem
+  - Progressive disclosure: beginners never need :source; experts
+    use it when precision matters
+
+Consequences:
+  + Zero-ceremony drift detection for all SPL blocks
+  + Precise grounding available when needed
+  + Cross-file grounding for multi-document theories
+  - Section boundary detection adds logic to the scanner
+  - :source validation adds checks to zetl check
+```
+
+### 6.2 Component Architecture
 
 ```
-                         ┌──────────────────────┐
-                         │        CLI           │
-                         │  (existing + merkle  │
-                         │   subcommands)       │
-                         └──────────┬───────────┘
-                                    │
-          ┌─────────────────────────┼──────────────────────────┐
-          │                         │                           │
-   ┌──────▼──────┐          ┌──────▼──────┐            ┌──────▼───────────┐
-   │   Scanner    │          │   Graph    │            │    Reason        │
-   │   (extended) │          │   Engine   │            │    Engine        │
-   │              │          │            │            │    (extended)    │
-   │ - file walk  │          │ - build    │            │ - extract spl   │
-   │ - parse md   │          │ - query    │            │ - build theory  │
-   │ - extract    │          │ - path     │            │ - reason        │
-   │   wikilinks  │          │            │            │ - provenance    │
-   │ - extract    │          └────────────┘            │   + hashes      │  NEW
-   │   spl blocks │                                    └────────┬────────┘
-   │ - build      │  NEW                                        │
-   │   leaf nodes │                                             │
-   └──────┬───────┘                                             │
-          │                                                     │
-          │         ┌───────────────────────┐                   │
-          │         │   Merkle Engine       │  NEW              │
-          │         │                       │                   │
-          ├────────►│ - compute leaf hashes │                   │
-          │         │ - build file tree     │◄──────────────────┘
-          │         │ - build vault root    │
-          │         │ - drift detection     │
-          │         │ - tree comparison     │
-          │         └───────────┬───────────┘
-          │                     │
-          └──────────┬──────────┘
-                     │
-              ┌──────▼───────┐
-              │    Cache     │
-              │  .zetl/      │
-              │  index.json  │
-              │  theory.json │
-              │  merkle.json │  NEW
-              └──────────────┘
+                     ┌──────────────────────┐
+                     │        CLI           │
+                     │  (existing commands) │
+                     └──────────┬───────────┘
+                                │
+      ┌─────────────────────────┼──────────────────────────┐
+      │                         │                           │
+┌─────▼──────┐          ┌──────▼──────┐            ┌──────▼───────────┐
+│  Scanner    │          │   Graph    │            │    Reason        │
+│  (extended) │          │   Engine   │            │    Engine        │
+│             │          │            │            │    (extended)    │
+│ - file walk │          │ - build    │            │ - build theory  │
+│ - parse md  │          │ - query    │            │ - reason        │
+│ - wikilinks │          │            │            │ - provenance    │
+│ - spl blocks│          └────────────┘            │   + hashes      │
+│ - merkle    │                                    │   + grounding   │
+│   leaves    │  ←── BLAKE3 hashing ──┐            │   + staleness   │
+│ - sections  │                       │            └────────┬────────┘
+└─────┬──────┘                        │                     │
+      │                               │                     │
+      │    ┌──────────────────────────▼─────────────────────┘
+      │    │
+      │    │   Merkle tree is internal to the scanner and cache.
+      │    │   No separate "Merkle Engine" module — hashing is a
+      │    │   step within the scanner, and grounding comparison
+      │    │   is a step within cache validation and zetl check.
+      │    │
+      └────┴──────────┐
+                      │
+               ┌──────▼───────┐
+               │    Cache     │
+               │  .zetl/      │
+               │  index.json  │  + file Merkle roots
+               │  theory.json │  + SPL hashes + grounding hashes
+               └──────────────┘
 ```
 
-**Scanner (extended)** — During the existing Markdown scan pass, the scanner now also groups pulldown-cmark events into block-level leaf nodes. Each leaf is emitted alongside the existing wikilinks and SPL blocks. The scanner produces `ParsedFile` records that now include a `Vec<MerkleLeaf>`.
+The Merkle tree is **not** a separate component. It is:
+- **Computed** as part of the scanner's existing parse pass
+- **Stored** as additional fields in the existing cache files
+- **Compared** during cache validation (already in the pipeline)
+- **Reported** via existing `zetl check` diagnostics
 
-**Merkle Engine (new)** — Consumes leaf nodes from the scanner, computes BLAKE3 hashes, builds file-level Merkle trees, and assembles the vault root. Provides query methods: tree inspection, comparison against cached trees, drift detection. The drift detector compares current Merkle trees against the theory cache's snapshot to identify SPL blocks surrounded by changed prose.
-
-**Reason Engine (extended)** — When building the theory, the reason engine now records SPL leaf hashes (both content and AST) in the provenance metadata. Theory cache validation uses SPL AST hashes instead of mtime.
-
-**Cache (extended)** — Adds `.zetl/merkle.json` to store per-file Merkle roots and per-SPL-block dual hashes. The theory cache is extended with SPL AST hashes for validation.
-
-### 5.3 Data Model
+### 6.3 Data Model
 
 ```rust
 /// Hash type alias for BLAKE3 output
@@ -828,15 +1065,10 @@ type ContentHash = [u8; 32];
 
 /// A leaf node in the file-level Merkle tree
 struct MerkleLeaf {
-    /// What kind of Markdown block this leaf represents
     node_type: LeafType,
-    /// 1-indexed start line in the source file
     start_line: u32,
-    /// 1-indexed end line in the source file
     end_line: u32,
-    /// BLAKE3 hash of the normalised content
     hash: ContentHash,
-    /// Additional hashes for SPL blocks (None for non-SPL leaves)
     spl_hashes: Option<SplLeafHash>,
 }
 
@@ -855,227 +1087,311 @@ enum LeafType {
 
 /// Dual hash for SPL block leaves
 struct SplLeafHash {
-    /// BLAKE3 of normalised raw SPL text
     content_hash: ContentHash,
-    /// BLAKE3 of canonically-serialised SPL AST (all-zero if parse failed)
     ast_hash: ContentHash,
 }
 
-/// File-level Merkle tree
-struct FileMerkleTree {
-    /// Relative path from vault root
-    path: PathBuf,
-    /// Ordered list of leaf nodes (document order)
-    leaves: Vec<MerkleLeaf>,
-    /// BLAKE3(leaf₁_hash ‖ leaf₂_hash ‖ … ‖ leafₙ_hash)
+/// A section within a file (for grounding)
+struct Section {
+    heading_line: u32,       // 0 if before first heading
+    heading_text: String,    // "" if before first heading
+    heading_level: u8,       // 0 if before first heading
+    leaf_range: (usize, usize),  // inclusive range into file's leaf vec
+    grounding_hash: ContentHash, // hash of non-SPL leaves in section
+}
+
+/// File-level Merkle data (stored in cache)
+struct FileMerkle {
     root_hash: ContentHash,
+    sections: Vec<Section>,
+    spl_leaves: Vec<SplLeafCached>,
 }
 
-/// Vault-level Merkle state
-struct VaultMerkle {
-    /// BLAKE3(file₁_hash ‖ file₂_hash ‖ … ‖ fileₘ_hash)
-    /// Files sorted by canonical relative path.
-    root_hash: ContentHash,
-    /// Per-file trees (for inspection and comparison)
-    files: HashMap<PathBuf, FileMerkleTree>,
-    /// Quick lookup: all SPL leaf AST hashes in the vault
-    spl_ast_hashes: Vec<(PathBuf, u32, ContentHash)>,  // (file, line, ast_hash)
-}
-
-/// Extended theory provenance with content hashes
-struct HashedProvenance {
-    /// Existing provenance fields (SPEC-005)
-    source_file: PathBuf,
-    source_line: u32,
-    source_page: String,
-    /// NEW: SPL content hash at time of theory construction
-    spl_content_hash: ContentHash,
-    /// NEW: SPL AST hash at time of theory construction
-    spl_ast_hash: ContentHash,
-}
-
-/// Drift report for an SPL block
-struct DriftReport {
-    /// File containing the SPL block
-    file: PathBuf,
-    /// Line number of the SPL block
-    spl_line: u32,
-    /// SPL content (for human review)
-    spl_content: String,
-    /// Whether the SPL block itself changed
-    spl_changed: bool,
-    /// Sibling nodes that changed
-    changed_siblings: Vec<ChangedSibling>,
-    /// Severity: "info" (distant changes), "warning" (adjacent changes)
-    severity: DriftSeverity,
-}
-
-struct ChangedSibling {
-    node_type: LeafType,
+/// Cached SPL leaf data
+struct SplLeafCached {
     start_line: u32,
-    /// Distance in leaf positions from the SPL block
-    /// (1 = immediately adjacent, 2 = one node away, etc.)
-    distance: u32,
+    content_hash: ContentHash,
+    ast_hash: ContentHash,
+    section_index: usize,  // which section this SPL block belongs to
+    explicit_groundings: Vec<ExplicitGrounding>,
+}
+
+/// An explicit :source grounding reference
+struct ExplicitGrounding {
+    /// The literal or rule label this grounding applies to
+    construct: String,
+    /// The :source reference (e.g., "^block-id" or "[[Page^block-id]]")
+    source_ref: String,
+    /// Resolved target: file path + leaf index
+    target_file: PathBuf,
+    target_leaf_hash: ContentHash,
+}
+
+/// Drift diagnostic
+struct DriftDiagnostic {
+    file: PathBuf,
+    spl_line: u32,
+    drift_type: DriftType,
+    severity: DriftSeverity,
+    message: String,
+}
+
+enum DriftType {
+    /// Section prose changed, SPL unchanged
+    SectionDrift {
+        section_heading: String,
+    },
+    /// Explicit :source target changed, SPL construct unchanged
+    ExplicitDrift {
+        construct: String,
+        source_ref: String,
+    },
+    /// Explicit :source target not found
+    BrokenGrounding {
+        construct: String,
+        source_ref: String,
+    },
 }
 
 enum DriftSeverity {
-    /// Non-SPL siblings changed, but not immediately adjacent to SPL block
-    Info,
-    /// Immediately adjacent sibling (preceding or following) changed
-    Warning,
+    Info,     // distant changes in section
+    Warning,  // adjacent changes or explicit grounding broken
+    Error,    // :source target not found
 }
 ```
 
-### 5.4 Merkle Tree Construction Pipeline
+### 6.4 Construction Pipeline
+
+The Merkle tree is built as an additional step within the scanner's existing file processing:
 
 ```
-Markdown file content
-        │
-        ▼
-┌───────────────────┐
-│ pulldown-cmark     │  AST event stream: (Event, Range<usize>)
-│ parse with offsets │
-└───────┬───────────┘
-        │
-        ▼
-┌───────────────────┐
-│ Block Grouper      │  Group events into block-level units
-│                    │  Each block = one Merkle leaf
-│                    │  SPL blocks detected by language tag
-└───────┬───────────┘
-        │
-        ▼
-┌───────────────────┐
-│ Content Normaliser │  Per leaf type:
-│                    │  - Text: collapse whitespace, strip formatting
-│                    │  - SPL: normalise whitespace, strip comments
-│                    │  - Code: preserve raw content + language tag
-│                    │  - Frontmatter: preserve raw YAML
-└───────┬───────────┘
-        │
-        ▼
-┌───────────────────┐
-│ Leaf Hasher        │  BLAKE3 hash each normalised leaf
-│                    │  SPL blocks: dual hash (content + AST)
-│                    │  Produces Vec<MerkleLeaf>
-└───────┬───────────┘
-        │
-        ▼
-┌───────────────────┐
-│ Tree Builder       │  Compute file Merkle root from ordered leaves
-│                    │  BLAKE3(leaf₁ ‖ leaf₂ ‖ … ‖ leafₙ)
-│                    │  Produces FileMerkleTree
-└───────┬───────────┘
-        │
-        ▼  (repeated for all files)
-┌───────────────────┐
-│ Vault Root Builder │  Collect file roots, sort by path
-│                    │  BLAKE3(file₁ ‖ file₂ ‖ … ‖ fileₘ)
-│                    │  Produces VaultMerkle
-└───────────────────┘
+Existing scanner pipeline:
+  file content → pulldown-cmark → extract_wikilinks()
+                                → extract_spl_blocks()
+                                → diagnostics
+
+Extended pipeline:
+  file content → pulldown-cmark → extract_wikilinks()
+                                → extract_spl_blocks()
+                                → build_merkle_leaves()     NEW
+                                → detect_sections()         NEW
+                                → compute_grounding_hashes() NEW
+                                → diagnostics
 ```
 
-### 5.5 Drift Detection Algorithm
+All three extractors share the same pulldown-cmark event stream — there is no second parse pass.
+
+### 6.5 Drift Detection Algorithm
+
+Drift detection runs as part of `zetl check`, after the scanner has produced current Merkle trees:
 
 ```
 Input:
-  - cached_trees: HashMap<PathBuf, FileMerkleTree>  (from last theory build)
-  - current_trees: HashMap<PathBuf, FileMerkleTree>  (from current scan)
+  - cached: theory cache with grounding hashes from last build
+  - current: freshly-computed Merkle trees from scanner
 
-For each file in current_trees:
-  1. If file not in cached_trees → skip (new file, no drift baseline)
-  2. If file root_hash unchanged → skip (nothing changed)
-  3. If file root_hash changed:
-     a. Find all SPL leaves in current file (by LeafType::SplBlock)
-     b. For each SPL leaf:
-        i.  Find corresponding SPL leaf in cached file (by line proximity)
-        ii. If SPL leaf ast_hash unchanged AND any non-SPL sibling hash
-            changed → DRIFT DETECTED
-        iii. Compute severity:
-             - Check leaves at distance 1 (immediately before/after SPL block)
-             - If any distance-1 sibling changed → Warning
-             - Else → Info
+For each SPL block in current trees:
+  1. SECTION DRIFT:
+     a. Find the block's section grounding hash in current tree
+     b. Find the same block's cached section grounding hash
+     c. If section_grounding_hash changed AND spl ast_hash unchanged:
+        → Drift detected
+     d. Severity: check if immediately-adjacent leaves changed (Warning)
+        or only distant leaves (Info)
 
-Output: Vec<DriftReport>
+  2. EXPLICIT DRIFT (for blocks with :source):
+     a. Resolve each :source target to a current Merkle leaf
+     b. Compare target leaf hash against cached target leaf hash
+     c. If target changed AND the SPL construct is unchanged:
+        → Explicit drift detected (severity: Warning)
+     d. If target not found:
+        → Broken grounding (severity: Error)
+
+Output: Vec<DriftDiagnostic> (merged into zetl check results)
 ```
-
-**Line proximity matching:** When comparing SPL blocks between cached and current trees, the system matches by position in the leaf sequence (index within the file's leaves), not by absolute line number. This handles the case where line numbers shift due to insertions/deletions above the SPL block.
 
 ---
 
-## 6. Contract Specifications (CLI Interface)
+## 7. Contract Specifications (CLI Interface)
 
-### 6.1 Merkle Subcommand Group
+The Merkle tree does not introduce new subcommands. It extends existing contracts.
 
 ```
-CON-019: zetl merkle status
+CON-019: zetl check (extended with --drift)
 
-zetl merkle status [OPTIONS]
+zetl check [OPTIONS]
 
-Display the current vault Merkle tree summary.
+Additional options:
+  --drift          Show only drift diagnostics (SPL blocks with
+                   changed grounding)
 
-Exit codes:
-  0  Merkle tree computed successfully
+Drift diagnostics are included in the existing check output format
+alongside dead links, orphans, syntax errors, and SPL diagnostics.
+The existing --fail-on flag applies to drift diagnostics.
 
-Example output (JSON):
+Example output (JSON, drift diagnostics):
 {
-  "vault_root_hash": "a1b2c3d4e5f6...",
-  "file_count": 47,
-  "total_leaves": 2341,
-  "spl_leaves": 23,
-  "spl_files": 12,
-  "cache_state": "valid",
-  "last_computed": "2026-02-24T10:30:00Z"
-}
-
-Implements:
-- REQ-044
-
-Verified by:
-- TEST-045
-```
-
-```
-CON-020: zetl merkle drift
-
-zetl merkle drift [OPTIONS]
-
-Detect SPL blocks whose surrounding prose has changed since the
-theory was last built.
-
-Options:
-  --file <PATH>    Check only a specific file
-  --severity <LVL> Minimum severity to report: info | warning [default: info]
-
-Exit codes:
-  0  No drift detected (or drift reported successfully)
-  1  Drift detected at warning severity (with --fail-on-drift flag)
-
-Example output (JSON):
-{
-  "drift_reports": [
+  "dead_links": [...],
+  "orphans": [...],
+  "syntax_errors": [...],
+  "spl_diagnostics": [...],
+  "drift_diagnostics": [
     {
+      "level": "warning",
       "file": "decisions/Redis vs Memcached.md",
-      "spl_line": 8,
-      "spl_content": "(given redis-benchmarked)\n(given redis-fast-enough)...",
-      "spl_changed": false,
-      "severity": "warning",
-      "changed_siblings": [
-        {
-          "node_type": "Paragraph",
-          "start_line": 5,
-          "distance": 1
-        }
-      ],
-      "message": "SPL block at line 8 unchanged, but adjacent paragraph at line 5 was modified. Review whether SPL claims still reflect the updated prose."
+      "spl_line": 10,
+      "type": "section_drift",
+      "section": "## Benchmark Results",
+      "message": "SPL block at line 10 may be stale. Section '## Benchmark Results' was modified since the theory was built, but the SPL content is unchanged."
+    },
+    {
+      "level": "warning",
+      "file": "decisions/Architecture.md",
+      "spl_line": 22,
+      "type": "explicit_drift",
+      "construct": "performance-acceptable",
+      "source_ref": "[[Benchmarks^perf-numbers]]",
+      "message": "Fact 'performance-acceptable' grounded in [[Benchmarks]]^perf-numbers — target content changed since the theory was built."
+    },
+    {
+      "level": "error",
+      "file": "decisions/Old Decision.md",
+      "spl_line": 15,
+      "type": "broken_grounding",
+      "construct": "legacy-compatible",
+      "source_ref": "^removed-section",
+      "message": "Fact 'legacy-compatible' references ^removed-section which no longer exists."
     }
   ],
   "summary": {
-    "total_spl_blocks": 23,
-    "drifted_blocks": 1,
-    "warning_count": 1,
-    "info_count": 0
+    "dead_links": 0,
+    "orphans": 0,
+    "syntax_errors": 0,
+    "spl_errors": 0,
+    "drift_warnings": 2,
+    "drift_errors": 1
   }
+}
+
+Implements:
+- REQ-043
+
+Verified by:
+- TEST-044
+```
+
+```
+CON-020: zetl blocks
+
+zetl blocks <PAGE> [OPTIONS]
+
+List the content blocks of a file with their Merkle leaf hashes.
+
+Arguments:
+  <PAGE>  Page name (case-insensitive, same resolution as wikilinks)
+
+Options:
+  --type <TYPE>  Filter by leaf type: heading, paragraph, spl, code,
+                 table, list, blockquote, frontmatter [default: all]
+
+Exit codes:
+  0  Blocks listed
+  1  Page not found
+
+Example output (JSON):
+{
+  "page": "Redis vs Memcached",
+  "file": "decisions/Redis vs Memcached.md",
+  "blocks": [
+    {
+      "index": 0,
+      "type": "Frontmatter",
+      "lines": [1, 3],
+      "hash": "1a2b3c4d5e6f7a8b",
+      "text": "title: Redis vs Memcached\ndate: 2026-01-15"
+    },
+    {
+      "index": 1,
+      "type": "Heading",
+      "level": 2,
+      "lines": [5, 5],
+      "hash": "a1b2c3d4e5f6a7b8",
+      "text": "## Benchmark Results"
+    },
+    {
+      "index": 2,
+      "type": "Paragraph",
+      "lines": [7, 9],
+      "hash": "e5f6a7b8c9d0e1f2",
+      "text": "We benchmarked Redis at 120k ops/sec under production workload. The test ran for 24 hours with..."
+    },
+    {
+      "index": 3,
+      "type": "Table",
+      "lines": [11, 14],
+      "hash": "c9d0e1f2a3b4c5d6",
+      "text": "| Metric | Value |\n| ops/sec | 120,000 |\n| p99 latency | 2.1ms |"
+    },
+    {
+      "index": 4,
+      "type": "SplBlock",
+      "lines": [16, 21],
+      "hash": "3a4b5c6d7e8f9a0b",
+      "spl_hashes": {
+        "content_hash": "4b5c6d7e8f9a0b1c",
+        "ast_hash": "5c6d7e8f9a0b1c2d"
+      },
+      "text": "(given redis-benchmarked)\n(given redis-fast-enough)\n(normally r-prefer-redis ...)"
+    }
+  ],
+  "file_hash": "f2a3b4c5d6e7f8a9",
+  "block_count": 5
+}
+
+Example output (table):
+
+  decisions/Redis vs Memcached.md (5 blocks, hash: f2a3b4c5)
+
+  #  Type        Lines   Hash      Preview
+  0  Frontmatter  1-3    1a2b3c4d  title: Redis vs Memcached...
+  1  Heading(2)   5      a1b2c3d4  ## Benchmark Results
+  2  Paragraph    7-9    e5f6a7b8  We benchmarked Redis at 120k ops/sec...
+  3  Table        11-14  c9d0e1f2  | Metric | Value | ...
+  4  SplBlock     16-21  3a4b5c6d  (given redis-benchmarked) ...
+
+Usage:
+  The hash values can be used directly as :source references in SPL:
+    (given redis-fast-enough :source "e5f6a7b8")
+
+Implements:
+- REQ-045
+
+Verified by:
+- TEST-049
+```
+
+```
+CON-004 (extended): zetl check :source validation
+
+Broken :source references (^block-id that doesn't exist, [[Page]] that
+doesn't exist) are reported as errors in the spl_diagnostics section,
+consistent with dead wikilink detection:
+
+{
+  "spl_diagnostics": [
+    {
+      "level": "error",
+      "file": "decisions/Old Decision.md",
+      "line": 16,
+      "message": "SPL :source references ^removed-section which does not exist in this file"
+    },
+    {
+      "level": "error",
+      "file": "decisions/Architecture.md",
+      "line": 23,
+      "message": "SPL :source references [[Nonexistent Page^data]] — page 'Nonexistent Page' not found"
+    }
+  ]
 }
 
 Implements:
@@ -1086,96 +1402,63 @@ Verified by:
 ```
 
 ```
-CON-021: zetl merkle tree
+CON-006 (extended): zetl stats — vault root hash
 
-zetl merkle tree <FILE> [OPTIONS]
+`zetl stats` output is extended with vault content integrity data:
 
-Display the leaf-level Merkle tree for a specific file.
-
-Arguments:
-  <FILE>  File path (relative to vault root)
-
-Exit codes:
-  0  Tree displayed
-  1  File not found
-
-Example output (JSON):
 {
-  "file": "decisions/Redis vs Memcached.md",
-  "root_hash": "b3c4d5e6f7a8...",
-  "leaves": [
-    {
-      "index": 0,
-      "type": "Frontmatter",
-      "lines": [1, 4],
-      "hash": "1a2b3c4d..."
-    },
-    {
-      "index": 1,
-      "type": "Heading",
-      "level": 1,
-      "lines": [5, 5],
-      "hash": "2b3c4d5e..."
-    },
-    {
-      "index": 2,
-      "type": "Paragraph",
-      "lines": [7, 9],
-      "hash": "3c4d5e6f..."
-    },
-    {
-      "index": 3,
-      "type": "SplBlock",
-      "lines": [11, 16],
-      "hash": "4d5e6f7a...",
-      "spl_hashes": {
-        "content_hash": "5e6f7a8b...",
-        "ast_hash": "6f7a8b9c..."
-      }
-    }
-  ]
+  "pages": 47,
+  "links": 312,
+  ...existing fields...
+  "vault_content_hash": "a1b2c3d4...",
+  "spl_blocks": 23,
+  "grounded_spl_blocks": 23,
+  "explicitly_grounded_facts": 5
 }
 
 Implements:
-- REQ-044
+- REQ-037 (vault root hash exposure)
 
 Verified by:
-- TEST-045
+- TEST-038
 ```
 
 ```
-CON-022: zetl merkle diff
+CON-012 (extended): zetl reason provenance — staleness warnings
 
-zetl merkle diff <FILE> [OPTIONS]
+`zetl reason provenance` output is extended with grounding freshness:
 
-Compare the current Merkle tree for a file against its cached version.
-
-Arguments:
-  <FILE>  File path (relative to vault root)
-
-Exit codes:
-  0  Comparison completed (may show changes or no changes)
-  1  File not found or not in cache
-
-Example output (JSON):
 {
-  "file": "decisions/Redis vs Memcached.md",
-  "cached_root_hash": "b3c4d5e6f7a8...",
-  "current_root_hash": "x9y8z7w6v5u4...",
-  "changed": true,
-  "leaf_changes": [
+  "literal": "decided-use-redis",
+  "sources": [
     {
-      "index": 2,
-      "type": "Paragraph",
-      "lines": [7, 9],
-      "change": "modified",
-      "cached_hash": "3c4d5e6f...",
-      "current_hash": "a1b2c3d4..."
+      "page": "Redis vs Memcached",
+      "path": "decisions/Redis vs Memcached.md",
+      "line": 10,
+      "rule_label": "r-prefer-redis",
+      "contribution": "defeasible_rule",
+      "grounding": {
+        "type": "section",
+        "section": "## Benchmark Results",
+        "fresh": false,
+        "warning": "Section prose changed since theory was built"
+      }
+    },
+    {
+      "page": "Redis vs Memcached",
+      "path": "decisions/Redis vs Memcached.md",
+      "line": 11,
+      "rule_label": null,
+      "contribution": "fact",
+      "grounding": {
+        "type": "explicit",
+        "source": "^benchmark-results",
+        "fresh": true
+      }
     }
   ],
-  "added_leaves": [],
-  "removed_leaves": [],
-  "spl_leaves_changed": false
+  "vault_root_hash": "a1b2c3d4...",
+  "theory_built_at": "2026-02-24T10:30:00Z"
 }
 
 Implements:
@@ -1187,49 +1470,28 @@ Verified by:
 
 ---
 
-## 7. Test Specifications
+## 8. Test Specifications
 
 ```
-TEST-038: Merkle Tree Construction from Markdown AST
+TEST-038: Merkle Tree Construction During Index
 
-Scenario: Build Merkle tree for a simple Markdown file
-Given: A file containing:
-  Line 1:  ---
-  Line 2:  title: Test
-  Line 3:  ---
-  Line 4:  # Heading
-  Line 5:
-  Line 6:  A paragraph with [[wikilink]].
-  Line 7:
-  Line 8:  ```spl
-  Line 9:  (given test-fact)
-  Line 10: ```
-  Line 11:
-  Line 12: Another paragraph.
-When: The scanner processes this file with Merkle tree construction
+Scenario: Index builds Merkle tree transparently
+Given: A vault with 5 Markdown files
+When: `zetl index` is run
 Then:
-  - 4 leaf nodes are produced: Frontmatter, Heading, Paragraph, SplBlock,
-    Paragraph
-  - Wait, 5 leaves: Frontmatter, Heading(1), Paragraph, SplBlock, Paragraph
-  - Each leaf has a non-zero BLAKE3 hash
-  - The SplBlock leaf has spl_hashes with content_hash and ast_hash
-  - The file root hash = BLAKE3(leaf₁ ‖ leaf₂ ‖ leaf₃ ‖ leaf₄ ‖ leaf₅)
+  - Each file has a Merkle root hash in the cache
+  - A vault root hash is stored
+  - No separate "merkle" command was needed
 
-Scenario: Leaf order matches document order
-Given: A file with Heading, Paragraph, Heading, Paragraph
-When: The Merkle tree is built
-Then:
-  - leaves[0] is Heading, leaves[1] is Paragraph, etc.
-  - Swapping the two sections would produce a different root hash
+Scenario: Vault root is deterministic
+Given: A vault with files scanned in different orders
+When: `zetl index` is run twice
+Then: The vault root hash is identical both times
 
-Scenario: Normalisation makes formatting-only changes invisible
-Given: Two files with identical text content but different whitespace
-  File A: "Some  text   with   extra  spaces"
-  File B: "Some text with extra spaces"
-When: Both files produce Merkle trees
-Then:
-  - The paragraph leaf hashes are identical
-  - The file root hashes are identical
+Scenario: Normalisation makes formatting changes invisible
+Given: Two files with identical text but different whitespace
+When: Both are indexed
+Then: Their Merkle roots are identical
 
 Verifies: REQ-037
 ```
@@ -1237,452 +1499,433 @@ Verifies: REQ-037
 ```
 TEST-039: SPL Block Dual Hashing
 
-Scenario: Content hash and AST hash computed for SPL block
-Given: A file with an SPL block:
-  ```spl
-  (given bird)
-  (normally r1 bird flies)
-  ```
-When: The SPL leaf is hashed
+Scenario: Content hash and AST hash computed
+Given: A file with an SPL block containing "(given bird) (normally r1 bird flies)"
+When: The file is indexed
 Then:
-  - content_hash = BLAKE3(normalised "(given bird)\n(normally r1 bird flies)")
-  - ast_hash = BLAKE3(canonical serialisation of {fact: bird, rule: r1})
-  - combined_hash = BLAKE3(content_hash ‖ ast_hash)
+  - The SPL leaf has a content_hash and ast_hash
+  - Both are non-zero BLAKE3 hashes
 
-Scenario: Reformatted SPL changes content_hash but not ast_hash
-Given: Two files with logically identical SPL:
-  File A: "(given bird)\n(normally r1 bird flies)"
-  File B: "(given   bird)\n\n; a comment\n(normally  r1  bird  flies)"
-When: Both SPL blocks are dual-hashed
+Scenario: Reformatting changes content_hash but not ast_hash
+Given: Two files with logically identical SPL but different formatting
+When: Both are indexed
 Then:
-  - content_hash differs (different raw text after normalisation may differ
-    depending on comment stripping; with comments stripped and whitespace
-    collapsed, they should be equal)
-  - ast_hash is identical (same parsed AST)
+  - ast_hash is identical
+  - content_hash may differ (comment and whitespace differences)
 
-Scenario: SPL parse error produces sentinel AST hash
-Given: An SPL block with invalid syntax: "(given unclosed"
-When: The SPL leaf is hashed
+Scenario: Parse error produces sentinel AST hash
+Given: An SPL block with "(given unclosed"
+When: The file is indexed
 Then:
-  - content_hash is computed from the raw text
-  - ast_hash is [0u8; 32] (sentinel)
+  - content_hash is computed
+  - ast_hash is all zeros
   - A diagnostic is emitted
 
 Verifies: REQ-038
 ```
 
 ```
-TEST-040: Vault-Level Merkle Root
+TEST-040: Two-Tier Cache Invalidation
 
-Scenario: Vault root is deterministic
-Given: A vault with 3 files: a.md, b.md, c.md
-When: The vault Merkle root is computed twice (without changes)
-Then:
-  - Both computations produce the same root hash
+Scenario: Mtime unchanged → skip hashing
+Given: A cached vault with no file modifications
+When: `zetl index` is run
+Then: No BLAKE3 hashing occurs; cache is reused
 
-Scenario: File ordering is canonical
-Given: Files are scanned in random filesystem order
-When: The vault root is computed
+Scenario: Mtime changed, content unchanged → skip reprocessing
+Given: A file is `touch`ed but content is identical
+When: `zetl index` is run
 Then:
-  - The root hash is the same regardless of scan order
-  - Files are sorted by relative path before hashing
+  - File is re-read and hashed
+  - Hash matches cached → no downstream reprocessing
 
-Scenario: Adding a file changes the vault root
-Given: A vault with root hash H1
-When: A new file d.md is added
-Then:
-  - The new vault root hash H2 ≠ H1
-
-Scenario: Removing a file changes the vault root
-Given: A vault with root hash H1 and file c.md
-When: c.md is deleted
-Then:
-  - The new vault root hash H2 ≠ H1
+Scenario: Mtime changed, content changed → reprocess
+Given: A file's content is modified
+When: `zetl index` is run
+Then: Full reprocessing occurs for that file
 
 Verifies: REQ-039
 ```
 
 ```
-TEST-041: Two-Tier Cache Invalidation
+TEST-041: SPL-Specific Theory Cache Invalidation
 
-Scenario: Mtime unchanged → skip hashing
-Given: A cached vault where no files have been modified
-When: `zetl index` is run
+Scenario: Prose edit does NOT trigger theory rebuild
+Given: A file with prose and SPL; theory is cached
+When: Only prose is edited (SPL unchanged)
 Then:
-  - No BLAKE3 hashing occurs (mtime pre-filter catches all files)
-  - The vault root hash is read from cache, not recomputed
+  - File Merkle root changes
+  - SPL AST hash unchanged
+  - Theory cache valid — no rebuild
 
-Scenario: Mtime changed, content unchanged → skip reprocessing
-Given: A file is `touch`ed (mtime updated) but content is identical
-When: `zetl index` is run
-Then:
-  - The file is re-read and hashed (mtime check fails)
-  - The new file hash equals the cached hash
-  - No downstream reprocessing occurs (link resolution, theory rebuild)
+Scenario: SPL reformatting does NOT trigger theory rebuild
+Given: SPL block reformatted but logically unchanged
+When: `zetl reason status` is run
+Then: Theory cache valid — no rebuild
 
-Scenario: Mtime changed, content changed → full reprocess
-Given: A file's content is actually modified
-When: `zetl index` is run
+Scenario: SPL logical change triggers theory rebuild
+Given: A new fact added to SPL block
+When: `zetl reason status` is run
 Then:
-  - The file is re-read and hashed
-  - The new file hash differs from cached
-  - Downstream reprocessing occurs
+  - SPL AST hash changed
+  - Theory rebuilt with new conclusions
 
 Verifies: REQ-040
 ```
 
 ```
-TEST-042: SPL-Specific Theory Cache Invalidation
+TEST-042: Implicit Section Grounding
 
-Scenario: Prose edit in SPL file does NOT trigger theory rebuild
-Given: A file containing prose and an SPL block; theory is cached
-When: Only the prose paragraph is edited (SPL block unchanged)
+Scenario: Section grounding hash computed
+Given: A file with:
+  ## Section A
+  Paragraph about X.
+  ```spl
+  (given x)
+  ```
+  ## Section B
+  Paragraph about Y.
+When: The file is indexed
 Then:
-  - File mtime changes → file is rehashed
-  - File Merkle root changes (prose leaf changed)
-  - SPL leaf AST hash is unchanged
-  - Theory cache remains valid — no theory rebuild
+  - The SPL block is grounded in Section A
+  - The grounding hash is computed from the Heading "## Section A"
+    and the Paragraph "Paragraph about X" — NOT the SPL block itself
+  - Section B content does not affect the grounding hash
 
-Scenario: SPL reformatting does NOT trigger theory rebuild
-Given: A file whose SPL block is reformatted (extra whitespace, comments)
-       but logically unchanged
-When: `zetl reason status` is run
+Scenario: Section with no heading
+Given: SPL block before first heading
+When: The file is indexed
 Then:
-  - SPL content_hash may change
-  - SPL ast_hash is unchanged
-  - Theory cache remains valid
-
-Scenario: SPL logical change DOES trigger theory rebuild
-Given: A file where a new fact "(given new-fact)" is added to the SPL block
-When: `zetl reason status` is run
-Then:
-  - SPL ast_hash changes
-  - Theory cache is invalidated
-  - Theory is rebuilt from all SPL blocks
-  - New conclusions reflect the added fact
+  - Grounding context is all content from file start to first heading
 
 Verifies: REQ-041
 ```
 
 ```
-TEST-043: SPL Drift Detection
+TEST-043: Explicit Grounding via :source
 
-Scenario: Adjacent prose change flags drift
-Given: A file with structure: Heading, Paragraph-A, SplBlock, Paragraph-B
-       Theory was built with these hashes cached.
-When: Paragraph-A is edited (content changes) but SplBlock is unchanged
+Scenario: Same-file :source grounding
+Given: A file with:
+  We tested Redis at 120k ops/sec. ^benchmark-results
+  ```spl
+  (given redis-fast-enough :source "^benchmark-results")
+  ```
+When: The file is indexed
 Then:
-  - `zetl merkle drift` reports 1 drift at Warning severity
-  - Report shows: SplBlock at line N, Paragraph at distance 1 changed
+  - Fact redis-fast-enough has explicit grounding to ^benchmark-results
+  - The grounding hash is the Merkle leaf hash of that paragraph
 
-Scenario: Distant prose change flags drift at info level
-Given: Same file structure; the Heading is edited, Paragraph-A is unchanged
-When: `zetl merkle drift` is run
+Scenario: Cross-file :source grounding
+Given:
+  File A: "Architecture.md" with paragraph tagged ^perf-numbers
+  File B: SPL with (given ok :source "[[Architecture^perf-numbers]]")
+When: Both files are indexed
 Then:
-  - Reports 1 drift at Info severity (Heading is distance > 1 from SPL)
+  - Fact ok has explicit grounding to Architecture.md ^perf-numbers
+  - Grounding hash is the target paragraph's Merkle leaf hash
 
-Scenario: SPL block itself changed — not drift
-Given: Both the prose and the SPL block are edited
-When: `zetl merkle drift` is run
+Scenario: Broken :source detected by check
+Given: SPL with :source "^nonexistent"
+When: `zetl check` is run
 Then:
-  - No drift reported (SPL was updated alongside prose)
+  - Reports error: ":source references ^nonexistent which does not exist"
 
-Scenario: No changes — no drift
-Given: No files modified since theory was built
-When: `zetl merkle drift` is run
+Scenario: Broken cross-file :source
+Given: SPL with :source "[[Ghost Page^data]]"
+When: `zetl check` is run
 Then:
-  - 0 drift reports
+  - Reports error: "page 'Ghost Page' not found"
 
 Verifies: REQ-042
 ```
 
 ```
-TEST-044: Durable Provenance with Content Hashes
+TEST-044: Drift Detection in Check
 
-Scenario: Provenance includes content hashes
-Given: A theory built from vault with Merkle hashes
-When: `zetl reason provenance "some-literal"` is run
+Scenario: Section drift detected
+Given:
+  - File has: ## Results, Paragraph-A, SplBlock, Paragraph-B
+  - Theory was built with these hashes cached
+  - Paragraph-A is edited (SPL unchanged)
+When: `zetl check` is run
 Then:
-  - Each proof source includes spl_content_hash and spl_ast_hash
-  - The output includes the vault_root_hash at time of reasoning
+  - Reports drift warning for the SPL block
+  - Message references section "## Results"
 
-Scenario: Provenance hash verification
-Given: A conclusion with stored spl_ast_hash from a previous run
-When: The source SPL block is modified and `zetl reason provenance` is run
+Scenario: Explicit grounding drift detected
+Given:
+  - Fact grounded in ^benchmark-results via :source
+  - The ^benchmark-results paragraph is edited
+  - The SPL fact is unchanged
+When: `zetl check --drift` is run
 Then:
-  - The stored hash no longer matches the current Merkle tree's hash
-  - A "stale provenance" warning is emitted
+  - Reports drift warning naming the fact and :source reference
+
+Scenario: SPL block itself changed — no drift
+Given: Both prose and SPL are edited
+When: `zetl check --drift` is run
+Then: No drift reported (SPL was updated)
+
+Scenario: No changes — no drift
+Given: No modifications since theory build
+When: `zetl check --drift` is run
+Then: Zero drift diagnostics
+
+Scenario: --fail-on applies to drift
+Given: Drift warning exists
+When: `zetl check --drift --fail-on warning` is run
+Then: Exit code 1
 
 Verifies: REQ-043
 ```
 
 ```
-TEST-045: Merkle Tree Inspection Commands
+TEST-045: Durable Provenance with Staleness
 
-Scenario: merkle status
-Given: An indexed vault with Merkle hashes cached
-When: `zetl merkle status` is run
+Scenario: Provenance includes grounding freshness
+Given: A theory built from vault with grounding hashes
+When: `zetl reason provenance "literal"` is run
 Then:
-  - Returns vault root hash, file count, leaf count, SPL leaf count
-  - Output matches CON-019 schema
+  - Sources include grounding type (section or explicit)
+  - Sources include fresh: true/false
 
-Scenario: merkle tree for a specific file
-Given: A file "test.md" in the vault
-When: `zetl merkle tree "test.md"` is run
+Scenario: Stale provenance warning
+Given: A conclusion's source section was edited after the theory was built
+When: `zetl reason provenance "literal"` is run
 Then:
-  - Returns ordered list of leaves with type, lines, hash
-  - SPL leaves include spl_hashes
-  - Output matches CON-021 schema
-
-Scenario: merkle diff shows changes
-Given: A cached vault where one file has been modified
-When: `zetl merkle diff "modified.md"` is run
-Then:
-  - Shows which leaves changed, were added, or removed
-  - Output matches CON-022 schema
-
-Scenario: merkle diff shows no changes
-Given: A file that hasn't changed since caching
-When: `zetl merkle diff "unchanged.md"` is run
-Then:
-  - changed: false, leaf_changes: [], added_leaves: [], removed_leaves: []
+  - The source shows fresh: false
+  - A warning message explains what changed
 
 Verifies: REQ-044
 ```
 
 ```
-TEST-046: Merkle Tree Construction Performance
+TEST-049: Content Block Discovery
+
+Scenario: List blocks for a file
+Given: An indexed vault with file "Redis.md" containing a heading,
+       two paragraphs, a table, and an SPL block
+When: `zetl blocks "Redis"` is run
+Then:
+  - Returns 5+ blocks in document order
+  - Each block has type, lines, hash, and text preview
+  - SPL blocks include spl_hashes
+  - Output matches CON-020 schema
+
+Scenario: Hash is usable as :source
+Given: `zetl blocks "Redis"` returns hash "e5f6a7b8" for a paragraph
+When: An SPL block is written with (given fact :source "e5f6a7b8")
+       and `zetl check` is run
+Then:
+  - The :source resolves successfully (no error)
+  - The grounding hash matches the target paragraph
+
+Scenario: Hash becomes stale after edit
+Given: An SPL fact grounded in hash "e5f6a7b8"
+When: The target paragraph is edited and `zetl check --drift` is run
+Then:
+  - Hash no longer matches any leaf
+  - Broken grounding error is reported
+
+Scenario: Position-independent resolution
+Given: A paragraph with hash "e5f6a7b8" is moved from line 7 to line 20
+       (content unchanged, only position changed)
+When: `zetl check` is run
+Then:
+  - Hash still resolves (same content, same hash)
+  - No drift or error reported
+
+Scenario: Page not found
+When: `zetl blocks "Nonexistent"` is run
+Then: Exit code 1, page not found error
+
+Scenario: Filter by type
+When: `zetl blocks "Redis" --type paragraph` is run
+Then: Only paragraph blocks are returned
+
+Verifies: REQ-045
+```
+
+```
+TEST-046: Construction Performance
 
 Scenario: Overhead within bounds
-Given: A vault with ≥ 1,000 Markdown files
-When: Scanning with Merkle tree construction vs. without
-Then:
-  - Total scan time with Merkle ≤ 1.2× scan time without
+Given: A vault with ≥ 1,000 files
+When: Scanning with Merkle construction vs without
+Then: Total time ≤ 1.2× baseline
 
 Verifies: NFR-014
 ```
 
 ```
-TEST-047: Merkle Tree Memory Overhead
+TEST-047: Memory Overhead
 
 Scenario: Memory within bounds
-Given: A vault with 10,000 files, ~50 leaves per file
-When: Merkle tree is constructed
-Then:
-  - Peak memory increase ≤ 30 MB above baseline
+Given: 10,000 files, ~50 leaves per file
+When: Merkle tree constructed
+Then: Peak memory increase ≤ 30 MB
 
 Verifies: NFR-015
 ```
 
 ```
-TEST-048: Merkle Cache Size
+TEST-048: Cache Size
 
-Scenario: Cache size within bounds
-Given: A vault with 10,000 files cached with Merkle data
-When: .zetl/merkle.json is written
-Then:
-  - File size ≤ 5 MB
+Scenario: Cache within bounds
+Given: 10,000 files with Merkle data
+When: Cache written
+Then: Additional cache data ≤ 5 MB
 
 Verifies: NFR-016
 ```
 
 ---
 
-## 8. Observability
+## 9. Observability
 
 ```
-OBS-007: Merkle Tree Timing
+OBS-007: Merkle Construction Timing
 
-When --verbose is specified, Merkle-related commands SHALL emit to stderr:
-  - Number of files hashed
-  - Number of files skipped (mtime unchanged)
-  - Number of files with content-hash match (mtime changed but hash same)
-  - Total leaf nodes computed
-  - SPL leaf nodes computed (with dual hashing)
+When --verbose is specified, `zetl index` SHALL emit to stderr:
+  - Files hashed / files skipped (mtime unchanged) / files with
+    content-hash match (touched but unchanged)
+  - Total leaf nodes computed, SPL leaves with dual hashing
   - BLAKE3 hashing time (ms)
-  - Total Merkle tree construction time (ms)
+  - Section detection and grounding hash time (ms)
 ```
 
 ```
 OBS-008: Drift Detection Metrics
 
-`zetl merkle drift` SHALL include a summary section reporting:
-  - Total SPL blocks in vault
-  - Number of drifted blocks (total, warning, info)
-  - Number of files with at least one drifted block
-  - Time since theory was last built
-to support vault health monitoring.
+`zetl check` SHALL include in its summary:
+  - Total SPL blocks, drifted blocks (warning + info)
+  - Explicitly grounded facts, broken groundings
 ```
 
 ```
-OBS-009: Cache Efficiency Metrics
+OBS-009: Cache Efficiency
 
 When --verbose is specified, `zetl index` and `zetl reason status`
-SHALL emit to stderr:
-  - Cache tier 1 hits: files skipped by mtime check
-  - Cache tier 1 misses: files re-hashed
-  - Cache tier 2 hits: files re-hashed but content unchanged
-  - Cache tier 2 misses: files with actual content changes
-  - Theory cache hit/miss (SPL AST hash comparison result)
-to support cache tuning and performance analysis.
+SHALL emit:
+  - Tier 1 hits (mtime) / Tier 1 misses
+  - Tier 2 hits (hash match) / Tier 2 misses (actual change)
+  - Theory cache hit/miss (SPL AST hash comparison)
 ```
 
 ---
 
-## 9. Traceability Matrix
+## 10. Traceability Matrix
 
-| REQ     | CON              | TEST     | ADR     | OBS     |
-| ------- | ---------------- | -------- | ------- | ------- |
-| REQ-037 | CON-019          | TEST-038 | ADR-008 | OBS-007 |
-| REQ-038 | CON-019          | TEST-039 | ADR-008 | OBS-007 |
-| REQ-039 | CON-019          | TEST-040 | —       | OBS-007 |
-| REQ-040 | —                | TEST-041 | ADR-009 | OBS-009 |
-| REQ-041 | —                | TEST-042 | ADR-009 | OBS-009 |
-| REQ-042 | CON-020          | TEST-043 | —       | OBS-008 |
-| REQ-043 | CON-021          | TEST-044 | —       | —       |
-| REQ-044 | CON-019–022      | TEST-045 | —       | —       |
-| NFR-014 | —                | TEST-046 | ADR-008 | OBS-007 |
-| NFR-015 | —                | TEST-047 | —       | —       |
-| NFR-016 | —                | TEST-048 | —       | —       |
+| REQ     | CON              | TEST     | ADR      | OBS     |
+| ------- | ---------------- | -------- | -------- | ------- |
+| REQ-037 | CON-006 (ext)    | TEST-038 | ADR-008  | OBS-007 |
+| REQ-038 | —                | TEST-039 | ADR-008  | OBS-007 |
+| REQ-039 | —                | TEST-040 | ADR-009  | OBS-009 |
+| REQ-040 | —                | TEST-041 | ADR-009  | OBS-009 |
+| REQ-041 | —                | TEST-042 | ADR-010  | —       |
+| REQ-042 | CON-004 (ext)    | TEST-043 | ADR-010  | —       |
+| REQ-043 | CON-019          | TEST-044 | —        | OBS-008 |
+| REQ-044 | CON-012 (ext)    | TEST-045 | —        | —       |
+| REQ-045 | CON-020          | TEST-049 | —        | —       |
+| NFR-014 | —                | TEST-046 | ADR-008  | OBS-007 |
+| NFR-015 | —                | TEST-047 | —        | —       |
+| NFR-016 | —                | TEST-048 | —        | —       |
 
 ---
 
-## 10. Implementation Priority
+## 11. Implementation Priority
 
 ### P0 — Core Merkle Infrastructure
 
 | Item | Effort | Dependencies |
 | --- | --- | --- |
-| Leaf node grouper in scanner (REQ-037) | 4 hours | Existing scanner, pulldown-cmark |
-| BLAKE3 leaf hashing (REQ-037) | 2 hours | blake3 crate |
-| File-level Merkle root (REQ-037) | 1 hour | Leaf hashing |
-| Vault-level Merkle root (REQ-039) | 1 hour | File-level roots |
-| `merkle status` command (REQ-044 partial) | 1 hour | Vault root |
+| Leaf node grouper in scanner (REQ-037) | 4 hours | Existing scanner |
+| BLAKE3 leaf hashing + file roots (REQ-037) | 2 hours | blake3 crate |
+| Vault root hash (REQ-037) | 1 hour | File roots |
+| Two-tier cache invalidation (REQ-039) | 4 hours | File roots |
+| SPL dual hashing (REQ-038) | 3 hours | spindle-parser |
+| SPL-specific theory invalidation (REQ-040) | 2 hours | SPL dual hashing |
 
-### P1 — SPL Integration
-
-| Item | Effort | Dependencies |
-| --- | --- | --- |
-| SPL dual hashing (REQ-038) | 3 hours | P0 complete, spindle-parser |
-| Two-tier cache invalidation (REQ-040) | 4 hours | P0 complete |
-| SPL-specific theory invalidation (REQ-041) | 2 hours | SPL dual hashing |
-| Durable provenance hashes (REQ-043) | 2 hours | SPL dual hashing |
-
-### P2 — Drift Detection and Inspection
+### P1 — Section Grounding and Drift
 
 | Item | Effort | Dependencies |
 | --- | --- | --- |
-| Drift detection algorithm (REQ-042) | 4 hours | P1 complete |
-| `merkle drift` command (CON-020) | 2 hours | Drift detection |
-| `merkle tree` command (CON-021) | 1 hour | P0 complete |
-| `merkle diff` command (CON-022) | 2 hours | P0 complete |
-| Merkle cache serialisation (NFR-016) | 2 hours | P0 complete |
+| Section boundary detection (REQ-041) | 2 hours | Leaf grouper |
+| Section grounding hash computation (REQ-041) | 2 hours | Section detection |
+| Drift detection in check (REQ-043) | 4 hours | Section grounding |
+| Durable provenance hashes (REQ-044) | 2 hours | SPL dual hashing |
 
-**Estimated total: ~31 hours** across all priorities.
+### P2 — Explicit Grounding and Content Discovery
+
+| Item | Effort | Dependencies |
+| --- | --- | --- |
+| `zetl blocks` command (REQ-045) | 2 hours | P0 complete |
+| :source parsing from SPL metadata (REQ-042) | 3 hours | spindle-parser meta |
+| Merkle hash prefix resolution (REQ-042) | 3 hours | P0 complete |
+| ^block-id resolution to Merkle leaves (REQ-042) | 2 hours | Existing scanner |
+| Cross-file :source resolution (REQ-042) | 2 hours | Block-id resolution |
+| :source validation in check (REQ-042) | 2 hours | Resolution |
+| Explicit grounding drift detection (REQ-043) | 2 hours | P1 + resolution |
+
+**Estimated total: ~42 hours** across all priorities.
 
 ---
 
-## 11. Cache Format
+## 12. Cache Format
 
-### 11.1 Merkle Cache Structure
+### 12.1 Index Cache Extension
 
-The Merkle cache is stored in `.zetl/merkle.json`:
+The existing `.zetl/index.json` is extended with per-file Merkle roots:
 
 ```json
 {
-  "version": 1,
-  "vault_root_hash": "a1b2c3d4...",
-  "computed_at": "2026-02-24T10:30:00Z",
+  "version": 2,
   "files": {
-    "architecture/Cache.md": {
-      "root_hash": "b3c4d5e6...",
+    "decisions/Redis.md": {
       "mtime": 1708770000.0,
-      "spl_leaves": [
-        {
-          "start_line": 15,
-          "end_line": 20,
-          "content_hash": "c4d5e6f7...",
-          "ast_hash": "d5e6f7a8..."
-        }
-      ]
+      "page_name": "Redis",
+      "links": [...],
+      "spl_blocks": [...],
+      "diagnostics": [...],
+      "merkle_root": "b3c4d5e6..."
     }
-  }
+  },
+  "vault_root_hash": "a1b2c3d4..."
 }
 ```
 
-**Compact format rationale:** Only the file root hash and SPL leaf hashes are persisted. Full leaf-level trees are NOT cached to disk (they can be recomputed from the file in <1ms). This keeps the cache small (NFR-016) while retaining the data needed for:
+### 12.2 Theory Cache Extension
 
-- Vault root comparison (vault_root_hash)
-- Two-tier invalidation (file root_hash + mtime)
-- Theory invalidation (SPL ast_hash values)
-- Drift detection (comparing current tree against cached per-file state)
-
-Full leaf trees are computed on-demand when inspection commands (`merkle tree`, `merkle diff`) are invoked.
-
-### 11.2 Theory Cache Extension
-
-The existing `.zetl/theory.json` (SPEC-005 ADR-006) is extended:
+The existing `.zetl/theory.json` is extended with grounding data:
 
 ```json
 {
   "version": 2,
   "vault_root_hash": "a1b2c3d4...",
-  "spl_ast_hashes": {
-    "architecture/Cache.md:15": "d5e6f7a8...",
-    "decisions/Redis.md:8": "e6f7a8b9..."
+  "built_at": "2026-02-24T10:30:00Z",
+  "spl_blocks": {
+    "decisions/Redis.md:10": {
+      "ast_hash": "d5e6f7a8...",
+      "content_hash": "c4d5e6f7...",
+      "section_heading": "## Benchmark Results",
+      "section_grounding_hash": "e7f8a9b0...",
+      "explicit_groundings": [
+        {
+          "construct": "redis-fast-enough",
+          "source_ref": "^benchmark-results",
+          "target_file": "decisions/Redis.md",
+          "target_hash": "f8a9b0c1..."
+        }
+      ]
+    }
   },
-  "rules": [ ... ],
-  "superiorities": [ ... ],
-  "diagnostics": [ ... ]
+  "rules": [...],
+  "superiorities": [...],
+  "diagnostics": [...]
 }
 ```
 
-**Change from v1:** The `spl_file_mtimes` field is replaced by `spl_ast_hashes`. Theory cache validity is now determined by comparing the set of SPL AST hashes, not file mtimes. The `vault_root_hash` is stored for provenance references.
-
----
-
-## 12. Integration with Existing Systems
-
-### 12.1 Scanner Integration
-
-The Merkle tree construction is integrated into the scanner's existing parse pass:
-
-```
-Existing flow:
-  file → pulldown-cmark → extract_wikilinks() + extract_spl_blocks()
-
-Extended flow:
-  file → pulldown-cmark → extract_wikilinks() + extract_spl_blocks()
-                                               + build_merkle_leaves()
-```
-
-`build_merkle_leaves()` operates on the same `(Event, Range)` stream that `extract_wikilinks()` and `extract_spl_blocks()` use. It groups events into block-level leaf nodes and returns `Vec<MerkleLeaf>`. The three extractors share the pulldown-cmark parse — there is no second pass.
-
-### 12.2 Reason Engine Integration
-
-The reason engine's `build_theory()` function is extended to:
-
-1. Accept SPL leaf hashes alongside SPL blocks
-2. Store `spl_content_hash` and `spl_ast_hash` in each rule's provenance metadata
-3. Store the vault root hash in the theory cache
-4. Use SPL AST hashes (not mtime) for theory cache validation
-
-### 12.3 Hence Integration
-
-The vault root hash serves as a **coordination checkpoint** in multi-agent workflows:
-
-```bash
-# Record vault state before agent task
-VAULT_HASH=$(zetl merkle status | jq -r .vault_root_hash)
-
-# Agent performs work...
-
-# Verify what changed
-NEW_HASH=$(zetl merkle status | jq -r .vault_root_hash)
-if [ "$VAULT_HASH" != "$NEW_HASH" ]; then
-  zetl merkle drift --fail-on-drift
-fi
-```
+No separate `merkle.json` file — Merkle data is folded into the existing caches.
 
 ---
 
@@ -1690,30 +1933,33 @@ fi
 
 | Item | Rationale |
 | --- | --- |
-| Incremental Merkle tree updates | Instead of rebuilding the entire file tree on change, update only the affected leaves. Requires an ordered tree structure (not just concatenation). |
-| Merkle proofs for provenance | Generate compact proofs that a specific SPL block was part of a specific vault state. Useful for auditing and trust verification. |
-| Cryptographic signing of vault root | Sign the vault root hash with an author key. Enables tamper detection and attribution in multi-agent environments. |
-| Content-addressable object storage | Store the Merkle tree as a git-like object store where objects are addressed by their hash. Enables deduplication and efficient diffing across vault snapshots. |
-| Semantic drift detection | Use embedding similarity (not just hash equality) to detect when prose meaning has drifted even if the specific hashed blocks haven't changed. |
-| Cross-vault Merkle forests | Extend the tree to span multiple vaults with a forest root. Builds on SPEC-004 sync. |
-| Merkle-based cache garbage collection | Use hash references to determine which cached data is still reachable from the current vault state. Unreferenced cache entries can be pruned. |
-| Block-level provenance | Extend Merkle leaves to include `^block-id` references from SPEC-001, enabling sub-file provenance resolution. |
+| Incremental Merkle tree updates | Update only affected leaves on file change, rather than rebuilding the file tree. Requires ordered tree structure. |
+| Merkle proofs for provenance | Generate compact proofs that an SPL block was part of a specific vault state. Useful for auditing. |
+| Cryptographic signing of vault root | Sign with author key for tamper detection in multi-agent environments. |
+| Semantic drift detection | Use embedding similarity (not just hash equality) to detect meaning drift. |
+| Cross-vault Merkle forests | Vault roots as leaves in a cross-vault tree. Builds on SPEC-004 sync. |
+| Named SPL blocks with grounding | Combine SPEC-005 §12.2 named blocks with explicit grounding: `@{caching-base :source "^section"}`. |
+| Grounding visualisation in TUI | Show which prose each SPL block is grounded in, highlighted in the page view. |
+| Automatic :source suggestion | When drift is detected, suggest adding explicit :source to prevent false positives. |
+| Grounding-aware what-if | `zetl reason what-if` could show which groundings would become stale if a hypothetical were applied. |
 
 ---
 
 ## 14. Open Questions
 
-1. **Should the Merkle tree include non-Markdown files (images, PDFs)?** The current design covers `.md` and `.spl` files only. Binary files could be included as opaque hash leaves (hash the raw bytes). This would make the vault root hash a true content address for the entire vault, but adds complexity for minimal reasoning benefit. Recommendation: defer to a future iteration.
+1. **Should section grounding use the heading text or heading hash as the section identifier?** Heading text is human-readable in drift messages. Heading hash is robust to position changes. Recommendation: use heading text for display, heading hash + position for matching.
 
-2. **Should leaf hashes include structural metadata (heading level, list type)?** The current design hashes normalised text content plus a type tag. Including structural metadata means changing a heading from `##` to `###` would change the hash. Recommendation: include it — heading level is semantically significant.
+2. **How should the system handle files with no headings?** The entire file is one implicit section. All SPL blocks are grounded in the full file content. Recommendation: this is fine for small files. For large files with no headings, consider a warning.
 
-3. **How should the Merkle tree handle files that fail to parse (binary files mislabeled as .md)?** Recommendation: produce a single opaque leaf with the raw file hash. The file still contributes to the vault root but has no internal tree structure.
+3. **Should `:source` be a spindle-core `(meta ...)` construct or inline syntax?** Inline (`:source "e5f6a7b8"` on the fact/rule line) is more readable but requires parser support. Meta (`(meta label :source "e5f6a7b8")`) works with the existing parser. Recommendation: support both; inline is sugar for meta.
 
-4. **Should drift detection use a configurable "proximity window" instead of adjacent-only?** The current design flags Warning for distance-1 siblings and Info for all others. A configurable window (e.g., "flag Warning for all siblings within 3 positions of the SPL block") might be more useful. Recommendation: start with the fixed policy, make it configurable in a follow-up based on user feedback.
+7. **What is the minimum hash prefix length for unambiguous resolution?** 8 hex characters (32 bits) provides 4 billion distinct values, which is sufficient for typical vaults. For very large vaults, longer prefixes may be needed. Recommendation: minimum 8 characters, `zetl check` reports ambiguity if a prefix matches multiple leaves and suggests a longer prefix.
 
-5. **Should the `merkle.json` cache store full leaf trees or just roots + SPL hashes?** Full trees enable faster `merkle diff` but increase cache size. Roots + SPL hashes are compact and sufficient for the primary use cases (invalidation, drift detection). Recommendation: compact format (roots + SPL hashes) for v1, with full trees as an opt-in flag for inspection-heavy workflows.
+4. **Should drift detection have a "grace period" for new files?** A newly-created file has no baseline — everything is "new." Should the first check after file creation report drift? Recommendation: no. Drift requires a baseline from a previous theory build. New files have no baseline and are not flagged.
 
-6. **How should the system handle the transition from v1 (mtime-only) cache to v2 (mtime + hash)?** Recommendation: on first run with the new system, detect the old cache format, trigger a full rehash to populate the Merkle data, and write the new format. Subsequent runs use the two-tier strategy.
+5. **What happens when a section is split (a new heading inserted in the middle)?** The SPL block's section shrinks. The grounding hash changes because the set of leaves in the section changed. This correctly triggers drift detection. Recommendation: this is the right behaviour — restructuring a section is a meaningful change.
+
+6. **Should the vault root hash be exposed in `zetl stats` or only internally?** Exposing it in stats gives agents a coordination checkpoint. Recommendation: include it in `zetl stats` output as `vault_content_hash`.
 
 ---
 
