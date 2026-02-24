@@ -6,8 +6,10 @@
 //! a bridge column — a terminal-native take on Ted Nelson's parallel pages.
 
 pub mod app;
+pub mod color;
 pub mod event;
 pub mod terminal;
 
 pub use app::{ContextMode, FocusState, ViewApp};
+pub use color::{detect_color_mode, no_color, ColorMode, LinkColor, LinkColors};
 pub use terminal::{enter_alternate_screen, restore_terminal};
