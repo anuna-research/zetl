@@ -3,26 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 395,
-    "deletions": 37,
+    "files_changed": 2,
+    "insertions": 324,
+    "deletions": 35,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/merkle.rs",
-      "src/scanner.rs"
+      "src/cache.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-spl-dual-hashing-changes",
-      "content": "Modified 3 files (+395, -37): .hence/context-manifest.json, src/merkle.rs, src/scanner.rs",
+      "key": "task-cache-format-v2-changes",
+      "content": "Modified 2 files (+324, -35): .hence/context-manifest.json, src/cache.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/spl-dual-hashing-v1",
-  "evaluated_at": "2026-02-24T02:22:44Z",
+  "branch_name": "hence/cache-format-v2-v1",
+  "evaluated_at": "2026-02-24T02:32:23Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
