@@ -1,12 +1,12 @@
 {
-  "task_id": "two-pane-layout",
+  "task_id": "main-pane",
   "token_budget": 8000,
-  "tokens_used": 238,
+  "tokens_used": 260,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement the ratatui Layout that divides the terminal into three columns: main pane (default 58% of terminal width, configurable via --main-width), bridge column (exactly 3 characters wide), and context pane (remaining width). Add a status bar row pinned to the bottom (1 row). When terminal width < 60 columns, switch to single-pane mode (main pane only; context overlay is a separate task). Store computed pane rects in ViewApp for use by all rendering tasks. REQ-063, NFR-025.",
-      "token_cost": 120,
+      "content": "Implement scrollable note content rendering in the main pane. Given the current page title, load the file content from disk (via the SPEC-006 index path). Render as a ratatui Paragraph with word-wrap disabled (preserve raw Markdown lines). Support scroll_offset: j/k scroll one line, Ctrl-d/Ctrl-u scroll half a page, g/G go to top/bottom. Render the page title as a styled header above the content. Track which lines are currently visible (viewport_start..viewport_start+height). REQ-063, REQ-067.",
+      "token_cost": 124,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 2 files (+65, -7): .hence/context-manifest.json, src/main.rs",
       "token_cost": 17,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-two-pane-layout-changes",
+      "content": "Modified 2 files (+95, -12): .hence/context-manifest.json, src/view/app.rs",
+      "token_cost": 18,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T07:18:29Z"
+  "constructed_at": "2026-02-24T07:22:42Z"
 }

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::prelude::*;
@@ -61,8 +63,15 @@ pub struct ViewApp {
     /// Title of the page currently displayed in the main pane.
     pub current_page: String,
 
+    /// Raw Markdown lines of the current page.  Empty when no file is loaded.
+    pub content_lines: Vec<String>,
+
     /// Number of lines scrolled down from the top of the document.
     pub scroll_offset: usize,
+
+    /// Height (in terminal rows) of the scrollable content area — refreshed every draw call.
+    /// Used by Ctrl-d/Ctrl-u for half-page scrolling and by G for go-to-bottom (REQ-067).
+    pub viewport_height: usize,
 
     /// Navigation history as `(page_title, scroll_offset)` pairs.
     /// The most recent entry is pushed when navigating away; popped on `[`.
@@ -110,10 +119,28 @@ pub struct ViewApp {
 
 impl ViewApp {
     /// Create a new [`ViewApp`] starting on `page`.
-    pub fn new(page: impl Into<String>, context_lines: u8, main_width: u8) -> Self {
+    ///
+    /// `file_path` is the absolute path to the markdown file for `page`.  When
+    /// `Some`, the file is read immediately so the main pane can display its
+    /// content (REQ-067).  Errors are silently ignored — `content_lines` will
+    /// be empty if the file cannot be read.
+    pub fn new(
+        page: impl Into<String>,
+        file_path: Option<PathBuf>,
+        context_lines: u8,
+        main_width: u8,
+    ) -> Self {
+        let current_page = page.into();
+        let content_lines: Vec<String> = file_path
+            .and_then(|p| std::fs::read_to_string(&p).ok())
+            .map(|s| s.lines().map(|l| l.to_string()).collect())
+            .unwrap_or_default();
+
         Self {
-            current_page: page.into(),
+            current_page,
+            content_lines,
             scroll_offset: 0,
+            viewport_height: 0,
             nav_history: Vec::new(),
             context_mode: ContextMode::default(),
             focus_state: FocusState::default(),
@@ -170,10 +197,7 @@ impl ViewApp {
 
         // ── Step 3: render panes ─────────────────────────────────────────
 
-        // Main pane placeholder.
-        let title = format!(" zetl view — {} ", self.current_page);
-        let block = Block::bordered().title(title);
-        frame.render_widget(block, self.main_pane);
+        self.draw_main_pane(frame);
 
         if !self.single_pane {
             self.draw_bridge_col(frame);
@@ -191,6 +215,47 @@ impl ViewApp {
         if self.show_help {
             self.draw_help_overlay(frame, area);
         }
+    }
+
+    /// Render the main note pane: a styled 1-row title header followed by the
+    /// scrollable Markdown content (REQ-063, REQ-067).
+    ///
+    /// Word-wrap is intentionally disabled so that raw Markdown lines are
+    /// preserved exactly as written in the source file.  The scroll position is
+    /// clamped to the valid range on every draw call.
+    fn draw_main_pane(&mut self, frame: &mut Frame) {
+        let area = self.main_pane;
+
+        // Split into a 1-row header and the remaining scrollable content area.
+        let [header_area, content_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+
+        // Update viewport_height so that half-page and go-to-bottom keybindings
+        // use the current actual height (REQ-067).
+        self.viewport_height = content_area.height as usize;
+
+        // Clamp scroll_offset so it never exceeds the last displayable position.
+        let max_scroll = self.content_lines.len().saturating_sub(self.viewport_height);
+        self.scroll_offset = self.scroll_offset.min(max_scroll);
+
+        // ── Title header ──────────────────────────────────────────────────
+        let header = Paragraph::new(format!(" {} ", self.current_page))
+            .style(Style::default().bold().reversed());
+        frame.render_widget(header, header_area);
+
+        // ── Scrollable content ────────────────────────────────────────────
+        // Build Line items from raw content strings.  No word-wrap is applied;
+        // long Markdown lines extend past the right edge (horizontal scrolling
+        // is not implemented in this iteration).
+        let lines: Vec<Line> = self
+            .content_lines
+            .iter()
+            .map(|l| Line::raw(l.as_str()))
+            .collect();
+
+        let scroll_row = self.scroll_offset.min(u16::MAX as usize) as u16;
+        let para = Paragraph::new(lines).scroll((scroll_row, 0));
+        frame.render_widget(para, content_area);
     }
 
     /// Render the 3-column bridge strip separating the two panes.
@@ -326,15 +391,17 @@ impl ViewApp {
             return;
         }
 
-        // Ctrl-d / Ctrl-u half-page scroll.
+        // Ctrl-d / Ctrl-u half-page scroll (REQ-067).
         if modifiers.contains(KeyModifiers::CONTROL) {
             match code {
                 KeyCode::Char('d') => {
-                    self.scroll_offset = self.scroll_offset.saturating_add(10);
+                    let half = (self.viewport_height / 2).max(1);
+                    self.scroll_offset = self.scroll_offset.saturating_add(half);
                     return;
                 }
                 KeyCode::Char('u') => {
-                    self.scroll_offset = self.scroll_offset.saturating_sub(10);
+                    let half = (self.viewport_height / 2).max(1);
+                    self.scroll_offset = self.scroll_offset.saturating_sub(half);
                     return;
                 }
                 KeyCode::Char('r') => {
@@ -362,8 +429,11 @@ impl ViewApp {
                 self.scroll_offset = 0;
             }
             KeyCode::Char('G') => {
-                // Jump to a large offset; the renderer will clamp to content length.
-                self.scroll_offset = usize::MAX / 2;
+                // Go to the last line.  draw_main_pane() will clamp to the
+                // exact displayable maximum, but we can compute it precisely
+                // when viewport_height is already known (REQ-067).
+                self.scroll_offset =
+                    self.content_lines.len().saturating_sub(self.viewport_height);
             }
             KeyCode::Tab => {
                 self.toggle_focus();
