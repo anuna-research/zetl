@@ -2292,6 +2292,23 @@ fn cmd_serve(cli: &Cli, port: u16) -> Result<()> {
     Ok(())
 }
 
+fn cmd_build(cli: &Cli, out_dir: &str) -> Result<()> {
+    let pipeline = run_pipeline(cli)?;
+
+    let mut page_names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
+    page_names.sort_by_key(|a| a.to_lowercase());
+
+    let data = zetl::web::VaultData {
+        files: pipeline.files,
+        graph: pipeline.graph,
+        page_names,
+        resolved: pipeline.graph_resolved,
+    };
+
+    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir)?;
+    Ok(())
+}
+
 // ── Reason commands ────────────────────────────────────────────────────────
 
 #[cfg(feature = "reason")]
@@ -5944,6 +5961,7 @@ fn main() -> anyhow::Result<()> {
             main_width,
         } => cmd_view(&cli, page.as_deref(), *context_lines, *main_width),
         Command::Serve { port } => cmd_serve(&cli, *port),
+        Command::Build { out_dir } => cmd_build(&cli, out_dir),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

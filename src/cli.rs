@@ -186,6 +186,13 @@ pub enum Command {
         port: u16,
     },
 
+    /// Generate a static HTML site from the vault
+    Build {
+        /// Output directory
+        #[arg(short, long, default_value = "dist")]
+        out_dir: String,
+    },
+
     /// Launch the Xanadu-style two-pane view for a note (SPEC-009)
     View {
         /// Page title to open (launches a page picker when omitted)
