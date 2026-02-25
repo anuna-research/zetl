@@ -61,23 +61,8 @@ pub fn reindex(vault_root: &PathBuf) -> anyhow::Result<VaultData> {
     let mut page_names: Vec<String> = files.iter().map(|f| f.page_name.clone()).collect();
     page_names.sort_by_key(|a| a.to_lowercase());
 
-    // Build page_slug_map: page_name → slug (relative path minus extension)
-    let mut page_slug_map: HashMap<String, String> = HashMap::new();
-    for file in &files {
-        let slug = page_slug_from_path(&file.path);
-        page_slug_map.insert(file.page_name.clone(), slug);
-    }
-
-    // Detect collision names: page names that appear more than once
-    let mut name_counts: HashMap<String, usize> = HashMap::new();
-    for file in &files {
-        *name_counts.entry(file.page_name.clone()).or_insert(0) += 1;
-    }
-    let collision_names: HashSet<String> = name_counts
-        .into_iter()
-        .filter(|(_, count)| *count > 1)
-        .map(|(name, _)| name)
-        .collect();
+    // Build page_slug_map: page_name → slug (kebab-case relative path)
+    let (page_slug_map, collision_names) = build_slug_map(&files);
 
     Ok(VaultData {
         files,
@@ -87,6 +72,50 @@ pub fn reindex(vault_root: &PathBuf) -> anyhow::Result<VaultData> {
         page_slug_map,
         collision_names,
     })
+}
+
+/// Build the page_slug_map and collision_names from a list of parsed files.
+///
+/// Warns to stderr if two different pages produce the same kebab-case slug
+/// (e.g. `Foo Bar.md` and `foo-bar.md` in the same folder).
+pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet<String>) {
+    let mut page_slug_map: HashMap<String, String> = HashMap::new();
+    // Track slug → list of original paths for collision detection
+    let mut slug_sources: HashMap<String, Vec<String>> = HashMap::new();
+
+    for file in files {
+        let slug = page_slug_from_path(&file.path);
+        slug_sources
+            .entry(slug.clone())
+            .or_default()
+            .push(file.path.to_string_lossy().to_string());
+        page_slug_map.insert(file.page_name.clone(), slug);
+    }
+
+    // Warn about slug collisions
+    for (slug, sources) in &slug_sources {
+        if sources.len() > 1 {
+            eprintln!(
+                "warning: slug collision — the following files all map to /{slug}:"
+            );
+            for src in sources {
+                eprintln!("  - {src}");
+            }
+        }
+    }
+
+    // Detect page-name collisions (same filename stem in multiple folders)
+    let mut name_counts: HashMap<String, usize> = HashMap::new();
+    for file in files {
+        *name_counts.entry(file.page_name.clone()).or_insert(0) += 1;
+    }
+    let collision_names: HashSet<String> = name_counts
+        .into_iter()
+        .filter(|(_, count)| *count > 1)
+        .map(|(name, _)| name)
+        .collect();
+
+    (page_slug_map, collision_names)
 }
 
 pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {

@@ -292,19 +292,19 @@ mod tests {
     #[test]
     fn test_simple_wikilink() {
         let mut slug_map = HashMap::new();
-        slug_map.insert("Target".to_string(), "folder/Target".to_string());
+        slug_map.insert("Target".to_string(), "folder/target".to_string());
         let html = render_to_html("See [[Target]] here", &slug_map);
-        assert!(html.contains(r#"href="/folder/Target""#));
+        assert!(html.contains(r#"href="/folder/target""#));
         assert!(html.contains("link-primary"));
     }
 
     #[test]
     fn test_aliased_wikilink() {
         let mut slug_map = HashMap::new();
-        slug_map.insert("Target".to_string(), "folder/Target".to_string());
+        slug_map.insert("Target".to_string(), "folder/target".to_string());
         let html = render_to_html("See [[Target|click me]] here", &slug_map);
         assert!(html.contains("click me"));
-        assert!(html.contains(r#"href="/folder/Target""#));
+        assert!(html.contains(r#"href="/folder/target""#));
     }
 
     #[test]
@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn test_wikilink_in_code_block_untouched() {
         let mut slug_map = HashMap::new();
-        slug_map.insert("Target".to_string(), "folder/Target".to_string());
+        slug_map.insert("Target".to_string(), "folder/target".to_string());
         let html = render_to_html("```\n[[Target]]\n```", &slug_map);
         // Inside code block, should NOT be rewritten to <a>
         assert!(!html.contains("link-primary"));
@@ -332,8 +332,16 @@ mod tests {
     #[test]
     fn test_root_level_slug() {
         let mut slug_map = HashMap::new();
-        slug_map.insert("Notes".to_string(), "Notes".to_string());
+        slug_map.insert("Notes".to_string(), "notes".to_string());
         let html = render_to_html("See [[Notes]] here", &slug_map);
-        assert!(html.contains(r#"href="/Notes""#));
+        assert!(html.contains(r#"href="/notes""#));
+    }
+
+    #[test]
+    fn test_kebab_case_slug() {
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Link Graph".to_string(), "architecture/link-graph".to_string());
+        let html = render_to_html("See [[Link Graph]] here", &slug_map);
+        assert!(html.contains(r#"href="/architecture/link-graph""#));
     }
 }

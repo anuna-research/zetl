@@ -591,18 +591,23 @@ pub fn page_name_from_path(path: &Path) -> String {
         .to_string()
 }
 
-/// Derive a URL slug from a relative vault path by stripping the `.md`/`.spl` extension.
+/// Derive a URL slug from a relative vault path.
 ///
-/// Example: `architecture/Scanner.md` → `architecture/Scanner`
+/// Strips the `.md`/`.spl` extension, lowercases, and replaces spaces with hyphens
+/// so URLs are clean kebab-case paths.
+///
+/// Example: `architecture/Scanner.md` → `architecture/scanner`
+/// Example: `concepts/Defeasible Reasoning.md` → `concepts/defeasible-reasoning`
 pub fn page_slug_from_path(path: &Path) -> String {
     let s = path.to_string_lossy();
-    if let Some(stripped) = s.strip_suffix(".md") {
-        stripped.to_string()
-    } else if let Some(stripped) = s.strip_suffix(".spl") {
-        stripped.to_string()
+    let stripped = if let Some(s) = s.strip_suffix(".md") {
+        s
+    } else if let Some(s) = s.strip_suffix(".spl") {
+        s
     } else {
-        s.to_string()
-    }
+        &s
+    };
+    stripped.to_lowercase().replace(' ', "-")
 }
 
 /// Extract an Obsidian block-id annotation from normalised leaf text (REQ-042b).
