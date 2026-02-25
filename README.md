@@ -13,6 +13,8 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Fuzzy matching** — SimHash-based page name similarity
 - **Interactive TUI** — dashboard, page browser, link explorer, graph view, inline wikilink navigation
 - **Page viewer** — Xanadu-inspired two-pane reader with context cards, bridge connectors, and wikilink navigation
+- **Web UI** — local web server with rendered pages, transclusion panels, backlink navigation, and inline editing
+- **Static site export** — generate a deployable HTML site from your vault (same look, no server required)
 - **Content-addressable blocks** — BLAKE3 Merkle leaves for headings, paragraphs, code blocks, and SPL
 - **Incremental caching** — two-tier (mtime + hash) index for both wikilinks and reasoning theories
 - **Agent-friendly** — JSON by default, structured errors, non-zero exit codes
@@ -101,6 +103,14 @@ zetl -d ./my-vault tui
 zetl -d ./my-vault view "Some Page"
 zetl -d ./my-vault view                                  # opens page picker
 zetl -d ./my-vault view "Some Page" --context-lines 10   # taller context cards
+
+# Web UI
+zetl -d ./my-vault serve                                 # http://localhost:3000
+zetl -d ./my-vault serve --port 8080
+
+# Static site export
+zetl -d ./my-vault build                                 # generates dist/
+zetl -d ./my-vault build --out-dir site                  # custom output directory
 ```
 
 ### Reasoning commands
@@ -225,6 +235,38 @@ zetl view "Page Name" --context-lines 10 --main-width 60
 | `/` | Open page picker |
 | `?` | Toggle keybindings help |
 | `q` | Quit |
+
+## Web
+
+### Live server (`zetl serve`)
+
+Local web UI for browsing the vault. Renders Markdown pages with a sidebar, backlink list, transclusion panel (forward-link excerpt cards with SVG bridge connectors), and inline edit mode with save-and-reindex.
+
+```bash
+zetl -d ./my-vault serve              # http://localhost:3000
+zetl -d ./my-vault serve --port 8080
+```
+
+### Static site (`zetl build`)
+
+Generates a static HTML site with the same look and feel as `zetl serve`, minus the edit button and save functionality. The output can be uploaded to any static host (GitHub Pages, Netlify, S3, etc.).
+
+```bash
+zetl -d ./my-vault build                  # generates dist/
+zetl -d ./my-vault build --out-dir site   # custom output directory
+
+# Preview locally
+python3 -m http.server -d dist 8080
+```
+
+Output structure:
+```
+dist/
+  index.html              # vault overview with stats and page grid
+  page/
+    Some Page/index.html   # one page per note
+    Another/index.html
+```
 
 ## Compatibility
 
