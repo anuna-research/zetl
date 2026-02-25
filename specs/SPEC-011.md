@@ -28,7 +28,7 @@ date: 2026-02-25
 
 ## 1. Overview
 
-Two private vaults, each with their own zetl index, selectively share portions of their link graphs via OcapN capability-based security. Joining is a graph overlay — no files move, no files are modified, no central authority exists. Unjoining revokes the overlay cleanly. This specification is informed by the xm experiment (SPEC-029) and supersedes the sidecar approach in SPEC-004.
+Two private vaults, each with their own zetl index, selectively share portions of their link graphs via OcapN capability-based security. Joining is a graph overlay — no vault files are modified, no central authority exists. By default only index metadata is shared; the read-content tier optionally materializes peer files as a local cache. Unjoining revokes the overlay cleanly. This specification is informed by the xm experiment (SPEC-029) and supersedes the sidecar approach in SPEC-004.
 
 ### 1.1 Core Insight
 
@@ -40,7 +40,7 @@ The better decomposition:
 | --- | --- | --- |
 | Capability security | Goblins sidecar (Guile) | Native Rust (ed25519 tokens) |
 | Networking | OCapN via Goblins | OCapN CapTP in Rust (incremental) |
-| Sync scope | Full file sync (read + write) | Read-only index sharing (graph overlay) |
+| Sync scope | Full file sync (read + write) | Read-only sharing (graph overlay; opt-in content tier) |
 | Merge semantics | Three-way merge, conflict staging | No merge — cached peer indexes, not files |
 | Process model | Two processes (zetl + sidecar) | Single binary (zetl) |
 | Identity | Sturdyrefs (live references) | Self-contained signed tokens (offline-verifiable) |
@@ -69,6 +69,7 @@ zetl stays a single Rust binary. Federation is additive — if no peers are conf
 - Content integrity verification (signed vault roots)
 - Cross-vault drift detection (remote page changed since local reference)
 - Tiered capability operations (graph, read-index, read-content)
+- Tiered local persistence (JSON metadata at graph/read-index; file materialization at read-content)
 - Phrase-based capability exchange (SPAKE2 + BIP39 for human-friendly sharing)
 
 **Out of scope:**
@@ -90,7 +91,7 @@ They are complementary:
 ```
 SPEC-011 (this spec)         SPEC-004 (future)
 ─────────────────────        ─────────────────────
-Read-only index sharing  →   Read-write file sync
+Read-only sharing        →   Read-write file sync
 Graph overlay            →   Vault merge
 Signed tokens            →   Live OCapN sturdyrefs
 Single binary            →   Optional sidecar for write-path
@@ -1181,7 +1182,28 @@ Trace:
   - TEST-015
 ```
 
-### 4.6 Functional Requirements — Phrase-Based Exchange
+### 4.6 Functional Requirements — Offline Behavior
+
+```
+REQ-016: Graceful Offline Degradation
+
+The system SHALL operate fully when peers are unreachable. Peer caches
+SHALL be used as-is with a staleness annotation (time since last
+successful refresh). All graph queries SHALL work against cached data.
+
+zetl check SHALL report stale peers (unreachable for > 24 hours,
+configurable via --stale-threshold).
+
+The system SHALL NOT block, retry indefinitely, or produce errors on
+unreachable peers during normal operations (zetl index, zetl links,
+zetl backlinks, zetl check, etc.). Unreachable peers SHALL produce
+a single warning on stderr, not an error exit code.
+
+Trace:
+  - TEST-016
+```
+
+### 4.7 Functional Requirements — Phrase-Based Exchange
 
 ```
 REQ-017: Phrase-Based Capability Invite
@@ -1233,27 +1255,6 @@ Trace:
   - TEST-018
   - CON-008
   - ADR-004
-```
-
-### 4.7 Functional Requirements — Offline Behavior
-
-```
-REQ-016: Graceful Offline Degradation
-
-The system SHALL operate fully when peers are unreachable. Peer caches
-SHALL be used as-is with a staleness annotation (time since last
-successful refresh). All graph queries SHALL work against cached data.
-
-zetl check SHALL report stale peers (unreachable for > 24 hours,
-configurable via --stale-threshold).
-
-The system SHALL NOT block, retry indefinitely, or produce errors on
-unreachable peers during normal operations (zetl index, zetl links,
-zetl backlinks, zetl check, etc.). Unreachable peers SHALL produce
-a single warning on stderr, not an error exit code.
-
-Trace:
-  - TEST-016
 ```
 
 ### 4.8 Functional Requirements — Local Persistence
@@ -1359,7 +1360,7 @@ read-content should understand that the recipient will store a full
 copy of the shared files.
 
 Trace:
-  - TEST-017
+  - TEST-019a
   - ADR-005
 ```
 
@@ -1386,7 +1387,8 @@ The peer subsystem SHALL NOT modify the existing index format or any
 existing .zetl/ files except to add new files (identity, peers).
 
 Trace:
-  - TEST-019
+  - TEST-019a
+  - TEST-019b
 ```
 
 ---
@@ -1866,6 +1868,58 @@ Then:
   - [[Topic A]] is NOT a dead link
 
 Verifies: REQ-012
+```
+
+```
+TEST-013: Merkle-Based Delta Sync
+
+Scenario: Only changed files are fetched
+Given: Bob has alice peer synced, vault root = abc123, 100 pages cached
+When: Alice edits 2 pages (vault root becomes def456)
+When: Bob runs `zetl peer sync alice`
+Then:
+  - System compares vault roots (abc123 ≠ def456)
+  - System walks file-level Merkle hashes within capability scope
+  - Only 2 files' metadata are fetched (not 100)
+  - Cached index is updated with new data for the 2 changed pages
+  - Unchanged pages retain their cached data
+
+Scenario: Identical roots skip fetch entirely
+Given: Bob has alice peer synced, vault root = abc123
+When: Alice's vault root is still abc123
+When: Bob runs `zetl peer sync alice`
+Then:
+  - Vault root comparison detects no change
+  - No file-level hashes are walked
+  - No data is transferred
+  - Sync completes in O(1)
+
+Verifies: REQ-013
+```
+
+```
+TEST-014: Content Integrity Verification
+
+Scenario: Valid signature accepted
+Given: Bob has alice peer with cached vault root
+When: Alice's peer engine serves a vault root signed with her Ed25519 key
+When: Bob runs `zetl peer sync alice`
+Then:
+  - Signature is verified against Alice's public key (from capability token)
+  - Sync proceeds normally
+  - Cached data is updated
+
+Scenario: Invalid signature rejected
+Given: Bob has alice peer with cached vault root
+When: Alice's peer engine serves a vault root with a tampered signature
+When: Bob runs `zetl peer sync alice`
+Then:
+  - Signature verification fails
+  - Sync is rejected — no cached data is updated
+  - Peer is marked as 'untrusted'
+  - Warning emitted: "peer 'alice' vault root signature invalid"
+
+Verifies: REQ-014
 ```
 
 ```
