@@ -10,8 +10,8 @@ pub fn layout(
 
     let main_section = if let Some(panel) = right_panel {
         format!(
-            r#"<div class="flex flex-1">
-        <main class="flex-1 p-6 min-w-0">
+            r#"<div class="page-with-panel flex-1">
+        <main class="flex-1 p-4 sm:p-6 min-w-0">
           {content}
         </main>
         <aside class="transclusion-panel">
@@ -24,7 +24,7 @@ pub fn layout(
         )
     } else {
         format!(
-            r#"<main class="flex-1 p-6 max-w-4xl mx-auto w-full">
+            r#"<main class="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
         {content}
       </main>"#,
             content = content,
@@ -54,22 +54,48 @@ pub fn layout(
       100% {{ background: transparent; }}
     }}
 
-    /* transclusion panel */
-    .transclusion-panel {{
-      display: none;
-      width: 36rem;
-      flex-shrink: 0;
-      border-left: 1px solid oklch(var(--b3));
-      padding: 1rem;
-      overflow-y: auto;
-      position: sticky;
-      top: 0;
-      max-height: 100vh;
-      background: oklch(var(--b1));
+    /* page + transclusion wrapper: stacked on mobile, side-by-side on desktop */
+    .page-with-panel {{
+      display: flex;
+      flex-direction: column;
     }}
     @media (min-width: 1280px) {{
-      .transclusion-panel {{ display: block; }}
+      .page-with-panel {{ flex-direction: row; }}
     }}
+
+    /* transclusion panel — mobile: inline below content */
+    .transclusion-panel {{
+      border-top: 1px solid oklch(var(--b3));
+      padding: 1rem;
+      background: oklch(var(--b1));
+    }}
+    .transclusion-panel .transclusion-card .tc-excerpt {{
+      display: block;
+    }}
+    .transclusion-panel .transclusion-card {{
+      margin-bottom: 0.75rem;
+    }}
+    /* transclusion panel — desktop: sticky sidebar */
+    @media (min-width: 1280px) {{
+      .transclusion-panel {{
+        width: 36rem;
+        flex-shrink: 0;
+        border-top: none;
+        border-left: 1px solid oklch(var(--b3));
+        overflow-y: auto;
+        position: sticky;
+        top: 0;
+        max-height: 100vh;
+      }}
+      .transclusion-panel .transclusion-card .tc-excerpt {{
+        display: none;
+      }}
+      .transclusion-panel .transclusion-card.tc-active .tc-excerpt {{
+        display: block;
+      }}
+    }}
+    /* stats: horizontal scroll on small screens */
+    .stats {{ overflow-x: auto; }}
     .tp-header {{
       font-size: 0.65rem;
       font-weight: 600;
@@ -111,6 +137,17 @@ pub fn layout(
     .transclusion-card.tc-active .tc-excerpt {{
       display: block;
     }}
+    /* Mobile transclusion panel: stacked below content, all excerpts visible */
+    @media (max-width: 1279px) {{
+      .transclusion-panel {{
+        border-top: 2px solid oklch(var(--b3));
+        margin-top: 2rem;
+      }}
+      .transclusion-panel .transclusion-card .tc-excerpt {{
+        display: block;
+      }}
+    }}
+
     /* wikilink color underline */
     a.wikilink {{
       text-decoration-thickness: 2px;
@@ -122,6 +159,72 @@ pub fn layout(
       border-radius: 2px;
       padding: 1px 3px;
       margin: 0 -3px;
+    }}
+
+    /* Mobile link-preview tooltip */
+    .wikilink-tooltip {{
+      position: fixed;
+      left: 1rem; right: 1rem;
+      max-height: 60vh;
+      background: oklch(var(--b1));
+      border: 1px solid oklch(var(--b3));
+      border-radius: 0.75rem;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }}
+    .wikilink-tooltip.tt-visible {{
+      opacity: 1;
+      pointer-events: auto;
+    }}
+    .tt-header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid oklch(var(--b3));
+      position: sticky; top: 0;
+      background: oklch(var(--b1));
+      border-radius: 0.75rem 0.75rem 0 0;
+    }}
+    .tt-header a {{
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-decoration: none;
+      color: oklch(var(--p));
+    }}
+    .tt-header a:hover {{ text-decoration: underline; }}
+    .tt-close {{
+      background: none; border: none;
+      font-size: 1.25rem; cursor: pointer;
+      opacity: 0.5; padding: 0 0.25rem;
+      color: oklch(var(--bc));
+    }}
+    .tt-close:hover {{ opacity: 1; }}
+    .tt-body {{
+      padding: 0.75rem 1rem;
+      overflow-y: auto;
+      flex: 1;
+    }}
+    .tt-body.prose {{ font-size: 0.85rem; line-height: 1.6; }}
+    .tt-footer {{
+      padding: 0.5rem 1rem 0.75rem;
+      border-top: 1px solid oklch(var(--b3));
+      text-align: right;
+    }}
+    .tt-footer a {{
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: oklch(var(--p));
+      text-decoration: none;
+    }}
+    .tt-footer a:hover {{ text-decoration: underline; }}
+    @media (min-width: 1280px) {{
+      .wikilink-tooltip {{ display: none !important; }}
     }}
   </style>
 </head>

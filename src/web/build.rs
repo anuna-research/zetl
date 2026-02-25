@@ -246,6 +246,9 @@ fn render_page(
     svg.innerHTML = '';
   }}
 
+  const isDesktop = () => window.matchMedia('(min-width: 1280px)').matches;
+  const isMobile = () => !isDesktop();
+
   document.querySelectorAll('a.wikilink').forEach(link => {{
     const href = link.getAttribute('href');
     const color = colorMap[href] || '#888';
@@ -253,7 +256,7 @@ fn render_page(
       const card = document.querySelector('.transclusion-card[data-target-href="' + href + '"]');
       if (card) {{
         card.classList.add('tc-active');
-        drawBridge(link, card, color);
+        if (isDesktop()) drawBridge(link, card, color);
       }}
     }});
     link.addEventListener('mouseleave', () => {{
@@ -273,6 +276,78 @@ fn render_page(
       document.querySelectorAll('a.wl-active').forEach(l => l.classList.remove('wl-active'));
     }});
   }});
+
+  // ── Mobile tooltip preview ──────────────────────────────────────
+  if (isMobile() && cards.length) {{
+    var tooltip = document.createElement('div');
+    tooltip.className = 'wikilink-tooltip';
+    tooltip.innerHTML =
+      '<div class="tt-header"><a class="tt-title" href="">Title</a><button class="tt-close">&times;</button></div>' +
+      '<div class="tt-body prose prose-sm max-w-none"></div>' +
+      '<div class="tt-footer"><a class="tt-go" href="">Go to page &rarr;</a></div>';
+    document.body.appendChild(tooltip);
+
+    var ttTitle = tooltip.querySelector('.tt-title');
+    var ttBody  = tooltip.querySelector('.tt-body');
+    var ttGo    = tooltip.querySelector('.tt-go');
+    var ttClose = tooltip.querySelector('.tt-close');
+    var activeLink = null;
+
+    function showTooltip(linkEl, href) {{
+      var card = document.querySelector('.transclusion-card[data-target-href="' + href + '"]');
+      if (!card) return;
+      var excerpt = card.querySelector('.tc-excerpt');
+      if (!excerpt) return;
+      var title = card.querySelector('.tc-title');
+      ttTitle.textContent = title ? title.textContent : href;
+      ttTitle.href = href;
+      ttBody.innerHTML = excerpt.innerHTML;
+      ttGo.href = href;
+      var rect = linkEl.getBoundingClientRect();
+      var below = rect.bottom + 8;
+      var above = rect.top - 8;
+      tooltip.style.bottom = 'auto';
+      tooltip.style.top = 'auto';
+      if (below + window.innerHeight * 0.4 < window.innerHeight) {{
+        tooltip.style.top = below + 'px';
+      }} else {{
+        tooltip.style.bottom = (window.innerHeight - above) + 'px';
+      }}
+      tooltip.classList.add('tt-visible');
+      activeLink = linkEl;
+    }}
+
+    function hideTooltip() {{
+      tooltip.classList.remove('tt-visible');
+      activeLink = null;
+    }}
+
+    ttClose.addEventListener('click', function(e) {{ e.preventDefault(); hideTooltip(); }});
+
+    document.addEventListener('click', function(e) {{
+      if (tooltip.contains(e.target)) return;
+      var link = e.target.closest('a.wikilink:not(.wikilink-dead)');
+      if (link) {{
+        var href = link.getAttribute('href');
+        if (activeLink === link && tooltip.classList.contains('tt-visible')) {{
+          return; // second tap — navigate normally
+        }}
+        var card = document.querySelector('.transclusion-card[data-target-href="' + href + '"]');
+        if (card) {{
+          e.preventDefault();
+          showTooltip(link, href);
+          return;
+        }}
+      }}
+      if (tooltip.classList.contains('tt-visible')) {{
+        hideTooltip();
+      }}
+    }});
+
+    document.addEventListener('keydown', function(e) {{
+      if (e.key === 'Escape') hideTooltip();
+    }});
+  }}
 }})();
 </script>"#,
         rendered = rendered,
