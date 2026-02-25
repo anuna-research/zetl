@@ -1,0 +1,193 @@
+;; =============================================================================
+;; SPEC-004: Distributed Vault Sync via Goblins Sidecar — Research Plan
+;; =============================================================================
+;;
+;; This plan coordinates the research spikes and implementation phases defined
+;; in SPEC-004. The work proceeds in two phases:
+;;
+;;   Phase 0: Research spikes (parallelizable) — validate critical unknowns
+;;   Phase 1: Implementation — sequential phases gated on spike results
+;;
+;; Agents:
+;;   researcher  — runs spikes, writes feasibility assessments
+;;   engineer    — implements sync subsystem
+;;   architect   — reviews design decisions, resolves open questions
+;;
+;; Run `hence board research/plan.spl` to see full task status.
+;; =============================================================================
+
+;; ---------------------------------------------------------------------------
+;; Plan Metadata
+;; ---------------------------------------------------------------------------
+
+(meta plan
+  (id "SPEC-004")
+  (title "Distributed Vault Sync via Goblins Sidecar")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-02-18")
+  (author "agent:architect")
+  (spec "SPEC-004")
+  (description "Research spikes and implementation plan for distributed vault synchronization using Spritely Goblins as a capability-secured networking sidecar. Validates Syrup-in-Rust, Goblins sidecar feasibility, and conflict detection before committing to full implementation."))
+
+;; ---------------------------------------------------------------------------
+;; Agents
+;; ---------------------------------------------------------------------------
+
+(given agent-researcher-available)
+(given agent-engineer-available)
+(given agent-architect-available)
+
+;; ---------------------------------------------------------------------------
+;; Phase 0: Research Spikes (parallelizable)
+;; ---------------------------------------------------------------------------
+
+;; --- Spike 0a: Syrup Serialization in Rust ---
+(given task-spike-syrup)
+(given no-deps-spike-syrup)
+(meta task-spike-syrup
+  (description "Implement Syrup encode/decode in Rust. Test round-trip compatibility with Guile's Syrup implementation. Cover all types: Boolean, Integer, String, ByteString, Symbol, Record, Sequence, Set, Dictionary. Publish as standalone crate (syrup-rs). Timebox: 1 day.")
+  (acceptance "100% round-trip compatibility on test vectors between Rust encoder and Guile decoder. If undocumented edge cases prevent clean round-trip, document them and recommend JSON-RPC fallback."))
+
+;; --- Spike 0b: Goblins Sidecar Prototype ---
+(given task-spike-sidecar)
+(given no-deps-spike-sidecar)
+(meta task-spike-sidecar
+  (description "Build a minimal Goblins 0.17.0 sidecar: an actor that accepts 'list-files' and 'get-file' messages, registered on both Unix domain socket and Tor onion netlayers, with Bloblin persistence. Test local IPC from Rust and remote access from Guile. Timebox: 2 days.")
+  (acceptance "Both local (Unix socket) and remote (Tor) peers can list and retrieve files from the sidecar. Actor state survives sidecar restart via Bloblin. Document any macOS compatibility issues with Tor."))
+
+;; --- Spike 0c: Conflict Detection Accuracy ---
+(given task-spike-conflicts)
+(given no-deps-spike-conflicts)
+(meta task-spike-conflicts
+  (description "Validate that SHA-256 content hashing + mtime tracking detects all conflicts without false positives for ≤ 10K file vaults. Create two test vaults with overlapping content, simulate 100 concurrent edit scenarios. Timebox: 0.5 day.")
+  (acceptance "100% true positive rate (all real conflicts detected), 0% false positive rate (identical edits not flagged). If hashing alone is insufficient, recommend line-level diffing or git integration."))
+
+;; --- Spike 0d: Goblins macOS Installation ---
+(given task-spike-install)
+(given no-deps-spike-install)
+(meta task-spike-install
+  (description "Document and test the full Goblins 0.17.0 installation path on macOS (Homebrew). Verify: Guile 3.0+, guile-fibers, guile-gnutls, Goblins, OCapN netlayers all work. Test Unix domain socket and TCP+TLS netlayers. If Tor is problematic on macOS, document the issue and assess TCP+TLS as a sufficient alternative.")
+  (acceptance "Working Goblins installation on macOS with at least Unix socket + TCP+TLS netlayers. Installation steps documented. Known issues catalogued."))
+
+;; ---------------------------------------------------------------------------
+;; Phase 0 Gate: Spike Review
+;; ---------------------------------------------------------------------------
+
+(given task-spike-review)
+(meta task-spike-review
+  (description "Review all spike results. Produce a go/no-go decision for proceeding to implementation. If any spike reveals a showstopper, propose an alternative architecture. Write findings to research/spike-review.md.")
+  (acceptance "Written review covering all 4 spikes. Each spike assessed as pass/fail/conditional. Go/no-go decision with rationale. If no-go, alternative architecture proposed."))
+
+;; ---------------------------------------------------------------------------
+;; Phase 1: Implementation (sequential, gated on spike review)
+;; ---------------------------------------------------------------------------
+
+;; --- Phase 1a: Local IPC ---
+(given task-local-ipc)
+(meta task-local-ipc
+  (description "Implement zetl <-> sidecar communication over Unix domain socket using JSON-RPC 2.0. Add `zetl sync start/stop/status` commands. Sidecar launches as background daemon, zetl connects and sends commands. REQ-001 from SPEC-004.")
+  (acceptance "`zetl sync start` launches sidecar, `zetl sync status` reports running state, `zetl sync stop` terminates gracefully. JSON-RPC round-trip works for a simple 'ping' command."))
+
+;; --- Phase 1b: Sync Core ---
+(given task-sync-core)
+(meta task-sync-core
+  (description "Implement the pull/push sync protocol with conflict staging. Delta-based file transfer with generation tracking. Conflict detection via SHA-256 content hash comparison. Stage conflicts in .zetl/sync/conflicts/. TCP+TLS transport (LAN only). REQ-004, REQ-005, REQ-006 from SPEC-004.")
+  (acceptance "Pull receives new/modified files from remote. Push sends local changes. Conflicts detected and staged correctly. Sync state persisted across runs. Works over TCP+TLS on LAN."))
+
+;; --- Phase 1c: Capabilities ---
+(given task-capabilities)
+(meta task-capabilities
+  (description "Implement capability creation, attenuation, and revocation. `zetl sync share` generates scoped sturdyrefs. `zetl sync attenuate` creates weaker child capabilities. `zetl sync revoke` invalidates capabilities. Folder-based scope model. REQ-002, REQ-003, REQ-007 from SPEC-004.")
+  (acceptance "Share generates valid sturdyref with scope+permissions. Attenuated caps cannot exceed parent permissions. Revoked caps are rejected on next connection. Remote management (add/list/remove) works."))
+
+;; --- Phase 1d: Tor Transport ---
+(given task-tor-transport)
+(meta task-tor-transport
+  (description "Add Tor onion service as a transport option alongside TCP+TLS. Sidecar registers on both netlayers simultaneously. Sturdyrefs work across both transports. NAT traversal via Tor enables internet-wide sync without port forwarding.")
+  (acceptance "Sync works between two machines on different networks via Tor. Sturdyref generated on one machine is resolvable from another. Falls back to TCP+TLS on LAN when Tor is unavailable."))
+
+;; --- Phase 1e: Polish ---
+(given task-polish)
+(meta task-polish
+  (description "Conflict resolution UX, --dry-run flag, audit log (.zetl/sync/log.json), improved error messages, `zetl sync conflicts` and `zetl sync resolve` commands. REQ-008 from SPEC-004.")
+  (acceptance "All CON-001 through CON-007 contract specifications met. Audit log captures all operations. Dry-run shows what would change without applying. Error messages are structured JSON when -f json is specified."))
+
+;; ---------------------------------------------------------------------------
+;; Readiness Rules — Phase 0: all spikes are immediately ready
+;; ---------------------------------------------------------------------------
+
+(normally r-ready-spike-syrup     (and task-spike-syrup no-deps-spike-syrup)       ready-spike-syrup)
+(normally r-ready-spike-sidecar   (and task-spike-sidecar no-deps-spike-sidecar)   ready-spike-sidecar)
+(normally r-ready-spike-conflicts (and task-spike-conflicts no-deps-spike-conflicts) ready-spike-conflicts)
+(normally r-ready-spike-install   (and task-spike-install no-deps-spike-install)   ready-spike-install)
+
+;; ---------------------------------------------------------------------------
+;; Readiness Rules — Phase 0 Gate: depends on all spikes
+;; ---------------------------------------------------------------------------
+
+(normally r-ready-spike-review
+  (and task-spike-review
+       completed-spike-syrup completed-spike-sidecar
+       completed-spike-conflicts completed-spike-install)
+  ready-spike-review)
+
+;; ---------------------------------------------------------------------------
+;; Readiness Rules — Phase 1: sequential, gated on spike review
+;; ---------------------------------------------------------------------------
+
+(normally r-ready-local-ipc
+  (and task-local-ipc completed-spike-review)
+  ready-local-ipc)
+
+(normally r-ready-sync-core
+  (and task-sync-core completed-local-ipc)
+  ready-sync-core)
+
+(normally r-ready-capabilities
+  (and task-capabilities completed-sync-core)
+  ready-capabilities)
+
+(normally r-ready-tor-transport
+  (and task-tor-transport completed-capabilities)
+  ready-tor-transport)
+
+(normally r-ready-polish
+  (and task-polish completed-tor-transport)
+  ready-polish)
+
+;; ---------------------------------------------------------------------------
+;; Assignment Rules
+;; ---------------------------------------------------------------------------
+
+;; Phase 0: researcher runs spikes
+(normally r-assign-spike-syrup     (and ready-spike-syrup agent-researcher-available)     assign-to-spike-syrup-researcher)
+(normally r-assign-spike-sidecar   (and ready-spike-sidecar agent-researcher-available)   assign-to-spike-sidecar-researcher)
+(normally r-assign-spike-conflicts (and ready-spike-conflicts agent-researcher-available) assign-to-spike-conflicts-researcher)
+(normally r-assign-spike-install   (and ready-spike-install agent-researcher-available)   assign-to-spike-install-researcher)
+
+;; Phase 0 gate: architect reviews
+(normally r-assign-spike-review (and ready-spike-review agent-architect-available) assign-to-spike-review-architect)
+
+;; Phase 1: engineer implements
+(normally r-assign-local-ipc     (and ready-local-ipc agent-engineer-available)     assign-to-local-ipc-engineer)
+(normally r-assign-sync-core     (and ready-sync-core agent-engineer-available)     assign-to-sync-core-engineer)
+(normally r-assign-capabilities  (and ready-capabilities agent-engineer-available)  assign-to-capabilities-engineer)
+(normally r-assign-tor-transport (and ready-tor-transport agent-engineer-available) assign-to-tor-transport-engineer)
+(normally r-assign-polish        (and ready-polish agent-engineer-available)        assign-to-polish-engineer)
+
+;; ---------------------------------------------------------------------------
+;; Rule Metadata
+;; ---------------------------------------------------------------------------
+
+(meta r-ready-spike-syrup     (description "Syrup spike has no dependencies — start immediately") (justification "All spikes are independent and parallelizable"))
+(meta r-ready-spike-sidecar   (description "Sidecar spike has no dependencies — start immediately") (justification "All spikes are independent and parallelizable"))
+(meta r-ready-spike-conflicts (description "Conflict spike has no dependencies — start immediately") (justification "All spikes are independent and parallelizable"))
+(meta r-ready-spike-install   (description "Install spike has no dependencies — start immediately") (justification "All spikes are independent and parallelizable"))
+
+(meta r-ready-spike-review (description "Spike review requires all 4 spikes completed") (justification "Cannot make go/no-go decision without all feasibility data"))
+(meta r-ready-local-ipc (description "IPC implementation requires spike review pass") (justification "No point building IPC if sidecar architecture is infeasible"))
+(meta r-ready-sync-core (description "Sync core requires working IPC") (justification "Pull/push protocol needs zetl<->sidecar communication"))
+(meta r-ready-capabilities (description "Capabilities require working sync") (justification "Capability model gates sync operations"))
+(meta r-ready-tor-transport (description "Tor requires working capabilities") (justification "Remote sync needs capability validation before adding NAT traversal"))
+(meta r-ready-polish (description "Polish requires all core features") (justification "UX improvements and audit logging depend on complete feature set"))
