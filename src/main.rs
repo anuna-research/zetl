@@ -51,6 +51,8 @@ struct Pipeline {
     graph: LinkGraph,
     vault_root: PathBuf,
     scan_stats: ScanStats,
+    /// Page names backed by real files (for dead-link detection in web view).
+    graph_resolved: std::collections::HashSet<String>,
 }
 
 fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
@@ -199,6 +201,7 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
 
     // Build the link graph
     let graph = LinkGraph::build(&files, &resolved_pages);
+    let graph_resolved = graph.resolved.clone();
 
     Ok(Pipeline {
         files,
@@ -206,6 +209,7 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
         graph,
         vault_root,
         scan_stats,
+        graph_resolved,
     })
 }
 
@@ -2263,6 +2267,29 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
         backlink_map,
     );
     app.run()
+}
+
+fn cmd_serve(cli: &Cli, port: u16) -> Result<()> {
+    let pipeline = run_pipeline(cli)?;
+
+    let mut page_names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
+    page_names.sort_by_key(|a| a.to_lowercase());
+
+    let data = zetl::web::VaultData {
+        files: pipeline.files,
+        graph: pipeline.graph,
+        page_names,
+        resolved: pipeline.graph_resolved,
+    };
+
+    let state = zetl::web::WebState {
+        data: std::sync::Arc::new(std::sync::RwLock::new(data)),
+        vault_root: std::sync::Arc::new(pipeline.vault_root),
+    };
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(zetl::web::run(state, port))?;
+    Ok(())
 }
 
 // ── Reason commands ────────────────────────────────────────────────────────
@@ -5916,6 +5943,7 @@ fn main() -> anyhow::Result<()> {
             context_lines,
             main_width,
         } => cmd_view(&cli, page.as_deref(), *context_lines, *main_width),
+        Command::Serve { port } => cmd_serve(&cli, *port),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

@@ -6,20 +6,22 @@ use axum::response::{Html, IntoResponse, Response};
 
 use crate::web::html::{html_escape, layout, sidebar_html, urlencoding};
 use crate::web::markdown;
-use crate::web::WebState;
+use crate::web::{reindex, WebState};
 
 /// GET / — Landing page with vault stats and page grid.
 pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
-    let total_pages = state.page_names.len();
-    let total_links: usize = state.files.iter().map(|f| f.links.len()).sum();
-    let dead_links = state.graph.dead_links().len();
-    let orphans = state.graph.orphans().len();
+    let data = state.data.read().unwrap();
+
+    let total_pages = data.page_names.len();
+    let total_links: usize = data.files.iter().map(|f| f.links.len()).sum();
+    let dead_links = data.graph.dead_links().len();
+    let orphans = data.graph.orphans().len();
 
     // Page grid
     let mut grid = String::new();
-    for name in state.page_names.iter() {
-        let fwd = state.graph.forward_links(name).len();
-        let back = state.graph.backlinks(name).len();
+    for name in data.page_names.iter() {
+        let fwd = data.graph.forward_links(name).len();
+        let back = data.graph.backlinks(name).len();
         grid.push_str(&format!(
             r#"<a href="/page/{href}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
   <div class="card-body p-4">
@@ -67,7 +69,7 @@ pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
         grid = grid,
     );
 
-    let sidebar = sidebar_html(&state.page_names, None);
+    let sidebar = sidebar_html(&data.page_names, None);
     Html(layout("Vault", &sidebar, &content, None, None))
 }
 
@@ -77,9 +79,10 @@ pub async fn page_handler(
     Path(page_name): Path<String>,
 ) -> Html<String> {
     let page_name = urldecode(&page_name);
+    let data = state.data.read().unwrap();
 
     // Find the file
-    let file = state
+    let file = data
         .files
         .iter()
         .find(|f| f.page_name.eq_ignore_ascii_case(&page_name));
@@ -88,7 +91,7 @@ pub async fn page_handler(
         let full_path = state.vault_root.join(&file.path);
         match std::fs::read_to_string(&full_path) {
             Ok(content) => {
-                let html = markdown::render_to_html(&content, &state.resolved);
+                let html = markdown::render_to_html(&content, &data.resolved);
                 let escaped = html_escape(&content);
                 (html, file.page_name.clone(), Some(escaped))
             }
@@ -99,18 +102,19 @@ pub async fn page_handler(
             ),
         }
     } else {
+        // Page doesn't exist yet — open directly in edit mode
         (
-            format!(
-                "<div class=\"alert alert-warning\"><span>Page <strong>{}</strong> does not exist (phantom link target).</span></div>",
-                html_escape(&page_name)
-            ),
+            String::new(),
             page_name.clone(),
-            None,
+            Some(format!("# {}\n", page_name)),
         )
     };
 
+    // Auto-open edit mode for new (empty) pages
+    let is_new_page = file.is_none();
+
     // Backlinks
-    let backlinks = state.graph.backlinks(&title);
+    let backlinks = data.graph.backlinks(&title);
     let mut backlinks_html = String::new();
     if !backlinks.is_empty() {
         backlinks_html.push_str(r#"<div class="divider"></div><h2 class="text-lg font-semibold mb-2">Backlinks</h2><ul class="list-none space-y-1">"#);
@@ -126,7 +130,7 @@ pub async fn page_handler(
     }
 
     // Transclusion panel: forward-link excerpt cards
-    let forward_links = state.graph.forward_links(&title);
+    let forward_links = data.graph.forward_links(&title);
     let mut seen_targets = HashSet::new();
     let mut unique_targets: Vec<String> = Vec::new();
     for link in &forward_links {
@@ -145,7 +149,7 @@ pub async fn page_handler(
         let color = colors[i % colors.len()];
         let href = urlencoding(target);
 
-        let preview_html = state
+        let preview_html = data
             .files
             .iter()
             .find(|f| f.page_name.eq_ignore_ascii_case(target))
@@ -153,7 +157,7 @@ pub async fn page_handler(
                 let full_path = state.vault_root.join(&file.path);
                 std::fs::read_to_string(&full_path).ok()
             })
-            .map(|content| markdown::render_preview_html(&content, &state.resolved))
+            .map(|content| markdown::render_preview_html(&content, &data.resolved))
             .unwrap_or_else(|| format!("<p><em>{}</em></p>", html_escape("(page does not exist)")));
 
         transclusion_cards.push_str(&format!(
@@ -174,10 +178,16 @@ pub async fn page_handler(
         Some(transclusion_cards.as_str())
     };
 
+    let (view_display, edit_display) = if is_new_page {
+        ("style=\"display:none\"", "")
+    } else {
+        ("", "style=\"display:none\"")
+    };
+
     // Edit mode UI (only shown for real files)
     let edit_ui = if let Some(ref raw) = raw_escaped {
         format!(
-            r#"<div id="edit-mode" style="display:none">
+            r#"<div id="edit-mode" {edit_display}>
   <div class="flex gap-2 mb-4">
     <button onclick="saveEdit()" class="btn btn-sm btn-primary">Save</button>
     <button onclick="toggleEdit()" class="btn btn-sm btn-outline">Cancel</button>
@@ -185,6 +195,7 @@ pub async fn page_handler(
   <textarea id="editor" class="textarea textarea-bordered w-full font-mono"
             style="min-height:80vh">{raw}</textarea>
 </div>"#,
+            edit_display = edit_display,
             raw = raw,
         )
     } else {
@@ -192,13 +203,13 @@ pub async fn page_handler(
     };
 
     let edit_button = if raw_escaped.is_some() {
-        r#"<button onclick="toggleEdit()" class="btn btn-sm btn-outline mb-4">Edit</button>"#
+        r#"<div class="flex justify-end mb-4"><button onclick="toggleEdit()" class="btn btn-sm btn-outline">Edit</button></div>"#
     } else {
         ""
     };
 
     let content = format!(
-        r#"<div id="view-mode">
+        r#"<div id="view-mode" {view_display}>
 {edit_button}
 <article class="prose prose-lg max-w-none">{rendered}</article>
 {backlinks_html}
@@ -317,6 +328,7 @@ async function saveEdit() {{
   }});
 }})();
 </script>"#,
+        view_display = view_display,
         edit_button = edit_button,
         rendered = rendered,
         backlinks_html = backlinks_html,
@@ -331,11 +343,11 @@ async function saveEdit() {{
         ),
     );
 
-    let sidebar = sidebar_html(&state.page_names, Some(&title));
+    let sidebar = sidebar_html(&data.page_names, Some(&title));
     Html(layout(&title, &sidebar, &content, Some(&title), right_panel))
 }
 
-/// PUT /page/:page_name — Save edited markdown back to the vault file.
+/// PUT /page/:page_name — Save edited markdown back to the vault file, then re-index.
 pub async fn save_handler(
     State(state): State<WebState>,
     Path(page_name): Path<String>,
@@ -343,24 +355,38 @@ pub async fn save_handler(
 ) -> Response {
     let page_name = urldecode(&page_name);
 
-    let file = state
-        .files
-        .iter()
-        .find(|f| f.page_name.eq_ignore_ascii_case(&page_name));
-
-    let Some(file) = file else {
-        return (StatusCode::NOT_FOUND, "Page not found").into_response();
+    // Look up file path under read lock, then drop it before writing.
+    // For new pages, create at vault_root/{page_name}.md.
+    let full_path = {
+        let data = state.data.read().unwrap();
+        let file = data
+            .files
+            .iter()
+            .find(|f| f.page_name.eq_ignore_ascii_case(&page_name));
+        if let Some(file) = file {
+            state.vault_root.join(&file.path)
+        } else {
+            state.vault_root.join(format!("{}.md", page_name))
+        }
     };
 
-    let full_path = state.vault_root.join(&file.path);
+    if let Err(e) = std::fs::write(&full_path, &body) {
+        eprintln!("save error: {e}");
+        return (StatusCode::INTERNAL_SERVER_ERROR, "Write failed").into_response();
+    }
 
-    match std::fs::write(&full_path, &body) {
-        Ok(()) => StatusCode::OK.into_response(),
+    // Re-index the vault so the graph/links reflect the edit
+    match reindex(&state.vault_root) {
+        Ok(new_data) => {
+            *state.data.write().unwrap() = new_data;
+        }
         Err(e) => {
-            eprintln!("save error: {e}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Write failed").into_response()
+            eprintln!("reindex error: {e}");
+            // File was saved; index is stale but not fatal
         }
     }
+
+    StatusCode::OK.into_response()
 }
 
 /// GET /preview/:page_name — Returns a short HTML preview (for tooltip).
@@ -369,8 +395,9 @@ pub async fn preview_handler(
     Path(page_name): Path<String>,
 ) -> Html<String> {
     let page_name = urldecode(&page_name);
+    let data = state.data.read().unwrap();
 
-    let file = state
+    let file = data
         .files
         .iter()
         .find(|f| f.page_name.eq_ignore_ascii_case(&page_name));

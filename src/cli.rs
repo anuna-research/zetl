@@ -179,6 +179,13 @@ pub enum Command {
     /// Launch interactive terminal UI
     Tui,
 
+    /// Start local web server to browse the vault
+    Serve {
+        /// Port to listen on
+        #[arg(short, long, default_value = "3000")]
+        port: u16,
+    },
+
     /// Launch the Xanadu-style two-pane view for a note (SPEC-009)
     View {
         /// Page title to open (launches a page picker when omitted)
