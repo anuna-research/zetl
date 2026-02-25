@@ -1,3 +1,16 @@
+/// Build compact JSON search index: `[{"n":"Page Name","s":"path/slug"},...]`
+pub fn search_index_json(entries: &[(String, String)]) -> String {
+    let items: Vec<String> = entries
+        .iter()
+        .map(|(name, slug)| {
+            let n = name.replace('\\', "\\\\").replace('"', "\\\"");
+            let s = slug.replace('\\', "\\\\").replace('"', "\\\"");
+            format!(r#"{{"n":"{}","s":"{}"}}"#, n, s)
+        })
+        .collect();
+    format!("[{}]", items.join(","))
+}
+
 /// Wrap body HTML in the DaisyUI shell with sidebar and optional transclusion panel.
 pub fn layout(
     title: &str,
@@ -5,6 +18,7 @@ pub fn layout(
     content: &str,
     active_page: Option<&str>,
     right_panel: Option<&str>,
+    search_index: &str,
 ) -> String {
     let _ = active_page; // used by sidebar_html to highlight
 
@@ -38,6 +52,7 @@ pub fn layout(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title} — zetl</title>
+  <script type="application/json" id="zetl-search-index">{search_index}</script>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
   <style>
@@ -226,6 +241,86 @@ pub fn layout(
     @media (min-width: 1280px) {{
       .wikilink-tooltip {{ display: none !important; }}
     }}
+
+    /* ── Search modal (Cmd+K) ─────────────────────────── */
+    .search-overlay {{
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 100;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 15vh;
+    }}
+    .search-overlay.open {{ display: flex; }}
+    .search-dialog {{
+      background: oklch(var(--b1));
+      border: 1px solid oklch(var(--b3));
+      border-radius: 0.75rem;
+      width: 90vw; max-width: 480px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }}
+    .search-input {{
+      width: 100%; border: none; outline: none;
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      background: transparent;
+      color: oklch(var(--bc));
+      border-bottom: 1px solid oklch(var(--b3));
+    }}
+    .search-results {{
+      max-height: 40vh; overflow-y: auto;
+      padding: 0.25rem 0;
+    }}
+    .search-result {{
+      display: block;
+      padding: 0.5rem 1rem;
+      text-decoration: none;
+      color: oklch(var(--bc));
+      cursor: pointer;
+    }}
+    .search-result:hover,
+    .search-result.sr-active {{
+      background: oklch(var(--p) / 0.12);
+    }}
+    .search-result .sr-name {{
+      font-weight: 500;
+    }}
+    .search-result .sr-name b {{
+      color: oklch(var(--p));
+      font-weight: 700;
+    }}
+    .search-result .sr-slug {{
+      font-size: 0.75rem;
+      opacity: 0.5;
+    }}
+    .search-hint {{
+      padding: 1rem;
+      text-align: center;
+      font-size: 0.85rem;
+      opacity: 0.5;
+    }}
+    .search-btn {{
+      display: flex; align-items: center; gap: 0.5rem;
+      width: 100%;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid oklch(var(--b3));
+      border-radius: 0.5rem;
+      background: oklch(var(--b1));
+      color: oklch(var(--bc));
+      font-size: 0.8rem;
+      cursor: pointer;
+      opacity: 0.7;
+      transition: opacity 0.15s;
+      margin-bottom: 0.75rem;
+    }}
+    .search-btn:hover {{ opacity: 1; }}
+    .search-btn kbd {{
+      margin-left: auto;
+      font-size: 0.7rem;
+      opacity: 0.5;
+    }}
   </style>
 </head>
 <body class="min-h-screen bg-base-100">
@@ -257,16 +352,194 @@ pub fn layout(
       <aside class="bg-base-200 w-64 min-h-screen p-4">
         <a href="/" class="text-xl font-bold mb-4 block">zetl</a>
         <div class="divider my-1"></div>
+        <button class="search-btn" onclick="openSearch()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          Search…
+          <kbd>⌘K</kbd>
+        </button>
         {sidebar}
       </aside>
     </div>
   </div>
+
+  <!-- Search modal (Cmd+K) -->
+  <div class="search-overlay" id="search-overlay" onclick="if(event.target===this)closeSearch()">
+    <div class="search-dialog">
+      <input class="search-input" id="search-input" type="text" placeholder="Search pages…" autocomplete="off">
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
+
+  <script>
+  (function(){{
+    var idx=JSON.parse(document.getElementById('zetl-search-index').textContent);
+    var overlay=document.getElementById('search-overlay');
+    var input=document.getElementById('search-input');
+    var results=document.getElementById('search-results');
+    var active=-1;
+    var filtered=idx;
+
+    /* ── Sublime-style fuzzy match ─────────────────────────────────
+       Returns null (no match) or {{score, indices}}.
+       Characters must appear in order. Bonuses for:
+       - consecutive runs, word-boundary starts, camelCase,
+       - match near the beginning of the string.                   */
+    function fuzzyMatch(query, text){{
+      var ql=query.length, tl=text.length;
+      if(ql===0) return {{score:0,indices:[]}};
+      if(ql>tl) return null;
+      var qLow=query.toLowerCase(), tLow=text.toLowerCase();
+
+      /* first pass: can we match at all? */
+      var qi=0;
+      for(var ti=0;ti<tl&&qi<ql;ti++){{
+        if(tLow[ti]===qLow[qi]) qi++;
+      }}
+      if(qi<ql) return null;
+
+      /* greedy-with-backtrack scoring pass */
+      var bestScore=-Infinity, bestIndices=null;
+      function solve(qi2,ti2,indices,score,prevMatch){{
+        if(qi2===ql){{
+          if(score>bestScore){{ bestScore=score; bestIndices=indices.slice(); }}
+          return;
+        }}
+        var remaining=ql-qi2;
+        for(var t=ti2;t<=tl-remaining;t++){{
+          if(tLow[t]===qLow[qi2]){{
+            var s=0;
+            /* consecutive bonus */
+            if(prevMatch===t-1) s+=5;
+            /* word boundary: start, after space/dash/underscore/slash/dot */
+            if(t===0) s+=8;
+            else{{
+              var prev=text[t-1];
+              if(prev===' '||prev==='-'||prev==='_'||prev==='/'||prev==='.') s+=7;
+              /* camelCase boundary */
+              else if(text[t]===text[t].toUpperCase()&&prev===prev.toLowerCase()&&/[a-zA-Z]/.test(prev)) s+=6;
+            }}
+            /* exact case match bonus */
+            if(text[t]===query[qi2]) s+=1;
+            /* proximity to start bonus */
+            s+=Math.max(0, 3-Math.floor(t/4));
+            indices.push(t);
+            solve(qi2+1,t+1,indices,score+s,t);
+            indices.pop();
+          }}
+        }}
+      }}
+      solve(0,0,[],0,-2);
+      if(!bestIndices) return null;
+      return {{score:bestScore,indices:bestIndices}};
+    }}
+
+    function esc(s){{return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}
+
+    /* highlight matched chars with <b> */
+    function highlight(text,indices){{
+      var set={{}};
+      indices.forEach(function(i){{set[i]=true;}});
+      var out='';
+      for(var i=0;i<text.length;i++){{
+        var c=esc(text[i]);
+        if(set[i]) out+='<b>'+c+'</b>';
+        else out+=c;
+      }}
+      return out;
+    }}
+
+    window.openSearch=function(){{
+      overlay.classList.add('open');
+      input.value='';
+      active=0;
+      filtered=idx.slice();
+      render(filtered,null);
+      input.focus();
+    }};
+    window.closeSearch=function(){{
+      overlay.classList.remove('open');
+    }};
+
+    function render(items,query){{
+      results.innerHTML='';
+      if(items.length===0){{
+        results.innerHTML='<div class="search-hint">No results</div>';
+        active=-1;
+        return;
+      }}
+      items.forEach(function(item,i){{
+        var a=document.createElement('a');
+        a.className='search-result'+(i===active?' sr-active':'');
+        a.href='/'+item.s;
+        var nameHtml=item._indices?highlight(item.n,item._indices):esc(item.n);
+        a.innerHTML='<div class="sr-name">'+nameHtml+'</div><div class="sr-slug">'+esc(item.s)+'</div>';
+        a.addEventListener('mouseenter',function(){{
+          active=i;
+          updateActive();
+        }});
+        results.appendChild(a);
+      }});
+    }}
+
+    function getFiltered(){{
+      var q=input.value;
+      if(!q){{ return idx.map(function(it){{return {{n:it.n,s:it.s,_indices:null}};}});}}
+      var scored=[];
+      idx.forEach(function(item){{
+        var m=fuzzyMatch(q,item.n);
+        if(m) scored.push({{n:item.n,s:item.s,score:m.score,_indices:m.indices}});
+      }});
+      scored.sort(function(a,b){{return b.score-a.score;}});
+      return scored;
+    }}
+
+    function updateActive(){{
+      var els=results.querySelectorAll('.search-result');
+      els.forEach(function(el,i){{
+        el.classList.toggle('sr-active',i===active);
+      }});
+      if(active>=0&&els[active])els[active].scrollIntoView({{block:'nearest'}});
+    }}
+
+    input.addEventListener('input',function(){{
+      active=0;
+      filtered=getFiltered();
+      render(filtered,input.value);
+    }});
+
+    document.addEventListener('keydown',function(e){{
+      if((e.metaKey||e.ctrlKey)&&e.key==='k'){{
+        e.preventDefault();
+        if(overlay.classList.contains('open'))closeSearch();
+        else openSearch();
+        return;
+      }}
+      if(!overlay.classList.contains('open'))return;
+      if(e.key==='Escape'){{closeSearch();return;}}
+      if(e.key==='ArrowDown'){{
+        e.preventDefault();
+        if(active<filtered.length-1)active++;
+        updateActive();
+      }}else if(e.key==='ArrowUp'){{
+        e.preventDefault();
+        if(active>0)active--;
+        updateActive();
+      }}else if(e.key==='Enter'){{
+        e.preventDefault();
+        if(active>=0&&active<filtered.length){{
+          window.location.href='/'+filtered[active].s;
+        }}
+      }}
+    }});
+  }})();
+  </script>
 
 </body>
 </html>"#,
         title = title,
         sidebar = sidebar,
         main_section = main_section,
+        search_index = search_index,
     )
 }
 
@@ -288,6 +561,42 @@ pub fn sidebar_html(pages: &[(String, String)], active_slug: Option<&str>) -> St
         ));
     }
     s.push_str("</ul>");
+    s
+}
+
+/// Build breadcrumb HTML from a slug like "architecture/scanner".
+/// `vault_name` is the root folder name shown as the first crumb.
+/// Folder segments link to folder index pages (e.g., `/architecture/`).
+/// Produces: vault_name / architecture / Scanner (current page not linked).
+pub fn breadcrumb_html(slug: &str, page_name: &str, vault_name: &str) -> String {
+    let root = html_escape(vault_name);
+    let parts: Vec<&str> = slug.split('/').collect();
+    if parts.len() <= 1 {
+        return format!(
+            r#"<nav class="text-sm breadcrumbs mb-4"><ul><li><a href="/">{root}</a></li><li>{page}</li></ul></nav>"#,
+            root = root,
+            page = html_escape(page_name),
+        );
+    }
+    let mut s = format!(
+        r#"<nav class="text-sm breadcrumbs mb-4"><ul><li><a href="/">{root}</a></li>"#,
+        root = root,
+    );
+    // Build cumulative folder path for each segment's href
+    let mut folder_path = String::new();
+    for folder in &parts[..parts.len() - 1] {
+        if !folder_path.is_empty() {
+            folder_path.push('/');
+        }
+        folder_path.push_str(folder);
+        s.push_str(&format!(
+            r#"<li><a href="/{path}/">{name}</a></li>"#,
+            path = urlencoding(&folder_path),
+            name = html_escape(folder),
+        ));
+    }
+    s.push_str(&format!("<li>{}</li>", html_escape(page_name)));
+    s.push_str("</ul></nav>");
     s
 }
 

@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 
 use crate::scanner::page_slug_from_path;
-use crate::web::html::{html_escape, layout, sidebar_html, urlencoding};
+use crate::web::html::{breadcrumb_html, html_escape, layout, search_index_json, sidebar_html, urlencoding};
 use crate::web::markdown;
 use crate::web::{reindex, VaultData, WebState};
 
@@ -49,6 +49,97 @@ fn slug_for_page(data: &VaultData, page_name: &str) -> String {
         .find(|(k, _)| k.eq_ignore_ascii_case(page_name))
         .map(|(_, v)| v.clone())
         .unwrap_or_else(|| page_name.to_string())
+}
+
+/// Render a folder index page showing all pages under a given folder prefix.
+fn render_folder_index(data: &VaultData, folder_slug: &str, vault_name: &str, pages: &[&crate::types::ParsedFile]) -> String {
+    let folder_name = folder_slug.rsplit('/').next().unwrap_or(folder_slug);
+
+    let mut grid = String::new();
+    let mut sorted_pages: Vec<_> = pages.to_vec();
+    sorted_pages.sort_by(|a, b| a.page_name.to_lowercase().cmp(&b.page_name.to_lowercase()));
+
+    // Collect sub-folders under this folder
+    let prefix = format!("{}/", folder_slug.to_lowercase());
+    let mut subfolders: Vec<String> = Vec::new();
+    let mut seen_subfolders = std::collections::HashSet::new();
+    for page in &sorted_pages {
+        let slug = page_slug_from_path(&page.path);
+        let rest = &slug[prefix.len()..];
+        if let Some(pos) = rest.find('/') {
+            let subfolder = &rest[..pos];
+            if seen_subfolders.insert(subfolder.to_string()) {
+                subfolders.push(subfolder.to_string());
+            }
+        }
+    }
+    subfolders.sort();
+
+    // Sub-folder cards
+    for subfolder in &subfolders {
+        let subfolder_slug = format!("{}/{}", folder_slug, subfolder);
+        let count = sorted_pages.iter().filter(|p| {
+            let s = page_slug_from_path(&p.path).to_lowercase();
+            s.starts_with(&format!("{}/", subfolder_slug.to_lowercase()))
+        }).count();
+        grid.push_str(&format!(
+            r#"<a href="/{href}/" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+  <div class="card-body p-4">
+    <h3 class="card-title text-sm">{name}/</h3>
+    <p class="text-xs opacity-60">{count} pages</p>
+  </div>
+</a>"#,
+            href = urlencoding(&subfolder_slug),
+            name = html_escape(subfolder),
+            count = count,
+        ));
+    }
+
+    // Direct page cards (pages directly in this folder, not in sub-folders)
+    for page in &sorted_pages {
+        let slug = page_slug_from_path(&page.path);
+        let rest = &slug[prefix.len()..];
+        if rest.contains('/') {
+            continue; // in a sub-folder
+        }
+        let fwd = data.graph.forward_links(&page.page_name).len();
+        let back = data.graph.backlinks(&page.page_name).len();
+        grid.push_str(&format!(
+            r#"<a href="/{href}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+  <div class="card-body p-4">
+    <h3 class="card-title text-sm">{name}</h3>
+    <p class="text-xs opacity-60">{fwd} out · {back} in</p>
+  </div>
+</a>"#,
+            href = urlencoding(&slug),
+            name = html_escape(&page.page_name),
+            fwd = fwd,
+            back = back,
+        ));
+    }
+
+    let breadcrumb = breadcrumb_html(folder_slug, folder_name, vault_name);
+    // For the folder index, the last breadcrumb segment is the folder itself (non-linked),
+    // so we rebuild it slightly: all segments linked except the last
+    let total = sorted_pages.len();
+
+    let content = format!(
+        r#"{breadcrumb}
+<h1 class="text-3xl font-bold mb-6">{folder_name}</h1>
+<p class="text-sm opacity-60 mb-4">{total} pages in this folder</p>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+  {grid}
+</div>"#,
+        breadcrumb = breadcrumb,
+        folder_name = html_escape(folder_name),
+        total = total,
+        grid = grid,
+    );
+
+    let entries = sidebar_entries(data);
+    let sidebar = sidebar_html(&entries, None);
+    let si = search_index_json(&entries);
+    layout(folder_name, &sidebar, &content, None, None, &si)
 }
 
 /// GET / — Landing page with vault stats and page grid.
@@ -115,22 +206,44 @@ pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
 
     let entries = sidebar_entries(&data);
     let sidebar = sidebar_html(&entries, None);
-    Html(layout("Vault", &sidebar, &content, None, None))
+    let si = search_index_json(&entries);
+    Html(layout("Vault", &sidebar, &content, None, None, &si))
 }
 
-/// GET /{*path} — Rendered markdown page with backlinks.
+/// GET /{*path} — Rendered markdown page with backlinks, or folder index.
 pub async fn page_handler(
     State(state): State<WebState>,
     Path(slug): Path<String>,
 ) -> Html<String> {
     let slug = urldecode(&slug);
+    // Strip trailing slash for folder index requests
+    let slug = slug.trim_end_matches('/');
     let data = state.data.read().unwrap();
 
     // Find the file by matching slug (relative path without extension)
     let file = data
         .files
         .iter()
-        .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug));
+        .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
+
+    // If no page matches, check if slug is a folder prefix → render folder index
+    if file.is_none() {
+        let folder_prefix = format!("{}/", slug.to_lowercase());
+        let folder_pages: Vec<_> = data
+            .files
+            .iter()
+            .filter(|f| {
+                let s = page_slug_from_path(&f.path);
+                s.to_lowercase().starts_with(&folder_prefix)
+            })
+            .collect();
+
+        if !folder_pages.is_empty() {
+            let vault_name = state.vault_root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "vault".to_string());
+            let html = render_folder_index(&data, slug, &vault_name, &folder_pages);
+            return Html(html);
+        }
+    }
 
     let (rendered, page_name, current_slug, raw_escaped) = if let Some(file) = file {
         let full_path = state.vault_root.join(&file.path);
@@ -150,11 +263,11 @@ pub async fn page_handler(
         }
     } else {
         // Page doesn't exist yet — open directly in edit mode
-        let name = slug.rsplit('/').next().unwrap_or(&slug).to_string();
+        let name = slug.rsplit('/').next().unwrap_or(slug).to_string();
         (
             String::new(),
             name.clone(),
-            slug.clone(),
+            slug.to_string(),
             Some(format!("# {}\n", name)),
         )
     };
@@ -259,8 +372,12 @@ pub async fn page_handler(
         ""
     };
 
+    let vault_name = state.vault_root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "vault".to_string());
+    let breadcrumb = breadcrumb_html(&current_slug, &page_name, &vault_name);
+
     let content = format!(
-        r#"<div id="view-mode" {view_display}>
+        r#"{breadcrumb}
+<div id="view-mode" {view_display}>
 {edit_button}
 <article class="prose prose-lg max-w-none">{rendered}</article>
 {backlinks_html}
@@ -471,7 +588,8 @@ async function saveEdit() {{
 
     let entries = sidebar_entries(&data);
     let sidebar = sidebar_html(&entries, Some(&current_slug));
-    Html(layout(&page_name, &sidebar, &content, Some(&current_slug), right_panel))
+    let si = search_index_json(&entries);
+    Html(layout(&page_name, &sidebar, &content, Some(&current_slug), right_panel, &si))
 }
 
 /// PUT /{*path} — Save edited markdown back to the vault file, then re-index.

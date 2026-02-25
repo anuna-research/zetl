@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use crate::scanner::page_slug_from_path;
-use crate::web::html::{html_escape, layout, sidebar_html, urlencoding};
+use crate::web::html::{breadcrumb_html, html_escape, layout, search_index_json, sidebar_html, urlencoding};
 use crate::web::markdown;
 use crate::web::VaultData;
 
@@ -56,9 +56,10 @@ pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str) -> Resul
 
     let entries = sidebar_entries(data);
     let sidebar = sidebar_html(&entries, None);
+    let si = search_index_json(&entries);
 
     // ── index.html ──────────────────────────────────────────────────────
-    let index_html = render_index(data, &sidebar);
+    let index_html = render_index(data, &sidebar, &si);
     std::fs::write(out.join("index.html"), index_html)?;
 
     // ── per-page HTML ───────────────────────────────────────────────────
@@ -73,17 +74,56 @@ pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str) -> Resul
             .with_context(|| format!("Cannot read {}", full_path.display()))?;
 
         let page_sidebar = sidebar_html(&entries, Some(&slug));
-        let page_html = render_page(data, vault_root, &file.page_name, &slug, &content, &page_sidebar);
+        let page_html = render_page(data, vault_root, &file.page_name, &slug, &content, &page_sidebar, &si);
         std::fs::write(page_dir.join("index.html"), page_html)?;
         count += 1;
     }
 
-    eprintln!("zetl build  →  {count} pages written to {out_dir}/");
+    // ── folder index pages ─────────────────────────────────────────────
+    let vault_name = vault_root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "vault".to_string());
+    let mut folders: HashSet<String> = HashSet::new();
+    for file in &data.files {
+        let slug = page_slug_from_path(&file.path);
+        // Collect all ancestor folder prefixes
+        let mut pos = 0;
+        while let Some(sep) = slug[pos..].find('/') {
+            let folder = &slug[..pos + sep];
+            folders.insert(folder.to_string());
+            pos += sep + 1;
+        }
+    }
+
+    let mut folder_count = 0usize;
+    for folder in &folders {
+        let folder_prefix = format!("{}/", folder.to_lowercase());
+        let folder_pages: Vec<_> = data
+            .files
+            .iter()
+            .filter(|f| {
+                let s = page_slug_from_path(&f.path);
+                s.to_lowercase().starts_with(&folder_prefix)
+            })
+            .collect();
+
+        if folder_pages.is_empty() {
+            continue;
+        }
+
+        let folder_dir = out.join(folder);
+        std::fs::create_dir_all(&folder_dir)?;
+
+        let folder_sidebar = sidebar_html(&entries, None);
+        let folder_html = render_folder_index(data, folder, &vault_name, &folder_pages, &folder_sidebar, &si);
+        std::fs::write(folder_dir.join("index.html"), folder_html)?;
+        folder_count += 1;
+    }
+
+    eprintln!("zetl build  →  {count} pages + {folder_count} folder indexes written to {out_dir}/");
     Ok(())
 }
 
 /// Render the landing page (mirrors `index_handler` in routes.rs).
-fn render_index(data: &VaultData, sidebar: &str) -> String {
+fn render_index(data: &VaultData, sidebar: &str, search_index: &str) -> String {
     let total_pages = data.page_names.len();
     let total_links: usize = data.files.iter().map(|f| f.links.len()).sum();
     let dead_links = data.graph.dead_links().len();
@@ -141,7 +181,98 @@ fn render_index(data: &VaultData, sidebar: &str) -> String {
         grid = grid,
     );
 
-    layout("Vault", sidebar, &content, None, None)
+    layout("Vault", sidebar, &content, None, None, search_index)
+}
+
+/// Render a folder index page for static build.
+fn render_folder_index(
+    data: &VaultData,
+    folder_slug: &str,
+    vault_name: &str,
+    pages: &[&crate::types::ParsedFile],
+    sidebar: &str,
+    search_index: &str,
+) -> String {
+    let folder_name = folder_slug.rsplit('/').next().unwrap_or(folder_slug);
+
+    let mut sorted_pages: Vec<_> = pages.to_vec();
+    sorted_pages.sort_by(|a, b| a.page_name.to_lowercase().cmp(&b.page_name.to_lowercase()));
+
+    let prefix = format!("{}/", folder_slug.to_lowercase());
+    let mut subfolders: Vec<String> = Vec::new();
+    let mut seen_subfolders = HashSet::new();
+    for page in &sorted_pages {
+        let slug = page_slug_from_path(&page.path);
+        let rest = &slug[prefix.len()..];
+        if let Some(pos) = rest.find('/') {
+            let subfolder = &rest[..pos];
+            if seen_subfolders.insert(subfolder.to_string()) {
+                subfolders.push(subfolder.to_string());
+            }
+        }
+    }
+    subfolders.sort();
+
+    let mut grid = String::new();
+
+    for subfolder in &subfolders {
+        let subfolder_slug = format!("{}/{}", folder_slug, subfolder);
+        let count = sorted_pages.iter().filter(|p| {
+            let s = page_slug_from_path(&p.path).to_lowercase();
+            s.starts_with(&format!("{}/", subfolder_slug.to_lowercase()))
+        }).count();
+        grid.push_str(&format!(
+            r#"<a href="/{href}/" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+  <div class="card-body p-4">
+    <h3 class="card-title text-sm">{name}/</h3>
+    <p class="text-xs opacity-60">{count} pages</p>
+  </div>
+</a>"#,
+            href = urlencoding(&subfolder_slug),
+            name = html_escape(subfolder),
+            count = count,
+        ));
+    }
+
+    for page in &sorted_pages {
+        let slug = page_slug_from_path(&page.path);
+        let rest = &slug[prefix.len()..];
+        if rest.contains('/') {
+            continue;
+        }
+        let fwd = data.graph.forward_links(&page.page_name).len();
+        let back = data.graph.backlinks(&page.page_name).len();
+        grid.push_str(&format!(
+            r#"<a href="/{href}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+  <div class="card-body p-4">
+    <h3 class="card-title text-sm">{name}</h3>
+    <p class="text-xs opacity-60">{fwd} out · {back} in</p>
+  </div>
+</a>"#,
+            href = urlencoding(&slug),
+            name = html_escape(&page.page_name),
+            fwd = fwd,
+            back = back,
+        ));
+    }
+
+    let breadcrumb = breadcrumb_html(folder_slug, folder_name, vault_name);
+    let total = sorted_pages.len();
+
+    let content = format!(
+        r#"{breadcrumb}
+<h1 class="text-3xl font-bold mb-6">{folder_name}</h1>
+<p class="text-sm opacity-60 mb-4">{total} pages in this folder</p>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+  {grid}
+</div>"#,
+        breadcrumb = breadcrumb,
+        folder_name = html_escape(folder_name),
+        total = total,
+        grid = grid,
+    );
+
+    layout(folder_name, sidebar, &content, None, None, search_index)
 }
 
 /// Render a single page (mirrors `page_handler` in routes.rs, minus edit UI).
@@ -152,6 +283,7 @@ fn render_page(
     current_slug: &str,
     raw_content: &str,
     sidebar: &str,
+    search_index: &str,
 ) -> String {
     let rendered = markdown::render_to_html(raw_content, &data.page_slug_map);
 
@@ -231,10 +363,14 @@ fn render_page(
             .join(",")
     );
 
+    let vault_name = vault_root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "vault".to_string());
+    let breadcrumb = breadcrumb_html(current_slug, page_name, &vault_name);
+
     // Static page: no edit button, no edit-mode div, no toggleEdit/saveEdit JS.
     // Keep: transclusion bridge SVG JS, wikilink colors, line anchors.
     let content = format!(
-        r#"<article class="prose prose-lg max-w-none">{rendered}</article>
+        r#"{breadcrumb}
+<article class="prose prose-lg max-w-none">{rendered}</article>
 {backlinks_html}
 <script>
 // Transclusion: SVG bridge lines + bidirectional hover
@@ -402,5 +538,5 @@ fn render_page(
         colors_json = colors_json,
     );
 
-    layout(page_name, sidebar, &content, Some(current_slug), right_panel)
+    layout(page_name, sidebar, &content, Some(current_slug), right_panel, search_index)
 }
