@@ -4,7 +4,7 @@ title: Cache
 
 # Cache
 
-zetl uses mtime-based incremental caching for both the [[Link Graph]] and the [[Reasoning Engine]]'s theory. On subsequent runs, only files modified since the last scan are re-parsed.
+zetl uses mtiame-based incremental caching for both the [[Link Graph]] and the [[Reasoning Engine]]'s theory. On subsequent runs, only files modified since the last scan are re-parsed.
 
 ## How it works
 
@@ -42,4 +42,4 @@ Both arguments have merit. Try `zetl reason conflicts` on this vault to see how 
 
 The cache is disposable — deleting `.zetl/` and re-running `zetl index` regenerates it. See [[Local-first Design]].
 
-See also: [[Scanner]], [[Link Graph]], [[Reasoning Engine]]
+See also: [[Scanner]], [[Link Graph]], [[Reasoning Engine]] [[Search]] [[TUI]] [[good-idea-2]]

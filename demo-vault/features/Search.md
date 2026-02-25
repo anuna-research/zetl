@@ -4,7 +4,7 @@ title: Search
 
 # Search
 
-`zetl search` provides full-text content search across all Markdown files in the vault.
+`zetl search` provides full-text content search across all Markdown files in the vault. [[search-history]]
 
 ```spl
 (given fulltext-search-done)
