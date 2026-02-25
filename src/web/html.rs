@@ -45,6 +45,14 @@ pub fn layout(
     a.link-error {{ color: oklch(var(--er)); text-decoration: underline wavy; }}
     /* line anchors for backlink scroll targets */
     .line-anchor {{ scroll-margin-top: 2rem; }}
+    :has(> .line-anchor:target) {{
+      animation: line-highlight 2s ease-out;
+      border-radius: 4px;
+    }}
+    @keyframes line-highlight {{
+      0%   {{ background: oklch(var(--wa) / 0.35); }}
+      100% {{ background: transparent; }}
+    }}
 
     /* transclusion panel */
     .transclusion-panel {{
@@ -79,8 +87,8 @@ pub fn layout(
     }}
     .transclusion-card:hover,
     .transclusion-card.tc-active {{
-      background: oklch(var(--b2));
-      box-shadow: 0 0 0 1px oklch(var(--b3));
+      background: oklch(var(--b2) / 0.5);
+      box-shadow: 0 0 0 1px oklch(var(--b3) / 0.4);
       padding: 0.6rem 0.75rem;
       margin-bottom: 0.5rem;
     }}
