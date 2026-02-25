@@ -1,5 +1,10 @@
-use crate::merkle::{compute_file_root, compute_leaf_hash, compute_spl_hashes, detect_sections, spl_combined_hash};
-use crate::types::{ContentHash, Diagnostic, DiagnosticLevel, FileMerkle, LeafType, MerkleLeaf, ParsedFile, SplBlock, SplLeafCached, WikiLink};
+use crate::merkle::{
+    compute_file_root, compute_leaf_hash, compute_spl_hashes, detect_sections, spl_combined_hash,
+};
+use crate::types::{
+    ContentHash, Diagnostic, DiagnosticLevel, FileMerkle, LeafType, MerkleLeaf, ParsedFile,
+    SplBlock, SplLeafCached, WikiLink,
+};
 use anyhow::Result;
 use ignore::WalkBuilder;
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
@@ -128,8 +133,9 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
     options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
-    let events: Vec<(Event<'_>, Range<usize>)> =
-        Parser::new_ext(content, options).into_offset_iter().collect();
+    let events: Vec<(Event<'_>, Range<usize>)> = Parser::new_ext(content, options)
+        .into_offset_iter()
+        .collect();
 
     // Build Merkle leaves from the collected event stream.
     let merkle_leaves = build_merkle_leaves(content, &events);
@@ -595,7 +601,7 @@ pub(crate) fn extract_block_id(normalized_text: &str) -> Option<String> {
     // Locate the last " ^" sequence.
     let caret_pos = normalized_text.rfind(" ^")?;
     let identifier = &normalized_text[caret_pos + 2..]; // skip the " ^"
-    // Identifier must be non-empty and only contain alphanumerics / hyphens.
+                                                        // Identifier must be non-empty and only contain alphanumerics / hyphens.
     if !identifier.is_empty()
         && identifier
             .chars()
@@ -767,7 +773,7 @@ pub fn build_merkle_leaves<'a>(
     let mut current_depth: usize = 0; // block-nesting depth; 0 = top-level
     let mut text_buf: String = String::new(); // normalised body text for hash
     let mut raw_buf: String = String::new(); // raw content (code / frontmatter / HTML)
-    // Stack of link/image URLs for reconstructing `[text](url)` / `![alt](url)`.
+                                             // Stack of link/image URLs for reconstructing `[text](url)` / `![alt](url)`.
     let mut link_url_stack: Vec<String> = Vec::new();
 
     // Helper closure: build and push a MerkleLeaf, then reset mutable state.
@@ -1039,11 +1045,18 @@ pub fn build_merkle_leaves<'a>(
 /// and the optional following space, and setext headings where the text is the
 /// entire line content.
 fn extract_heading_text(content: &str, line: u32) -> String {
-    let line_content = content.lines().nth((line as usize).saturating_sub(1)).unwrap_or("");
+    let line_content = content
+        .lines()
+        .nth((line as usize).saturating_sub(1))
+        .unwrap_or("");
     if line_content.starts_with('#') {
         // ATX heading: strip leading '#' chars and one optional space.
         let stripped = line_content.trim_start_matches('#');
-        stripped.strip_prefix(' ').unwrap_or(stripped).trim().to_string()
+        stripped
+            .strip_prefix(' ')
+            .unwrap_or(stripped)
+            .trim()
+            .to_string()
     } else {
         // Setext heading: the text is the full line.
         line_content.trim().to_string()
@@ -2411,7 +2424,7 @@ After
         // Extra trailing space / single vs double blank line separating paras.
         let a = parse_leaves("Hello world.\n");
         let b = parse_leaves("Hello  world.\n"); // extra space inside
-        // Consecutive whitespace is collapsed → hashes must match.
+                                                 // Consecutive whitespace is collapsed → hashes must match.
         assert_eq!(a[0].hash, b[0].hash);
     }
 
@@ -2544,7 +2557,11 @@ After
         let leaves = parse_leaves("---\n");
         // pulldown-cmark parses `---` alone as a ThematicBreak (not frontmatter).
         let has_break = leaves.iter().any(|l| leaf_variant(l) == "ThematicBreak");
-        assert!(has_break, "Expected ThematicBreak leaf, got: {:?}", leaves.iter().map(leaf_variant).collect::<Vec<_>>());
+        assert!(
+            has_break,
+            "Expected ThematicBreak leaf, got: {:?}",
+            leaves.iter().map(leaf_variant).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -2552,8 +2569,14 @@ After
         // All thematic breaks hash the same sentinel.
         let a = parse_leaves("---\n");
         let b = parse_leaves("***\n");
-        let breaks_a: Vec<_> = a.iter().filter(|l| leaf_variant(l) == "ThematicBreak").collect();
-        let breaks_b: Vec<_> = b.iter().filter(|l| leaf_variant(l) == "ThematicBreak").collect();
+        let breaks_a: Vec<_> = a
+            .iter()
+            .filter(|l| leaf_variant(l) == "ThematicBreak")
+            .collect();
+        let breaks_b: Vec<_> = b
+            .iter()
+            .filter(|l| leaf_variant(l) == "ThematicBreak")
+            .collect();
         if !breaks_a.is_empty() && !breaks_b.is_empty() {
             assert_eq!(breaks_a[0].hash, breaks_b[0].hash);
         }
@@ -2567,7 +2590,8 @@ After
         let leaves = parse_leaves(content);
         assert!(
             leaves.iter().any(|l| leaf_variant(l) == "HtmlBlock"),
-            "Expected HtmlBlock, got: {:?}", leaves.iter().map(leaf_variant).collect::<Vec<_>>()
+            "Expected HtmlBlock, got: {:?}",
+            leaves.iter().map(leaf_variant).collect::<Vec<_>>()
         );
     }
 
@@ -2632,14 +2656,20 @@ code here
         // Bold markers should be stripped; hash should be the same as plain text.
         let bold = parse_leaves("**Hello world**\n");
         let plain = parse_leaves("Hello world\n");
-        assert_eq!(bold[0].hash, plain[0].hash, "Bold should be stripped from hash input");
+        assert_eq!(
+            bold[0].hash, plain[0].hash,
+            "Bold should be stripped from hash input"
+        );
     }
 
     #[test]
     fn leaves_italic_stripped_from_hash() {
         let italic = parse_leaves("_Hello world_\n");
         let plain = parse_leaves("Hello world\n");
-        assert_eq!(italic[0].hash, plain[0].hash, "Italic should be stripped from hash input");
+        assert_eq!(
+            italic[0].hash, plain[0].hash,
+            "Italic should be stripped from hash input"
+        );
     }
 
     // ── Normalisation: links preserved ────────────────────────────────────
@@ -2722,10 +2752,7 @@ code here
 
     #[test]
     fn extract_block_id_dashes_only() {
-        assert_eq!(
-            extract_block_id("Text ^a-b-c"),
-            Some("a-b-c".to_string())
-        );
+        assert_eq!(extract_block_id("Text ^a-b-c"), Some("a-b-c".to_string()));
     }
 
     #[test]

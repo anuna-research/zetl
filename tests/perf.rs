@@ -59,8 +59,7 @@ fn create_synthetic_vault(dir: &Path, n: usize) {
             i = i,
             prev = i.saturating_sub(1),
         );
-        fs::write(&path, &content)
-            .unwrap_or_else(|e| panic!("write note_{i:05}.md: {e}"));
+        fs::write(&path, &content).unwrap_or_else(|e| panic!("write note_{i:05}.md: {e}"));
     }
 }
 
@@ -169,8 +168,7 @@ fn perf_046_merkle_overhead() {
     // ── 1. Full scan including Merkle ────────────────────────────────────────
     let t_scan = {
         let start = Instant::now();
-        let files =
-            zetl::scanner::scan_vault(vault.path(), &[]).expect("scan_vault failed");
+        let files = zetl::scanner::scan_vault(vault.path(), &[]).expect("scan_vault failed");
         let elapsed = start.elapsed();
         assert_eq!(
             files.len(),
@@ -256,8 +254,7 @@ fn perf_047_memory_overhead() {
 
     let rss_before = rss_bytes();
 
-    let files =
-        zetl::scanner::scan_vault(vault.path(), &[]).expect("scan_vault failed");
+    let files = zetl::scanner::scan_vault(vault.path(), &[]).expect("scan_vault failed");
     assert_eq!(
         files.len(),
         N,
@@ -268,9 +265,7 @@ fn perf_047_memory_overhead() {
     let rss_after = rss_bytes();
 
     if rss_before == 0 || rss_after == 0 {
-        eprintln!(
-            "TEST-047: RSS measurement unavailable on this platform — assertion skipped"
-        );
+        eprintln!("TEST-047: RSS measurement unavailable on this platform — assertion skipped");
         return;
     }
 
@@ -318,8 +313,7 @@ fn perf_048_cache_size() {
     let baseline = dir_size_bytes(&vault.path().join(".zetl"));
 
     // Full pipeline: scan + save cache.
-    let files =
-        zetl::scanner::scan_vault(vault.path(), &[]).expect("scan_vault failed");
+    let files = zetl::scanner::scan_vault(vault.path(), &[]).expect("scan_vault failed");
     assert_eq!(
         files.len(),
         N,

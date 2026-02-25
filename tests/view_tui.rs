@@ -14,16 +14,14 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 
-use zetl::view::{ContextMode, FocusState, ViewApp};
+use zetl::view::{FocusState, ViewApp};
 
 // ── Test fixture helpers ───────────────────────────────────────────────────
 
 /// Create a temporary vault directory with the given pages.
 ///
 /// Each entry is `(page_name, content)`.  Returns `(vault_root, file_index)`.
-fn create_test_vault(
-    pages: &[(&str, &str)],
-) -> (tempfile::TempDir, Vec<(String, PathBuf)>) {
+fn create_test_vault(pages: &[(&str, &str)]) -> (tempfile::TempDir, Vec<(String, PathBuf)>) {
     let tmp = tempfile::TempDir::new().unwrap();
     let root = tmp.path().to_path_buf();
 
@@ -85,6 +83,7 @@ fn render_80x24(app: &mut ViewApp) -> Vec<String> {
 }
 
 /// Return the raw screen output as a single string (all 24 rows concatenated).
+#[allow(dead_code)]
 fn render_to_string(app: &mut ViewApp) -> String {
     render_80x24(app).join("\n")
 }
@@ -173,8 +172,7 @@ fn test_072_dead_link_no_color() {
     let _guard = ENV_LOCK.lock().unwrap();
     std::env::set_var("NO_COLOR", "1");
     let result = std::panic::catch_unwind(|| {
-        let (tmp, file_index) =
-            create_test_vault(&[("PageA", "[[DeadPage]] is dead.\n")]);
+        let (tmp, file_index) = create_test_vault(&[("PageA", "[[DeadPage]] is dead.\n")]);
         let vault_root = tmp.path().to_path_buf();
         let mut app = make_app("PageA", file_index, vault_root, HashMap::new(), 3);
         let lines = render_80x24(&mut app);
@@ -211,10 +209,13 @@ fn test_073_bridge_column_present() {
     let main_width = (80 * 58 / 100) as usize;
     let bridge_end = main_width + 3;
 
-    let bridge_chars_present = lines[1..lines.len()-1].iter().any(|line| {
+    let bridge_chars_present = lines[1..lines.len() - 1].iter().any(|line| {
         let bridge: String = line.chars().skip(main_width).take(3).collect();
-        bridge.contains('│') || bridge.contains('─') || bridge.contains('═')
-            || bridge.contains('|') || bridge.contains('-')
+        bridge.contains('│')
+            || bridge.contains('─')
+            || bridge.contains('═')
+            || bridge.contains('|')
+            || bridge.contains('-')
     });
 
     assert!(
@@ -304,21 +305,24 @@ fn test_075_focus_mode_toggle() {
     app.viewport_height = 22;
 
     // Tab → focus mode on first visible link.
-    app.handle_key(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty());
-    assert_eq!(
-        app.focus_state,
-        FocusState::FocusMode { focused_index: 0 }
+    app.handle_key(
+        crossterm::event::KeyCode::Tab,
+        crossterm::event::KeyModifiers::empty(),
     );
+    assert_eq!(app.focus_state, FocusState::FocusMode { focused_index: 0 });
 
     // j → advance focus to link 2.
-    app.handle_key(crossterm::event::KeyCode::Char('j'), crossterm::event::KeyModifiers::empty());
-    assert_eq!(
-        app.focus_state,
-        FocusState::FocusMode { focused_index: 1 }
+    app.handle_key(
+        crossterm::event::KeyCode::Char('j'),
+        crossterm::event::KeyModifiers::empty(),
     );
+    assert_eq!(app.focus_state, FocusState::FocusMode { focused_index: 1 });
 
     // Second Tab → back to scroll mode.
-    app.handle_key(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty());
+    app.handle_key(
+        crossterm::event::KeyCode::Tab,
+        crossterm::event::KeyModifiers::empty(),
+    );
     assert_eq!(app.focus_state, FocusState::ScrollMode);
 }
 
@@ -327,7 +331,10 @@ fn test_075_focus_mode_toggle() {
 fn test_075_focused_card_expanded() {
     let (tmp, file_index) = create_test_vault(&[
         ("PageA", "Link: [[PageB]] here.\n"),
-        ("PageB", "B line 1.\nB line 2.\nB line 3.\nB line 4.\nB line 5.\nB line 6.\n"),
+        (
+            "PageB",
+            "B line 1.\nB line 2.\nB line 3.\nB line 4.\nB line 5.\nB line 6.\n",
+        ),
     ]);
     let vault_root = tmp.path().to_path_buf();
     let mut app = make_app("PageA", file_index, vault_root, HashMap::new(), 2);
@@ -336,7 +343,10 @@ fn test_075_focused_card_expanded() {
     app.viewport_height = 22;
 
     // Enter focus mode.
-    app.handle_key(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty());
+    app.handle_key(
+        crossterm::event::KeyCode::Tab,
+        crossterm::event::KeyModifiers::empty(),
+    );
     assert!(matches!(app.focus_state, FocusState::FocusMode { .. }));
 
     // In focus mode, the context card should show 2×3 = 6 excerpt lines.
@@ -374,28 +384,55 @@ fn test_076_nav_history() {
     app.viewport_height = 22;
 
     // Navigate A → B via focus mode + Enter.
-    app.handle_key(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty());
-    app.handle_key(crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::empty());
+    app.handle_key(
+        crossterm::event::KeyCode::Tab,
+        crossterm::event::KeyModifiers::empty(),
+    );
+    app.handle_key(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::empty(),
+    );
     assert_eq!(app.current_page, "PageB", "should be on PageB after Enter");
     assert_eq!(app.scroll_offset, 0, "scroll resets on navigation");
 
     // Navigate B → C.
-    app.handle_key(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty());
-    app.handle_key(crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::empty());
+    app.handle_key(
+        crossterm::event::KeyCode::Tab,
+        crossterm::event::KeyModifiers::empty(),
+    );
+    app.handle_key(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::empty(),
+    );
     assert_eq!(app.current_page, "PageC");
 
     // '[' → back to B.
-    app.handle_key(crossterm::event::KeyCode::Char('['), crossterm::event::KeyModifiers::empty());
+    app.handle_key(
+        crossterm::event::KeyCode::Char('['),
+        crossterm::event::KeyModifiers::empty(),
+    );
     assert_eq!(app.current_page, "PageB", "should return to PageB");
 
     // '[' → back to A (scroll offset was 0 when we navigated away).
-    app.handle_key(crossterm::event::KeyCode::Char('['), crossterm::event::KeyModifiers::empty());
+    app.handle_key(
+        crossterm::event::KeyCode::Char('['),
+        crossterm::event::KeyModifiers::empty(),
+    );
     assert_eq!(app.current_page, "PageA", "should return to PageA");
-    assert_eq!(app.scroll_offset, 0, "scroll offset should be restored to 0");
+    assert_eq!(
+        app.scroll_offset, 0,
+        "scroll offset should be restored to 0"
+    );
 
     // ']' → forward to B again.
-    app.handle_key(crossterm::event::KeyCode::Char(']'), crossterm::event::KeyModifiers::empty());
-    assert_eq!(app.current_page, "PageB", "forward should reach PageB again");
+    app.handle_key(
+        crossterm::event::KeyCode::Char(']'),
+        crossterm::event::KeyModifiers::empty(),
+    );
+    assert_eq!(
+        app.current_page, "PageB",
+        "forward should reach PageB again"
+    );
 }
 
 /// TEST-076b: History depth truncates at 50 entries (REQ-069).
@@ -404,11 +441,13 @@ fn test_076_history_depth_limit() {
     let pages: Vec<(&str, String)> = (0..=52)
         .map(|i| {
             let content = format!("[[Page{}]]", i + 1);
-            (Box::leak(format!("Page{}", i).into_boxed_str()) as &str, content)
+            (
+                Box::leak(format!("Page{}", i).into_boxed_str()) as &str,
+                content,
+            )
         })
         .collect();
-    let page_refs: Vec<(&str, &str)> =
-        pages.iter().map(|(n, c)| (*n, c.as_str())).collect();
+    let page_refs: Vec<(&str, &str)> = pages.iter().map(|(n, c)| (*n, c.as_str())).collect();
     let (tmp, file_index) = create_test_vault(&page_refs);
     let vault_root = tmp.path().to_path_buf();
 
@@ -448,31 +487,50 @@ fn test_076_history_depth_limit() {
 
 // ── TEST-077: Backlink mode ────────────────────────────────────────────────
 
-/// TEST-077: 'b' cycles Forward → Back → Both → Forward.
+/// TEST-077: context pane always shows both forward cards and backlinks list.
 #[test]
-fn test_077_context_mode_cycle() {
-    let (tmp, file_index) = create_test_vault(&[("PageA", "No links.\n")]);
+fn test_077_combined_context_pane() {
+    let backlink_map: HashMap<String, Vec<(String, u32)>> = {
+        let mut m = HashMap::new();
+        m.insert("PageA".to_string(), vec![("PageB".to_string(), 1)]);
+        m
+    };
+    let (tmp, file_index) = create_test_vault(&[
+        ("PageA", "See [[PageC]].\n"),
+        ("PageB", "Links to [[PageA]].\n"),
+        ("PageC", "PageC content.\n"),
+    ]);
     let vault_root = tmp.path().to_path_buf();
-    let mut app = make_app("PageA", file_index, vault_root, HashMap::new(), 3);
+    let mut app = make_app("PageA", file_index, vault_root, backlink_map, 3);
 
-    assert_eq!(app.context_mode, ContextMode::Forward);
+    let lines = render_80x24(&mut app);
+    let main_width = (80 * 58 / 100) as usize;
+    let context: String = lines
+        .iter()
+        .skip(1)
+        .map(|l| l.chars().skip(main_width + 3).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    app.handle_key(crossterm::event::KeyCode::Char('b'), crossterm::event::KeyModifiers::empty());
-    assert_eq!(app.context_mode, ContextMode::Back);
-
-    app.handle_key(crossterm::event::KeyCode::Char('b'), crossterm::event::KeyModifiers::empty());
-    assert_eq!(app.context_mode, ContextMode::Both);
-
-    app.handle_key(crossterm::event::KeyCode::Char('b'), crossterm::event::KeyModifiers::empty());
-    assert_eq!(app.context_mode, ContextMode::Forward);
+    // Forward card for PageC should appear.
+    assert!(
+        context.contains("PageC"),
+        "expected forward link card: {}",
+        context
+    );
+    // Backlinks section for PageB should appear.
+    assert!(
+        context.contains("PageB"),
+        "expected backlink entry: {}",
+        context
+    );
 }
 
-/// TEST-077b: Back mode renders backlink cards when there are backlinks.
+/// TEST-077b: Backlinks list renders citing pages in the combined context pane.
 #[test]
 fn test_077_back_mode_shows_backlinks() {
     let backlink_map: HashMap<String, Vec<(String, u32)>> = {
         let mut m = HashMap::new();
-        // PageA is cited by PageB on line 1.
         m.insert("PageA".to_string(), vec![("PageB".to_string(), 1)]);
         m
     };
@@ -482,9 +540,6 @@ fn test_077_back_mode_shows_backlinks() {
     ]);
     let vault_root = tmp.path().to_path_buf();
     let mut app = make_app("PageA", file_index, vault_root, backlink_map, 3);
-
-    // Switch to Back mode.
-    app.context_mode = ContextMode::Back;
 
     let lines = render_80x24(&mut app);
     let main_width = (80 * 58 / 100) as usize;
@@ -497,33 +552,31 @@ fn test_077_back_mode_shows_backlinks() {
 
     assert!(
         context.contains("PageB"),
-        "expected PageB backlink card in Back mode context pane: {}",
+        "expected PageB in backlinks list: {}",
         context
     );
 }
 
-/// TEST-077c: Back mode shows orphan message when no backlinks exist.
+/// TEST-077c: Combined pane shows no backlinks section when there are no backlinks.
 #[test]
 fn test_077_back_mode_orphan_message() {
     let (tmp, file_index) = create_test_vault(&[("PageA", "No links.\n")]);
     let vault_root = tmp.path().to_path_buf();
     let mut app = make_app("PageA", file_index, vault_root, HashMap::new(), 3);
 
-    app.context_mode = ContextMode::Back;
-
     let lines = render_80x24(&mut app);
     let main_width = (80 * 58 / 100) as usize;
     // Context pane starts at col main_width + 3 (bridge width).
-    // Include all rows (0..23) since context pane shares the same row range as the main pane.
     let context: String = lines
         .iter()
         .map(|l| l.chars().skip(main_width + 3).collect::<String>())
         .collect::<Vec<_>>()
         .join("\n");
 
+    // With no backlinks, the backlinks section is omitted — no '←' arrow should appear.
     assert!(
-        context.contains("orphan") || context.contains("no backlinks"),
-        "expected orphan message in Back mode with no backlinks: {}",
+        !context.contains('←'),
+        "expected no backlinks section when page has no backlinks: {}",
         context
     );
 }
@@ -536,10 +589,8 @@ fn test_078_no_color_mode() {
     let _guard = ENV_LOCK.lock().unwrap();
     std::env::set_var("NO_COLOR", "1");
     let result = std::panic::catch_unwind(|| {
-        let (tmp, file_index) = create_test_vault(&[
-            ("PageA", "See [[PageB]].\n"),
-            ("PageB", "PageB content.\n"),
-        ]);
+        let (tmp, file_index) =
+            create_test_vault(&[("PageA", "See [[PageB]].\n"), ("PageB", "PageB content.\n")]);
         let vault_root = tmp.path().to_path_buf();
         let mut app = make_app("PageA", file_index, vault_root, HashMap::new(), 3);
         assert_eq!(app.color_mode, zetl::view::ColorMode::NoColor);
@@ -548,7 +599,7 @@ fn test_078_no_color_mode() {
 
         // Bridge area should contain '|||' (no-color filler) or '---'/'===' connectors.
         let main_width = (80 * 58 / 100) as usize;
-        let bridge_content: String = lines[1..lines.len()-1]
+        let bridge_content: String = lines[1..lines.len() - 1]
             .iter()
             .map(|l| l.chars().skip(main_width).take(3).collect::<String>())
             .collect::<Vec<_>>()
@@ -583,10 +634,8 @@ fn test_078_no_color_mode() {
 /// TEST-079: Terminal < 60 cols activates single-pane mode (no context pane).
 #[test]
 fn test_079_narrow_single_pane() {
-    let (tmp, file_index) = create_test_vault(&[
-        ("PageA", "See [[PageB]].\n"),
-        ("PageB", "PageB content.\n"),
-    ]);
+    let (tmp, file_index) =
+        create_test_vault(&[("PageA", "See [[PageB]].\n"), ("PageB", "PageB content.\n")]);
     let vault_root = tmp.path().to_path_buf();
     let mut app = make_app("PageA", file_index, vault_root, HashMap::new(), 3);
 
@@ -596,10 +645,7 @@ fn test_079_narrow_single_pane() {
     terminal.draw(|frame| app.draw(frame)).unwrap();
 
     // Single-pane mode should be active.
-    assert!(
-        app.single_pane,
-        "expected single-pane mode at 59 cols wide"
-    );
+    assert!(app.single_pane, "expected single-pane mode at 59 cols wide");
     assert_eq!(
         app.bridge_col,
         ratatui::layout::Rect::default(),
@@ -623,10 +669,7 @@ fn test_079_at_threshold_two_pane() {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
 
-    assert!(
-        !app.single_pane,
-        "expected two-pane mode at 60 cols wide"
-    );
+    assert!(!app.single_pane, "expected two-pane mode at 60 cols wide");
 }
 
 // ── TEST: Page picker ──────────────────────────────────────────────────────
@@ -634,10 +677,7 @@ fn test_079_at_threshold_two_pane() {
 /// Launching without a page opens the picker overlay.
 #[test]
 fn test_picker_opens_without_page() {
-    let (tmp, file_index) = create_test_vault(&[
-        ("Alpha", "Content.\n"),
-        ("Beta", "Content.\n"),
-    ]);
+    let (tmp, file_index) = create_test_vault(&[("Alpha", "Content.\n"), ("Beta", "Content.\n")]);
     let vault_root = tmp.path().to_path_buf();
     let page_set: HashSet<String> = file_index.iter().map(|(n, _)| n.clone()).collect();
 
@@ -652,7 +692,10 @@ fn test_picker_opens_without_page() {
         HashMap::new(),
     );
 
-    assert!(app.show_picker, "expected picker to open when no page given");
+    assert!(
+        app.show_picker,
+        "expected picker to open when no page given"
+    );
     assert!(app.picker_state.is_some());
 }
 
@@ -679,13 +722,21 @@ fn test_picker_filters_pages() {
     );
 
     // Type "Al" to filter.
-    app.handle_key(crossterm::event::KeyCode::Char('A'), crossterm::event::KeyModifiers::empty());
-    app.handle_key(crossterm::event::KeyCode::Char('l'), crossterm::event::KeyModifiers::empty());
+    app.handle_key(
+        crossterm::event::KeyCode::Char('A'),
+        crossterm::event::KeyModifiers::empty(),
+    );
+    app.handle_key(
+        crossterm::event::KeyCode::Char('l'),
+        crossterm::event::KeyModifiers::empty(),
+    );
 
     let picker = app.picker_state.as_ref().unwrap();
     let filtered = picker.filtered(&app.file_index);
     assert!(
-        filtered.iter().all(|t: &&str| t.to_lowercase().contains("al")),
+        filtered
+            .iter()
+            .all(|t: &&str| t.to_lowercase().contains("al")),
         "expected only 'Al*' pages but got: {:?}",
         filtered
     );
@@ -700,16 +751,21 @@ fn test_picker_filters_pages() {
 
 #[test]
 fn test_dead_link_status_message() {
-    let (tmp, file_index) =
-        create_test_vault(&[("PageA", "[[DeadPage]] here.\n")]);
+    let (tmp, file_index) = create_test_vault(&[("PageA", "[[DeadPage]] here.\n")]);
     let vault_root = tmp.path().to_path_buf();
     let mut app = make_app("PageA", file_index, vault_root, HashMap::new(), 3);
     app.viewport_height = 22;
 
     // Enter focus mode.
-    app.handle_key(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::empty());
+    app.handle_key(
+        crossterm::event::KeyCode::Tab,
+        crossterm::event::KeyModifiers::empty(),
+    );
     // Press Enter on the dead link.
-    app.handle_key(crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::empty());
+    app.handle_key(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::empty(),
+    );
 
     assert!(
         app.status_message.is_some(),

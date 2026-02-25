@@ -29,9 +29,7 @@ pub enum ColorMode {
 /// 4. Fallback → [`ColorMode::Ansi8`]
 pub fn detect_color_mode() -> ColorMode {
     // Rule 1: no-color overrides everything.
-    if std::env::var_os("NO_COLOR").is_some()
-        || std::env::var("TERM").as_deref() == Ok("dumb")
-    {
+    if std::env::var_os("NO_COLOR").is_some() || std::env::var("TERM").as_deref() == Ok("dumb") {
         return ColorMode::NoColor;
     }
 
@@ -218,7 +216,11 @@ mod tests {
     #[test]
     fn term_dumb_gives_no_color_mode() {
         let mode = with_env(
-            &[("NO_COLOR", None), ("TERM", Some("dumb")), ("COLORTERM", None)],
+            &[
+                ("NO_COLOR", None),
+                ("TERM", Some("dumb")),
+                ("COLORTERM", None),
+            ],
             detect_color_mode,
         );
         assert_eq!(mode, ColorMode::NoColor);

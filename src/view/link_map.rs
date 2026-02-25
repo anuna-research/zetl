@@ -249,8 +249,7 @@ mod tests {
     fn annotated_live_link_colored() {
         let lines = vec!["See [[Foo]] and [[Bar]].".to_string()];
         let page_set = make_page_set(&["Foo", "Bar"]);
-        let (annotated, link_map) =
-            build_annotated_lines(&lines, &page_set, ColorMode::TrueColor);
+        let (annotated, link_map) = build_annotated_lines(&lines, &page_set, ColorMode::TrueColor);
 
         // Two links in link_map.
         assert_eq!(link_map.len(), 2);
@@ -272,13 +271,16 @@ mod tests {
     fn dead_link_no_color_gets_bang_prefix() {
         let lines = vec!["[[Dead]]".to_string()];
         let page_set = make_page_set(&[]); // no pages in index
-        let (annotated, link_map) =
-            build_annotated_lines(&lines, &page_set, ColorMode::NoColor);
+        let (annotated, link_map) = build_annotated_lines(&lines, &page_set, ColorMode::NoColor);
 
         assert_eq!(link_map.len(), 1);
         assert!(link_map[0].is_dead);
 
-        let text: String = annotated[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        let text: String = annotated[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
         assert_eq!(text, "[[Dead]]![1]");
     }
 
@@ -286,11 +288,14 @@ mod tests {
     fn live_link_no_color_no_bang() {
         let lines = vec!["[[Alive]]".to_string()];
         let page_set = make_page_set(&["Alive"]);
-        let (annotated, link_map) =
-            build_annotated_lines(&lines, &page_set, ColorMode::NoColor);
+        let (annotated, link_map) = build_annotated_lines(&lines, &page_set, ColorMode::NoColor);
 
         assert!(!link_map[0].is_dead);
-        let text: String = annotated[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        let text: String = annotated[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
         assert_eq!(text, "[[Alive]][1]");
     }
 
@@ -298,8 +303,7 @@ mod tests {
     fn dead_link_colored_renders_red() {
         let lines = vec!["[[Missing]]".to_string()];
         let page_set = make_page_set(&[]);
-        let (_annotated, link_map) =
-            build_annotated_lines(&lines, &page_set, ColorMode::Ansi8);
+        let (_annotated, link_map) = build_annotated_lines(&lines, &page_set, ColorMode::Ansi8);
 
         assert!(link_map[0].is_dead);
         // Verify the glyph span has red foreground.
@@ -313,12 +317,15 @@ mod tests {
     fn line_without_wikilinks_is_raw() {
         let lines = vec!["Just plain text.".to_string()];
         let page_set = make_page_set(&[]);
-        let (annotated, link_map) =
-            build_annotated_lines(&lines, &page_set, ColorMode::Ansi8);
+        let (annotated, link_map) = build_annotated_lines(&lines, &page_set, ColorMode::Ansi8);
 
         assert!(link_map.is_empty());
         assert_eq!(annotated.len(), 1);
-        let text: String = annotated[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        let text: String = annotated[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
         assert_eq!(text, "Just plain text.");
     }
 
@@ -330,8 +337,7 @@ mod tests {
             "[[A]] again".to_string(), // same target, new occurrence
         ];
         let page_set = make_page_set(&["A", "B", "C"]);
-        let (_annotated, link_map) =
-            build_annotated_lines(&lines, &page_set, ColorMode::NoColor);
+        let (_annotated, link_map) = build_annotated_lines(&lines, &page_set, ColorMode::NoColor);
 
         assert_eq!(link_map.len(), 4);
         assert_eq!(link_map[0].ordinal, 1);
@@ -349,8 +355,7 @@ mod tests {
             "[[Y]]".to_string(),
         ];
         let page_set = make_page_set(&["X", "Y"]);
-        let (_annotated, link_map) =
-            build_annotated_lines(&lines, &page_set, ColorMode::NoColor);
+        let (_annotated, link_map) = build_annotated_lines(&lines, &page_set, ColorMode::NoColor);
 
         assert_eq!(link_map[0].line_number, 1);
         assert_eq!(link_map[1].line_number, 2);

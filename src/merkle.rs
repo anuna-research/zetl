@@ -8,7 +8,10 @@
 //! (§3.3 rules 2–3, REQ-042b, REQ-042c) via [`resolve_local_block_id`] and
 //! [`resolve_cross_file_block_id`].
 
-use crate::types::{ContentHash, Diagnostic, DiagnosticLevel, LeafType, MerkleLeaf, ParsedFile, Section, SplLeafHash};
+use crate::types::{
+    ContentHash, Diagnostic, DiagnosticLevel, LeafType, MerkleLeaf, ParsedFile, Section,
+    SplLeafHash,
+};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -301,24 +304,23 @@ pub fn grounding_section(leaves: &[MerkleLeaf], spl_leaf_idx: usize) -> Section 
     );
 
     // ── Step 1: find section_start by walking backwards ──────────────────────
-    let (section_start_idx, heading_level, heading_line) =
-        match (0..spl_leaf_idx)
-            .rev()
-            .find(|&i| matches!(leaves[i].node_type, LeafType::Heading { .. }))
-        {
-            Some(idx) => {
-                let level = if let LeafType::Heading { level } = leaves[idx].node_type {
-                    level
-                } else {
-                    unreachable!()
-                };
-                (idx, level, leaves[idx].start_line)
-            }
-            None => {
-                // Preamble: no heading precedes this SPL block.
-                (0, 0u8, 0u32)
-            }
-        };
+    let (section_start_idx, heading_level, heading_line) = match (0..spl_leaf_idx)
+        .rev()
+        .find(|&i| matches!(leaves[i].node_type, LeafType::Heading { .. }))
+    {
+        Some(idx) => {
+            let level = if let LeafType::Heading { level } = leaves[idx].node_type {
+                level
+            } else {
+                unreachable!()
+            };
+            (idx, level, leaves[idx].start_line)
+        }
+        None => {
+            // Preamble: no heading precedes this SPL block.
+            (0, 0u8, 0u32)
+        }
+    };
 
     // ── Step 2: find section_end by walking forward ───────────────────────────
     let section_end_idx = if heading_level == 0 {
@@ -334,10 +336,9 @@ pub fn grounding_section(leaves: &[MerkleLeaf], spl_leaf_idx: usize) -> Section 
         // Non-preamble: scan forward from the leaf after section_start for a
         // heading at the same or higher structural level (lower or equal number).
         let search_from = section_start_idx + 1;
-        match leaves[search_from..]
-            .iter()
-            .position(|l| matches!(l.node_type, LeafType::Heading { level } if level <= heading_level))
-        {
+        match leaves[search_from..].iter().position(
+            |l| matches!(l.node_type, LeafType::Heading { level } if level <= heading_level),
+        ) {
             Some(offset) => {
                 // The terminating heading is at `search_from + offset`; the last
                 // leaf *inside* this section is one before it.
@@ -522,8 +523,7 @@ pub fn resolve_hash_prefix(prefix: &str, index: &VaultHashIndex) -> HashResoluti
             }
         }
         _ => {
-            let mut candidates: Vec<String> =
-                matching.iter().map(|(h, _)| (*h).clone()).collect();
+            let mut candidates: Vec<String> = matching.iter().map(|(h, _)| (*h).clone()).collect();
             candidates.sort();
             HashResolutionResult::Ambiguous {
                 prefix: prefix.to_string(),
@@ -541,15 +541,10 @@ pub fn resolve_hash_prefix(prefix: &str, index: &VaultHashIndex) -> HashResoluti
 pub enum BlockIdResolutionError {
     /// No leaf carrying the given `block_id` annotation was found in the target
     /// file.
-    BlockIdNotFound {
-        block_id: String,
-        file: PathBuf,
-    },
+    BlockIdNotFound { block_id: String, file: PathBuf },
     /// The page name in a cross-file reference could not be resolved to any
     /// known file in the vault.
-    PageNotFound {
-        page_name: String,
-    },
+    PageNotFound { page_name: String },
 }
 
 impl std::fmt::Display for BlockIdResolutionError {
@@ -613,10 +608,11 @@ pub fn resolve_cross_file_block_id(
     use crate::scanner::resolve_page_name;
 
     // Step 1: Resolve the page name to a canonical page name.
-    let resolved_page =
-        resolve_page_name(page_name, file_index).ok_or_else(|| BlockIdResolutionError::PageNotFound {
+    let resolved_page = resolve_page_name(page_name, file_index).ok_or_else(|| {
+        BlockIdResolutionError::PageNotFound {
             page_name: page_name.to_string(),
-        })?;
+        }
+    })?;
 
     // Step 2: Locate the file path for the resolved page name.
     let target_path = file_index
@@ -683,7 +679,10 @@ pub fn classify_source_ref(s: &str) -> SourceRefType {
     if s.starts_with('^') {
         return SourceRefType::LocalRef;
     }
-    if s.len() >= 8 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F')) {
+    if s.len() >= 8
+        && s.bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F'))
+    {
         return SourceRefType::HashRef;
     }
     SourceRefType::Unknown
@@ -770,10 +769,7 @@ fn validate_one_source_ref(
                 HashResolutionResult::Ambiguous { prefix, .. } => {
                     out.push(Diagnostic {
                         level: DiagnosticLevel::Error,
-                        message: format!(
-                            "ambiguous hash prefix {} — use a longer prefix",
-                            prefix
-                        ),
+                        message: format!("ambiguous hash prefix {} — use a longer prefix", prefix),
                         file: source_file.to_path_buf(),
                         line: spl_line,
                         column: 0,
@@ -901,10 +897,7 @@ mod tests {
             TAG_CODE_BLOCK
         );
         assert_eq!(leaf_type_tag(&LeafType::SplBlock), TAG_SPL_BLOCK);
-        assert_eq!(
-            leaf_type_tag(&LeafType::List { ordered: false }),
-            TAG_LIST
-        );
+        assert_eq!(leaf_type_tag(&LeafType::List { ordered: false }), TAG_LIST);
         assert_eq!(leaf_type_tag(&LeafType::BlockQuote), TAG_BLOCK_QUOTE);
         assert_eq!(leaf_type_tag(&LeafType::Table), TAG_TABLE);
         assert_eq!(leaf_type_tag(&LeafType::Frontmatter), TAG_FRONTMATTER);
@@ -934,7 +927,10 @@ mod tests {
         let content = b"same text";
         let h1 = compute_leaf_hash(&LeafType::Paragraph, content);
         let h2 = compute_leaf_hash(&LeafType::Heading { level: 1 }, content);
-        assert_ne!(h1, h2, "different leaf types should produce different hashes");
+        assert_ne!(
+            h1, h2,
+            "different leaf types should produce different hashes"
+        );
     }
 
     #[test]
@@ -979,7 +975,10 @@ mod tests {
     fn compute_leaf_hash_spl_differs_with_different_content() {
         let h1 = compute_leaf_hash(&LeafType::SplBlock, b"rule_a");
         let h2 = compute_leaf_hash(&LeafType::SplBlock, b"rule_b");
-        assert_ne!(h1, h2, "different SPL content should produce different hashes");
+        assert_ne!(
+            h1, h2,
+            "different SPL content should produce different hashes"
+        );
     }
 
     // ── compute_file_root ──────────────────────────────────────────────────────
@@ -1556,7 +1555,10 @@ mod tests {
         // Full prefix → found
         let result = resolve_hash_prefix(&full_hex, &index);
         match result {
-            HashResolutionResult::Found { full_hash, locations } => {
+            HashResolutionResult::Found {
+                full_hash,
+                locations,
+            } => {
                 assert_eq!(full_hash, full_hex);
                 assert_eq!(locations.len(), 1);
             }
@@ -1596,7 +1598,11 @@ mod tests {
         let result = resolve_hash_prefix(prefix, &index);
         match result {
             HashResolutionResult::Found { locations, .. } => {
-                assert_eq!(locations.len(), 2, "both locations returned for duplicate content");
+                assert_eq!(
+                    locations.len(),
+                    2,
+                    "both locations returned for duplicate content"
+                );
             }
             _ => panic!("expected Found"),
         }
@@ -1682,10 +1688,7 @@ mod tests {
 
     #[test]
     fn resolve_local_block_id_not_found() {
-        let leaves = vec![
-            leaf_with_hash([0x01_u8; 32]),
-            leaf_with_hash([0x02_u8; 32]),
-        ];
+        let leaves = vec![leaf_with_hash([0x01_u8; 32]), leaf_with_hash([0x02_u8; 32])];
         let result = resolve_local_block_id(&leaves, "missing");
         assert_eq!(result, None);
     }
@@ -1777,8 +1780,7 @@ mod tests {
         let files = vec![file];
         let file_index = vec![("Page B".to_string(), PathBuf::from("notes/Page B.md"))];
 
-        let result =
-            resolve_cross_file_block_id(&files, &file_index, "Page B", "missing-block");
+        let result = resolve_cross_file_block_id(&files, &file_index, "Page B", "missing-block");
         assert_eq!(
             result,
             Err(BlockIdResolutionError::BlockIdNotFound {
@@ -1824,7 +1826,10 @@ mod tests {
     #[test]
     fn classify_source_ref_hash() {
         assert_eq!(classify_source_ref("abcdef12"), SourceRefType::HashRef);
-        assert_eq!(classify_source_ref("a1b2c3d4e5f6a7b8"), SourceRefType::HashRef);
+        assert_eq!(
+            classify_source_ref("a1b2c3d4e5f6a7b8"),
+            SourceRefType::HashRef
+        );
         // Upper-case hex accepted
         assert_eq!(classify_source_ref("ABCDEF12"), SourceRefType::HashRef);
         // Fewer than 8 hex chars → Unknown
@@ -1839,15 +1844,24 @@ mod tests {
 
     #[test]
     fn classify_source_ref_cross_file() {
-        assert_eq!(classify_source_ref("[[Page^block-id]]"), SourceRefType::CrossFileRef);
-        assert_eq!(classify_source_ref("[[Architecture^intro]]"), SourceRefType::CrossFileRef);
+        assert_eq!(
+            classify_source_ref("[[Page^block-id]]"),
+            SourceRefType::CrossFileRef
+        );
+        assert_eq!(
+            classify_source_ref("[[Architecture^intro]]"),
+            SourceRefType::CrossFileRef
+        );
     }
 
     #[test]
     fn classify_source_ref_page_ref() {
         // [[Page]] without ^ is a PageRef
         assert_eq!(classify_source_ref("[[Page]]"), SourceRefType::PageRef);
-        assert_eq!(classify_source_ref("[[Redis vs Memcached]]"), SourceRefType::PageRef);
+        assert_eq!(
+            classify_source_ref("[[Redis vs Memcached]]"),
+            SourceRefType::PageRef
+        );
     }
 
     #[test]
@@ -1919,10 +1933,14 @@ mod tests {
         // A hash prefix that doesn't match anything → error
         let grounding = make_grounding(vec!["deadbeef"]);
         let file = make_file_with_merkle(
-            "notes/A.md", "A", vec![], vec![make_spl_leaf(5, [0u8; 32], vec![grounding])],
+            "notes/A.md",
+            "A",
+            vec![],
+            vec![make_spl_leaf(5, [0u8; 32], vec![grounding])],
         );
         let files = vec![file];
-        let file_index: Vec<(String, PathBuf)> = vec![("A".to_string(), PathBuf::from("notes/A.md"))];
+        let file_index: Vec<(String, PathBuf)> =
+            vec![("A".to_string(), PathBuf::from("notes/A.md"))];
         let index = build_vault_hash_index(&files);
 
         let diags = validate_source_refs(&files, &file_index, &index);
@@ -2013,7 +2031,11 @@ mod tests {
         let index = build_vault_hash_index(&files);
 
         let diags = validate_source_refs(&files, &file_index, &index);
-        assert!(diags.is_empty(), "duplicate content should be valid; got: {:?}", diags);
+        assert!(
+            diags.is_empty(),
+            "duplicate content should be valid; got: {:?}",
+            diags
+        );
     }
 
     #[test]
@@ -2046,7 +2068,11 @@ mod tests {
         let index = build_vault_hash_index(&files);
 
         let diags = validate_source_refs(&files, &file_index, &index);
-        assert!(diags.is_empty(), "found block-id should be valid; got: {:?}", diags);
+        assert!(
+            diags.is_empty(),
+            "found block-id should be valid; got: {:?}",
+            diags
+        );
     }
 
     #[test]
@@ -2074,12 +2100,19 @@ mod tests {
         let files = vec![file, target];
         let file_index = vec![
             ("E".to_string(), PathBuf::from("E.md")),
-            ("Existing Page".to_string(), PathBuf::from("Existing Page.md")),
+            (
+                "Existing Page".to_string(),
+                PathBuf::from("Existing Page.md"),
+            ),
         ];
         let index = build_vault_hash_index(&files);
 
         let diags = validate_source_refs(&files, &file_index, &index);
-        assert!(diags.is_empty(), "existing page ref should be valid; got: {:?}", diags);
+        assert!(
+            diags.is_empty(),
+            "existing page ref should be valid; got: {:?}",
+            diags
+        );
     }
 
     #[test]
@@ -2106,7 +2139,8 @@ mod tests {
         let src_file = make_file_with_merkle("src.md", "src", vec![], vec![spl_leaf]);
         // Target page exists but has no leaf with "ghost-id"
         let target_leaf = make_leaf(LeafType::Paragraph, [0x99_u8; 32]);
-        let target_file = make_parsed_file_with_leaves("Target Page.md", "Target Page", vec![target_leaf]);
+        let target_file =
+            make_parsed_file_with_leaves("Target Page.md", "Target Page", vec![target_leaf]);
         let files = vec![src_file, target_file];
         let file_index = vec![
             ("src".to_string(), PathBuf::from("src.md")),
@@ -2128,7 +2162,8 @@ mod tests {
         let spl_leaf = make_spl_leaf(6, [0u8; 32], vec![grounding]);
         let src_file = make_file_with_merkle("src.md", "src", vec![], vec![spl_leaf]);
         let target_leaf = leaf_with_block_id([0x77_u8; 32], "real-id");
-        let target_file = make_parsed_file_with_leaves("Target Page.md", "Target Page", vec![target_leaf]);
+        let target_file =
+            make_parsed_file_with_leaves("Target Page.md", "Target Page", vec![target_leaf]);
         let files = vec![src_file, target_file];
         let file_index = vec![
             ("src".to_string(), PathBuf::from("src.md")),
@@ -2137,7 +2172,11 @@ mod tests {
         let index = build_vault_hash_index(&files);
 
         let diags = validate_source_refs(&files, &file_index, &index);
-        assert!(diags.is_empty(), "valid cross-file ref should have no errors; got: {:?}", diags);
+        assert!(
+            diags.is_empty(),
+            "valid cross-file ref should have no errors; got: {:?}",
+            diags
+        );
     }
 
     #[test]
@@ -2151,7 +2190,11 @@ mod tests {
         let index = build_vault_hash_index(&files);
 
         let diags = validate_source_refs(&files, &file_index, &index);
-        assert!(diags.is_empty(), "unknown refs should be silently skipped; got: {:?}", diags);
+        assert!(
+            diags.is_empty(),
+            "unknown refs should be silently skipped; got: {:?}",
+            diags
+        );
     }
 
     #[test]
@@ -2193,7 +2236,10 @@ mod tests {
         assert_eq!(root_abc, root_bca, "abc vs bca order mismatch");
         assert_eq!(root_abc, root_cab, "abc vs cab order mismatch");
         assert_eq!(root_abc, root_cba, "abc vs cba order mismatch");
-        assert_ne!(root_abc, [0u8; 32], "vault root of non-empty vault must be non-zero");
+        assert_ne!(
+            root_abc, [0u8; 32],
+            "vault root of non-empty vault must be non-zero"
+        );
     }
 
     /// TEST-038: Normalisation — two files whose paragraphs contain identical
@@ -2216,7 +2262,10 @@ mod tests {
         let root_a = pf_a.file_merkle.as_ref().map(|m| m.root_hash);
         let root_b = pf_b.file_merkle.as_ref().map(|m| m.root_hash);
 
-        assert!(root_a.is_some(), "file_merkle should be populated for a non-empty .md file");
+        assert!(
+            root_a.is_some(),
+            "file_merkle should be populated for a non-empty .md file"
+        );
         assert_eq!(
             root_a, root_b,
             "identical text with different internal whitespace must yield the same Merkle root"
@@ -2231,15 +2280,18 @@ mod tests {
         use std::path::Path;
 
         let content_before = "# Notes\n\nSee [[Alpha]] for details.\n";
-        let content_after  = "# Notes\n\nSee [[Beta]] for details.\n";
+        let content_after = "# Notes\n\nSee [[Beta]] for details.\n";
 
         let pf_before = parse_file(Path::new("note.md"), content_before, "note");
-        let pf_after  = parse_file(Path::new("note.md"), content_after,  "note");
+        let pf_after = parse_file(Path::new("note.md"), content_after, "note");
 
         let root_before = pf_before.file_merkle.as_ref().map(|m| m.root_hash);
-        let root_after  = pf_after.file_merkle.as_ref().map(|m| m.root_hash);
+        let root_after = pf_after.file_merkle.as_ref().map(|m| m.root_hash);
 
-        assert!(root_before.is_some(), "file with content must have a Merkle root");
+        assert!(
+            root_before.is_some(),
+            "file with content must have a Merkle root"
+        );
         assert_ne!(
             root_before, root_after,
             "changing a wikilink target must alter the file-level Merkle root"
@@ -2260,7 +2312,7 @@ mod tests {
         let spl = compute_spl_hashes(content);
 
         assert_ne!(spl.content_hash, [0u8; 32], "content_hash must be non-zero");
-        assert_ne!(spl.ast_hash,     [0u8; 32], "ast_hash must be non-zero");
+        assert_ne!(spl.ast_hash, [0u8; 32], "ast_hash must be non-zero");
     }
 
     /// TEST-039: Whitespace-only reformatting does **not** change `content_hash`
@@ -2268,15 +2320,14 @@ mod tests {
     #[test]
     fn test039_spl_reformat_preserves_content_hash() {
         // Compact and reformatted versions of the same two SPL statements.
-        let compact     = "(given bird)\n(normally r-bird-flies bird flies)";
+        let compact = "(given bird)\n(normally r-bird-flies bird flies)";
         let reformatted = "(given   bird)\n\n(normally   r-bird-flies   bird   flies)";
 
-        let h_compact     = compute_spl_hashes(compact);
+        let h_compact = compute_spl_hashes(compact);
         let h_reformatted = compute_spl_hashes(reformatted);
 
         assert_eq!(
-            h_compact.content_hash,
-            h_reformatted.content_hash,
+            h_compact.content_hash, h_reformatted.content_hash,
             "content_hash must be identical for whitespace-equivalent SPL blocks"
         );
     }
@@ -2288,15 +2339,14 @@ mod tests {
     #[test]
     fn test039_spl_reformat_preserves_ast_hash_reason() {
         // Same statements, different whitespace — canonical AST must be identical.
-        let compact     = "(given bird)\n(normally r-bird-flies bird flies)";
+        let compact = "(given bird)\n(normally r-bird-flies bird flies)";
         let reformatted = "(given   bird)\n\n(normally   r-bird-flies   bird   flies)";
 
-        let h_compact     = compute_spl_hashes(compact);
+        let h_compact = compute_spl_hashes(compact);
         let h_reformatted = compute_spl_hashes(reformatted);
 
         assert_eq!(
-            h_compact.ast_hash,
-            h_reformatted.ast_hash,
+            h_compact.ast_hash, h_reformatted.ast_hash,
             "ast_hash must be identical for whitespace-equivalent SPL blocks"
         );
     }
@@ -2323,9 +2373,10 @@ mod tests {
 
         let md_content = format!("# Notes\n\n```spl\n{invalid_spl}\n```\n");
         let pf = parse_file(Path::new("note.md"), &md_content, "note");
-        let has_sentinel_diag = pf.diagnostics.iter().any(|d| {
-            d.message.contains("SPL parse failed") || d.message.contains("sentinel")
-        });
+        let has_sentinel_diag = pf
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("SPL parse failed") || d.message.contains("sentinel"));
         assert!(
             has_sentinel_diag,
             "parse_file must emit a diagnostic for SPL blocks with sentinel ast_hash; \

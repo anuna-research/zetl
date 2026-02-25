@@ -28,10 +28,7 @@ use crate::simhash::SimHashIndex;
 ///
 /// Raw mode is enabled only during the keypress read and is always restored
 /// before returning, so the caller need not manage terminal state.
-pub fn fuzzy_suggestion_prompt(
-    query: &str,
-    pages: &[(String, String)],
-) -> Result<Option<String>> {
+pub fn fuzzy_suggestion_prompt(query: &str, pages: &[(String, String)]) -> Result<Option<String>> {
     if pages.is_empty() {
         return Ok(None);
     }

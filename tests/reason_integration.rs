@@ -1811,7 +1811,9 @@ fn test_038a_provenance_grounding_fields_present() {
                 grounding.is_object(),
                 "each proof source must have a grounding object"
             );
-            let gt = grounding["type"].as_str().expect("grounding.type must be string");
+            let gt = grounding["type"]
+                .as_str()
+                .expect("grounding.type must be string");
             assert!(
                 gt == "section" || gt == "explicit",
                 "grounding.type must be 'section' or 'explicit', got {gt}"
@@ -1873,7 +1875,10 @@ fn test_038c_provenance_grounding_fresh_true_unchanged() {
             .iter()
             .any(|ps| ps["grounding"]["fresh"] == true)
     });
-    assert!(any_fresh, "at least one source should be fresh=true when vault is unchanged");
+    assert!(
+        any_fresh,
+        "at least one source should be fresh=true when vault is unchanged"
+    );
 }
 
 /// TEST-038d: Grounding is fresh=false when section prose changes after theory build.
@@ -1932,8 +1937,7 @@ An extra paragraph has been added here to change the section grounding hash.
             .unwrap_or(&vec![])
             .iter()
             .find(|ps| {
-                ps["page"].as_str() == Some("Bird Facts")
-                    && ps["grounding"]["fresh"] == false
+                ps["page"].as_str() == Some("Bird Facts") && ps["grounding"]["fresh"] == false
             })
             .cloned()
     });
@@ -2034,7 +2038,9 @@ This extra paragraph changes the Section B grounding hash without moving the SPL
     check_cmd.arg("check").arg("--drift");
     let json = run_json(&mut check_cmd);
 
-    let drift = json["drift_diagnostics"].as_array().expect("drift_diagnostics");
+    let drift = json["drift_diagnostics"]
+        .as_array()
+        .expect("drift_diagnostics");
 
     // Section A SPL must NOT drift.
     let section_a_drifts = drift.iter().any(|d| {
@@ -2100,7 +2106,10 @@ This section has no SPL.
     // Run provenance to inspect the grounding metadata.
     let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     prov_cmd.arg("-d").arg(dir.path().as_os_str());
-    prov_cmd.arg("reason").arg("provenance").arg("preamble-result");
+    prov_cmd
+        .arg("reason")
+        .arg("provenance")
+        .arg("preamble-result");
     let json = run_json(&mut prov_cmd);
 
     let conclusions = json["conclusions"].as_array().expect("conclusions");
@@ -2211,7 +2220,9 @@ Prose under the subsection provides H2-scoped context.
     check_cmd.arg("check").arg("--drift");
     let json = run_json(&mut check_cmd);
 
-    let drift = json["drift_diagnostics"].as_array().expect("drift_diagnostics");
+    let drift = json["drift_diagnostics"]
+        .as_array()
+        .expect("drift_diagnostics");
 
     // Top-level SPL MUST drift (its section prose changed).
     let top_drifts = drift.iter().any(|d| {
@@ -2282,7 +2293,10 @@ This paragraph provides the empirical basis for the theory. ^evidence-block
     // Run provenance and verify explicit grounding.
     let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     prov_cmd.arg("-d").arg(dir.path().as_os_str());
-    prov_cmd.arg("reason").arg("provenance").arg("theory-result");
+    prov_cmd
+        .arg("reason")
+        .arg("provenance")
+        .arg("theory-result");
     let json = run_json(&mut prov_cmd);
 
     let conclusions = json["conclusions"].as_array().expect("conclusions");
@@ -2313,10 +2327,7 @@ This paragraph provides the empirical basis for the theory. ^evidence-block
             .any(|ps| {
                 ps["grounding"]["source_refs"]
                     .as_array()
-                    .map(|refs| {
-                        refs.iter()
-                            .any(|r| r.as_str() == Some("^evidence-block"))
-                    })
+                    .map(|refs| refs.iter().any(|r| r.as_str() == Some("^evidence-block")))
                     .unwrap_or(false)
             })
     });
@@ -2533,9 +2544,7 @@ fn test_043d_broken_block_id_error() {
     );
 
     // Run check --spl.  The broken ^block-id should produce a spl_diagnostics error.
-    let (json, _status) = run_json_any(
-        zetl_cmd(dir.path()).arg("check").arg("--spl"),
-    );
+    let (json, _status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--spl"));
 
     let spl_diags = json["spl_diagnostics"].as_array().expect("spl_diagnostics");
 
@@ -2583,9 +2592,7 @@ fn test_043e_broken_cross_file_page_error() {
 ",
     );
 
-    let (json, _status) = run_json_any(
-        zetl_cmd(dir.path()).arg("check").arg("--spl"),
-    );
+    let (json, _status) = run_json_any(zetl_cmd(dir.path()).arg("check").arg("--spl"));
 
     let spl_diags = json["spl_diagnostics"].as_array().expect("spl_diagnostics");
 
@@ -2661,25 +2668,27 @@ Additional evidence has been added after the SPL, changing the grounding hash.
     check_cmd.arg("check").arg("--drift");
     let json = run_json(&mut check_cmd);
 
-    let drift = json["drift_diagnostics"].as_array().expect("drift_diagnostics");
+    let drift = json["drift_diagnostics"]
+        .as_array()
+        .expect("drift_diagnostics");
     assert!(
         !drift.is_empty(),
         "editing section prose should produce at least one drift diagnostic"
     );
 
     // The drift must be a SectionDrift for the Background section.
-    let has_section_drift = drift.iter().any(|d| {
-        d["drift_type"]["type"].as_str() == Some("SectionDrift")
-    });
+    let has_section_drift = drift
+        .iter()
+        .any(|d| d["drift_type"]["type"].as_str() == Some("SectionDrift"));
     assert!(
         has_section_drift,
         "drift_diagnostics must contain SectionDrift; diagnostics: {drift:?}"
     );
 
     // Severity must be Warning (heading + para boundary is non-SPL).
-    let has_warning = drift.iter().any(|d| {
-        d["severity"].as_str() == Some("Warning")
-    });
+    let has_warning = drift
+        .iter()
+        .any(|d| d["severity"].as_str() == Some("Warning"));
     assert!(
         has_warning,
         "at least one drift diagnostic should have Warning severity; diagnostics: {drift:?}"
@@ -2689,10 +2698,7 @@ Additional evidence has been added after the SPL, changing the grounding hash.
     let drift_warnings = json["summary"]["drift_warnings"]
         .as_u64()
         .expect("drift_warnings in summary");
-    assert!(
-        drift_warnings >= 1,
-        "summary.drift_warnings must be >= 1"
-    );
+    assert!(drift_warnings >= 1, "summary.drift_warnings must be >= 1");
 }
 
 /// TEST-044b: Explicit grounding drift is detectable via provenance freshness.
@@ -2760,7 +2766,10 @@ CHANGED theory context line — grounding hash is now different.
     // Provenance must show fresh=false with the explicit-grounding warning.
     let mut prov_cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     prov_cmd.arg("-d").arg(dir.path().as_os_str());
-    prov_cmd.arg("reason").arg("provenance").arg("explicit-result");
+    prov_cmd
+        .arg("reason")
+        .arg("provenance")
+        .arg("explicit-result");
     let json = run_json(&mut prov_cmd);
 
     let conclusions = json["conclusions"].as_array().expect("conclusions");
@@ -2775,10 +2784,7 @@ CHANGED theory context line — grounding hash is now different.
             .as_array()
             .unwrap_or(&vec![])
             .iter()
-            .find(|ps| {
-                ps["grounding"]["type"] == "explicit"
-                    && ps["grounding"]["fresh"] == false
-            })
+            .find(|ps| ps["grounding"]["type"] == "explicit" && ps["grounding"]["fresh"] == false)
             .cloned()
     });
 
@@ -2788,14 +2794,11 @@ CHANGED theory context line — grounding hash is now different.
          conclusions: {conclusions:?}"
     );
 
-    let warning_msg = stale_explicit
-        .as_ref()
-        .unwrap()["grounding"]["warning"]
+    let warning_msg = stale_explicit.as_ref().unwrap()["grounding"]["warning"]
         .as_str()
         .unwrap_or("");
     assert_eq!(
-        warning_msg,
-        "Source content changed since theory was built",
+        warning_msg, "Source content changed since theory was built",
         "explicit grounding warning must use the explicit-specific message"
     );
 }
@@ -2852,7 +2855,9 @@ Stable section prose that will not be modified.
     check_cmd.arg("check").arg("--drift");
     let json = run_json(&mut check_cmd);
 
-    let drift = json["drift_diagnostics"].as_array().expect("drift_diagnostics");
+    let drift = json["drift_diagnostics"]
+        .as_array()
+        .expect("drift_diagnostics");
 
     // The SPL AST changed → no SectionDrift should be reported.
     let section_drifts: Vec<_> = drift
@@ -2901,7 +2906,9 @@ This content does not change.
     check_cmd.arg("check").arg("--drift");
     let json = run_json(&mut check_cmd);
 
-    let drift = json["drift_diagnostics"].as_array().expect("drift_diagnostics");
+    let drift = json["drift_diagnostics"]
+        .as_array()
+        .expect("drift_diagnostics");
     assert!(
         drift.is_empty(),
         "no drift expected when nothing changed; diagnostics: {drift:?}"
@@ -3154,8 +3161,7 @@ An additional sentence was added after the SPL to change the section grounding h
         .as_str()
         .unwrap_or("");
     assert_eq!(
-        warning,
-        "Section prose changed since theory was built",
+        warning, "Section prose changed since theory was built",
         "stale section grounding must carry the expected warning message"
     );
 }

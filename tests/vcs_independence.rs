@@ -146,8 +146,14 @@ fn test_050_1a_index_no_git() {
     let json = run_json(zetl_cmd(dir.path()).arg("index"));
 
     // Output conforms to the IndexResult schema; no git fields present.
-    assert!(json["files_scanned"].is_number(), "files_scanned must be present");
-    assert!(json["links_found"].is_number(), "links_found must be present");
+    assert!(
+        json["files_scanned"].is_number(),
+        "files_scanned must be present"
+    );
+    assert!(
+        json["links_found"].is_number(),
+        "links_found must be present"
+    );
     assert!(json["dead_links"].is_number(), "dead_links must be present");
     assert!(
         json.get("git_commit").is_none(),
@@ -208,7 +214,10 @@ fn test_050_1d_reason_status_no_git() {
     let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("status"));
 
     assert!(json["theory"].is_object(), "theory summary must be present");
-    assert!(json["conclusions"].is_array(), "conclusions must be present");
+    assert!(
+        json["conclusions"].is_array(),
+        "conclusions must be present"
+    );
     // reason status output must not expose git fields
     assert!(
         json.get("git_commit").is_none(),
@@ -227,12 +236,14 @@ fn test_050_1e_reason_provenance_git_null_no_git() {
     let dir = TempDir::new().expect("create temp dir");
     build_vcs_vault(dir.path());
 
-    let json = run_json(zetl_cmd(dir.path()).arg("reason").arg("provenance").arg("flies"));
-
-    assert_eq!(
-        json["literal"], "flies",
-        "provenance literal must match"
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("reason")
+            .arg("provenance")
+            .arg("flies"),
     );
+
+    assert_eq!(json["literal"], "flies", "provenance literal must match");
     // git fields must exist as JSON keys and be null outside a git repo
     assert_eq!(
         json["git_commit"],
@@ -284,9 +295,9 @@ fn test_050_2_git_metadata_optional_enrichment() {
     );
 
     // git_commit should be a non-null 40-char hex string.
-    let commit = json_with_git["git_commit"].as_str().expect(
-        "git_commit must be a string inside a git repo"
-    );
+    let commit = json_with_git["git_commit"]
+        .as_str()
+        .expect("git_commit must be a string inside a git repo");
     assert_eq!(
         commit.len(),
         40,
@@ -333,18 +344,15 @@ fn test_050_2_git_metadata_optional_enrichment() {
 
     // All other provenance fields must be identical (VCS-independence).
     assert_eq!(
-        json_with_git["literal"],
-        json_without_git["literal"],
+        json_with_git["literal"], json_without_git["literal"],
         "literal must be identical with and without git"
     );
     assert_eq!(
-        json_with_git["conclusions"],
-        json_without_git["conclusions"],
+        json_with_git["conclusions"], json_without_git["conclusions"],
         "conclusions must be identical with and without git"
     );
     assert_eq!(
-        json_with_git["source_pages"],
-        json_without_git["source_pages"],
+        json_with_git["source_pages"], json_without_git["source_pages"],
         "source_pages must be identical with and without git"
     );
 }
@@ -422,7 +430,9 @@ fn test_050_3a_index_cache_valid_after_git_removal() {
 
     // First index: WITH cache (populates .zetl/index.json).
     let json1 = run_json(zetl_cmd_cached(dir.path()).arg("index"));
-    let files1 = json1["files_scanned"].as_u64().expect("files_scanned numeric");
+    let files1 = json1["files_scanned"]
+        .as_u64()
+        .expect("files_scanned numeric");
 
     // Remove .git — content files are unchanged.
     fs::remove_dir_all(dir.path().join(".git")).expect("remove .git");
@@ -430,7 +440,9 @@ fn test_050_3a_index_cache_valid_after_git_removal() {
     // Second index: WITH cache; files are unchanged so cache should still be
     // valid (mtime + content hash match).
     let json2 = run_json(zetl_cmd_cached(dir.path()).arg("index"));
-    let files2 = json2["files_scanned"].as_u64().expect("files_scanned numeric");
+    let files2 = json2["files_scanned"]
+        .as_u64()
+        .expect("files_scanned numeric");
 
     // Same file count — no phantom re-indexing due to VCS removal.
     assert_eq!(

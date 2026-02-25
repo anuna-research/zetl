@@ -243,8 +243,13 @@ pub struct DriftDiagnostic {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum DriftType {
-    SectionDrift { section_heading: String },
-    ExplicitDrift { construct: String, source_ref: String },
+    SectionDrift {
+        section_heading: String,
+    },
+    ExplicitDrift {
+        construct: String,
+        source_ref: String,
+    },
 }
 
 /// Severity level for a drift diagnostic.

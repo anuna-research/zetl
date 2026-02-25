@@ -7,14 +7,18 @@ use clap::Parser;
 use comfy_table::{Cell, Table};
 use serde::Serialize;
 
-use zetl::cache::{files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache};
+use zetl::cache::{
+    files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache,
+};
 use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, OutputFormat};
+use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::graph::LinkGraph;
-use zetl::merkle::{build_vault_hash_index, resolve_hash_prefix, validate_source_refs, HashResolutionResult};
+use zetl::merkle::{
+    build_vault_hash_index, resolve_hash_prefix, validate_source_refs, HashResolutionResult,
+};
 use zetl::scanner::{resolve_page_name, scan_vault};
 use zetl::search::{search_vault, SearchConfig};
 use zetl::simhash::SimHashIndex;
-use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, ParsedFile};
 
 // ── Common pipeline ────────────────────────────────────────────────────────
@@ -68,17 +72,15 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
     // Incremental re-parse: two-tier invalidation (REQ-039, ADR-009).
     let (files, scan_stats) = if let Some(ref cached_map) = cached {
         // Build current file list with freshly computed Merkle roots for Tier 2 comparison.
-        let current_files: Vec<(PathBuf, std::time::SystemTime, Option<ContentHash>)> =
-            all_scanned
-                .iter()
-                .map(|f| {
-                    let fresh_root = f.file_merkle.as_ref().map(|fm| fm.root_hash);
-                    (f.path.clone(), f.mtime, fresh_root)
-                })
-                .collect();
+        let current_files: Vec<(PathBuf, std::time::SystemTime, Option<ContentHash>)> = all_scanned
+            .iter()
+            .map(|f| {
+                let fresh_root = f.file_merkle.as_ref().map(|fm| fm.root_hash);
+                (f.path.clone(), f.mtime, fresh_root)
+            })
+            .collect();
 
-        let (full_reparse, content_unchanged) =
-            files_needing_reparse(cached_map, &current_files);
+        let (full_reparse, content_unchanged) = files_needing_reparse(cached_map, &current_files);
         let full_reparse_set: HashSet<PathBuf> = full_reparse.into_iter().collect();
         let content_unchanged_set: HashSet<PathBuf> = content_unchanged.into_iter().collect();
 
@@ -89,7 +91,9 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
             .filter(|p| cached_map.contains_key(*p))
             .count();
         let tier1_misses = tier2_hits + tier2_misses;
-        let tier1_hits = all_scanned.len().saturating_sub(full_reparse_set.len() + tier2_hits);
+        let tier1_hits = all_scanned
+            .len()
+            .saturating_sub(full_reparse_set.len() + tier2_hits);
 
         // Merge:
         //   full reparse    → use freshly scanned ParsedFile (links/SPL re-extracted).
@@ -127,17 +131,20 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
             .filter(|l| l.spl_hashes.is_some())
             .count();
 
-        (merged, ScanStats {
-            tier1_hits,
-            tier1_misses,
-            tier2_hits,
-            tier2_misses,
-            files_hashed,
-            total_leaf_nodes,
-            spl_leaves_dual_hash,
-            blake3_hashing_ms: scan_elapsed_ms,
-            section_detection_ms: scan_elapsed_ms,
-        })
+        (
+            merged,
+            ScanStats {
+                tier1_hits,
+                tier1_misses,
+                tier2_hits,
+                tier2_misses,
+                files_hashed,
+                total_leaf_nodes,
+                spl_leaves_dual_hash,
+                blake3_hashing_ms: scan_elapsed_ms,
+                section_detection_ms: scan_elapsed_ms,
+            },
+        )
     } else {
         let total_leaf_nodes: usize = all_scanned.iter().map(|f| f.merkle_leaves.len()).sum();
         let spl_leaves_dual_hash: usize = all_scanned
@@ -323,11 +330,17 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         let s = &pipeline.scan_stats;
         eprintln!("files hashed: {}", s.files_hashed);
         eprintln!("files skipped (mtime hit): {}", s.tier1_hits);
-        eprintln!("files with content-hash match (touch hit): {}", s.tier2_hits);
+        eprintln!(
+            "files with content-hash match (touch hit): {}",
+            s.tier2_hits
+        );
         eprintln!("total leaf nodes: {}", s.total_leaf_nodes);
         eprintln!("SPL leaves with dual hashing: {}", s.spl_leaves_dual_hash);
         eprintln!("BLAKE3 hashing time: {}ms", s.blake3_hashing_ms);
-        eprintln!("section detection and grounding hash time: {}ms", s.section_detection_ms);
+        eprintln!(
+            "section detection and grounding hash time: {}ms",
+            s.section_detection_ms
+        );
         eprintln!("tier1_hits: {}", s.tier1_hits);
         eprintln!("tier1_misses: {}", s.tier1_misses);
         eprintln!("tier2_hits: {}", s.tier2_hits);
@@ -778,11 +791,8 @@ fn cmd_check(
     // diagnostics are requested (show_all or show_spl).
     if show_all || show_spl {
         let vault_hash_index = build_vault_hash_index(&pipeline.files);
-        let source_errors = validate_source_refs(
-            &pipeline.files,
-            &pipeline.file_index,
-            &vault_hash_index,
-        );
+        let source_errors =
+            validate_source_refs(&pipeline.files, &pipeline.file_index, &vault_hash_index);
         spl_diagnostics.extend(source_errors);
     }
 
@@ -802,8 +812,7 @@ fn cmd_check(
                     .iter()
                     .filter_map(|f| f.file_merkle.as_ref().map(|fm| (f, fm)))
                     .flat_map(|(f, fm)| {
-                        let mut diags =
-                            detect_section_drift(&f.path, fm, &f.merkle_leaves, theory);
+                        let mut diags = detect_section_drift(&f.path, fm, &f.merkle_leaves, theory);
                         diags.extend(detect_explicit_drift(
                             &f.path,
                             fm,
@@ -1208,7 +1217,10 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
                 Cell::new("Unique targets"),
                 Cell::new(output.graph.unique_targets),
             ]);
-            table.add_row(vec![Cell::new("Dead links"), Cell::new(output.graph.dead_links)]);
+            table.add_row(vec![
+                Cell::new("Dead links"),
+                Cell::new(output.graph.dead_links),
+            ]);
             table.add_row(vec![Cell::new("Orphans"), Cell::new(output.graph.orphans)]);
             table.add_row(vec![
                 Cell::new("Connected components"),
@@ -1443,7 +1455,9 @@ fn cmd_blocks(
     }
     if page.is_none() && resolve.is_none() {
         match cli.format {
-            OutputFormat::Json => exit_json_error("Either a page name or --resolve <HASH> is required", 2),
+            OutputFormat::Json => {
+                exit_json_error("Either a page name or --resolve <HASH> is required", 2)
+            }
             OutputFormat::Table => {
                 eprintln!("Error: Either a page name or --resolve <HASH> is required");
                 std::process::exit(2);
@@ -1624,7 +1638,10 @@ fn cmd_blocks(
         match cli.format {
             OutputFormat::Json => print_json(&output)?,
             OutputFormat::Table => {
-                println!("Blocks for '{}' ({} blocks):", output.page, output.block_count);
+                println!(
+                    "Blocks for '{}' ({} blocks):",
+                    output.page, output.block_count
+                );
                 if output.block_count == 0 {
                     println!("  (no blocks match filter)");
                 } else {
@@ -1749,7 +1766,10 @@ fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
 
     // ── §3-6 Resolution logic ────────────────────────────────────────────────
     match resolve_hash_prefix(hash_prefix, &index) {
-        HashResolutionResult::Found { full_hash, locations } => {
+        HashResolutionResult::Found {
+            full_hash,
+            locations,
+        } => {
             if locations.len() == 1 {
                 // §6 Single location — standard CON-020 resolve success JSON
                 let loc = &locations[0];
@@ -2185,14 +2205,20 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
     // Always load the pipeline — needed for the page picker even when no <page> is given.
     let pipeline = prefetched.map(Ok).unwrap_or_else(|| run_pipeline(cli))?;
 
-    let page_set: HashSet<String> =
-        pipeline.file_index.iter().map(|(name, _)| name.clone()).collect();
+    let page_set: HashSet<String> = pipeline
+        .file_index
+        .iter()
+        .map(|(name, _)| name.clone())
+        .collect();
 
     // Build backlink map: target_page → [(citing_page, line_number)] (REQ-070).
     let mut backlink_map: HashMap<String, Vec<(String, u32)>> = HashMap::new();
     for (name, _) in &pipeline.file_index {
         for bl in pipeline.graph.backlinks(name) {
-            backlink_map.entry(name.clone()).or_default().push((bl.source, bl.line));
+            backlink_map
+                .entry(name.clone())
+                .or_default()
+                .push((bl.source, bl.line));
         }
     }
 
@@ -4536,8 +4562,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
                 .proof_sources
                 .iter()
                 .map(|ps| {
-                    let grounding =
-                        compute_grounding(ps, &pipeline.files, theory_cache.as_ref());
+                    let grounding = compute_grounding(ps, &pipeline.files, theory_cache.as_ref());
                     EnrichedProofSource {
                         page: ps.page.clone(),
                         path: ps.path.clone(),
@@ -4700,7 +4725,10 @@ fn get_current_grounding_hash(
     spl_start_line: u32,
 ) -> Option<zetl::types::ContentHash> {
     let fm = file.file_merkle.as_ref()?;
-    let spl_leaf = fm.spl_leaves.iter().find(|l| l.start_line == spl_start_line)?;
+    let spl_leaf = fm
+        .spl_leaves
+        .iter()
+        .find(|l| l.start_line == spl_start_line)?;
     let section = fm.sections.get(spl_leaf.section_index)?;
     Some(section.grounding_hash)
 }
@@ -4736,9 +4764,11 @@ fn compute_grounding(
     };
 
     // Find the SplBlock whose fence range contains the rule/fact line.
-    let Some(spl_block) = file.spl_blocks.iter().find(|b| {
-        b.start_line <= proof_source.line && proof_source.line <= b.end_line
-    }) else {
+    let Some(spl_block) = file
+        .spl_blocks
+        .iter()
+        .find(|b| b.start_line <= proof_source.line && proof_source.line <= b.end_line)
+    else {
         return ProvenanceGrounding {
             grounding_type: "section".to_string(),
             section_heading: None,
@@ -4749,7 +4779,11 @@ fn compute_grounding(
     };
 
     // Build the theory cache key used in `build_spl_block_cache`.
-    let key = format!("{}:{}", spl_block.source_file.display(), spl_block.start_line);
+    let key = format!(
+        "{}:{}",
+        spl_block.source_file.display(),
+        spl_block.start_line
+    );
 
     let Some(tc) = theory_cache else {
         // No theory cache available — cannot determine freshness.
@@ -4789,7 +4823,11 @@ fn compute_grounding(
             .iter()
             .flat_map(|eg| eg.source_refs.iter().cloned())
             .collect();
-        if refs.is_empty() { None } else { Some(refs) }
+        if refs.is_empty() {
+            None
+        } else {
+            Some(refs)
+        }
     } else {
         None
     };
@@ -5873,9 +5911,11 @@ fn main() -> anyhow::Result<()> {
         } => cmd_blocks(&cli, page.as_deref(), block_type, resolve.as_deref()),
         Command::Export => cmd_export(&cli),
         Command::Tui => cmd_tui(&cli),
-        Command::View { page, context_lines, main_width } => {
-            cmd_view(&cli, page.as_deref(), *context_lines, *main_width)
-        }
+        Command::View {
+            page,
+            context_lines,
+            main_width,
+        } => cmd_view(&cli, page.as_deref(), *context_lines, *main_width),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

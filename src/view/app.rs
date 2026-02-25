@@ -72,7 +72,11 @@ pub struct PickerState {
 
 impl PickerState {
     fn new() -> Self {
-        PickerState { query: String::new(), selected: 0, list_scroll: 0 }
+        PickerState {
+            query: String::new(),
+            selected: 0,
+            list_scroll: 0,
+        }
     }
 
     /// Return page titles that match the current query (case-insensitive substring).
@@ -173,18 +177,15 @@ pub struct ViewApp {
     pub should_quit: bool,
 
     // ── Backlinks ─────────────────────────────────────────────────────────
-
     /// Backlink data: target_page_title → [(citing_page_title, line_number)].
     /// Populated at startup from the link graph; used in Back/Both context mode.
     pub backlink_map: HashMap<String, Vec<(String, u32)>>,
 
     // ── Excerpt cache ─────────────────────────────────────────────────────
-
     /// Cache of page excerpts: page_title → first 20 lines.
     pub excerpt_cache: HashMap<String, Vec<String>>,
 
     // ── Bridge rendering positions ────────────────────────────────────────
-
     /// Anchor glyph terminal rows: ordinal → absolute terminal row.
     /// Populated in `draw_main_pane`, used by `draw_bridge_col`.
     pub anchor_rows: HashMap<usize, u16>,
@@ -194,12 +195,10 @@ pub struct ViewApp {
     pub card_rows: HashMap<usize, u16>,
 
     // ── Transient status ──────────────────────────────────────────────────
-
     /// Transient status bar message (e.g., "dead link" warning).
     pub status_message: Option<String>,
 
     // ── Debug render (OBS-012) ────────────────────────────────────────────
-
     /// Application start time for ZETL_DEBUG_RENDER timing.
     pub start_time: Instant,
 
@@ -210,7 +209,6 @@ pub struct ViewApp {
     pub pages_visited: usize,
 
     // ── Computed layout rects (refreshed every draw call) ─────────────────
-
     /// Rect of the main note pane (left column).
     pub main_pane: Rect,
 
@@ -250,12 +248,15 @@ impl ViewApp {
         let (annotated_lines, link_map) =
             build_annotated_lines(&content_lines, &page_set, color_mode);
 
-        let debug_render =
-            std::env::var_os("ZETL_DEBUG_RENDER").is_some_and(|v| v != "0");
+        let debug_render = std::env::var_os("ZETL_DEBUG_RENDER").is_some_and(|v| v != "0");
 
         // Open the picker when no page was specified.
         let show_picker = current_page.is_empty() || current_page == "(no page selected)";
-        let picker_state = if show_picker { Some(PickerState::new()) } else { None };
+        let picker_state = if show_picker {
+            Some(PickerState::new())
+        } else {
+            None
+        };
 
         Self {
             current_page,
@@ -352,7 +353,7 @@ impl ViewApp {
 
         if !self.single_pane {
             self.draw_context_pane(frame); // populates card_rows
-            self.draw_bridge_col(frame);   // uses anchor_rows + card_rows
+            self.draw_bridge_col(frame); // uses anchor_rows + card_rows
         }
 
         // ── Step 4: status bar and overlays ──────────────────────────────
@@ -386,7 +387,10 @@ impl ViewApp {
 
         self.viewport_height = content_area.height as usize;
 
-        let max_scroll = self.content_lines.len().saturating_sub(self.viewport_height);
+        let max_scroll = self
+            .content_lines
+            .len()
+            .saturating_sub(self.viewport_height);
         self.scroll_offset = self.scroll_offset.min(max_scroll);
 
         // ── Populate anchor_rows ──────────────────────────────────────────
@@ -444,8 +448,15 @@ impl ViewApp {
         };
 
         let fwd_h = area.height.saturating_sub(back_section_h);
-        let fwd_area = Rect { height: fwd_h, ..area };
-        let back_area = Rect { y: area.y + fwd_h, height: back_section_h, ..area };
+        let fwd_area = Rect {
+            height: fwd_h,
+            ..area
+        };
+        let back_area = Rect {
+            y: area.y + fwd_h,
+            height: back_section_h,
+            ..area
+        };
 
         let cards = self.compute_forward_card_data(fwd_h);
         self.render_cards(frame, fwd_area, &cards);
@@ -471,7 +482,11 @@ impl ViewApp {
 
         // Section header doubles as a visual separator from the cards above.
         lines.push(Line::styled(
-            format!(" ← {} backlink{} ", entries.len(), if entries.len() == 1 { "" } else { "s" }),
+            format!(
+                " ← {} backlink{} ",
+                entries.len(),
+                if entries.len() == 1 { "" } else { "s" }
+            ),
             Style::default().bold().reversed(),
         ));
 
@@ -580,8 +595,12 @@ impl ViewApp {
             }
             let h = card.card_height.min(y_cursor);
             y_cursor = y_cursor.saturating_sub(h);
-            let card_area =
-                Rect { x: area.x, y: area.y + y_cursor, width: area.width, height: h };
+            let card_area = Rect {
+                x: area.x,
+                y: area.y + y_cursor,
+                width: area.width,
+                height: h,
+            };
             self.card_rows.insert(card.ordinal, card_area.y);
             self.render_normal_card(frame, card_area, card, is_no_color);
             rendered_above += 1;
@@ -590,13 +609,22 @@ impl ViewApp {
             frame.render_widget(
                 Paragraph::new(format!("↑ {} more", above.len() - rendered_above))
                     .style(Style::default().dim()),
-                Rect { x: area.x, y: area.y, width: area.width, height: 1 },
+                Rect {
+                    x: area.x,
+                    y: area.y,
+                    width: area.width,
+                    height: 1,
+                },
             );
         }
 
         // ── Focused card (centred) ─────────────────────────────────────────
-        let focused_area =
-            Rect { x: area.x, y: area.y + center_y, width: area.width, height: focused_h };
+        let focused_area = Rect {
+            x: area.x,
+            y: area.y + center_y,
+            width: area.width,
+            height: focused_h,
+        };
         self.card_rows.insert(cards[fi].ordinal, focused_area.y);
         self.render_focused_card(frame, focused_area, &cards[fi], is_no_color);
 
@@ -610,8 +638,12 @@ impl ViewApp {
                 break;
             }
             let h = card.card_height.min(remaining);
-            let card_area =
-                Rect { x: area.x, y: area.y + y_below, width: area.width, height: h };
+            let card_area = Rect {
+                x: area.x,
+                y: area.y + y_below,
+                width: area.width,
+                height: h,
+            };
             self.card_rows.insert(card.ordinal, card_area.y);
             self.render_normal_card(frame, card_area, card, is_no_color);
             y_below += h;
@@ -624,7 +656,12 @@ impl ViewApp {
             frame.render_widget(
                 Paragraph::new(format!("↓ {} more", below.len() - rendered_below))
                     .style(Style::default().dim()),
-                Rect { x: area.x, y: area.y + area.height - 1, width: area.width, height: 1 },
+                Rect {
+                    x: area.x,
+                    y: area.y + area.height - 1,
+                    width: area.width,
+                    height: 1,
+                },
             );
         }
     }
@@ -645,8 +682,12 @@ impl ViewApp {
                 break;
             }
             let card_h = card.card_height.min(remaining);
-            let card_area =
-                Rect { x: area.x, y: area.y + y, width: area.width, height: card_h };
+            let card_area = Rect {
+                x: area.x,
+                y: area.y + y,
+                width: area.width,
+                height: card_h,
+            };
             self.card_rows.insert(card.ordinal, card_area.y);
             self.render_normal_card(frame, card_area, card, is_no_color);
             y += card_h;
@@ -659,7 +700,12 @@ impl ViewApp {
         if n_more > 0 && area.height > 0 {
             frame.render_widget(
                 Paragraph::new(format!("↓ {} more", n_more)).style(Style::default().dim()),
-                Rect { x: area.x, y: area.y + area.height - 1, width: area.width, height: 1 },
+                Rect {
+                    x: area.x,
+                    y: area.y + area.height - 1,
+                    width: area.width,
+                    height: 1,
+                },
             );
         }
     }
@@ -735,7 +781,10 @@ impl ViewApp {
         for line in &card.excerpt {
             inner_lines.push(Line::raw(line.clone()));
         }
-        frame.render_widget(Paragraph::new(inner_lines).wrap(Wrap { trim: false }), inner);
+        frame.render_widget(
+            Paragraph::new(inner_lines).wrap(Wrap { trim: false }),
+            inner,
+        );
     }
 
     // ── Bridge column ─────────────────────────────────────────────────────
@@ -761,9 +810,7 @@ impl ViewApp {
                 let midpoint = (anchor_row as u32 + card_row as u32) / 2;
                 // Convert absolute row to bridge-relative row.
                 let bridge_abs_row = midpoint as u16;
-                if bridge_abs_row < area.y
-                    || bridge_abs_row >= area.y + area.height
-                {
+                if bridge_abs_row < area.y || bridge_abs_row >= area.y + area.height {
                     continue;
                 }
                 let bridge_rel = bridge_abs_row - area.y;
@@ -794,8 +841,7 @@ impl ViewApp {
                     (c, Style::default().fg(color))
                 };
 
-                bridge_lines[bridge_rel as usize] =
-                    Line::styled(connector.to_string(), style);
+                bridge_lines[bridge_rel as usize] = Line::styled(connector.to_string(), style);
             }
         }
 
@@ -891,7 +937,8 @@ impl ViewApp {
     /// Render the interactive page picker overlay (REQ-062).
     fn draw_picker_overlay(&self, frame: &mut Frame, area: Rect) {
         let popup = centered_rect(70, 80, area);
-        let block = Block::bordered().title(" zetl view — page search (↑↓/j/k select  Enter open  Esc cancel) ");
+        let block = Block::bordered()
+            .title(" zetl view — page search (↑↓/j/k select  Enter open  Esc cancel) ");
         let inner = block.inner(popup);
         frame.render_widget(Clear, popup);
         frame.render_widget(block, popup);
@@ -900,10 +947,17 @@ impl ViewApp {
             return;
         }
 
-        let Some(picker) = &self.picker_state else { return };
+        let Some(picker) = &self.picker_state else {
+            return;
+        };
 
         // Input field at the top.
-        let input_area = Rect { x: inner.x, y: inner.y, width: inner.width, height: 1 };
+        let input_area = Rect {
+            x: inner.x,
+            y: inner.y,
+            width: inner.width,
+            height: 1,
+        };
         let query_display = format!("> {}", picker.query);
         frame.render_widget(
             Paragraph::new(query_display).style(Style::default().bold()),
@@ -914,7 +968,12 @@ impl ViewApp {
         if inner.height < 3 {
             return;
         }
-        let sep_area = Rect { x: inner.x, y: inner.y + 1, width: inner.width, height: 1 };
+        let sep_area = Rect {
+            x: inner.x,
+            y: inner.y + 1,
+            width: inner.width,
+            height: 1,
+        };
         frame.render_widget(
             Paragraph::new("─".repeat(inner.width as usize)).style(Style::default().dim()),
             sep_area,
@@ -932,15 +991,15 @@ impl ViewApp {
         let list_height = list_area.height as usize;
         let mut lines: Vec<Line<'static>> = Vec::new();
 
-        for (i, title) in
-            filtered.iter().enumerate().skip(picker.list_scroll).take(list_height)
+        for (i, title) in filtered
+            .iter()
+            .enumerate()
+            .skip(picker.list_scroll)
+            .take(list_height)
         {
             let abs_idx = i + picker.list_scroll;
             let line = if abs_idx == picker.selected {
-                Line::styled(
-                    format!("▶ {}", title),
-                    Style::default().bold().reversed(),
-                )
+                Line::styled(format!("▶ {}", title), Style::default().bold().reversed())
             } else {
                 Line::raw(format!("  {}", title))
             };
@@ -1037,10 +1096,10 @@ impl ViewApp {
             KeyCode::Char('j') | KeyCode::Down => match self.focus_state {
                 FocusState::FocusMode { focused_index } => {
                     let visible_len = self.visible_links_snapshot().len();
-                    let new_idx =
-                        (focused_index + 1).min(visible_len.saturating_sub(1));
-                    self.focus_state =
-                        FocusState::FocusMode { focused_index: new_idx };
+                    let new_idx = (focused_index + 1).min(visible_len.saturating_sub(1));
+                    self.focus_state = FocusState::FocusMode {
+                        focused_index: new_idx,
+                    };
                     self.scroll_to_focused();
                 }
                 FocusState::ScrollMode => self.scroll_down(),
@@ -1048,8 +1107,9 @@ impl ViewApp {
             KeyCode::Char('k') | KeyCode::Up => match self.focus_state {
                 FocusState::FocusMode { focused_index } => {
                     let new_idx = focused_index.saturating_sub(1);
-                    self.focus_state =
-                        FocusState::FocusMode { focused_index: new_idx };
+                    self.focus_state = FocusState::FocusMode {
+                        focused_index: new_idx,
+                    };
                     self.scroll_to_focused();
                 }
                 FocusState::ScrollMode => self.scroll_up(),
@@ -1058,8 +1118,10 @@ impl ViewApp {
                 self.scroll_offset = 0;
             }
             KeyCode::Char('G') => {
-                self.scroll_offset =
-                    self.content_lines.len().saturating_sub(self.viewport_height);
+                self.scroll_offset = self
+                    .content_lines
+                    .len()
+                    .saturating_sub(self.viewport_height);
             }
             KeyCode::Tab => {
                 self.toggle_focus();
@@ -1069,10 +1131,8 @@ impl ViewApp {
                     let visible = self.visible_links_snapshot();
                     if let Some(entry) = visible.get(focused_index) {
                         if entry.is_dead {
-                            self.status_message = Some(
-                                "dead link — run zetl index or create the page"
-                                    .to_string(),
-                            );
+                            self.status_message =
+                                Some("dead link — run zetl index or create the page".to_string());
                         } else {
                             let target = entry.page_title.clone();
                             self.navigate_to(target);
@@ -1101,9 +1161,7 @@ impl ViewApp {
         match code {
             KeyCode::Esc | KeyCode::Char('q') => {
                 // If there's a current page, return to it; otherwise quit.
-                if self.current_page.is_empty()
-                    || self.current_page == "(no page selected)"
-                {
+                if self.current_page.is_empty() || self.current_page == "(no page selected)" {
                     self.should_quit = true;
                 } else {
                     self.show_picker = false;
@@ -1142,12 +1200,10 @@ impl ViewApp {
                 }
             }
             KeyCode::Enter => {
-                let selected_title: Option<String> = self.picker_state.as_ref().and_then(
-                    |p| {
-                        let filtered = p.filtered(&self.file_index);
-                        filtered.get(p.selected).map(|s| s.to_string())
-                    },
-                );
+                let selected_title: Option<String> = self.picker_state.as_ref().and_then(|p| {
+                    let filtered = p.filtered(&self.file_index);
+                    filtered.get(p.selected).map(|s| s.to_string())
+                });
                 if let Some(title) = selected_title {
                     self.show_picker = false;
                     self.picker_state = None;
@@ -1330,49 +1386,9 @@ impl ViewApp {
             .map(|s| s.lines().take(CACHE_MAX).map(|l| l.to_string()).collect())
             .unwrap_or_default();
 
-        self.excerpt_cache.insert(page_title.to_string(), result.clone());
+        self.excerpt_cache
+            .insert(page_title.to_string(), result.clone());
         result.into_iter().take(n_lines).collect()
-    }
-
-    /// Load a backlink excerpt: the line from `citing_page` that links to `target`.
-    fn load_backlink_excerpt(
-        &mut self,
-        citing_page: &str,
-        target: &str,
-        hint_line: u32,
-    ) -> Vec<String> {
-        // Load full content (via cache).
-        let n = self.context_lines as usize;
-        let lines: Vec<String> = self
-            .file_index
-            .iter()
-            .find(|(name, _)| name == citing_page)
-            .and_then(|(_, rel)| {
-                let abs = self.vault_root.join(rel);
-                std::fs::read_to_string(abs).ok()
-            })
-            .map(|s| s.lines().map(|l| l.to_string()).collect())
-            .unwrap_or_default();
-
-        if lines.is_empty() {
-            return Vec::new();
-        }
-
-        // The hint_line is 1-based from the graph; prefer that line.
-        let pattern = format!("[[{}]]", target);
-        let candidate_start = if hint_line > 0 {
-            (hint_line as usize).saturating_sub(1).min(lines.len() - 1)
-        } else {
-            // Fall back to searching for the [[target]] pattern.
-            lines.iter().position(|l| l.contains(&pattern)).unwrap_or(0)
-        };
-
-        lines
-            .iter()
-            .skip(candidate_start)
-            .take(n)
-            .cloned()
-            .collect()
     }
 
     /// Clone `annotated_lines`, applying a highlight to the focused link's glyph span.
@@ -1410,13 +1426,11 @@ impl ViewApp {
             let plain = format!("[{}]", ord);
             let bang = format!("![{}]", ord);
             for span in line.spans.iter_mut() {
-                if span.content.as_ref() == plain.as_str()
-                    || span.content.as_ref() == bang.as_str()
+                if span.content.as_ref() == plain.as_str() || span.content.as_ref() == bang.as_str()
                 {
                     if is_no_color {
                         // Wrap with '>' and '<' markers in no-color mode (ADR-017).
-                        let new_content =
-                            format!(">{}<", span.content.as_ref());
+                        let new_content = format!(">{}<", span.content.as_ref());
                         *span = Span::raw(new_content);
                     } else {
                         span.style = span.style.reversed().bold();

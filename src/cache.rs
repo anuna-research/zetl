@@ -1,10 +1,12 @@
 use crate::merkle::{compute_spl_hashes, compute_vault_root};
 use crate::types::{ContentHash, Diagnostic, ExplicitGrounding, ParsedFile};
+#[cfg(feature = "reason")]
 use crate::vcs::get_git_metadata;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+#[cfg(any(feature = "reason", test))]
 use std::time::{Duration, UNIX_EPOCH};
 
 const CACHE_DIR: &str = ".zetl";
@@ -125,7 +127,10 @@ fn nibble(c: u8) -> Result<u8, &'static str> {
 /// a proleptic Gregorian date without requiring an external crate.
 #[cfg(any(feature = "reason", test))]
 fn format_rfc3339_utc(t: std::time::SystemTime) -> String {
-    let secs = t.duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs();
+    let secs = t
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_secs();
 
     let sec = (secs % 60) as u32;
     let min = ((secs / 60) % 60) as u32;
@@ -156,7 +161,11 @@ fn format_rfc3339_utc(t: std::time::SystemTime) -> String {
 fn vault_root_hex(files: &[ParsedFile]) -> Option<String> {
     let pairs: Vec<(&Path, ContentHash)> = files
         .iter()
-        .filter_map(|f| f.file_merkle.as_ref().map(|fm| (f.path.as_path(), fm.root_hash)))
+        .filter_map(|f| {
+            f.file_merkle
+                .as_ref()
+                .map(|fm| (f.path.as_path(), fm.root_hash))
+        })
         .collect();
     if pairs.is_empty() {
         None
@@ -538,8 +547,7 @@ fn build_spl_block_cache(
                         Some(s.heading_text.clone())
                     }
                 });
-                let section_grounding_hash =
-                    section.map(|s| s.grounding_hash).unwrap_or([0u8; 32]);
+                let section_grounding_hash = section.map(|s| s.grounding_hash).unwrap_or([0u8; 32]);
                 // Prefer freshly-extracted groundings; fall back to cached leaf data.
                 let explicit_groundings = groundings_by_block
                     .get(&key)
@@ -692,8 +700,7 @@ mod tests {
             (PathBuf::from("c.md"), t1, None),            // new file
         ];
 
-        let (mut full_reparse, content_unchanged) =
-            files_needing_reparse(&cached, &current_files);
+        let (mut full_reparse, content_unchanged) = files_needing_reparse(&cached, &current_files);
         full_reparse.sort();
 
         assert_eq!(
@@ -811,13 +818,12 @@ mod tests {
         .collect();
 
         let current_files = vec![
-            (PathBuf::from("a.md"), t2, Some(root)),          // same root → content_unchanged
-            (PathBuf::from("b.md"), t2, Some([99u8; 32])),    // different root → full reparse
-            (PathBuf::from("c.md"), t2, None),                // no root → full reparse
+            (PathBuf::from("a.md"), t2, Some(root)), // same root → content_unchanged
+            (PathBuf::from("b.md"), t2, Some([99u8; 32])), // different root → full reparse
+            (PathBuf::from("c.md"), t2, None),       // no root → full reparse
         ];
 
-        let (mut full_reparse, content_unchanged) =
-            files_needing_reparse(&cached, &current_files);
+        let (mut full_reparse, content_unchanged) = files_needing_reparse(&cached, &current_files);
         full_reparse.sort();
 
         assert_eq!(
@@ -968,7 +974,10 @@ mod tests {
         let current = make_spl_hashes(&[("a.md:5", hash)]);
         let mut spl_blocks = HashMap::new();
         spl_blocks.insert("a.md:5".to_string(), make_cached_spl_block(hash));
-        assert!(theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
+        assert!(theory_cache_valid(
+            &current,
+            &make_theory_cache_spl(spl_blocks)
+        ));
     }
 
     #[test]
@@ -978,7 +987,10 @@ mod tests {
         let current = make_spl_hashes(&[("a.md:5", hash_new)]); // AST changed
         let mut spl_blocks = HashMap::new();
         spl_blocks.insert("a.md:5".to_string(), make_cached_spl_block(hash_old));
-        assert!(!theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
+        assert!(!theory_cache_valid(
+            &current,
+            &make_theory_cache_spl(spl_blocks)
+        ));
     }
 
     #[test]
@@ -988,7 +1000,10 @@ mod tests {
         let current = make_spl_hashes(&[("a.md:5", hash), ("b.md:10", hash)]);
         let mut spl_blocks = HashMap::new();
         spl_blocks.insert("a.md:5".to_string(), make_cached_spl_block(hash));
-        assert!(!theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
+        assert!(!theory_cache_valid(
+            &current,
+            &make_theory_cache_spl(spl_blocks)
+        ));
     }
 
     #[test]
@@ -999,7 +1014,10 @@ mod tests {
         let mut spl_blocks = HashMap::new();
         spl_blocks.insert("a.md:5".to_string(), make_cached_spl_block(hash));
         spl_blocks.insert("b.md:10".to_string(), make_cached_spl_block(hash));
-        assert!(!theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
+        assert!(!theory_cache_valid(
+            &current,
+            &make_theory_cache_spl(spl_blocks)
+        ));
     }
 
     #[test]
@@ -1045,7 +1063,10 @@ mod tests {
         assert_eq!(loaded.git_commit, Some("abc123".to_string()));
         assert_eq!(loaded.git_dirty, Some(false));
 
-        let block = loaded.spl_blocks.get("a.md:5").expect("spl block should exist");
+        let block = loaded
+            .spl_blocks
+            .get("a.md:5")
+            .expect("spl block should exist");
         assert_eq!(block.ast_hash, [0xabu8; 32]);
         assert_eq!(block.content_hash, [0xcdu8; 32]);
         assert_eq!(block.section_heading, Some("Background".to_string()));
@@ -1103,7 +1124,10 @@ mod tests {
         let current = make_spl_hashes(&[("a.md:5", hash)]); // only a.md's block
         let mut spl_blocks = HashMap::new();
         spl_blocks.insert("a.md:5".to_string(), make_cached_spl_block(hash));
-        assert!(theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
+        assert!(theory_cache_valid(
+            &current,
+            &make_theory_cache_spl(spl_blocks)
+        ));
     }
 
     #[test]
@@ -1117,13 +1141,19 @@ mod tests {
             "notes/theory.md:12".to_string(),
             make_cached_spl_block(hash), // same ast_hash as current
         );
-        assert!(theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)));
+        assert!(theory_cache_valid(
+            &current,
+            &make_theory_cache_spl(spl_blocks)
+        ));
     }
 
     #[test]
     fn theory_cache_valid_empty_vault_no_spl() {
         let current: HashMap<String, ContentHash> = HashMap::new();
-        assert!(theory_cache_valid(&current, &make_theory_cache_spl(HashMap::new())));
+        assert!(theory_cache_valid(
+            &current,
+            &make_theory_cache_spl(HashMap::new())
+        ));
     }
 
     // ── collect_spl_ast_hashes tests ──────────────────────────────────────
@@ -1244,7 +1274,13 @@ mod tests {
         });
 
         let theory = Theory::new();
-        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new(), std::path::Path::new("."));
+        let cache = build_theory_cache(
+            &theory,
+            &[],
+            &[f],
+            &HashMap::new(),
+            std::path::Path::new("."),
+        );
 
         let block = cache
             .spl_blocks
@@ -1296,7 +1332,13 @@ mod tests {
         });
 
         let theory = Theory::new();
-        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new(), std::path::Path::new("."));
+        let cache = build_theory_cache(
+            &theory,
+            &[],
+            &[f],
+            &HashMap::new(),
+            std::path::Path::new("."),
+        );
 
         let block = cache
             .spl_blocks
@@ -1333,7 +1375,13 @@ mod tests {
         f.file_merkle = None; // standalone .spl has no Merkle tree
 
         let theory = Theory::new();
-        let cache = build_theory_cache(&theory, &[], &[f], &HashMap::new(), std::path::Path::new("."));
+        let cache = build_theory_cache(
+            &theory,
+            &[],
+            &[f],
+            &HashMap::new(),
+            std::path::Path::new("."),
+        );
 
         // Standalone .spl files appear in spl_blocks (tracked for cache invalidation)
         // but with null section fields (§4.7).
@@ -1346,8 +1394,7 @@ mod tests {
             "standalone .spl has no section heading"
         );
         assert_eq!(
-            block.section_grounding_hash,
-            [0u8; 32],
+            block.section_grounding_hash, [0u8; 32],
             "standalone .spl has no section grounding hash"
         );
     }
@@ -1374,8 +1421,9 @@ mod tests {
         let parsed = &files[0];
 
         // Build the cached map from that scan result.
-        let cached: HashMap<PathBuf, ParsedFile> =
-            [(parsed.path.clone(), parsed.clone())].into_iter().collect();
+        let cached: HashMap<PathBuf, ParsedFile> = [(parsed.path.clone(), parsed.clone())]
+            .into_iter()
+            .collect();
 
         // Re-present the same file with unchanged mtime and the same Merkle root.
         let fresh_root = parsed.file_merkle.as_ref().map(|fm| fm.root_hash);
@@ -1405,8 +1453,9 @@ mod tests {
         let mut cached_file = make_parsed_file_with_merkle("doc.md", t1);
         cached_file.file_merkle.as_mut().unwrap().root_hash = root;
 
-        let cached: HashMap<PathBuf, ParsedFile> =
-            [(PathBuf::from("doc.md"), cached_file)].into_iter().collect();
+        let cached: HashMap<PathBuf, ParsedFile> = [(PathBuf::from("doc.md"), cached_file)]
+            .into_iter()
+            .collect();
 
         // Same Merkle root despite newer mtime — content is byte-for-byte identical.
         let current_files = vec![(PathBuf::from("doc.md"), t2, Some(root))];
@@ -1436,8 +1485,9 @@ mod tests {
         let mut cached_file = make_parsed_file_with_merkle("report.md", t1);
         cached_file.file_merkle.as_mut().unwrap().root_hash = old_root;
 
-        let cached: HashMap<PathBuf, ParsedFile> =
-            [(PathBuf::from("report.md"), cached_file)].into_iter().collect();
+        let cached: HashMap<PathBuf, ParsedFile> = [(PathBuf::from("report.md"), cached_file)]
+            .into_iter()
+            .collect();
 
         let current_files = vec![(PathBuf::from("report.md"), t2, Some(new_root))];
 
@@ -1469,7 +1519,10 @@ mod tests {
         let current = make_spl_hashes(&[("notes/theory.md:12", ast_hash)]);
 
         let mut spl_blocks = HashMap::new();
-        spl_blocks.insert("notes/theory.md:12".to_string(), make_cached_spl_block(ast_hash));
+        spl_blocks.insert(
+            "notes/theory.md:12".to_string(),
+            make_cached_spl_block(ast_hash),
+        );
         let theory = make_theory_cache_spl(spl_blocks);
 
         assert!(
@@ -1489,11 +1542,11 @@ mod tests {
         use crate::merkle::compute_spl_hashes;
 
         // Valid SPL using spindle syntax: (normally label body head).
-        let compact     = "(given bird)\n(normally r-bird-flies bird flies)";
+        let compact = "(given bird)\n(normally r-bird-flies bird flies)";
         let reformatted = "(given   bird)\n\n(normally   r-bird-flies   bird   flies)";
 
         let ast_hash_before = compute_spl_hashes(compact).ast_hash;
-        let ast_hash_after  = compute_spl_hashes(reformatted).ast_hash;
+        let ast_hash_after = compute_spl_hashes(reformatted).ast_hash;
 
         // Sanity: the reason feature must preserve ast_hash across whitespace changes.
         assert_eq!(
@@ -1504,7 +1557,10 @@ mod tests {
         // The theory cache was built with the pre-reformat hash.
         let current = make_spl_hashes(&[("theory.md:5", ast_hash_after)]);
         let mut spl_blocks = HashMap::new();
-        spl_blocks.insert("theory.md:5".to_string(), make_cached_spl_block(ast_hash_before));
+        spl_blocks.insert(
+            "theory.md:5".to_string(),
+            make_cached_spl_block(ast_hash_before),
+        );
 
         assert!(
             theory_cache_valid(&current, &make_theory_cache_spl(spl_blocks)),
@@ -1518,7 +1574,7 @@ mod tests {
     fn test041_spl_add_fact_invalidates_theory_cache() {
         // Simulate two scans: before and after adding a new fact.
         let before_ast: ContentHash = [0x01u8; 32]; // old ast_hash
-        let after_ast:  ContentHash = [0x02u8; 32]; // new ast_hash (fact was added)
+        let after_ast: ContentHash = [0x02u8; 32]; // new ast_hash (fact was added)
 
         // Theory cache records the pre-change hash.
         let mut spl_blocks = HashMap::new();

@@ -238,9 +238,10 @@ fn resolve_target_current_hash(
 /// high-impact.  Returns [`DriftSeverity::Info`] when both boundary leaves
 /// are themselves SPL blocks.
 fn severity_for_spl(all_leaves: &[MerkleLeaf], spl_start_line: u32) -> DriftSeverity {
-    let spl_idx = match all_leaves.iter().position(|l| {
-        l.start_line == spl_start_line && matches!(l.node_type, LeafType::SplBlock)
-    }) {
+    let spl_idx = match all_leaves
+        .iter()
+        .position(|l| l.start_line == spl_start_line && matches!(l.node_type, LeafType::SplBlock))
+    {
         Some(i) => i,
         None => return DriftSeverity::Info,
     };
@@ -294,9 +295,9 @@ fn section_bounds(leaves: &[MerkleLeaf], spl_leaf_idx: usize) -> (usize, usize) 
         // Non-preamble: ends just before the next heading at the same or
         // higher structural level (lower or equal numeric level).
         let search_from = start_idx + 1;
-        match leaves[search_from..].iter().position(|l| {
-            matches!(l.node_type, LeafType::Heading { level: lv } if lv <= heading_level)
-        }) {
+        match leaves[search_from..].iter().position(
+            |l| matches!(l.node_type, LeafType::Heading { level: lv } if lv <= heading_level),
+        ) {
             Some(offset) => (search_from + offset).saturating_sub(1),
             None => leaves.len().saturating_sub(1),
         }
@@ -362,10 +363,7 @@ mod tests {
         serde_json::from_value(json).expect("TheoryCache deserialization failed")
     }
 
-    fn make_file_merkle(
-        sections: Vec<Section>,
-        spl_leaves: Vec<SplLeafCached>,
-    ) -> FileMerkle {
+    fn make_file_merkle(sections: Vec<Section>, spl_leaves: Vec<SplLeafCached>) -> FileMerkle {
         FileMerkle {
             root_hash: [0u8; 32],
             sections,
@@ -389,7 +387,11 @@ mod tests {
         }
     }
 
-    fn make_spl_leaf(start_line: u32, ast_hash: ContentHash, section_index: usize) -> SplLeafCached {
+    fn make_spl_leaf(
+        start_line: u32,
+        ast_hash: ContentHash,
+        section_index: usize,
+    ) -> SplLeafCached {
         SplLeafCached {
             start_line,
             content_hash: ast_hash,
@@ -436,7 +438,10 @@ mod tests {
         ];
         let (start, end) = section_bounds(&leaves, 2);
         assert_eq!(start, 0, "section starts at the H2");
-        assert_eq!(end, 2, "section ends at the last leaf (no terminating heading)");
+        assert_eq!(
+            end, 2,
+            "section ends at the last leaf (no terminating heading)"
+        );
     }
 
     #[test]
@@ -463,7 +468,10 @@ mod tests {
             make_leaf(LeafType::Heading { level: 2 }, 1),
             make_leaf(LeafType::SplBlock, 3),
         ];
-        assert!(matches!(severity_for_spl(&leaves, 3), DriftSeverity::Warning));
+        assert!(matches!(
+            severity_for_spl(&leaves, 3),
+            DriftSeverity::Warning
+        ));
     }
 
     #[test]
@@ -474,7 +482,10 @@ mod tests {
             make_leaf(LeafType::SplBlock, 3),
             make_leaf(LeafType::Paragraph, 5),
         ];
-        assert!(matches!(severity_for_spl(&leaves, 3), DriftSeverity::Warning));
+        assert!(matches!(
+            severity_for_spl(&leaves, 3),
+            DriftSeverity::Warning
+        ));
     }
 
     #[test]
@@ -530,7 +541,12 @@ mod tests {
             make_leaf(LeafType::SplBlock, 5),
         ];
         // Cached with same grounding hash
-        let theory = make_theory_cache(vec![("notes/arch.md:5", ast, grounding, Some("Background"))]);
+        let theory = make_theory_cache(vec![(
+            "notes/arch.md:5",
+            ast,
+            grounding,
+            Some("Background"),
+        )]);
 
         let result = detect_section_drift(&file, &fm, &leaves, &theory);
         assert!(result.is_empty(), "unchanged grounding → no drift");
@@ -551,7 +567,12 @@ mod tests {
             make_leaf(LeafType::SplBlock, 5),
         ];
         // Cached with different grounding AND different AST → not section drift
-        let theory = make_theory_cache(vec![("notes/arch.md:5", cached_ast, cached_grounding, Some("Background"))]);
+        let theory = make_theory_cache(vec![(
+            "notes/arch.md:5",
+            cached_ast,
+            cached_grounding,
+            Some("Background"),
+        )]);
 
         let result = detect_section_drift(&file, &fm, &leaves, &theory);
         assert!(
@@ -573,7 +594,12 @@ mod tests {
             make_leaf(LeafType::Heading { level: 2 }, 1),
             make_leaf(LeafType::SplBlock, 5),
         ];
-        let theory = make_theory_cache(vec![("notes/arch.md:5", ast, cached_grounding, Some("Background"))]);
+        let theory = make_theory_cache(vec![(
+            "notes/arch.md:5",
+            ast,
+            cached_grounding,
+            Some("Background"),
+        )]);
 
         let result = detect_section_drift(&file, &fm, &leaves, &theory);
         assert_eq!(result.len(), 1, "one drift diagnostic expected");
@@ -620,7 +646,12 @@ mod tests {
             make_leaf(LeafType::Heading { level: 2 }, 1),
             make_leaf(LeafType::SplBlock, 5),
         ];
-        let theory = make_theory_cache(vec![("notes/arch.md:5", ast, h(0x11), Some("CachedHeading"))]);
+        let theory = make_theory_cache(vec![(
+            "notes/arch.md:5",
+            ast,
+            h(0x11),
+            Some("CachedHeading"),
+        )]);
 
         let result = detect_section_drift(&file, &fm, &leaves, &theory);
         assert_eq!(result.len(), 1);
@@ -707,8 +738,10 @@ mod tests {
         groundings: Vec<(&str, &str, &str, ContentHash)>,
     ) -> TheoryCache {
         let ast_hex: String = ast_hash.iter().map(|b| format!("{:02x}", b)).collect();
-        let grounding_hex: String =
-            grounding_hash.iter().map(|b| format!("{:02x}", b)).collect();
+        let grounding_hex: String = grounding_hash
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect();
 
         let explicit: Vec<serde_json::Value> = groundings
             .iter()
@@ -938,19 +971,20 @@ mod tests {
         );
 
         // The referenced block in the target file now has a different hash.
-        let target_leaves =
-            vec![make_leaf_with_block_id(7, new_target_hash, "evidence-block")];
+        let target_leaves = vec![make_leaf_with_block_id(
+            7,
+            new_target_hash,
+            "evidence-block",
+        )];
         let files = vec![
             make_parsed_file("notes/arch.md", vec![]),
             make_parsed_file("notes/source.md", target_leaves),
         ];
-        let file_index: Vec<(String, PathBuf)> = vec![
-            ("Source".to_string(), target_file_path.clone()),
-        ];
+        let file_index: Vec<(String, PathBuf)> =
+            vec![("Source".to_string(), target_file_path.clone())];
         let index = build_vault_hash_index(&files);
 
-        let result =
-            detect_explicit_drift(&spl_file, &fm, &theory, &files, &file_index, &index);
+        let result = detect_explicit_drift(&spl_file, &fm, &theory, &files, &file_index, &index);
         assert_eq!(result.len(), 1);
         assert!(matches!(result[0].severity, DriftSeverity::Warning));
         assert!(

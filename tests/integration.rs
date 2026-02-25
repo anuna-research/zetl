@@ -1524,7 +1524,10 @@ fn test_049_resolve_hash_too_short() {
             .arg("--resolve")
             .arg("e5f6"),
     );
-    assert!(!status.success(), "should exit non-zero for too-short prefix");
+    assert!(
+        !status.success(),
+        "should exit non-zero for too-short prefix"
+    );
     assert!(
         json["error"]
             .as_str()
@@ -1571,8 +1574,7 @@ fn test_049_resolve_unique_match() {
     );
 
     // First get the hash via forward mode
-    let forward =
-        run_json(zetl_cmd(dir.path()).arg("blocks").arg("Redis"));
+    let forward = run_json(zetl_cmd(dir.path()).arg("blocks").arg("Redis"));
     let blocks = forward["blocks"].as_array().unwrap();
     assert!(!blocks.is_empty(), "Redis.md should have blocks");
 
@@ -1671,16 +1673,8 @@ fn test_049_resolve_duplicate_content() {
     let dir = TempDir::new().unwrap();
     // Two files with identical paragraph content → same BLAKE3 leaf hash
     let identical = "Identical content appears here.";
-    write_file(
-        dir.path(),
-        "File1.md",
-        &format!("# File1\n\n{identical}\n"),
-    );
-    write_file(
-        dir.path(),
-        "File2.md",
-        &format!("# File2\n\n{identical}\n"),
-    );
+    write_file(dir.path(), "File1.md", &format!("# File1\n\n{identical}\n"));
+    write_file(dir.path(), "File2.md", &format!("# File2\n\n{identical}\n"));
 
     // Get the hash from forward mode on File1
     let forward = run_json(zetl_cmd(dir.path()).arg("blocks").arg("File1"));
@@ -1707,11 +1701,7 @@ fn test_049_resolve_duplicate_content() {
         "duplicate resolve hash should match"
     );
     let locations = json["locations"].as_array().unwrap();
-    assert_eq!(
-        locations.len(),
-        2,
-        "both files should appear in locations"
-    );
+    assert_eq!(locations.len(), 2, "both files should appear in locations");
     assert_eq!(
         json["note"].as_str().unwrap(),
         "identical content at multiple locations",
@@ -1840,10 +1830,7 @@ fn test_049_blocks_forward_list_all_types() {
     assert!(!blocks.is_empty(), "blocks array must not be empty");
 
     // Collect all block types present
-    let types: Vec<&str> = blocks
-        .iter()
-        .map(|b| b["type"].as_str().unwrap())
-        .collect();
+    let types: Vec<&str> = blocks.iter().map(|b| b["type"].as_str().unwrap()).collect();
 
     // Heading blocks
     assert!(
@@ -1988,11 +1975,7 @@ fn test_049_blocks_page_not_found() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "A.md", "# A\n\nSome content.\n");
 
-    let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
-            .arg("blocks")
-            .arg("NonExistentPage"),
-    );
+    let (json, status) = run_json_any(zetl_cmd(dir.path()).arg("blocks").arg("NonExistentPage"));
 
     assert!(
         !status.success(),

@@ -1388,7 +1388,9 @@ mod tests {
         save_theory_cache(vault, &cache).unwrap();
 
         // Reload and verify groundings are in spl_blocks
-        let loaded = load_theory_cache(vault).unwrap().expect("cache should exist");
+        let loaded = load_theory_cache(vault)
+            .unwrap()
+            .expect("cache should exist");
         let spl_block = loaded
             .spl_blocks
             .get("notes/A.md:10")
