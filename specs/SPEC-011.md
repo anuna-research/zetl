@@ -22,7 +22,7 @@ date: 2026-02-25
 | Trace          | USDD Agent Protocol v1.0.0                                         |
 | Parent         | SPEC-001: zetl — Bi-directional Link Graph CLI                     |
 | Related        | SPEC-004: Distributed Vault Sync via Goblins Sidecar              |
-| Dependencies   | SPEC-006: Content-Addressed Merkle Tree, ed25519-dalek, blake3     |
+| Dependencies   | SPEC-006: Content-Addressed Merkle Tree, ed25519-dalek, blake3, spake2, bip39 |
 
 ---
 
@@ -69,6 +69,7 @@ zetl stays a single Rust binary. Federation is additive — if no peers are conf
 - Content integrity verification (signed vault roots)
 - Cross-vault drift detection (remote page changed since local reference)
 - Tiered capability operations (graph, read-index, read-content)
+- Phrase-based capability exchange (SPAKE2 + BIP39 for human-friendly sharing)
 
 **Out of scope:**
 
@@ -520,6 +521,98 @@ Each tier is a strict superset. A `read-content` capability implicitly permits `
    → Nonce added to .zetl/revocations.json
    → Bob's next sync attempt checks revocation list → rejected
    → Bob's cached data marked 'revoked'
+```
+
+**Alternative: Phrase-Based Exchange (Human-Friendly)**
+
+The token-based flow above requires out-of-band transfer of a JSON blob — hostile to humans. For interactive, synchronous scenarios (phone calls, in-person, pair sessions), a phrase-based flow uses SPAKE2 + BIP39 to reduce capability sharing to four spoken words:
+
+```
+1. INVITE — Alice starts an invite session:
+   zetl peer invite --scope "research/*" --ops graph
+   → Generates random BIP39 phrase: "tiger maple ocean drift"
+   → Starts listening for SPAKE2 connection
+   → Displays phrase to Alice
+
+2. COMMUNICATE — Alice tells Bob the phrase (any channel):
+   voice, text, in person, paper
+
+3. JOIN — Bob uses the phrase to connect:
+   zetl peer join --phrase "tiger maple ocean drift" --label alice
+   → Both sides execute SPAKE2 using the phrase as shared password
+   → SPAKE2 derives a shared symmetric key
+   → Wrong phrase → key mismatch → handshake fails immediately
+   → Over the SPAKE2-encrypted channel:
+     Alice sends: signed capability token + vault public key + Merkle root
+     Bob verifies: Ed25519 signature on token
+     Bob fetches: initial peer index
+   → Phrase discarded. Real security is now the Ed25519 token.
+```
+
+Both flows produce the same result: a stored capability token in `.zetl/peers/`. Token-based is better for agents and automation. Phrase-based is better for humans.
+
+```
+ADR-004: Phrase-Based Capability Exchange — SPAKE2 + BIP39
+
+Status: Proposed
+
+Context:
+  SPEC-011's capability tokens are JSON blobs with Ed25519 signatures.
+  They work well for automation (pipe JSON, env vars) but are hostile
+  to humans — you cannot read a 500-character JSON token over the phone.
+
+  The "Magic Wormhole" pattern (Brian Warner, 2016) solves this:
+  two parties who share a short passphrase can establish an encrypted
+  channel without any prior key exchange or PKI. The passphrase is
+  ephemeral — used once to bootstrap the channel, then discarded.
+
+  Options evaluated:
+
+  A. No change — keep JSON token exchange only
+     + Simplest implementation
+     - Poor UX for humans sharing capabilities
+
+  B. QR codes
+     + Visual, can encode full token
+     - Requires camera/screen, not usable over voice
+     - Still need a fallback for non-visual contexts
+
+  C. SPAKE2 + BIP39 phrases (Magic Wormhole pattern)
+     + 4 words spoken over the phone
+     + Secure against eavesdroppers (SPAKE2 resists offline dictionary attacks)
+     + No PKI, no certificates, no key servers
+     + Well-proven pattern (Magic Wormhole, Signal safety numbers)
+     + Excellent Rust crate support (spake2, bip39, magic-wormhole)
+     - Requires both parties to be online simultaneously
+     - Requires a rendezvous mechanism (or direct address)
+
+  D. Pre-shared key via NFC/Bluetooth
+     + Tap-to-share UX
+     - CLI tool, not a mobile app
+     - Platform-specific, complex
+
+Decision:
+  SPAKE2 + BIP39 phrases (Option C) as an interactive complement to
+  token-based exchange. Both flows coexist:
+
+    Token-based (agents, async):  zetl peer grant → JSON → zetl peer add
+    Phrase-based (humans, sync):  zetl peer invite → 4 words → zetl peer join
+
+  BIP39 word list provides 11 bits of entropy per word. Four words =
+  44 bits — sufficient for a one-time exchange with a short validity
+  window (default 5 minutes). The phrase only needs to resist brute-force
+  during the invite session; the long-term security comes from the
+  Ed25519-signed capability token transmitted over the SPAKE2 channel.
+
+Consequences:
+  + Dramatically better UX for human-to-human capability sharing
+  + Secure against passive and active network attackers
+  + No additional infrastructure required (direct connect on LAN)
+  + Optional rendezvous server enables cross-NAT use
+  + Same result as token-based flow — no separate code paths downstream
+  - Requires both parties online simultaneously (synchronous)
+  - Adds spake2 and bip39 crate dependencies
+  - Invite session has a timeout (default 5 min) — phrase expires
 ```
 
 ### 3.5 Joined Link Graph
@@ -974,7 +1067,61 @@ Trace:
   - TEST-015
 ```
 
-### 4.6 Functional Requirements — Offline Behavior
+### 4.6 Functional Requirements — Phrase-Based Exchange
+
+```
+REQ-017: Phrase-Based Capability Invite
+
+The system SHALL provide `zetl peer invite` to start an interactive
+capability exchange session. The command SHALL:
+  a) Generate a random BIP39 mnemonic phrase (4 words, ~44 bits entropy)
+  b) Create a signed capability token (per REQ-003)
+  c) Start listening for a SPAKE2 connection (direct TCP or via
+     rendezvous, configurable)
+  d) Display the phrase to the user
+  e) Wait for a peer to connect using the phrase (timeout: 5 minutes,
+     configurable via --timeout)
+  f) On successful SPAKE2 handshake: transmit the capability token,
+     vault public key, and current Merkle root over the encrypted channel
+  g) On timeout or cancellation: clean up, discard the phrase
+
+The phrase SHALL be single-use — after one successful exchange or
+timeout, the invite session ends. The phrase SHALL NOT be stored
+on disk.
+
+Trace:
+  - TEST-017
+  - CON-007
+  - ADR-004
+```
+
+```
+REQ-018: Phrase-Based Capability Join
+
+The system SHALL provide `zetl peer join --phrase <words> --label <name>`
+to connect to an active invite session. The command SHALL:
+  a) Parse the BIP39 phrase
+  b) Connect to the inviting peer (direct address or rendezvous)
+  c) Execute SPAKE2 using the phrase as the shared password
+  d) If the phrase is wrong: SPAKE2 key mismatch detected, handshake
+     fails immediately with a clear error ("phrase mismatch")
+  e) On successful handshake: receive the capability token over the
+     SPAKE2-encrypted channel
+  f) Verify the token's Ed25519 signature
+  g) Store the token and register the peer (same as REQ-007)
+  h) Perform initial peer index fetch
+
+The result SHALL be identical to `zetl peer add --cap` — a stored
+capability token in .zetl/peers/<label>/. The phrase is discarded
+after use. Long-term security is the Ed25519-signed token.
+
+Trace:
+  - TEST-018
+  - CON-008
+  - ADR-004
+```
+
+### 4.7 Functional Requirements — Offline Behavior
 
 ```
 REQ-016: Graceful Offline Degradation
@@ -1257,6 +1404,87 @@ Implements: REQ-008
 Verified by: TEST-008
 ```
 
+```
+CON-007: zetl peer invite
+
+zetl peer invite --scope <GLOB> --ops <TIER> [OPTIONS]
+
+Arguments:
+  --scope <GLOB>     Folder or glob pattern relative to vault root
+  --ops <TIER>       One of: graph, read-index, read-content
+
+Options:
+  --expires <ISO-8601 or DURATION>  Capability expiry
+  --timeout <SECONDS>               Invite session timeout [default: 300]
+  --address <HOST:PORT>             Direct listen address (skip rendezvous)
+  --rendezvous <URL>                Rendezvous server URL
+
+Starts an interactive invite session. Displays a BIP39 phrase and
+waits for a peer to connect via SPAKE2.
+
+Example output (interactive, to stderr):
+  Invite ready. Share this phrase with your peer:
+
+    tiger maple ocean drift
+
+  Waiting for connection... (expires in 5:00)
+
+On successful exchange (JSON, to stdout):
+{
+  "status": "connected",
+  "peer_vault_id": "ed25519:b2c3d4...",
+  "capability_scope": "research/*",
+  "capability_ops": "graph",
+  "pages_shared": 42
+}
+
+Exit codes:
+  0  Success (peer connected and received capability)
+  1  Timeout (no peer connected within window)
+  2  No vault identity (run zetl init first)
+
+Implements: REQ-017
+Verified by: TEST-017
+```
+
+```
+CON-008: zetl peer join
+
+zetl peer join --phrase <WORDS> --label <NAME> [OPTIONS]
+
+Arguments:
+  --phrase <WORDS>   BIP39 phrase from the inviting peer (4 words)
+  --label <NAME>     Local label for this peer
+
+Options:
+  --address <HOST:PORT>    Direct connect address (skip rendezvous)
+  --rendezvous <URL>       Rendezvous server URL
+
+Connects to an active invite session using SPAKE2 with the shared
+phrase. On success, receives and stores the capability token, then
+fetches the initial peer index.
+
+Example output (JSON):
+{
+  "label": "alice",
+  "vault_id": "ed25519:a1b2c3...",
+  "scope": "research/*",
+  "ops": "graph",
+  "status": "active",
+  "cached_pages": 42,
+  "method": "phrase"
+}
+
+Exit codes:
+  0  Success (capability received, peer registered)
+  1  Phrase mismatch (SPAKE2 handshake failed)
+  2  Invite session expired or unreachable
+  3  Token signature invalid (received bad token)
+
+Implements: REQ-018
+Verified by: TEST-018
+```
+
 ---
 
 ## 6. Test Specifications
@@ -1495,6 +1723,58 @@ Then:
 Verifies: REQ-016, NFR-002, NFR-003
 ```
 
+```
+TEST-017: Phrase-Based Invite
+
+Scenario: Successful invite/join exchange
+Given: Alice has a vault with identity
+When: Alice runs `zetl peer invite --scope "research/*" --ops graph`
+Then:
+  - A 4-word BIP39 phrase is displayed
+  - The process waits for a connection
+When: Bob runs `zetl peer join --phrase "tiger maple ocean drift" --label alice`
+Then:
+  - SPAKE2 handshake succeeds
+  - Bob receives a valid capability token
+  - Bob's .zetl/peers/alice/ is populated
+  - Alice's invite session completes (exit 0)
+
+Scenario: Wrong phrase
+Given: Alice is running an invite session
+When: Bob runs `zetl peer join --phrase "wrong words here now" --label alice`
+Then:
+  - SPAKE2 key mismatch detected
+  - Bob gets exit code 1: "phrase mismatch"
+  - Alice's invite session continues waiting (wrong attempt does not consume invite)
+
+Scenario: Invite timeout
+Given: Alice runs `zetl peer invite --timeout 10`
+When: No peer connects within 10 seconds
+Then:
+  - Invite session exits with code 1: "timeout — no peer connected"
+  - No capability was issued
+  - Phrase is discarded
+
+Verifies: REQ-017
+```
+
+```
+TEST-018: Phrase-Based Join Produces Same Result as Token-Based Add
+
+Scenario: Equivalence of join and add
+Given: Alice creates a capability via `zetl peer grant` (token to file)
+       Alice also starts an invite with the same scope/ops
+When: Bob uses `zetl peer add --cap ./token.json --label alice-token`
+      Carol uses `zetl peer join --phrase "..." --label alice-phrase`
+Then:
+  - Both Bob and Carol have .zetl/peers/<label>/cap.json
+  - Both tokens have the same scope, ops, and granter
+  - Both peers can sync, query links, and see Alice's pages identically
+  - The only difference is the "method" field in status.json (token vs phrase)
+
+Verifies: REQ-018
+```
+
 ---
 
 ## 7. Observability
@@ -1605,7 +1885,38 @@ Exit criteria: If graph composition introduces unacceptable complexity
                wrapper instead
 ```
 
-### 8.4 Spike: Transport Layer Evaluation
+### 8.4 Spike: SPAKE2 + BIP39 Phrase Exchange
+
+```
+Hypothesis: A SPAKE2-based capability exchange using BIP39 phrases
+            can be implemented in Rust and successfully transfer an
+            Ed25519-signed capability token between two peers using
+            a 4-word phrase, in <= 3 days.
+
+Approach:
+  - Use the spake2 crate (by Brian Warner) for key exchange
+  - Use the bip39 crate for mnemonic phrase generation
+  - Implement: invite (listen + generate phrase), join (connect + use phrase)
+  - Test: successful exchange, wrong phrase rejection, timeout
+  - Evaluate magic-wormhole crate vs building on raw spake2 + bip39
+  - Evaluate rendezvous server options (magic-wormhole mailbox server
+    compatibility vs custom lightweight relay)
+
+Timebox: 3 days
+Success metric:
+  - 4-word phrase exchange works reliably over TCP on LAN
+  - Wrong phrase is rejected within 1 second
+  - Resulting capability token is identical to token-based flow
+  - No phrase or derived key material persists to disk
+Exit criteria: If spake2 crate has compatibility issues or insufficient
+               documentation, evaluate noise-protocol handshake with
+               BIP39 pre-shared key as alternative
+
+AI trust boundary: Cryptography — requires explicit review of SPAKE2
+                   usage and key derivation.
+```
+
+### 8.5 Spike: Transport Layer Evaluation
 
 ```
 Hypothesis: TCP+TLS with Ed25519 certificate pinning provides a
@@ -1632,16 +1943,17 @@ Exit criteria: If TLS certificate pinning to Ed25519 keys proves
 
 | Phase | Deliverable | Effort | Dependencies |
 | --- | --- | --- | --- |
-| **0. Spikes** | Token format, local federation prototype, transport eval | 2-3 weeks | ed25519-dalek crate |
+| **0. Spikes** | Token format, local federation prototype, SPAKE2+BIP39, transport eval | 2-3 weeks | ed25519-dalek, spake2, bip39 crates |
 | **1. Identity** | `zetl init` generates Ed25519 keypair | 1-2 days | Spike 8.1 results |
 | **2. Tokens** | `zetl peer grant`, `attenuate`, `revoke` | 3-5 days | Phase 1 |
 | **3. Local federation** | `peer add/remove/list`, joined graph, multi-match | 5-7 days | Phase 2, Spike 8.3 |
 | **4. Merkle sync** | Delta sync via Merkle root comparison, integrity verification | 3-5 days | Phase 3 |
-| **5. Networking** | TCP+TLS transport, peer discovery, remote sync | 5-7 days | Phase 4, Spike 8.2/8.4 |
+| **5. Networking** | TCP+TLS transport, peer discovery, remote sync | 5-7 days | Phase 4, Spike 8.2/8.5 |
+| **5a. Phrase exchange** | `peer invite` / `peer join` via SPAKE2+BIP39 | 3-4 days | Phase 5, Spike 8.4 |
 | **6. Cross-vault drift** | Drift detection across peer boundaries | 2-3 days | Phase 4 |
 | **7. Polish** | Diagnostics, shadow warnings, staleness, error handling | 3-5 days | Phase 6 |
 
-Total estimated effort: **22-34 days** (including spikes).
+Total estimated effort: **25-38 days** (including spikes).
 
 Phases 1-3 can be shipped as a useful local-only federation feature before networking is implemented. Users can join vaults on the same machine via filesystem paths.
 
@@ -1662,6 +1974,10 @@ Phases 1-3 can be shipped as a useful local-only federation feature before netwo
 6. **Key rotation?** If a vault's Ed25519 key is compromised, all previously granted capabilities must be re-issued. Should zetl support key rotation with a signed "succession" record? Recommendation: out of scope for v1. Document that key compromise requires manual re-keying and re-granting.
 
 7. **What URI scheme for cross-vault wikilinks?** This spec keeps wikilinks as-is (`[[Page Name]]`) and resolves them via the joined graph. Should a future spec introduce explicit cross-vault syntax (e.g., `[[alice::Page]]` or `[[peer:alice/Page]]`)? This would break Obsidian compatibility but provide unambiguous cross-vault references. Recommendation: defer. Implicit resolution via the graph is sufficient and preserves file portability.
+
+8. **Rendezvous server for phrase-based exchange?** Direct TCP connection works on LAN but not across NATs. The Magic Wormhole project provides public mailbox servers that relay SPAKE2 handshakes. Options: (a) use Magic Wormhole's public infrastructure, (b) host a lightweight relay, (c) support both direct and relay modes. Recommendation: start with direct connect (LAN only), add relay support in a follow-up. The `magic-wormhole` Rust crate includes relay client support if we choose to adopt it.
+
+9. **How many words in the phrase?** 4 words (~44 bits) is sufficient for a 5-minute window against brute-force. For higher-security contexts (longer windows, untrusted networks), 6 words (~66 bits) may be preferred. Recommendation: default to 4, allow `--words 6` for paranoid users.
 
 ---
 
