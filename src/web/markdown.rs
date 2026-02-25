@@ -193,12 +193,13 @@ fn replace_wikilinks_in_segment(
         // Strip heading/block refs for page resolution
         let page = target.split('#').next().unwrap_or(target).trim();
         let display = html_escape(display.trim());
-        let is_resolved = resolved.iter().any(|r| r.eq_ignore_ascii_case(page));
+        // Use canonical (resolved) name for href so it matches transclusion card hrefs
+        let canonical = resolved.iter().find(|r| r.eq_ignore_ascii_case(page));
 
-        if is_resolved {
+        if let Some(canon) = canonical {
             format!(
                 r#"<a href="/page/{href}" class="link link-primary wikilink">{display}</a>"#,
-                href = urlencoding(page),
+                href = urlencoding(canon),
                 display = display,
             )
         } else {
