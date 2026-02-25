@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
 use axum::extract::{Path, State};
-use axum::response::Html;
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Response};
 
 use crate::web::html::{html_escape, layout, sidebar_html, urlencoding};
 use crate::web::markdown;
@@ -83,16 +84,18 @@ pub async fn page_handler(
         .iter()
         .find(|f| f.page_name.eq_ignore_ascii_case(&page_name));
 
-    let (rendered, title) = if let Some(file) = file {
+    let (rendered, title, raw_escaped) = if let Some(file) = file {
         let full_path = state.vault_root.join(&file.path);
         match std::fs::read_to_string(&full_path) {
             Ok(content) => {
                 let html = markdown::render_to_html(&content, &state.resolved);
-                (html, file.page_name.clone())
+                let escaped = html_escape(&content);
+                (html, file.page_name.clone(), Some(escaped))
             }
             Err(_) => (
                 "<p class=\"text-error\">Could not read file.</p>".to_string(),
                 page_name.clone(),
+                None,
             ),
         }
     } else {
@@ -102,6 +105,7 @@ pub async fn page_handler(
                 html_escape(&page_name)
             ),
             page_name.clone(),
+            None,
         )
     };
 
@@ -170,9 +174,59 @@ pub async fn page_handler(
         Some(transclusion_cards.as_str())
     };
 
+    // Edit mode UI (only shown for real files)
+    let edit_ui = if let Some(ref raw) = raw_escaped {
+        format!(
+            r#"<div id="edit-mode" style="display:none">
+  <div class="flex gap-2 mb-4">
+    <button onclick="saveEdit()" class="btn btn-sm btn-primary">Save</button>
+    <button onclick="toggleEdit()" class="btn btn-sm btn-outline">Cancel</button>
+  </div>
+  <textarea id="editor" class="textarea textarea-bordered w-full font-mono"
+            style="min-height:80vh">{raw}</textarea>
+</div>"#,
+            raw = raw,
+        )
+    } else {
+        String::new()
+    };
+
+    let edit_button = if raw_escaped.is_some() {
+        r#"<button onclick="toggleEdit()" class="btn btn-sm btn-outline mb-4">Edit</button>"#
+    } else {
+        ""
+    };
+
     let content = format!(
-        r#"<article class="prose prose-lg max-w-none">{rendered}</article>
+        r#"<div id="view-mode">
+{edit_button}
+<article class="prose prose-lg max-w-none">{rendered}</article>
 {backlinks_html}
+</div>
+{edit_ui}
+<script>
+function toggleEdit() {{
+  var vm = document.getElementById('view-mode');
+  var em = document.getElementById('edit-mode');
+  if (em.style.display === 'none') {{
+    em.style.display = 'block';
+    vm.style.display = 'none';
+  }} else {{
+    em.style.display = 'none';
+    vm.style.display = 'block';
+  }}
+}}
+async function saveEdit() {{
+  var content = document.getElementById('editor').value;
+  var res = await fetch(window.location.pathname, {{
+    method: 'PUT',
+    headers: {{ 'Content-Type': 'text/plain; charset=utf-8' }},
+    body: content
+  }});
+  if (res.ok) window.location.reload();
+  else alert('Save failed: ' + res.status);
+}}
+</script>
 <script>
 // Transclusion: SVG bridge lines + bidirectional hover
 (function() {{
@@ -263,8 +317,10 @@ pub async fn page_handler(
   }});
 }})();
 </script>"#,
+        edit_button = edit_button,
         rendered = rendered,
         backlinks_html = backlinks_html,
+        edit_ui = edit_ui,
         colors_json = format!(
             "[{}]",
             colors
@@ -277,6 +333,34 @@ pub async fn page_handler(
 
     let sidebar = sidebar_html(&state.page_names, Some(&title));
     Html(layout(&title, &sidebar, &content, Some(&title), right_panel))
+}
+
+/// PUT /page/:page_name — Save edited markdown back to the vault file.
+pub async fn save_handler(
+    State(state): State<WebState>,
+    Path(page_name): Path<String>,
+    body: String,
+) -> Response {
+    let page_name = urldecode(&page_name);
+
+    let file = state
+        .files
+        .iter()
+        .find(|f| f.page_name.eq_ignore_ascii_case(&page_name));
+
+    let Some(file) = file else {
+        return (StatusCode::NOT_FOUND, "Page not found").into_response();
+    };
+
+    let full_path = state.vault_root.join(&file.path);
+
+    match std::fs::write(&full_path, &body) {
+        Ok(()) => StatusCode::OK.into_response(),
+        Err(e) => {
+            eprintln!("save error: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Write failed").into_response()
+        }
+    }
 }
 
 /// GET /preview/:page_name — Returns a short HTML preview (for tooltip).

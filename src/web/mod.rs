@@ -26,7 +26,7 @@ pub struct WebState {
 pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", get(routes::index_handler))
-        .route("/page/{page_name}", get(routes::page_handler))
+        .route("/page/{page_name}", get(routes::page_handler).put(routes::save_handler))
         .route("/preview/{page_name}", get(routes::preview_handler))
         .with_state(state);
 
