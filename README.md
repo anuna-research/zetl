@@ -12,7 +12,9 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Full-text search** — content search with regex support, frontmatter/code-block awareness
 - **Fuzzy matching** — SimHash-based page name similarity
 - **Interactive TUI** — dashboard, page browser, link explorer, graph view, inline wikilink navigation
-- **Incremental caching** — mtime-based index for both wikilinks and reasoning theories
+- **Page viewer** — Xanadu-inspired two-pane reader with context cards, bridge connectors, and wikilink navigation
+- **Content-addressable blocks** — BLAKE3 Merkle leaves for headings, paragraphs, code blocks, and SPL
+- **Incremental caching** — two-tier (mtime + hash) index for both wikilinks and reasoning theories
 - **Agent-friendly** — JSON by default, structured errors, non-zero exit codes
 - **Defeasible reasoning** — extract SPL facts and rules from Markdown, build a vault-wide theory, derive conclusions with full provenance
 - **Proof trees** — explain why a conclusion holds, traced back to source files and line numbers
@@ -77,9 +79,15 @@ zetl search "pattern" --regex
 zetl -d ./my-vault check
 zetl check --dead-links --fail-on error   # cwd is vault
 zetl check --spl                        # SPL diagnostics only
+zetl check --drift                      # detect SPL changes since last theory build
 
 # Fuzzy page name matching
 zetl -d ./my-vault similar "zettelkasen"
+
+# Content-addressable blocks
+zetl -d ./my-vault blocks "Some Page"                    # all blocks
+zetl -d ./my-vault blocks "Some Page" --type heading     # headings only
+zetl -d ./my-vault blocks --resolve abc123               # resolve by hash prefix
 
 # Stats and export
 zetl -d ./my-vault stats
@@ -88,6 +96,11 @@ zetl -d ./my-vault export    # full graph as JSON
 
 # Interactive TUI
 zetl -d ./my-vault tui
+
+# Page viewer (two-pane reader)
+zetl -d ./my-vault view "Some Page"
+zetl -d ./my-vault view                                  # opens page picker
+zetl -d ./my-vault view "Some Page" --context-lines 10   # taller context cards
 ```
 
 ### Reasoning commands
@@ -175,7 +188,9 @@ zetl merges all SPL from across the vault into a single theory, reasons over it,
 
 ## TUI
 
-`zetl tui` launches an interactive terminal interface with:
+### Dashboard (`zetl tui`)
+
+Multi-tab terminal interface for vault exploration:
 
 | View | Description |
 |------|-------------|
@@ -188,6 +203,28 @@ zetl merges all SPL from across the vault into a single theory, reasons over it,
 | Graph | Local link graph with depth toggle |
 
 Navigate with `Tab`/`Shift+Tab` to cycle views, `Ctrl+K` for the quick switcher, `j`/`k` for scrolling, `Enter` to follow wikilinks, `Backspace` to go back.
+
+### Page viewer (`zetl view`)
+
+Xanadu-inspired two-pane reader for focused page navigation. The left pane renders the current note with numbered `[N]` anchor glyphs at each wikilink. The right pane shows context cards — excerpts from forward-linked pages. A bridge column connects anchors to their cards with colored connectors. Falls back to single-pane layout in narrow terminals (<60 cols).
+
+```bash
+zetl view "Page Name"                  # open a page
+zetl view                              # open page picker
+zetl view "Page Name" --context-lines 10 --main-width 60
+```
+
+| Key | Action |
+|-----|--------|
+| `j`/`k` | Scroll (or cycle links in focus mode) |
+| `Ctrl-d`/`Ctrl-u` | Half-page scroll |
+| `g`/`G` | Top / bottom of note |
+| `Tab` | Toggle between scroll and focus mode |
+| `Enter` | Navigate to focused link |
+| `[`/`]` | Session history back / forward |
+| `/` | Open page picker |
+| `?` | Toggle keybindings help |
+| `q` | Quit |
 
 ## Compatibility
 
