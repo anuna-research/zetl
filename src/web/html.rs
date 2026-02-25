@@ -43,6 +43,8 @@ pub fn layout(
   <style>
     /* dead link */
     a.link-error {{ color: oklch(var(--er)); text-decoration: underline wavy; }}
+    /* line anchors for backlink scroll targets */
+    .line-anchor {{ scroll-margin-top: 2rem; }}
 
     /* transclusion panel */
     .transclusion-panel {{

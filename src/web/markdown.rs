@@ -8,7 +8,8 @@ use crate::web::html::{html_escape, urlencoding};
 /// Render markdown content to HTML, rewriting `[[wikilinks]]` into `<a>` tags.
 /// Links whose target is not in `resolved` get `class="link-error"`.
 pub fn render_to_html(content: &str, resolved: &HashSet<String>) -> String {
-    let content = strip_frontmatter(content);
+    let stripped = strip_frontmatter(content);
+    let fm_lines = frontmatter_line_count(content);
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
@@ -18,12 +19,43 @@ pub fn render_to_html(content: &str, resolved: &HashSet<String>) -> String {
         | Options::ENABLE_MATH
         | Options::ENABLE_GFM
         | Options::ENABLE_DEFINITION_LIST;
-    let parser = Parser::new_ext(&content, options);
+    let parser = Parser::new_ext(&stripped, options);
 
     let wikilink_re = Regex::new(r"\[\[([^\[\]]+)\]\]").unwrap();
 
+    // Compute line-start byte offsets for the stripped content
+    let line_starts: Vec<usize> = std::iter::once(0)
+        .chain(stripped.match_indices('\n').map(|(i, _)| i + 1))
+        .collect();
+
+    // Collect events with line anchors injected after block-start events
+    let mut events: Vec<Event> = Vec::new();
+    let mut anchored_lines: HashSet<usize> = HashSet::new();
+    for (event, range) in parser.into_offset_iter() {
+        let is_block_start = matches!(
+            &event,
+            Event::Start(
+                Tag::Paragraph
+                    | Tag::Heading { .. }
+                    | Tag::BlockQuote(_)
+                    | Tag::List(_)
+                    | Tag::Item
+            )
+        );
+        events.push(event);
+        if is_block_start {
+            // 1-based line number in the original file (accounting for frontmatter)
+            let line = line_starts.partition_point(|&s| s <= range.start) + fm_lines;
+            if anchored_lines.insert(line) {
+                events.push(Event::Html(
+                    format!("<a id=\"line-{}\" class=\"line-anchor\"></a>", line).into(),
+                ));
+            }
+        }
+    }
+
     let mut html_output = String::new();
-    pulldown_cmark::html::push_html(&mut html_output, parser);
+    pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
 
     rewrite_wikilinks(&html_output, &wikilink_re, resolved)
 }
@@ -211,6 +243,23 @@ fn replace_wikilinks_in_segment(
         }
     })
     .to_string()
+}
+
+/// Count the number of lines consumed by YAML frontmatter (including delimiters).
+fn frontmatter_line_count(content: &str) -> usize {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return 0;
+    }
+    let after_first = &trimmed[3..];
+    if let Some(end_pos) = after_first.find("\n---") {
+        let fm_end = 3 + end_pos + 4; // opening "---" + content + "\n---"
+        let fm_text = &trimmed[..fm_end];
+        // Count lines in frontmatter + 1 for the line after closing "---"
+        fm_text.matches('\n').count() + 1
+    } else {
+        0
+    }
 }
 
 /// Strip YAML frontmatter (--- ... ---) from the beginning of content.

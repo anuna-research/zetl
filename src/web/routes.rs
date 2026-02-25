@@ -120,7 +120,7 @@ pub async fn page_handler(
         backlinks_html.push_str(r#"<div class="divider"></div><h2 class="text-lg font-semibold mb-2">Backlinks</h2><ul class="list-none space-y-1">"#);
         for bl in &backlinks {
             backlinks_html.push_str(&format!(
-                r#"<li><a href="/page/{href}" class="link link-secondary">{source}</a><span class="text-xs opacity-50 ml-2">line {line}</span></li>"#,
+                r#"<li><a href="/page/{href}#line-{line}" class="link link-secondary">{source}</a><span class="text-xs opacity-50 ml-2">line {line}</span></li>"#,
                 href = urlencoding(&bl.source),
                 source = html_escape(&bl.source),
                 line = bl.line,
