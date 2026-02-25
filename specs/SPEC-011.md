@@ -238,7 +238,7 @@ Preconditions:
 Steps:
   1. Bob removes the peer:
      zetl peer remove alice
-     → Deletes .zetl/peers/alice/ (capability + cached index)
+     → Deletes .zetl/peers/alice/ (capability + cached index + materialized files)
   2. Bob runs zetl index:
      → Link graph rebuilt without Alice's pages
      → Bob's [[Topic A]] becomes a dead link again
@@ -327,7 +327,10 @@ Alice's Machine                              Bob's Machine
 │        └── bob/          │                │        └── alice/        │
 │           ├── cap.json   │                │           ├── cap.json   │
 │           ├── index.json │                │           ├── index.json │
-│           └── status.json│                │           └── status.json│
+│           ├── status.json│                │           ├── status.json│
+│           └── files/     │                │           └── files/     │
+│              └── (read-  │                │              └── (read-  │
+│                 content) │                │                 content) │
 │                          │                │                          │
 │  vault-a/                │                │  vault-b/                │
 │  ├── research/           │                │  ├── research/           │
@@ -365,6 +368,7 @@ Alice's Machine                              Bob's Machine
 | `.zetl/peers/<label>/cap.json` | Capability token for this peer |
 | `.zetl/peers/<label>/index.json` | Cached peer page manifest |
 | `.zetl/peers/<label>/status.json` | Peer status (active, pending, stale, revoked) |
+| `.zetl/peers/<label>/files/` | Materialized peer markdown files (`read-content` tier only) |
 
 ### 3.3 Identity Model
 
@@ -492,7 +496,7 @@ Consequences:
 | --- | --- | --- |
 | `graph` | Page names, outgoing link targets, file Merkle roots | Link graph integration — dead links resolve, backlinks span vaults |
 | `read-index` | Above + section headings, SPL block metadata, block IDs | Structural visibility — see what a page covers without reading it |
-| `read-content` | Above + full file contents | Full access — search, embed, transclude peer content |
+| `read-content` | Above + full file contents (materialized locally) | Full access — search, embed, transclude peer content |
 
 Each tier is a strict superset. A `read-content` capability implicitly permits `read-index` and `graph`.
 
@@ -615,9 +619,113 @@ Consequences:
   - Invite session has a timeout (default 5 min) — phrase expires
 ```
 
-### 3.5 Joined Link Graph
+### 3.5 Local Persistence Model
 
-The joined graph is virtual and ephemeral — rebuilt on every `zetl index` from local files plus peer caches. It exists only in memory as a `petgraph::DiGraph`.
+Peer data is stored locally according to the capability tier. The key insight: **if you can't unread, then read should allow local persistence.** Once a vault has received file contents via `read-content`, there is no mechanism to force the recipient to forget — the data has already been transmitted. Persisting it locally simply makes this reality explicit and useful.
+
+**Tiered materialization:**
+
+| Tier | What is persisted locally | Storage location | Approx. size/page |
+| --- | --- | --- | --- |
+| `graph` | Page names, link targets, Merkle roots | `.zetl/peers/<label>/index.json` | ~1KB |
+| `read-index` | Above + section headings, SPL metadata, block IDs | `.zetl/peers/<label>/index.json` | ~5KB |
+| `read-content` | Above + full markdown files as real files on disk | `.zetl/peers/<label>/files/<path>` | File size + ~1KB |
+
+At `graph` and `read-index` tiers, everything lives in the JSON index cache — compact, fast to load, ephemeral. At `read-content`, the peer's shared files are materialized as real markdown files in a shadow directory. This enables:
+
+- **`zetl search`** works over peer content (the files are real, so existing search code works unchanged)
+- **Transclusion** via `zetl view` can render peer content inline
+- **Offline access** to full peer content, not just metadata
+- **External tools** (grep, editors, etc.) can read the files
+- **Existing Rust file scanner** can parse them with zero changes
+
+The shadow directory (`files/`) mirrors the peer's folder structure within the capability scope:
+
+```
+.zetl/peers/alice/
+├── cap.json
+├── index.json
+├── status.json
+└── files/
+    └── research/
+        ├── Topic A.md
+        ├── Topic B.md
+        └── subfolder/
+            └── Deep Note.md
+```
+
+**Lifecycle:**
+
+- **On sync (`zetl peer sync`):** files within scope are fetched and written to `files/`. Changed files are overwritten (Merkle delta determines which files changed). Deleted files on the peer are deleted locally.
+- **On unjoin (`zetl peer remove`):** the entire `.zetl/peers/<label>/` directory is deleted, including `files/`. The materialized files are gone.
+- **On revocation:** when a capability is revoked and the peer detects it, materialized files are deleted. If the peer is offline and cannot detect revocation, files persist with the stale cache — this is the "can't unread" reality. The revocation purge happens on next successful sync attempt.
+- **On scope narrowing:** if a capability is replaced with a narrower scope, files outside the new scope are deleted on next sync.
+
+**Not part of the vault.** Materialized peer files live under `.zetl/`, not in the vault root. They are excluded from the local index, local Merkle tree, and local link graph. They exist solely as a local cache for read access and search. The canonical source remains the peer's vault.
+
+```
+ADR-005: Tiered Local Persistence — Materialize Files at read-content
+
+Status: Proposed
+
+Context:
+  When a vault grants read-content access to a peer, the peer receives
+  full file contents. Three storage strategies were considered:
+
+  A. Metadata cache only (all tiers store JSON)
+     + Minimal disk usage
+     + Simple cleanup
+     - zetl search cannot index peer content (no files to scan)
+     - Transclusion requires live fetch every time
+     - Offline access limited to cached metadata
+
+  B. Shadow directory with real files (read-content materializes)
+     + zetl search works over peer files unchanged
+     + Offline access to full content
+     + External tools can read the files
+     + Existing scanner/parser code works without modification
+     + Honest about reality: recipient has the data, might as well
+       make it useful
+     - More disk usage at read-content tier
+     - Must handle cleanup on unjoin/revocation
+
+  C. Mount into vault namespace (symlinks or virtual FS)
+     + Files appear in vault alongside local pages
+     - Breaks vault purity — external content in the vault root
+     - Confuses git (untracked files from peers)
+     - Editing a symlinked file modifies the peer's vault (if writable)
+
+  D. On-demand fetch (fetch content only when accessed)
+     + Minimal storage
+     - Requires network for every content access
+     - Defeats local-first principle
+     - Latency on every search, read, or transclusion
+
+Decision:
+  Shadow directory (Option B). read-content capabilities materialize
+  peer files into .zetl/peers/<label>/files/, mirroring the peer's
+  directory structure within the capability scope.
+
+  graph and read-index tiers store only JSON metadata (compact,
+  ephemeral). read-content adds real files on disk.
+
+  The principle: if you can't unread, then read should allow local
+  persistence. The files are a cache — useful, explicit, and cleanly
+  removable.
+
+Consequences:
+  + zetl search spans peer content without code changes
+  + Transclusion and view work offline with peer content
+  + Cleanup is simple: rm -rf .zetl/peers/<label>/
+  + Scanner/parser need no peer-awareness — files are just files
+  - Disk usage proportional to peer content at read-content tier
+  - Revocation cannot force data deletion if peer is offline
+  - Users must understand that read-content peers have their files
+```
+
+### 3.6 Joined Link Graph
+
+The joined graph is virtual and ephemeral — rebuilt on every `zetl index` from local files plus peer caches (and, at `read-content` tier, materialized files). It exists only in memory as a `petgraph::DiGraph`.
 
 **Graph construction (extended `LinkGraph::build`):**
 
@@ -661,7 +769,7 @@ Algorithm:
 4. No match anywhere → dead link (existing behavior)
 ```
 
-### 3.6 Multi-Match Resolution
+### 3.7 Multi-Match Resolution
 
 ```
 ADR-003: Link Resolution — Show All Matches
@@ -709,7 +817,7 @@ Consequences:
   - Users may need to learn about shadow diagnostics
 ```
 
-### 3.7 Merkle Tree Integration
+### 3.8 Merkle Tree Integration
 
 The existing BLAKE3 Merkle tree (SPEC-006) serves three roles in federation:
 
@@ -928,6 +1036,8 @@ peer caches. Refresh SHALL:
      the capability scope have changed
   d) Fetch only changed file metadata (delta sync)
   e) Update the cached index and vault root hash
+  f) At read-content tier: fetch changed file contents and write to
+     .zetl/peers/<label>/files/ (see REQ-019, REQ-020)
 
 Refresh without --label SHALL refresh all active peers.
 `zetl index` SHALL refresh peers by default (configurable via
@@ -936,6 +1046,7 @@ Refresh without --label SHALL refresh all active peers.
 Trace:
   - TEST-008
   - CON-006
+  - REQ-019
 ```
 
 ```
@@ -943,7 +1054,8 @@ REQ-009: Peer Removal (Unjoining)
 
 The system SHALL provide `zetl peer remove <label>` to unjoin a peer.
 The command SHALL:
-  a) Delete .zetl/peers/<label>/ (capability + cached index + status)
+  a) Delete .zetl/peers/<label>/ (capability + cached index + status +
+     materialized files if any)
   b) The next zetl index SHALL rebuild the graph without the removed
      peer's pages
   c) Wikilinks previously resolved via the removed peer SHALL become
@@ -952,6 +1064,8 @@ The command SHALL:
      previously resolved via peer '<label>'"
 
 Removal is a local operation — it does not notify the remote vault.
+All materialized files (read-content tier) are deleted with the peer
+directory.
 
 Trace:
   - TEST-009
@@ -1142,7 +1256,60 @@ Trace:
   - TEST-016
 ```
 
-### 4.2 Non-Functional Requirements
+### 4.8 Functional Requirements — Local Persistence
+
+```
+REQ-019: Tiered Local Persistence
+
+The system SHALL persist peer data locally according to the capability
+tier:
+
+  graph         — JSON metadata only (.zetl/peers/<label>/index.json)
+  read-index    — JSON metadata only (richer index, same file)
+  read-content  — JSON metadata + materialized markdown files in
+                  .zetl/peers/<label>/files/
+
+At the read-content tier, `zetl peer sync` SHALL write the peer's
+shared files to .zetl/peers/<label>/files/, mirroring the peer's
+directory structure within the capability scope. Files SHALL be
+plain markdown — readable by zetl search, external tools, and the
+file scanner without modification.
+
+Materialized files SHALL NOT be included in the local vault's index,
+Merkle tree, or link graph construction. They exist solely as a local
+cache for read access and search.
+
+Trace:
+  - TEST-019a
+  - ADR-005
+```
+
+```
+REQ-020: File Materialization Lifecycle
+
+Materialized peer files SHALL be managed as follows:
+
+  a) On sync: fetch changed files (per Merkle delta), write to files/.
+     Overwrite changed files, create new files, delete files removed
+     by the peer or no longer within capability scope.
+  b) On unjoin (zetl peer remove): delete the entire
+     .zetl/peers/<label>/ directory, including files/.
+  c) On revocation detected: delete materialized files. If the peer
+     is unreachable and revocation cannot be detected, files persist
+     with the stale cache until next successful contact.
+  d) On scope narrowing: if a capability is replaced with a narrower
+     scope, files outside the new scope SHALL be deleted on next sync.
+
+The system SHALL NOT require network connectivity to read materialized
+files. Materialized content is a local cache — available offline.
+
+Trace:
+  - TEST-019b
+  - ADR-005
+  - REQ-009
+```
+
+### 4.9 Non-Functional Requirements
 
 ```
 NFR-001: Peer Sync Latency
@@ -1181,12 +1348,19 @@ Trace:
 NFR-004: Peer Cache Size
 
 Per-page cache overhead SHALL be:
-  - <= 1KB per page at the graph tier
-  - <= 5KB per page at the read-index tier
+  - <= 1KB per page at the graph tier (JSON metadata only)
+  - <= 5KB per page at the read-index tier (JSON metadata only)
   - <= file size + 1KB overhead per page at the read-content tier
+    (JSON metadata + materialized file in .zetl/peers/<label>/files/)
+
+At read-content tier, total peer storage is bounded by the size of
+the peer's shared files within the capability scope. Users granting
+read-content should understand that the recipient will store a full
+copy of the shared files.
 
 Trace:
   - TEST-017
+  - ADR-005
 ```
 
 ```
@@ -1389,6 +1563,7 @@ Example output (JSON):
       "pages_changed": 3,
       "pages_added": 1,
       "pages_removed": 0,
+      "files_materialized": 4,
       "elapsed_ms": 230
     }
   ],
@@ -1775,6 +1950,67 @@ Then:
 Verifies: REQ-018
 ```
 
+```
+TEST-019a: File Materialization at read-content Tier
+
+Scenario: Sync materializes files
+Given: Alice grants Bob a read-content capability for scope "research/*"
+       Alice's research/ folder contains 3 markdown files
+When: Bob runs `zetl peer add --label alice --cap ./token.json`
+      Bob runs `zetl peer sync alice`
+Then:
+  - .zetl/peers/alice/files/research/ exists
+  - All 3 markdown files are present as real files
+  - File contents match Alice's originals
+  - Files are not included in Bob's local zetl index or Merkle tree
+  - `zetl search "keyword"` finds matches in Alice's materialized files
+
+Scenario: graph tier does NOT materialize files
+Given: Alice grants Bob a graph-only capability
+When: Bob adds and syncs
+Then:
+  - .zetl/peers/alice/files/ does NOT exist
+  - .zetl/peers/alice/index.json contains metadata only
+
+Verifies: REQ-019
+```
+
+```
+TEST-019b: File Materialization Lifecycle
+
+Scenario: Unjoin deletes materialized files
+Given: Bob has alice peer with read-content, files materialized
+When: Bob runs `zetl peer remove alice`
+Then:
+  - .zetl/peers/alice/ is completely deleted, including files/
+  - No materialized files remain
+
+Scenario: Sync updates materialized files
+Given: Bob has alice peer synced, research/Topic A.md materialized
+When: Alice edits Topic A.md (Merkle root changes)
+When: Bob runs `zetl peer sync alice`
+Then:
+  - .zetl/peers/alice/files/research/Topic A.md is overwritten with new content
+  - Unchanged files are not re-written
+
+Scenario: Peer deletes a file
+Given: Bob has alice peer synced, research/Old Note.md materialized
+When: Alice deletes Old Note.md
+When: Bob runs `zetl peer sync alice`
+Then:
+  - .zetl/peers/alice/files/research/Old Note.md is deleted locally
+
+Scenario: Scope narrowing removes out-of-scope files
+Given: Bob has alice peer with scope "research/**", files materialized
+When: Alice replaces the capability with scope "research/public/*"
+When: Bob syncs with the new capability
+Then:
+  - Files outside research/public/ are deleted
+  - Files inside research/public/ are retained
+
+Verifies: REQ-020
+```
+
 ---
 
 ## 7. Observability
@@ -1786,9 +2022,9 @@ All peer sync operations SHALL be logged to
 .zetl/peers/sync-log.jsonl in append-only JSON-lines format:
 
   {"timestamp": "...", "op": "sync", "peer": "alice", "status": "updated",
-   "pages_changed": 3, "elapsed_ms": 230}
+   "pages_changed": 3, "files_materialized": 3, "elapsed_ms": 230}
   {"timestamp": "...", "op": "add", "peer": "bob", "status": "pending"}
-  {"timestamp": "...", "op": "remove", "peer": "carol"}
+  {"timestamp": "...", "op": "remove", "peer": "carol", "files_purged": 42}
 ```
 
 ```
@@ -1879,7 +2115,8 @@ Success metric:
   - zetl links shows matches from both vaults
   - zetl backlinks spans both vaults
   - zetl check reports shadows and cross-vault drift
-  - zetl peer remove cleanly unjoins
+  - zetl peer remove cleanly unjoins (including materialized files)
+  - read-content tier materializes files; zetl search finds peer content
 Exit criteria: If graph composition introduces unacceptable complexity
                to LinkGraph::build, evaluate a separate FederatedGraph
                wrapper instead
@@ -1946,7 +2183,7 @@ Exit criteria: If TLS certificate pinning to Ed25519 keys proves
 | **0. Spikes** | Token format, local federation prototype, SPAKE2+BIP39, transport eval | 2-3 weeks | ed25519-dalek, spake2, bip39 crates |
 | **1. Identity** | `zetl init` generates Ed25519 keypair | 1-2 days | Spike 8.1 results |
 | **2. Tokens** | `zetl peer grant`, `attenuate`, `revoke` | 3-5 days | Phase 1 |
-| **3. Local federation** | `peer add/remove/list`, joined graph, multi-match | 5-7 days | Phase 2, Spike 8.3 |
+| **3. Local federation** | `peer add/remove/list`, joined graph, multi-match, file materialization | 5-7 days | Phase 2, Spike 8.3 |
 | **4. Merkle sync** | Delta sync via Merkle root comparison, integrity verification | 3-5 days | Phase 3 |
 | **5. Networking** | TCP+TLS transport, peer discovery, remote sync | 5-7 days | Phase 4, Spike 8.2/8.5 |
 | **5a. Phrase exchange** | `peer invite` / `peer join` via SPAKE2+BIP39 | 3-4 days | Phase 5, Spike 8.4 |
@@ -1978,6 +2215,10 @@ Phases 1-3 can be shipped as a useful local-only federation feature before netwo
 8. **Rendezvous server for phrase-based exchange?** Direct TCP connection works on LAN but not across NATs. The Magic Wormhole project provides public mailbox servers that relay SPAKE2 handshakes. Options: (a) use Magic Wormhole's public infrastructure, (b) host a lightweight relay, (c) support both direct and relay modes. Recommendation: start with direct connect (LAN only), add relay support in a follow-up. The `magic-wormhole` Rust crate includes relay client support if we choose to adopt it.
 
 9. **How many words in the phrase?** 4 words (~44 bits) is sufficient for a 5-minute window against brute-force. For higher-security contexts (longer windows, untrusted networks), 6 words (~66 bits) may be preferred. Recommendation: default to 4, allow `--words 6` for paranoid users.
+
+10. **Should `zetl search` automatically include peer files?** Materialized peer files at `read-content` tier are real files on disk, so search _could_ include them. Options: (a) always include, (b) opt-in via `--peers` flag, (c) separate `zetl search --scope peer:alice`. Recommendation: include by default with provenance annotation in results, allow `--local-only` to exclude. This matches the "show all matches" philosophy (ADR-003).
+
+11. **Should materialized files be `.gitignore`d?** The `.zetl/` directory is typically gitignored already, so materialized files in `.zetl/peers/<label>/files/` are excluded by default. But if a user has a non-standard `.gitignore`, peer files could accidentally be committed. Recommendation: document that `.zetl/` should be in `.gitignore` (existing guidance), no additional action needed.
 
 ---
 
