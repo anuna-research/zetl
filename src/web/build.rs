@@ -3,17 +3,59 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
+use crate::scanner::page_slug_from_path;
 use crate::web::html::{html_escape, layout, sidebar_html, urlencoding};
 use crate::web::markdown;
 use crate::web::VaultData;
 
+/// Build sidebar entries as `(display_name, slug)` tuples for static build.
+fn sidebar_entries(data: &VaultData) -> Vec<(String, String)> {
+    let mut entries: Vec<(String, String)> = data
+        .page_names
+        .iter()
+        .map(|name| {
+            let slug = data
+                .page_slug_map
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| name.clone());
+            let display = if data.collision_names.contains(name) {
+                if let Some(pos) = slug.rfind('/') {
+                    if let Some(folder_start) = slug[..pos].rfind('/') {
+                        slug[folder_start + 1..].to_string()
+                    } else {
+                        slug.clone()
+                    }
+                } else {
+                    name.clone()
+                }
+            } else {
+                name.clone()
+            };
+            (display, slug)
+        })
+        .collect();
+    entries.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    entries
+}
+
+/// Look up the slug for a page name (case-insensitive).
+fn slug_for_page(data: &VaultData, page_name: &str) -> String {
+    data.page_slug_map
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(page_name))
+        .map(|(_, v)| v.clone())
+        .unwrap_or_else(|| page_name.to_string())
+}
+
 /// Generate a complete static HTML site from the vault data.
 pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str) -> Result<()> {
     let out = Path::new(out_dir);
-    std::fs::create_dir_all(out.join("page"))
+    std::fs::create_dir_all(out)
         .with_context(|| format!("Cannot create output directory: {out_dir}"))?;
 
-    let sidebar = sidebar_html(&data.page_names, None);
+    let entries = sidebar_entries(data);
+    let sidebar = sidebar_html(&entries, None);
 
     // ── index.html ──────────────────────────────────────────────────────
     let index_html = render_index(data, &sidebar);
@@ -22,15 +64,16 @@ pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str) -> Resul
     // ── per-page HTML ───────────────────────────────────────────────────
     let mut count = 0usize;
     for file in &data.files {
-        let page_dir = out.join("page").join(&file.page_name);
+        let slug = page_slug_from_path(&file.path);
+        let page_dir = out.join(&slug);
         std::fs::create_dir_all(&page_dir)?;
 
         let full_path = vault_root.join(&file.path);
         let content = std::fs::read_to_string(&full_path)
             .with_context(|| format!("Cannot read {}", full_path.display()))?;
 
-        let page_sidebar = sidebar_html(&data.page_names, Some(&file.page_name));
-        let page_html = render_page(data, vault_root, &file.page_name, &content, &page_sidebar);
+        let page_sidebar = sidebar_html(&entries, Some(&slug));
+        let page_html = render_page(data, vault_root, &file.page_name, &slug, &content, &page_sidebar);
         std::fs::write(page_dir.join("index.html"), page_html)?;
         count += 1;
     }
@@ -48,16 +91,17 @@ fn render_index(data: &VaultData, sidebar: &str) -> String {
 
     let mut grid = String::new();
     for name in data.page_names.iter() {
+        let slug = slug_for_page(data, name);
         let fwd = data.graph.forward_links(name).len();
         let back = data.graph.backlinks(name).len();
         grid.push_str(&format!(
-            r#"<a href="/page/{href}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+            r#"<a href="/{href}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
   <div class="card-body p-4">
     <h3 class="card-title text-sm">{name}</h3>
     <p class="text-xs opacity-60">{fwd} out · {back} in</p>
   </div>
 </a>"#,
-            href = urlencoding(name),
+            href = urlencoding(&slug),
             name = html_escape(name),
             fwd = fwd,
             back = back,
@@ -105,10 +149,11 @@ fn render_page(
     data: &VaultData,
     vault_root: &Path,
     page_name: &str,
+    current_slug: &str,
     raw_content: &str,
     sidebar: &str,
 ) -> String {
-    let rendered = markdown::render_to_html(raw_content, &data.resolved);
+    let rendered = markdown::render_to_html(raw_content, &data.page_slug_map);
 
     // Backlinks
     let backlinks = data.graph.backlinks(page_name);
@@ -116,9 +161,10 @@ fn render_page(
     if !backlinks.is_empty() {
         backlinks_html.push_str(r#"<div class="divider"></div><h2 class="text-lg font-semibold mb-2">Backlinks</h2><ul class="list-none space-y-1">"#);
         for bl in &backlinks {
+            let bl_slug = slug_for_page(data, &bl.source);
             backlinks_html.push_str(&format!(
-                r#"<li><a href="/page/{href}#line-{line}" class="link link-secondary">{source}</a><span class="text-xs opacity-50 ml-2">line {line}</span></li>"#,
-                href = urlencoding(&bl.source),
+                r#"<li><a href="/{href}#line-{line}" class="link link-secondary">{source}</a><span class="text-xs opacity-50 ml-2">line {line}</span></li>"#,
+                href = urlencoding(&bl_slug),
                 source = html_escape(&bl.source),
                 line = bl.line,
             ));
@@ -144,7 +190,8 @@ fn render_page(
     let mut transclusion_cards = String::new();
     for (i, target) in unique_targets.iter().enumerate() {
         let color = colors[i % colors.len()];
-        let href = urlencoding(target);
+        let target_slug = slug_for_page(data, target);
+        let href = urlencoding(&target_slug);
 
         let preview_html = data
             .files
@@ -154,12 +201,12 @@ fn render_page(
                 let full_path = vault_root.join(&file.path);
                 std::fs::read_to_string(&full_path).ok()
             })
-            .map(|content| markdown::render_preview_html(&content, &data.resolved))
+            .map(|content| markdown::render_preview_html(&content, &data.page_slug_map))
             .unwrap_or_else(|| format!("<p><em>{}</em></p>", html_escape("(page does not exist)")));
 
         transclusion_cards.push_str(&format!(
-            r#"<div class="transclusion-card" data-target-href="/page/{href}" style="border-left-color: {color};">
-  <a href="/page/{href}" class="tc-title" style="color: {color};">{name}</a>
+            r#"<div class="transclusion-card" data-target-href="/{href}" style="border-left-color: {color};">
+  <a href="/{href}" class="tc-title" style="color: {color};">{name}</a>
   <div class="tc-excerpt prose prose-sm max-w-none">{preview}</div>
 </div>"#,
             href = href,
@@ -355,5 +402,5 @@ fn render_page(
         colors_json = colors_json,
     );
 
-    layout(page_name, sidebar, &content, Some(page_name), right_panel)
+    layout(page_name, sidebar, &content, Some(current_slug), right_panel)
 }

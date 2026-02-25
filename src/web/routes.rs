@@ -4,9 +4,52 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 
+use crate::scanner::page_slug_from_path;
 use crate::web::html::{html_escape, layout, sidebar_html, urlencoding};
 use crate::web::markdown;
-use crate::web::{reindex, WebState};
+use crate::web::{reindex, VaultData, WebState};
+
+/// Build sidebar entries as `(display_name, slug)` tuples.
+/// Display is just the page name if unique; `folder/Name` if there's a collision.
+fn sidebar_entries(data: &VaultData) -> Vec<(String, String)> {
+    let mut entries: Vec<(String, String)> = data
+        .page_names
+        .iter()
+        .map(|name| {
+            let slug = data
+                .page_slug_map
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| name.clone());
+            let display = if data.collision_names.contains(name) {
+                // Show parent folder for disambiguation
+                if let Some(pos) = slug.rfind('/') {
+                    if let Some(folder_start) = slug[..pos].rfind('/') {
+                        slug[folder_start + 1..].to_string()
+                    } else {
+                        slug.clone()
+                    }
+                } else {
+                    name.clone()
+                }
+            } else {
+                name.clone()
+            };
+            (display, slug)
+        })
+        .collect();
+    entries.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    entries
+}
+
+/// Look up the slug for a page name (case-insensitive).
+fn slug_for_page(data: &VaultData, page_name: &str) -> String {
+    data.page_slug_map
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(page_name))
+        .map(|(_, v)| v.clone())
+        .unwrap_or_else(|| page_name.to_string())
+}
 
 /// GET / — Landing page with vault stats and page grid.
 pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
@@ -20,16 +63,17 @@ pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
     // Page grid
     let mut grid = String::new();
     for name in data.page_names.iter() {
+        let slug = slug_for_page(&data, name);
         let fwd = data.graph.forward_links(name).len();
         let back = data.graph.backlinks(name).len();
         grid.push_str(&format!(
-            r#"<a href="/page/{href}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+            r#"<a href="/{href}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
   <div class="card-body p-4">
     <h3 class="card-title text-sm">{name}</h3>
     <p class="text-xs opacity-60">{fwd} out · {back} in</p>
   </div>
 </a>"#,
-            href = urlencoding(name),
+            href = urlencoding(&slug),
             name = html_escape(name),
             fwd = fwd,
             back = back,
@@ -69,44 +113,49 @@ pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
         grid = grid,
     );
 
-    let sidebar = sidebar_html(&data.page_names, None);
+    let entries = sidebar_entries(&data);
+    let sidebar = sidebar_html(&entries, None);
     Html(layout("Vault", &sidebar, &content, None, None))
 }
 
-/// GET /page/:page_name — Rendered markdown page with backlinks.
+/// GET /{*path} — Rendered markdown page with backlinks.
 pub async fn page_handler(
     State(state): State<WebState>,
-    Path(page_name): Path<String>,
+    Path(slug): Path<String>,
 ) -> Html<String> {
-    let page_name = urldecode(&page_name);
+    let slug = urldecode(&slug);
     let data = state.data.read().unwrap();
 
-    // Find the file
+    // Find the file by matching slug (relative path without extension)
     let file = data
         .files
         .iter()
-        .find(|f| f.page_name.eq_ignore_ascii_case(&page_name));
+        .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug));
 
-    let (rendered, title, raw_escaped) = if let Some(file) = file {
+    let (rendered, page_name, current_slug, raw_escaped) = if let Some(file) = file {
         let full_path = state.vault_root.join(&file.path);
+        let file_slug = page_slug_from_path(&file.path);
         match std::fs::read_to_string(&full_path) {
             Ok(content) => {
-                let html = markdown::render_to_html(&content, &data.resolved);
+                let html = markdown::render_to_html(&content, &data.page_slug_map);
                 let escaped = html_escape(&content);
-                (html, file.page_name.clone(), Some(escaped))
+                (html, file.page_name.clone(), file_slug, Some(escaped))
             }
             Err(_) => (
                 "<p class=\"text-error\">Could not read file.</p>".to_string(),
-                page_name.clone(),
+                file.page_name.clone(),
+                file_slug,
                 None,
             ),
         }
     } else {
         // Page doesn't exist yet — open directly in edit mode
+        let name = slug.rsplit('/').next().unwrap_or(&slug).to_string();
         (
             String::new(),
-            page_name.clone(),
-            Some(format!("# {}\n", page_name)),
+            name.clone(),
+            slug.clone(),
+            Some(format!("# {}\n", name)),
         )
     };
 
@@ -114,14 +163,15 @@ pub async fn page_handler(
     let is_new_page = file.is_none();
 
     // Backlinks
-    let backlinks = data.graph.backlinks(&title);
+    let backlinks = data.graph.backlinks(&page_name);
     let mut backlinks_html = String::new();
     if !backlinks.is_empty() {
         backlinks_html.push_str(r#"<div class="divider"></div><h2 class="text-lg font-semibold mb-2">Backlinks</h2><ul class="list-none space-y-1">"#);
         for bl in &backlinks {
+            let bl_slug = slug_for_page(&data, &bl.source);
             backlinks_html.push_str(&format!(
-                r#"<li><a href="/page/{href}#line-{line}" class="link link-secondary">{source}</a><span class="text-xs opacity-50 ml-2">line {line}</span></li>"#,
-                href = urlencoding(&bl.source),
+                r#"<li><a href="/{href}#line-{line}" class="link link-secondary">{source}</a><span class="text-xs opacity-50 ml-2">line {line}</span></li>"#,
+                href = urlencoding(&bl_slug),
                 source = html_escape(&bl.source),
                 line = bl.line,
             ));
@@ -130,7 +180,7 @@ pub async fn page_handler(
     }
 
     // Transclusion panel: forward-link excerpt cards
-    let forward_links = data.graph.forward_links(&title);
+    let forward_links = data.graph.forward_links(&page_name);
     let mut seen_targets = HashSet::new();
     let mut unique_targets: Vec<String> = Vec::new();
     for link in &forward_links {
@@ -147,7 +197,8 @@ pub async fn page_handler(
     let mut transclusion_cards = String::new();
     for (i, target) in unique_targets.iter().enumerate() {
         let color = colors[i % colors.len()];
-        let href = urlencoding(target);
+        let target_slug = slug_for_page(&data, target);
+        let href = urlencoding(&target_slug);
 
         let preview_html = data
             .files
@@ -157,12 +208,12 @@ pub async fn page_handler(
                 let full_path = state.vault_root.join(&file.path);
                 std::fs::read_to_string(&full_path).ok()
             })
-            .map(|content| markdown::render_preview_html(&content, &data.resolved))
+            .map(|content| markdown::render_preview_html(&content, &data.page_slug_map))
             .unwrap_or_else(|| format!("<p><em>{}</em></p>", html_escape("(page does not exist)")));
 
         transclusion_cards.push_str(&format!(
-            r#"<div class="transclusion-card" data-target-href="/page/{href}" style="border-left-color: {color};">
-  <a href="/page/{href}" class="tc-title" style="color: {color};">{name}</a>
+            r#"<div class="transclusion-card" data-target-href="/{href}" style="border-left-color: {color};">
+  <a href="/{href}" class="tc-title" style="color: {color};">{name}</a>
   <div class="tc-excerpt prose prose-sm max-w-none">{preview}</div>
 </div>"#,
             href = href,
@@ -418,32 +469,41 @@ async function saveEdit() {{
         ),
     );
 
-    let sidebar = sidebar_html(&data.page_names, Some(&title));
-    Html(layout(&title, &sidebar, &content, Some(&title), right_panel))
+    let entries = sidebar_entries(&data);
+    let sidebar = sidebar_html(&entries, Some(&current_slug));
+    Html(layout(&page_name, &sidebar, &content, Some(&current_slug), right_panel))
 }
 
-/// PUT /page/:page_name — Save edited markdown back to the vault file, then re-index.
+/// PUT /{*path} — Save edited markdown back to the vault file, then re-index.
 pub async fn save_handler(
     State(state): State<WebState>,
-    Path(page_name): Path<String>,
+    Path(slug): Path<String>,
     body: String,
 ) -> Response {
-    let page_name = urldecode(&page_name);
+    let slug = urldecode(&slug);
 
     // Look up file path under read lock, then drop it before writing.
-    // For new pages, create at vault_root/{page_name}.md.
+    // For new pages, create at vault_root/{slug}.md.
     let full_path = {
         let data = state.data.read().unwrap();
         let file = data
             .files
             .iter()
-            .find(|f| f.page_name.eq_ignore_ascii_case(&page_name));
+            .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug));
         if let Some(file) = file {
             state.vault_root.join(&file.path)
         } else {
-            state.vault_root.join(format!("{}.md", page_name))
+            state.vault_root.join(format!("{}.md", slug))
         }
     };
+
+    // Ensure parent directory exists for nested paths
+    if let Some(parent) = full_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!("mkdir error: {e}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Cannot create directory").into_response();
+        }
+    }
 
     if let Err(e) = std::fs::write(&full_path, &body) {
         eprintln!("save error: {e}");
@@ -464,18 +524,18 @@ pub async fn save_handler(
     StatusCode::OK.into_response()
 }
 
-/// GET /preview/:page_name — Returns a short HTML preview (for tooltip).
+/// GET /preview/{*path} — Returns a short HTML preview (for tooltip).
 pub async fn preview_handler(
     State(state): State<WebState>,
-    Path(page_name): Path<String>,
+    Path(slug): Path<String>,
 ) -> Html<String> {
-    let page_name = urldecode(&page_name);
+    let slug = urldecode(&slug);
     let data = state.data.read().unwrap();
 
     let file = data
         .files
         .iter()
-        .find(|f| f.page_name.eq_ignore_ascii_case(&page_name));
+        .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug));
 
     let preview = if let Some(file) = file {
         let full_path = state.vault_root.join(&file.path);
@@ -493,7 +553,7 @@ pub async fn preview_handler(
     } else {
         format!(
             "<em>{} (does not exist)</em>",
-            html_escape(&page_name)
+            html_escape(&slug)
         )
     };
 

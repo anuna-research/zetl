@@ -2275,11 +2275,26 @@ fn cmd_serve(cli: &Cli, port: u16) -> Result<()> {
     let mut page_names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
     page_names.sort_by_key(|a| a.to_lowercase());
 
+    let mut page_slug_map = std::collections::HashMap::new();
+    let mut name_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for file in &pipeline.files {
+        let slug = zetl::scanner::page_slug_from_path(&file.path);
+        page_slug_map.insert(file.page_name.clone(), slug);
+        *name_counts.entry(file.page_name.clone()).or_insert(0) += 1;
+    }
+    let collision_names: std::collections::HashSet<String> = name_counts
+        .into_iter()
+        .filter(|(_, count)| *count > 1)
+        .map(|(name, _)| name)
+        .collect();
+
     let data = zetl::web::VaultData {
         files: pipeline.files,
         graph: pipeline.graph,
         page_names,
         resolved: pipeline.graph_resolved,
+        page_slug_map,
+        collision_names,
     };
 
     let state = zetl::web::WebState {
@@ -2298,11 +2313,26 @@ fn cmd_build(cli: &Cli, out_dir: &str) -> Result<()> {
     let mut page_names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
     page_names.sort_by_key(|a| a.to_lowercase());
 
+    let mut page_slug_map = std::collections::HashMap::new();
+    let mut name_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for file in &pipeline.files {
+        let slug = zetl::scanner::page_slug_from_path(&file.path);
+        page_slug_map.insert(file.page_name.clone(), slug);
+        *name_counts.entry(file.page_name.clone()).or_insert(0) += 1;
+    }
+    let collision_names: std::collections::HashSet<String> = name_counts
+        .into_iter()
+        .filter(|(_, count)| *count > 1)
+        .map(|(name, _)| name)
+        .collect();
+
     let data = zetl::web::VaultData {
         files: pipeline.files,
         graph: pipeline.graph,
         page_names,
         resolved: pipeline.graph_resolved,
+        page_slug_map,
+        collision_names,
     };
 
     zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir)?;

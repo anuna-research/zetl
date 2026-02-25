@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use regex::Regex;
@@ -6,8 +6,9 @@ use regex::Regex;
 use crate::web::html::{html_escape, urlencoding};
 
 /// Render markdown content to HTML, rewriting `[[wikilinks]]` into `<a>` tags.
-/// Links whose target is not in `resolved` get `class="link-error"`.
-pub fn render_to_html(content: &str, resolved: &HashSet<String>) -> String {
+/// `slug_map` maps resolved page names to their URL slugs (e.g. "Scanner" → "architecture/Scanner").
+/// Links whose target is not in `slug_map` get `class="link-error"`.
+pub fn render_to_html(content: &str, slug_map: &HashMap<String, String>) -> String {
     let stripped = strip_frontmatter(content);
     let fm_lines = frontmatter_line_count(content);
     let options = Options::ENABLE_TABLES
@@ -57,7 +58,7 @@ pub fn render_to_html(content: &str, resolved: &HashSet<String>) -> String {
     let mut html_output = String::new();
     pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
 
-    rewrite_wikilinks(&html_output, &wikilink_re, resolved)
+    rewrite_wikilinks(&html_output, &wikilink_re, slug_map)
 }
 
 /// Render a short preview (first ~200 chars of meaningful content) for tooltip.
@@ -108,7 +109,7 @@ pub fn render_preview(content: &str) -> String {
 
 /// Render a markdown preview as styled HTML, limited to ~12 block-level elements.
 /// Wikilinks are rewritten into clickable `<a>` tags.
-pub fn render_preview_html(content: &str, resolved: &HashSet<String>) -> String {
+pub fn render_preview_html(content: &str, slug_map: &HashMap<String, String>) -> String {
     let content = strip_frontmatter(content);
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
@@ -150,11 +151,11 @@ pub fn render_preview_html(content: &str, resolved: &HashSet<String>) -> String 
     let mut html_output = String::new();
     pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
 
-    rewrite_wikilinks(&html_output, &wikilink_re, resolved)
+    rewrite_wikilinks(&html_output, &wikilink_re, slug_map)
 }
 
 /// Replace [[wikilinks]] with <a> tags in HTML, skipping content inside <code>/<pre>.
-fn rewrite_wikilinks(html: &str, re: &Regex, resolved: &HashSet<String>) -> String {
+fn rewrite_wikilinks(html: &str, re: &Regex, slug_map: &HashMap<String, String>) -> String {
     let mut result = String::with_capacity(html.len());
     let mut depth: usize = 0;
 
@@ -167,7 +168,7 @@ fn rewrite_wikilinks(html: &str, re: &Regex, resolved: &HashSet<String>) -> Stri
                 result.push_str(&replace_wikilinks_in_segment(
                     &html[segment_start..i],
                     re,
-                    resolved,
+                    slug_map,
                 ));
             } else if i > segment_start {
                 result.push_str(&html[segment_start..i]);
@@ -200,7 +201,7 @@ fn rewrite_wikilinks(html: &str, re: &Regex, resolved: &HashSet<String>) -> Stri
             result.push_str(&replace_wikilinks_in_segment(
                 &html[segment_start..],
                 re,
-                resolved,
+                slug_map,
             ));
         } else {
             result.push_str(&html[segment_start..]);
@@ -213,7 +214,7 @@ fn rewrite_wikilinks(html: &str, re: &Regex, resolved: &HashSet<String>) -> Stri
 fn replace_wikilinks_in_segment(
     segment: &str,
     re: &Regex,
-    resolved: &HashSet<String>,
+    slug_map: &HashMap<String, String>,
 ) -> String {
     re.replace_all(segment, |caps: &regex::Captures| {
         let inner = &caps[1];
@@ -225,18 +226,21 @@ fn replace_wikilinks_in_segment(
         // Strip heading/block refs for page resolution
         let page = target.split('#').next().unwrap_or(target).trim();
         let display = html_escape(display.trim());
-        // Use canonical (resolved) name for href so it matches transclusion card hrefs
-        let canonical = resolved.iter().find(|r| r.eq_ignore_ascii_case(page));
+        // Look up slug by case-insensitive page name match
+        let slug = slug_map
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(page))
+            .map(|(_, v)| v.as_str());
 
-        if let Some(canon) = canonical {
+        if let Some(slug) = slug {
             format!(
-                r#"<a href="/page/{href}" class="link link-primary wikilink">{display}</a>"#,
-                href = urlencoding(canon),
+                r#"<a href="/{href}" class="link link-primary wikilink">{display}</a>"#,
+                href = urlencoding(slug),
                 display = display,
             )
         } else {
             format!(
-                r#"<a href="/page/{href}" class="link-error wikilink wikilink-dead">{display}</a>"#,
+                r#"<a href="/{href}" class="link-error wikilink wikilink-dead">{display}</a>"#,
                 href = urlencoding(page),
                 display = display,
             )
@@ -283,38 +287,38 @@ fn strip_frontmatter(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use std::collections::HashMap;
 
     #[test]
     fn test_simple_wikilink() {
-        let mut resolved = HashSet::new();
-        resolved.insert("Target".to_string());
-        let html = render_to_html("See [[Target]] here", &resolved);
-        assert!(html.contains(r#"href="/page/Target""#));
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Target".to_string(), "folder/Target".to_string());
+        let html = render_to_html("See [[Target]] here", &slug_map);
+        assert!(html.contains(r#"href="/folder/Target""#));
         assert!(html.contains("link-primary"));
     }
 
     #[test]
     fn test_aliased_wikilink() {
-        let mut resolved = HashSet::new();
-        resolved.insert("Target".to_string());
-        let html = render_to_html("See [[Target|click me]] here", &resolved);
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Target".to_string(), "folder/Target".to_string());
+        let html = render_to_html("See [[Target|click me]] here", &slug_map);
         assert!(html.contains("click me"));
-        assert!(html.contains(r#"href="/page/Target""#));
+        assert!(html.contains(r#"href="/folder/Target""#));
     }
 
     #[test]
     fn test_dead_link() {
-        let resolved = HashSet::new();
-        let html = render_to_html("See [[Missing]] here", &resolved);
+        let slug_map = HashMap::new();
+        let html = render_to_html("See [[Missing]] here", &slug_map);
         assert!(html.contains("link-error"));
     }
 
     #[test]
     fn test_wikilink_in_code_block_untouched() {
-        let mut resolved = HashSet::new();
-        resolved.insert("Target".to_string());
-        let html = render_to_html("```\n[[Target]]\n```", &resolved);
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Target".to_string(), "folder/Target".to_string());
+        let html = render_to_html("```\n[[Target]]\n```", &slug_map);
         // Inside code block, should NOT be rewritten to <a>
         assert!(!html.contains("link-primary"));
     }
@@ -323,5 +327,13 @@ mod tests {
     fn test_strip_frontmatter() {
         let content = "---\ntitle: Test\n---\n# Hello";
         assert_eq!(strip_frontmatter(content), "# Hello");
+    }
+
+    #[test]
+    fn test_root_level_slug() {
+        let mut slug_map = HashMap::new();
+        slug_map.insert("Notes".to_string(), "Notes".to_string());
+        let html = render_to_html("See [[Notes]] here", &slug_map);
+        assert!(html.contains(r#"href="/Notes""#));
     }
 }

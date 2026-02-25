@@ -591,6 +591,20 @@ pub fn page_name_from_path(path: &Path) -> String {
         .to_string()
 }
 
+/// Derive a URL slug from a relative vault path by stripping the `.md`/`.spl` extension.
+///
+/// Example: `architecture/Scanner.md` → `architecture/Scanner`
+pub fn page_slug_from_path(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    if let Some(stripped) = s.strip_suffix(".md") {
+        stripped.to_string()
+    } else if let Some(stripped) = s.strip_suffix(".spl") {
+        stripped.to_string()
+    } else {
+        s.to_string()
+    }
+}
+
 /// Extract an Obsidian block-id annotation from normalised leaf text (REQ-042b).
 ///
 /// Obsidian block IDs are written as ` ^identifier` at the end of a block's

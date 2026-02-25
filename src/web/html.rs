@@ -270,20 +270,21 @@ pub fn layout(
     )
 }
 
-/// Build the sidebar HTML: a scrollable list of all page names.
-pub fn sidebar_html(page_names: &[String], active_page: Option<&str>) -> String {
+/// Build the sidebar HTML: a scrollable list of all pages.
+/// Each entry is `(display_name, slug)` where slug is the URL path (e.g. "architecture/Scanner").
+pub fn sidebar_html(pages: &[(String, String)], active_slug: Option<&str>) -> String {
     let mut s = String::from(r#"<ul class="menu menu-sm">"#);
-    for name in page_names {
-        let active = if active_page == Some(name.as_str()) {
+    for (display, slug) in pages {
+        let active = if active_slug == Some(slug.as_str()) {
             " active"
         } else {
             ""
         };
         s.push_str(&format!(
-            r#"<li><a href="/page/{href}" class="{active}">{name}</a></li>"#,
-            href = urlencoding(name),
+            r#"<li><a href="/{href}" class="{active}">{name}</a></li>"#,
+            href = urlencoding(slug),
             active = active.trim(),
-            name = html_escape(name),
+            name = html_escape(display),
         ));
     }
     s.push_str("</ul>");
