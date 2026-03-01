@@ -1,12 +1,12 @@
 {
-  "task_id": "verify-phase2",
+  "task_id": "static-serve",
   "token_budget": 8000,
-  "tokens_used": 329,
+  "tokens_used": 351,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "End-to-end verification of the theme system. Create test themes in a test vault: (1) a theme that overrides only page.html with a custom banner, verify the banner appears and base.html layout is inherited; (2) a theme that overrides base.html, verify all pages use it; (3) verify --theme default still works with no .zetl/ directory; (4) verify --theme nonexistent gives a clear error; (5) verify --theme '../escape' is rejected; (6) verify the theme variable is accessible in templates. TEST-012-003, TEST-012-010.",
-      "token_cost": 128,
+      "content": "Add a /_static/{*path} route to the Axum router in src/web/mod.rs. Implement two-tier file lookup: (1) .zetl/themes/<active-theme>/static/<path>, (2) .zetl/static/<path>. Per-theme assets take precedence. Infer MIME types from file extension (.js → application/javascript, .css → text/css, .png → image/png, .jpg → image/jpeg, .svg → image/svg+xml, .woff2 → font/woff2, etc.). Return 404 for missing files. If neither static directory exists, /_static/* returns 404 with no startup error. Prevent path traversal attacks (reject paths with '..', normalize). REQ-012-005, CON-012-002, ADR-013.",
+      "token_cost": 150,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:14:06Z"
+  "constructed_at": "2026-03-01T14:18:30Z"
 }

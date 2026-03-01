@@ -1,7 +1,8 @@
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 
 use crate::scanner::page_slug_from_path;
@@ -242,6 +243,101 @@ pub async fn preview_handler(
     Html(preview)
 }
 
+/// GET /_static/{*path} — Serve static assets with two-tier lookup.
+///
+/// Lookup order:
+///   1. .zetl/themes/<active-theme>/static/<path>  (per-theme override)
+///   2. .zetl/static/<path>                         (vault-wide fallback)
+///
+/// Returns 404 if neither location has the file (or if the directories don't exist).
+pub async fn static_handler(
+    State(state): State<WebState>,
+    Path(req_path): Path<String>,
+) -> Response {
+    // Reject path traversal: no ".." components, no null bytes
+    if req_path.contains('\0') || req_path.split('/').any(|seg| seg == "..") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    // Also reject empty path
+    if req_path.is_empty() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    // Build candidate paths (two-tier lookup)
+    let zetl_dir = state.vault_root.join(".zetl");
+    let candidates: Vec<PathBuf> = {
+        let mut c = Vec::with_capacity(2);
+        // 1. Theme-specific static dir
+        if !state.theme.is_empty() {
+            c.push(
+                zetl_dir
+                    .join("themes")
+                    .join(&state.theme)
+                    .join("static")
+                    .join(&req_path),
+            );
+        }
+        // 2. Vault-wide static dir
+        c.push(zetl_dir.join("static").join(&req_path));
+        c
+    };
+
+    for candidate in &candidates {
+        // Canonicalize and ensure it's still within the expected static dir
+        let Ok(canonical) = candidate.canonicalize() else {
+            continue;
+        };
+        if !canonical.is_file() {
+            continue;
+        }
+
+        // Safety: ensure canonical path is under .zetl/
+        let Ok(zetl_canonical) = zetl_dir.canonicalize() else {
+            continue;
+        };
+        if !canonical.starts_with(&zetl_canonical) {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+
+        let Ok(body) = std::fs::read(&canonical) else {
+            continue;
+        };
+
+        let mime = mime_from_ext(&req_path);
+        return ([(header::CONTENT_TYPE, mime)], body).into_response();
+    }
+
+    StatusCode::NOT_FOUND.into_response()
+}
+
+/// Infer a MIME type from a file path's extension.
+fn mime_from_ext(path: &str) -> &'static str {
+    let ext = path.rsplit('.').next().unwrap_or("");
+    match ext.to_ascii_lowercase().as_str() {
+        "js" | "mjs" => "application/javascript",
+        "css" => "text/css",
+        "html" | "htm" => "text/html",
+        "json" => "application/json",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "svg" => "image/svg+xml",
+        "ico" => "image/x-icon",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        "webp" => "image/webp",
+        "avif" => "image/avif",
+        "xml" => "application/xml",
+        "txt" => "text/plain",
+        "map" => "application/json",
+        "wasm" => "application/wasm",
+        _ => "application/octet-stream",
+    }
+}
+
 /// Convert a TemplateError into a 500 response with a styled HTML error page.
 fn render_error_response(err: TemplateError) -> Response {
     eprintln!("template error: {err}");
@@ -277,5 +373,196 @@ fn hex_nibble(b: u8) -> u8 {
         b'a'..=b'f' => b - b'a' + 10,
         b'A'..=b'F' => b - b'A' + 10,
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::Router;
+    use axum::routing::get;
+    use std::collections::{HashMap, HashSet};
+    use std::sync::{Arc, RwLock};
+    use tower::ServiceExt;
+
+    use crate::graph::LinkGraph;
+    use crate::web::{VaultData, WebState};
+    use crate::web::engine::TemplateEngine;
+
+    /// Build a minimal WebState pointing at a temp dir.
+    fn test_state(vault_root: &std::path::Path, theme: &str) -> WebState {
+        let data = VaultData {
+            files: vec![],
+            graph: LinkGraph::build(&[], &HashMap::new()),
+            page_names: vec![],
+            resolved: HashSet::new(),
+            page_slug_map: HashMap::new(),
+            collision_names: HashSet::new(),
+        };
+        WebState {
+            data: Arc::new(RwLock::new(data)),
+            vault_root: Arc::new(vault_root.to_path_buf()),
+            engine: Arc::new(TemplateEngine::new(vault_root, theme, false, false)),
+            theme: theme.to_string(),
+        }
+    }
+
+    fn static_router(state: WebState) -> Router {
+        Router::new()
+            .route("/_static/{*path}", get(static_handler))
+            .with_state(state)
+    }
+
+    async fn get_status(app: &Router, uri: &str) -> StatusCode {
+        let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        resp.status()
+    }
+
+    async fn get_body(app: &Router, uri: &str) -> (StatusCode, Vec<u8>, String) {
+        let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let ct = resp
+            .headers()
+            .get("content-type")
+            .map(|v| v.to_str().unwrap().to_string())
+            .unwrap_or_default();
+        let body = axum::body::to_bytes(resp.into_body(), 1_000_000)
+            .await
+            .unwrap()
+            .to_vec();
+        (status, body, ct)
+    }
+
+    #[test]
+    fn test_mime_from_ext() {
+        assert_eq!(mime_from_ext("app.js"), "application/javascript");
+        assert_eq!(mime_from_ext("style.css"), "text/css");
+        assert_eq!(mime_from_ext("image.png"), "image/png");
+        assert_eq!(mime_from_ext("photo.jpg"), "image/jpeg");
+        assert_eq!(mime_from_ext("icon.svg"), "image/svg+xml");
+        assert_eq!(mime_from_ext("font.woff2"), "font/woff2");
+        assert_eq!(mime_from_ext("font.woff"), "font/woff");
+        assert_eq!(mime_from_ext("data.json"), "application/json");
+        assert_eq!(mime_from_ext("page.html"), "text/html");
+        assert_eq!(mime_from_ext("unknown.xyz"), "application/octet-stream");
+        // Case-insensitive extension
+        assert_eq!(mime_from_ext("IMG.PNG"), "image/png");
+        assert_eq!(mime_from_ext("STYLE.CSS"), "text/css");
+    }
+
+    #[tokio::test]
+    async fn static_serves_from_vault_static() {
+        let tmp = tempfile::tempdir().unwrap();
+        let static_dir = tmp.path().join(".zetl/static");
+        std::fs::create_dir_all(&static_dir).unwrap();
+        std::fs::write(static_dir.join("app.js"), b"console.log('hi');").unwrap();
+
+        let state = test_state(tmp.path(), "default");
+        let app = static_router(state);
+
+        let (status, body, ct) = get_body(&app, "/_static/app.js").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, b"console.log('hi');");
+        assert_eq!(ct, "application/javascript");
+    }
+
+    #[tokio::test]
+    async fn static_theme_overrides_vault() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Vault-wide static
+        let vault_static = tmp.path().join(".zetl/static");
+        std::fs::create_dir_all(&vault_static).unwrap();
+        std::fs::write(vault_static.join("style.css"), b"body{color:red}").unwrap();
+        // Theme-specific static (should win)
+        let theme_static = tmp.path().join(".zetl/themes/mytheme/static");
+        std::fs::create_dir_all(&theme_static).unwrap();
+        std::fs::write(theme_static.join("style.css"), b"body{color:blue}").unwrap();
+
+        let state = test_state(tmp.path(), "mytheme");
+        let app = static_router(state);
+
+        let (status, body, ct) = get_body(&app, "/_static/style.css").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, b"body{color:blue}");
+        assert_eq!(ct, "text/css");
+    }
+
+    #[tokio::test]
+    async fn static_falls_back_to_vault_when_theme_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault_static = tmp.path().join(".zetl/static");
+        std::fs::create_dir_all(&vault_static).unwrap();
+        std::fs::write(vault_static.join("logo.png"), b"\x89PNG").unwrap();
+
+        // Theme dir doesn't have logo.png
+        let theme_static = tmp.path().join(".zetl/themes/mytheme/static");
+        std::fs::create_dir_all(&theme_static).unwrap();
+
+        let state = test_state(tmp.path(), "mytheme");
+        let app = static_router(state);
+
+        let (status, body, ct) = get_body(&app, "/_static/logo.png").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, b"\x89PNG");
+        assert_eq!(ct, "image/png");
+    }
+
+    #[tokio::test]
+    async fn static_404_for_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+        let app = static_router(state);
+
+        let status = get_status(&app, "/_static/nope.js").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn static_rejects_path_traversal() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Put a secret file outside .zetl
+        std::fs::write(tmp.path().join("secret.txt"), b"secret").unwrap();
+        let vault_static = tmp.path().join(".zetl/static");
+        std::fs::create_dir_all(&vault_static).unwrap();
+
+        let state = test_state(tmp.path(), "default");
+        let app = static_router(state);
+
+        let status = get_status(&app, "/_static/../secret.txt").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        let status = get_status(&app, "/_static/../../etc/passwd").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn static_serves_nested_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nested = tmp.path().join(".zetl/static/fonts/sub");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("inter.woff2"), b"woff2data").unwrap();
+
+        let state = test_state(tmp.path(), "default");
+        let app = static_router(state);
+
+        let (status, body, ct) = get_body(&app, "/_static/fonts/sub/inter.woff2").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, b"woff2data");
+        assert_eq!(ct, "font/woff2");
+    }
+
+    #[tokio::test]
+    async fn static_no_dirs_returns_404_without_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        // No .zetl directory at all
+        let state = test_state(tmp.path(), "default");
+        let app = static_router(state);
+
+        let status = get_status(&app, "/_static/anything.js").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }
