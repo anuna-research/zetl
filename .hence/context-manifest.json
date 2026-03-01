@@ -1,57 +1,75 @@
 {
-  "task_id": "anchor-annotations",
+  "task_id": "integration-test",
   "token_budget": 8000,
-  "tokens_used": 335,
+  "tokens_used": 389,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement wikilink parsing and anchor glyph injection for the main pane. For each line of the note content: scan for [[wikilink]] patterns; assign each unique wikilink an ordinal N (document order, 1-indexed); inject a styled anchor glyph [N] (ratatui Span with color from LinkColors) immediately after the closing ]] of each wikilink occurrence. Dead links (wikilinks whose target is not in the index) render in red (ANSI red in 8-color, Color::Red in true-color) or with a '!' prefix in no-color mode: ![N]. Track the document-order list of (ordinal, page_title, is_dead, line_number) tuples as LinkMap — this structure is shared by the context pane, bridge column, and focus mode tasks. REQ-064, ADR-017.",
-      "token_cost": 177,
+      "content": "Comprehensive integration test covering the full SPEC-012 feature set. Create a test vault with: multiple pages (some with frontmatter, some without), dead links, backlinks, subfolders, a custom theme that overrides page.html with frontmatter-conditional rendering, shared and per-theme static assets. Verify: (1) zetl serve with default theme works, (2) zetl serve --theme custom works with overrides and fallback, (3) zetl build with default theme produces correct output, (4) zetl build --theme custom produces correct output with static assets, (5) edit mode works only in serve, (6) frontmatter accessible in custom theme, (7) static assets served with correct MIME types, (8) template errors produce readable messages. All REQ-012-* and TEST-012-*.",
+      "token_cost": 188,
       "priority": "PlanMeta"
     },
     {
-      "source": "memory/episodic/task-view-module-changes",
-      "content": "Modified 7 files (+260, -0): src/cli.rs, src/lib.rs, src/main.rs, src/view/app.rs, src/view/event.rs and 2 more",
-      "token_cost": 27,
+      "source": "memory/episodic/task-add-serde-yaml-changes",
+      "content": "Modified 3 files (+26, -47): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "token_cost": 20,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-color-palette-changes",
-      "content": "Modified 3 files (+349, -5): .hence/context-manifest.json, src/view/color.rs, src/view/mod.rs",
+      "source": "memory/episodic/task-add-minijinja-changes",
+      "content": "Modified 3 files (+36, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "token_cost": 20,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-context-structs-changes",
+      "content": "Modified 3 files (+502, -5): .hence/context-manifest.json, src/web/context.rs, src/web/mod.rs",
       "token_cost": 23,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-cli-entry-changes",
-      "content": "Modified 4 files (+226, -19): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/view/app.rs",
-      "token_cost": 25,
+      "source": "memory/episodic/task-extract-base-changes",
+      "content": "Modified 1 files (+499, -0): src/web/templates/base.html",
+      "token_cost": 14,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-fuzzy-suggestion-changes",
-      "content": "Modified 4 files (+127, -8): .hence/context-manifest.json, src/main.rs, src/view/fuzzy.rs, src/view/mod.rs",
+      "source": "memory/episodic/task-extract-index-changes",
+      "content": "Modified 1 files (+38, -0): src/web/templates/index.html",
+      "token_cost": 14,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-extract-page-changes",
+      "content": "Modified 1 files (+261, -0): src/web/templates/page.html",
+      "token_cost": 14,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-extract-folder-changes",
+      "content": "Modified 1 files (+45, -0): src/web/templates/folder.html",
+      "token_cost": 14,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-engine-changes",
+      "content": "Modified 5 files (+214, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/mod.rs",
+      "token_cost": 29,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-refactor-routes-changes",
+      "content": "Modified 4 files (+79, -485): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs",
       "token_cost": 26,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-no-index-fallback-changes",
-      "content": "Modified 2 files (+65, -7): .hence/context-manifest.json, src/main.rs",
-      "token_cost": 17,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-two-pane-layout-changes",
-      "content": "Modified 2 files (+95, -12): .hence/context-manifest.json, src/view/app.rs",
-      "token_cost": 18,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-main-pane-changes",
-      "content": "Modified 3 files (+110, -24): .hence/context-manifest.json, src/main.rs, src/view/app.rs",
-      "token_cost": 22,
+      "source": "memory/episodic/task-refactor-build-changes",
+      "content": "Modified 4 files (+68, -456): .hence/context-manifest.json, src/web/build.rs, src/web/mod.rs, src/web/routes.rs",
+      "token_cost": 27,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T07:28:22Z"
+  "constructed_at": "2026-03-01T14:35:27Z"
 }

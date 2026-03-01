@@ -249,6 +249,30 @@ fn replace_wikilinks_in_segment(
     .to_string()
 }
 
+/// Parse YAML frontmatter from the beginning of a markdown file into a JSON value.
+/// Returns an empty object `{}` if no frontmatter is present or if the YAML is malformed.
+pub fn parse_frontmatter(content: &str) -> serde_json::Value {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return serde_json::Value::Object(serde_json::Map::new());
+    }
+
+    let after_first = &trimmed[3..];
+    if let Some(end_pos) = after_first.find("\n---") {
+        let yaml_block = &after_first[..end_pos];
+        match serde_yaml_ng::from_str::<serde_json::Value>(yaml_block) {
+            Ok(val) if val.is_object() => val,
+            Ok(_) => serde_json::Value::Object(serde_json::Map::new()),
+            Err(e) => {
+                eprintln!("Warning: malformed frontmatter YAML: {e}");
+                serde_json::Value::Object(serde_json::Map::new())
+            }
+        }
+    } else {
+        serde_json::Value::Object(serde_json::Map::new())
+    }
+}
+
 /// Count the number of lines consumed by YAML frontmatter (including delimiters).
 fn frontmatter_line_count(content: &str) -> usize {
     let trimmed = content.trim_start();
@@ -340,8 +364,45 @@ mod tests {
     #[test]
     fn test_kebab_case_slug() {
         let mut slug_map = HashMap::new();
-        slug_map.insert("Link Graph".to_string(), "architecture/link-graph".to_string());
+        slug_map.insert(
+            "Link Graph".to_string(),
+            "architecture/link-graph".to_string(),
+        );
         let html = render_to_html("See [[Link Graph]] here", &slug_map);
         assert!(html.contains(r#"href="/architecture/link-graph""#));
+    }
+
+    #[test]
+    fn test_parse_frontmatter_valid() {
+        let content = "---\ntitle: Hello\ntags:\n  - rust\n  - cli\n---\n# Body";
+        let fm = parse_frontmatter(content);
+        assert_eq!(fm["title"], "Hello");
+        let tags = fm["tags"].as_array().unwrap();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0], "rust");
+    }
+
+    #[test]
+    fn test_parse_frontmatter_none() {
+        let content = "# No frontmatter here";
+        let fm = parse_frontmatter(content);
+        assert!(fm.is_object());
+        assert!(fm.as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_malformed() {
+        let content = "---\n: [invalid yaml\n---\n# Body";
+        let fm = parse_frontmatter(content);
+        assert!(fm.is_object());
+        assert!(fm.as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_unclosed() {
+        let content = "---\ntitle: Test\n# No closing fence";
+        let fm = parse_frontmatter(content);
+        assert!(fm.is_object());
+        assert!(fm.as_object().unwrap().is_empty());
     }
 }

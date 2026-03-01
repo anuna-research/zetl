@@ -1,4 +1,6 @@
 pub mod build;
+pub mod context;
+pub mod engine;
 pub mod html;
 pub mod markdown;
 pub mod routes;
@@ -7,12 +9,14 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use axum::Router;
 use axum::routing::get;
+use axum::Router;
 
 use crate::graph::LinkGraph;
 use crate::scanner::{page_slug_from_path, resolve_page_name, scan_vault};
 use crate::types::ParsedFile;
+
+use self::engine::TemplateEngine;
 
 /// Snapshot of vault data that can be swapped after re-indexing.
 pub struct VaultData {
@@ -26,11 +30,24 @@ pub struct VaultData {
     pub collision_names: HashSet<String>,
 }
 
+impl VaultData {
+    /// Look up the slug for a page name (case-insensitive).
+    pub fn slug_for_page(&self, page_name: &str) -> String {
+        self.page_slug_map
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(page_name))
+            .map(|(_, v)| v.clone())
+            .unwrap_or_else(|| page_name.to_string())
+    }
+}
+
 /// Shared state passed to all handlers via axum State.
 #[derive(Clone)]
 pub struct WebState {
     pub data: Arc<RwLock<VaultData>>,
     pub vault_root: Arc<PathBuf>,
+    pub engine: Arc<TemplateEngine>,
+    pub theme: String,
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.
@@ -95,9 +112,7 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
     // Warn about slug collisions
     for (slug, sources) in &slug_sources {
         if sources.len() > 1 {
-            eprintln!(
-                "warning: slug collision — the following files all map to /{slug}:"
-            );
+            eprintln!("warning: slug collision — the following files all map to /{slug}:");
             for src in sources {
                 eprintln!("  - {src}");
             }
@@ -121,8 +136,12 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
 pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", get(routes::index_handler))
+        .route("/_static/{*path}", get(routes::static_handler))
         .route("/preview/{*path}", get(routes::preview_handler))
-        .route("/{*path}", get(routes::page_handler).put(routes::save_handler))
+        .route(
+            "/{*path}",
+            get(routes::page_handler).put(routes::save_handler),
+        )
         .with_state(state);
 
     let addr = format!("0.0.0.0:{port}");

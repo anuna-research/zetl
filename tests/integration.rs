@@ -2046,3 +2046,820 @@ fn test_049_blocks_forward_hash_as_source_metadata_roundtrip() {
         "resolved result must include a text field"
     );
 }
+
+// ===========================================================================
+// TEST-012-003 / TEST-012-010: Theme System End-to-End Verification
+// ===========================================================================
+
+/// Helper: create a minimal vault with one markdown page for theme testing.
+fn build_theme_test_vault(root: &Path) {
+    write_file(
+        root,
+        "Hello.md",
+        "# Hello\n\nThis is the hello page with a [[World]] link.\n",
+    );
+    write_file(root, "World.md", "# World\n\nContent of the world page.\n");
+}
+
+/// TEST-012-003: Theme overriding only page.html with a custom banner.
+/// The custom page.html extends base.html, so the built-in base layout should
+/// be inherited while the banner from the theme's page.html appears in output.
+#[test]
+fn test_012_003_theme_page_override_inherits_base() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    // Create a custom theme that overrides only page.html with a banner
+    let theme_dir = dir.path().join(".zetl/themes/banner-theme");
+    fs::create_dir_all(&theme_dir).expect("create theme dir");
+    fs::write(
+        theme_dir.join("page.html"),
+        r#"{% extends "base.html" %}
+{% block title %}{{ page.title }} — Themed{% endblock %}
+{% block content %}
+<div id="custom-banner">THEME BANNER: {{ page.title }}</div>
+<article>{{ page.content_html }}</article>
+{% endblock %}"#,
+    )
+    .expect("write theme page.html");
+
+    let out_dir = dir.path().join("dist");
+
+    // Build with the custom theme
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("banner-theme")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build with banner-theme should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Read the generated page HTML
+    let page_html = fs::read_to_string(out_dir.join("hello/index.html"))
+        .expect("hello/index.html should exist");
+
+    // Custom banner should appear
+    assert!(
+        page_html.contains("THEME BANNER: Hello"),
+        "custom banner should appear in page output"
+    );
+
+    // Base layout should be inherited (DOCTYPE from base.html)
+    assert!(
+        page_html.contains("<!DOCTYPE html>"),
+        "base.html layout should be inherited (DOCTYPE present)"
+    );
+
+    // Index page should use the built-in template (not overridden)
+    let index_html =
+        fs::read_to_string(out_dir.join("index.html")).expect("index.html should exist");
+    assert!(
+        !index_html.contains("THEME BANNER"),
+        "index.html should use built-in template, not the theme's page.html"
+    );
+    assert!(
+        index_html.contains("<!DOCTYPE html>"),
+        "index.html should still have base.html layout"
+    );
+}
+
+/// TEST-012-003: Theme overriding base.html — all pages should use it.
+#[test]
+fn test_012_003_theme_base_override_affects_all_pages() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    // Create a theme that overrides base.html with a custom wrapper
+    let theme_dir = dir.path().join(".zetl/themes/custom-base");
+    fs::create_dir_all(&theme_dir).expect("create theme dir");
+    fs::write(
+        theme_dir.join("base.html"),
+        r#"<!DOCTYPE html>
+<html lang="en" data-theme="{{ theme }}">
+<head><meta charset="utf-8"><title>{% block title %}custom-base{% endblock %}</title></head>
+<body>
+<div id="custom-base-wrapper">
+{% block content %}{% endblock %}
+</div>
+</body>
+</html>"#,
+    )
+    .expect("write theme base.html");
+
+    let out_dir = dir.path().join("dist");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("custom-base")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build with custom-base theme should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Check index page uses custom base
+    let index_html =
+        fs::read_to_string(out_dir.join("index.html")).expect("index.html should exist");
+    assert!(
+        index_html.contains("custom-base-wrapper"),
+        "index.html should use the overridden base.html"
+    );
+
+    // Check page uses custom base
+    let page_html = fs::read_to_string(out_dir.join("hello/index.html"))
+        .expect("hello/index.html should exist");
+    assert!(
+        page_html.contains("custom-base-wrapper"),
+        "page should use the overridden base.html"
+    );
+}
+
+/// TEST-012-003: --theme default works with no .zetl/ directory at all.
+#[test]
+fn test_012_003_default_theme_no_zetl_dir() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    // Confirm no .zetl directory exists
+    assert!(
+        !dir.path().join(".zetl").exists(),
+        "precondition: .zetl/ should not exist"
+    );
+
+    let out_dir = dir.path().join("dist");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("default")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build --theme default should succeed without .zetl/ dir.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Verify output was generated
+    let index_html =
+        fs::read_to_string(out_dir.join("index.html")).expect("index.html should be generated");
+    assert!(
+        index_html.contains("<!DOCTYPE html>"),
+        "default theme should produce valid HTML"
+    );
+    assert!(
+        index_html.contains("Hello"),
+        "index should list the Hello page"
+    );
+}
+
+/// TEST-012-010: --theme nonexistent gives a clear error message listing available themes.
+#[test]
+fn test_012_010_nonexistent_theme_error() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    // Create one valid theme so the hint lists it
+    let theme_dir = dir.path().join(".zetl/themes/existing-theme");
+    fs::create_dir_all(&theme_dir).expect("create theme dir");
+    fs::write(
+        theme_dir.join("page.html"),
+        "{% extends \"base.html\" %}{% block content %}ok{% endblock %}",
+    )
+    .unwrap();
+
+    let out_dir = dir.path().join("dist");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("nonexistent")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+
+    assert!(
+        !output.status.success(),
+        "zetl build --theme nonexistent should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("nonexistent"),
+        "error should mention the theme name 'nonexistent', got: {stderr}"
+    );
+    assert!(
+        stderr.contains("not found") || stderr.contains("does not exist"),
+        "error should indicate the theme was not found, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("existing-theme"),
+        "error hint should list the available theme 'existing-theme', got: {stderr}"
+    );
+}
+
+/// TEST-012-010: --theme '../escape' is rejected as an invalid theme name.
+#[test]
+fn test_012_010_path_traversal_rejected() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    let out_dir = dir.path().join("dist");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("../escape")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+
+    assert!(
+        !output.status.success(),
+        "zetl build --theme '../escape' should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("invalid theme name"),
+        "error should say 'invalid theme name', got: {stderr}"
+    );
+}
+
+/// TEST-012-010: The {{ theme }} variable is accessible in templates and renders correctly.
+#[test]
+fn test_012_010_theme_variable_accessible() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    // Create a theme that outputs {{ theme }} in visible content
+    let theme_dir = dir.path().join(".zetl/themes/my-theme");
+    fs::create_dir_all(&theme_dir).expect("create theme dir");
+    fs::write(
+        theme_dir.join("page.html"),
+        r#"{% extends "base.html" %}
+{% block content %}
+<div id="theme-probe">ACTIVE_THEME={{ theme }}</div>
+<article>{{ page.content_html }}</article>
+{% endblock %}"#,
+    )
+    .expect("write theme page.html");
+
+    let out_dir = dir.path().join("dist");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("my-theme")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build with my-theme should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Check that the theme variable rendered correctly
+    let page_html = fs::read_to_string(out_dir.join("hello/index.html"))
+        .expect("hello/index.html should exist");
+    assert!(
+        page_html.contains("ACTIVE_THEME=my-theme"),
+        "theme variable should render as 'my-theme' in template output"
+    );
+
+    // Also verify data-theme attribute on the <html> tag from base.html
+    assert!(
+        page_html.contains(r#"data-theme="my-theme""#),
+        "base.html should set data-theme to 'my-theme'"
+    );
+}
+
+// ── TEST-012-005: Serve-mode static asset handling ─────────────────────────
+//
+// These tests spawn `zetl serve` on a random port, wait for it to start,
+// send raw HTTP/1.1 requests via TcpStream, then verify responses.
+
+/// Find a free TCP port by binding to port 0 and reading the assigned port.
+fn find_free_port() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to port 0");
+    listener.local_addr().unwrap().port()
+}
+
+/// Spawn `zetl serve` and wait up to 3 seconds for it to accept TCP connections.
+fn spawn_serve(vault: &Path, port: u16, theme: &str) -> std::process::Child {
+    let bin = assert_cmd::cargo::cargo_bin!("zetl");
+    let child = std::process::Command::new(bin)
+        .arg("-d")
+        .arg(vault)
+        .arg("--no-cache")
+        .arg("serve")
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--theme")
+        .arg(theme)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn zetl serve");
+
+    // Poll until the port is accepting connections (max ~3s).
+    for _ in 0..30 {
+        if std::net::TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+            return child;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    panic!("zetl serve did not become ready on port {port}");
+}
+
+/// Send a raw HTTP/1.1 GET and return (status_line, headers, body).
+fn http_get(port: u16, path: &str) -> (String, String, Vec<u8>) {
+    use std::io::{Read, Write};
+    let mut stream =
+        std::net::TcpStream::connect(format!("127.0.0.1:{port}")).expect("connect to server");
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .ok();
+    let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    stream.write_all(req.as_bytes()).expect("send request");
+
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).ok(); // read until EOF or timeout
+
+    let raw = String::from_utf8_lossy(&buf);
+    let (head, body_start) = match raw.find("\r\n\r\n") {
+        Some(pos) => (&raw[..pos], pos + 4),
+        None => (raw.as_ref(), buf.len()),
+    };
+    let mut lines = head.lines();
+    let status_line = lines.next().unwrap_or("").to_string();
+    let headers: String = lines.collect::<Vec<_>>().join("\n");
+    let body = buf[body_start..].to_vec();
+    (status_line, headers, body)
+}
+
+/// TEST-012-005: Shared .zetl/static/test.js returns 200 with correct MIME.
+#[test]
+fn test_012_005_serve_shared_static_200_mime() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+    let static_dir = dir.path().join(".zetl/static");
+    fs::create_dir_all(&static_dir).unwrap();
+    fs::write(static_dir.join("test.js"), b"console.log('ok');").unwrap();
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+
+    let (status, headers, body) = http_get(port, "/_static/test.js");
+    child.kill().ok();
+    child.wait().ok();
+
+    assert!(status.contains("200"), "expected 200 OK, got: {status}");
+    assert!(
+        headers.contains("application/javascript"),
+        "expected application/javascript content-type, got headers:\n{headers}"
+    );
+    assert_eq!(body, b"console.log('ok');");
+}
+
+/// TEST-012-005: Theme static overrides shared at same path.
+#[test]
+fn test_012_005_serve_theme_overrides_shared() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+
+    // Shared version
+    let shared = dir.path().join(".zetl/static");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(shared.join("style.css"), b"body{color:red}").unwrap();
+
+    // Theme override
+    let theme_dir = dir.path().join(".zetl/themes/mytheme/static");
+    fs::create_dir_all(&theme_dir).unwrap();
+    fs::write(theme_dir.join("style.css"), b"body{color:blue}").unwrap();
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "mytheme");
+
+    let (status, headers, body) = http_get(port, "/_static/style.css");
+    child.kill().ok();
+    child.wait().ok();
+
+    assert!(status.contains("200"), "expected 200 OK, got: {status}");
+    assert!(
+        headers.contains("text/css"),
+        "expected text/css, got headers:\n{headers}"
+    );
+    assert_eq!(
+        body, b"body{color:blue}",
+        "theme static should override shared"
+    );
+}
+
+/// TEST-012-005: 404 for nonexistent static files.
+#[test]
+fn test_012_005_serve_404_for_nonexistent() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+
+    let (status, _headers, _body) = http_get(port, "/_static/nope.js");
+    child.kill().ok();
+    child.wait().ok();
+
+    assert!(status.contains("404"), "expected 404, got: {status}");
+}
+
+/// TEST-012-005: No error when no static dirs exist.
+#[test]
+fn test_012_005_serve_no_static_dirs_graceful() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+    // No .zetl/static/ at all
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+
+    let (status, _headers, _body) = http_get(port, "/_static/anything.js");
+    child.kill().ok();
+    let exit = child.wait().ok();
+
+    assert!(
+        status.contains("404"),
+        "expected 404 when no static dirs, got: {status}"
+    );
+    // The server should not have crashed — kill returns Ok if it was still running
+    // or the exit status is from our kill signal, not an internal panic.
+    if let Some(es) = exit {
+        // If it exited on its own before kill, it should NOT be a panic exit
+        // (signal-killed processes don't have a normal exit code on Unix)
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            // Either killed by our signal (9) or still running when we killed it — both fine
+            assert!(
+                es.signal().is_some() || es.success(),
+                "server should not have panicked, exit status: {es:?}"
+            );
+        }
+    }
+}
+
+// ── TEST-012-006: Build-mode static asset handling ─────────────────────────
+
+/// TEST-012-006: Shared + theme assets merged in dist/_static/.
+#[test]
+fn test_012_006_build_shared_and_theme_merge() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+
+    // Shared static
+    let shared = dir.path().join(".zetl/static");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(shared.join("shared.js"), "// shared").unwrap();
+
+    // Theme static
+    let theme_dir = dir.path().join(".zetl/themes/merge-theme/static");
+    fs::create_dir_all(&theme_dir).unwrap();
+    fs::write(theme_dir.join("theme.js"), "// theme").unwrap();
+
+    // Also need a minimal theme template so --theme validation passes
+    let theme_root = dir.path().join(".zetl/themes/merge-theme");
+    fs::write(
+        theme_root.join("page.html"),
+        r#"{% extends "base.html" %}{% block content %}{{ page.content_html }}{% endblock %}"#,
+    )
+    .unwrap();
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("merge-theme")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Both files should be present in _static/
+    assert_eq!(
+        fs::read_to_string(out_dir.join("_static/shared.js")).unwrap(),
+        "// shared"
+    );
+    assert_eq!(
+        fs::read_to_string(out_dir.join("_static/theme.js")).unwrap(),
+        "// theme"
+    );
+}
+
+/// TEST-012-006: Theme overwrites shared on conflict.
+#[test]
+fn test_012_006_build_theme_overwrites_shared() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+
+    // Both have style.css
+    let shared = dir.path().join(".zetl/static");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(shared.join("style.css"), "/* shared */").unwrap();
+
+    let theme_dir = dir.path().join(".zetl/themes/winner/static");
+    fs::create_dir_all(&theme_dir).unwrap();
+    fs::write(theme_dir.join("style.css"), "/* theme wins */").unwrap();
+
+    let theme_root = dir.path().join(".zetl/themes/winner");
+    fs::write(
+        theme_root.join("page.html"),
+        r#"{% extends "base.html" %}{% block content %}{{ page.content_html }}{% endblock %}"#,
+    )
+    .unwrap();
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("winner")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(
+        fs::read_to_string(out_dir.join("_static/style.css")).unwrap(),
+        "/* theme wins */",
+        "theme version should overwrite shared"
+    );
+}
+
+/// TEST-012-006: Directory structure preserved in _static/.
+#[test]
+fn test_012_006_build_preserves_directory_structure() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+
+    let nested = dir.path().join(".zetl/static/fonts/woff2");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("inter.woff2"), "fontbytes").unwrap();
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build").arg("-o").arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(
+        fs::read_to_string(out_dir.join("_static/fonts/woff2/inter.woff2")).unwrap(),
+        "fontbytes",
+        "nested directory structure should be preserved"
+    );
+}
+
+/// TEST-012-006: No _static/ directory when no source static dirs exist.
+#[test]
+fn test_012_006_build_no_static_dirs_no_output() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+    // No .zetl/static/ or theme static
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build").arg("-o").arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        !out_dir.join("_static").exists(),
+        "_static/ should not be created when no source static dirs exist"
+    );
+}
+
+// ── TEST-012-007: End-to-end frontmatter parsing ───────────────────────────
+
+/// Install a custom theme whose page template renders frontmatter fields so
+/// we can verify them in the static-build HTML output.
+fn install_frontmatter_theme(vault: &Path) {
+    let theme_dir = vault.join(".zetl/themes/fm-test");
+    fs::create_dir_all(&theme_dir).unwrap();
+    fs::write(
+        theme_dir.join("page.html"),
+        r#"{% extends "base.html" %}
+{% block content %}
+<div id="fm-format">{{ page.frontmatter.format }}</div>
+<div id="fm-author">{{ page.frontmatter.author }}</div>
+<div id="fm-tags">{% for t in page.frontmatter.tags %}{{ t }};{% endfor %}</div>
+<div id="fm-empty">{{ page.frontmatter is mapping }}</div>
+<article>{{ page.content_html | safe }}</article>
+{% endblock %}"#,
+    )
+    .unwrap();
+}
+
+/// TEST-012-007: Page with frontmatter — all fields accessible in templates.
+#[test]
+fn test_012_007_frontmatter_fields_accessible_in_template() {
+    let dir = TempDir::new().unwrap();
+    install_frontmatter_theme(dir.path());
+
+    write_file(
+        dir.path(),
+        "Screenplay.md",
+        "---\nformat: fountain\ntags:\n  - drama\n  - screenplay\nauthor: Jane Doe\n---\n# Act One\n\nINT. OFFICE - DAY\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("fm-test")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html =
+        fs::read_to_string(out_dir.join("screenplay/index.html")).expect("read built page HTML");
+
+    // Verify each frontmatter field is rendered correctly
+    assert!(
+        html.contains(r#"<div id="fm-format">fountain</div>"#),
+        "format field should be 'fountain', got:\n{html}"
+    );
+    assert!(
+        html.contains(r#"<div id="fm-author">Jane Doe</div>"#),
+        "author field should be 'Jane Doe', got:\n{html}"
+    );
+    assert!(
+        html.contains(r#"<div id="fm-tags">drama;screenplay;</div>"#),
+        "tags should be iterable as [drama, screenplay], got:\n{html}"
+    );
+}
+
+/// TEST-012-007: Page with no frontmatter — page.frontmatter is empty mapping.
+#[test]
+fn test_012_007_no_frontmatter_empty_object() {
+    let dir = TempDir::new().unwrap();
+    install_frontmatter_theme(dir.path());
+
+    write_file(
+        dir.path(),
+        "Plain.md",
+        "# Just a heading\n\nSome content with no frontmatter.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("fm-test")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("plain/index.html")).expect("read built page HTML");
+
+    // With no frontmatter, individual field accesses should render empty
+    assert!(
+        html.contains(r#"<div id="fm-format"></div>"#),
+        "format should be empty for page without frontmatter, got:\n{html}"
+    );
+    assert!(
+        html.contains(r#"<div id="fm-author"></div>"#),
+        "author should be empty for page without frontmatter, got:\n{html}"
+    );
+    // The frontmatter value itself is an empty JSON object, which is a mapping
+    assert!(
+        html.contains(r#"<div id="fm-empty">true</div>"#),
+        "page.frontmatter should be a mapping (empty object), got:\n{html}"
+    );
+}
+
+/// TEST-012-007: Page with malformed YAML — empty object returned and warning logged.
+#[test]
+fn test_012_007_malformed_yaml_warning() {
+    let dir = TempDir::new().unwrap();
+    install_frontmatter_theme(dir.path());
+
+    write_file(
+        dir.path(),
+        "Broken.md",
+        "---\n: [invalid yaml\nauthor: broken\n---\n# Body\n\nContent here.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("fm-test")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed even with malformed frontmatter.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("malformed frontmatter YAML"),
+        "stderr should contain warning about malformed YAML, got:\n{stderr}"
+    );
+
+    let html = fs::read_to_string(out_dir.join("broken/index.html")).expect("read built page HTML");
+
+    // Malformed YAML → frontmatter is empty object, fields render empty
+    assert!(
+        html.contains(r#"<div id="fm-author"></div>"#),
+        "author should be empty when YAML is malformed, got:\n{html}"
+    );
+    assert!(
+        html.contains(r#"<div id="fm-empty">true</div>"#),
+        "page.frontmatter should still be a mapping (empty object), got:\n{html}"
+    );
+}
+
+/// TEST-012-007: strip_frontmatter — rendered markdown does not contain frontmatter block.
+#[test]
+fn test_012_007_strip_frontmatter_from_rendered_html() {
+    let dir = TempDir::new().unwrap();
+
+    write_file(
+        dir.path(),
+        "WithFM.md",
+        "---\ntitle: Secret Title\ntags:\n  - hidden\n---\n# Visible Heading\n\nVisible body text.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build").arg("-o").arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("withfm/index.html")).expect("read built page HTML");
+
+    // The article/prose section should NOT contain frontmatter delimiters or YAML keys
+    assert!(
+        !html.contains("Secret Title"),
+        "frontmatter title value should not appear in rendered HTML body"
+    );
+    assert!(
+        !html.contains("tags:"),
+        "frontmatter YAML keys should not appear in rendered HTML body"
+    );
+    assert!(
+        !html.contains("- hidden"),
+        "frontmatter YAML values should not appear in rendered HTML body"
+    );
+
+    // The visible markdown content SHOULD be present
+    assert!(
+        html.contains("Visible Heading"),
+        "markdown heading should appear in rendered HTML"
+    );
+    assert!(
+        html.contains("Visible body text"),
+        "markdown body should appear in rendered HTML"
+    );
+}
