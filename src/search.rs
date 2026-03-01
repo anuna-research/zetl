@@ -251,14 +251,14 @@ pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOu
 }
 
 /// Check if a byte offset falls within any of the body-text ranges.
-fn in_body_text(byte_offset: usize, body_ranges: &[(usize, usize)]) -> bool {
+pub(crate) fn in_body_text(byte_offset: usize, body_ranges: &[(usize, usize)]) -> bool {
     body_ranges
         .iter()
         .any(|&(start, end)| byte_offset >= start && byte_offset < end)
 }
 
 /// Convert a byte offset to (line, column), both 1-indexed.
-fn byte_offset_to_line_col(line_starts: &[usize], byte_offset: usize) -> (u32, u32) {
+pub(crate) fn byte_offset_to_line_col(line_starts: &[usize], byte_offset: usize) -> (u32, u32) {
     let line_idx = line_starts
         .partition_point(|&start| start <= byte_offset)
         .saturating_sub(1);
@@ -284,7 +284,7 @@ fn ceil_char_boundary(s: &str, index: usize) -> usize {
     i
 }
 
-fn extract_search_context(
+pub(crate) fn extract_search_context(
     content: &str,
     byte_offset: usize,
     match_len: usize,
