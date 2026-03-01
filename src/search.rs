@@ -120,6 +120,7 @@ pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOu
     let index = match SearchIndex::open(vault_root)? {
         Some(idx) => idx,
         None => {
+            eprintln!("Building search index (run `zetl index` to avoid this delay on future queries)");
             let files = scan_vault(vault_root, &[])?;
             SearchIndex::build(vault_root, &files)?
         }
