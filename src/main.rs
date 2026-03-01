@@ -2467,9 +2467,14 @@ fn cmd_serve(cli: &Cli, port: u16) -> Result<()> {
         collision_names,
     };
 
+    // Build the Tantivy search index for serve mode (REQ-013-012).
+    let search_index = SearchIndex::build(&pipeline.vault_root, &data.files)
+        .context("building search index for serve")?;
+
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
         vault_root: std::sync::Arc::new(pipeline.vault_root),
+        search_index: std::sync::Arc::new(search_index),
     };
 
     let rt = tokio::runtime::Runtime::new()?;
