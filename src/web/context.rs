@@ -307,7 +307,7 @@ pub fn build_folder_context(
     subfolders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     let total_pages = pages.len();
-    let breadcrumbs = build_breadcrumbs(&format!("{}/placeholder", folder_slug));
+    let breadcrumbs = build_breadcrumbs(folder_slug);
 
     FolderContext {
         name: folder_name.to_string(),
