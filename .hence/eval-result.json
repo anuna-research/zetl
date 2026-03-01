@@ -3,27 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 68,
-    "deletions": 456,
+    "files_changed": 2,
+    "insertions": 11,
+    "deletions": 607,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/build.rs",
-      "src/web/mod.rs",
-      "src/web/routes.rs"
+      "src/web/html.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-refactor-build-changes",
-      "content": "Modified 4 files (+68, -456): .hence/context-manifest.json, src/web/build.rs, src/web/mod.rs, src/web/routes.rs",
+      "key": "task-cleanup-html-changes",
+      "content": "Modified 2 files (+11, -607): .hence/context-manifest.json, src/web/html.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/refactor-build-v1",
-  "evaluated_at": "2026-03-01T13:34:53Z",
+  "branch_name": "hence/cleanup-html-v1",
+  "evaluated_at": "2026-03-01T13:36:55Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
