@@ -1,15 +1,21 @@
 {
-  "task_id": "add-serde-yaml",
+  "task_id": "add-minijinja",
   "token_budget": 8000,
-  "tokens_used": 68,
+  "tokens_used": 91,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add serde_yaml to Cargo.toml. Run cargo check to verify it resolves and compiles. Note: the serde_yaml crate is maintained — if it has been deprecated in favour of an alternative (e.g., serde_yml), use the current best option that can deserialize YAML to serde_json::Value.",
-      "token_cost": 68,
+      "content": "Add minijinja (with 'builtins' and 'loader' features) to Cargo.toml. Also add serde as a dependency if not already present (needed for Serialize derives on context structs). Run cargo check to verify the dependency resolves and compiles. Do NOT add serde_yaml yet — that is Phase 4.",
+      "token_cost": 71,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-add-serde-yaml-changes",
+      "content": "Modified 3 files (+26, -47): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:05:05Z"
+  "constructed_at": "2026-03-01T13:06:58Z"
 }
