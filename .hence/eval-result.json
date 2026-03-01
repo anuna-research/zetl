@@ -3,27 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 207,
-    "deletions": 31,
+    "files_changed": 5,
+    "insertions": 342,
+    "deletions": 84,
     "file_list": [
       ".hence/context-manifest.json",
       "src/main.rs",
       "src/web/build.rs",
-      "src/web/engine.rs"
+      "src/web/engine.rs",
+      "src/web/routes.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-theme-loader-changes",
-      "content": "Modified 4 files (+207, -31): .hence/context-manifest.json, src/main.rs, src/web/build.rs, src/web/engine.rs",
+      "key": "task-theme-errors-changes",
+      "content": "Modified 5 files (+342, -84): .hence/context-manifest.json, src/main.rs, src/web/build.rs, src/web/engine.rs, src/web/routes.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/theme-loader-v1",
-  "evaluated_at": "2026-03-01T14:03:38Z",
+  "branch_name": "hence/theme-errors-v1",
+  "evaluated_at": "2026-03-01T14:14:00Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
