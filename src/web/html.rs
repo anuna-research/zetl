@@ -293,7 +293,7 @@ pub fn layout(
       color: oklch(var(--p));
       font-weight: 700;
     }}
-    .search-result .sr-slug {{
+    .search-result .sr-score {{
       font-size: 0.75rem;
       opacity: 0.5;
     }}
@@ -375,138 +375,73 @@ pub fn layout(
   <script>
   {bm25_js}
   (function(){{
-    var idx=JSON.parse(document.getElementById('zetl-search-index').textContent);
     var overlay=document.getElementById('search-overlay');
     var input=document.getElementById('search-input');
     var results=document.getElementById('search-results');
     var active=-1;
-    var filtered=idx;
-    var bm25Idx=null,bm25Ready=false;
-    function loadBm25(cb){{
-      if(bm25Ready){{cb();return;}}
+    var filtered=[];
+    var bm25Idx=null,bm25Ready=false,bm25Fetching=false;
+
+    function loadBm25(){{
+      if(bm25Ready||bm25Fetching)return;
+      bm25Fetching=true;
       fetch('/search-index.json')
         .then(function(r){{return r.ok?r.json():Promise.reject();}})
-        .then(function(d){{bm25Idx=d;bm25Ready=true;cb();}})
-        .catch(function(){{bm25Ready=true;}});
-    }}
-
-    /* ── Sublime-style fuzzy match ─────────────────────────────────
-       Returns null (no match) or {{score, indices}}.
-       Characters must appear in order. Bonuses for:
-       - consecutive runs, word-boundary starts, camelCase,
-       - match near the beginning of the string.                   */
-    function fuzzyMatch(query, text){{
-      var ql=query.length, tl=text.length;
-      if(ql===0) return {{score:0,indices:[]}};
-      if(ql>tl) return null;
-      var qLow=query.toLowerCase(), tLow=text.toLowerCase();
-
-      /* first pass: can we match at all? */
-      var qi=0;
-      for(var ti=0;ti<tl&&qi<ql;ti++){{
-        if(tLow[ti]===qLow[qi]) qi++;
-      }}
-      if(qi<ql) return null;
-
-      /* greedy-with-backtrack scoring pass */
-      var bestScore=-Infinity, bestIndices=null;
-      function solve(qi2,ti2,indices,score,prevMatch){{
-        if(qi2===ql){{
-          if(score>bestScore){{ bestScore=score; bestIndices=indices.slice(); }}
-          return;
-        }}
-        var remaining=ql-qi2;
-        for(var t=ti2;t<=tl-remaining;t++){{
-          if(tLow[t]===qLow[qi2]){{
-            var s=0;
-            /* consecutive bonus */
-            if(prevMatch===t-1) s+=5;
-            /* word boundary: start, after space/dash/underscore/slash/dot */
-            if(t===0) s+=8;
-            else{{
-              var prev=text[t-1];
-              if(prev===' '||prev==='-'||prev==='_'||prev==='/'||prev==='.') s+=7;
-              /* camelCase boundary */
-              else if(text[t]===text[t].toUpperCase()&&prev===prev.toLowerCase()&&/[a-zA-Z]/.test(prev)) s+=6;
-            }}
-            /* exact case match bonus */
-            if(text[t]===query[qi2]) s+=1;
-            /* proximity to start bonus */
-            s+=Math.max(0, 3-Math.floor(t/4));
-            indices.push(t);
-            solve(qi2+1,t+1,indices,score+s,t);
-            indices.pop();
-          }}
-        }}
-      }}
-      solve(0,0,[],0,-2);
-      if(!bestIndices) return null;
-      return {{score:bestScore,indices:bestIndices}};
+        .then(function(d){{bm25Idx=d;bm25Ready=true;bm25Fetching=false;if(input.value)runSearch();}})
+        .catch(function(){{bm25Ready=true;bm25Fetching=false;}});
     }}
 
     function esc(s){{return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}
 
-    /* highlight matched chars with <b> */
-    function highlight(text,indices){{
-      var set={{}};
-      indices.forEach(function(i){{set[i]=true;}});
-      var out='';
-      for(var i=0;i<text.length;i++){{
-        var c=esc(text[i]);
-        if(set[i]) out+='<b>'+c+'</b>';
-        else out+=c;
-      }}
-      return out;
-    }}
-
-    window.openSearch=function(){{
-      overlay.classList.add('open');
-      input.value='';
-      active=0;
-      filtered=idx.slice();
-      render(filtered,null);
-      input.focus();
-      loadBm25(function(){{
-        if(input.value){{filtered=getFiltered();render(filtered,input.value);}}
-      }});
-    }};
-    window.closeSearch=function(){{
-      overlay.classList.remove('open');
-    }};
-
-    function render(items,query){{
+    function render(items){{
       results.innerHTML='';
+      if(!input.value){{
+        results.innerHTML='<div class="search-hint">Type to search pages\u2026</div>';
+        active=-1;
+        return;
+      }}
+      if(!bm25Ready){{
+        results.innerHTML='<div class="search-hint">Loading index\u2026</div>';
+        active=-1;
+        return;
+      }}
       if(items.length===0){{
         results.innerHTML='<div class="search-hint">No results</div>';
         active=-1;
         return;
       }}
+      active=0;
       items.forEach(function(item,i){{
         var a=document.createElement('a');
         a.className='search-result'+(i===active?' sr-active':'');
         a.href='/'+item.s;
-        var nameHtml=item._indices?highlight(item.n,item._indices):esc(item.n);
-        a.innerHTML='<div class="sr-name">'+nameHtml+'</div><div class="sr-slug">'+esc(item.s)+'</div>';
-        a.addEventListener('mouseenter',function(){{
-          active=i;
-          updateActive();
-        }});
+        a.innerHTML='<div class="sr-name">'+esc(item.n)+'</div>'
+          +'<div class="sr-score">'+item.score.toFixed(2)+'</div>';
+        a.addEventListener('mouseenter',function(){{active=i;updateActive();}});
         results.appendChild(a);
       }});
     }}
 
-    function getFiltered(){{
+    function runSearch(){{
       var q=input.value;
-      if(!q){{ return idx.map(function(it){{return {{n:it.n,s:it.s,_indices:null}};}});}}
-      if(bm25Idx){{return bm25Search(q,bm25Idx);}}
-      var scored=[];
-      idx.forEach(function(item){{
-        var m=fuzzyMatch(q,item.n);
-        if(m) scored.push({{n:item.n,s:item.s,score:m.score,_indices:m.indices}});
-      }});
-      scored.sort(function(a,b){{return b.score-a.score;}});
-      return scored;
+      if(!q){{filtered=[];render([]);return;}}
+      if(!bm25Ready){{filtered=[];render([]);return;}}
+      filtered=bm25Idx?bm25Search(q,bm25Idx).slice(0,10):[];
+      render(filtered);
     }}
+
+    window.openSearch=function(){{
+      overlay.classList.add('open');
+      input.value='';
+      active=-1;
+      filtered=[];
+      render([]);
+      input.focus();
+      loadBm25();
+    }};
+    window.closeSearch=function(){{
+      overlay.classList.remove('open');
+    }};
 
     function updateActive(){{
       var els=results.querySelectorAll('.search-result');
@@ -516,10 +451,10 @@ pub fn layout(
       if(active>=0&&els[active])els[active].scrollIntoView({{block:'nearest'}});
     }}
 
-    input.addEventListener('input',function(){{
-      active=0;
-      filtered=getFiltered();
-      render(filtered,input.value);
+    var debounceTimer=null;
+    input.addEventListener('keyup',function(){{
+      clearTimeout(debounceTimer);
+      debounceTimer=setTimeout(runSearch,150);
     }});
 
     document.addEventListener('keydown',function(e){{

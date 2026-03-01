@@ -3,25 +3,24 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 44,
-    "deletions": 0,
+    "files_changed": 1,
+    "insertions": 46,
+    "deletions": 111,
     "file_list": [
-      "src/web/assets/bm25.js",
       "src/web/html.rs"
     ],
     "dirty_files": 2
   },
   "learnings": [
     {
-      "key": "task-bm25-js-changes",
-      "content": "Modified 2 files (+44, -0): src/web/assets/bm25.js, src/web/html.rs",
+      "key": "task-build-cmdk-changes",
+      "content": "Modified 1 files (+46, -111): src/web/html.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/bm25-js-v1",
-  "evaluated_at": "2026-03-01T14:22:13Z",
+  "branch_name": "hence/build-cmdk-v1",
+  "evaluated_at": "2026-03-01T14:26:11Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
