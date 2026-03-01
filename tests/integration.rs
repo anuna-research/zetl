@@ -2799,3 +2799,316 @@ fn test_013_016_near_composes_with_context() {
         "D (2+ hops) must be excluded at default depth 1 even with --context"
     );
 }
+
+// ===========================================================================
+// Phase 4: Static build search
+// TEST-013-014: zetl build emits search-index.json with BM25 corpus statistics
+// TEST-013-015: Generated HTML includes Cmd+K modal, BM25 fetch, and keyboard nav
+// ===========================================================================
+
+/// Run `zetl build --out-dir <out>` against the vault at `vault`, assert success.
+fn run_build(vault: &Path, out_dir: &Path) {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    cmd.arg("-d")
+        .arg(vault)
+        .arg("--no-cache")
+        .arg("build")
+        .arg("--out-dir")
+        .arg(out_dir);
+    let output = cmd.output().expect("failed to execute zetl build");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "zetl build exited with non-zero status.\nstderr: {stderr}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-014: search-index.json is emitted in the output directory
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_014_build_emits_search_index_json() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Alpha.md",
+        "# Alpha\n\nalpha content uniqueterm here\n",
+    );
+    write_file(
+        dir.path(),
+        "Beta.md",
+        "# Beta\n\nbeta content uniqueterm here\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let search_index_path = out_dir.join("search-index.json");
+    assert!(
+        search_index_path.exists(),
+        "search-index.json must be written to output directory"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-014: search-index.json contains avgDl, docs (correct count), df
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_014_search_index_top_level_fields() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Alpha.md", "# Alpha\n\nalpha content here\n");
+    write_file(dir.path(), "Beta.md", "# Beta\n\nbeta content here\n");
+    write_file(dir.path(), "Gamma.md", "# Gamma\n\ngamma content here\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let json_str = fs::read_to_string(out_dir.join("search-index.json")).unwrap();
+    let json: Value =
+        serde_json::from_str(&json_str).expect("search-index.json must be valid JSON");
+
+    assert!(
+        json["avgDl"].is_number(),
+        "search-index.json must contain 'avgDl' as a number, got: {json}"
+    );
+    assert!(
+        json["docs"].is_array(),
+        "search-index.json must contain 'docs' as an array, got: {json}"
+    );
+    assert!(
+        json["df"].is_object(),
+        "search-index.json must contain 'df' as an object, got: {json}"
+    );
+
+    let docs = json["docs"].as_array().unwrap();
+    assert_eq!(
+        docs.len(),
+        3,
+        "docs array must have one entry per vault file (3 files)"
+    );
+
+    assert!(
+        json["avgDl"].as_f64().unwrap() > 0.0,
+        "avgDl must be > 0 for non-empty files"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-014: each doc has n, s, dl, tf with correct term frequencies
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_014_doc_fields_and_term_frequencies() {
+    let dir = TempDir::new().unwrap();
+    // "rareword" appears 3 times in Alpha only; "shared" appears in both
+    write_file(
+        dir.path(),
+        "Alpha.md",
+        "# Alpha\n\nrareword rareword rareword shared\n",
+    );
+    write_file(dir.path(), "Beta.md", "# Beta\n\nshared content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let json_str = fs::read_to_string(out_dir.join("search-index.json")).unwrap();
+    let json: Value = serde_json::from_str(&json_str).unwrap();
+    let docs = json["docs"].as_array().unwrap();
+
+    // Every doc must have n, s, dl, tf
+    for doc in docs {
+        assert!(
+            doc["n"].is_string(),
+            "doc must have 'n' (page name): {doc}"
+        );
+        assert!(doc["s"].is_string(), "doc must have 's' (slug): {doc}");
+        assert!(
+            doc["dl"].is_number(),
+            "doc must have 'dl' (doc length): {doc}"
+        );
+        assert!(
+            doc["tf"].is_object(),
+            "doc must have 'tf' (term frequencies): {doc}"
+        );
+    }
+
+    // Locate Alpha doc
+    let alpha = docs
+        .iter()
+        .find(|d| d["n"].as_str() == Some("Alpha"))
+        .expect("Alpha doc must be present");
+
+    // rareword appears 3 times in Alpha
+    assert_eq!(
+        alpha["tf"]["rareword"].as_u64().unwrap_or(0),
+        3,
+        "rareword must have tf=3 in Alpha"
+    );
+
+    // shared appears once in Alpha
+    assert_eq!(
+        alpha["tf"]["shared"].as_u64().unwrap_or(0),
+        1,
+        "shared must have tf=1 in Alpha"
+    );
+
+    // dl for Alpha must equal sum of tf values
+    let expected_dl: u64 = alpha["tf"]
+        .as_object()
+        .unwrap()
+        .values()
+        .filter_map(|v| v.as_u64())
+        .sum();
+    assert_eq!(
+        alpha["dl"].as_u64().unwrap(),
+        expected_dl,
+        "dl must equal the sum of all tf values"
+    );
+
+    // df["rareword"] must be 1 (only Alpha contains it)
+    let df = &json["df"];
+    assert_eq!(
+        df["rareword"].as_u64().unwrap_or(0),
+        1,
+        "rareword must appear in df=1 document"
+    );
+
+    // df["shared"] must be 2 (both Alpha and Beta contain it)
+    assert_eq!(
+        df["shared"].as_u64().unwrap_or(0),
+        2,
+        "shared must appear in df=2 documents"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-015: generated HTML includes Cmd+K search modal
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_015_html_has_search_modal() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+
+    assert!(
+        html.contains("search-overlay"),
+        "index.html must contain search overlay element"
+    );
+    assert!(
+        html.contains("search-input"),
+        "index.html must contain search input element"
+    );
+    assert!(
+        html.contains("openSearch"),
+        "index.html must contain openSearch function"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-015: generated HTML fetches search-index.json on open
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_015_html_fetches_search_index_json() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+
+    assert!(
+        html.contains("fetch('/search-index.json')"),
+        "index.html must fetch /search-index.json to load BM25 index"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-015: generated HTML scores results by BM25
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_015_html_includes_bm25_scorer() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+
+    assert!(
+        html.contains("bm25Search"),
+        "index.html must include the bm25Search function"
+    );
+    // BM25 parameters (k1=1.2, b=0.75) from SPEC-013 §4.9
+    assert!(
+        html.contains("1.2"),
+        "bm25Search must use k1=1.2 per SPEC-013 §4.9"
+    );
+    assert!(
+        html.contains("0.75"),
+        "bm25Search must use b=0.75 per SPEC-013 §4.9"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-015: generated HTML includes keyboard navigation (ArrowDown/Up/Enter)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_015_html_keyboard_navigation() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+
+    assert!(
+        html.contains("ArrowDown"),
+        "index.html must handle ArrowDown key for keyboard navigation"
+    );
+    assert!(
+        html.contains("ArrowUp"),
+        "index.html must handle ArrowUp key for keyboard navigation"
+    );
+    assert!(
+        html.contains("'Enter'") || html.contains("\"Enter\""),
+        "index.html must handle Enter key to navigate to selected result"
+    );
+    assert!(
+        html.contains("'Escape'") || html.contains("\"Escape\""),
+        "index.html must handle Escape to close search modal"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-015: generated HTML results link to correct page paths
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_015_html_result_links_use_slug() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+
+    // Results use item.s (slug) as their href
+    assert!(
+        html.contains("item.s") || html.contains("filtered[active].s"),
+        "index.html must build result links from the slug field (item.s)"
+    );
+}
