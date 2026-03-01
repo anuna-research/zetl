@@ -1,12 +1,12 @@
 {
-  "task_id": "build-cmdk",
+  "task_id": "api-search",
   "token_budget": 8000,
-  "tokens_used": 365,
+  "tokens_used": 388,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Upgrade the Cmd+K modal in the build mode HTML to use client-side full-text search per REQ-013-015:\n\n  1. On first Cmd+K activation, lazy-fetch search-index.json and cache it in memory.\n  2. On keyup (debounced 150ms), tokenize the query and run the BM25 scorer against the cached index.\n  3. Display top results showing page name and BM25 score.\n  4. Arrow keys navigate results, Enter follows link to the page slug.\n  5. Target: results within 100ms of keystroke for indexes under 10,000 documents.\n\nThe existing page-name fuzzy filter is replaced entirely — the BM25 scorer handles page name matches because page names are part of the indexed body text.\n\nFor build mode, heading context and line-level positions are NOT available in the static index (deferred to v2 per Open Question #4). Results show page name and score only.\n\nREQ-013-015, ADR-013-004.",
-      "token_cost": 214,
+      "content": "Add GET /api/search route to the Axum router in src/web/routes.rs (or a new api.rs module).\n\nQuery parameters per CON-013-003:\n  - q (required): search query string\n  - limit (optional, default 20): max results\n\nResponse (200 OK):\n  Content-Type: application/json\n  Body: SearchOutput JSON (same schema as CLI output, without near/depth/neighbourhood_size — graph scoping is CLI-only for v1)\n\nResponse (400 Bad Request):\n  Empty or whitespace-only q parameter.\n\nImplementation:\n  1. Extract q and limit from query string.\n  2. Validate q is non-empty.\n  3. Query SearchIndex with q and limit.\n  4. For each matched document, re-scan for line-level positions and headings (same logic as CLI search).\n  5. Serialize SearchOutput to JSON and return.\n\nThe handler reads from the SearchIndex stored in WebState. No graph scoping in serve API for v1.\n\nNFR-013-007: ≤50ms latency for 10,000 indexed documents (95th percentile).\n\nREQ-013-012, CON-013-003.",
+      "token_cost": 237,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:22:19Z"
+  "constructed_at": "2026-03-01T14:26:16Z"
 }
