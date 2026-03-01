@@ -1,12 +1,12 @@
 {
-  "task_id": "verify-phase4",
+  "task_id": "integration-test",
   "token_budget": 8000,
-  "tokens_used": 317,
+  "tokens_used": 389,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "End-to-end verification of frontmatter parsing. (1) Create a test page with format: fountain, tags: [drama, screenplay], author: Jane Doe in frontmatter — verify all fields accessible in templates. (2) Page with no frontmatter — verify page.frontmatter is empty object. (3) Page with malformed YAML — verify empty object returned and warning logged. (4) Verify strip_frontmatter still works (markdown renders without frontmatter block visible). TEST-012-007.",
-      "token_cost": 116,
+      "content": "Comprehensive integration test covering the full SPEC-012 feature set. Create a test vault with: multiple pages (some with frontmatter, some without), dead links, backlinks, subfolders, a custom theme that overrides page.html with frontmatter-conditional rendering, shared and per-theme static assets. Verify: (1) zetl serve with default theme works, (2) zetl serve --theme custom works with overrides and fallback, (3) zetl build with default theme produces correct output, (4) zetl build --theme custom produces correct output with static assets, (5) edit mode works only in serve, (6) frontmatter accessible in custom theme, (7) static assets served with correct MIME types, (8) template errors produce readable messages. All REQ-012-* and TEST-012-*.",
+      "token_cost": 188,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:32:01Z"
+  "constructed_at": "2026-03-01T14:35:27Z"
 }
