@@ -1,12 +1,12 @@
 {
-  "task_id": "verify-phase1",
+  "task_id": "frontmatter-parse",
   "token_budget": 8000,
-  "tokens_used": 329,
+  "tokens_used": 331,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "End-to-end verification that Phase 1 produces identical output. Run zetl build on the demo-vault (or a test vault) and compare the generated HTML against a snapshot of the pre-refactor output. Check: (1) index.html structure matches, (2) page views have same DaisyUI layout, sidebar, search modal, backlinks panel, transclusion cards, (3) folder indices have same subfolder/page cards, (4) zetl serve renders all pages without template errors, (5) edit mode works in serve, (6) all existing tests pass. NFR-012-003.",
-      "token_cost": 128,
+      "content": "Add a parse_frontmatter(content: &str) -> serde_json::Value function to src/web/markdown.rs (or a new frontmatter.rs module). Extract the YAML block between --- fences at the start of the file. Parse it with serde_yaml into serde_json::Value. Return empty object {} for pages with no frontmatter. Return empty object {} for pages with malformed YAML, logging a warning. Do not alter the existing strip_frontmatter() behaviour — the new function parses the same block that strip_frontmatter discards. REQ-012-007, ADR-014.",
+      "token_cost": 130,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:37:01Z"
+  "constructed_at": "2026-03-01T13:54:01Z"
 }
