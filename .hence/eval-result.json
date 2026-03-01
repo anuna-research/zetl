@@ -3,25 +3,24 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 667,
-    "deletions": 8,
+    "files_changed": 1,
+    "insertions": 187,
+    "deletions": 0,
     "file_list": [
-      "Cargo.lock",
-      "Cargo.toml"
+      "src/search.rs"
     ],
     "dirty_files": 2
   },
   "learnings": [
     {
-      "key": "task-add-tantivy-changes",
-      "content": "Modified 2 files (+667, -8): Cargo.lock, Cargo.toml",
+      "key": "task-heading-detection-changes",
+      "content": "Modified 1 files (+187, -0): src/search.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/add-tantivy-v1",
-  "evaluated_at": "2026-03-01T13:17:35Z",
+  "branch_name": "hence/heading-detection-v1",
+  "evaluated_at": "2026-03-01T13:19:48Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
