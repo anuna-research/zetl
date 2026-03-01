@@ -126,6 +126,7 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
 pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", get(routes::index_handler))
+        .route("/api/search", get(routes::api_search_handler))
         .route("/preview/{*path}", get(routes::preview_handler))
         .route("/{*path}", get(routes::page_handler).put(routes::save_handler))
         .with_state(state);
