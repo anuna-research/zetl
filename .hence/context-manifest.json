@@ -1,12 +1,12 @@
 {
-  "task_id": "extract-base",
+  "task_id": "extract-index",
   "token_budget": 8000,
-  "tokens_used": 220,
+  "tokens_used": 191,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create src/web/templates/base.html by extracting the master layout from html.rs::layout(). This template defines the DOCTYPE, <head> with DaisyUI/Tailwind CDN links, all inline CSS, the drawer layout, sidebar, search modal, and inline JS. Define blocks: {% block head %}, {% block styles %}, {% block sidebar %}, {% block content %}, {% block scripts %}. Use Minijinja syntax. Template variables: vault.name, vault.pages (for sidebar), search_index, zetl.version, theme. The sidebar navigation must match the current sidebar_html() output exactly — same nested <ul> structure, same slug links, same collision-aware display names.",
-      "token_cost": 157,
+      "content": "Create src/web/templates/index.html by extracting the vault landing page from routes.rs::index_handler() and build.rs::render_index(). Template extends base.html. Overrides {% block content %} with the stats grid (total pages, total links, dead links, orphans) and the page listing cards. Variables: vault.stats.total_pages, vault.stats.total_links, vault.stats.dead_links, vault.stats.orphans, vault.pages[] with title, slug, outlink_count, backlink_count.",
+      "token_cost": 114,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 3 files (+502, -5): .hence/context-manifest.json, src/web/context.rs, src/web/mod.rs",
       "token_cost": 23,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-extract-base-changes",
+      "content": "Modified 1 files (+499, -0): src/web/templates/base.html",
+      "token_cost": 14,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:12:04Z"
+  "constructed_at": "2026-03-01T13:17:24Z"
 }
