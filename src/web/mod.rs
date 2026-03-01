@@ -1,4 +1,5 @@
 pub mod build;
+pub mod context;
 pub mod html;
 pub mod markdown;
 pub mod routes;

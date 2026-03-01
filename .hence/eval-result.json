@@ -4,25 +4,25 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 36,
+    "insertions": 502,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml"
+      "src/web/context.rs",
+      "src/web/mod.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-add-minijinja-changes",
-      "content": "Modified 3 files (+36, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "key": "task-context-structs-changes",
+      "content": "Modified 3 files (+502, -5): .hence/context-manifest.json, src/web/context.rs, src/web/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/add-minijinja-v1",
-  "evaluated_at": "2026-03-01T13:07:39Z",
+  "branch_name": "hence/context-structs-v1",
+  "evaluated_at": "2026-03-01T13:11:59Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
