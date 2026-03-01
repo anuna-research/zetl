@@ -1,12 +1,12 @@
 {
-  "task_id": "wire-graph-scoping",
+  "task_id": "verify-phase2",
   "token_budget": 8000,
-  "tokens_used": 487,
+  "tokens_used": 786,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Integrate graph-scoped search into the search pipeline in cmd_search() / search.rs:\n\n  1. When --near is specified, require that the link graph is available (zetl index must have been run — the lazy index build from Phase 1 only builds the search index, not the graph). If no graph, exit with error: 'Graph required for --near. Run `zetl index` first.'\n  2. Compute the neighbourhood via graph.neighbourhood(anchor, depth).\n  3. After Tantivy returns document-level results, filter to only those whose page_name is in the neighbourhood set.\n  4. Continue with line-level expansion and heading detection as normal.\n\nUpdate SearchOutput with optional neighbourhood metadata (REQ-013-009):\n  pub struct SearchOutput {\n      pub query: String,\n      pub total_matches: usize,\n      pub near: Option<String>,              // resolved anchor page name\n      pub depth: Option<usize>,              // hop depth used\n      pub neighbourhood_size: Option<usize>, // pages in neighbourhood\n      pub results: Vec<SearchMatch>,\n  }\n\nThese fields are present only when --near is used. In JSON output they appear at the top level. In table output, the header line shows 'near: X, depth: N, M pages' per CON-013-001.\n\nAdd verbose stderr output per OBS-013-003: resolved anchor, depth, neighbourhood size, BFS time (ms).\n\nREQ-013-006, REQ-013-009, CON-013-001.",
-      "token_cost": 336,
+      "content": "End-to-end verification of graph-scoped search. Test with a vault that has known link structure (e.g., A→B, A→C, B→D, E isolated):\n\n  1. --near A (depth 1): results include A, B, C\n  2. --near A --depth 2: results include A, B, C, D\n  3. Backlinks: X→Y, --near Y includes X (bidirectional, TEST-013-006).\n  4. --depth without --near: exit code 2 (TEST-013-007).\n  5. --depth 0: exit code 2 (TEST-013-007).\n  6. Case-insensitive anchor resolution: --near 'spaced repetition' resolves to 'Spaced Repetition' (TEST-013-008).\n  7. Unresolvable anchor: exit code 2 with suggestions (TEST-013-008).\n  8. Neighbourhood metadata present in JSON output (TEST-013-009).\n  9. Neighbourhood metadata absent without --near (TEST-013-009).\n  10. --near composes with --path and --context (TEST-013-016).\n  11. All existing Phase 1 tests still pass.\n\nTEST-013-006 through TEST-013-009, TEST-013-016.",
+      "token_cost": 223,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:56:37Z"
+  "constructed_at": "2026-03-01T14:02:18Z"
 }
