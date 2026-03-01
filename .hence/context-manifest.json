@@ -1,12 +1,12 @@
 {
-  "task_id": "frontmatter-context",
+  "task_id": "static-build",
   "token_budget": 8000,
-  "tokens_used": 295,
+  "tokens_used": 312,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Update the PageContext builder in src/web/context.rs to call parse_frontmatter() on the raw page content and populate PageContext.frontmatter with the result. Update both routes.rs page_handler and build.rs render_page to pass raw content through to the context builder so frontmatter can be extracted. Verify that page.frontmatter.key access works in templates. TEST-012-007.",
-      "token_cost": 94,
+      "content": "Extend build_static() in src/web/build.rs to copy static assets to {out_dir}/_static/ after HTML generation. Copy order: (1) .zetl/static/ contents first (shared), (2) .zetl/themes/<active-theme>/static/ contents second (theme-specific, overwrites shared on conflict). Preserve directory structure within both sources. If neither directory exists, do not create _static/ in output. Use std::fs recursive copy. REQ-012-006, CON-012-003, ADR-013.",
+      "token_cost": 111,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:21:46Z"
+  "constructed_at": "2026-03-01T14:23:24Z"
 }
