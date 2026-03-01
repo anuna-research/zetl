@@ -1,12 +1,12 @@
 {
-  "task_id": "verify-phase3",
+  "task_id": "verify-phase4",
   "token_budget": 8000,
-  "tokens_used": 312,
+  "tokens_used": 317,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "End-to-end verification of static asset handling. Serve mode: (1) shared .zetl/static/test.js returns 200 with correct MIME, (2) theme static overrides shared at same path, (3) 404 for nonexistent files, (4) no error when no static dirs exist. Build mode: (1) shared + theme assets merged in dist/_static/, (2) theme overwrites shared on conflict, (3) directory structure preserved, (4) no _static/ when no source dirs. TEST-012-005, TEST-012-006.",
-      "token_cost": 111,
+      "content": "End-to-end verification of frontmatter parsing. (1) Create a test page with format: fountain, tags: [drama, screenplay], author: Jane Doe in frontmatter — verify all fields accessible in templates. (2) Page with no frontmatter — verify page.frontmatter is empty object. (3) Page with malformed YAML — verify empty object returned and warning logged. (4) Verify strip_frontmatter still works (markdown renders without frontmatter block visible). TEST-012-007.",
+      "token_cost": 116,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:25:48Z"
+  "constructed_at": "2026-03-01T14:32:01Z"
 }
