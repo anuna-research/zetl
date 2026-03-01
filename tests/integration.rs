@@ -2668,3 +2668,210 @@ fn test_012_006_build_no_static_dirs_no_output() {
         "_static/ should not be created when no source static dirs exist"
     );
 }
+
+// ── TEST-012-007: End-to-end frontmatter parsing ───────────────────────────
+
+/// Install a custom theme whose page template renders frontmatter fields so
+/// we can verify them in the static-build HTML output.
+fn install_frontmatter_theme(vault: &Path) {
+    let theme_dir = vault.join(".zetl/themes/fm-test");
+    fs::create_dir_all(&theme_dir).unwrap();
+    fs::write(
+        theme_dir.join("page.html"),
+        r#"{% extends "base.html" %}
+{% block content %}
+<div id="fm-format">{{ page.frontmatter.format }}</div>
+<div id="fm-author">{{ page.frontmatter.author }}</div>
+<div id="fm-tags">{% for t in page.frontmatter.tags %}{{ t }};{% endfor %}</div>
+<div id="fm-empty">{{ page.frontmatter is mapping }}</div>
+<article>{{ page.content_html | safe }}</article>
+{% endblock %}"#,
+    )
+    .unwrap();
+}
+
+/// TEST-012-007: Page with frontmatter — all fields accessible in templates.
+#[test]
+fn test_012_007_frontmatter_fields_accessible_in_template() {
+    let dir = TempDir::new().unwrap();
+    install_frontmatter_theme(dir.path());
+
+    write_file(
+        dir.path(),
+        "Screenplay.md",
+        "---\nformat: fountain\ntags:\n  - drama\n  - screenplay\nauthor: Jane Doe\n---\n# Act One\n\nINT. OFFICE - DAY\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("fm-test")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("screenplay/index.html"))
+        .expect("read built page HTML");
+
+    // Verify each frontmatter field is rendered correctly
+    assert!(
+        html.contains(r#"<div id="fm-format">fountain</div>"#),
+        "format field should be 'fountain', got:\n{html}"
+    );
+    assert!(
+        html.contains(r#"<div id="fm-author">Jane Doe</div>"#),
+        "author field should be 'Jane Doe', got:\n{html}"
+    );
+    assert!(
+        html.contains(r#"<div id="fm-tags">drama;screenplay;</div>"#),
+        "tags should be iterable as [drama, screenplay], got:\n{html}"
+    );
+}
+
+/// TEST-012-007: Page with no frontmatter — page.frontmatter is empty mapping.
+#[test]
+fn test_012_007_no_frontmatter_empty_object() {
+    let dir = TempDir::new().unwrap();
+    install_frontmatter_theme(dir.path());
+
+    write_file(
+        dir.path(),
+        "Plain.md",
+        "# Just a heading\n\nSome content with no frontmatter.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("fm-test")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("plain/index.html"))
+        .expect("read built page HTML");
+
+    // With no frontmatter, individual field accesses should render empty
+    assert!(
+        html.contains(r#"<div id="fm-format"></div>"#),
+        "format should be empty for page without frontmatter, got:\n{html}"
+    );
+    assert!(
+        html.contains(r#"<div id="fm-author"></div>"#),
+        "author should be empty for page without frontmatter, got:\n{html}"
+    );
+    // The frontmatter value itself is an empty JSON object, which is a mapping
+    assert!(
+        html.contains(r#"<div id="fm-empty">true</div>"#),
+        "page.frontmatter should be a mapping (empty object), got:\n{html}"
+    );
+}
+
+/// TEST-012-007: Page with malformed YAML — empty object returned and warning logged.
+#[test]
+fn test_012_007_malformed_yaml_warning() {
+    let dir = TempDir::new().unwrap();
+    install_frontmatter_theme(dir.path());
+
+    write_file(
+        dir.path(),
+        "Broken.md",
+        "---\n: [invalid yaml\nauthor: broken\n---\n# Body\n\nContent here.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("fm-test")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed even with malformed frontmatter.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("malformed frontmatter YAML"),
+        "stderr should contain warning about malformed YAML, got:\n{stderr}"
+    );
+
+    let html = fs::read_to_string(out_dir.join("broken/index.html"))
+        .expect("read built page HTML");
+
+    // Malformed YAML → frontmatter is empty object, fields render empty
+    assert!(
+        html.contains(r#"<div id="fm-author"></div>"#),
+        "author should be empty when YAML is malformed, got:\n{html}"
+    );
+    assert!(
+        html.contains(r#"<div id="fm-empty">true</div>"#),
+        "page.frontmatter should still be a mapping (empty object), got:\n{html}"
+    );
+}
+
+/// TEST-012-007: strip_frontmatter — rendered markdown does not contain frontmatter block.
+#[test]
+fn test_012_007_strip_frontmatter_from_rendered_html() {
+    let dir = TempDir::new().unwrap();
+
+    write_file(
+        dir.path(),
+        "WithFM.md",
+        "---\ntitle: Secret Title\ntags:\n  - hidden\n---\n# Visible Heading\n\nVisible body text.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("withfm/index.html"))
+        .expect("read built page HTML");
+
+    // The article/prose section should NOT contain frontmatter delimiters or YAML keys
+    assert!(
+        !html.contains("Secret Title"),
+        "frontmatter title value should not appear in rendered HTML body"
+    );
+    assert!(
+        !html.contains("tags:"),
+        "frontmatter YAML keys should not appear in rendered HTML body"
+    );
+    assert!(
+        !html.contains("- hidden"),
+        "frontmatter YAML values should not appear in rendered HTML body"
+    );
+
+    // The visible markdown content SHOULD be present
+    assert!(
+        html.contains("Visible Heading"),
+        "markdown heading should appear in rendered HTML"
+    );
+    assert!(
+        html.contains("Visible body text"),
+        "markdown body should appear in rendered HTML"
+    );
+}
