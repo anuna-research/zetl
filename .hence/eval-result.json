@@ -3,25 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 11,
-    "deletions": 607,
+    "files_changed": 6,
+    "insertions": 61,
+    "deletions": 63,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/html.rs"
+      "src/web/context.rs",
+      "src/web/templates/base.html",
+      "src/web/templates/folder.html",
+      "src/web/templates/index.html",
+      "src/web/templates/page.html"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-cleanup-html-changes",
-      "content": "Modified 2 files (+11, -607): .hence/context-manifest.json, src/web/html.rs",
+      "key": "task-verify-phase1-changes",
+      "content": "Modified 6 files (+61, -63): .hence/context-manifest.json, src/web/context.rs, src/web/templates/base.html, src/web/templates/folder.html, src/web/templates/index.html and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cleanup-html-v1",
-  "evaluated_at": "2026-03-01T13:36:55Z",
+  "branch_name": "hence/verify-phase1-v1",
+  "evaluated_at": "2026-03-01T13:53:55Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
