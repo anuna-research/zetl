@@ -1,0 +1,843 @@
+;; ════════════════════════════════════════════════════════════════════════════
+;; IMPL-013: zetl search — Tantivy Full-Text Search, Graph Scoping, and
+;;           Browser Search
+;; Implementation plan for SPEC-013
+;; ════════════════════════════════════════════════════════════════════════════
+
+(meta plan
+  (id "IMPL-013")
+  (title "zetl search — Tantivy Full-Text Search, Graph Scoping, and Browser Search")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-03-01")
+  (author "agent:claude")
+  (spec "SPEC-013")
+  (description "Replace grep-based search with Tantivy inverted index. Phase 1: add tantivy, build search index during `zetl index`, refactor `zetl search` to query Tantivy with BM25 scoring, add heading-aware context, support lazy index construction. Phase 2: add --near/--depth graph-scoped search via bidirectional BFS. Phase 3: expose /api/search in serve mode and upgrade Cmd+K to full-text search. Phase 4: emit search-index.json during build and embed client-side JS BM25 scorer. Covers REQ-013-001 through REQ-013-015, ADR-013-001 through ADR-013-004."))
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Agents
+;; ════════════════════════════════════════════════════════════════════════════
+
+(given agent-claude-available)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 1 — Tantivy Index & Core Search
+;; ════════════════════════════════════════════════════════════════════════════
+;;
+;; Goal: Replace grep-based search entirely with Tantivy. zetl index builds
+;; a search index alongside the link graph. zetl search queries Tantivy for
+;; BM25-scored results with line-level positions and heading context. Lazy
+;; index construction when no index exists. All existing search tests must
+;; be updated to the new output schema. This is the largest phase — it
+;; touches Cargo.toml, search.rs, main.rs (cmd_index, cmd_search), cli.rs,
+;; and introduces a new search_index module.
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Add tantivy dependency ──────────────────────────────────────────
+
+(given task-add-tantivy)
+(given no-deps-add-tantivy)
+
+(meta task-add-tantivy
+  (description "Add tantivy crate to Cargo.toml. Use the latest stable version (0.22+). No feature flags needed beyond defaults. Run cargo check to verify the dependency resolves and compiles cleanly. Tantivy pulls in ~50 transitive dependencies and adds ~5-8 MB to binary size (acceptable per ADR-013-001, SPEC-013 §9.4). Do NOT add any other new dependencies in this task.")
+  (acceptance "cargo check passes with tantivy importable; no other code changes; dependency resolves without conflicts with existing deps (petgraph, serde, tokio)"))
+
+(normally r-ready-add-tantivy
+  (and task-add-tantivy no-deps-add-tantivy)
+  ready-add-tantivy)
+
+(normally r-assign-add-tantivy
+  (and ready-add-tantivy agent-claude-available)
+  assign-to-add-tantivy-claude)
+
+;; ── Task: Create search index module ──────────────────────────────────────
+
+(given task-search-index-module)
+
+(meta task-search-index-module
+  (description "Create src/search_index.rs with the Tantivy index management layer. This module encapsulates all Tantivy interaction:
+
+Schema: Three fields per document:
+  - page_name: STRING (stored, indexed for filtering)
+  - path: STRING (stored, not indexed)
+  - body: TEXT (indexed for full-text search, stored)
+
+Tokenization: Tantivy's default tokenizer (lowercase, split on whitespace/punctuation).
+
+Index location: .zetl/search/ directory.
+
+Public API:
+  - SearchIndex::build(vault_root, files: &[ParsedFile]) -> Result<SearchIndex>
+    Creates/opens .zetl/search/, iterates files, extracts body text using scanner::body_text_ranges(), creates one Tantivy document per file. Clears and rebuilds the full index (incremental update handled at the caller level via cache).
+  - SearchIndex::open(vault_root) -> Result<Option<SearchIndex>>
+    Opens an existing index from .zetl/search/. Returns None if directory doesn't exist.
+  - SearchIndex::query(query_str, limit) -> Result<Vec<SearchHit>>
+    Parses query with QueryParser against the body field, executes with TopDocs collector, returns Vec of (page_name, path, score) tuples.
+  - SearchIndex::reader() -> Result<IndexReader>
+    For serve mode: returns a reader that can be held across requests.
+
+SearchHit struct: { page_name: String, path: String, score: f64 }
+
+Body text extraction: For each file, concatenate the byte ranges from body_text_ranges() into a single string. This reuses the same exclusion logic as SPEC-002 (no frontmatter, code blocks, inline code, HTML comments). Import body_text_ranges from scanner.rs.
+
+Error handling: Return anyhow::Result with context about which file or query failed.
+
+REQ-013-001, ADR-013-001.")
+  (acceptance "SearchIndex compiles; build() creates .zetl/search/ with valid Tantivy index; open() reads existing index; query() returns BM25-scored results; body text excludes frontmatter/code/comments; cargo check passes"))
+
+(normally r-ready-search-index-module
+  (and task-search-index-module completed-add-tantivy)
+  ready-search-index-module)
+
+(normally r-assign-search-index-module
+  (and ready-search-index-module agent-claude-available)
+  assign-to-search-index-module-claude)
+
+;; ── Task: Heading detection ───────────────────────────────────────────────
+
+(given task-heading-detection)
+
+(meta task-heading-detection
+  (description "Add heading detection to src/search.rs (or a dedicated module). Implement per SPEC-013 §4.6:
+
+Public API:
+  - detect_headings(content: &str, body_text_ranges: &[(usize, usize)]) -> Vec<FileHeading>
+    Scan line by line. For lines matching ^#{1,6}\\s, check if the byte offset falls within a body_text_range. If so, record FileHeading { byte_offset, level, text }. Text is the heading stripped of leading # chars and trailing whitespace.
+  - find_heading_for_offset(headings: &[FileHeading], byte_offset: usize) -> (Option<String>, Option<u8>)
+    Binary search for the largest heading byte_offset <= the match byte_offset. Returns (heading_text, heading_level) or (None, None) if no preceding heading.
+
+FileHeading struct: { byte_offset: usize, level: u8, text: String }
+
+Headings inside code blocks, frontmatter, or HTML comments are excluded by the body_text_ranges filter (ADR-013-003). Setext headings are not detected (out of scope).
+
+REQ-013-010, REQ-013-011, ADR-013-003.")
+  (acceptance "detect_headings finds ATX headings in body text only; headings in code blocks are excluded; find_heading_for_offset returns nearest preceding heading; returns None before first heading; cargo check passes"))
+
+(normally r-ready-heading-detection
+  (and task-heading-detection completed-add-tantivy)
+  ready-heading-detection)
+
+(normally r-assign-heading-detection
+  (and ready-heading-detection agent-claude-available)
+  assign-to-heading-detection-claude)
+
+;; ── Task: Integrate search index into zetl index ──────────────────────────
+
+(given task-integrate-index)
+
+(meta task-integrate-index
+  (description "Extend cmd_index() in src/main.rs to build the Tantivy search index after building the link graph. Call SearchIndex::build() with the parsed files. Only build/rebuild for files that need re-indexing (use the same mtime cache invalidation as the graph — files_needing_reparse() already identifies changed files). For --no-cache, rebuild the entire index from scratch (delete .zetl/search/ and rebuild).
+
+Add new JSON output fields per CON-013-002:
+  - search_index_docs: number of documents in the search index
+  - search_index_size_kb: size of .zetl/search/ directory in KB
+
+Add verbose stderr output per OBS-013-001:
+  - Documents indexed, index size, index build time (ms)
+
+Note on incremental indexing: For v1, the simplest approach is to delete and rebuild the full index when any file changes. Tantivy index merging is complex; since NFR-013-001 requires ≤5s for 10,000 files, a full rebuild is acceptable. The cache layer at the cmd_index level already knows which files changed — the index layer just builds from the full file set.
+
+REQ-013-001, REQ-013-003, CON-013-002.")
+  (acceptance "zetl index builds search index in .zetl/search/; JSON output includes search_index_docs and search_index_size_kb; --no-cache forces full rebuild; --verbose shows index stats; index content matches body text of all vault files"))
+
+(normally r-ready-integrate-index
+  (and task-integrate-index completed-search-index-module)
+  ready-integrate-index)
+
+(normally r-assign-integrate-index
+  (and ready-integrate-index agent-claude-available)
+  assign-to-integrate-index-claude)
+
+;; ── Task: Refactor search to use Tantivy ──────────────────────────────────
+
+(given task-refactor-search)
+
+(meta task-refactor-search
+  (description "Rewrite src/search.rs to query Tantivy instead of grep-scanning files. This is the core replacement per ADR-013-001.
+
+Updated SearchMatch struct (SPEC-013 §4.7):
+  pub struct SearchMatch {
+      pub page: String,
+      pub path: String,
+      pub line: u32,
+      pub column: u32,
+      pub context: Option<String>,
+      pub heading: Option<String>,      // NEW: enclosing heading text
+      pub heading_level: Option<u8>,    // NEW: heading depth (1-6)
+      pub score: f64,                   // NEW: BM25 score
+  }
+
+Updated SearchOutput struct:
+  pub struct SearchOutput {
+      pub query: String,
+      pub total_matches: usize,
+      pub results: Vec<SearchMatch>,
+      // near/depth/neighbourhood_size added in Phase 2
+  }
+
+Remove: SearchConfig.regex field, SearchConfig.body_only field (always body-only now), build_matcher(), Matcher enum, the entire grep-based find_matches_in_content().
+
+Query flow (SPEC-013 §4.4):
+  1. Open or lazily build the Tantivy index.
+  2. Parse query with QueryParser against body field.
+  3. Execute with TopDocs collector, limited to --limit.
+  4. For each matched document:
+     a. Read the original file from disk.
+     b. Compute body_text_ranges.
+     c. Scan body text for query term occurrences (case-insensitive by default, case-sensitive with --case-sensitive). Find line/column for each occurrence.
+     d. Detect headings via detect_headings().
+     e. Attach heading context via find_heading_for_offset().
+     f. Emit SearchMatch entries with the document's BM25 score.
+  5. Order results by descending score, ties broken by path (ascending) then line (ascending).
+
+The re-scanning step (4b-c) is necessary because Tantivy provides document-level scores but not character offsets. Split the query string on whitespace to get individual terms for re-scanning.
+
+Retain: --case-sensitive flag (for re-scan), --path filter (applied to Tantivy results), --context chars, --limit.
+Remove: --regex flag, --all flag.
+
+REQ-013-002, REQ-013-005, CON-013-001.")
+  (acceptance "zetl search returns BM25-scored results from Tantivy; every result has score, heading, heading_level fields; line/column positions are accurate; --case-sensitive works; --path filter works; --context works; --regex and --all removed from CLI; results ordered by score desc, then path asc, then line asc"))
+
+(normally r-ready-refactor-search
+  (and task-refactor-search completed-search-index-module completed-heading-detection)
+  ready-refactor-search)
+
+(normally r-assign-refactor-search
+  (and ready-refactor-search agent-claude-available)
+  assign-to-refactor-search-claude)
+
+;; ── Task: Update CLI flags ────────────────────────────────────────────────
+
+(given task-update-cli)
+
+(meta task-update-cli
+  (description "Update the Search subcommand in src/cli.rs:
+
+Remove:
+  - --regex flag
+  - --all flag
+
+Retain (unchanged):
+  - <QUERY> positional argument
+  - --case-sensitive flag
+  - --path <GLOB> flag
+  - --context <N> flag
+  - --limit <N> flag (default 50)
+  - -f <FORMAT> flag (json/table)
+
+The --near and --depth flags are added in Phase 2.
+
+Update cmd_search() in main.rs to match: remove regex/all handling, update SearchConfig construction, update JSON and table output to include score, heading, heading_level fields. Table format per CON-013-001: Page | Score | Line | Heading | Context.
+
+REQ-013-002, CON-013-001.")
+  (acceptance "CLI accepts all retained flags; --regex and --all are gone; JSON output includes score/heading/heading_level on every result; table output shows score and heading columns; cargo check passes"))
+
+(normally r-ready-update-cli
+  (and task-update-cli completed-refactor-search)
+  ready-update-cli)
+
+(normally r-assign-update-cli
+  (and ready-update-cli agent-claude-available)
+  assign-to-update-cli-claude)
+
+;; ── Task: Lazy index construction ─────────────────────────────────────────
+
+(given task-lazy-index)
+
+(meta task-lazy-index
+  (description "Implement lazy index construction in the search path per REQ-013-004. When zetl search is invoked and no .zetl/search/ directory exists (SearchIndex::open returns None):
+
+  1. Print to stderr: 'Building search index (run `zetl index` to avoid this delay on future queries)'
+  2. Scan the vault (reuse the pipeline's scan_vault + parse flow).
+  3. Build the index via SearchIndex::build().
+  4. Persist the index in .zetl/search/ for future queries.
+  5. Continue with the search query.
+
+This should be integrated into the search_vault() function or cmd_search() in main.rs. The lazy build does NOT build the link graph (only the search index). This means --near is unavailable without zetl index, but basic search works without prior indexing.
+
+REQ-013-004.")
+  (acceptance "zetl search works without prior zetl index; stderr shows building message; .zetl/search/ created and persisted; subsequent searches use the persisted index; search results are BM25-scored"))
+
+(normally r-ready-lazy-index
+  (and task-lazy-index completed-refactor-search)
+  ready-lazy-index)
+
+(normally r-assign-lazy-index
+  (and ready-lazy-index agent-claude-available)
+  assign-to-lazy-index-claude)
+
+;; ── Task: Verify Phase 1 ─────────────────────────────────────────────────
+
+(given task-verify-phase1)
+
+(meta task-verify-phase1
+  (description "End-to-end verification of Phase 1. Test against the demo-vault or a purpose-built test vault:
+
+  1. zetl index builds .zetl/search/ — JSON output includes search_index_docs and search_index_size_kb.
+  2. zetl search 'term' returns BM25-scored results — every result has score, heading, heading_level fields.
+  3. Relevance ranking: a page with many mentions of a term scores higher than one with a single mention (TEST-013-002).
+  4. Exclusion zones: terms in frontmatter, code blocks, inline code, HTML comments are NOT found (TEST-013-001).
+  5. Line-level results: multiple occurrences in the same file produce separate results with correct line/column, all sharing the same score (TEST-013-005).
+  6. Heading context: matches under headings show correct heading/level; matches before first heading show null (TEST-013-010).
+  7. Headings in code blocks are not used as enclosing headings (TEST-013-011).
+  8. Index invalidation: modify a file, re-run zetl index, verify new content is searchable (TEST-013-003).
+  9. --no-cache forces full rebuild (TEST-013-003).
+  10. Lazy index: delete .zetl/search/, run zetl search — index built on the fly, stderr message shown (TEST-013-004).
+  11. --case-sensitive flag works.
+  12. --path filter works.
+  13. --context flag works.
+  14. --limit flag works.
+  15. cargo test passes.
+
+TEST-013-001 through TEST-013-005, TEST-013-010, TEST-013-011.")
+  (acceptance "All 15 scenarios pass; no regressions in existing functionality; search results match SPEC-013 schema"))
+
+(normally r-ready-verify-phase1
+  (and task-verify-phase1 completed-update-cli completed-lazy-index)
+  ready-verify-phase1)
+
+(normally r-assign-verify-phase1
+  (and ready-verify-phase1 agent-claude-available)
+  assign-to-verify-phase1-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 2 — Graph-Scoped Search
+;; ════════════════════════════════════════════════════════════════════════════
+;;
+;; Goal: Add --near <PAGE> --depth N flags to restrict search results to
+;; pages within N bidirectional link-hops of an anchor page. Requires the
+;; link graph (built by zetl index). Adds neighbourhood() method to the
+;; graph engine and wires it into the search pipeline.
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Add neighbourhood BFS to graph engine ───────────────────────────
+
+(given task-neighbourhood-bfs)
+
+(meta task-neighbourhood-bfs
+  (description "Add a neighbourhood() method to LinkGraph in src/graph.rs. Algorithm per SPEC-013 §4.5:
+
+  pub fn neighbourhood(&self, anchor: &str, depth: usize) -> Result<HashSet<String>>
+
+  1. Resolve anchor to a node in the graph. Error if not found (with suggested similar names via the existing resolution logic).
+  2. Initialize visited = {anchor}, queue = [(anchor, 0)].
+  3. While queue not empty:
+     a. Pop (page, d). If d >= depth, skip.
+     b. For each neighbour (both outgoing AND incoming edges — bidirectional BFS):
+        If not visited: add to visited, push (neighbour, d + 1).
+  4. Return visited (the set of page names within depth hops).
+
+Use petgraph's neighbors_directed(Outgoing) and neighbors_directed(Incoming) to get both edge directions.
+
+The anchor page itself is always included in the result set.
+
+NFR-013-004 target: ≤50ms for 10,000 pages at depth 3 with average degree 5.
+
+REQ-013-006, ADR-013-002.")
+  (acceptance "neighbourhood() returns correct page set for bidirectional BFS; anchor included; depth 1 returns direct neighbours; depth 2 includes 2-hop pages; backlinks included (X→Y means Y's neighbourhood includes X); error with suggestions for unknown anchor; cargo check passes"))
+
+(normally r-ready-neighbourhood-bfs
+  (and task-neighbourhood-bfs completed-verify-phase1)
+  ready-neighbourhood-bfs)
+
+(normally r-assign-neighbourhood-bfs
+  (and ready-neighbourhood-bfs agent-claude-available)
+  assign-to-neighbourhood-bfs-claude)
+
+;; ── Task: Add --near and --depth CLI flags ────────────────────────────────
+
+(given task-near-depth-cli)
+
+(meta task-near-depth-cli
+  (description "Add --near <PAGE> and --depth <N> flags to the Search subcommand in src/cli.rs:
+
+  --near <PAGE>   Restrict results to pages within --depth hops of PAGE.
+                  PAGE is resolved using the same page name resolution as
+                  other graph commands (case-insensitive, normalized
+                  whitespace/hyphens/underscores). Optional.
+  --depth <N>     Neighbourhood radius. Default: 1. Must be >= 1.
+                  Only valid when --near is specified.
+
+Validation in cmd_search() (REQ-013-007):
+  - --depth without --near → exit code 2, error message.
+  - --depth 0 or negative → exit code 2, error message.
+  - --near with unresolvable page → exit code 2, suggest similar names (REQ-013-008).
+
+REQ-013-006, REQ-013-007, REQ-013-008, CON-013-001.")
+  (acceptance "--near and --depth flags accepted; validation rejects --depth without --near; rejects depth <= 0; unresolvable page gives error with suggestions"))
+
+(normally r-ready-near-depth-cli
+  (and task-near-depth-cli completed-neighbourhood-bfs)
+  ready-near-depth-cli)
+
+(normally r-assign-near-depth-cli
+  (and ready-near-depth-cli agent-claude-available)
+  assign-to-near-depth-cli-claude)
+
+;; ── Task: Wire graph scoping into search ──────────────────────────────────
+
+(given task-wire-graph-scoping)
+
+(meta task-wire-graph-scoping
+  (description "Integrate graph-scoped search into the search pipeline in cmd_search() / search.rs:
+
+  1. When --near is specified, require that the link graph is available (zetl index must have been run — the lazy index build from Phase 1 only builds the search index, not the graph). If no graph, exit with error: 'Graph required for --near. Run `zetl index` first.'
+  2. Compute the neighbourhood via graph.neighbourhood(anchor, depth).
+  3. After Tantivy returns document-level results, filter to only those whose page_name is in the neighbourhood set.
+  4. Continue with line-level expansion and heading detection as normal.
+
+Update SearchOutput with optional neighbourhood metadata (REQ-013-009):
+  pub struct SearchOutput {
+      pub query: String,
+      pub total_matches: usize,
+      pub near: Option<String>,              // resolved anchor page name
+      pub depth: Option<usize>,              // hop depth used
+      pub neighbourhood_size: Option<usize>, // pages in neighbourhood
+      pub results: Vec<SearchMatch>,
+  }
+
+These fields are present only when --near is used. In JSON output they appear at the top level. In table output, the header line shows 'near: X, depth: N, M pages' per CON-013-001.
+
+Add verbose stderr output per OBS-013-003: resolved anchor, depth, neighbourhood size, BFS time (ms).
+
+REQ-013-006, REQ-013-009, CON-013-001.")
+  (acceptance "--near filters results to neighbourhood pages; neighbourhood metadata in output when --near used, absent otherwise; verbose shows BFS timing; error when graph not available"))
+
+(normally r-ready-wire-graph-scoping
+  (and task-wire-graph-scoping completed-near-depth-cli)
+  ready-wire-graph-scoping)
+
+(normally r-assign-wire-graph-scoping
+  (and ready-wire-graph-scoping agent-claude-available)
+  assign-to-wire-graph-scoping-claude)
+
+;; ── Task: Verify Phase 2 ─────────────────────────────────────────────────
+
+(given task-verify-phase2)
+
+(meta task-verify-phase2
+  (description "End-to-end verification of graph-scoped search. Test with a vault that has known link structure (e.g., A→B, A→C, B→D, E isolated):
+
+  1. --near A (depth 1): results include A, B, C; not D, E (TEST-013-006).
+  2. --near A --depth 2: results include A, B, C, D; not E (TEST-013-006).
+  3. Backlinks: X→Y, --near Y includes X (bidirectional, TEST-013-006).
+  4. --depth without --near: exit code 2 (TEST-013-007).
+  5. --depth 0: exit code 2 (TEST-013-007).
+  6. Case-insensitive anchor resolution: --near 'spaced repetition' resolves to 'Spaced Repetition' (TEST-013-008).
+  7. Unresolvable anchor: exit code 2 with suggestions (TEST-013-008).
+  8. Neighbourhood metadata present in JSON output (TEST-013-009).
+  9. Neighbourhood metadata absent without --near (TEST-013-009).
+  10. --near composes with --path and --context (TEST-013-016).
+  11. All existing Phase 1 tests still pass.
+
+TEST-013-006 through TEST-013-009, TEST-013-016.")
+  (acceptance "All 11 scenarios pass; graph scoping correctly restricts results; metadata correct; composability with other flags works"))
+
+(normally r-ready-verify-phase2
+  (and task-verify-phase2 completed-wire-graph-scoping)
+  ready-verify-phase2)
+
+(normally r-assign-verify-phase2
+  (and ready-verify-phase2 agent-claude-available)
+  assign-to-verify-phase2-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 3 — Serve Mode Browser Search
+;; ════════════════════════════════════════════════════════════════════════════
+;;
+;; Goal: Add GET /api/search to zetl serve that queries the Tantivy index.
+;; Upgrade the Cmd+K modal from fuzzy page-name matching to full-text
+;; ranked search with heading context. The Tantivy index is opened at
+;; server startup and held in WebState.
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Add Tantivy index to WebState ───────────────────────────────────
+
+(given task-tantivy-webstate)
+
+(meta task-tantivy-webstate
+  (description "Extend WebState in src/web/mod.rs to hold a Tantivy IndexReader. During server startup in cmd_serve():
+
+  1. Build or open the Tantivy search index (same logic as zetl index).
+  2. Obtain an IndexReader from the SearchIndex.
+  3. Store the reader (or the SearchIndex itself) in WebState alongside the existing VaultData.
+
+The IndexReader is thread-safe and can be shared across requests via Arc. When the vault is re-indexed (e.g., on file change in watch mode), the reader should be refreshed or rebuilt.
+
+WebState addition:
+  pub struct WebState {
+      pub data: Arc<RwLock<VaultData>>,
+      pub vault_root: Arc<PathBuf>,
+      pub search_index: Arc<SearchIndex>,  // NEW
+  }
+
+REQ-013-012.")
+  (acceptance "WebState holds SearchIndex; index built at server startup; search queries executable from the web context; cargo check passes"))
+
+(normally r-ready-tantivy-webstate
+  (and task-tantivy-webstate completed-verify-phase2)
+  ready-tantivy-webstate)
+
+(normally r-assign-tantivy-webstate
+  (and ready-tantivy-webstate agent-claude-available)
+  assign-to-tantivy-webstate-claude)
+
+;; ── Task: Create /api/search endpoint ─────────────────────────────────────
+
+(given task-api-search)
+
+(meta task-api-search
+  (description "Add GET /api/search route to the Axum router in src/web/routes.rs (or a new api.rs module).
+
+Query parameters per CON-013-003:
+  - q (required): search query string
+  - limit (optional, default 20): max results
+
+Response (200 OK):
+  Content-Type: application/json
+  Body: SearchOutput JSON (same schema as CLI output, without near/depth/neighbourhood_size — graph scoping is CLI-only for v1)
+
+Response (400 Bad Request):
+  Empty or whitespace-only q parameter.
+
+Implementation:
+  1. Extract q and limit from query string.
+  2. Validate q is non-empty.
+  3. Query SearchIndex with q and limit.
+  4. For each matched document, re-scan for line-level positions and headings (same logic as CLI search).
+  5. Serialize SearchOutput to JSON and return.
+
+The handler reads from the SearchIndex stored in WebState. No graph scoping in serve API for v1.
+
+NFR-013-007: ≤50ms latency for 10,000 indexed documents (95th percentile).
+
+REQ-013-012, CON-013-003.")
+  (acceptance "/api/search?q=term returns 200 with JSON SearchOutput; results BM25-scored with heading context; empty query returns 400; limit parameter works; latency under 50ms for reasonable corpus"))
+
+(normally r-ready-api-search
+  (and task-api-search completed-tantivy-webstate)
+  ready-api-search)
+
+(normally r-assign-api-search
+  (and ready-api-search agent-claude-available)
+  assign-to-api-search-claude)
+
+;; ── Task: Upgrade Cmd+K modal for serve mode ──────────────────────────────
+
+(given task-serve-cmdk)
+
+(meta task-serve-cmdk
+  (description "Upgrade the existing Cmd+K search modal in the serve mode HTML (src/web/html.rs or the base template if IMPL-012 has landed) to query /api/search instead of filtering the sidebar page list.
+
+Current behavior: The Cmd+K modal filters a pre-built JSON array of page names client-side (fuzzy match on name only).
+
+New behavior per REQ-013-013:
+  1. On keyup in the search input, debounce 150ms, then fetch GET /api/search?q=<input>&limit=20.
+  2. Display results showing: page name, heading (if present), context snippet, and BM25 score.
+  3. Keyboard navigation: arrow keys to move between results, Enter to navigate to the selected page.
+  4. Show a loading indicator while the fetch is in flight.
+  5. Clear results when input is cleared.
+
+The existing page-name fuzzy filter can be kept as a fast fallback for very short queries (≤2 chars) or shown while waiting for the API response.
+
+Result display format:
+  <div class='search-result'>
+    <span class='page-name'>Page Name</span>
+    <span class='heading'>## Heading</span>
+    <span class='context'>...matching context...</span>
+    <span class='score'>8.72</span>
+  </div>
+
+REQ-013-013.")
+  (acceptance "Cmd+K modal shows full-text search results from /api/search; debounced at 150ms; results show page name, heading, context, score; keyboard navigation works; Enter navigates to page"))
+
+(normally r-ready-serve-cmdk
+  (and task-serve-cmdk completed-api-search)
+  ready-serve-cmdk)
+
+(normally r-assign-serve-cmdk
+  (and ready-serve-cmdk agent-claude-available)
+  assign-to-serve-cmdk-claude)
+
+;; ── Task: Verify Phase 3 ─────────────────────────────────────────────────
+
+(given task-verify-phase3)
+
+(meta task-verify-phase3
+  (description "End-to-end verification of serve mode search:
+
+  1. Start zetl serve with an indexed vault.
+  2. GET /api/search?q=algorithm returns 200 with BM25-scored results, heading context (TEST-013-012).
+  3. GET /api/search?q= returns 400 (TEST-013-012).
+  4. GET /api/search?q=test&limit=3 returns at most 3 results (TEST-013-012).
+  5. Cmd+K modal shows full-text results with page, heading, context, score (TEST-013-013).
+  6. Keyboard navigation in modal works (TEST-013-013).
+  7. All Phase 1 and Phase 2 tests still pass.
+
+TEST-013-012, TEST-013-013.")
+  (acceptance "API endpoint returns correct results; Cmd+K modal functional; no regressions"))
+
+(normally r-ready-verify-phase3
+  (and task-verify-phase3 completed-serve-cmdk)
+  ready-verify-phase3)
+
+(normally r-assign-verify-phase3
+  (and ready-verify-phase3 agent-claude-available)
+  assign-to-verify-phase3-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 4 — Build Mode Static Search
+;; ════════════════════════════════════════════════════════════════════════════
+;;
+;; Goal: Emit search-index.json during zetl build with compact BM25 data.
+;; Embed a ~50-line JS BM25 scorer in the layout HTML. Upgrade build mode
+;; Cmd+K to perform client-side full-text search with no backend.
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Generate search-index.json during build ─────────────────────────
+
+(given task-search-index-json)
+
+(meta task-search-index-json
+  (description "Extend build_static() in src/web/build.rs to emit search-index.json in the output directory root. Extract corpus statistics from the Tantivy index (or directly from the parsed files).
+
+Schema per CON-013-004:
+{
+  'avgDl': <number>,             // average document length (total terms)
+  'docs': [
+    {
+      'n': '<page_name>',        // page name
+      's': '<slug>',             // URL slug
+      'dl': <doc_length>,        // total terms in document
+      'tf': { '<term>': <count>, ... }  // term frequency map
+    }
+  ],
+  'df': { '<term>': <doc_count>, ... }  // document frequency per term
+}
+
+To generate term frequencies: tokenize each document's body text using the same tokenization as Tantivy (lowercase, split on whitespace/punctuation). Count term occurrences per document. Compute document frequency (number of documents containing each term). Compute average document length.
+
+Short field names (n, s, dl, tf, df) minimize JSON size per NFR-013-006 (≤30% of vault text content).
+
+The file is written to {out_dir}/search-index.json.
+
+REQ-013-014, CON-013-004, ADR-013-004.")
+  (acceptance "search-index.json emitted in build output; contains avgDl, docs array with n/s/dl/tf per doc, df map; term frequencies match body text; cargo check passes"))
+
+(normally r-ready-search-index-json
+  (and task-search-index-json completed-verify-phase2)
+  ready-search-index-json)
+
+(normally r-assign-search-index-json
+  (and ready-search-index-json agent-claude-available)
+  assign-to-search-index-json-claude)
+
+;; ── Task: Embed BM25 scorer JS in build layout ───────────────────────────
+
+(given task-bm25-js)
+
+(meta task-bm25-js
+  (description "Embed a ~50-line inline JavaScript BM25 scorer in the build mode HTML layout. The scorer implements the standard BM25 formula per SPEC-013 §4.9:
+
+  score(q, d) = Σ IDF(t) * (tf(t,d) * (k1 + 1)) / (tf(t,d) + k1 * (1 - b + b * dl/avgDl))
+
+  where k1 = 1.2, b = 0.75
+  IDF(t) = ln((N - df(t) + 0.5) / (df(t) + 0.5) + 1)
+
+The JS module should:
+  1. Expose a search(query, index) function.
+  2. Tokenize the query (lowercase, split on whitespace/punctuation — same as Tantivy's default).
+  3. For each document, compute BM25 score against query terms.
+  4. Return results sorted by descending score, filtered to score > 0.
+
+The scorer is embedded via include_str!() of a .js file or inline in the HTML template. Store the JS in src/web/assets/bm25.js or similar.
+
+ADR-013-004.")
+  (acceptance "BM25 scorer is valid JavaScript; produces correct scores for known inputs; matches Tantivy BM25 formula; tokenization consistent with server-side; ~50 lines"))
+
+(normally r-ready-bm25-js
+  (and task-bm25-js completed-search-index-json)
+  ready-bm25-js)
+
+(normally r-assign-bm25-js
+  (and ready-bm25-js agent-claude-available)
+  assign-to-bm25-js-claude)
+
+;; ── Task: Upgrade build mode Cmd+K to full-text search ────────────────────
+
+(given task-build-cmdk)
+
+(meta task-build-cmdk
+  (description "Upgrade the Cmd+K modal in the build mode HTML to use client-side full-text search per REQ-013-015:
+
+  1. On first Cmd+K activation, lazy-fetch search-index.json and cache it in memory.
+  2. On keyup (debounced 150ms), tokenize the query and run the BM25 scorer against the cached index.
+  3. Display top results showing page name and BM25 score.
+  4. Arrow keys navigate results, Enter follows link to the page slug.
+  5. Target: results within 100ms of keystroke for indexes under 10,000 documents.
+
+The existing page-name fuzzy filter is replaced entirely — the BM25 scorer handles page name matches because page names are part of the indexed body text.
+
+For build mode, heading context and line-level positions are NOT available in the static index (deferred to v2 per Open Question #4). Results show page name and score only.
+
+REQ-013-015, ADR-013-004.")
+  (acceptance "Build mode Cmd+K fetches search-index.json lazily; full-text BM25 search works client-side; results sorted by score; navigation works; responsive under 100ms for reasonable corpus"))
+
+(normally r-ready-build-cmdk
+  (and task-build-cmdk completed-bm25-js)
+  ready-build-cmdk)
+
+(normally r-assign-build-cmdk
+  (and ready-build-cmdk agent-claude-available)
+  assign-to-build-cmdk-claude)
+
+;; ── Task: Verify Phase 4 ─────────────────────────────────────────────────
+
+(given task-verify-phase4)
+
+(meta task-verify-phase4
+  (description "End-to-end verification of build mode search:
+
+  1. zetl build emits search-index.json in output directory (TEST-013-014).
+  2. search-index.json contains avgDl, docs (correct count), df (TEST-013-014).
+  3. Each doc has n, s, dl, tf with correct term frequencies (TEST-013-014).
+  4. Open built static site in browser, press Cmd+K — search-index.json fetched (TEST-013-015).
+  5. Type a query — results ranked by BM25 score (TEST-013-015).
+  6. Navigate results with keyboard and click to follow (TEST-013-015).
+  7. All Phase 1, 2, 3 tests still pass.
+
+TEST-013-014, TEST-013-015.")
+  (acceptance "search-index.json correct; client-side search functional; BM25 ranking works; no regressions"))
+
+(normally r-ready-verify-phase4
+  (and task-verify-phase4 completed-build-cmdk)
+  ready-verify-phase4)
+
+(normally r-assign-verify-phase4
+  (and ready-verify-phase4 agent-claude-available)
+  assign-to-verify-phase4-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Final — Integration Verification
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Full integration test ───────────────────────────────────────────
+
+(given task-integration-test)
+
+(meta task-integration-test
+  (description "Comprehensive integration test covering the full SPEC-013 feature set. Create or use a test vault with: multiple pages with known content, known link structure, headings at various levels, exclusion zones (code blocks, frontmatter with searchable terms, HTML comments), and at least one isolated page.
+
+Verify:
+  1. zetl index builds both link graph and search index.
+  2. zetl search returns BM25-scored results with heading context — relevance ranking correct.
+  3. Exclusion zones: frontmatter/code/comments not indexed.
+  4. --near restricts to neighbourhood correctly (bidirectional).
+  5. --near composes with --path, --context, --case-sensitive, --limit.
+  6. zetl serve /api/search returns same results as CLI (minus graph scoping).
+  7. Serve mode Cmd+K shows full-text results with heading context.
+  8. zetl build emits valid search-index.json.
+  9. Build mode Cmd+K performs client-side BM25 search.
+  10. Index invalidation: modify a file, re-index, verify search reflects changes.
+  11. Lazy index: search without prior index works.
+  12. All NFR targets met: index build ≤5s, query ≤100ms, BFS ≤50ms, API ≤50ms (for reasonable corpus sizes).
+  13. cargo test passes.
+
+All REQ-013-*, TEST-013-*, NFR-013-*.")
+  (acceptance "All 13 scenarios pass; full feature set from SPEC-013 operational; no regressions in existing zetl functionality; search parity across CLI, serve, and build interfaces"))
+
+(normally r-ready-integration-test
+  (and task-integration-test completed-verify-phase3 completed-verify-phase4)
+  ready-integration-test)
+
+(normally r-assign-integration-test
+  (and ready-integration-test agent-claude-available)
+  assign-to-integration-test-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Rule Metadata
+;; ════════════════════════════════════════════════════════════════════════════
+
+(meta r-ready-add-tantivy
+  (description "Tantivy dependency has no prerequisites")
+  (justification "First task — no existing code depends on it yet"))
+
+(meta r-ready-search-index-module
+  (description "Search index module requires tantivy to be available")
+  (justification "Module directly imports tantivy types for schema, index, and query"))
+
+(meta r-ready-heading-detection
+  (description "Heading detection requires tantivy to be available")
+  (justification "While heading detection itself doesn't use tantivy, it's part of the same phase and shares the search module"))
+
+(meta r-ready-integrate-index
+  (description "Index integration requires the search index module")
+  (justification "cmd_index calls SearchIndex::build() which must exist first"))
+
+(meta r-ready-refactor-search
+  (description "Search refactor requires both the index module and heading detection")
+  (justification "New search flow queries Tantivy and attaches heading context to results"))
+
+(meta r-ready-update-cli
+  (description "CLI update requires the refactored search module")
+  (justification "CLI flags must match the new search API — no --regex, new output fields"))
+
+(meta r-ready-lazy-index
+  (description "Lazy index requires the refactored search")
+  (justification "Lazy build is a fallback path in the search flow — needs the new search to exist"))
+
+(meta r-ready-verify-phase1
+  (description "Phase 1 verification requires all Phase 1 tasks complete")
+  (justification "End-to-end check of Tantivy search, headings, lazy build, CLI"))
+
+(meta r-ready-neighbourhood-bfs
+  (description "Neighbourhood BFS depends on Phase 1 being verified")
+  (justification "Phase 2 builds on a working Tantivy search from Phase 1"))
+
+(meta r-ready-near-depth-cli
+  (description "CLI flags require the neighbourhood BFS implementation")
+  (justification "Flags must invoke the neighbourhood computation which must exist"))
+
+(meta r-ready-wire-graph-scoping
+  (description "Graph scoping requires the CLI flags and neighbourhood BFS")
+  (justification "Wiring connects the CLI flags to the neighbourhood filter in search"))
+
+(meta r-ready-verify-phase2
+  (description "Phase 2 verification requires graph scoping to be wired")
+  (justification "End-to-end check of --near/--depth with various graph structures"))
+
+(meta r-ready-tantivy-webstate
+  (description "WebState extension depends on Phase 2 being verified")
+  (justification "Phase 3 builds on working CLI search; serve mode shares the same index"))
+
+(meta r-ready-api-search
+  (description "API endpoint requires SearchIndex in WebState")
+  (justification "Handler reads from SearchIndex stored in WebState"))
+
+(meta r-ready-serve-cmdk
+  (description "Cmd+K upgrade requires the API endpoint")
+  (justification "Modal fetches results from /api/search which must exist"))
+
+(meta r-ready-verify-phase3
+  (description "Phase 3 verification requires serve Cmd+K to be functional")
+  (justification "End-to-end check of serve search API and modal"))
+
+(meta r-ready-search-index-json
+  (description "Static index generation depends on Phase 2 being verified")
+  (justification "Build needs the same search pipeline; Phase 2 ensures it works"))
+
+(meta r-ready-bm25-js
+  (description "BM25 JS scorer requires search-index.json to exist")
+  (justification "Scorer is designed to consume the specific JSON schema"))
+
+(meta r-ready-build-cmdk
+  (description "Build Cmd+K requires the BM25 scorer")
+  (justification "Modal uses the scorer to rank results client-side"))
+
+(meta r-ready-verify-phase4
+  (description "Phase 4 verification requires build Cmd+K to be functional")
+  (justification "End-to-end check of static search index and client-side search"))
+
+(meta r-ready-integration-test
+  (description "Integration test requires all phases verified")
+  (justification "Final comprehensive test of the complete SPEC-013 feature set"))
