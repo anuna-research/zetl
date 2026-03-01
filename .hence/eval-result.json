@@ -3,28 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 442,
-    "deletions": 46,
+    "files_changed": 2,
+    "insertions": 667,
+    "deletions": 8,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/main.rs",
-      "src/view/app.rs",
-      "src/view/link_map.rs",
-      "src/view/mod.rs"
+      "Cargo.lock",
+      "Cargo.toml"
     ],
-    "dirty_files": 0
+    "dirty_files": 2
   },
   "learnings": [
     {
-      "key": "task-anchor-annotations-changes",
-      "content": "Modified 5 files (+442, -46): .hence/context-manifest.json, src/main.rs, src/view/app.rs, src/view/link_map.rs, src/view/mod.rs",
+      "key": "task-add-tantivy-changes",
+      "content": "Modified 2 files (+667, -8): Cargo.lock, Cargo.toml",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/anchor-annotations-v1",
-  "evaluated_at": "2026-02-24T07:41:54Z",
+  "branch_name": "hence/add-tantivy-v1",
+  "evaluated_at": "2026-03-01T13:17:35Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

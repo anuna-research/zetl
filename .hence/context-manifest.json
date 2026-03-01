@@ -1,57 +1,15 @@
 {
-  "task_id": "anchor-annotations",
+  "task_id": "add-tantivy",
   "token_budget": 8000,
-  "tokens_used": 335,
+  "tokens_used": 89,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement wikilink parsing and anchor glyph injection for the main pane. For each line of the note content: scan for [[wikilink]] patterns; assign each unique wikilink an ordinal N (document order, 1-indexed); inject a styled anchor glyph [N] (ratatui Span with color from LinkColors) immediately after the closing ]] of each wikilink occurrence. Dead links (wikilinks whose target is not in the index) render in red (ANSI red in 8-color, Color::Red in true-color) or with a '!' prefix in no-color mode: ![N]. Track the document-order list of (ordinal, page_title, is_dead, line_number) tuples as LinkMap — this structure is shared by the context pane, bridge column, and focus mode tasks. REQ-064, ADR-017.",
-      "token_cost": 177,
+      "content": "Add tantivy crate to Cargo.toml. Use the latest stable version (0.22+). No feature flags needed beyond defaults. Run cargo check to verify the dependency resolves and compiles cleanly. Tantivy pulls in ~50 transitive dependencies and adds ~5-8 MB to binary size (acceptable per ADR-013-001, SPEC-013 §9.4). Do NOT add any other new dependencies in this task.",
+      "token_cost": 89,
       "priority": "PlanMeta"
-    },
-    {
-      "source": "memory/episodic/task-view-module-changes",
-      "content": "Modified 7 files (+260, -0): src/cli.rs, src/lib.rs, src/main.rs, src/view/app.rs, src/view/event.rs and 2 more",
-      "token_cost": 27,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-color-palette-changes",
-      "content": "Modified 3 files (+349, -5): .hence/context-manifest.json, src/view/color.rs, src/view/mod.rs",
-      "token_cost": 23,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-cli-entry-changes",
-      "content": "Modified 4 files (+226, -19): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/view/app.rs",
-      "token_cost": 25,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-fuzzy-suggestion-changes",
-      "content": "Modified 4 files (+127, -8): .hence/context-manifest.json, src/main.rs, src/view/fuzzy.rs, src/view/mod.rs",
-      "token_cost": 26,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-no-index-fallback-changes",
-      "content": "Modified 2 files (+65, -7): .hence/context-manifest.json, src/main.rs",
-      "token_cost": 17,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-two-pane-layout-changes",
-      "content": "Modified 2 files (+95, -12): .hence/context-manifest.json, src/view/app.rs",
-      "token_cost": 18,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-main-pane-changes",
-      "content": "Modified 3 files (+110, -24): .hence/context-manifest.json, src/main.rs, src/view/app.rs",
-      "token_cost": 22,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-02-24T07:28:22Z"
+  "constructed_at": "2026-03-01T13:16:35Z"
 }
