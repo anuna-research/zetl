@@ -1,12 +1,12 @@
 {
-  "task_id": "lazy-index",
+  "task_id": "integrate-index",
   "token_budget": 8000,
-  "tokens_used": 263,
+  "tokens_used": 302,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement lazy index construction in the search path per REQ-013-004. When zetl search is invoked and no .zetl/search/ directory exists (SearchIndex::open returns None):\n\n  1. Print to stderr: 'Building search index (run `zetl index` to avoid this delay on future queries)'\n  2. Scan the vault (reuse the pipeline's scan_vault + parse flow).\n  3. Build the index via SearchIndex::build().\n  4. Persist the index in .zetl/search/ for future queries.\n  5. Continue with the search query.\n\nThis should be integrated into the search_vault() function or cmd_search() in main.rs. The lazy build does NOT build the link graph (only the search index). This means --near is unavailable without zetl index, but basic search works without prior indexing.\n\nREQ-013-004.",
-      "token_cost": 189,
+      "content": "Extend cmd_index() in src/main.rs to build the Tantivy search index after building the link graph. Call SearchIndex::build() with the parsed files. Only build/rebuild for files that need re-indexing (use the same mtime cache invalidation as the graph — files_needing_reparse() already identifies changed files). For --no-cache, rebuild the entire index from scratch (delete .zetl/search/ and rebuild).\n\nAdd new JSON output fields per CON-013-002:\n  - search_index_docs: number of documents in the search index\n  - search_index_size_kb: size of .zetl/search/ directory in KB\n\nAdd verbose stderr output per OBS-013-001:\n  - Documents indexed, index size, index build time (ms)\n\nNote on incremental indexing: For v1, the simplest approach is to delete and rebuild the full index when any file changes. Tantivy index merging is complex\n\nREQ-013-001, REQ-013-003, CON-013-002.",
+      "token_cost": 218,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 5 files (+99, -344): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/search.rs, tests/integration.rs",
       "token_cost": 30,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-lazy-index-changes",
+      "content": "Modified 1 files (+1, -0): src/search.rs",
+      "token_cost": 10,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:35:06Z"
+  "constructed_at": "2026-03-01T13:36:16Z"
 }

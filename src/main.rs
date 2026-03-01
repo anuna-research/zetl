@@ -18,6 +18,7 @@ use zetl::merkle::{
 };
 use zetl::scanner::{resolve_page_name, scan_vault};
 use zetl::search::{search_vault, SearchConfig};
+use zetl::search_index::SearchIndex;
 use zetl::simhash::SimHashIndex;
 use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, ParsedFile};
 
@@ -322,6 +323,30 @@ fn exit_page_not_found(format: &OutputFormat, message: &str) -> ! {
     }
 }
 
+// ── Filesystem helpers ─────────────────────────────────────────────────────
+
+/// Recursively sum the byte sizes of all files under `path` and return the
+/// result in whole kilobytes (rounded down).  Returns 0 if the path does not
+/// exist or cannot be read.
+fn dir_size_kb(path: &Path) -> u64 {
+    fn sum_bytes(path: &Path) -> u64 {
+        let mut total = 0u64;
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                if let Ok(meta) = entry.metadata() {
+                    if meta.is_dir() {
+                        total += sum_bytes(&entry.path());
+                    } else {
+                        total += meta.len();
+                    }
+                }
+            }
+        }
+        total
+    }
+    sum_bytes(path) / 1024
+}
+
 // ── Command handlers ───────────────────────────────────────────────────────
 
 fn cmd_index(cli: &Cli) -> Result<()> {
@@ -351,6 +376,40 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         eprintln!("tier2_misses: {}", s.tier2_misses);
     }
 
+    // Build or skip the Tantivy search index (REQ-013-001, REQ-013-003).
+    //
+    // Strategy (v1): rebuild the entire index from scratch whenever any file
+    // changed (files_hashed > 0), the index directory is absent, or --no-cache
+    // was requested.  For --no-cache, the existing index directory is deleted
+    // first so Tantivy starts with a clean on-disk layout.
+    let search_dir = pipeline.vault_root.join(".zetl").join("search");
+    let needs_rebuild = cli.no_cache
+        || pipeline.scan_stats.files_hashed > 0
+        || !search_dir.exists();
+
+    let (search_index_docs, search_index_build_ms) = if needs_rebuild {
+        if cli.no_cache && search_dir.exists() {
+            std::fs::remove_dir_all(&search_dir)
+                .with_context(|| format!("removing search index directory {:?}", search_dir))?;
+        }
+        let idx_start = Instant::now();
+        SearchIndex::build(&pipeline.vault_root, &pipeline.files)
+            .context("building search index")?;
+        let idx_elapsed_ms = idx_start.elapsed().as_millis();
+        (pipeline.files.len(), idx_elapsed_ms)
+    } else {
+        (pipeline.files.len(), 0)
+    };
+
+    let search_index_size_kb = dir_size_kb(&search_dir);
+
+    // OBS-013-001: verbose search index stats.
+    if cli.verbose > 0 {
+        eprintln!("documents indexed: {search_index_docs}");
+        eprintln!("search index size: {search_index_size_kb} KB");
+        eprintln!("search index build time: {search_index_build_ms}ms");
+    }
+
     let total_links: usize = pipeline.files.iter().map(|f| f.links.len()).sum();
     let total_diagnostics: usize = pipeline.files.iter().map(|f| f.diagnostics.len()).sum();
     let dead_links = pipeline.graph.dead_links();
@@ -362,6 +421,8 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         dead_links: usize,
         diagnostics: usize,
         elapsed_ms: u128,
+        search_index_docs: usize,
+        search_index_size_kb: u64,
     }
 
     let result = IndexResult {
@@ -370,6 +431,8 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         dead_links: dead_links.len(),
         diagnostics: total_diagnostics,
         elapsed_ms: elapsed.as_millis(),
+        search_index_docs,
+        search_index_size_kb,
     };
 
     match cli.format {
@@ -393,6 +456,14 @@ fn cmd_index(cli: &Cli) -> Result<()> {
             table.add_row(vec![
                 Cell::new("Elapsed (ms)"),
                 Cell::new(result.elapsed_ms),
+            ]);
+            table.add_row(vec![
+                Cell::new("Search index docs"),
+                Cell::new(result.search_index_docs),
+            ]);
+            table.add_row(vec![
+                Cell::new("Search index size (KB)"),
+                Cell::new(result.search_index_size_kb),
             ]);
             println!("{table}");
         }
