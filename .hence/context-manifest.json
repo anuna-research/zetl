@@ -1,12 +1,12 @@
 {
-  "task_id": "refactor-build",
+  "task_id": "cleanup-html",
   "token_budget": 8000,
-  "tokens_used": 305,
+  "tokens_used": 284,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Refactor src/web/build.rs to use TemplateEngine instead of format!() string concatenation. Create a TemplateEngine instance at the start of build_static(). Replace render_index(), render_page(), render_folder_index() calls with engine.render_index(), engine.render_page(mode='build'), engine.render_folder(). Remove duplicate sidebar_entries() and slug_for_page() if they can be shared with routes.rs (move to mod.rs or a shared util). Build mode must NOT include edit UI (mode='build' ensures this via template conditional).",
-      "token_cost": 131,
+      "content": "Remove now-unused functions from src/web/html.rs: layout(), sidebar_html(), breadcrumb_html(). Keep search_index_json(), html_escape(), urlencoding() as they are still used by context builders and other code. If any functions have zero remaining callers, remove them. Update any use/import statements in routes.rs, build.rs, mod.rs.",
+      "token_cost": 83,
       "priority": "PlanMeta"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 4 files (+79, -485): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs",
       "token_cost": 26,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-refactor-build-changes",
+      "content": "Modified 4 files (+68, -456): .hence/context-manifest.json, src/web/build.rs, src/web/mod.rs, src/web/routes.rs",
+      "token_cost": 27,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:31:16Z"
+  "constructed_at": "2026-03-01T13:34:58Z"
 }
