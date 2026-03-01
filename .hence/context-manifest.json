@@ -1,12 +1,12 @@
 {
-  "task_id": "extract-folder",
+  "task_id": "engine",
   "token_budget": 8000,
-  "tokens_used": 226,
+  "tokens_used": 288,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create src/web/templates/folder.html by extracting the folder index from routes.rs::render_folder_index() and build.rs::render_folder_index(). Template extends base.html. Overrides {% block content %} with: breadcrumbs, folder title, subfolder cards (with page counts), page cards (with link counts). Variables: folder.name, folder.slug, folder.breadcrumbs[], folder.subfolders[] (name, slug, page_count), folder.pages[] (title, slug, outlink_count, backlink_count), folder.total_pages.",
-      "token_cost": 121,
+      "content": "Create src/web/engine.rs with TemplateEngine struct wrapping minijinja::Environment. For Phase 1, the loader uses include_str!() to embed the four built-in templates (base.html, index.html, page.html, folder.html) from src/web/templates/. Expose render methods: render_index(vault_ctx) -> Result<String>, render_page(vault_ctx, page_ctx, mode) -> Result<String>, render_folder(vault_ctx, folder_ctx) -> Result<String>. Each method builds a minijinja::context! combining the vault-level context with template-specific data, then calls env.get_template(name).render(ctx). Error handling: return anyhow::Result with context about which template failed. Export from src/web/mod.rs.",
+      "token_cost": 169,
       "priority": "PlanMeta"
     },
     {
@@ -44,8 +44,14 @@
       "content": "Modified 1 files (+261, -0): src/web/templates/page.html",
       "token_cost": 14,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-extract-folder-changes",
+      "content": "Modified 1 files (+45, -0): src/web/templates/folder.html",
+      "token_cost": 14,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:22:45Z"
+  "constructed_at": "2026-03-01T13:23:55Z"
 }
