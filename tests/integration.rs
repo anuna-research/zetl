@@ -2340,3 +2340,331 @@ fn test_012_010_theme_variable_accessible() {
         "base.html should set data-theme to 'my-theme'"
     );
 }
+
+// ── TEST-012-005: Serve-mode static asset handling ─────────────────────────
+//
+// These tests spawn `zetl serve` on a random port, wait for it to start,
+// send raw HTTP/1.1 requests via TcpStream, then verify responses.
+
+/// Find a free TCP port by binding to port 0 and reading the assigned port.
+fn find_free_port() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to port 0");
+    listener.local_addr().unwrap().port()
+}
+
+/// Spawn `zetl serve` and wait up to 3 seconds for it to accept TCP connections.
+fn spawn_serve(vault: &Path, port: u16, theme: &str) -> std::process::Child {
+    let bin = assert_cmd::cargo::cargo_bin!("zetl");
+    let child = std::process::Command::new(bin)
+        .arg("-d")
+        .arg(vault)
+        .arg("--no-cache")
+        .arg("serve")
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--theme")
+        .arg(theme)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn zetl serve");
+
+    // Poll until the port is accepting connections (max ~3s).
+    for _ in 0..30 {
+        if std::net::TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+            return child;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    panic!("zetl serve did not become ready on port {port}");
+}
+
+/// Send a raw HTTP/1.1 GET and return (status_line, headers, body).
+fn http_get(port: u16, path: &str) -> (String, String, Vec<u8>) {
+    use std::io::{Read, Write};
+    let mut stream =
+        std::net::TcpStream::connect(format!("127.0.0.1:{port}")).expect("connect to server");
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .ok();
+    let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    stream.write_all(req.as_bytes()).expect("send request");
+
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).ok(); // read until EOF or timeout
+
+    let raw = String::from_utf8_lossy(&buf);
+    let (head, body_start) = match raw.find("\r\n\r\n") {
+        Some(pos) => (&raw[..pos], pos + 4),
+        None => (raw.as_ref(), buf.len()),
+    };
+    let mut lines = head.lines();
+    let status_line = lines.next().unwrap_or("").to_string();
+    let headers: String = lines.collect::<Vec<_>>().join("\n");
+    let body = buf[body_start..].to_vec();
+    (status_line, headers, body)
+}
+
+/// TEST-012-005: Shared .zetl/static/test.js returns 200 with correct MIME.
+#[test]
+fn test_012_005_serve_shared_static_200_mime() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+    let static_dir = dir.path().join(".zetl/static");
+    fs::create_dir_all(&static_dir).unwrap();
+    fs::write(static_dir.join("test.js"), b"console.log('ok');").unwrap();
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+
+    let (status, headers, body) = http_get(port, "/_static/test.js");
+    child.kill().ok();
+    child.wait().ok();
+
+    assert!(
+        status.contains("200"),
+        "expected 200 OK, got: {status}"
+    );
+    assert!(
+        headers.contains("application/javascript"),
+        "expected application/javascript content-type, got headers:\n{headers}"
+    );
+    assert_eq!(body, b"console.log('ok');");
+}
+
+/// TEST-012-005: Theme static overrides shared at same path.
+#[test]
+fn test_012_005_serve_theme_overrides_shared() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+
+    // Shared version
+    let shared = dir.path().join(".zetl/static");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(shared.join("style.css"), b"body{color:red}").unwrap();
+
+    // Theme override
+    let theme_dir = dir.path().join(".zetl/themes/mytheme/static");
+    fs::create_dir_all(&theme_dir).unwrap();
+    fs::write(theme_dir.join("style.css"), b"body{color:blue}").unwrap();
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "mytheme");
+
+    let (status, headers, body) = http_get(port, "/_static/style.css");
+    child.kill().ok();
+    child.wait().ok();
+
+    assert!(status.contains("200"), "expected 200 OK, got: {status}");
+    assert!(
+        headers.contains("text/css"),
+        "expected text/css, got headers:\n{headers}"
+    );
+    assert_eq!(
+        body,
+        b"body{color:blue}",
+        "theme static should override shared"
+    );
+}
+
+/// TEST-012-005: 404 for nonexistent static files.
+#[test]
+fn test_012_005_serve_404_for_nonexistent() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+
+    let (status, _headers, _body) = http_get(port, "/_static/nope.js");
+    child.kill().ok();
+    child.wait().ok();
+
+    assert!(
+        status.contains("404"),
+        "expected 404, got: {status}"
+    );
+}
+
+/// TEST-012-005: No error when no static dirs exist.
+#[test]
+fn test_012_005_serve_no_static_dirs_graceful() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+    // No .zetl/static/ at all
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+
+    let (status, _headers, _body) = http_get(port, "/_static/anything.js");
+    child.kill().ok();
+    let exit = child.wait().ok();
+
+    assert!(
+        status.contains("404"),
+        "expected 404 when no static dirs, got: {status}"
+    );
+    // The server should not have crashed — kill returns Ok if it was still running
+    // or the exit status is from our kill signal, not an internal panic.
+    if let Some(es) = exit {
+        // If it exited on its own before kill, it should NOT be a panic exit
+        // (signal-killed processes don't have a normal exit code on Unix)
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            // Either killed by our signal (9) or still running when we killed it — both fine
+            assert!(
+                es.signal().is_some() || es.success(),
+                "server should not have panicked, exit status: {es:?}"
+            );
+        }
+    }
+}
+
+// ── TEST-012-006: Build-mode static asset handling ─────────────────────────
+
+/// TEST-012-006: Shared + theme assets merged in dist/_static/.
+#[test]
+fn test_012_006_build_shared_and_theme_merge() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+
+    // Shared static
+    let shared = dir.path().join(".zetl/static");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(shared.join("shared.js"), "// shared").unwrap();
+
+    // Theme static
+    let theme_dir = dir.path().join(".zetl/themes/merge-theme/static");
+    fs::create_dir_all(&theme_dir).unwrap();
+    fs::write(theme_dir.join("theme.js"), "// theme").unwrap();
+
+    // Also need a minimal theme template so --theme validation passes
+    let theme_root = dir.path().join(".zetl/themes/merge-theme");
+    fs::write(
+        theme_root.join("page.html"),
+        r#"{% extends "base.html" %}{% block content %}{{ page.content_html }}{% endblock %}"#,
+    )
+    .unwrap();
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("merge-theme")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Both files should be present in _static/
+    assert_eq!(
+        fs::read_to_string(out_dir.join("_static/shared.js")).unwrap(),
+        "// shared"
+    );
+    assert_eq!(
+        fs::read_to_string(out_dir.join("_static/theme.js")).unwrap(),
+        "// theme"
+    );
+}
+
+/// TEST-012-006: Theme overwrites shared on conflict.
+#[test]
+fn test_012_006_build_theme_overwrites_shared() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+
+    // Both have style.css
+    let shared = dir.path().join(".zetl/static");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(shared.join("style.css"), "/* shared */").unwrap();
+
+    let theme_dir = dir.path().join(".zetl/themes/winner/static");
+    fs::create_dir_all(&theme_dir).unwrap();
+    fs::write(theme_dir.join("style.css"), "/* theme wins */").unwrap();
+
+    let theme_root = dir.path().join(".zetl/themes/winner");
+    fs::write(
+        theme_root.join("page.html"),
+        r#"{% extends "base.html" %}{% block content %}{{ page.content_html }}{% endblock %}"#,
+    )
+    .unwrap();
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("winner")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(
+        fs::read_to_string(out_dir.join("_static/style.css")).unwrap(),
+        "/* theme wins */",
+        "theme version should overwrite shared"
+    );
+}
+
+/// TEST-012-006: Directory structure preserved in _static/.
+#[test]
+fn test_012_006_build_preserves_directory_structure() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+
+    let nested = dir.path().join(".zetl/static/fonts/woff2");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("inter.woff2"), "fontbytes").unwrap();
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(
+        fs::read_to_string(out_dir.join("_static/fonts/woff2/inter.woff2")).unwrap(),
+        "fontbytes",
+        "nested directory structure should be preserved"
+    );
+}
+
+/// TEST-012-006: No _static/ directory when no source static dirs exist.
+#[test]
+fn test_012_006_build_no_static_dirs_no_output() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\nHello.\n");
+    // No .zetl/static/ or theme static
+
+    let out_dir = dir.path().join("dist");
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("run zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        !out_dir.join("_static").exists(),
+        "_static/ should not be created when no source static dirs exist"
+    );
+}
