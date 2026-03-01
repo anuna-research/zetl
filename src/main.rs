@@ -2337,6 +2337,7 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         &pipeline.vault_root,
         theme,
         true, // reload templates on every request in serve mode
+        cli.verbose > 0,
     );
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
@@ -2369,7 +2370,7 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
         collision_names,
     };
 
-    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme)?;
+    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme, cli.verbose > 0)?;
     Ok(())
 }
 

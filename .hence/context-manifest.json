@@ -1,12 +1,12 @@
 {
-  "task_id": "theme-loader",
+  "task_id": "theme-errors",
   "token_budget": 8000,
-  "tokens_used": 379,
+  "tokens_used": 342,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend TemplateEngine in src/web/engine.rs to accept vault_root and theme name parameters. Use minijinja's Environment::set_loader() with a closure that implements the two-tier resolution: (1) check .zetl/themes/<active-theme>/<name>.html on disk, (2) fall back to built-in include_str!() default. When theme is 'default', skip disk lookup entirely (optimization). Template inheritance must work across tiers — a theme's page.html can {% extends 'base.html' %} where base.html resolves to the built-in default. Add the 'theme' variable to all template contexts. Per Open Question #1 in SPEC-012: reload templates on every request in serve mode (templates are small); cache in build mode. REQ-012-003, CON-012-001.",
-      "token_cost": 178,
+      "content": "Implement template error reporting per REQ-012-009. In serve mode: when a template fails to render (syntax error, missing variable, inheritance error), return an HTML error page with the error message, template name, and line number — not a bare 500. In build mode: print the error to stderr with template name, line number, and the page/slug being rendered, then exit with non-zero code. Add verbose logging per OBS-012-002: when --verbose is set, log which templates loaded from theme directory vs built-in default. Never silently produce empty or partial HTML.",
+      "token_cost": 141,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:58:21Z"
+  "constructed_at": "2026-03-01T14:03:43Z"
 }

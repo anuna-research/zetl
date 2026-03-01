@@ -11,12 +11,18 @@ use crate::web::markdown;
 use crate::web::VaultData;
 
 /// Generate a complete static HTML site from the vault data.
-pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str, theme: &str) -> Result<()> {
+pub fn build_static(
+    data: &VaultData,
+    vault_root: &Path,
+    out_dir: &str,
+    theme: &str,
+    verbose: bool,
+) -> Result<()> {
     let out = Path::new(out_dir);
     std::fs::create_dir_all(out)
         .with_context(|| format!("Cannot create output directory: {out_dir}"))?;
 
-    let engine = TemplateEngine::new(vault_root, theme, false);
+    let engine = TemplateEngine::new(vault_root, theme, false, verbose);
     let vault_name = vault_root
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -26,7 +32,10 @@ pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str, theme: &
     // ── index.html ──────────────────────────────────────────────────────
     let index_html = engine
         .render_index(&vault_ctx)
-        .context("failed to render index page for static build")?;
+        .map_err(|e| {
+            eprintln!("{}", e.stderr_line("index"));
+            anyhow::anyhow!("{e}")
+        })?;
     std::fs::write(out.join("index.html"), index_html)?;
 
     // ── per-page HTML ───────────────────────────────────────────────────
@@ -48,7 +57,10 @@ pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str, theme: &
 
         let page_html = engine
             .render_page(&vault_ctx, &page_ctx, "build")
-            .with_context(|| format!("failed to render page '{}'", file.page_name))?;
+            .map_err(|e| {
+                eprintln!("{}", e.stderr_line(&slug));
+                anyhow::anyhow!("{e}")
+            })?;
         std::fs::write(page_dir.join("index.html"), page_html)?;
         count += 1;
     }
@@ -84,7 +96,10 @@ pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str, theme: &
         let folder_ctx = build_folder_context(data, folder, folder_name);
         let folder_html = engine
             .render_folder(&vault_ctx, &folder_ctx)
-            .with_context(|| format!("failed to render folder '{}'", folder))?;
+            .map_err(|e| {
+                eprintln!("{}", e.stderr_line(folder));
+                anyhow::anyhow!("{e}")
+            })?;
         std::fs::write(folder_dir.join("index.html"), folder_html)?;
         folder_count += 1;
     }

@@ -6,12 +6,13 @@ use axum::response::{Html, IntoResponse, Response};
 
 use crate::scanner::page_slug_from_path;
 use crate::web::context::{build_folder_context, build_page_context, build_vault_context};
+use crate::web::engine::TemplateError;
 use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::{reindex, WebState};
 
 /// GET / — Landing page with vault stats and page grid.
-pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
+pub async fn index_handler(State(state): State<WebState>) -> Response {
     let data = state.data.read().unwrap();
     let vault_name = state
         .vault_root
@@ -20,17 +21,17 @@ pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
         .unwrap_or_else(|| "vault".to_string());
 
     let vault_ctx = build_vault_context(&data, &vault_name);
-    let html = state.engine.render_index(&vault_ctx).unwrap_or_else(|e| {
-        format!("<h1>Template error</h1><pre>{}</pre>", html_escape(&e.to_string()))
-    });
-    Html(html)
+    match state.engine.render_index(&vault_ctx) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => render_error_response(e),
+    }
 }
 
 /// GET /{*path} — Rendered markdown page with backlinks, or folder index.
 pub async fn page_handler(
     State(state): State<WebState>,
     Path(slug): Path<String>,
-) -> Html<String> {
+) -> Response {
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
     let data = state.data.read().unwrap();
@@ -59,16 +60,10 @@ pub async fn page_handler(
             let folder_name = slug.rsplit('/').next().unwrap_or(slug);
             let vault_ctx = build_vault_context(&data, &vault_name);
             let folder_ctx = build_folder_context(&data, slug, folder_name);
-            let html = state
-                .engine
-                .render_folder(&vault_ctx, &folder_ctx)
-                .unwrap_or_else(|e| {
-                    format!(
-                        "<h1>Template error</h1><pre>{}</pre>",
-                        html_escape(&e.to_string())
-                    )
-                });
-            return Html(html);
+            return match state.engine.render_folder(&vault_ctx, &folder_ctx) {
+                Ok(html) => Html(html).into_response(),
+                Err(e) => render_error_response(e),
+            };
         }
     }
 
@@ -155,16 +150,10 @@ pub async fn page_handler(
     page_ctx.raw_escaped = raw_content.map(|c| html_escape(&c));
 
     let vault_ctx = build_vault_context(&data, &vault_name);
-    let html = state
-        .engine
-        .render_page(&vault_ctx, &page_ctx, "serve")
-        .unwrap_or_else(|e| {
-            format!(
-                "<h1>Template error</h1><pre>{}</pre>",
-                html_escape(&e.to_string())
-            )
-        });
-    Html(html)
+    match state.engine.render_page(&vault_ctx, &page_ctx, "serve") {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => render_error_response(e),
+    }
 }
 
 /// PUT /{*path} — Save edited markdown back to the vault file, then re-index.
@@ -251,6 +240,12 @@ pub async fn preview_handler(
     };
 
     Html(preview)
+}
+
+/// Convert a TemplateError into a 500 response with a styled HTML error page.
+fn render_error_response(err: TemplateError) -> Response {
+    eprintln!("template error: {err}");
+    (StatusCode::INTERNAL_SERVER_ERROR, Html(err.to_error_html())).into_response()
 }
 
 /// Decode %20-style URL encoding.

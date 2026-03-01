@@ -1,10 +1,121 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
 use minijinja::{context, Environment};
 
 use super::context::{FolderContext, PageContext, VaultContext};
+
+// ── TemplateError ──────────────────────────────────────────────────────────
+
+/// Structured template error with context extracted from minijinja.
+///
+/// Carries the template name, line number, error kind, and human-readable
+/// message so that callers can produce rich diagnostics (HTML error page in
+/// serve mode, formatted stderr in build mode).
+#[derive(Debug, Clone)]
+pub struct TemplateError {
+    pub template_name: Option<String>,
+    pub line: Option<usize>,
+    pub kind: String,
+    pub message: String,
+}
+
+impl TemplateError {
+    fn from_minijinja(err: minijinja::Error) -> Self {
+        Self {
+            template_name: err.name().map(|s| s.to_string()),
+            line: err.line(),
+            kind: format!("{:?}", err.kind()),
+            message: err.to_string(),
+        }
+    }
+
+    fn empty_output(template_name: &str) -> Self {
+        Self {
+            template_name: Some(template_name.to_string()),
+            line: None,
+            kind: "EmptyOutput".to_string(),
+            message: format!("template '{template_name}' produced empty output"),
+        }
+    }
+
+    /// Format for build-mode stderr: includes the page/slug being rendered.
+    pub fn stderr_line(&self, slug: &str) -> String {
+        let loc = match (&self.template_name, self.line) {
+            (Some(name), Some(line)) => format!("{name}:{line}"),
+            (Some(name), None) => name.clone(),
+            _ => "unknown".to_string(),
+        };
+        format!("error: template {loc}: {msg} (rendering '{slug}')", msg = self.message)
+    }
+
+    /// Build a self-contained HTML error page for serve mode.
+    pub fn to_error_html(&self) -> String {
+        let esc = |s: &str| -> String {
+            s.replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+                .replace('"', "&quot;")
+        };
+
+        let template_info = match (&self.template_name, self.line) {
+            (Some(name), Some(line)) => format!(
+                r#"<span class="label">Template:</span> <span class="value">{}</span> <span class="label">Line:</span> <span class="value">{}</span>"#,
+                esc(name), line
+            ),
+            (Some(name), None) => format!(
+                r#"<span class="label">Template:</span> <span class="value">{}</span>"#,
+                esc(name)
+            ),
+            _ => String::new(),
+        };
+
+        format!(
+            r##"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Template Error — zetl</title>
+<style>
+  body {{ font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace; background: #1a1b26; color: #a9b1d6; margin: 0; padding: 2rem; }}
+  .error-box {{ max-width: 720px; margin: 3rem auto; background: #24283b; border-left: 4px solid #f7768e; border-radius: 6px; padding: 1.5rem 2rem; }}
+  h1 {{ color: #f7768e; font-size: 1.3rem; margin: 0 0 1rem; font-weight: 600; }}
+  .meta {{ margin-bottom: 1rem; font-size: 0.85rem; }}
+  .label {{ color: #565f89; }}
+  .value {{ color: #7aa2f7; background: #1a1b26; padding: 2px 6px; border-radius: 3px; }}
+  pre {{ background: #1a1b26; color: #c0caf5; padding: 1rem; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 0.85rem; line-height: 1.6; margin: 0; }}
+</style>
+</head>
+<body>
+<div class="error-box">
+  <h1>Template Error</h1>
+  <div class="meta">{template_info}</div>
+  <pre>{message}</pre>
+</div>
+</body>
+</html>"##,
+            template_info = template_info,
+            message = esc(&self.message),
+        )
+    }
+}
+
+impl std::fmt::Display for TemplateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(name) = &self.template_name {
+            write!(f, "{name}")?;
+            if let Some(line) = self.line {
+                write!(f, ":{line}")?;
+            }
+            write!(f, ": ")?;
+        }
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for TemplateError {}
+
+// ── TemplateEngine ─────────────────────────────────────────────────────────
 
 /// Template engine wrapping a minijinja::Environment with two-tier template resolution.
 ///
@@ -21,6 +132,8 @@ pub struct TemplateEngine {
     theme: String,
     reload: bool,
 }
+
+const KNOWN_TEMPLATES: &[&str] = &["base.html", "index.html", "page.html", "folder.html"];
 
 /// Build a minijinja Environment with the two-tier template loader.
 fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
@@ -54,7 +167,21 @@ impl TemplateEngine {
     /// - `theme`: active theme name ("default" skips disk lookup entirely)
     /// - `reload`: when true (serve mode), rebuild the environment on every render;
     ///   when false (build mode), cache templates for the engine's lifetime
-    pub fn new(vault_root: &Path, theme: &str, reload: bool) -> Self {
+    /// - `verbose`: when true, log which templates loaded from theme dir vs built-in
+    pub fn new(vault_root: &Path, theme: &str, reload: bool, verbose: bool) -> Self {
+        if verbose {
+            for name in KNOWN_TEMPLATES {
+                if theme != "default" {
+                    let theme_path = vault_root.join(".zetl/themes").join(theme).join(name);
+                    if theme_path.exists() {
+                        eprintln!("  theme: {name} ← .zetl/themes/{theme}/{name}");
+                        continue;
+                    }
+                }
+                eprintln!("  theme: {name} ← built-in default");
+            }
+        }
+
         let cached_env = build_env(vault_root, theme);
         Self {
             cached_env,
@@ -75,7 +202,7 @@ impl TemplateEngine {
     }
 
     /// Render the vault index page.
-    pub fn render_index(&self, vault_ctx: &VaultContext) -> Result<String> {
+    pub fn render_index(&self, vault_ctx: &VaultContext) -> Result<String, TemplateError> {
         let search_index = build_search_index(vault_ctx);
         let ctx = context! {
             vault => vault_ctx,
@@ -85,9 +212,13 @@ impl TemplateEngine {
         };
         let env = self.env();
         let tmpl = env.get_template("index.html")
-            .context("failed to load index.html template")?;
-        tmpl.render(ctx)
-            .context("failed to render index.html template")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx)
+            .map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("index.html"));
+        }
+        Ok(html)
     }
 
     /// Render a single page.
@@ -96,7 +227,7 @@ impl TemplateEngine {
         vault_ctx: &VaultContext,
         page_ctx: &PageContext,
         mode: &str,
-    ) -> Result<String> {
+    ) -> Result<String, TemplateError> {
         let search_index = build_search_index(vault_ctx);
         let ctx = context! {
             vault => vault_ctx,
@@ -108,9 +239,13 @@ impl TemplateEngine {
         };
         let env = self.env();
         let tmpl = env.get_template("page.html")
-            .context("failed to load page.html template")?;
-        tmpl.render(ctx)
-            .context(format!("failed to render page.html for '{}'", page_ctx.title))
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx)
+            .map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("page.html"));
+        }
+        Ok(html)
     }
 
     /// Render a folder index page.
@@ -118,7 +253,7 @@ impl TemplateEngine {
         &self,
         vault_ctx: &VaultContext,
         folder_ctx: &FolderContext,
-    ) -> Result<String> {
+    ) -> Result<String, TemplateError> {
         let search_index = build_search_index(vault_ctx);
         let ctx = context! {
             vault => vault_ctx,
@@ -129,9 +264,13 @@ impl TemplateEngine {
         };
         let env = self.env();
         let tmpl = env.get_template("folder.html")
-            .context("failed to load folder.html template")?;
-        tmpl.render(ctx)
-            .context(format!("failed to render folder.html for '{}'", folder_ctx.name))
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx)
+            .map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("folder.html"));
+        }
+        Ok(html)
     }
 }
 
@@ -184,8 +323,24 @@ mod tests {
         }
     }
 
+    fn sample_page() -> PageContext {
+        PageContext {
+            title: "Hello".to_string(),
+            slug: "hello".to_string(),
+            content_html: "<p>world</p>".to_string(),
+            content_raw: "world".to_string(),
+            frontmatter: serde_json::json!({}),
+            backlinks: vec![],
+            outlinks: vec![],
+            breadcrumbs: vec![],
+            transclusion_cards: String::new(),
+            is_new: false,
+            raw_escaped: None,
+        }
+    }
+
     fn default_engine() -> TemplateEngine {
-        TemplateEngine::new(Path::new("."), "default", false)
+        TemplateEngine::new(Path::new("."), "default", false, false)
     }
 
     #[test]
@@ -201,19 +356,7 @@ mod tests {
     fn test_render_page() {
         let engine = default_engine();
         let vault = sample_vault();
-        let page = PageContext {
-            title: "Hello".to_string(),
-            slug: "hello".to_string(),
-            content_html: "<p>world</p>".to_string(),
-            content_raw: "world".to_string(),
-            frontmatter: serde_json::json!({}),
-            backlinks: vec![],
-            outlinks: vec![],
-            breadcrumbs: vec![],
-            transclusion_cards: String::new(),
-            is_new: false,
-            raw_escaped: None,
-        };
+        let page = sample_page();
         let html = engine.render_page(&vault, &page, "static").unwrap();
         assert!(html.contains("Hello"));
         assert!(html.contains("<p>world</p>"));
@@ -259,7 +402,7 @@ mod tests {
 
     #[test]
     fn test_theme_variable_in_context() {
-        let engine = TemplateEngine::new(Path::new("."), "fountain", false);
+        let engine = TemplateEngine::new(Path::new("."), "fountain", false, false);
         let vault = sample_vault();
         let html = engine.render_index(&vault).unwrap();
         assert!(html.contains(r#"data-theme="fountain""#));
@@ -268,7 +411,7 @@ mod tests {
     #[test]
     fn test_default_theme_skips_disk() {
         // "default" theme should work without any .zetl/themes directory
-        let engine = TemplateEngine::new(Path::new("/nonexistent"), "default", false);
+        let engine = TemplateEngine::new(Path::new("/nonexistent"), "default", false, false);
         let vault = sample_vault();
         let html = engine.render_index(&vault).unwrap();
         assert!(html.contains("Vault"));
@@ -286,26 +429,14 @@ mod tests {
         )
         .unwrap();
 
-        let engine = TemplateEngine::new(tmp.path(), "custom", false);
+        let engine = TemplateEngine::new(tmp.path(), "custom", false, false);
         let vault = sample_vault();
-        let page = PageContext {
-            title: "Test".to_string(),
-            slug: "test".to_string(),
-            content_html: "<p>hi</p>".to_string(),
-            content_raw: "hi".to_string(),
-            frontmatter: serde_json::json!({}),
-            backlinks: vec![],
-            outlinks: vec![],
-            breadcrumbs: vec![],
-            transclusion_cards: String::new(),
-            is_new: false,
-            raw_escaped: None,
-        };
+        let page = sample_page();
         let html = engine.render_page(&vault, &page, "static").unwrap();
         // Custom template wraps content in <div class="custom">
         assert!(html.contains(r#"<div class="custom">"#));
         // base.html is still the built-in (cross-tier inheritance)
-        assert!(html.contains("CUSTOM: Test"));
+        assert!(html.contains("CUSTOM: Hello"));
     }
 
     #[test]
@@ -321,7 +452,7 @@ mod tests {
         )
         .unwrap();
 
-        let engine = TemplateEngine::new(tmp.path(), "live", true);
+        let engine = TemplateEngine::new(tmp.path(), "live", true, false);
         let vault = sample_vault();
 
         let html1 = engine.render_index(&vault).unwrap();
@@ -351,7 +482,7 @@ mod tests {
         )
         .unwrap();
 
-        let engine = TemplateEngine::new(tmp.path(), "cached", false);
+        let engine = TemplateEngine::new(tmp.path(), "cached", false, false);
         let vault = sample_vault();
 
         let html1 = engine.render_index(&vault).unwrap();
@@ -367,5 +498,121 @@ mod tests {
         // Cached mode should still return the old version
         let html2 = engine.render_index(&vault).unwrap();
         assert!(html2.contains("CACHED_V1"));
+    }
+
+    // ── TemplateError tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_syntax_error_returns_template_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let theme_dir = tmp.path().join(".zetl/themes/broken");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        std::fs::write(
+            theme_dir.join("index.html"),
+            "{% extends 'base.html' %}{% block content %}{{ unclosed }",
+        )
+        .unwrap();
+
+        let engine = TemplateEngine::new(tmp.path(), "broken", false, false);
+        let vault = sample_vault();
+        let err = engine.render_index(&vault).unwrap_err();
+        assert!(err.template_name.is_some());
+        assert!(err.message.len() > 0);
+    }
+
+    #[test]
+    fn test_error_html_contains_details() {
+        let err = TemplateError {
+            template_name: Some("page.html".to_string()),
+            line: Some(42),
+            kind: "SyntaxError".to_string(),
+            message: "unexpected end of template".to_string(),
+        };
+        let html = err.to_error_html();
+        assert!(html.contains("page.html"));
+        assert!(html.contains("42"));
+        assert!(html.contains("unexpected end of template"));
+        assert!(html.contains("Template Error"));
+    }
+
+    #[test]
+    fn test_error_html_escapes_html() {
+        let err = TemplateError {
+            template_name: Some("<script>".to_string()),
+            line: None,
+            kind: "SyntaxError".to_string(),
+            message: "bad <tag> & stuff".to_string(),
+        };
+        let html = err.to_error_html();
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("&lt;script&gt;"));
+        assert!(html.contains("bad &lt;tag&gt; &amp; stuff"));
+    }
+
+    #[test]
+    fn test_stderr_line_format() {
+        let err = TemplateError {
+            template_name: Some("page.html".to_string()),
+            line: Some(10),
+            kind: "SyntaxError".to_string(),
+            message: "syntax error".to_string(),
+        };
+        let line = err.stderr_line("my-page");
+        assert!(line.contains("page.html:10"));
+        assert!(line.contains("my-page"));
+        assert!(line.starts_with("error:"));
+    }
+
+    #[test]
+    fn test_stderr_line_without_line_number() {
+        let err = TemplateError {
+            template_name: Some("index.html".to_string()),
+            line: None,
+            kind: "EmptyOutput".to_string(),
+            message: "template 'index.html' produced empty output".to_string(),
+        };
+        let line = err.stderr_line("index");
+        // Without a line number, the location should just be "index.html" (no ":N" suffix)
+        assert!(line.contains("template index.html:"));
+        assert!(!line.contains("index.html:1"));
+        assert!(line.contains("'index'"));
+    }
+
+    #[test]
+    fn test_empty_output_caught() {
+        let tmp = tempfile::tempdir().unwrap();
+        let theme_dir = tmp.path().join(".zetl/themes/empty");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        std::fs::write(theme_dir.join("index.html"), "   ").unwrap();
+
+        let engine = TemplateEngine::new(tmp.path(), "empty", false, false);
+        let vault = sample_vault();
+        let err = engine.render_index(&vault).unwrap_err();
+        assert_eq!(err.kind, "EmptyOutput");
+        assert!(err.message.contains("empty output"));
+    }
+
+    #[test]
+    fn test_display_with_name_and_line() {
+        let err = TemplateError {
+            template_name: Some("page.html".to_string()),
+            line: Some(5),
+            kind: "SyntaxError".to_string(),
+            message: "unexpected token".to_string(),
+        };
+        let s = format!("{err}");
+        assert_eq!(s, "page.html:5: unexpected token");
+    }
+
+    #[test]
+    fn test_display_without_name() {
+        let err = TemplateError {
+            template_name: None,
+            line: None,
+            kind: "Unknown".to_string(),
+            message: "something failed".to_string(),
+        };
+        let s = format!("{err}");
+        assert_eq!(s, "something failed");
     }
 }
