@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::collections::HashMap;
 
+use crate::web::markdown::parse_frontmatter;
 use crate::web::VaultData;
 
 // ── Shared structs ──────────────────────────────────────────────────
@@ -162,7 +163,7 @@ pub fn build_breadcrumbs(slug: &str) -> Vec<BreadcrumbEntry> {
 /// Build a `PageContext` from vault data and page-specific inputs.
 ///
 /// `content_html` and `content_raw` are passed in because rendering is handled
-/// by the caller (markdown module). `frontmatter` is `{}` for now (Phase 4).
+/// by the caller (markdown module). Frontmatter is parsed from `content_raw`.
 pub fn build_page_context(
     data: &VaultData,
     page_name: &str,
@@ -215,13 +216,14 @@ pub fn build_page_context(
 
     let breadcrumbs = build_breadcrumbs(slug);
     let is_new = !data.resolved.contains(page_name);
+    let frontmatter = parse_frontmatter(content_raw);
 
     PageContext {
         title: page_name.to_string(),
         slug: slug.to_string(),
         content_html: content_html.to_string(),
         content_raw: content_raw.to_string(),
-        frontmatter: serde_json::Value::Object(serde_json::Map::new()),
+        frontmatter,
         backlinks,
         outlinks,
         breadcrumbs,
@@ -486,5 +488,25 @@ mod tests {
         let json = serde_json::to_value(&ctx).unwrap();
         assert_eq!(json["title"], "A");
         assert_eq!(json["frontmatter"], serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_page_context_parses_frontmatter() {
+        let files = vec![make_file("A", vec![])];
+        let data = make_vault_data(files);
+        let raw = "---\ntitle: My Page\ntags:\n  - rust\n  - zetl\n---\n# Hello";
+        let ctx = build_page_context(&data, "A", "A", "<h1>Hello</h1>", raw);
+        assert_eq!(ctx.frontmatter["title"], "My Page");
+        assert_eq!(ctx.frontmatter["tags"][0], "rust");
+        assert_eq!(ctx.frontmatter["tags"][1], "zetl");
+    }
+
+    #[test]
+    fn test_page_context_no_frontmatter() {
+        let files = vec![make_file("A", vec![])];
+        let data = make_vault_data(files);
+        let raw = "# Just a heading\nSome content.";
+        let ctx = build_page_context(&data, "A", "A", "<h1>Just a heading</h1>", raw);
+        assert_eq!(ctx.frontmatter, serde_json::json!({}));
     }
 }

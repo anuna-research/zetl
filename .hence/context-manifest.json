@@ -1,12 +1,12 @@
 {
-  "task_id": "static-serve",
+  "task_id": "frontmatter-context",
   "token_budget": 8000,
-  "tokens_used": 351,
+  "tokens_used": 295,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add a /_static/{*path} route to the Axum router in src/web/mod.rs. Implement two-tier file lookup: (1) .zetl/themes/<active-theme>/static/<path>, (2) .zetl/static/<path>. Per-theme assets take precedence. Infer MIME types from file extension (.js → application/javascript, .css → text/css, .png → image/png, .jpg → image/jpeg, .svg → image/svg+xml, .woff2 → font/woff2, etc.). Return 404 for missing files. If neither static directory exists, /_static/* returns 404 with no startup error. Prevent path traversal attacks (reject paths with '..', normalize). REQ-012-005, CON-012-002, ADR-013.",
-      "token_cost": 150,
+      "content": "Update the PageContext builder in src/web/context.rs to call parse_frontmatter() on the raw page content and populate PageContext.frontmatter with the result. Update both routes.rs page_handler and build.rs render_page to pass raw content through to the context builder so frontmatter can be extracted. Verify that page.frontmatter.key access works in templates. TEST-012-007.",
+      "token_cost": 94,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:18:30Z"
+  "constructed_at": "2026-03-01T14:21:46Z"
 }
