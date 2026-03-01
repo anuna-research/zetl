@@ -3,25 +3,24 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 444,
-    "deletions": 5,
+    "files_changed": 1,
+    "insertions": 226,
+    "deletions": 0,
     "file_list": [
-      ".hence/context-manifest.json",
-      "tests/integration.rs"
+      "src/graph.rs"
     ],
-    "dirty_files": 3
+    "dirty_files": 2
   },
   "learnings": [
     {
-      "key": "task-verify-phase1-changes",
-      "content": "Modified 2 files (+444, -5): .hence/context-manifest.json, tests/integration.rs",
+      "key": "task-neighbourhood-bfs-changes",
+      "content": "Modified 1 files (+226, -0): src/graph.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/verify-phase1-v1",
-  "evaluated_at": "2026-03-01T13:49:04Z",
+  "branch_name": "hence/neighbourhood-bfs-v1",
+  "evaluated_at": "2026-03-01T13:51:55Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
