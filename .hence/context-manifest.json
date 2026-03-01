@@ -1,12 +1,12 @@
 {
-  "task_id": "verify-phase1",
+  "task_id": "neighbourhood-bfs",
   "token_budget": 8000,
-  "tokens_used": 445,
+  "tokens_used": 360,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "End-to-end verification of Phase 1. Test against the demo-vault or a purpose-built test vault:\n\n  1. zetl index builds .zetl/search/ — JSON output includes search_index_docs and search_index_size_kb.\n  2. zetl search 'term' returns BM25-scored results — every result has score, heading, heading_level fields.\n  3. Relevance ranking: a page with many mentions of a term scores higher than one with a single mention (TEST-013-002).\n  4. Exclusion zones: terms in frontmatter, code blocks, inline code, HTML comments are NOT found (TEST-013-001).\n  5. Line-level results: multiple occurrences in the same file produce separate results with correct line/column, all sharing the same score (TEST-013-005).\n  6. Heading context: matches under headings show correct heading/level\n  7. Headings in code blocks are not used as enclosing headings (TEST-013-011).\n  8. Index invalidation: modify a file, re-run zetl index, verify new content is searchable (TEST-013-003).\n  9. --no-cache forces full rebuild (TEST-013-003).\n  10. Lazy index: delete .zetl/search/, run zetl search — index built on the fly, stderr message shown (TEST-013-004).\n  11. --case-sensitive flag works.\n  12. --path filter works.\n  13. --context flag works.\n  14. --limit flag works.\n  15. cargo test passes.\n\nTEST-013-001 through TEST-013-005, TEST-013-010, TEST-013-011.",
-      "token_cost": 335,
+      "content": "Add a neighbourhood() method to LinkGraph in src/graph.rs. Algorithm per SPEC-013 §4.5:\n\n  pub fn neighbourhood(&self, anchor: &str, depth: usize) -> Result<HashSet<String>>\n\n  1. Resolve anchor to a node in the graph. Error if not found (with suggested similar names via the existing resolution logic).\n  2. Initialize visited = {anchor}, queue = [(anchor, 0)].\n  3. While queue not empty:\n     a. Pop (page, d). If d >= depth, skip.\n     b. For each neighbour (both outgoing AND incoming edges — bidirectional BFS):\n        If not visited: add to visited, push (neighbour, d + 1).\n  4. Return visited (the set of page names within depth hops).\n\nUse petgraph's neighbors_directed(Outgoing) and neighbors_directed(Incoming) to get both edge directions.\n\nThe anchor page itself is always included in the result set.\n\nNFR-013-004 target: ≤50ms for 10,000 pages at depth 3 with average degree 5.\n\nREQ-013-006, ADR-013-002.",
+      "token_cost": 231,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,14 @@
       "content": "Modified 1 files (+8, -10): src/main.rs",
       "token_cost": 9,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-verify-phase1-changes",
+      "content": "Modified 2 files (+444, -5): .hence/context-manifest.json, tests/integration.rs",
+      "token_cost": 19,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:41:45Z"
+  "constructed_at": "2026-03-01T13:49:10Z"
 }
