@@ -11,7 +11,7 @@ use crate::web::markdown;
 use crate::web::VaultData;
 
 /// Generate a complete static HTML site from the vault data.
-pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str) -> Result<()> {
+pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str, _theme: &str) -> Result<()> {
     let out = Path::new(out_dir);
     std::fs::create_dir_all(out)
         .with_context(|| format!("Cannot create output directory: {out_dir}"))?;

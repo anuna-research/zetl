@@ -2269,8 +2269,55 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
     app.run()
 }
 
-fn cmd_serve(cli: &Cli, port: u16) -> Result<()> {
+/// Validate a theme name: reject names containing '/', '\', or '..'.
+/// When theme is not 'default', verify .zetl/themes/<name>/ exists and is a directory.
+fn validate_theme(theme: &str, vault_root: &std::path::Path) -> Result<()> {
+    if theme.contains('/') || theme.contains('\\') || theme.contains("..") {
+        anyhow::bail!(
+            "invalid theme name '{}': must not contain '/', '\\', or '..'",
+            theme
+        );
+    }
+
+    if theme != "default" {
+        let theme_dir = vault_root.join(".zetl/themes").join(theme);
+        if !theme_dir.is_dir() {
+            let themes_root = vault_root.join(".zetl/themes");
+            let mut available: Vec<String> = Vec::new();
+            if themes_root.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&themes_root) {
+                    for entry in entries.flatten() {
+                        if entry.path().is_dir() {
+                            if let Some(name) = entry.file_name().to_str() {
+                                available.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            available.sort();
+
+            let hint = if available.is_empty() {
+                "no custom themes found in .zetl/themes/".to_string()
+            } else {
+                format!("available themes: {}", available.join(", "))
+            };
+            anyhow::bail!(
+                "theme '{}' not found: directory .zetl/themes/{}/ does not exist\nhint: {}",
+                theme,
+                theme,
+                hint
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
+
+    validate_theme(theme, &pipeline.vault_root)?;
 
     let mut page_names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
     page_names.sort_by_key(|a| a.to_lowercase());
@@ -2290,6 +2337,7 @@ fn cmd_serve(cli: &Cli, port: u16) -> Result<()> {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
         vault_root: std::sync::Arc::new(pipeline.vault_root),
         engine: std::sync::Arc::new(zetl::web::engine::TemplateEngine::new()),
+        theme: theme.to_string(),
     };
 
     let rt = tokio::runtime::Runtime::new()?;
@@ -2297,8 +2345,10 @@ fn cmd_serve(cli: &Cli, port: u16) -> Result<()> {
     Ok(())
 }
 
-fn cmd_build(cli: &Cli, out_dir: &str) -> Result<()> {
+fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
+
+    validate_theme(theme, &pipeline.vault_root)?;
 
     let mut page_names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
     page_names.sort_by_key(|a| a.to_lowercase());
@@ -2314,7 +2364,7 @@ fn cmd_build(cli: &Cli, out_dir: &str) -> Result<()> {
         collision_names,
     };
 
-    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir)?;
+    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme)?;
     Ok(())
 }
 
@@ -5969,8 +6019,8 @@ fn main() -> anyhow::Result<()> {
             context_lines,
             main_width,
         } => cmd_view(&cli, page.as_deref(), *context_lines, *main_width),
-        Command::Serve { port } => cmd_serve(&cli, *port),
-        Command::Build { out_dir } => cmd_build(&cli, out_dir),
+        Command::Serve { port, theme } => cmd_serve(&cli, *port, theme),
+        Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

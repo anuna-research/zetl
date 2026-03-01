@@ -1,12 +1,12 @@
 {
-  "task_id": "frontmatter-parse",
+  "task_id": "theme-cli",
   "token_budget": 8000,
-  "tokens_used": 331,
+  "tokens_used": 327,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add a parse_frontmatter(content: &str) -> serde_json::Value function to src/web/markdown.rs (or a new frontmatter.rs module). Extract the YAML block between --- fences at the start of the file. Parse it with serde_yaml into serde_json::Value. Return empty object {} for pages with no frontmatter. Return empty object {} for pages with malformed YAML, logging a warning. Do not alter the existing strip_frontmatter() behaviour — the new function parses the same block that strip_frontmatter discards. REQ-012-007, ADR-014.",
-      "token_cost": 130,
+      "content": "Add --theme <name> argument to both Serve and Build subcommands in src/cli.rs. Default value: 'default'. Type: String. Pass the theme name through to WebState (for serve) and build_static (for build). Add theme name validation: reject names containing '/', '\\', or '..'. When theme is not 'default', verify .zetl/themes/<name>/ exists and is a directory — exit with clear error message if not found, including a hint listing available themes (scan .zetl/themes/ for directories). REQ-012-010, CON-012-005.",
+      "token_cost": 126,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:54:01Z"
+  "constructed_at": "2026-03-01T13:55:29Z"
 }
