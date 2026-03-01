@@ -1,12 +1,12 @@
 {
-  "task_id": "integrate-index",
+  "task_id": "update-cli",
   "token_budget": 8000,
-  "tokens_used": 302,
+  "tokens_used": 253,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend cmd_index() in src/main.rs to build the Tantivy search index after building the link graph. Call SearchIndex::build() with the parsed files. Only build/rebuild for files that need re-indexing (use the same mtime cache invalidation as the graph — files_needing_reparse() already identifies changed files). For --no-cache, rebuild the entire index from scratch (delete .zetl/search/ and rebuild).\n\nAdd new JSON output fields per CON-013-002:\n  - search_index_docs: number of documents in the search index\n  - search_index_size_kb: size of .zetl/search/ directory in KB\n\nAdd verbose stderr output per OBS-013-001:\n  - Documents indexed, index size, index build time (ms)\n\nNote on incremental indexing: For v1, the simplest approach is to delete and rebuild the full index when any file changes. Tantivy index merging is complex\n\nREQ-013-001, REQ-013-003, CON-013-002.",
-      "token_cost": 218,
+      "content": "Update the Search subcommand in src/cli.rs:\n\nRemove:\n  - --regex flag\n  - --all flag\n\nRetain (unchanged):\n  - <QUERY> positional argument\n  - --case-sensitive flag\n  - --path <GLOB> flag\n  - --context <N> flag\n  - --limit <N> flag (default 50)\n  - -f <FORMAT> flag (json/table)\n\nThe --near and --depth flags are added in Phase 2.\n\nUpdate cmd_search() in main.rs to match: remove regex/all handling, update SearchConfig construction, update JSON and table output to include score, heading, heading_level fields. Table format per CON-013-001: Page | Score | Line | Heading | Context.\n\nREQ-013-002, CON-013-001.",
+      "token_cost": 152,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 1 files (+1, -0): src/search.rs",
       "token_cost": 10,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-integrate-index-changes",
+      "content": "Modified 2 files (+82, -5): .hence/context-manifest.json, src/main.rs",
+      "token_cost": 17,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:36:16Z"
+  "constructed_at": "2026-03-01T13:40:17Z"
 }
