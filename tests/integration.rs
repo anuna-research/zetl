@@ -3112,3 +3112,297 @@ fn test_013_015_html_result_links_use_slug() {
         "index.html must build result links from the slug field (item.s)"
     );
 }
+
+// ---------------------------------------------------------------------------
+// TEST-013-012: Serve mode search API
+// ---------------------------------------------------------------------------
+
+use std::io::{Read as IoRead, Write as IoWrite};
+use std::net::{TcpListener, TcpStream};
+use std::time::{Duration, Instant};
+
+/// Start `zetl serve` on a free ephemeral port. Returns `(child, port)`.
+fn start_serve_process(vault: &Path) -> (std::process::Child, u16) {
+    // Grab a free OS-assigned port then release it.
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    let binary = assert_cmd::cargo::cargo_bin!("zetl");
+    let child = std::process::Command::new(&binary)
+        .arg("-d")
+        .arg(vault)
+        .arg("--no-cache")
+        .arg("serve")
+        .arg("--port")
+        .arg(port.to_string())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("failed to spawn zetl serve");
+
+    // Wait until the server accepts connections (up to 10 s).
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if Instant::now() > deadline {
+            panic!("zetl serve did not start within 10 seconds on port {port}");
+        }
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    (child, port)
+}
+
+/// Kill a background serve child process.
+fn stop_serve_process(mut child: std::process::Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Make a raw HTTP/1.1 GET request to `127.0.0.1:port` for `path`.
+/// Returns `(status_code, body_string)`.
+fn http_get(port: u16, path: &str) -> (u16, String) {
+    let mut stream =
+        TcpStream::connect(("127.0.0.1", port)).expect("connect to zetl serve");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    let request = format!(
+        "GET {} HTTP/1.1\r\nHost: localhost:{}\r\nConnection: close\r\n\r\n",
+        path, port
+    );
+    stream
+        .write_all(request.as_bytes())
+        .expect("write HTTP request");
+
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .expect("read HTTP response");
+    let response = String::from_utf8_lossy(&response).into_owned();
+
+    // Parse the status code from the first line: "HTTP/1.1 200 OK"
+    let status: u16 = response
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+
+    // Body is everything after the blank line separating headers from body.
+    let body = response
+        .find("\r\n\r\n")
+        .map(|i| response[i + 4..].to_string())
+        .unwrap_or_default();
+
+    (status, body)
+}
+
+#[test]
+fn test_013_012_api_search_returns_bm25_results() {
+    // Vault with several occurrences of "algorithm" so Tantivy finds something.
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Algorithm.md",
+        "# Introduction\n\nThis page discusses the algorithm deeply.\n\n## Details\n\nThe algorithm is efficient and the algorithm is correct.\n",
+    );
+    write_file(
+        dir.path(),
+        "Other.md",
+        "# Other\n\nUnrelated content with no hits.\n",
+    );
+
+    let (child, port) = start_serve_process(dir.path());
+
+    let (status, body) = http_get(port, "/api/search?q=algorithm");
+    stop_serve_process(child);
+
+    assert_eq!(status, 200, "GET /api/search?q=algorithm must return 200");
+
+    let json: Value = serde_json::from_str(&body)
+        .unwrap_or_else(|e| panic!("response is not valid JSON: {e}\nbody: {body}"));
+
+    let results = json["results"].as_array().expect("results must be an array");
+    assert!(
+        !results.is_empty(),
+        "should find at least one result for 'algorithm'"
+    );
+
+    // Every result must carry the required BM25 fields.
+    for result in results {
+        assert!(
+            result["score"].as_f64().is_some() && result["score"].as_f64().unwrap() > 0.0,
+            "every result must have a positive 'score', got: {result}"
+        );
+        assert!(
+            result["page"].as_str().is_some(),
+            "every result must have a 'page' field, got: {result}"
+        );
+        assert!(
+            result["path"].as_str().is_some(),
+            "every result must have a 'path' field, got: {result}"
+        );
+        assert!(
+            result["line"].as_u64().is_some(),
+            "every result must have a 'line' field, got: {result}"
+        );
+        assert!(
+            result.get("heading").is_some(),
+            "every result must have a 'heading' field (may be null), got: {result}"
+        );
+        assert!(
+            result.get("context").is_some(),
+            "every result must have a 'context' field, got: {result}"
+        );
+    }
+
+    // Results should be ordered by descending score.
+    let scores: Vec<f64> = results
+        .iter()
+        .map(|r| r["score"].as_f64().unwrap_or(0.0))
+        .collect();
+    let mut sorted = scores.clone();
+    sorted.sort_by(|a, b| b.partial_cmp(a).unwrap());
+    assert_eq!(scores, sorted, "results must be ordered by descending BM25 score");
+}
+
+#[test]
+fn test_013_012_api_search_empty_query_returns_400() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\n\nsome content\n");
+
+    let (child, port) = start_serve_process(dir.path());
+
+    // Empty string for q
+    let (status_empty, _) = http_get(port, "/api/search?q=");
+    // Missing q entirely
+    let (status_missing, _) = http_get(port, "/api/search");
+
+    stop_serve_process(child);
+
+    assert_eq!(
+        status_empty, 400,
+        "GET /api/search?q= must return 400 Bad Request"
+    );
+    assert_eq!(
+        status_missing, 400,
+        "GET /api/search (no q param) must return 400 Bad Request"
+    );
+}
+
+#[test]
+fn test_013_012_api_search_limit_parameter() {
+    let dir = TempDir::new().unwrap();
+    // Create a file with many occurrences of "test" so there are more than 3 matches.
+    write_file(
+        dir.path(),
+        "Many.md",
+        "# Many\n\ntest line one.\n\ntest line two.\n\ntest line three.\n\ntest line four.\n\ntest line five.\n",
+    );
+
+    let (child, port) = start_serve_process(dir.path());
+    let (status, body) = http_get(port, "/api/search?q=test&limit=3");
+    stop_serve_process(child);
+
+    assert_eq!(status, 200, "GET /api/search?q=test&limit=3 must return 200");
+
+    let json: Value = serde_json::from_str(&body)
+        .unwrap_or_else(|e| panic!("response is not valid JSON: {e}\nbody: {body}"));
+
+    let results = json["results"].as_array().expect("results must be an array");
+    assert!(
+        results.len() <= 3,
+        "limit=3 must return at most 3 results, got {}",
+        results.len()
+    );
+    // There should be at least 1 result (the file does contain "test").
+    assert!(
+        !results.is_empty(),
+        "should find at least one result for 'test'"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-013: Serve mode Cmd+K full-text search modal
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_013_serve_html_search_modal_fields() {
+    // The HTML served by zetl serve must contain the Cmd+K modal elements
+    // that display page name, heading, context, and score to the user.
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let (child, port) = start_serve_process(dir.path());
+    let (status, html) = http_get(port, "/");
+    stop_serve_process(child);
+
+    assert_eq!(status, 200, "GET / must return 200");
+
+    assert!(
+        html.contains("search-overlay"),
+        "serve HTML must contain the search overlay element"
+    );
+    assert!(
+        html.contains("search-input"),
+        "serve HTML must contain the search input element"
+    );
+    assert!(
+        html.contains("openSearch"),
+        "serve HTML must contain the openSearch function"
+    );
+    // Results render page name, heading, context, score.
+    assert!(
+        html.contains("page-name"),
+        "serve HTML must render .page-name in results"
+    );
+    assert!(
+        html.contains("heading"),
+        "serve HTML must render .heading in results"
+    );
+    assert!(
+        html.contains("context"),
+        "serve HTML must render .context in results"
+    );
+    assert!(
+        html.contains("score"),
+        "serve HTML must render .score in results"
+    );
+    // Results come from the /api/search backend.
+    assert!(
+        html.contains("/api/search"),
+        "serve HTML must query the /api/search endpoint for full-text results"
+    );
+}
+
+#[test]
+fn test_013_013_serve_html_keyboard_navigation() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let (child, port) = start_serve_process(dir.path());
+    let (status, html) = http_get(port, "/");
+    stop_serve_process(child);
+
+    assert_eq!(status, 200, "GET / must return 200");
+
+    assert!(
+        html.contains("ArrowDown"),
+        "serve HTML must handle ArrowDown for keyboard navigation"
+    );
+    assert!(
+        html.contains("ArrowUp"),
+        "serve HTML must handle ArrowUp for keyboard navigation"
+    );
+    assert!(
+        html.contains("'Enter'") || html.contains("\"Enter\""),
+        "serve HTML must handle Enter to follow the selected result"
+    );
+    assert!(
+        html.contains("'Escape'") || html.contains("\"Escape\""),
+        "serve HTML must handle Escape to close the search modal"
+    );
+}
