@@ -11,12 +11,12 @@ use crate::web::markdown;
 use crate::web::VaultData;
 
 /// Generate a complete static HTML site from the vault data.
-pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str, _theme: &str) -> Result<()> {
+pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str, theme: &str) -> Result<()> {
     let out = Path::new(out_dir);
     std::fs::create_dir_all(out)
         .with_context(|| format!("Cannot create output directory: {out_dir}"))?;
 
-    let engine = TemplateEngine::new();
+    let engine = TemplateEngine::new(vault_root, theme, false);
     let vault_name = vault_root
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())

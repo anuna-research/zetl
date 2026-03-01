@@ -2333,10 +2333,15 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         collision_names,
     };
 
+    let engine = zetl::web::engine::TemplateEngine::new(
+        &pipeline.vault_root,
+        theme,
+        true, // reload templates on every request in serve mode
+    );
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
         vault_root: std::sync::Arc::new(pipeline.vault_root),
-        engine: std::sync::Arc::new(zetl::web::engine::TemplateEngine::new()),
+        engine: std::sync::Arc::new(engine),
         theme: theme.to_string(),
     };
 

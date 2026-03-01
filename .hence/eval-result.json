@@ -3,28 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 68,
-    "deletions": 11,
+    "files_changed": 4,
+    "insertions": 207,
+    "deletions": 31,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
       "src/main.rs",
       "src/web/build.rs",
-      "src/web/mod.rs"
+      "src/web/engine.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-theme-cli-changes",
-      "content": "Modified 5 files (+68, -11): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/build.rs, src/web/mod.rs",
+      "key": "task-theme-loader-changes",
+      "content": "Modified 4 files (+207, -31): .hence/context-manifest.json, src/main.rs, src/web/build.rs, src/web/engine.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/theme-cli-v1",
-  "evaluated_at": "2026-03-01T13:58:16Z",
+  "branch_name": "hence/theme-loader-v1",
+  "evaluated_at": "2026-03-01T14:03:38Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
