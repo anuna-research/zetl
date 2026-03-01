@@ -1,12 +1,12 @@
 {
-  "task_id": "verify-phase3",
+  "task_id": "integration-test",
   "token_budget": 8000,
-  "tokens_used": 1800,
+  "tokens_used": 458,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "End-to-end verification of serve mode search:\n\n  1. Start zetl serve with an indexed vault.\n  2. GET /api/search?q=algorithm returns 200 with BM25-scored results, heading context (TEST-013-012).\n  3. GET /api/search?q= returns 400 (TEST-013-012).\n  4. GET /api/search?q=test&limit=3 returns at most 3 results (TEST-013-012).\n  5. Cmd+K modal shows full-text results with page, heading, context, score (TEST-013-013).\n  6. Keyboard navigation in modal works (TEST-013-013).\n  7. All Phase 1 and Phase 2 tests still pass.\n\nTEST-013-012, TEST-013-013.",
-      "token_cost": 137,
+      "content": "Comprehensive integration test covering the full SPEC-013 feature set. Create or use a test vault with: multiple pages with known content, known link structure, headings at various levels, exclusion zones (code blocks, frontmatter with searchable terms, HTML comments), and at least one isolated page.\n\nVerify:\n  1. zetl index builds both link graph and search index.\n  2. zetl search returns BM25-scored results with heading context — relevance ranking correct.\n  3. Exclusion zones: frontmatter/code/comments not indexed.\n  4. --near restricts to neighbourhood correctly (bidirectional).\n  5. --near composes with --path, --context, --case-sensitive, --limit.\n  6. zetl serve /api/search returns same results as CLI (minus graph scoping).\n  7. Serve mode Cmd+K shows full-text results with heading context.\n  8. zetl build emits valid search-index.json.\n  9. Build mode Cmd+K performs client-side BM25 search.\n  10. Index invalidation: modify a file, re-index, verify search reflects changes.\n  11. Lazy index: search without prior index works.\n  12. All NFR targets met: index build ≤5s, query ≤100ms, BFS ≤50ms, API ≤50ms (for reasonable corpus sizes).\n  13. cargo test passes.\n\nAll REQ-013-*, TEST-013-*, NFR-013-*.",
+      "token_cost": 307,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:38:33Z"
+  "constructed_at": "2026-03-01T14:45:13Z"
 }
