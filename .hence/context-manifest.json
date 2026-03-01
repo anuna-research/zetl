@@ -1,15 +1,21 @@
 {
-  "task_id": "add-tantivy",
+  "task_id": "heading-detection",
   "token_budget": 8000,
-  "tokens_used": 89,
+  "tokens_used": 256,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add tantivy crate to Cargo.toml. Use the latest stable version (0.22+). No feature flags needed beyond defaults. Run cargo check to verify the dependency resolves and compiles cleanly. Tantivy pulls in ~50 transitive dependencies and adds ~5-8 MB to binary size (acceptable per ADR-013-001, SPEC-013 §9.4). Do NOT add any other new dependencies in this task.",
-      "token_cost": 89,
+      "content": "Add heading detection to src/search.rs (or a dedicated module). Implement per SPEC-013 §4.6:\n\nPublic API:\n  - detect_headings(content: &str, body_text_ranges: &[(usize, usize)]) -> Vec<FileHeading>\n    Scan line by line. For lines matching ^#{1,6}\\s, check if the byte offset falls within a body_text_range. If so, record FileHeading { byte_offset, level, text }. Text is the heading stripped of leading # chars and trailing whitespace.\n  - find_heading_for_offset(headings: &[FileHeading], byte_offset: usize) -> (Option<String>, Option<u8>)\n    Binary search for the largest heading byte_offset <= the match byte_offset. Returns (heading_text, heading_level) or (None, None) if no preceding heading.\n\nFileHeading struct: { byte_offset: usize, level: u8, text: String }\n\nHeadings inside code blocks, frontmatter, or HTML comments are excluded by the body_text_ranges filter (ADR-013-003). Setext headings are not detected (out of scope).\n\nREQ-013-010, REQ-013-011, ADR-013-003.",
+      "token_cost": 244,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-add-tantivy-changes",
+      "content": "Modified 2 files (+667, -8): Cargo.lock, Cargo.toml",
+      "token_cost": 12,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:16:35Z"
+  "constructed_at": "2026-03-01T13:17:40Z"
 }
