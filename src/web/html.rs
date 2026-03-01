@@ -1,3 +1,5 @@
+const BM25_JS: &str = include_str!("assets/bm25.js");
+
 /// Build compact JSON search index: `[{"n":"Page Name","s":"path/slug"},...]`
 pub fn search_index_json(entries: &[(String, String)]) -> String {
     let items: Vec<String> = entries
@@ -371,6 +373,7 @@ pub fn layout(
   </div>
 
   <script>
+  {bm25_js}
   (function(){{
     var idx=JSON.parse(document.getElementById('zetl-search-index').textContent);
     var overlay=document.getElementById('search-overlay');
@@ -378,6 +381,14 @@ pub fn layout(
     var results=document.getElementById('search-results');
     var active=-1;
     var filtered=idx;
+    var bm25Idx=null,bm25Ready=false;
+    function loadBm25(cb){{
+      if(bm25Ready){{cb();return;}}
+      fetch('/search-index.json')
+        .then(function(r){{return r.ok?r.json():Promise.reject();}})
+        .then(function(d){{bm25Idx=d;bm25Ready=true;cb();}})
+        .catch(function(){{bm25Ready=true;}});
+    }}
 
     /* ── Sublime-style fuzzy match ─────────────────────────────────
        Returns null (no match) or {{score, indices}}.
@@ -455,6 +466,9 @@ pub fn layout(
       filtered=idx.slice();
       render(filtered,null);
       input.focus();
+      loadBm25(function(){{
+        if(input.value){{filtered=getFiltered();render(filtered,input.value);}}
+      }});
     }};
     window.closeSearch=function(){{
       overlay.classList.remove('open');
@@ -484,6 +498,7 @@ pub fn layout(
     function getFiltered(){{
       var q=input.value;
       if(!q){{ return idx.map(function(it){{return {{n:it.n,s:it.s,_indices:null}};}});}}
+      if(bm25Idx){{return bm25Search(q,bm25Idx);}}
       var scored=[];
       idx.forEach(function(item){{
         var m=fuzzyMatch(q,item.n);
@@ -540,6 +555,7 @@ pub fn layout(
         sidebar = sidebar,
         main_section = main_section,
         search_index = search_index,
+        bm25_js = BM25_JS,
     )
 }
 
