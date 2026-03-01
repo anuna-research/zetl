@@ -1,12 +1,12 @@
 {
-  "task_id": "engine",
+  "task_id": "refactor-routes",
   "token_budget": 8000,
-  "tokens_used": 288,
+  "tokens_used": 339,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create src/web/engine.rs with TemplateEngine struct wrapping minijinja::Environment. For Phase 1, the loader uses include_str!() to embed the four built-in templates (base.html, index.html, page.html, folder.html) from src/web/templates/. Expose render methods: render_index(vault_ctx) -> Result<String>, render_page(vault_ctx, page_ctx, mode) -> Result<String>, render_folder(vault_ctx, folder_ctx) -> Result<String>. Each method builds a minijinja::context! combining the vault-level context with template-specific data, then calls env.get_template(name).render(ctx). Error handling: return anyhow::Result with context about which template failed. Export from src/web/mod.rs.",
-      "token_cost": 169,
+      "content": "Refactor src/web/routes.rs to use TemplateEngine instead of format!() string concatenation. Store TemplateEngine in WebState (or as a separate shared state). Update index_handler to build VaultContext from VaultData, call engine.render_index(). Update page_handler to build PageContext (including backlinks, outlinks with colors, breadcrumbs, transclusion cards, edit state), call engine.render_page() with mode='serve'. Update render_folder_index to build FolderContext, call engine.render_folder(). Keep save_handler and preview_handler unchanged (they don't render full pages). Remove direct calls to html.rs::layout(), html.rs::sidebar_html(), html.rs::breadcrumb_html(). Keep using html.rs::search_index_json(), html.rs::html_escape(), html.rs::urlencoding().",
+      "token_cost": 191,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,14 @@
       "content": "Modified 1 files (+45, -0): src/web/templates/folder.html",
       "token_cost": 14,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-engine-changes",
+      "content": "Modified 5 files (+214, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/mod.rs",
+      "token_cost": 29,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:23:55Z"
+  "constructed_at": "2026-03-01T13:27:05Z"
 }

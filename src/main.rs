@@ -2289,6 +2289,7 @@ fn cmd_serve(cli: &Cli, port: u16) -> Result<()> {
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
         vault_root: std::sync::Arc::new(pipeline.vault_root),
+        engine: std::sync::Arc::new(zetl::web::engine::TemplateEngine::new()),
     };
 
     let rt = tokio::runtime::Runtime::new()?;

@@ -16,6 +16,8 @@ use crate::graph::LinkGraph;
 use crate::scanner::{page_slug_from_path, resolve_page_name, scan_vault};
 use crate::types::ParsedFile;
 
+use self::engine::TemplateEngine;
+
 /// Snapshot of vault data that can be swapped after re-indexing.
 pub struct VaultData {
     pub files: Vec<ParsedFile>,
@@ -33,6 +35,7 @@ pub struct VaultData {
 pub struct WebState {
     pub data: Arc<RwLock<VaultData>>,
     pub vault_root: Arc<PathBuf>,
+    pub engine: Arc<TemplateEngine>,
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.
