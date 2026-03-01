@@ -1,9 +1,9 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::scanner::page_slug_from_path;
+use crate::scanner::{body_text_ranges, page_slug_from_path};
 use crate::web::html::{breadcrumb_html, html_escape, layout, search_index_json, sidebar_html, urlencoding};
 use crate::web::markdown;
 use crate::web::VaultData;
@@ -48,6 +48,93 @@ fn slug_for_page(data: &VaultData, page_name: &str) -> String {
         .unwrap_or_else(|| page_name.to_string())
 }
 
+/// Tokenize body text and count term occurrences.
+///
+/// Mirrors Tantivy's default tokenizer: lowercase, split on non-alphanumeric characters.
+fn tokenize_and_count(text: &str) -> HashMap<String, usize> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for token in text.split(|c: char| !c.is_alphanumeric()) {
+        if token.is_empty() {
+            continue;
+        }
+        let lower = token.to_lowercase();
+        *counts.entry(lower).or_insert(0) += 1;
+    }
+    counts
+}
+
+/// Write `{out_dir}/search-index.json` with BM25-style corpus statistics.
+///
+/// Schema per CON-013-004: avgDl, docs[{n,s,dl,tf}], df.
+/// REQ-013-014, ADR-013-004.
+fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) -> Result<()> {
+    let mut doc_entries: Vec<serde_json::Value> = Vec::with_capacity(data.files.len());
+    let mut df: HashMap<String, usize> = HashMap::new();
+    let mut total_dl: usize = 0;
+
+    for file in &data.files {
+        let slug = data
+            .page_slug_map
+            .get(&file.page_name)
+            .cloned()
+            .unwrap_or_else(|| page_slug_from_path(&file.path));
+
+        let full_path = vault_root.join(&file.path);
+        let content = std::fs::read_to_string(&full_path).unwrap_or_default();
+
+        // Extract body text using the same exclusions as the Tantivy indexer
+        // (no frontmatter, fenced code blocks, inline code, HTML comments).
+        let body: String = body_text_ranges(&content)
+            .iter()
+            .map(|&(start, end)| &content[start..end])
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let tf = tokenize_and_count(&body);
+        let dl: usize = tf.values().sum();
+        total_dl += dl;
+
+        for term in tf.keys() {
+            *df.entry(term.clone()).or_insert(0) += 1;
+        }
+
+        let tf_json: serde_json::Map<String, serde_json::Value> = tf
+            .into_iter()
+            .map(|(k, v)| (k, serde_json::Value::Number(v.into())))
+            .collect();
+
+        doc_entries.push(serde_json::json!({
+            "n": file.page_name,
+            "s": slug,
+            "dl": dl,
+            "tf": tf_json,
+        }));
+    }
+
+    let avg_dl: f64 = if data.files.is_empty() {
+        0.0
+    } else {
+        total_dl as f64 / data.files.len() as f64
+    };
+
+    let df_json: serde_json::Map<String, serde_json::Value> = df
+        .into_iter()
+        .map(|(k, v)| (k, serde_json::Value::Number(v.into())))
+        .collect();
+
+    let index = serde_json::json!({
+        "avgDl": avg_dl,
+        "docs": doc_entries,
+        "df": df_json,
+    });
+
+    let json_str = serde_json::to_string(&index).context("serializing search-index.json")?;
+    std::fs::write(out_dir.join("search-index.json"), json_str)
+        .context("writing search-index.json")?;
+
+    Ok(())
+}
+
 /// Generate a complete static HTML site from the vault data.
 pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str) -> Result<()> {
     let out = Path::new(out_dir);
@@ -57,6 +144,9 @@ pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str) -> Resul
     let entries = sidebar_entries(data);
     let sidebar = sidebar_html(&entries, None);
     let si = search_index_json(&entries);
+
+    // ── search-index.json ────────────────────────────────────────────────
+    write_search_index_json(data, vault_root, out)?;
 
     // ── index.html ──────────────────────────────────────────────────────
     let index_html = render_index(data, &sidebar, &si);
