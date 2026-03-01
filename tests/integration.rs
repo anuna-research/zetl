@@ -2046,3 +2046,297 @@ fn test_049_blocks_forward_hash_as_source_metadata_roundtrip() {
         "resolved result must include a text field"
     );
 }
+
+// ===========================================================================
+// TEST-012-003 / TEST-012-010: Theme System End-to-End Verification
+// ===========================================================================
+
+/// Helper: create a minimal vault with one markdown page for theme testing.
+fn build_theme_test_vault(root: &Path) {
+    write_file(
+        root,
+        "Hello.md",
+        "# Hello\n\nThis is the hello page with a [[World]] link.\n",
+    );
+    write_file(root, "World.md", "# World\n\nContent of the world page.\n");
+}
+
+/// TEST-012-003: Theme overriding only page.html with a custom banner.
+/// The custom page.html extends base.html, so the built-in base layout should
+/// be inherited while the banner from the theme's page.html appears in output.
+#[test]
+fn test_012_003_theme_page_override_inherits_base() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    // Create a custom theme that overrides only page.html with a banner
+    let theme_dir = dir.path().join(".zetl/themes/banner-theme");
+    fs::create_dir_all(&theme_dir).expect("create theme dir");
+    fs::write(
+        theme_dir.join("page.html"),
+        r#"{% extends "base.html" %}
+{% block title %}{{ page.title }} — Themed{% endblock %}
+{% block content %}
+<div id="custom-banner">THEME BANNER: {{ page.title }}</div>
+<article>{{ page.content_html }}</article>
+{% endblock %}"#,
+    )
+    .expect("write theme page.html");
+
+    let out_dir = dir.path().join("dist");
+
+    // Build with the custom theme
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("banner-theme")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build with banner-theme should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Read the generated page HTML
+    let page_html = fs::read_to_string(out_dir.join("hello/index.html"))
+        .expect("hello/index.html should exist");
+
+    // Custom banner should appear
+    assert!(
+        page_html.contains("THEME BANNER: Hello"),
+        "custom banner should appear in page output"
+    );
+
+    // Base layout should be inherited (DOCTYPE from base.html)
+    assert!(
+        page_html.contains("<!DOCTYPE html>"),
+        "base.html layout should be inherited (DOCTYPE present)"
+    );
+
+    // Index page should use the built-in template (not overridden)
+    let index_html =
+        fs::read_to_string(out_dir.join("index.html")).expect("index.html should exist");
+    assert!(
+        !index_html.contains("THEME BANNER"),
+        "index.html should use built-in template, not the theme's page.html"
+    );
+    assert!(
+        index_html.contains("<!DOCTYPE html>"),
+        "index.html should still have base.html layout"
+    );
+}
+
+/// TEST-012-003: Theme overriding base.html — all pages should use it.
+#[test]
+fn test_012_003_theme_base_override_affects_all_pages() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    // Create a theme that overrides base.html with a custom wrapper
+    let theme_dir = dir.path().join(".zetl/themes/custom-base");
+    fs::create_dir_all(&theme_dir).expect("create theme dir");
+    fs::write(
+        theme_dir.join("base.html"),
+        r#"<!DOCTYPE html>
+<html lang="en" data-theme="{{ theme }}">
+<head><meta charset="utf-8"><title>{% block title %}custom-base{% endblock %}</title></head>
+<body>
+<div id="custom-base-wrapper">
+{% block content %}{% endblock %}
+</div>
+</body>
+</html>"#,
+    )
+    .expect("write theme base.html");
+
+    let out_dir = dir.path().join("dist");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("custom-base")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build with custom-base theme should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Check index page uses custom base
+    let index_html =
+        fs::read_to_string(out_dir.join("index.html")).expect("index.html should exist");
+    assert!(
+        index_html.contains("custom-base-wrapper"),
+        "index.html should use the overridden base.html"
+    );
+
+    // Check page uses custom base
+    let page_html = fs::read_to_string(out_dir.join("hello/index.html"))
+        .expect("hello/index.html should exist");
+    assert!(
+        page_html.contains("custom-base-wrapper"),
+        "page should use the overridden base.html"
+    );
+}
+
+/// TEST-012-003: --theme default works with no .zetl/ directory at all.
+#[test]
+fn test_012_003_default_theme_no_zetl_dir() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    // Confirm no .zetl directory exists
+    assert!(
+        !dir.path().join(".zetl").exists(),
+        "precondition: .zetl/ should not exist"
+    );
+
+    let out_dir = dir.path().join("dist");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("default")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build --theme default should succeed without .zetl/ dir.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Verify output was generated
+    let index_html =
+        fs::read_to_string(out_dir.join("index.html")).expect("index.html should be generated");
+    assert!(
+        index_html.contains("<!DOCTYPE html>"),
+        "default theme should produce valid HTML"
+    );
+    assert!(
+        index_html.contains("Hello"),
+        "index should list the Hello page"
+    );
+}
+
+/// TEST-012-010: --theme nonexistent gives a clear error message listing available themes.
+#[test]
+fn test_012_010_nonexistent_theme_error() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    // Create one valid theme so the hint lists it
+    let theme_dir = dir.path().join(".zetl/themes/existing-theme");
+    fs::create_dir_all(&theme_dir).expect("create theme dir");
+    fs::write(theme_dir.join("page.html"), "{% extends \"base.html\" %}{% block content %}ok{% endblock %}").unwrap();
+
+    let out_dir = dir.path().join("dist");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("nonexistent")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+
+    assert!(
+        !output.status.success(),
+        "zetl build --theme nonexistent should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("nonexistent"),
+        "error should mention the theme name 'nonexistent', got: {stderr}"
+    );
+    assert!(
+        stderr.contains("not found") || stderr.contains("does not exist"),
+        "error should indicate the theme was not found, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("existing-theme"),
+        "error hint should list the available theme 'existing-theme', got: {stderr}"
+    );
+}
+
+/// TEST-012-010: --theme '../escape' is rejected as an invalid theme name.
+#[test]
+fn test_012_010_path_traversal_rejected() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    let out_dir = dir.path().join("dist");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("../escape")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+
+    assert!(
+        !output.status.success(),
+        "zetl build --theme '../escape' should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("invalid theme name"),
+        "error should say 'invalid theme name', got: {stderr}"
+    );
+}
+
+/// TEST-012-010: The {{ theme }} variable is accessible in templates and renders correctly.
+#[test]
+fn test_012_010_theme_variable_accessible() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_theme_test_vault(dir.path());
+
+    // Create a theme that outputs {{ theme }} in visible content
+    let theme_dir = dir.path().join(".zetl/themes/my-theme");
+    fs::create_dir_all(&theme_dir).expect("create theme dir");
+    fs::write(
+        theme_dir.join("page.html"),
+        r#"{% extends "base.html" %}
+{% block content %}
+<div id="theme-probe">ACTIVE_THEME={{ theme }}</div>
+<article>{{ page.content_html }}</article>
+{% endblock %}"#,
+    )
+    .expect("write theme page.html");
+
+    let out_dir = dir.path().join("dist");
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("build")
+        .arg("--theme")
+        .arg("my-theme")
+        .arg("-o")
+        .arg(out_dir.as_os_str());
+    let output = cmd.output().expect("failed to execute zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build with my-theme should succeed.\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Check that the theme variable rendered correctly
+    let page_html = fs::read_to_string(out_dir.join("hello/index.html"))
+        .expect("hello/index.html should exist");
+    assert!(
+        page_html.contains("ACTIVE_THEME=my-theme"),
+        "theme variable should render as 'my-theme' in template output"
+    );
+
+    // Also verify data-theme attribute on the <html> tag from base.html
+    assert!(
+        page_html.contains(r#"data-theme="my-theme""#),
+        "base.html should set data-theme to 'my-theme'"
+    );
+}
