@@ -3,24 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 45,
-    "deletions": 0,
+    "files_changed": 5,
+    "insertions": 214,
+    "deletions": 6,
     "file_list": [
-      "src/web/templates/folder.html"
+      ".hence/context-manifest.json",
+      "Cargo.lock",
+      "Cargo.toml",
+      "src/web/engine.rs",
+      "src/web/mod.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-extract-folder-changes",
-      "content": "Modified 1 files (+45, -0): src/web/templates/folder.html",
+      "key": "task-engine-changes",
+      "content": "Modified 5 files (+214, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/extract-folder-v1",
-  "evaluated_at": "2026-03-01T13:23:50Z",
+  "branch_name": "hence/engine-v1",
+  "evaluated_at": "2026-03-01T13:26:59Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
