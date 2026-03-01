@@ -2400,3 +2400,402 @@ fn test_013_004_lazy_index_built_on_search() {
         "stderr must warn about lazy index build, got: {stderr:?}"
     );
 }
+
+// ===========================================================================
+// Phase 2: Graph-Scoped Search
+// TEST-013-006: --near filters results to the neighbourhood (bidirectional BFS)
+// TEST-013-007: --depth without --near or --depth 0 → exit code 2
+// TEST-013-008: Case-insensitive anchor resolution; unresolvable → exit code 2
+// TEST-013-009: Neighbourhood metadata present/absent in JSON
+// TEST-013-016: --near composes with --path and --context
+// ===========================================================================
+
+/// Build a vault with a known link structure for Phase 2 tests.
+///
+/// Forward links:  A→B, A→C, B→D
+/// Isolated:       E
+/// Backlink probe: X→Y
+///
+/// Every page contains "graphterm" so neighbourhood filtering can be tested.
+/// "Spaced Repetition.md" exists for the case-insensitive anchor test (TEST-013-008).
+fn build_phase2_vault(root: &Path) {
+    write_file(root, "A.md", "# A\n\ngraphterm\n\n[[B]] [[C]]\n");
+    write_file(root, "B.md", "# B\n\ngraphterm\n\n[[D]]\n");
+    write_file(root, "C.md", "# C\n\ngraphterm\n");
+    write_file(root, "D.md", "# D\n\ngraphterm\n");
+    write_file(root, "E.md", "# E\n\ngraphterm\n"); // isolated
+    write_file(root, "X.md", "# X\n\ngraphterm\n\n[[Y]]\n");
+    write_file(root, "Y.md", "# Y\n\ngraphterm\n");
+    write_file(
+        root,
+        "Spaced Repetition.md",
+        "# Spaced Repetition\n\nspacedterm\n",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-006: --near A depth 1 → results limited to {A, B, C}
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_006_near_depth1_outgoing() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    // Build link graph (required for --near); must use cached mode so index.json is saved.
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("A"),
+    );
+
+    let results = json["results"].as_array().expect("results array");
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+
+    // A, B, C are within 1 hop of A (bidirectional)
+    assert!(pages.contains(&"A"), "A (anchor) must be in results");
+    assert!(pages.contains(&"B"), "B (outgoing 1-hop) must be in results");
+    assert!(pages.contains(&"C"), "C (outgoing 1-hop) must be in results");
+
+    // D is 2 hops away; E is isolated — both excluded at depth 1
+    assert!(!pages.contains(&"D"), "D (2 hops) must be excluded at depth 1");
+    assert!(!pages.contains(&"E"), "E (isolated) must be excluded");
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-006: --near A --depth 2 → results include D (2 hops via B)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_006_near_depth2_includes_second_hop() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("A")
+            .arg("--depth")
+            .arg("2"),
+    );
+
+    let results = json["results"].as_array().expect("results array");
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+
+    assert!(pages.contains(&"A"), "A must be in results");
+    assert!(pages.contains(&"B"), "B must be in results");
+    assert!(pages.contains(&"C"), "C must be in results");
+    assert!(pages.contains(&"D"), "D (2 hops via B) must be in results at depth 2");
+
+    // E is isolated even at depth 2
+    assert!(!pages.contains(&"E"), "E (isolated) must be excluded");
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-006: Backlinks — --near Y includes X (X→Y, bidirectional BFS)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_006_near_includes_backlinks() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("Y"),
+    );
+
+    let results = json["results"].as_array().expect("results array");
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+
+    // Y is the anchor; X has a forward link to Y, so X is in Y's backlink neighbourhood
+    assert!(pages.contains(&"Y"), "Y (anchor) must be in results");
+    assert!(
+        pages.contains(&"X"),
+        "X must be included (X→Y backlink, bidirectional BFS)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-007: --depth without --near → exit code 2
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_007_depth_without_near_exits_2() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    zetl_cmd(dir.path())
+        .arg("search")
+        .arg("graphterm")
+        .arg("--depth")
+        .arg("1")
+        .assert()
+        .code(2);
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-007: --depth 0 (with --near) → exit code 2
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_007_depth_zero_exits_2() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    zetl_cmd(dir.path())
+        .arg("search")
+        .arg("graphterm")
+        .arg("--near")
+        .arg("A")
+        .arg("--depth")
+        .arg("0")
+        .assert()
+        .code(2);
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-008: Case-insensitive anchor resolution
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_008_case_insensitive_anchor_resolution() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // "spaced repetition" (lowercase) should resolve to "Spaced Repetition"
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("spacedterm")
+            .arg("--near")
+            .arg("spaced repetition"),
+    );
+
+    // The resolved anchor in the output should be the correctly-cased page name
+    let near_field = json["near"].as_str().expect("near field present in output");
+    assert_eq!(
+        near_field, "Spaced Repetition",
+        "anchor should resolve to canonical casing"
+    );
+
+    let results = json["results"].as_array().expect("results array");
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+    assert!(
+        pages.contains(&"Spaced Repetition"),
+        "Spaced Repetition page must be in results"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-008: Unresolvable anchor → exit code 2 with suggestions
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_008_unresolvable_anchor_exits_2_with_suggestions() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // Use a name that partially matches "Spaced Repetition" to trigger suggestions
+    let output = zetl_cmd(dir.path())
+        .arg("search")
+        .arg("graphterm")
+        .arg("--near")
+        .arg("spaced")
+        .output()
+        .expect("execute zetl");
+
+    assert_eq!(output.status.code(), Some(2), "should exit with code 2");
+
+    // The JSON error response should mention a suggestion
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("failed to parse JSON: {e}\nstdout: {stdout}"));
+    let error_msg = json["error"].as_str().expect("error field in JSON");
+    assert!(
+        error_msg.contains("Spaced Repetition"),
+        "error message should suggest 'Spaced Repetition', got: {error_msg}"
+    );
+}
+
+#[test]
+fn test_013_008_completely_unknown_anchor_exits_2() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    zetl_cmd(dir.path())
+        .arg("search")
+        .arg("graphterm")
+        .arg("--near")
+        .arg("NoSuchPageXYZ123")
+        .assert()
+        .code(2);
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-009: Neighbourhood metadata present in JSON when --near is used
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_009_neighbourhood_metadata_present_with_near() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("A")
+            .arg("--depth")
+            .arg("1"),
+    );
+
+    // REQ-013-009: near, depth, neighbourhood_size must appear in output
+    assert!(
+        json["near"].as_str().is_some(),
+        "near field must be present when --near is used"
+    );
+    assert_eq!(
+        json["near"].as_str().unwrap(),
+        "A",
+        "near should be the resolved anchor name"
+    );
+    assert_eq!(
+        json["depth"].as_u64(),
+        Some(1),
+        "depth field must equal the requested depth"
+    );
+    assert!(
+        json["neighbourhood_size"].as_u64().is_some(),
+        "neighbourhood_size field must be present"
+    );
+    // A at depth 1: {A, B, C} = 3 pages
+    assert_eq!(
+        json["neighbourhood_size"].as_u64().unwrap(),
+        3,
+        "neighbourhood of A at depth 1 is {{A, B, C}} = 3 pages"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-009: Neighbourhood metadata absent when --near is NOT used
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_009_neighbourhood_metadata_absent_without_near() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("graphterm"));
+
+    // REQ-013-009: fields must be omitted from the envelope when --near is not used
+    assert!(
+        json.get("near").is_none() || json["near"].is_null(),
+        "near field must be absent when --near is not used"
+    );
+    assert!(
+        json.get("depth").is_none() || json["depth"].is_null(),
+        "depth field must be absent when --near is not used"
+    );
+    assert!(
+        json.get("neighbourhood_size").is_none() || json["neighbourhood_size"].is_null(),
+        "neighbourhood_size field must be absent when --near is not used"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-016: --near composes with --path and --context
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_016_near_composes_with_path_filter() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // --near A (neighbourhood {A, B, C} at depth 1) AND --path B.md
+    // Expected: only B.md result (C and A excluded by --path)
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("A")
+            .arg("--path")
+            .arg("B.md"),
+    );
+
+    let results = json["results"].as_array().expect("results array");
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+
+    // Only B.md matches both the neighbourhood filter and the path filter
+    assert_eq!(
+        pages,
+        vec!["B"],
+        "--path B.md should restrict to B within the neighbourhood"
+    );
+}
+
+#[test]
+fn test_013_016_near_composes_with_context() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("A")
+            .arg("--context")
+            .arg("20"),
+    );
+
+    let results = json["results"].as_array().expect("results array");
+
+    // All results in the neighbourhood should have context snippets
+    for result in results {
+        assert!(
+            result["context"].as_str().is_some(),
+            "context must be present when --context is specified, result: {result:?}"
+        );
+    }
+
+    // Results should still be limited to the neighbourhood
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+    assert!(
+        !pages.contains(&"E"),
+        "E (isolated) must be excluded even with --context"
+    );
+    assert!(
+        !pages.contains(&"D"),
+        "D (2+ hops) must be excluded at default depth 1 even with --context"
+    );
+}
