@@ -3,26 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 118,
+    "files_changed": 2,
+    "insertions": 318,
     "deletions": 5,
     "file_list": [
-      "src/search.rs",
-      "src/web/mod.rs",
-      "src/web/routes.rs"
+      ".hence/context-manifest.json",
+      "tests/integration.rs"
     ],
-    "dirty_files": 2
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-api-search-changes",
-      "content": "Modified 3 files (+118, -5): src/search.rs, src/web/mod.rs, src/web/routes.rs",
+      "key": "task-verify-phase4-changes",
+      "content": "Modified 2 files (+318, -5): .hence/context-manifest.json, tests/integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/api-search-v1",
-  "evaluated_at": "2026-03-01T14:29:20Z",
+  "branch_name": "hence/verify-phase4-v1",
+  "evaluated_at": "2026-03-01T14:33:49Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
