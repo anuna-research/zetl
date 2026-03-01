@@ -1,5 +1,3 @@
-const BM25_JS: &str = include_str!("assets/bm25.js");
-
 /// Build compact JSON search index: `[{"n":"Page Name","s":"path/slug"},...]`
 pub fn search_index_json(entries: &[(String, String)]) -> String {
     let items: Vec<String> = entries
@@ -276,7 +274,9 @@ pub fn layout(
       padding: 0.25rem 0;
     }}
     .search-result {{
-      display: block;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
       padding: 0.5rem 1rem;
       text-decoration: none;
       color: oklch(var(--bc));
@@ -286,16 +286,26 @@ pub fn layout(
     .search-result.sr-active {{
       background: oklch(var(--p) / 0.12);
     }}
-    .search-result .sr-name {{
-      font-weight: 500;
+    .search-result .page-name {{
+      font-weight: 600;
+      font-size: 0.9rem;
     }}
-    .search-result .sr-name b {{
-      color: oklch(var(--p));
-      font-weight: 700;
+    .search-result .heading {{
+      font-size: 0.78rem;
+      opacity: 0.6;
+      font-style: italic;
     }}
-    .search-result .sr-score {{
-      font-size: 0.75rem;
+    .search-result .context {{
+      font-size: 0.78rem;
       opacity: 0.5;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }}
+    .search-result .score {{
+      font-size: 0.7rem;
+      opacity: 0.4;
+      font-family: monospace;
     }}
     .search-hint {{
       padding: 1rem;
@@ -373,35 +383,29 @@ pub fn layout(
   </div>
 
   <script>
-  {bm25_js}
   (function(){{
     var overlay=document.getElementById('search-overlay');
     var input=document.getElementById('search-input');
     var results=document.getElementById('search-results');
     var active=-1;
-    var filtered=[];
-    var bm25Idx=null,bm25Ready=false,bm25Fetching=false;
+    var filtered=[];   // array of {{slug,page,heading,context,score}}
+    var debounceTimer=null;
+    var currentCtrl=null; // AbortController for in-flight fetch
 
-    function loadBm25(){{
-      if(bm25Ready||bm25Fetching)return;
-      bm25Fetching=true;
-      fetch('/search-index.json')
-        .then(function(r){{return r.ok?r.json():Promise.reject();}})
-        .then(function(d){{bm25Idx=d;bm25Ready=true;bm25Fetching=false;if(input.value)runSearch();}})
-        .catch(function(){{bm25Ready=true;bm25Fetching=false;}});
-    }}
+    // Embedded page list for fast client-side fallback on short queries (<=2 chars)
+    var pageList=(function(){{
+      try{{return JSON.parse(document.getElementById('zetl-search-index').textContent||'[]');}}
+      catch(e){{return [];}}
+    }})();
 
     function esc(s){{return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}
+
+    function slugFromPath(path){{return path.replace(/\.md$/i,'');}}
 
     function render(items){{
       results.innerHTML='';
       if(!input.value){{
         results.innerHTML='<div class="search-hint">Type to search pages\u2026</div>';
-        active=-1;
-        return;
-      }}
-      if(!bm25Ready){{
-        results.innerHTML='<div class="search-hint">Loading index\u2026</div>';
         active=-1;
         return;
       }}
@@ -413,21 +417,62 @@ pub fn layout(
       active=0;
       items.forEach(function(item,i){{
         var a=document.createElement('a');
-        a.className='search-result'+(i===active?' sr-active':'');
-        a.href='/'+item.s;
-        a.innerHTML='<div class="sr-name">'+esc(item.n)+'</div>'
-          +'<div class="sr-score">'+item.score.toFixed(2)+'</div>';
+        a.className='search-result'+(i===0?' sr-active':'');
+        a.href='/'+item.slug;
+        var html='<span class="page-name">'+esc(item.page)+'</span>';
+        if(item.heading)html+='<span class="heading">'+esc(item.heading)+'</span>';
+        if(item.context)html+='<span class="context">'+esc(item.context)+'</span>';
+        if(item.score)html+='<span class="score">'+item.score.toFixed(2)+'</span>';
+        a.innerHTML=html;
         a.addEventListener('mouseenter',function(){{active=i;updateActive();}});
         results.appendChild(a);
       }});
     }}
 
+    function showLoading(){{
+      results.innerHTML='<div class="search-hint">Searching\u2026</div>';
+    }}
+
+    function fastFilter(q){{
+      var ql=q.toLowerCase();
+      return pageList
+        .filter(function(p){{return p.n.toLowerCase().indexOf(ql)>=0;}})
+        .slice(0,10)
+        .map(function(p){{return {{page:p.n,slug:p.s,score:0}};}});
+    }}
+
     function runSearch(){{
       var q=input.value;
       if(!q){{filtered=[];render([]);return;}}
-      if(!bm25Ready){{filtered=[];render([]);return;}}
-      filtered=bm25Idx?bm25Search(q,bm25Idx).slice(0,10):[];
-      render(filtered);
+      if(q.length<=2){{
+        filtered=fastFilter(q);
+        render(filtered);
+        return;
+      }}
+      showLoading();
+      if(currentCtrl){{currentCtrl.abort();}}
+      currentCtrl=new AbortController();
+      fetch('/api/search?q='+encodeURIComponent(q)+'&limit=20',{{signal:currentCtrl.signal}})
+        .then(function(r){{return r.ok?r.json():Promise.reject(r.status);}})
+        .then(function(data){{
+          currentCtrl=null;
+          filtered=(data.results||[]).map(function(m){{
+            return {{
+              page:m.page,
+              slug:slugFromPath(m.path),
+              heading:m.heading||null,
+              context:m.context||null,
+              score:m.score
+            }};
+          }});
+          render(filtered);
+        }})
+        .catch(function(err){{
+          currentCtrl=null;
+          if(err&&err.name==='AbortError')return;
+          filtered=fastFilter(q);
+          render(filtered);
+        }});
     }}
 
     window.openSearch=function(){{
@@ -437,10 +482,10 @@ pub fn layout(
       filtered=[];
       render([]);
       input.focus();
-      loadBm25();
     }};
     window.closeSearch=function(){{
       overlay.classList.remove('open');
+      if(currentCtrl){{currentCtrl.abort();currentCtrl=null;}}
     }};
 
     function updateActive(){{
@@ -451,7 +496,6 @@ pub fn layout(
       if(active>=0&&els[active])els[active].scrollIntoView({{block:'nearest'}});
     }}
 
-    var debounceTimer=null;
     input.addEventListener('keyup',function(){{
       clearTimeout(debounceTimer);
       debounceTimer=setTimeout(runSearch,150);
@@ -477,7 +521,7 @@ pub fn layout(
       }}else if(e.key==='Enter'){{
         e.preventDefault();
         if(active>=0&&active<filtered.length){{
-          window.location.href='/'+filtered[active].s;
+          window.location.href='/'+filtered[active].slug;
         }}
       }}
     }});
@@ -490,7 +534,6 @@ pub fn layout(
         sidebar = sidebar,
         main_section = main_section,
         search_index = search_index,
-        bm25_js = BM25_JS,
     )
 }
 
