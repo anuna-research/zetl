@@ -30,12 +30,10 @@ pub fn build_static(
     let vault_ctx = build_vault_context(data, &vault_name);
 
     // ── index.html ──────────────────────────────────────────────────────
-    let index_html = engine
-        .render_index(&vault_ctx)
-        .map_err(|e| {
-            eprintln!("{}", e.stderr_line("index"));
-            anyhow::anyhow!("{e}")
-        })?;
+    let index_html = engine.render_index(&vault_ctx).map_err(|e| {
+        eprintln!("{}", e.stderr_line("index"));
+        anyhow::anyhow!("{e}")
+    })?;
     std::fs::write(out.join("index.html"), index_html)?;
 
     // ── per-page HTML ───────────────────────────────────────────────────
@@ -50,10 +48,8 @@ pub fn build_static(
             .with_context(|| format!("Cannot read {}", full_path.display()))?;
 
         let rendered = markdown::render_to_html(&content, &data.page_slug_map);
-        let mut page_ctx =
-            build_page_context(data, &file.page_name, &slug, &rendered, &content);
-        page_ctx.transclusion_cards =
-            build_transclusion_cards(data, vault_root, &file.page_name);
+        let mut page_ctx = build_page_context(data, &file.page_name, &slug, &rendered, &content);
+        page_ctx.transclusion_cards = build_transclusion_cards(data, vault_root, &file.page_name);
 
         let page_html = engine
             .render_page(&vault_ctx, &page_ctx, "build")
@@ -94,12 +90,10 @@ pub fn build_static(
 
         let folder_name = folder.rsplit('/').next().unwrap_or(folder);
         let folder_ctx = build_folder_context(data, folder, folder_name);
-        let folder_html = engine
-            .render_folder(&vault_ctx, &folder_ctx)
-            .map_err(|e| {
-                eprintln!("{}", e.stderr_line(folder));
-                anyhow::anyhow!("{e}")
-            })?;
+        let folder_html = engine.render_folder(&vault_ctx, &folder_ctx).map_err(|e| {
+            eprintln!("{}", e.stderr_line(folder));
+            anyhow::anyhow!("{e}")
+        })?;
         std::fs::write(folder_dir.join("index.html"), folder_html)?;
         folder_count += 1;
     }
@@ -109,7 +103,11 @@ pub fn build_static(
 
     eprintln!(
         "zetl build  →  {count} pages + {folder_count} folder indexes written to {out_dir}/{}",
-        if static_copied { " (static assets copied)" } else { "" }
+        if static_copied {
+            " (static assets copied)"
+        } else {
+            ""
+        }
     );
     Ok(())
 }
@@ -195,12 +193,7 @@ fn build_transclusion_cards(data: &VaultData, vault_root: &Path, page_name: &str
                 std::fs::read_to_string(&full_path).ok()
             })
             .map(|content| markdown::render_preview_html(&content, &data.page_slug_map))
-            .unwrap_or_else(|| {
-                format!(
-                    "<p><em>{}</em></p>",
-                    html_escape("(page does not exist)")
-                )
-            });
+            .unwrap_or_else(|| format!("<p><em>{}</em></p>", html_escape("(page does not exist)")));
 
         cards.push_str(&format!(
             r#"<div class="transclusion-card" data-target-href="/{href}" style="border-left-color: {color};">

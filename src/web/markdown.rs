@@ -364,7 +364,10 @@ mod tests {
     #[test]
     fn test_kebab_case_slug() {
         let mut slug_map = HashMap::new();
-        slug_map.insert("Link Graph".to_string(), "architecture/link-graph".to_string());
+        slug_map.insert(
+            "Link Graph".to_string(),
+            "architecture/link-graph".to_string(),
+        );
         let html = render_to_html("See [[Link Graph]] here", &slug_map);
         assert!(html.contains(r#"href="/architecture/link-graph""#));
     }

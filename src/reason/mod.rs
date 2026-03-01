@@ -190,7 +190,11 @@ pub fn build_theory(spl_blocks: &[SplBlock]) -> Result<TheoryResult> {
                 provenanced_rules.push(ProvenancedRule {
                     label: rule.label.clone(),
                     rule_type: our_rule_type,
-                    body: rule.body.iter().filter_map(|b| b.as_logic().map(|l| l.to_literal())).collect(),
+                    body: rule
+                        .body
+                        .iter()
+                        .filter_map(|b| b.as_logic().map(|l| l.to_literal()))
+                        .collect(),
                     head: rule.head[0].clone(),
                     source_file: block.source_file.clone(),
                     source_line: abs_line,

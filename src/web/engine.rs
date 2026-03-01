@@ -46,7 +46,10 @@ impl TemplateError {
             (Some(name), None) => name.clone(),
             _ => "unknown".to_string(),
         };
-        format!("error: template {loc}: {msg} (rendering '{slug}')", msg = self.message)
+        format!(
+            "error: template {loc}: {msg} (rendering '{slug}')",
+            msg = self.message
+        )
     }
 
     /// Build a self-contained HTML error page for serve mode.
@@ -61,7 +64,8 @@ impl TemplateError {
         let template_info = match (&self.template_name, self.line) {
             (Some(name), Some(line)) => format!(
                 r#"<span class="label">Template:</span> <span class="value">{}</span> <span class="label">Line:</span> <span class="value">{}</span>"#,
-                esc(name), line
+                esc(name),
+                line
             ),
             (Some(name), None) => format!(
                 r#"<span class="label">Template:</span> <span class="value">{}</span>"#,
@@ -211,10 +215,10 @@ impl TemplateEngine {
             active_slug => "",
         };
         let env = self.env();
-        let tmpl = env.get_template("index.html")
+        let tmpl = env
+            .get_template("index.html")
             .map_err(TemplateError::from_minijinja)?;
-        let html = tmpl.render(ctx)
-            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("index.html"));
         }
@@ -238,10 +242,10 @@ impl TemplateEngine {
             active_slug => &page_ctx.slug,
         };
         let env = self.env();
-        let tmpl = env.get_template("page.html")
+        let tmpl = env
+            .get_template("page.html")
             .map_err(TemplateError::from_minijinja)?;
-        let html = tmpl.render(ctx)
-            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("page.html"));
         }
@@ -263,10 +267,10 @@ impl TemplateEngine {
             active_slug => "",
         };
         let env = self.env();
-        let tmpl = env.get_template("folder.html")
+        let tmpl = env
+            .get_template("folder.html")
             .map_err(TemplateError::from_minijinja)?;
-        let html = tmpl.render(ctx)
-            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("folder.html"));
         }

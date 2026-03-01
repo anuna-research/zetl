@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use axum::extract::{Path, State};
-use axum::http::{StatusCode, header};
+use axum::http::{header, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 
 use crate::scanner::page_slug_from_path;
@@ -29,10 +29,7 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
 }
 
 /// GET /{*path} — Rendered markdown page with backlinks, or folder index.
-pub async fn page_handler(
-    State(state): State<WebState>,
-    Path(slug): Path<String>,
-) -> Response {
+pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String>) -> Response {
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
     let data = state.data.read().unwrap();
@@ -124,12 +121,7 @@ pub async fn page_handler(
                 std::fs::read_to_string(&full_path).ok()
             })
             .map(|content| markdown::render_preview_html(&content, &data.page_slug_map))
-            .unwrap_or_else(|| {
-                format!(
-                    "<p><em>{}</em></p>",
-                    html_escape("(page does not exist)")
-                )
-            });
+            .unwrap_or_else(|| format!("<p><em>{}</em></p>", html_escape("(page does not exist)")));
 
         transclusion_cards.push_str(&format!(
             r#"<div class="transclusion-card" data-target-href="/{href}" style="border-left-color: {color};">
@@ -145,8 +137,7 @@ pub async fn page_handler(
 
     // Build the page context using the builder, then fill in transclusion + raw_escaped
     let content_raw = raw_content.as_deref().unwrap_or("");
-    let mut page_ctx =
-        build_page_context(&data, &page_name, &current_slug, &rendered, content_raw);
+    let mut page_ctx = build_page_context(&data, &page_name, &current_slug, &rendered, content_raw);
     page_ctx.transclusion_cards = transclusion_cards;
     page_ctx.raw_escaped = raw_content.map(|c| html_escape(&c));
 
@@ -234,10 +225,7 @@ pub async fn preview_handler(
             Err(_) => "<em>Could not read file.</em>".to_string(),
         }
     } else {
-        format!(
-            "<em>{} (does not exist)</em>",
-            html_escape(&slug)
-        )
+        format!("<em>{} (does not exist)</em>", html_escape(&slug))
     };
 
     Html(preview)
@@ -381,15 +369,15 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::Request;
-    use axum::Router;
     use axum::routing::get;
+    use axum::Router;
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, RwLock};
     use tower::ServiceExt;
 
     use crate::graph::LinkGraph;
-    use crate::web::{VaultData, WebState};
     use crate::web::engine::TemplateEngine;
+    use crate::web::{VaultData, WebState};
 
     /// Build a minimal WebState pointing at a temp dir.
     fn test_state(vault_root: &std::path::Path, theme: &str) -> WebState {

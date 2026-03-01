@@ -2232,7 +2232,11 @@ fn test_012_010_nonexistent_theme_error() {
     // Create one valid theme so the hint lists it
     let theme_dir = dir.path().join(".zetl/themes/existing-theme");
     fs::create_dir_all(&theme_dir).expect("create theme dir");
-    fs::write(theme_dir.join("page.html"), "{% extends \"base.html\" %}{% block content %}ok{% endblock %}").unwrap();
+    fs::write(
+        theme_dir.join("page.html"),
+        "{% extends \"base.html\" %}{% block content %}ok{% endblock %}",
+    )
+    .unwrap();
 
     let out_dir = dir.path().join("dist");
 
@@ -2421,10 +2425,7 @@ fn test_012_005_serve_shared_static_200_mime() {
     child.kill().ok();
     child.wait().ok();
 
-    assert!(
-        status.contains("200"),
-        "expected 200 OK, got: {status}"
-    );
+    assert!(status.contains("200"), "expected 200 OK, got: {status}");
     assert!(
         headers.contains("application/javascript"),
         "expected application/javascript content-type, got headers:\n{headers}"
@@ -2461,8 +2462,7 @@ fn test_012_005_serve_theme_overrides_shared() {
         "expected text/css, got headers:\n{headers}"
     );
     assert_eq!(
-        body,
-        b"body{color:blue}",
+        body, b"body{color:blue}",
         "theme static should override shared"
     );
 }
@@ -2480,10 +2480,7 @@ fn test_012_005_serve_404_for_nonexistent() {
     child.kill().ok();
     child.wait().ok();
 
-    assert!(
-        status.contains("404"),
-        "expected 404, got: {status}"
-    );
+    assert!(status.contains("404"), "expected 404, got: {status}");
 }
 
 /// TEST-012-005: No error when no static dirs exist.
@@ -2627,9 +2624,7 @@ fn test_012_006_build_preserves_directory_structure() {
 
     let out_dir = dir.path().join("dist");
     let mut cmd = zetl_cmd(dir.path());
-    cmd.arg("build")
-        .arg("-o")
-        .arg(out_dir.as_os_str());
+    cmd.arg("build").arg("-o").arg(out_dir.as_os_str());
     let output = cmd.output().expect("run zetl build");
     assert!(
         output.status.success(),
@@ -2653,9 +2648,7 @@ fn test_012_006_build_no_static_dirs_no_output() {
 
     let out_dir = dir.path().join("dist");
     let mut cmd = zetl_cmd(dir.path());
-    cmd.arg("build")
-        .arg("-o")
-        .arg(out_dir.as_os_str());
+    cmd.arg("build").arg("-o").arg(out_dir.as_os_str());
     let output = cmd.output().expect("run zetl build");
     assert!(
         output.status.success(),
@@ -2716,8 +2709,8 @@ fn test_012_007_frontmatter_fields_accessible_in_template() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let html = fs::read_to_string(out_dir.join("screenplay/index.html"))
-        .expect("read built page HTML");
+    let html =
+        fs::read_to_string(out_dir.join("screenplay/index.html")).expect("read built page HTML");
 
     // Verify each frontmatter field is rendered correctly
     assert!(
@@ -2760,8 +2753,7 @@ fn test_012_007_no_frontmatter_empty_object() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let html = fs::read_to_string(out_dir.join("plain/index.html"))
-        .expect("read built page HTML");
+    let html = fs::read_to_string(out_dir.join("plain/index.html")).expect("read built page HTML");
 
     // With no frontmatter, individual field accesses should render empty
     assert!(
@@ -2811,8 +2803,7 @@ fn test_012_007_malformed_yaml_warning() {
         "stderr should contain warning about malformed YAML, got:\n{stderr}"
     );
 
-    let html = fs::read_to_string(out_dir.join("broken/index.html"))
-        .expect("read built page HTML");
+    let html = fs::read_to_string(out_dir.join("broken/index.html")).expect("read built page HTML");
 
     // Malformed YAML → frontmatter is empty object, fields render empty
     assert!(
@@ -2838,9 +2829,7 @@ fn test_012_007_strip_frontmatter_from_rendered_html() {
 
     let out_dir = dir.path().join("dist");
     let mut cmd = zetl_cmd(dir.path());
-    cmd.arg("build")
-        .arg("-o")
-        .arg(out_dir.as_os_str());
+    cmd.arg("build").arg("-o").arg(out_dir.as_os_str());
     let output = cmd.output().expect("run zetl build");
     assert!(
         output.status.success(),
@@ -2848,8 +2837,7 @@ fn test_012_007_strip_frontmatter_from_rendered_html() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let html = fs::read_to_string(out_dir.join("withfm/index.html"))
-        .expect("read built page HTML");
+    let html = fs::read_to_string(out_dir.join("withfm/index.html")).expect("read built page HTML");
 
     // The article/prose section should NOT contain frontmatter delimiters or YAML keys
     assert!(

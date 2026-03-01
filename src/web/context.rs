@@ -101,11 +101,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         .page_names
         .iter()
         .map(|name| {
-            let slug = data
-                .page_slug_map
-                .get(name)
-                .cloned()
-                .unwrap_or_default();
+            let slug = data.page_slug_map.get(name).cloned().unwrap_or_default();
             let outlink_count = data.graph.forward_links(name).len();
             let backlink_count = data.graph.backlinks(name).len();
             PageEntry {
@@ -273,9 +269,7 @@ pub fn build_folder_context(
         if remainder.contains('/') {
             // This is in a subfolder — extract the immediate subfolder name
             let sub_name = remainder.split('/').next().unwrap();
-            *subfolder_counts
-                .entry(sub_name.to_string())
-                .or_insert(0) += 1;
+            *subfolder_counts.entry(sub_name.to_string()).or_insert(0) += 1;
         } else {
             // Direct child page
             let outlink_count = data.graph.forward_links(page_name).len();
@@ -457,10 +451,7 @@ mod tests {
 
     #[test]
     fn test_build_folder_context() {
-        let mut files = vec![
-            make_file("Alpha", vec![]),
-            make_file("Beta", vec![]),
-        ];
+        let mut files = vec![make_file("Alpha", vec![]), make_file("Beta", vec![])];
         // Simulate nested structure: put Beta in a subfolder
         files[1].path = PathBuf::from("sub/Beta.md");
 

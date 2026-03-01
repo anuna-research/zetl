@@ -9,8 +9,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use axum::Router;
 use axum::routing::get;
+use axum::Router;
 
 use crate::graph::LinkGraph;
 use crate::scanner::{page_slug_from_path, resolve_page_name, scan_vault};
@@ -112,9 +112,7 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
     // Warn about slug collisions
     for (slug, sources) in &slug_sources {
         if sources.len() > 1 {
-            eprintln!(
-                "warning: slug collision — the following files all map to /{slug}:"
-            );
+            eprintln!("warning: slug collision — the following files all map to /{slug}:");
             for src in sources {
                 eprintln!("  - {src}");
             }
@@ -140,7 +138,10 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
         .route("/", get(routes::index_handler))
         .route("/_static/{*path}", get(routes::static_handler))
         .route("/preview/{*path}", get(routes::preview_handler))
-        .route("/{*path}", get(routes::page_handler).put(routes::save_handler))
+        .route(
+            "/{*path}",
+            get(routes::page_handler).put(routes::save_handler),
+        )
         .with_state(state);
 
     let addr = format!("0.0.0.0:{port}");

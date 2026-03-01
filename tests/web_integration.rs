@@ -63,10 +63,7 @@ fn full_router(state: WebState) -> Router {
     Router::new()
         .route("/", get(index_handler))
         .route("/_static/{*path}", get(static_handler))
-        .route(
-            "/preview/{*path}",
-            get(preview_handler),
-        )
+        .route("/preview/{*path}", get(preview_handler))
         .route("/{*path}", get(page_handler).put(save_handler))
         .with_state(state)
 }
@@ -261,14 +258,14 @@ A page in a subfolder linking to [[Page One]].
     );
 
     // ── static assets ─────────────────────────────────────────────────────
-    write_file(
-        root,
-        ".zetl/static/shared.js",
-        "console.log('shared');",
-    );
+    write_file(root, ".zetl/static/shared.js", "console.log('shared');");
     write_file(root, ".zetl/static/common.css", "body{color:shared}");
 
-    write_file(root, ".zetl/themes/custom/static/custom.css", "body{color:custom}");
+    write_file(
+        root,
+        ".zetl/themes/custom/static/custom.css",
+        "body{color:custom}",
+    );
     write_file(
         root,
         ".zetl/themes/custom/static/common.css",
@@ -297,9 +294,18 @@ async fn test_serve_default_theme_index() {
     // Index page should list all pages (titles are file stems)
     assert!(body.contains("page-one"), "index should list page-one");
     assert!(body.contains("page-two"), "index should list page-two");
-    assert!(body.contains("no-frontmatter"), "index should list no-frontmatter");
-    assert!(body.contains("dead-link-page"), "index should list dead-link-page");
-    assert!(body.contains("nested-page"), "index should list nested-page");
+    assert!(
+        body.contains("no-frontmatter"),
+        "index should list no-frontmatter"
+    );
+    assert!(
+        body.contains("dead-link-page"),
+        "index should list dead-link-page"
+    );
+    assert!(
+        body.contains("nested-page"),
+        "index should list nested-page"
+    );
 
     // Stats should be present (5 pages total)
     assert!(body.contains("5"), "should show total page count");
@@ -318,10 +324,7 @@ async fn test_serve_default_theme_page() {
 
     // Page content should be rendered (title is file stem)
     assert!(body.contains("page-one"), "page title present");
-    assert!(
-        body.contains("Page One"),
-        "markdown heading rendered"
-    );
+    assert!(body.contains("Page One"), "markdown heading rendered");
 
     // Default theme uses built-in templates (not custom)
     assert!(
@@ -406,10 +409,7 @@ async fn test_serve_custom_theme_overrides_page() {
         body.contains("CUSTOM_THEME_MARKER"),
         "custom page.html should be used"
     );
-    assert!(
-        body.contains("CUSTOM: page-one"),
-        "custom title block used"
-    );
+    assert!(body.contains("CUSTOM: page-one"), "custom title block used");
 }
 
 #[tokio::test]
@@ -515,10 +515,7 @@ fn test_cli_theme_nonexistent_gives_error() {
         .output()
         .expect("run");
 
-    assert!(
-        !output.status.success(),
-        "nonexistent theme should fail"
-    );
+    assert!(!output.status.success(), "nonexistent theme should fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("nonexistent"),
@@ -542,10 +539,7 @@ fn test_cli_theme_path_traversal_rejected() {
         .output()
         .expect("run");
 
-    assert!(
-        !output.status.success(),
-        "path traversal theme should fail"
-    );
+    assert!(!output.status.success(), "path traversal theme should fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("invalid theme name"),
@@ -622,10 +616,7 @@ async fn test_context_page_outlinks_with_dead_link() {
         body.contains("outlink-red"),
         "dead link should be red: {body}"
     );
-    assert!(
-        body.contains("OUTLINK:page-two"),
-        "live outlink present"
-    );
+    assert!(body.contains("OUTLINK:page-two"), "live outlink present");
 }
 
 #[tokio::test]
@@ -947,18 +938,12 @@ async fn test_frontmatter_accessible_in_custom_theme() {
     let (status, body, _ct) = get_response(&app, "/page-one").await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("TAG:rust"), "tag 'rust' accessible: {body}");
-    assert!(
-        body.contains("TAG:testing"),
-        "tag 'testing' accessible"
-    );
+    assert!(body.contains("TAG:testing"), "tag 'testing' accessible");
 
     // Page Two has: format=fountain, author=Test Author
     let (status, body, _ct) = get_response(&app, "/page-two").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(
-        body.contains("FORMAT:fountain"),
-        "format field accessible"
-    );
+    assert!(body.contains("FORMAT:fountain"), "format field accessible");
     assert!(
         body.contains("AUTHOR:Test Author"),
         "author field accessible"
@@ -976,18 +961,9 @@ async fn test_frontmatter_empty_when_absent() {
     // No Frontmatter page should have empty frontmatter (no format/tags/author sections)
     let (status, body, _ct) = get_response(&app, "/no-frontmatter").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(
-        !body.contains("FORMAT:"),
-        "no format when no frontmatter"
-    );
-    assert!(
-        !body.contains("TAG:"),
-        "no tags when no frontmatter"
-    );
-    assert!(
-        !body.contains("AUTHOR:"),
-        "no author when no frontmatter"
-    );
+    assert!(!body.contains("FORMAT:"), "no format when no frontmatter");
+    assert!(!body.contains("TAG:"), "no tags when no frontmatter");
+    assert!(!body.contains("AUTHOR:"), "no author when no frontmatter");
 }
 
 #[tokio::test]
@@ -1045,10 +1021,7 @@ fn test_build_frontmatter_in_custom_theme() {
 
     // Page Two: format accessible
     let page_two = fs::read_to_string(out_dir.join("page-two/index.html")).unwrap();
-    assert!(
-        page_two.contains("FORMAT:fountain"),
-        "build: format field"
-    );
+    assert!(page_two.contains("FORMAT:fountain"), "build: format field");
     assert!(
         page_two.contains("AUTHOR:Test Author"),
         "build: author field"
@@ -1074,7 +1047,11 @@ async fn test_frontmatter_malformed_returns_empty() {
     // Even with custom theme, malformed frontmatter should produce empty {}
     // which means no FORMAT/TAG/AUTHOR markers
     let data = state.data.read().unwrap();
-    let file = data.files.iter().find(|f| f.page_name == "malformed").unwrap();
+    let file = data
+        .files
+        .iter()
+        .find(|f| f.page_name == "malformed")
+        .unwrap();
     let content = fs::read_to_string(tmp.path().join(&file.path)).unwrap();
     let fm = zetl::web::markdown::parse_frontmatter(&content);
     // Should be an empty object (malformed YAML)
@@ -1103,10 +1080,7 @@ async fn test_serve_mode_has_edit_controls() {
         body.contains("edit-controls"),
         "serve mode should include edit controls"
     );
-    assert!(
-        body.contains(r#"data-mode="serve""#),
-        "mode is serve"
-    );
+    assert!(body.contains(r#"data-mode="serve""#), "mode is serve");
 }
 
 #[test]
