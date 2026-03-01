@@ -23,6 +23,27 @@ fn zetl_cmd(vault: &Path) -> Command {
     cmd
 }
 
+/// Build a `Command` without `--no-cache` (uses the incremental file cache).
+fn zetl_cmd_cached(vault: &Path) -> Command {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    cmd.arg("-d").arg(vault.as_os_str());
+    cmd
+}
+
+/// Run the command, assert success, and return (stdout JSON, stderr string).
+fn run_json_with_stderr(cmd: &mut Command) -> (Value, String) {
+    let output = cmd.output().expect("failed to execute zetl");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(
+        output.status.success(),
+        "zetl exited with non-zero status.\nstdout: {stdout}\nstderr: {stderr}",
+    );
+    let json: Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"));
+    (json, stderr)
+}
+
 /// Create a file relative to `root`, creating parent directories as needed.
 fn write_file(root: &Path, relative: &str, content: &str) {
     let full = root.join(relative);
@@ -1965,5 +1986,417 @@ fn test_049_blocks_forward_hash_as_source_metadata_roundtrip() {
     assert!(
         reverse["text"].is_string(),
         "resolved result must include a text field"
+    );
+}
+
+// ===========================================================================
+// Phase 1 verification tests (IMPL-013)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. zetl index JSON includes search_index_docs and search_index_size_kb
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_v1_index_json_has_search_fields() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\n\nSome content.\n");
+
+    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+
+    assert!(
+        json["search_index_docs"].as_u64().is_some(),
+        "index output must include 'search_index_docs', got: {json}"
+    );
+    assert!(
+        json["search_index_size_kb"].as_u64().is_some(),
+        "index output must include 'search_index_size_kb', got: {json}"
+    );
+    assert_eq!(
+        json["search_index_docs"].as_u64().unwrap(),
+        1,
+        "should report 1 indexed document"
+    );
+    assert!(
+        json["search_index_size_kb"].as_u64().unwrap() > 0,
+        "search index should have non-zero size after indexing"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 2. Search results carry score, heading, heading_level (BM25 fields)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_v1_search_results_have_bm25_fields() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Page.md",
+        "# Introduction\n\nThis page discusses alpha deeply.\n\n## Details\n\nMore alpha content.\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("alpha"));
+    let results = json["results"].as_array().expect("results array");
+
+    assert!(
+        !results.is_empty(),
+        "should find at least one result for 'alpha'"
+    );
+
+    for result in results {
+        assert!(
+            result["score"].as_f64().is_some() && result["score"].as_f64().unwrap() > 0.0,
+            "every result must have a positive 'score', got: {result}"
+        );
+        // heading may be null (before any heading), but the field must exist
+        assert!(
+            result.get("heading").is_some(),
+            "every result must have a 'heading' field, got: {result}"
+        );
+        assert!(
+            result.get("heading_level").is_some(),
+            "every result must have a 'heading_level' field, got: {result}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-001: Exclusion zones — inline code and HTML comments
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_001_inline_code_excluded() {
+    let dir = TempDir::new().unwrap();
+    // "exclusion_zeta" only appears in an inline code span → must not be found
+    write_file(
+        dir.path(),
+        "Inline.md",
+        "# Inline\n\nNormal body text.\n`exclusion_zeta in inline code`\nMore body text.\n",
+    );
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("search").arg("exclusion_zeta");
+    cmd.assert().failure(); // no matches → exit 1
+}
+
+#[test]
+fn test_013_001_html_comment_excluded() {
+    let dir = TempDir::new().unwrap();
+    // "exclusion_eta" only appears in an HTML comment → must not be found
+    write_file(
+        dir.path(),
+        "Comment.md",
+        "# Comment\n\nNormal body text.\n<!-- exclusion_eta in HTML comment -->\nMore body text.\n",
+    );
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("search").arg("exclusion_eta");
+    cmd.assert().failure(); // no matches → exit 1
+}
+
+#[test]
+fn test_013_001_body_text_found_around_exclusion_zones() {
+    let dir = TempDir::new().unwrap();
+    // "bodyterm" in body text is found; "bodyterm" in inline code / comment is not double-counted
+    write_file(
+        dir.path(),
+        "Mixed.md",
+        "# Mixed\n\nbodyterm in body.\n`bodyterm in inline code`\n<!-- bodyterm in comment -->\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("bodyterm"));
+    let total = json["total_matches"].as_u64().expect("total_matches");
+    assert_eq!(
+        total, 1,
+        "only the body-text occurrence should be found, got: {total}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-002: Relevance ranking — more occurrences → higher BM25 score
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_002_relevance_ranking() {
+    let dir = TempDir::new().unwrap();
+
+    // Rich.md has many occurrences of "quux"; Sparse.md has one.
+    write_file(
+        dir.path(),
+        "Rich.md",
+        "# Rich\n\nquux quux quux quux quux quux quux quux quux quux\n",
+    );
+    write_file(
+        dir.path(),
+        "Sparse.md",
+        "# Sparse\n\nOnly one quux here in this longer sentence.\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("quux"));
+    let results = json["results"].as_array().expect("results array");
+
+    // Collect (page, score) pairs
+    let rich_score = results
+        .iter()
+        .find(|r| r["page"].as_str() == Some("Rich"))
+        .map(|r| r["score"].as_f64().unwrap())
+        .expect("should have a result for Rich");
+
+    let sparse_score = results
+        .iter()
+        .find(|r| r["page"].as_str() == Some("Sparse"))
+        .map(|r| r["score"].as_f64().unwrap())
+        .expect("should have a result for Sparse");
+
+    assert!(
+        rich_score > sparse_score,
+        "Rich.md (many quux) should score higher than Sparse.md (one quux): rich={rich_score}, sparse={sparse_score}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-005: Line-level results — same file, multiple lines, same score
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_005_line_level_results_separate_and_same_score() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Multi.md",
+        "# Multi\n\nThe term zephyr on line 3.\n\nThe term zephyr on line 5.\n\nThe term zephyr on line 7.\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("zephyr"));
+    let results = json["results"].as_array().expect("results array");
+
+    assert_eq!(
+        results.len(),
+        3,
+        "should have 3 separate line-level results for 3 occurrences, got: {results:?}"
+    );
+
+    let lines: Vec<u64> = results
+        .iter()
+        .map(|r| r["line"].as_u64().expect("line field"))
+        .collect();
+    assert!(lines.contains(&3), "should have a result on line 3");
+    assert!(lines.contains(&5), "should have a result on line 5");
+    assert!(lines.contains(&7), "should have a result on line 7");
+
+    // All results from the same document share the same BM25 score
+    let scores: Vec<f64> = results
+        .iter()
+        .map(|r| r["score"].as_f64().expect("score field"))
+        .collect();
+    let first_score = scores[0];
+    for s in &scores {
+        assert_eq!(
+            *s, first_score,
+            "all results from the same document should share the same score, got: {scores:?}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 6. Heading context — matches under headings show correct heading/level
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_v1_heading_context_correct() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Sections.md",
+        "# Overview\n\nIntroductory text.\n\n## Implementation\n\nThis section has the searchterm here.\n\n### Sub-section\n\nAnother searchterm occurrence.\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("searchterm"));
+    let results = json["results"].as_array().expect("results array");
+
+    assert_eq!(results.len(), 2, "should have 2 results for 'searchterm'");
+
+    // Sort by line to get stable order
+    let mut sorted = results.clone();
+    sorted.sort_by_key(|r| r["line"].as_u64().unwrap_or(0));
+
+    // First occurrence is under "## Implementation"
+    assert_eq!(
+        sorted[0]["heading"].as_str(),
+        Some("Implementation"),
+        "first match should be under 'Implementation', got: {:?}",
+        sorted[0]["heading"]
+    );
+    assert_eq!(
+        sorted[0]["heading_level"].as_u64(),
+        Some(2),
+        "first match heading level should be 2"
+    );
+
+    // Second occurrence is under "### Sub-section"
+    assert_eq!(
+        sorted[1]["heading"].as_str(),
+        Some("Sub-section"),
+        "second match should be under 'Sub-section', got: {:?}",
+        sorted[1]["heading"]
+    );
+    assert_eq!(
+        sorted[1]["heading_level"].as_u64(),
+        Some(3),
+        "second match heading level should be 3"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-011: Headings inside code blocks are not used as enclosing headings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_011_heading_in_code_block_not_used_as_context() {
+    let dir = TempDir::new().unwrap();
+    // The "# Fake Heading" inside the fenced code block must not be recognized as a
+    // heading, so the match after the code block should still report "Real Heading".
+    write_file(
+        dir.path(),
+        "FakeHeading.md",
+        "# Real Heading\n\nBody text before code.\n\n```\n# Fake Heading\n```\n\nBody text after code with codeheadingterm.\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("codeheadingterm"));
+    let results = json["results"].as_array().expect("results array");
+
+    assert_eq!(results.len(), 1, "should find exactly one match");
+    assert_eq!(
+        results[0]["heading"].as_str(),
+        Some("Real Heading"),
+        "match after the code block should be under 'Real Heading', not the fake one inside code; got: {:?}",
+        results[0]["heading"]
+    );
+    assert_eq!(
+        results[0]["heading_level"].as_u64(),
+        Some(1),
+        "heading level should be 1 (Real Heading)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-003: Index invalidation — modify file → new content searchable
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_003_index_invalidation_after_file_change() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Evolving.md",
+        "# Evolving\n\nThis file has oldterm content.\n",
+    );
+
+    // Build initial index (with cache so the cache file is saved for incremental detection)
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // "newterm" is not yet in the file
+    {
+        let mut cmd = zetl_cmd_cached(dir.path());
+        cmd.arg("search").arg("newterm");
+        cmd.assert().failure();
+    }
+
+    // Modify the file: replace content
+    write_file(
+        dir.path(),
+        "Evolving.md",
+        "# Evolving\n\nThis file now has newterm content.\n",
+    );
+
+    // Re-index (incremental — detects file change and rebuilds search index)
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // Now "newterm" should be found
+    let json = run_json(zetl_cmd_cached(dir.path()).arg("search").arg("newterm"));
+    assert_eq!(
+        json["total_matches"].as_u64().unwrap(),
+        1,
+        "newterm should be found after re-indexing the modified file"
+    );
+
+    // And "oldterm" should no longer be indexed
+    {
+        let mut cmd = zetl_cmd_cached(dir.path());
+        cmd.arg("search").arg("oldterm");
+        cmd.assert().failure();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-003: --no-cache forces full rebuild even when nothing changed
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_003_no_cache_forces_rebuild() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Stable.md",
+        "# Stable\n\nThis file contains stableterm.\n",
+    );
+
+    // First: build with cache (normal operation)
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // Second: rebuild with --no-cache (should delete and fully rebuild the search index)
+    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+
+    // Index should report the correct document count after forced rebuild
+    assert_eq!(
+        json["search_index_docs"].as_u64().unwrap(),
+        1,
+        "--no-cache rebuild should index all documents"
+    );
+
+    // Search should still work after the forced rebuild
+    let search_json = run_json(zetl_cmd(dir.path()).arg("search").arg("stableterm"));
+    assert_eq!(
+        search_json["total_matches"].as_u64().unwrap(),
+        1,
+        "stableterm should be findable after --no-cache rebuild"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-004: Lazy index — search builds the index on the fly
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_004_lazy_index_built_on_search() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "LazyDoc.md",
+        "# LazyDoc\n\nThis document has lazyterm content.\n",
+    );
+
+    // Ensure no .zetl/search/ directory exists (fresh vault — no prior `zetl index`)
+    let search_dir = dir.path().join(".zetl").join("search");
+    assert!(
+        !search_dir.exists(),
+        "search dir must not exist before the lazy test"
+    );
+
+    // Run `zetl search` without a prior `zetl index` — should build index lazily
+    let (json, stderr) = run_json_with_stderr(zetl_cmd(dir.path()).arg("search").arg("lazyterm"));
+
+    // The result should be found
+    assert_eq!(
+        json["total_matches"].as_u64().unwrap(),
+        1,
+        "lazyterm should be found even without prior zetl index"
+    );
+
+    // Stderr must contain the lazy-build advisory message
+    assert!(
+        stderr.contains("Building search index"),
+        "stderr must warn about lazy index build, got: {stderr:?}"
     );
 }

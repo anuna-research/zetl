@@ -1,12 +1,12 @@
 {
-  "task_id": "update-cli",
+  "task_id": "verify-phase1",
   "token_budget": 8000,
-  "tokens_used": 253,
+  "tokens_used": 445,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Update the Search subcommand in src/cli.rs:\n\nRemove:\n  - --regex flag\n  - --all flag\n\nRetain (unchanged):\n  - <QUERY> positional argument\n  - --case-sensitive flag\n  - --path <GLOB> flag\n  - --context <N> flag\n  - --limit <N> flag (default 50)\n  - -f <FORMAT> flag (json/table)\n\nThe --near and --depth flags are added in Phase 2.\n\nUpdate cmd_search() in main.rs to match: remove regex/all handling, update SearchConfig construction, update JSON and table output to include score, heading, heading_level fields. Table format per CON-013-001: Page | Score | Line | Heading | Context.\n\nREQ-013-002, CON-013-001.",
-      "token_cost": 152,
+      "content": "End-to-end verification of Phase 1. Test against the demo-vault or a purpose-built test vault:\n\n  1. zetl index builds .zetl/search/ — JSON output includes search_index_docs and search_index_size_kb.\n  2. zetl search 'term' returns BM25-scored results — every result has score, heading, heading_level fields.\n  3. Relevance ranking: a page with many mentions of a term scores higher than one with a single mention (TEST-013-002).\n  4. Exclusion zones: terms in frontmatter, code blocks, inline code, HTML comments are NOT found (TEST-013-001).\n  5. Line-level results: multiple occurrences in the same file produce separate results with correct line/column, all sharing the same score (TEST-013-005).\n  6. Heading context: matches under headings show correct heading/level\n  7. Headings in code blocks are not used as enclosing headings (TEST-013-011).\n  8. Index invalidation: modify a file, re-run zetl index, verify new content is searchable (TEST-013-003).\n  9. --no-cache forces full rebuild (TEST-013-003).\n  10. Lazy index: delete .zetl/search/, run zetl search — index built on the fly, stderr message shown (TEST-013-004).\n  11. --case-sensitive flag works.\n  12. --path filter works.\n  13. --context flag works.\n  14. --limit flag works.\n  15. cargo test passes.\n\nTEST-013-001 through TEST-013-005, TEST-013-010, TEST-013-011.",
+      "token_cost": 335,
       "priority": "PlanMeta"
     },
     {
@@ -44,8 +44,14 @@
       "content": "Modified 2 files (+82, -5): .hence/context-manifest.json, src/main.rs",
       "token_cost": 17,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-update-cli-changes",
+      "content": "Modified 1 files (+8, -10): src/main.rs",
+      "token_cost": 9,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:40:17Z"
+  "constructed_at": "2026-03-01T13:41:45Z"
 }
