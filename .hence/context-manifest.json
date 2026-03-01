@@ -1,12 +1,12 @@
 {
-  "task_id": "tantivy-webstate",
+  "task_id": "search-index-json",
   "token_budget": 8000,
-  "tokens_used": 324,
+  "tokens_used": 423,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend WebState in src/web/mod.rs to hold a Tantivy IndexReader. During server startup in cmd_serve():\n\n  1. Build or open the Tantivy search index (same logic as zetl index).\n  2. Obtain an IndexReader from the SearchIndex.\n  3. Store the reader (or the SearchIndex itself) in WebState alongside the existing VaultData.\n\nThe IndexReader is thread-safe and can be shared across requests via Arc. When the vault is re-indexed (e.g., on file change in watch mode), the reader should be refreshed or rebuilt.\n\nWebState addition:\n  pub struct WebState {\n      pub data: Arc<RwLock<VaultData>>,\n      pub vault_root: Arc<PathBuf>,\n      pub search_index: Arc<SearchIndex>,  // NEW\n  }\n\nREQ-013-012.",
-      "token_cost": 173,
+      "content": "Extend build_static() in src/web/build.rs to emit search-index.json in the output directory root. Extract corpus statistics from the Tantivy index (or directly from the parsed files).\n\nSchema per CON-013-004:\n{\n  'avgDl': <number>,             // average document length (total terms)\n  'docs': [\n    {\n      'n': '<page_name>',        // page name\n      's': '<slug>',             // URL slug\n      'dl': <doc_length>,        // total terms in document\n      'tf': { '<term>': <count>, ... }  // term frequency map\n    }\n  ],\n  'df': { '<term>': <doc_count>, ... }  // document frequency per term\n}\n\nTo generate term frequencies: tokenize each document's body text using the same tokenization as Tantivy (lowercase, split on whitespace/punctuation). Count term occurrences per document. Compute document frequency (number of documents containing each term). Compute average document length.\n\nShort field names (n, s, dl, tf, df) minimize JSON size per NFR-013-006 (≤30% of vault text content).\n\nThe file is written to {out_dir}/search-index.json.\n\nREQ-013-014, CON-013-004, ADR-013-004.",
+      "token_cost": 272,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:09:52Z"
+  "constructed_at": "2026-03-01T14:13:56Z"
 }
