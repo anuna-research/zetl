@@ -146,7 +146,7 @@ fn render_folder_index(data: &VaultData, folder_slug: &str, vault_name: &str, pa
     let entries = sidebar_entries(data);
     let sidebar = sidebar_html(&entries, None);
     let si = search_index_json(&entries);
-    layout(folder_name, &sidebar, &content, None, None, &si)
+    layout(folder_name, &sidebar, &content, None, None, &si, false)
 }
 
 /// GET / — Landing page with vault stats and page grid.
@@ -214,7 +214,7 @@ pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
     let entries = sidebar_entries(&data);
     let sidebar = sidebar_html(&entries, None);
     let si = search_index_json(&entries);
-    Html(layout("Vault", &sidebar, &content, None, None, &si))
+    Html(layout("Vault", &sidebar, &content, None, None, &si, false))
 }
 
 /// GET /{*path} — Rendered markdown page with backlinks, or folder index.
@@ -596,7 +596,7 @@ async function saveEdit() {{
     let entries = sidebar_entries(&data);
     let sidebar = sidebar_html(&entries, Some(&current_slug));
     let si = search_index_json(&entries);
-    Html(layout(&page_name, &sidebar, &content, Some(&current_slug), right_panel, &si))
+    Html(layout(&page_name, &sidebar, &content, Some(&current_slug), right_panel, &si, false))
 }
 
 /// PUT /{*path} — Save edited markdown back to the vault file, then re-index.
