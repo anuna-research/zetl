@@ -4,11 +4,11 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 4,
-    "insertions": 79,
-    "deletions": 485,
+    "insertions": 68,
+    "deletions": 456,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/main.rs",
+      "src/web/build.rs",
       "src/web/mod.rs",
       "src/web/routes.rs"
     ],
@@ -16,14 +16,14 @@
   },
   "learnings": [
     {
-      "key": "task-refactor-routes-changes",
-      "content": "Modified 4 files (+79, -485): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs",
+      "key": "task-refactor-build-changes",
+      "content": "Modified 4 files (+68, -456): .hence/context-manifest.json, src/web/build.rs, src/web/mod.rs, src/web/routes.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/refactor-routes-v1",
-  "evaluated_at": "2026-03-01T13:31:11Z",
+  "branch_name": "hence/refactor-build-v1",
+  "evaluated_at": "2026-03-01T13:34:53Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

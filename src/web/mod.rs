@@ -30,6 +30,17 @@ pub struct VaultData {
     pub collision_names: HashSet<String>,
 }
 
+impl VaultData {
+    /// Look up the slug for a page name (case-insensitive).
+    pub fn slug_for_page(&self, page_name: &str) -> String {
+        self.page_slug_map
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(page_name))
+            .map(|(_, v)| v.clone())
+            .unwrap_or_else(|| page_name.to_string())
+    }
+}
+
 /// Shared state passed to all handlers via axum State.
 #[derive(Clone)]
 pub struct WebState {

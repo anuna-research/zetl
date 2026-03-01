@@ -1,12 +1,12 @@
 {
-  "task_id": "refactor-routes",
+  "task_id": "refactor-build",
   "token_budget": 8000,
-  "tokens_used": 339,
+  "tokens_used": 305,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Refactor src/web/routes.rs to use TemplateEngine instead of format!() string concatenation. Store TemplateEngine in WebState (or as a separate shared state). Update index_handler to build VaultContext from VaultData, call engine.render_index(). Update page_handler to build PageContext (including backlinks, outlinks with colors, breadcrumbs, transclusion cards, edit state), call engine.render_page() with mode='serve'. Update render_folder_index to build FolderContext, call engine.render_folder(). Keep save_handler and preview_handler unchanged (they don't render full pages). Remove direct calls to html.rs::layout(), html.rs::sidebar_html(), html.rs::breadcrumb_html(). Keep using html.rs::search_index_json(), html.rs::html_escape(), html.rs::urlencoding().",
-      "token_cost": 191,
+      "content": "Refactor src/web/build.rs to use TemplateEngine instead of format!() string concatenation. Create a TemplateEngine instance at the start of build_static(). Replace render_index(), render_page(), render_folder_index() calls with engine.render_index(), engine.render_page(mode='build'), engine.render_folder(). Remove duplicate sidebar_entries() and slug_for_page() if they can be shared with routes.rs (move to mod.rs or a shared util). Build mode must NOT include edit UI (mode='build' ensures this via template conditional).",
+      "token_cost": 131,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 5 files (+214, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/mod.rs",
       "token_cost": 29,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-refactor-routes-changes",
+      "content": "Modified 4 files (+79, -485): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs",
+      "token_cost": 26,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:27:05Z"
+  "constructed_at": "2026-03-01T13:31:16Z"
 }
