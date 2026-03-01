@@ -3,24 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 187,
-    "deletions": 0,
+    "files_changed": 3,
+    "insertions": 338,
+    "deletions": 5,
     "file_list": [
-      "src/search.rs"
+      ".hence/context-manifest.json",
+      "src/lib.rs",
+      "src/search_index.rs"
     ],
-    "dirty_files": 2
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-heading-detection-changes",
-      "content": "Modified 1 files (+187, -0): src/search.rs",
+      "key": "task-search-index-module-changes",
+      "content": "Modified 3 files (+338, -5): .hence/context-manifest.json, src/lib.rs, src/search_index.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/heading-detection-v1",
-  "evaluated_at": "2026-03-01T13:19:48Z",
+  "branch_name": "hence/search-index-module-v1",
+  "evaluated_at": "2026-03-01T13:26:28Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
