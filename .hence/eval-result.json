@@ -4,23 +4,23 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 1,
-    "insertions": 261,
+    "insertions": 45,
     "deletions": 0,
     "file_list": [
-      "src/web/templates/page.html"
+      "src/web/templates/folder.html"
     ],
     "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-extract-page-changes",
-      "content": "Modified 1 files (+261, -0): src/web/templates/page.html",
+      "key": "task-extract-folder-changes",
+      "content": "Modified 1 files (+45, -0): src/web/templates/folder.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/extract-page-v1",
-  "evaluated_at": "2026-03-01T13:22:39Z",
+  "branch_name": "hence/extract-folder-v1",
+  "evaluated_at": "2026-03-01T13:23:50Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
