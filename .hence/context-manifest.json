@@ -1,12 +1,12 @@
 {
-  "task_id": "bm25-js",
+  "task_id": "build-cmdk",
   "token_budget": 8000,
-  "tokens_used": 344,
+  "tokens_used": 365,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Embed a ~50-line inline JavaScript BM25 scorer in the build mode HTML layout. The scorer implements the standard BM25 formula per SPEC-013 §4.9:\n\n  score(q, d) = Σ IDF(t) * (tf(t,d) * (k1 + 1)) / (tf(t,d) + k1 * (1 - b + b * dl/avgDl))\n\n  where k1 = 1.2, b = 0.75\n  IDF(t) = ln((N - df(t) + 0.5) / (df(t) + 0.5) + 1)\n\nThe JS module should:\n  1. Expose a search(query, index) function.\n  2. Tokenize the query (lowercase, split on whitespace/punctuation — same as Tantivy's default).\n  3. For each document, compute BM25 score against query terms.\n  4. Return results sorted by descending score, filtered to score > 0.\n\nThe scorer is embedded via include_str!() of a .js file or inline in the HTML template. Store the JS in src/web/assets/bm25.js or similar.\n\nADR-013-004.",
-      "token_cost": 193,
+      "content": "Upgrade the Cmd+K modal in the build mode HTML to use client-side full-text search per REQ-013-015:\n\n  1. On first Cmd+K activation, lazy-fetch search-index.json and cache it in memory.\n  2. On keyup (debounced 150ms), tokenize the query and run the BM25 scorer against the cached index.\n  3. Display top results showing page name and BM25 score.\n  4. Arrow keys navigate results, Enter follows link to the page slug.\n  5. Target: results within 100ms of keystroke for indexes under 10,000 documents.\n\nThe existing page-name fuzzy filter is replaced entirely — the BM25 scorer handles page name matches because page names are part of the indexed body text.\n\nFor build mode, heading context and line-level positions are NOT available in the static index (deferred to v2 per Open Question #4). Results show page name and score only.\n\nREQ-013-015, ADR-013-004.",
+      "token_cost": 214,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:17:31Z"
+  "constructed_at": "2026-03-01T14:22:19Z"
 }
