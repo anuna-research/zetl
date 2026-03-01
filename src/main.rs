@@ -1389,9 +1389,82 @@ fn cmd_search(
     limit: usize,
     case_sensitive: bool,
     path_filter: Option<&str>,
+    near: Option<&str>,
+    depth: Option<usize>,
 ) -> Result<()> {
+    // REQ-013-007: --depth without --near is an error (exit 2).
+    if depth.is_some() && near.is_none() {
+        let msg = "--depth requires --near to be specified";
+        match cli.format {
+            OutputFormat::Json => exit_json_error(msg, 2),
+            OutputFormat::Table => {
+                eprintln!("Error: {msg}");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let depth_val = depth.unwrap_or(1);
+
+    // REQ-013-007: --depth 0 is an error (exit 2).
+    if depth_val == 0 {
+        let msg = "--depth must be >= 1";
+        match cli.format {
+            OutputFormat::Json => exit_json_error(msg, 2),
+            OutputFormat::Table => {
+                eprintln!("Error: {msg}");
+                std::process::exit(2);
+            }
+        }
+    }
+
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // REQ-013-006: When --near is given, compute the neighbourhood and use it to
+    // filter results. REQ-013-008: suggest similar names if the page is unresolvable.
+    let neighbourhood_set: Option<HashSet<String>> = if let Some(near_page) = near {
+        let pipeline = run_pipeline(cli)?;
+
+        let resolved = match resolve_page_name(near_page, &pipeline.file_index) {
+            Some(r) => r,
+            None => {
+                // REQ-013-008: suggest similar names (substring containment).
+                let mut similar: Vec<&str> = pipeline
+                    .file_index
+                    .iter()
+                    .filter(|(name, _)| {
+                        let n = name.to_lowercase();
+                        let q = near_page.to_lowercase();
+                        n.contains(&q) || q.contains(n.as_str())
+                    })
+                    .map(|(name, _)| name.as_str())
+                    .collect();
+                similar.sort();
+                similar.truncate(5);
+                let msg = if similar.is_empty() {
+                    format!("Page not found: '{near_page}'")
+                } else {
+                    format!(
+                        "Page not found: '{near_page}'. Did you mean: {}",
+                        similar.join(", ")
+                    )
+                };
+                match cli.format {
+                    OutputFormat::Json => exit_json_error(&msg, 2),
+                    OutputFormat::Table => {
+                        eprintln!("Error: {msg}");
+                        std::process::exit(2);
+                    }
+                }
+            }
+        };
+
+        let set = pipeline.graph.neighbourhood(&resolved, depth_val)?;
+        Some(set)
+    } else {
+        None
+    };
 
     let config = SearchConfig {
         query,
@@ -1401,7 +1474,7 @@ fn cmd_search(
         path_filter,
     };
 
-    let output = match search_vault(&vault_root, &config) {
+    let mut output = match search_vault(&vault_root, &config) {
         Ok(o) => o,
         Err(e) => {
             let msg = format!("{e}");
@@ -1415,6 +1488,12 @@ fn cmd_search(
             }
         }
     };
+
+    // Filter results to the neighbourhood if --near was specified.
+    if let Some(ref set) = neighbourhood_set {
+        output.results.retain(|r| set.contains(&r.page));
+        output.total_matches = output.results.len();
+    }
 
     if output.total_matches == 0 {
         match cli.format {
@@ -5997,6 +6076,8 @@ fn main() -> anyhow::Result<()> {
             limit,
             case_sensitive,
             path,
+            near,
+            depth,
         } => cmd_search(
             &cli,
             query,
@@ -6004,6 +6085,8 @@ fn main() -> anyhow::Result<()> {
             *limit,
             *case_sensitive,
             path.as_deref(),
+            near.as_deref(),
+            *depth,
         ),
         Command::List => cmd_list(&cli),
         Command::Stats { top } => cmd_stats(&cli, *top),

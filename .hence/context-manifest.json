@@ -1,12 +1,12 @@
 {
-  "task_id": "neighbourhood-bfs",
+  "task_id": "near-depth-cli",
   "token_budget": 8000,
-  "tokens_used": 360,
+  "tokens_used": 333,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add a neighbourhood() method to LinkGraph in src/graph.rs. Algorithm per SPEC-013 §4.5:\n\n  pub fn neighbourhood(&self, anchor: &str, depth: usize) -> Result<HashSet<String>>\n\n  1. Resolve anchor to a node in the graph. Error if not found (with suggested similar names via the existing resolution logic).\n  2. Initialize visited = {anchor}, queue = [(anchor, 0)].\n  3. While queue not empty:\n     a. Pop (page, d). If d >= depth, skip.\n     b. For each neighbour (both outgoing AND incoming edges — bidirectional BFS):\n        If not visited: add to visited, push (neighbour, d + 1).\n  4. Return visited (the set of page names within depth hops).\n\nUse petgraph's neighbors_directed(Outgoing) and neighbors_directed(Incoming) to get both edge directions.\n\nThe anchor page itself is always included in the result set.\n\nNFR-013-004 target: ≤50ms for 10,000 pages at depth 3 with average degree 5.\n\nREQ-013-006, ADR-013-002.",
-      "token_cost": 231,
+      "content": "Add --near <PAGE> and --depth <N> flags to the Search subcommand in src/cli.rs:\n\n  --near <PAGE>   Restrict results to pages within --depth hops of PAGE.\n                  PAGE is resolved using the same page name resolution as\n                  other graph commands (case-insensitive, normalized\n                  whitespace/hyphens/underscores). Optional.\n  --depth <N>     Neighbourhood radius. Default: 1. Must be >= 1.\n                  Only valid when --near is specified.\n\nValidation in cmd_search() (REQ-013-007):\n  - --depth without --near → exit code 2, error message.\n  - --depth 0 or negative → exit code 2, error message.\n  - --near with unresolvable page → exit code 2, suggest similar names (REQ-013-008).\n\nREQ-013-006, REQ-013-007, REQ-013-008, CON-013-001.",
+      "token_cost": 194,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 2 files (+444, -5): .hence/context-manifest.json, tests/integration.rs",
       "token_cost": 19,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-neighbourhood-bfs-changes",
+      "content": "Modified 1 files (+226, -0): src/graph.rs",
+      "token_cost": 10,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:49:10Z"
+  "constructed_at": "2026-03-01T13:52:01Z"
 }

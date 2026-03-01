@@ -132,6 +132,12 @@ pub enum Command {
         /// Restrict results to files matching glob (relative to vault root)
         #[arg(long)]
         path: Option<String>,
+        /// Restrict results to pages within --depth hops of PAGE
+        #[arg(long, value_name = "PAGE")]
+        near: Option<String>,
+        /// Neighbourhood radius (default: 1, must be >= 1; only valid with --near)
+        #[arg(long, value_name = "N")]
+        depth: Option<usize>,
     },
 
     /// List all pages in the vault

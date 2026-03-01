@@ -3,24 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 226,
-    "deletions": 0,
+    "files_changed": 2,
+    "insertions": 90,
+    "deletions": 1,
     "file_list": [
-      "src/graph.rs"
+      "src/cli.rs",
+      "src/main.rs"
     ],
-    "dirty_files": 2
+    "dirty_files": 3
   },
   "learnings": [
     {
-      "key": "task-neighbourhood-bfs-changes",
-      "content": "Modified 1 files (+226, -0): src/graph.rs",
+      "key": "task-near-depth-cli-changes",
+      "content": "Modified 2 files (+90, -1): src/cli.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/neighbourhood-bfs-v1",
-  "evaluated_at": "2026-03-01T13:51:55Z",
+  "branch_name": "hence/near-depth-cli-v1",
+  "evaluated_at": "2026-03-01T13:56:31Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
