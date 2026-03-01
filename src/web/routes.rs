@@ -8,16 +8,7 @@ use crate::scanner::page_slug_from_path;
 use crate::web::context::{build_folder_context, build_page_context, build_vault_context};
 use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
-use crate::web::{reindex, VaultData, WebState};
-
-/// Look up the slug for a page name (case-insensitive).
-fn slug_for_page(data: &VaultData, page_name: &str) -> String {
-    data.page_slug_map
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case(page_name))
-        .map(|(_, v)| v.clone())
-        .unwrap_or_else(|| page_name.to_string())
-}
+use crate::web::{reindex, WebState};
 
 /// GET / — Landing page with vault stats and page grid.
 pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
@@ -125,7 +116,7 @@ pub async fn page_handler(
     let mut transclusion_cards = String::new();
     for (i, target) in unique_targets.iter().enumerate() {
         let color = colors[i % colors.len()];
-        let target_slug = slug_for_page(&data, target);
+        let target_slug = data.slug_for_page(target);
         let href = urlencoding(&target_slug);
 
         let preview_html = data
