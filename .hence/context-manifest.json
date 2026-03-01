@@ -1,11 +1,11 @@
 {
-  "task_id": "static-build",
+  "task_id": "verify-phase3",
   "token_budget": 8000,
   "tokens_used": 312,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend build_static() in src/web/build.rs to copy static assets to {out_dir}/_static/ after HTML generation. Copy order: (1) .zetl/static/ contents first (shared), (2) .zetl/themes/<active-theme>/static/ contents second (theme-specific, overwrites shared on conflict). Preserve directory structure within both sources. If neither directory exists, do not create _static/ in output. Use std::fs recursive copy. REQ-012-006, CON-012-003, ADR-013.",
+      "content": "End-to-end verification of static asset handling. Serve mode: (1) shared .zetl/static/test.js returns 200 with correct MIME, (2) theme static overrides shared at same path, (3) 404 for nonexistent files, (4) no error when no static dirs exist. Build mode: (1) shared + theme assets merged in dist/_static/, (2) theme overwrites shared on conflict, (3) directory structure preserved, (4) no _static/ when no source dirs. TEST-012-005, TEST-012-006.",
       "token_cost": 111,
       "priority": "PlanMeta"
     },
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:23:24Z"
+  "constructed_at": "2026-03-01T14:25:48Z"
 }
