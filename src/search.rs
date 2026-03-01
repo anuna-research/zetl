@@ -66,17 +66,17 @@ pub fn detect_headings(content: &str, body_text_ranges: &[(usize, usize)]) -> Ve
 
     for line in content.split('\n') {
         let level = line.bytes().take_while(|&b| b == b'#').count();
-        if level >= 1 && level <= 6 {
+        if (1..=6).contains(&level) {
             let after_hashes = &line[level..];
-            if after_hashes.starts_with(' ') || after_hashes.starts_with('\t') {
-                if in_body_text(byte_offset, body_text_ranges) {
-                    let text = after_hashes[1..].trim_end().to_string();
-                    headings.push(FileHeading {
-                        byte_offset,
-                        level: level as u8,
-                        text,
-                    });
-                }
+            if (after_hashes.starts_with(' ') || after_hashes.starts_with('\t'))
+                && in_body_text(byte_offset, body_text_ranges)
+            {
+                let text = after_hashes[1..].trim_end().to_string();
+                headings.push(FileHeading {
+                    byte_offset,
+                    level: level as u8,
+                    text,
+                });
             }
         }
         byte_offset += line.len() + 1; // +1 for the '\n' we split on
@@ -129,7 +129,9 @@ pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOu
     let index = match SearchIndex::open(vault_root)? {
         Some(idx) => idx,
         None => {
-            eprintln!("Building search index (run `zetl index` to avoid this delay on future queries)");
+            eprintln!(
+                "Building search index (run `zetl index` to avoid this delay on future queries)"
+            );
             let files = scan_vault(vault_root, &[])?;
             SearchIndex::build(vault_root, &files)?
         }
@@ -356,9 +358,30 @@ mod tests {
         let ranges = vec![(0, content.len())];
         let headings = detect_headings(content, &ranges);
         assert_eq!(headings.len(), 3);
-        assert_eq!(headings[0], FileHeading { byte_offset: 0, level: 1, text: "Hello".into() });
-        assert_eq!(headings[1], FileHeading { byte_offset: 8, level: 2, text: "World".into() });
-        assert_eq!(headings[2], FileHeading { byte_offset: 17, level: 3, text: "Three".into() });
+        assert_eq!(
+            headings[0],
+            FileHeading {
+                byte_offset: 0,
+                level: 1,
+                text: "Hello".into()
+            }
+        );
+        assert_eq!(
+            headings[1],
+            FileHeading {
+                byte_offset: 8,
+                level: 2,
+                text: "World".into()
+            }
+        );
+        assert_eq!(
+            headings[2],
+            FileHeading {
+                byte_offset: 17,
+                level: 3,
+                text: "Three".into()
+            }
+        );
     }
 
     #[test]

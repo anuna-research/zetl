@@ -1054,8 +1054,9 @@ mod tests {
     fn test_neighbourhood_not_found_suggests_similar() {
         // Graph with page "Alpha" — querying "alpha" (lowercase) should suggest it
         let files = vec![make_file("Alpha", vec![])];
-        let resolved: HashMap<String, String> =
-            [("Alpha".to_string(), "Alpha".to_string())].into_iter().collect();
+        let resolved: HashMap<String, String> = [("Alpha".to_string(), "Alpha".to_string())]
+            .into_iter()
+            .collect();
         let graph = LinkGraph::build(&files, &resolved);
 
         let err = graph.neighbourhood("alpha", 1).unwrap_err();

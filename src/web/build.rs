@@ -4,7 +4,9 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use crate::scanner::{body_text_ranges, page_slug_from_path};
-use crate::web::html::{breadcrumb_html, html_escape, layout, search_index_json, sidebar_html, urlencoding};
+use crate::web::html::{
+    breadcrumb_html, html_escape, layout, search_index_json, sidebar_html, urlencoding,
+};
 use crate::web::markdown;
 use crate::web::VaultData;
 
@@ -164,13 +166,24 @@ pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str) -> Resul
             .with_context(|| format!("Cannot read {}", full_path.display()))?;
 
         let page_sidebar = sidebar_html(&entries, Some(&slug));
-        let page_html = render_page(data, vault_root, &file.page_name, &slug, &content, &page_sidebar, &si);
+        let page_html = render_page(
+            data,
+            vault_root,
+            &file.page_name,
+            &slug,
+            &content,
+            &page_sidebar,
+            &si,
+        );
         std::fs::write(page_dir.join("index.html"), page_html)?;
         count += 1;
     }
 
     // ── folder index pages ─────────────────────────────────────────────
-    let vault_name = vault_root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "vault".to_string());
+    let vault_name = vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
     let mut folders: HashSet<String> = HashSet::new();
     for file in &data.files {
         let slug = page_slug_from_path(&file.path);
@@ -203,7 +216,14 @@ pub fn build_static(data: &VaultData, vault_root: &Path, out_dir: &str) -> Resul
         std::fs::create_dir_all(&folder_dir)?;
 
         let folder_sidebar = sidebar_html(&entries, None);
-        let folder_html = render_folder_index(data, folder, &vault_name, &folder_pages, &folder_sidebar, &si);
+        let folder_html = render_folder_index(
+            data,
+            folder,
+            &vault_name,
+            &folder_pages,
+            &folder_sidebar,
+            &si,
+        );
         std::fs::write(folder_dir.join("index.html"), folder_html)?;
         folder_count += 1;
     }
@@ -264,11 +284,6 @@ fn render_index(data: &VaultData, sidebar: &str, search_index: &str) -> String {
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {grid}
 </div>"#,
-        total_pages = total_pages,
-        total_links = total_links,
-        dead_links = dead_links,
-        orphans = orphans,
-        grid = grid,
     );
 
     layout("Vault", sidebar, &content, None, None, search_index, true)
@@ -306,11 +321,14 @@ fn render_folder_index(
     let mut grid = String::new();
 
     for subfolder in &subfolders {
-        let subfolder_slug = format!("{}/{}", folder_slug, subfolder);
-        let count = sorted_pages.iter().filter(|p| {
-            let s = page_slug_from_path(&p.path).to_lowercase();
-            s.starts_with(&format!("{}/", subfolder_slug.to_lowercase()))
-        }).count();
+        let subfolder_slug = format!("{folder_slug}/{subfolder}");
+        let count = sorted_pages
+            .iter()
+            .filter(|p| {
+                let s = page_slug_from_path(&p.path).to_lowercase();
+                s.starts_with(&format!("{}/", subfolder_slug.to_lowercase()))
+            })
+            .count();
         grid.push_str(&format!(
             r#"<a href="/{href}/" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
   <div class="card-body p-4">
@@ -362,7 +380,15 @@ fn render_folder_index(
         grid = grid,
     );
 
-    layout(folder_name, sidebar, &content, None, None, search_index, true)
+    layout(
+        folder_name,
+        sidebar,
+        &content,
+        None,
+        None,
+        search_index,
+        true,
+    )
 }
 
 /// Render a single page (mirrors `page_handler` in routes.rs, minus edit UI).
@@ -448,12 +474,15 @@ fn render_page(
         "[{}]",
         colors
             .iter()
-            .map(|c| format!("\"{}\"", c))
+            .map(|c| format!("\"{c}\""))
             .collect::<Vec<_>>()
             .join(",")
     );
 
-    let vault_name = vault_root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "vault".to_string());
+    let vault_name = vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
     let breadcrumb = breadcrumb_html(current_slug, page_name, &vault_name);
 
     // Static page: no edit button, no edit-mode div, no toggleEdit/saveEdit JS.
@@ -623,10 +652,15 @@ fn render_page(
   }}
 }})();
 </script>"#,
-        rendered = rendered,
-        backlinks_html = backlinks_html,
-        colors_json = colors_json,
     );
 
-    layout(page_name, sidebar, &content, Some(current_slug), right_panel, search_index, true)
+    layout(
+        page_name,
+        sidebar,
+        &content,
+        Some(current_slug),
+        right_panel,
+        search_index,
+        true,
+    )
 }

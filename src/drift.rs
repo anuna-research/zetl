@@ -83,9 +83,8 @@ pub fn detect_section_drift(
         };
 
         let message = format!(
-            "section '{}' changed since last theory build \
-             (grounding hash mismatch; SPL logic unchanged)",
-            section_heading
+            "section '{section_heading}' changed since last theory build \
+             (grounding hash mismatch; SPL logic unchanged)"
         );
 
         diagnostics.push(DriftDiagnostic {
@@ -340,8 +339,8 @@ mod tests {
     ) -> TheoryCache {
         let mut blocks_json = serde_json::Map::new();
         for (key, ast, grounding, heading) in spl_blocks {
-            let ast_hex: String = ast.iter().map(|b| format!("{:02x}", b)).collect();
-            let grounding_hex: String = grounding.iter().map(|b| format!("{:02x}", b)).collect();
+            let ast_hex: String = ast.iter().map(|b| format!("{b:02x}")).collect();
+            let grounding_hex: String = grounding.iter().map(|b| format!("{b:02x}")).collect();
             // content_hash = ast_hash for simplicity in tests
             let block = serde_json::json!({
                 "ast_hash": ast_hex,
@@ -737,17 +736,14 @@ mod tests {
         grounding_hash: ContentHash,
         groundings: Vec<(&str, &str, &str, ContentHash)>,
     ) -> TheoryCache {
-        let ast_hex: String = ast_hash.iter().map(|b| format!("{:02x}", b)).collect();
-        let grounding_hex: String = grounding_hash
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect();
+        let ast_hex: String = ast_hash.iter().map(|b| format!("{b:02x}")).collect();
+        let grounding_hex: String = grounding_hash.iter().map(|b| format!("{b:02x}")).collect();
 
         let explicit: Vec<serde_json::Value> = groundings
             .iter()
             .map(|(construct, source_ref, target_file, target_hash)| {
                 let target_hash_hex: String =
-                    target_hash.iter().map(|b| format!("{:02x}", b)).collect();
+                    target_hash.iter().map(|b| format!("{b:02x}")).collect();
                 serde_json::json!({
                     "construct": construct,
                     "source_refs": [source_ref],

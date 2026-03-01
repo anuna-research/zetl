@@ -383,14 +383,13 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     // was requested.  For --no-cache, the existing index directory is deleted
     // first so Tantivy starts with a clean on-disk layout.
     let search_dir = pipeline.vault_root.join(".zetl").join("search");
-    let needs_rebuild = cli.no_cache
-        || pipeline.scan_stats.files_hashed > 0
-        || !search_dir.exists();
+    let needs_rebuild =
+        cli.no_cache || pipeline.scan_stats.files_hashed > 0 || !search_dir.exists();
 
     let (search_index_docs, search_index_build_ms) = if needs_rebuild {
         if cli.no_cache && search_dir.exists() {
             std::fs::remove_dir_all(&search_dir)
-                .with_context(|| format!("removing search index directory {:?}", search_dir))?;
+                .with_context(|| format!("removing search index directory {search_dir:?}"))?;
         }
         let idx_start = Instant::now();
         SearchIndex::build(&pipeline.vault_root, &pipeline.files)
@@ -1382,6 +1381,7 @@ fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_search(
     cli: &Cli,
     query: &str,
@@ -1508,7 +1508,11 @@ fn cmd_search(
         Ok(o) => o,
         Err(e) => {
             let msg = format!("{e}");
-            let code = if msg.contains("Empty search query") { 2 } else { 1 };
+            let code = if msg.contains("Empty search query") {
+                2
+            } else {
+                1
+            };
             match cli.format {
                 OutputFormat::Json => exit_json_error(&msg, code),
                 OutputFormat::Table => {
@@ -1658,15 +1662,14 @@ fn cmd_blocks(
     let pipeline = run_pipeline(cli)?;
 
     // ── Helper: convert hex ContentHash to string ──────────────────────────
-    let hash_to_hex = |h: &zetl::types::ContentHash| -> String {
-        h.iter().map(|b| format!("{:02x}", b)).collect()
-    };
+    let hash_to_hex =
+        |h: &zetl::types::ContentHash| -> String { h.iter().map(|b| format!("{b:02x}")).collect() };
 
     // ── Helper: derive a type label string from a LeafType ─────────────────
     fn leaf_type_label(leaf_type: &zetl::types::LeafType) -> String {
         use zetl::types::LeafType;
         match leaf_type {
-            LeafType::Heading { level } => format!("heading-{}", level),
+            LeafType::Heading { level } => format!("heading-{level}"),
             LeafType::Paragraph => "paragraph".to_string(),
             LeafType::CodeBlock { .. } => "code".to_string(),
             LeafType::SplBlock => "spl".to_string(),

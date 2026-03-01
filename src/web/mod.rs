@@ -4,11 +4,11 @@ pub mod markdown;
 pub mod routes;
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use axum::Router;
 use axum::routing::get;
+use axum::Router;
 
 use crate::graph::LinkGraph;
 use crate::scanner::{page_slug_from_path, resolve_page_name, scan_vault};
@@ -39,7 +39,7 @@ pub struct WebState {
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.
-pub fn reindex(vault_root: &PathBuf) -> anyhow::Result<VaultData> {
+pub fn reindex(vault_root: &Path) -> anyhow::Result<VaultData> {
     let files = scan_vault(vault_root, &[])?;
 
     let file_index: Vec<(String, PathBuf)> = files
@@ -100,9 +100,7 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
     // Warn about slug collisions
     for (slug, sources) in &slug_sources {
         if sources.len() > 1 {
-            eprintln!(
-                "warning: slug collision — the following files all map to /{slug}:"
-            );
+            eprintln!("warning: slug collision — the following files all map to /{slug}:");
             for src in sources {
                 eprintln!("  - {src}");
             }
@@ -128,7 +126,10 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
         .route("/", get(routes::index_handler))
         .route("/api/search", get(routes::api_search_handler))
         .route("/preview/{*path}", get(routes::preview_handler))
-        .route("/{*path}", get(routes::page_handler).put(routes::save_handler))
+        .route(
+            "/{*path}",
+            get(routes::page_handler).put(routes::save_handler),
+        )
         .with_state(state);
 
     let addr = format!("0.0.0.0:{port}");

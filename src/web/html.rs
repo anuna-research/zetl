@@ -5,7 +5,7 @@ pub fn search_index_json(entries: &[(String, String)]) -> String {
         .map(|(name, slug)| {
             let n = name.replace('\\', "\\\\").replace('"', "\\\"");
             let s = slug.replace('\\', "\\\\").replace('"', "\\\"");
-            format!(r#"{{"n":"{}","s":"{}"}}"#, n, s)
+            format!(r#"{{"n":"{n}","s":"{s}"}}"#)
         })
         .collect();
     format!("[{}]", items.join(","))
@@ -122,7 +122,7 @@ pub fn layout(
       if(active>=0&&els[active])els[active].scrollIntoView({block:'nearest'});
     }
 
-    input.addEventListener('keyup',function(){clearTimeout(debounceTimer);debounceTimer=setTimeout(runSearch,150);});
+    input.addEventListener('keyup',function(e){if(e.key==='ArrowDown'||e.key==='ArrowUp'||e.key==='Enter'||e.key==='Escape')return;clearTimeout(debounceTimer);debounceTimer=setTimeout(runSearch,150);});
 
     document.addEventListener('keydown',function(e){
       if((e.metaKey||e.ctrlKey)&&e.key==='k'){
@@ -156,7 +156,7 @@ pub fn layout(
 
     function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-    function slugFromPath(path){return path.replace(/\.md$/i,'');}
+    function slugFromPath(path){return path.replace(/\.md$/i,'').toLowerCase().replace(/ /g,'-');}
 
     function render(items){
       results.innerHTML='';
@@ -252,7 +252,8 @@ pub fn layout(
       if(active>=0&&els[active])els[active].scrollIntoView({block:'nearest'});
     }
 
-    input.addEventListener('keyup',function(){
+    input.addEventListener('keyup',function(e){
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'||e.key==='Enter'||e.key==='Escape')return;
       clearTimeout(debounceTimer);
       debounceTimer=setTimeout(runSearch,150);
     });
@@ -295,15 +296,12 @@ pub fn layout(
           {panel}
         </aside>
       </div>"#,
-            content = content,
-            panel = panel,
         )
     } else {
         format!(
             r#"<main class="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
         {content}
       </main>"#,
-            content = content,
         )
     };
 
@@ -650,11 +648,6 @@ pub fn layout(
 
 </body>
 </html>"#,
-        title = title,
-        sidebar = sidebar,
-        main_section = main_section,
-        search_index = search_index,
-        search_js = search_js,
     )
 }
 
@@ -693,10 +686,8 @@ pub fn breadcrumb_html(slug: &str, page_name: &str, vault_name: &str) -> String 
             page = html_escape(page_name),
         );
     }
-    let mut s = format!(
-        r#"<nav class="text-sm breadcrumbs mb-4"><ul><li><a href="/">{root}</a></li>"#,
-        root = root,
-    );
+    let mut s =
+        format!(r#"<nav class="text-sm breadcrumbs mb-4"><ul><li><a href="/">{root}</a></li>"#,);
     // Build cumulative folder path for each segment's href
     let mut folder_path = String::new();
     for folder in &parts[..parts.len() - 1] {

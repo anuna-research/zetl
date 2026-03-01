@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
-use tantivy::schema::{Field, Schema, SchemaBuilder, OwnedValue, STORED, STRING, TEXT};
+use tantivy::schema::{Field, OwnedValue, Schema, SchemaBuilder, STORED, STRING, TEXT};
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument};
 
 use crate::scanner::body_text_ranges;
@@ -59,7 +59,9 @@ impl SearchIndex {
         let fields = fields_from_index(&index)?;
 
         let mut writer: IndexWriter = index.writer(50_000_000).context("creating index writer")?;
-        writer.delete_all_documents().context("clearing search index")?;
+        writer
+            .delete_all_documents()
+            .context("clearing search index")?;
 
         for file in files {
             let abs_path = vault_root.join(&file.path);
@@ -69,7 +71,7 @@ impl SearchIndex {
 
             let mut doc = TantivyDocument::default();
             doc.add_text(fields.page_name, &file.page_name);
-            doc.add_text(fields.path, &file.path.to_string_lossy());
+            doc.add_text(fields.path, file.path.to_string_lossy());
             doc.add_text(fields.body, &body);
             writer
                 .add_document(doc)
@@ -300,7 +302,10 @@ mod tests {
         let index = SearchIndex::build(dir.path(), &[file2]).unwrap();
 
         let alpha_hits = index.query("unique_alpha_word", 10).unwrap();
-        assert!(alpha_hits.is_empty(), "rebuild should have removed alpha document");
+        assert!(
+            alpha_hits.is_empty(),
+            "rebuild should have removed alpha document"
+        );
 
         let beta_hits = index.query("unique_beta_word", 10).unwrap();
         assert_eq!(beta_hits.len(), 1);

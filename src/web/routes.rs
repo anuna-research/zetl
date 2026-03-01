@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
+use axum::Json;
 use serde::Deserialize;
 
 use crate::scanner::{body_text_ranges, page_slug_from_path};
@@ -11,9 +11,11 @@ use crate::search::{
     byte_offset_to_line_col, detect_headings, extract_search_context, find_heading_for_offset,
     in_body_text, SearchMatch, SearchOutput,
 };
-use crate::web::html::{breadcrumb_html, html_escape, layout, search_index_json, sidebar_html, urlencoding};
-use crate::web::markdown;
 use crate::search_index::SearchIndex;
+use crate::web::html::{
+    breadcrumb_html, html_escape, layout, search_index_json, sidebar_html, urlencoding,
+};
+use crate::web::markdown;
 use crate::web::{reindex, VaultData, WebState};
 
 /// Build sidebar entries as `(display_name, slug)` tuples.
@@ -59,7 +61,12 @@ fn slug_for_page(data: &VaultData, page_name: &str) -> String {
 }
 
 /// Render a folder index page showing all pages under a given folder prefix.
-fn render_folder_index(data: &VaultData, folder_slug: &str, vault_name: &str, pages: &[&crate::types::ParsedFile]) -> String {
+fn render_folder_index(
+    data: &VaultData,
+    folder_slug: &str,
+    vault_name: &str,
+    pages: &[&crate::types::ParsedFile],
+) -> String {
     let folder_name = folder_slug.rsplit('/').next().unwrap_or(folder_slug);
 
     let mut grid = String::new();
@@ -84,11 +91,14 @@ fn render_folder_index(data: &VaultData, folder_slug: &str, vault_name: &str, pa
 
     // Sub-folder cards
     for subfolder in &subfolders {
-        let subfolder_slug = format!("{}/{}", folder_slug, subfolder);
-        let count = sorted_pages.iter().filter(|p| {
-            let s = page_slug_from_path(&p.path).to_lowercase();
-            s.starts_with(&format!("{}/", subfolder_slug.to_lowercase()))
-        }).count();
+        let subfolder_slug = format!("{folder_slug}/{subfolder}");
+        let count = sorted_pages
+            .iter()
+            .filter(|p| {
+                let s = page_slug_from_path(&p.path).to_lowercase();
+                s.starts_with(&format!("{}/", subfolder_slug.to_lowercase()))
+            })
+            .count();
         grid.push_str(&format!(
             r#"<a href="/{href}/" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
   <div class="card-body p-4">
@@ -204,11 +214,6 @@ pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {grid}
 </div>"#,
-        total_pages = total_pages,
-        total_links = total_links,
-        dead_links = dead_links,
-        orphans = orphans,
-        grid = grid,
     );
 
     let entries = sidebar_entries(&data);
@@ -218,10 +223,7 @@ pub async fn index_handler(State(state): State<WebState>) -> Html<String> {
 }
 
 /// GET /{*path} — Rendered markdown page with backlinks, or folder index.
-pub async fn page_handler(
-    State(state): State<WebState>,
-    Path(slug): Path<String>,
-) -> Html<String> {
+pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String>) -> Html<String> {
     let slug = urldecode(&slug);
     // Strip trailing slash for folder index requests
     let slug = slug.trim_end_matches('/');
@@ -246,7 +248,11 @@ pub async fn page_handler(
             .collect();
 
         if !folder_pages.is_empty() {
-            let vault_name = state.vault_root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "vault".to_string());
+            let vault_name = state
+                .vault_root
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "vault".to_string());
             let html = render_folder_index(&data, slug, &vault_name, &folder_pages);
             return Html(html);
         }
@@ -275,7 +281,7 @@ pub async fn page_handler(
             String::new(),
             name.clone(),
             slug.to_string(),
-            Some(format!("# {}\n", name)),
+            Some(format!("# {name}\n")),
         )
     };
 
@@ -366,8 +372,6 @@ pub async fn page_handler(
   <textarea id="editor" class="textarea textarea-bordered w-full font-mono"
             style="min-height:80vh">{raw}</textarea>
 </div>"#,
-            edit_display = edit_display,
-            raw = raw,
         )
     } else {
         String::new()
@@ -379,9 +383,14 @@ pub async fn page_handler(
         ""
     };
 
-    let vault_name = state.vault_root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "vault".to_string());
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
     let breadcrumb = breadcrumb_html(&current_slug, &page_name, &vault_name);
 
+    #[allow(clippy::format_in_format_args)]
     let content = format!(
         r#"{breadcrumb}
 <div id="view-mode" {view_display}>
@@ -587,7 +596,7 @@ async function saveEdit() {{
             "[{}]",
             colors
                 .iter()
-                .map(|c| format!("\"{}\"", c))
+                .map(|c| format!("\"{c}\""))
                 .collect::<Vec<_>>()
                 .join(",")
         ),
@@ -596,7 +605,15 @@ async function saveEdit() {{
     let entries = sidebar_entries(&data);
     let sidebar = sidebar_html(&entries, Some(&current_slug));
     let si = search_index_json(&entries);
-    Html(layout(&page_name, &sidebar, &content, Some(&current_slug), right_panel, &si, false))
+    Html(layout(
+        &page_name,
+        &sidebar,
+        &content,
+        Some(&current_slug),
+        right_panel,
+        &si,
+        false,
+    ))
 }
 
 /// PUT /{*path} — Save edited markdown back to the vault file, then re-index.
@@ -618,7 +635,7 @@ pub async fn save_handler(
         if let Some(file) = file {
             state.vault_root.join(&file.path)
         } else {
-            state.vault_root.join(format!("{}.md", slug))
+            state.vault_root.join(format!("{slug}.md"))
         }
     };
 
@@ -681,10 +698,7 @@ pub async fn preview_handler(
             Err(_) => "<em>Could not read file.</em>".to_string(),
         }
     } else {
-        format!(
-            "<em>{} (does not exist)</em>",
-            html_escape(&slug)
-        )
+        format!("<em>{} (does not exist)</em>", html_escape(&slug))
     };
 
     Html(preview)

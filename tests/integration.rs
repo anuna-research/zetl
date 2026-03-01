@@ -1152,7 +1152,7 @@ fn test_017_search_respects_ignores() {
         "should find match in Public, got: {pages:?}"
     );
     assert!(
-        !pages.iter().any(|p| *p == "Draft"),
+        !pages.contains(&"Draft"),
         "should NOT find match in ignored Draft, got: {pages:?}"
     );
 }
@@ -2458,11 +2458,20 @@ fn test_013_006_near_depth1_outgoing() {
 
     // A, B, C are within 1 hop of A (bidirectional)
     assert!(pages.contains(&"A"), "A (anchor) must be in results");
-    assert!(pages.contains(&"B"), "B (outgoing 1-hop) must be in results");
-    assert!(pages.contains(&"C"), "C (outgoing 1-hop) must be in results");
+    assert!(
+        pages.contains(&"B"),
+        "B (outgoing 1-hop) must be in results"
+    );
+    assert!(
+        pages.contains(&"C"),
+        "C (outgoing 1-hop) must be in results"
+    );
 
     // D is 2 hops away; E is isolated — both excluded at depth 1
-    assert!(!pages.contains(&"D"), "D (2 hops) must be excluded at depth 1");
+    assert!(
+        !pages.contains(&"D"),
+        "D (2 hops) must be excluded at depth 1"
+    );
     assert!(!pages.contains(&"E"), "E (isolated) must be excluded");
 }
 
@@ -2493,7 +2502,10 @@ fn test_013_006_near_depth2_includes_second_hop() {
     assert!(pages.contains(&"A"), "A must be in results");
     assert!(pages.contains(&"B"), "B must be in results");
     assert!(pages.contains(&"C"), "C must be in results");
-    assert!(pages.contains(&"D"), "D (2 hops via B) must be in results at depth 2");
+    assert!(
+        pages.contains(&"D"),
+        "D (2 hops via B) must be in results at depth 2"
+    );
 
     // E is isolated even at depth 2
     assert!(!pages.contains(&"E"), "E (isolated) must be excluded");
@@ -2919,10 +2931,7 @@ fn test_013_014_doc_fields_and_term_frequencies() {
 
     // Every doc must have n, s, dl, tf
     for doc in docs {
-        assert!(
-            doc["n"].is_string(),
-            "doc must have 'n' (page name): {doc}"
-        );
+        assert!(doc["n"].is_string(), "doc must have 'n' (page name): {doc}");
         assert!(doc["s"].is_string(), "doc must have 's' (slug): {doc}");
         assert!(
             doc["dl"].is_number(),
@@ -3129,7 +3138,7 @@ fn start_serve_process(vault: &Path) -> (std::process::Child, u16) {
     drop(listener);
 
     let binary = assert_cmd::cargo::cargo_bin!("zetl");
-    let child = std::process::Command::new(&binary)
+    let child = std::process::Command::new(binary)
         .arg("-d")
         .arg(vault)
         .arg("--no-cache")
@@ -3164,15 +3173,12 @@ fn stop_serve_process(mut child: std::process::Child) {
 /// Make a raw HTTP/1.1 GET request to `127.0.0.1:port` for `path`.
 /// Returns `(status_code, body_string)`.
 fn http_get(port: u16, path: &str) -> (u16, String) {
-    let mut stream =
-        TcpStream::connect(("127.0.0.1", port)).expect("connect to zetl serve");
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect to zetl serve");
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .unwrap();
-    let request = format!(
-        "GET {} HTTP/1.1\r\nHost: localhost:{}\r\nConnection: close\r\n\r\n",
-        path, port
-    );
+    let request =
+        format!("GET {path} HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n");
     stream
         .write_all(request.as_bytes())
         .expect("write HTTP request");
@@ -3225,7 +3231,9 @@ fn test_013_012_api_search_returns_bm25_results() {
     let json: Value = serde_json::from_str(&body)
         .unwrap_or_else(|e| panic!("response is not valid JSON: {e}\nbody: {body}"));
 
-    let results = json["results"].as_array().expect("results must be an array");
+    let results = json["results"]
+        .as_array()
+        .expect("results must be an array");
     assert!(
         !results.is_empty(),
         "should find at least one result for 'algorithm'"
@@ -3266,7 +3274,10 @@ fn test_013_012_api_search_returns_bm25_results() {
         .collect();
     let mut sorted = scores.clone();
     sorted.sort_by(|a, b| b.partial_cmp(a).unwrap());
-    assert_eq!(scores, sorted, "results must be ordered by descending BM25 score");
+    assert_eq!(
+        scores, sorted,
+        "results must be ordered by descending BM25 score"
+    );
 }
 
 #[test]
@@ -3307,12 +3318,17 @@ fn test_013_012_api_search_limit_parameter() {
     let (status, body) = http_get(port, "/api/search?q=test&limit=3");
     stop_serve_process(child);
 
-    assert_eq!(status, 200, "GET /api/search?q=test&limit=3 must return 200");
+    assert_eq!(
+        status, 200,
+        "GET /api/search?q=test&limit=3 must return 200"
+    );
 
     let json: Value = serde_json::from_str(&body)
         .unwrap_or_else(|e| panic!("response is not valid JSON: {e}\nbody: {body}"));
 
-    let results = json["results"].as_array().expect("results must be an array");
+    let results = json["results"]
+        .as_array()
+        .expect("results must be an array");
     assert!(
         results.len() <= 3,
         "limit=3 must return at most 3 results, got {}",
