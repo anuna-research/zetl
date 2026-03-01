@@ -3,26 +3,24 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 502,
-    "deletions": 5,
+    "files_changed": 1,
+    "insertions": 499,
+    "deletions": 0,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/web/context.rs",
-      "src/web/mod.rs"
+      "src/web/templates/base.html"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-context-structs-changes",
-      "content": "Modified 3 files (+502, -5): .hence/context-manifest.json, src/web/context.rs, src/web/mod.rs",
+      "key": "task-extract-base-changes",
+      "content": "Modified 1 files (+499, -0): src/web/templates/base.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/context-structs-v1",
-  "evaluated_at": "2026-03-01T13:11:59Z",
+  "branch_name": "hence/extract-base-v1",
+  "evaluated_at": "2026-03-01T13:17:19Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

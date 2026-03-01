@@ -1,12 +1,12 @@
 {
-  "task_id": "context-structs",
+  "task_id": "extract-base",
   "token_budget": 8000,
-  "tokens_used": 172,
+  "tokens_used": 220,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create src/web/context.rs with Serde-serializable structs for template data: VaultContext, PageEntry, StatsContext, ZetlMeta, BreadcrumbEntry, BacklinkEntry, OutlinkEntry, PageContext, FolderContext, SubfolderEntry. Each struct derives Serialize. PageContext.frontmatter is serde_json::Value (empty object {} for now — actual parsing is Phase 4). Add builder functions that convert VaultData + page-specific data into these context structs. Export the module from src/web/mod.rs. See SPEC-012 §3.5 for exact struct definitions.",
-      "token_cost": 132,
+      "content": "Create src/web/templates/base.html by extracting the master layout from html.rs::layout(). This template defines the DOCTYPE, <head> with DaisyUI/Tailwind CDN links, all inline CSS, the drawer layout, sidebar, search modal, and inline JS. Define blocks: {% block head %}, {% block styles %}, {% block sidebar %}, {% block content %}, {% block scripts %}. Use Minijinja syntax. Template variables: vault.name, vault.pages (for sidebar), search_index, zetl.version, theme. The sidebar navigation must match the current sidebar_html() output exactly — same nested <ul> structure, same slug links, same collision-aware display names.",
+      "token_cost": 157,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 3 files (+36, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-context-structs-changes",
+      "content": "Modified 3 files (+502, -5): .hence/context-manifest.json, src/web/context.rs, src/web/mod.rs",
+      "token_cost": 23,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:07:45Z"
+  "constructed_at": "2026-03-01T13:12:04Z"
 }
