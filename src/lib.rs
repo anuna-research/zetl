@@ -7,6 +7,7 @@ pub mod merkle;
 pub mod reason;
 pub mod scanner;
 pub mod search;
+pub mod search_index;
 pub mod simhash;
 pub mod tui;
 pub mod types;

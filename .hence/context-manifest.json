@@ -1,12 +1,12 @@
 {
-  "task_id": "heading-detection",
+  "task_id": "search-index-module",
   "token_budget": 8000,
-  "tokens_used": 256,
+  "tokens_used": 442,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add heading detection to src/search.rs (or a dedicated module). Implement per SPEC-013 §4.6:\n\nPublic API:\n  - detect_headings(content: &str, body_text_ranges: &[(usize, usize)]) -> Vec<FileHeading>\n    Scan line by line. For lines matching ^#{1,6}\\s, check if the byte offset falls within a body_text_range. If so, record FileHeading { byte_offset, level, text }. Text is the heading stripped of leading # chars and trailing whitespace.\n  - find_heading_for_offset(headings: &[FileHeading], byte_offset: usize) -> (Option<String>, Option<u8>)\n    Binary search for the largest heading byte_offset <= the match byte_offset. Returns (heading_text, heading_level) or (None, None) if no preceding heading.\n\nFileHeading struct: { byte_offset: usize, level: u8, text: String }\n\nHeadings inside code blocks, frontmatter, or HTML comments are excluded by the body_text_ranges filter (ADR-013-003). Setext headings are not detected (out of scope).\n\nREQ-013-010, REQ-013-011, ADR-013-003.",
-      "token_cost": 244,
+      "content": "Create src/search_index.rs with the Tantivy index management layer. This module encapsulates all Tantivy interaction:\n\nSchema: Three fields per document:\n  - page_name: STRING (stored, indexed for filtering)\n  - path: STRING (stored, not indexed)\n  - body: TEXT (indexed for full-text search, stored)\n\nTokenization: Tantivy's default tokenizer (lowercase, split on whitespace/punctuation).\n\nIndex location: .zetl/search/ directory.\n\nPublic API:\n  - SearchIndex::build(vault_root, files: &[ParsedFile]) -> Result<SearchIndex>\n    Creates/opens .zetl/search/, iterates files, extracts body text using scanner::body_text_ranges(), creates one Tantivy document per file. Clears and rebuilds the full index (incremental update handled at the caller level via cache).\n  - SearchIndex::open(vault_root) -> Result<Option<SearchIndex>>\n    Opens an existing index from .zetl/search/. Returns None if directory doesn't exist.\n  - SearchIndex::query(query_str, limit) -> Result<Vec<SearchHit>>\n    Parses query with QueryParser against the body field, executes with TopDocs collector, returns Vec of (page_name, path, score) tuples.\n  - SearchIndex::reader() -> Result<IndexReader>\n    For serve mode: returns a reader that can be held across requests.\n\nSearchHit struct: { page_name: String, path: String, score: f64 }\n\nBody text extraction: For each file, concatenate the byte ranges from body_text_ranges() into a single string. This reuses the same exclusion logic as SPEC-002 (no frontmatter, code blocks, inline code, HTML comments). Import body_text_ranges from scanner.rs.\n\nError handling: Return anyhow::Result with context about which file or query failed.\n\nREQ-013-001, ADR-013-001.",
+      "token_cost": 420,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 2 files (+667, -8): Cargo.lock, Cargo.toml",
       "token_cost": 12,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-heading-detection-changes",
+      "content": "Modified 1 files (+187, -0): src/search.rs",
+      "token_cost": 10,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:17:40Z"
+  "constructed_at": "2026-03-01T13:19:54Z"
 }
