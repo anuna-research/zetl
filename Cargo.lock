@@ -2130,6 +2130,7 @@ dependencies = [
  "spindle-parser",
  "tempfile",
  "tokio",
+ "tower",
  "tui-input",
 ]
 
