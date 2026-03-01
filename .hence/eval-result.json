@@ -3,24 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 58,
-    "deletions": 0,
+    "files_changed": 5,
+    "insertions": 68,
+    "deletions": 11,
     "file_list": [
-      "src/web/markdown.rs"
+      ".hence/context-manifest.json",
+      "src/cli.rs",
+      "src/main.rs",
+      "src/web/build.rs",
+      "src/web/mod.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-frontmatter-parse-changes",
-      "content": "Modified 1 files (+58, -0): src/web/markdown.rs",
+      "key": "task-theme-cli-changes",
+      "content": "Modified 5 files (+68, -11): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/build.rs, src/web/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/frontmatter-parse-v1",
-  "evaluated_at": "2026-03-01T13:55:24Z",
+  "branch_name": "hence/theme-cli-v1",
+  "evaluated_at": "2026-03-01T13:58:16Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
