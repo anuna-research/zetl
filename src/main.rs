@@ -1430,17 +1430,15 @@ fn cmd_search(
         OutputFormat::Json => print_json(&output)?,
         OutputFormat::Table => {
             let mut table = Table::new();
-            let mut headers = vec!["Page", "Line", "Col"];
-            if context > 0 {
-                headers.push("Context");
-            }
-            table.set_header(headers);
+            table.set_header(vec!["Page", "Score", "Line", "Heading", "Context"]);
             for r in &output.results {
-                let mut row = vec![Cell::new(&r.page), Cell::new(r.line), Cell::new(r.column)];
-                if context > 0 {
-                    row.push(Cell::new(r.context.as_deref().unwrap_or("")));
-                }
-                table.add_row(row);
+                table.add_row(vec![
+                    Cell::new(&r.page),
+                    Cell::new(format!("{:.3}", r.score)),
+                    Cell::new(r.line),
+                    Cell::new(r.heading.as_deref().unwrap_or("")),
+                    Cell::new(r.context.as_deref().unwrap_or("")),
+                ]);
             }
             println!(
                 "Search results for '{}' ({} matches):",
