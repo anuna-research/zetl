@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} — zetl{% endblock %}
+
+{% block content %}
+{% if page.transclusion_cards %}
+<div class="page-with-panel flex-1">
+  <main class="flex-1 p-4 sm:p-6 min-w-0">
+{% else %}
+  <main class="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
+{% endif %}
+
+    {# Breadcrumbs #}
+    <nav class="text-sm breadcrumbs mb-4">
+      <ul>
+        <li><a href="/">{{ vault.name }}</a></li>
+        {%- for crumb in page.breadcrumbs %}
+        <li><a href="/{{ crumb.slug | urlencode }}/">{{ crumb.title }}</a></li>
+        {%- endfor %}
+        <li>{{ page.title }}</li>
+      </ul>
+    </nav>
+
+    {# View mode #}
+    <div id="view-mode"{% if page.is_new %} style="display:none"{% endif %}>
+      {% if mode == "serve" and page.raw_escaped %}
+      <div class="flex justify-end mb-4">
+        <button onclick="toggleEdit()" class="btn btn-sm btn-outline">Edit</button>
+      </div>
+      {% endif %}
+      <article class="prose prose-lg max-w-none">{{ page.content_html | safe }}</article>
+      {% if page.backlinks %}
+      <div class="divider"></div>
+      <h2 class="text-lg font-semibold mb-2">Backlinks</h2>
+      <ul class="list-none space-y-1">
+        {%- for bl in page.backlinks %}
+        <li>
+          <a href="/{{ bl.slug | urlencode }}#line-{{ bl.line }}" class="link link-secondary">{{ bl.title }}</a>
+          <span class="text-xs opacity-50 ml-2">line {{ bl.line }}</span>
+        </li>
+        {%- endfor %}
+      </ul>
+      {% endif %}
+    </div>
+
+    {# Edit mode (serve only) #}
+    {% if mode == "serve" and page.raw_escaped %}
+    <div id="edit-mode"{% if not page.is_new %} style="display:none"{% endif %}>
+      <div class="flex gap-2 mb-4">
+        <button onclick="saveEdit()" class="btn btn-sm btn-primary">Save</button>
+        <button onclick="toggleEdit()" class="btn btn-sm btn-outline">Cancel</button>
+      </div>
+      <textarea id="editor" class="textarea textarea-bordered w-full font-mono"
+                style="min-height:80vh">{{ page.raw_escaped | safe }}</textarea>
+    </div>
+    {% endif %}
+
+  </main>
+
+  {% if page.transclusion_cards %}
+  <aside class="transclusion-panel">
+    <h3 class="tp-header">Linked Pages</h3>
+    {{ page.transclusion_cards | safe }}
+  </aside>
+</div>
+  {% endif %}
+
+<script>
+// Transclusion: SVG bridge lines + bidirectional hover
+(function() {
+  var COLORS = ["#f472b6","#60a5fa","#34d399","#fbbf24","#a78bfa","#fb923c","#2dd4bf","#f87171"];
+  var cards = document.querySelectorAll('.transclusion-card');
+  var colorMap = {};
+  cards.forEach(function(card, i) {
+    colorMap[card.dataset.targetHref] = COLORS[i % COLORS.length];
+  });
+
+  // Apply matching underline colors to content wikilinks
+  document.querySelectorAll('a.wikilink:not(.wikilink-dead)').forEach(function(link) {
+    var color = colorMap[link.getAttribute('href')];
+    if (color) {
+      link.style.textDecorationColor = color;
+    }
+  });
+
+  // SVG overlay for bridge lines
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:40;';
+  document.body.appendChild(svg);
+
+  function drawBridge(fromEl, toEl, color) {
+    svg.innerHTML = '';
+    var fr = fromEl.getBoundingClientRect();
+    var tr = toEl.getBoundingClientRect();
+    var x1 = fr.right + 4;
+    var y1 = fr.top + fr.height / 2;
+    var x2 = tr.left - 2;
+    var y2 = tr.top + 16;
+    var mx = (x1 + x2) / 2;
+
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d',
+      'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + y2 + ', ' + x2 + ' ' + y2);
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('opacity', '0.6');
+    svg.appendChild(path);
+
+    var d1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    d1.setAttribute('cx', x1); d1.setAttribute('cy', y1);
+    d1.setAttribute('r', '3'); d1.setAttribute('fill', color);
+    d1.setAttribute('opacity', '0.6');
+    svg.appendChild(d1);
+
+    var d2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    d2.setAttribute('cx', x2); d2.setAttribute('cy', y2);
+    d2.setAttribute('r', '3'); d2.setAttribute('fill', color);
+    d2.setAttribute('opacity', '0.6');
+    svg.appendChild(d2);
+  }
+
+  function clearBridge() {
+    svg.innerHTML = '';
+  }
+
+  var isDesktop = function() { return window.matchMedia('(min-width: 1280px)').matches; };
+  var isMobile = function() { return !isDesktop(); };
+
+  // Hover wikilink → draw bridge line + expand card
+  document.querySelectorAll('a.wikilink').forEach(function(link) {
+    var href = link.getAttribute('href');
+    var color = colorMap[href] || '#888';
+    link.addEventListener('mouseenter', function() {
+      var card = document.querySelector('.transclusion-card[data-target-href="' + href + '"]');
+      if (card) {
+        card.classList.add('tc-active');
+        if (isDesktop()) drawBridge(link, card, color);
+      }
+    });
+    link.addEventListener('mouseleave', function() {
+      document.querySelectorAll('.transclusion-card.tc-active').forEach(function(c) { c.classList.remove('tc-active'); });
+      clearBridge();
+    });
+  });
+
+  // Hover card → highlight matching wikilinks + expand card
+  cards.forEach(function(card) {
+    var href = card.dataset.targetHref;
+    card.addEventListener('mouseenter', function() {
+      card.classList.add('tc-active');
+      document.querySelectorAll('a.wikilink[href="' + href + '"]').forEach(function(l) { l.classList.add('wl-active'); });
+    });
+    card.addEventListener('mouseleave', function() {
+      card.classList.remove('tc-active');
+      document.querySelectorAll('a.wl-active').forEach(function(l) { l.classList.remove('wl-active'); });
+    });
+  });
+
+  // Mobile tooltip preview
+  if (isMobile() && cards.length) {
+    var tooltip = document.createElement('div');
+    tooltip.className = 'wikilink-tooltip';
+    tooltip.innerHTML =
+      '<div class="tt-header"><a class="tt-title" href="">Title</a><button class="tt-close">&times;</button></div>' +
+      '<div class="tt-body prose prose-sm max-w-none"></div>' +
+      '<div class="tt-footer"><a class="tt-go" href="">Go to page &rarr;</a></div>';
+    document.body.appendChild(tooltip);
+
+    var ttTitle = tooltip.querySelector('.tt-title');
+    var ttBody  = tooltip.querySelector('.tt-body');
+    var ttGo    = tooltip.querySelector('.tt-go');
+    var ttClose = tooltip.querySelector('.tt-close');
+    var activeLink = null;
+
+    function showTooltip(linkEl, href) {
+      var card = document.querySelector('.transclusion-card[data-target-href="' + href + '"]');
+      if (!card) return;
+      var excerpt = card.querySelector('.tc-excerpt');
+      if (!excerpt) return;
+      var title = card.querySelector('.tc-title');
+      ttTitle.textContent = title ? title.textContent : href;
+      ttTitle.href = href;
+      ttBody.innerHTML = excerpt.innerHTML;
+      ttGo.href = href;
+      var rect = linkEl.getBoundingClientRect();
+      var below = rect.bottom + 8;
+      var above = rect.top - 8;
+      tooltip.style.bottom = 'auto';
+      tooltip.style.top = 'auto';
+      if (below + window.innerHeight * 0.4 < window.innerHeight) {
+        tooltip.style.top = below + 'px';
+      } else {
+        tooltip.style.bottom = (window.innerHeight - above) + 'px';
+      }
+      tooltip.classList.add('tt-visible');
+      activeLink = linkEl;
+    }
+
+    function hideTooltip() {
+      tooltip.classList.remove('tt-visible');
+      activeLink = null;
+    }
+
+    ttClose.addEventListener('click', function(e) { e.preventDefault(); hideTooltip(); });
+
+    document.addEventListener('click', function(e) {
+      if (tooltip.contains(e.target)) return;
+      var link = e.target.closest('a.wikilink:not(.wikilink-dead)');
+      if (link) {
+        var href = link.getAttribute('href');
+        if (activeLink === link && tooltip.classList.contains('tt-visible')) {
+          return; // second tap — navigate normally
+        }
+        var card = document.querySelector('.transclusion-card[data-target-href="' + href + '"]');
+        if (card) {
+          e.preventDefault();
+          showTooltip(link, href);
+          return;
+        }
+      }
+      if (tooltip.classList.contains('tt-visible')) {
+        hideTooltip();
+      }
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') hideTooltip();
+    });
+  }
+})();
+</script>
+{% endblock %}
+
+{% block scripts %}
+{% if mode == "serve" %}
+<script>
+function toggleEdit() {
+  var vm = document.getElementById('view-mode');
+  var em = document.getElementById('edit-mode');
+  if (em.style.display === 'none') {
+    em.style.display = 'block';
+    vm.style.display = 'none';
+  } else {
+    em.style.display = 'none';
+    vm.style.display = 'block';
+  }
+}
+async function saveEdit() {
+  var content = document.getElementById('editor').value;
+  var res = await fetch(window.location.pathname, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    body: content
+  });
+  if (res.ok) window.location.reload();
+  else alert('Save failed: ' + res.status);
+}
+</script>
+{% endif %}
+{% endblock %}

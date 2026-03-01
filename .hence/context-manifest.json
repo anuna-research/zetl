@@ -1,12 +1,12 @@
 {
-  "task_id": "extract-index",
+  "task_id": "extract-page",
   "token_budget": 8000,
-  "tokens_used": 191,
+  "tokens_used": 253,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create src/web/templates/index.html by extracting the vault landing page from routes.rs::index_handler() and build.rs::render_index(). Template extends base.html. Overrides {% block content %} with the stats grid (total pages, total links, dead links, orphans) and the page listing cards. Variables: vault.stats.total_pages, vault.stats.total_links, vault.stats.dead_links, vault.stats.orphans, vault.pages[] with title, slug, outlink_count, backlink_count.",
-      "token_cost": 114,
+      "content": "Create src/web/templates/page.html by extracting the single-page view from routes.rs::page_handler() and build.rs::render_page(). Template extends base.html. Overrides {% block content %} with: breadcrumbs, page title, rendered markdown content (page.content_html|safe), backlinks panel, transclusion cards panel, SVG bridge lines JS, mobile tooltip preview JS. Overrides {% block scripts %} with edit-mode JS (save handler, toggle) wrapped in {% if mode == 'serve' %} conditional. Variables: page.title, page.slug, page.content_html, page.backlinks[], page.outlinks[], page.breadcrumbs[], page.transclusion_cards, page.is_new, page.raw_escaped, mode.",
+      "token_cost": 162,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 1 files (+499, -0): src/web/templates/base.html",
       "token_cost": 14,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-extract-index-changes",
+      "content": "Modified 1 files (+38, -0): src/web/templates/index.html",
+      "token_cost": 14,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:17:24Z"
+  "constructed_at": "2026-03-01T13:18:56Z"
 }
