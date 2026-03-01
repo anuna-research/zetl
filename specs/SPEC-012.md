@@ -1,20 +1,20 @@
 ---
-title: "SPEC-012: zetl — Customisable Web Templates for Serve and Build"
-version: 0.1.0
+title: "SPEC-012: zetl — Named Themes for Serve and Build"
+version: 0.2.0
 status: draft
 audience: agent, human
 date: 2026-03-01
 ---
 
-# SPEC-012: zetl — Customisable Web Templates for Serve and Build
+# SPEC-012: zetl — Named Themes for Serve and Build
 
 ## Information Table
 
 | Field          | Value                                                          |
 | -------------- | -------------------------------------------------------------- |
 | Document ID    | SPEC-012                                                       |
-| Title          | zetl — Customisable Web Templates for Serve and Build          |
-| Version        | 0.1.0                                                          |
+| Title          | zetl — Named Themes for Serve and Build                        |
+| Version        | 0.2.0                                                          |
 | Status         | Draft                                                          |
 | Author         | Agent (USDD Protocol v1.0.0)                                   |
 | Date           | 2026-03-01                                                     |
@@ -29,7 +29,7 @@ date: 2026-03-01
 
 zetl's `serve` and `build` commands render a vault as a navigable website — `serve` runs a live development server with edit capabilities, and `build` generates a static site for deployment. Both commands currently generate all HTML in Rust code via `format!()` string concatenation in `html.rs`, `routes.rs`, and `build.rs`. CSS comes from CDN links (DaisyUI/Tailwind), JavaScript is inline, and the layout is hardcoded. This means any customisation — loading custom JS like Fountain.js for screenplay rendering, changing the layout, adding analytics, applying a brand stylesheet — requires recompiling zetl.
 
-This specification introduces a **template engine** that decouples vault data from HTML rendering. zetl adopts a "headless CMS" pattern: structured vault data (pages, links, backlinks, frontmatter, stats) is passed to a Jinja2-compatible template engine, which renders it into HTML. The current UI becomes the **default theme** — shipped embedded in the binary — which users can override partially or fully by placing template files in their vault's `.zetl/templates/` directory.
+This specification introduces a **template engine** and **named theme** system that decouples vault data from HTML rendering. zetl adopts a "headless CMS" pattern: structured vault data (pages, links, backlinks, frontmatter, stats) is passed to a Jinja2-compatible template engine, which renders it into HTML. The current UI becomes the built-in **`"default"` theme** — shipped embedded in the binary. Users create additional themes as named subdirectories under `.zetl/themes/` and select the active theme via a `--theme` CLI flag. Each theme only needs to override the templates it wants to change — missing templates fall back to the built-in default.
 
 ### 1.1 Core Insight
 
@@ -39,9 +39,10 @@ A static site generator without user-customisable templates is not a static site
 
 1. **Data, not markup.** Templates receive structured, serializable context objects. The template decides what to render and how. zetl's job is to provide complete, well-typed data — not HTML fragments.
 2. **Override partially, inherit the rest.** Template inheritance (`{% extends %}`, `{% block %}`) means a user can override a single block (e.g., add a `<script>` tag to the head) without rewriting the entire layout. Overriding `page.html` while inheriting the default `base.html` is a first-class use case.
-3. **Zero-config default.** With no `.zetl/templates/` directory, the output is pixel-identical to the current hardcoded HTML. The template engine is invisible until the user opts in.
-4. **Static assets are first-class.** A `.zetl/static/` directory is served verbatim (in `serve` mode) or copied to the output (in `build` mode). Templates can reference these assets via `/_static/` paths. No build toolchain, no bundler — just files.
+3. **Zero-config default.** With no `.zetl/themes/` directory and no `--theme` flag, the output is pixel-identical to the current hardcoded HTML. The template engine is invisible until the user opts in.
+4. **Static assets are first-class.** A `.zetl/static/` directory provides shared assets across all themes, and each theme can bundle its own static assets in a `static/` subdirectory. Assets are served verbatim (in `serve` mode) or copied to the output (in `build` mode) at `/_static/` paths. No build toolchain, no bundler — just files.
 5. **Frontmatter is structured data.** YAML frontmatter is parsed into a key-value object accessible in templates. This enables content-type-aware rendering: `{% if page.frontmatter.format == "fountain" %}` to load a screenplay renderer.
+6. **Themes are named, switchable directories.** Multiple themes can coexist as peer directories under `.zetl/themes/`. Switching themes is a single CLI flag (`--theme fountain`), not a file-shuffling operation. This encourages experimentation and per-audience rendering from a single vault.
 
 ### 1.3 Scope
 
@@ -49,11 +50,13 @@ A static site generator without user-customisable templates is not a static site
 
 - Template engine integration (Minijinja) for `serve` and `build` HTML generation
 - Default theme templates extracted from current hardcoded HTML (pixel-identical output)
-- User template overrides from `.zetl/templates/` with fallback to built-in defaults
+- Named theme directories under `.zetl/themes/<name>/` with fallback to built-in default
+- `--theme <name>` CLI flag for `serve` and `build` commands (default: `"default"`)
 - Template inheritance (`{% extends %}`, `{% block %}`, `{% include %}`)
 - Structured template context: vault metadata, page content, links, backlinks, stats, breadcrumbs
-- Static asset serving from `.zetl/static/` at `/_static/` in serve mode
-- Static asset copying to output directory in build mode
+- Shared static asset serving from `.zetl/static/` at `/_static/` in serve mode
+- Per-theme static assets from `.zetl/themes/<name>/static/` merged with shared assets
+- Static asset copying to output directory in build mode (per-theme assets override shared on conflict)
 - YAML frontmatter parsing into structured template data
 - Mode-aware rendering (`serve` vs `build`) so templates can include/exclude edit UI
 
@@ -65,7 +68,7 @@ A static site generator without user-customisable templates is not a static site
 - Server-side includes or dynamic data fetching in templates
 - Custom Minijinja filters or functions beyond the built-in set (future SPEC)
 - RSS/Atom feed generation (future SPEC — natural extension once templates exist)
-- Multi-vault theming (each vault has its own `.zetl/templates/`)
+- Theme configuration files (e.g., `theme.toml` for theme metadata — future SPEC)
 
 ---
 
@@ -85,9 +88,9 @@ Constraints:
   - Does not want to fork or recompile zetl
   - Wants changes to take effect immediately on `zetl serve`
 Daily workflow:
-  1. Create `.zetl/templates/base.html` to add analytics script
-  2. Run `zetl serve` — see changes reflected in the browser
-  3. Run `zetl build` — static site includes the custom template
+  1. Create `.zetl/themes/garden/base.html` to add analytics script
+  2. Run `zetl serve --theme garden` — see changes reflected in the browser
+  3. Run `zetl build --theme garden` — static site includes the custom theme
   4. Deploy the `dist/` directory to a static host
 ```
 
@@ -98,16 +101,16 @@ Role: Writer using Fountain markup in Markdown files
 Goals:
   - Render pages with `format: fountain` frontmatter using Fountain.js
   - Keep non-screenplay pages rendering with the default theme
-  - Load Fountain.js from `.zetl/static/fountain.js`
+  - Load Fountain.js from theme-specific static assets
 Constraints:
   - Needs conditional template logic based on frontmatter
   - Fountain.js is a client-side library loaded via <script> tag
   - Does not want to modify non-screenplay page rendering
 Daily workflow:
   1. Add `format: fountain` to screenplay page frontmatter
-  2. Place `fountain.js` in `.zetl/static/`
-  3. Create `.zetl/templates/page.html` with conditional Fountain loading
-  4. Run `zetl serve` — screenplay pages render with Fountain.js
+  2. Place `fountain.js` in `.zetl/themes/fountain/static/`
+  3. Create `.zetl/themes/fountain/page.html` with conditional Fountain loading
+  4. Run `zetl serve --theme fountain` — screenplay pages render with Fountain.js
 ```
 
 ### 2.3 Documentation Engineer
@@ -123,11 +126,11 @@ Constraints:
   - Must match corporate style guide
   - Needs full control over base layout
   - Cannot use CDN-hosted CSS (air-gapped environment)
-  - Pre-compiled CSS/JS assets placed in `.zetl/static/`
+  - Pre-compiled CSS/JS assets placed in theme-specific static directory
 Daily workflow:
-  1. Override `base.html` with corporate layout
-  2. Place brand CSS/JS in `.zetl/static/`
-  3. Use `zetl build -o docs/` to generate static site
+  1. Create `.zetl/themes/docs-corp/` with full template overrides
+  2. Place brand CSS/JS in `.zetl/themes/docs-corp/static/`
+  3. Use `zetl build --theme docs-corp -o docs/` to generate static site
   4. Commit `docs/` to repository for GitHub Pages deployment
 ```
 
@@ -136,7 +139,7 @@ Daily workflow:
 ```
 Role: AI agent building and publishing a knowledge base
 Goals:
-  - Programmatically generate templates for custom vault rendering
+  - Programmatically generate themes for custom vault rendering
   - Write frontmatter-driven conditional templates
   - Use `zetl build` output for downstream processing
 Constraints:
@@ -144,8 +147,8 @@ Constraints:
   - Must know exactly what variables are available in each template
   - Needs structured error messages when templates fail to render
 Daily workflow:
-  1. Write `.zetl/templates/page.html` with structured data access
-  2. Run `zetl build` and verify output programmatically
+  1. Write `.zetl/themes/agent-output/page.html` with structured data access
+  2. Run `zetl build --theme agent-output` and verify output programmatically
   3. Inspect template errors from structured CLI output
 ```
 
@@ -182,8 +185,8 @@ Decision:
   - Supports template inheritance (extends, block), includes, filters,
     macros — all required for the override-partially pattern.
   - Built-in source/loader feature for dynamic template loading with
-    fallback — directly supports the "check disk, fall back to
-    built-in" pattern.
+    fallback — directly supports the "check theme directory on disk,
+    fall back to built-in" pattern.
   - Actively maintained, good error messages with line numbers.
 
 Consequences:
@@ -199,26 +202,35 @@ Consequences:
 ### 3.2 Template Resolution Architecture
 
 ```
-Template Loading Order:
+Template Loading Order (two-tier):
 
-  1. Check .zetl/templates/<name>.html on disk
-  2. If not found, fall back to built-in default (include_str!)
-  3. Template inheritance resolves across both sources:
+  1. Check .zetl/themes/<active-theme>/<name>.html on disk
+  2. Fall back to built-in "default" theme (include_str!)
+
+  The active theme is set via --theme <name> (default: "default").
+
+  Template inheritance resolves across both tiers:
      - User page.html can {% extends "base.html" %} where base.html
        is the built-in default
      - User base.html overrides the entire shell; built-in page.html
        still works if it only uses blocks defined in base.html
 
+  A theme only needs to provide the templates it wants to change.
+  Missing templates transparently fall back to the built-in default.
+
 Implementation:
   Minijinja's Environment::set_loader() accepts a closure that
   returns Option<String>. The closure:
-    fn load(name: &str) -> Option<String> {
-        // 1. Check disk
-        let disk_path = vault_root.join(".zetl/templates").join(name);
-        if disk_path.exists() {
-            return Some(fs::read_to_string(disk_path).ok()?);
+    fn load(name: &str, theme: &str, vault_root: &Path) -> Option<String> {
+        // 1. Check active theme directory on disk
+        let theme_path = vault_root
+            .join(".zetl/themes")
+            .join(theme)
+            .join(name);
+        if theme_path.exists() {
+            return Some(fs::read_to_string(theme_path).ok()?);
         }
-        // 2. Fall back to built-in
+        // 2. Fall back to built-in default
         match name {
             "base.html"   => Some(include_str!("templates/base.html")),
             "index.html"  => Some(include_str!("templates/index.html")),
@@ -229,19 +241,35 @@ Implementation:
     }
 ```
 
-### 3.3 Template File Structure
+### 3.3 Theme Directory Structure
 
 ```
 .zetl/
-  templates/           # user overrides (all optional)
-    base.html          # master layout — blocks: head, styles, content, sidebar, scripts
-    index.html         # vault landing page ({% extends "base.html" %})
-    page.html          # single page view ({% extends "base.html" %})
-    folder.html        # folder index   ({% extends "base.html" %})
-  static/              # served verbatim at /_static/ (serve) or copied to dist/_static/ (build)
-    fountain.js
-    custom.css
+  themes/
+    fountain/              # a custom theme
+      base.html            # master layout override (optional)
+      page.html            # page view override (optional)
+      static/              # theme-specific static assets (optional)
+        fountain.js
+        fountain.css
+    docs-corp/             # another custom theme
+      base.html
+      page.html
+      index.html
+      folder.html
+      static/
+        brand.css
+        logo.svg
+  static/                  # shared assets (available to all themes)
+    common.css
     logo.png
+
+Built-in default theme (embedded in binary):
+  src/web/templates/
+    base.html              # DaisyUI shell, search modal, sidebar, responsive drawer
+    index.html             # vault landing page, stats grid
+    page.html              # page view, backlinks, transclusion
+    folder.html            # folder index, subfolder/page cards
 ```
 
 ### 3.4 Template Data Context
@@ -259,6 +287,7 @@ vault.stats.dead_links  : usize
 vault.stats.orphans     : usize
 search_index            : String       — JSON array for client-side fuzzy search
 zetl.version            : String
+theme                   : String       — name of the active theme
 ```
 
 #### `page.html` additionally receives:
@@ -385,110 +414,123 @@ pub struct SubfolderEntry {
 ### 3.6 Component Diagram
 
 ```
-                          ┌──────────────────────────┐
-                          │       User vault          │
-                          │                           │
-                          │  .zetl/                   │
-                          │    templates/             │
-                          │      page.html (optional) │
-                          │    static/                │
-                          │      fountain.js          │
-                          │      custom.css           │
-                          │                           │
-                          │  notes/*.md               │
-                          └──────────┬───────────────┘
-                                     │
-                                     ▼
-┌────────────────────────────────────────────────────────────────┐
-│                        zetl binary                             │
-│                                                                │
-│  ┌──────────┐    ┌──────────────┐    ┌──────────────────────┐ │
-│  │ Scanner  │───►│  VaultData   │───►│  Context Builders    │ │
-│  │ (index)  │    │ (graph,files)│    │  (context.rs)        │ │
-│  └──────────┘    └──────────────┘    │                      │ │
-│                                       │  VaultData → struct  │ │
-│                                       │  PageContext         │ │
-│                                       │  FolderContext       │ │
-│                                       │  IndexContext        │ │
-│                                       └──────────┬───────────┘ │
-│                                                  │             │
-│  ┌───────────────────────────────────────────────┼───────────┐ │
-│  │              Template Engine (engine.rs)       │           │ │
-│  │                                               ▼           │ │
-│  │  ┌─────────────────────────────────────────────────────┐  │ │
-│  │  │           Minijinja Environment                     │  │ │
-│  │  │                                                     │  │ │
-│  │  │  Loader:                                            │  │ │
-│  │  │    1. .zetl/templates/<name>.html (disk)            │  │ │
-│  │  │    2. Built-in defaults (include_str!)              │  │ │
-│  │  │                                                     │  │ │
-│  │  │  render("index.html", context) → String             │  │ │
-│  │  │  render("page.html",  context) → String             │  │ │
-│  │  │  render("folder.html", context) → String            │  │ │
-│  │  └─────────────────────────────────────────────────────┘  │ │
-│  └───────────────────────────────────────────────────────────┘ │
-│                          │                                     │
-│              ┌───────────┴───────────┐                         │
-│              ▼                       ▼                         │
-│  ┌──────────────────┐   ┌──────────────────────┐              │
-│  │   serve (axum)   │   │   build (static gen)  │              │
-│  │                  │   │                        │              │
-│  │  Routes call     │   │  Iterates pages,       │              │
-│  │  engine.render() │   │  calls engine.render() │              │
-│  │                  │   │  writes HTML files      │              │
-│  │  /_static/ →     │   │                        │              │
-│  │  ServeDir from   │   │  Copies .zetl/static/  │              │
-│  │  .zetl/static/   │   │  to dist/_static/      │              │
-│  └──────────────────┘   └──────────────────────┘              │
-│                                                                │
-│  ┌─────────────────────────────────────────────────────┐      │
-│  │  Built-in Default Templates (embedded via           │      │
-│  │  include_str!)                                      │      │
-│  │                                                     │      │
-│  │  src/web/templates/                                 │      │
-│  │    base.html   — DaisyUI shell, search modal,       │      │
-│  │                  sidebar, responsive drawer          │      │
-│  │    index.html  — vault landing page, stats grid      │      │
-│  │    page.html   — page view, backlinks, transclusion  │      │
-│  │    folder.html — folder index, subfolder/page cards  │      │
-│  └─────────────────────────────────────────────────────┘      │
-└────────────────────────────────────────────────────────────────┘
+                          ┌──────────────────────────────┐
+                          │         User vault            │
+                          │                               │
+                          │  .zetl/                       │
+                          │    themes/                    │
+                          │      fountain/                │
+                          │        page.html (optional)   │
+                          │        static/                │
+                          │          fountain.js          │
+                          │    static/                    │
+                          │      common.css               │
+                          │      logo.png                 │
+                          │                               │
+                          │  notes/*.md                   │
+                          └──────────────┬───────────────┘
+                                         │
+                            --theme fountain
+                                         │
+                                         ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                          zetl binary                               │
+│                                                                    │
+│  ┌──────────┐    ┌──────────────┐    ┌──────────────────────────┐ │
+│  │ Scanner  │───►│  VaultData   │───►│  Context Builders        │ │
+│  │ (index)  │    │ (graph,files)│    │  (context.rs)            │ │
+│  └──────────┘    └──────────────┘    │                          │ │
+│                                       │  VaultData → struct      │ │
+│                                       │  PageContext             │ │
+│                                       │  FolderContext           │ │
+│                                       │  IndexContext            │ │
+│                                       └──────────┬───────────────┘ │
+│                                                  │                 │
+│  ┌───────────────────────────────────────────────┼───────────────┐ │
+│  │              Template Engine (engine.rs)       │               │ │
+│  │                                               ▼               │ │
+│  │  ┌─────────────────────────────────────────────────────────┐  │ │
+│  │  │           Minijinja Environment                         │  │ │
+│  │  │                                                         │  │ │
+│  │  │  Loader (--theme <name>):                               │  │ │
+│  │  │    1. .zetl/themes/<name>/<tpl>.html (disk)             │  │ │
+│  │  │    2. Built-in "default" theme (include_str!)           │  │ │
+│  │  │                                                         │  │ │
+│  │  │  render("index.html", context) → String                 │  │ │
+│  │  │  render("page.html",  context) → String                 │  │ │
+│  │  │  render("folder.html", context) → String                │  │ │
+│  │  └─────────────────────────────────────────────────────────┘  │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                          │                                         │
+│              ┌───────────┴───────────┐                             │
+│              ▼                       ▼                             │
+│  ┌──────────────────────┐   ┌──────────────────────────┐          │
+│  │   serve (axum)       │   │   build (static gen)      │          │
+│  │                      │   │                            │          │
+│  │  Routes call         │   │  Iterates pages,           │          │
+│  │  engine.render()     │   │  calls engine.render()     │          │
+│  │                      │   │  writes HTML files          │          │
+│  │  /_static/ →         │   │                            │          │
+│  │  1. theme/static/    │   │  Copies theme/static/ +    │          │
+│  │  2. .zetl/static/    │   │  .zetl/static/ to          │          │
+│  │                      │   │  dist/_static/              │          │
+│  └──────────────────────┘   └──────────────────────────┘          │
+│                                                                    │
+│  ┌─────────────────────────────────────────────────────────┐      │
+│  │  Built-in Default Theme (embedded via include_str!)     │      │
+│  │                                                         │      │
+│  │  src/web/templates/                                     │      │
+│  │    base.html   — DaisyUI shell, search modal,           │      │
+│  │                  sidebar, responsive drawer              │      │
+│  │    index.html  — vault landing page, stats grid          │      │
+│  │    page.html   — page view, backlinks, transclusion      │      │
+│  │    folder.html — folder index, subfolder/page cards      │      │
+│  └─────────────────────────────────────────────────────────┘      │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 3.7 ADR-013: Static Asset Serving Strategy
 
 ```
-ADR-013: Static Asset Serving — Direct File Serving
+ADR-013: Static Asset Serving — Per-Theme + Shared Static Directories
 
 Status: Proposed
 
 Context:
   User templates need to reference custom JS, CSS, images, and fonts.
-  Two approaches were considered:
+  With named themes, assets may be theme-specific (bundled with the
+  theme) or shared across all themes (common logo, global CSS).
 
-  A. Serve .zetl/static/ at /_static/ using tower-http ServeDir
-     (or a manual handler in axum)
-  B. Embed static assets in templates via data URIs or inline <style>/<script>
+  Two models were considered:
+  A. Single shared .zetl/static/ directory only
+  B. Per-theme static/ subdirectory merged with shared .zetl/static/
 
 Decision:
-  Option A — serve from .zetl/static/ at /_static/.
+  Option B — per-theme + shared, with theme-specific assets taking
+  precedence on filename conflict.
+
+  Resolution order for /_static/foo.js:
+    1. .zetl/themes/<active-theme>/static/foo.js
+    2. .zetl/static/foo.js
 
   Rationale:
-  - Files are served/copied as-is with correct MIME types
-  - No size limits (data URIs bloat HTML for large assets)
-  - Browser caching works naturally
-  - Build mode copies the directory to dist/_static/ (simple cp -r)
-  - Matches the convention of every static site generator (Hugo, Jekyll,
-    Zola, 11ty)
+  - Themes can be self-contained — bundling their own CSS/JS/fonts
+  - Shared assets (logo, common CSS) don't need to be duplicated
+    across themes
+  - Precedence rule (theme wins on conflict) is intuitive and matches
+    the template resolution order
+  - Build mode copies both directories to dist/_static/, with theme
+    files overwriting shared files on conflict (simple layered copy)
+  - Matches the convention of Hugo (theme static + project static)
 
 Consequences:
-  + Simple mental model: put a file in .zetl/static/, reference it as
-    /_static/filename in templates
-  + No transformation or bundling step
-  + Works identically in serve and build modes
-  - Requires an additional route in the axum server
-  - tower-http fs feature adds a small dependency (or a manual handler
-    avoids the dependency)
+  + Themes are portable — move a theme directory and its assets travel
+    with it
+  + Shared assets remain shared — no duplication
+  + Simple mental model: theme assets shadow shared assets
+  - Slightly more complex static file resolution than a single directory
+  - Serve mode needs a layered file lookup (check theme dir first, then
+    shared dir)
 ```
 
 ### 3.8 ADR-014: Frontmatter Parsing
@@ -561,35 +603,42 @@ Trace:
 REQ-012-002: Default Theme
 
 The system SHALL ship a complete set of default templates embedded in
-the binary via include_str!. These templates SHALL produce HTML output
-that is pixel-identical to the current hardcoded HTML generation in
-html.rs, routes.rs, and build.rs.
+the binary via include_str!, forming the built-in "default" theme.
+These templates SHALL produce HTML output that is pixel-identical to
+the current hardcoded HTML generation in html.rs, routes.rs, and
+build.rs.
 
-The default templates SHALL consist of:
+The default theme SHALL consist of:
   a) base.html — master layout with blocks: head, styles, content, sidebar, scripts
   b) index.html — vault landing page
   c) page.html — single page view with backlinks and transclusion
   d) folder.html — folder index with subfolder and page cards
 
 FOR all user roles
-WITH zero-config default behaviour (no .zetl/templates/ directory required)
+WITH zero-config default behaviour (no .zetl/themes/ directory or
+--theme flag required)
 
 Trace:
   - TEST-012-002
 ```
 
 ```
-REQ-012-003: User Template Override
+REQ-012-003: Named Theme Loading
 
-The system SHALL load user templates from .zetl/templates/ when present,
-falling back to built-in defaults for any template not overridden.
+The system SHALL load templates from named theme directories under
+.zetl/themes/<theme-name>/ when a theme is selected, falling back
+to the built-in default theme for any template not overridden.
 
 The loading order SHALL be:
-  a) Check .zetl/templates/<name>.html on disk
-  b) If not found, use the built-in default
+  a) Check .zetl/themes/<active-theme>/<name>.html on disk
+  b) If not found, use the built-in default theme template
 
-Template inheritance SHALL work across both sources: a user page.html
-can extend the built-in base.html, and vice versa.
+Template inheritance SHALL work across both sources: a theme's
+page.html can extend the built-in base.html, and vice versa.
+
+A theme directory only needs to contain the templates it wants to
+override. Missing templates transparently fall back to the built-in
+default.
 
 FOR all user roles
 WITH immediate effect on next `zetl serve` request or `zetl build` run
@@ -607,7 +656,8 @@ each template, containing:
   a) Vault metadata: name, page list with link counts, stats
   b) Search index: JSON array for client-side fuzzy search
   c) zetl version string
-  d) Template-specific data as defined in §3.4
+  d) Active theme name
+  e) Template-specific data as defined in §3.4
 
 Context objects SHALL be Serde-serializable Rust structs converted to
 Minijinja values.
@@ -623,14 +673,20 @@ Trace:
 ```
 REQ-012-005: Static Asset Serving (Serve Mode)
 
-The system SHALL serve files from .zetl/static/ at the URL path
-/_static/ during `zetl serve`.
+The system SHALL serve static assets at the URL path /_static/ during
+`zetl serve`, with a two-tier resolution order:
+
+  a) .zetl/themes/<active-theme>/static/<path> (theme-specific)
+  b) .zetl/static/<path> (shared)
+
+Per-theme assets SHALL take precedence over shared assets when both
+exist at the same relative path.
 
 Files SHALL be served with correct MIME types inferred from file
 extension.
 
-If .zetl/static/ does not exist, the /_static/ route SHALL return
-404 for all requests (no error on startup).
+If neither directory exists, the /_static/ route SHALL return 404 for
+all requests (no error on startup).
 
 FOR all user roles
 
@@ -643,13 +699,18 @@ Trace:
 ```
 REQ-012-006: Static Asset Copying (Build Mode)
 
-The system SHALL copy the contents of .zetl/static/ to
-{out_dir}/_static/ during `zetl build`.
+The system SHALL copy static assets to {out_dir}/_static/ during
+`zetl build`, using a two-tier merge:
 
-If .zetl/static/ does not exist, no _static/ directory SHALL be
-created in the output.
+  a) Copy .zetl/static/ contents first (shared assets)
+  b) Copy .zetl/themes/<active-theme>/static/ contents second
+     (theme-specific assets overwrite shared on filename conflict)
 
-The copy SHALL preserve the directory structure within .zetl/static/.
+If neither directory exists, no _static/ directory SHALL be created
+in the output.
+
+The copy SHALL preserve the directory structure within both source
+directories.
 
 FOR all user roles
 
@@ -715,6 +776,29 @@ Trace:
   - OBS-012-001
 ```
 
+```
+REQ-012-010: Theme Selection CLI Flag
+
+The `serve` and `build` commands SHALL accept a `--theme <name>` flag
+that selects the active theme.
+
+  a) The default value SHALL be "default", which uses the built-in
+     theme with no disk lookups
+  b) When a non-default theme is specified, the system SHALL verify
+     that .zetl/themes/<name>/ exists and is a directory; if not,
+     the system SHALL exit with a clear error message
+  c) The theme name SHALL be a simple directory name (no path
+     separators, no "..")
+  d) The active theme name SHALL be available in templates as the
+     `theme` variable
+
+FOR all user roles
+
+Trace:
+  - TEST-012-010
+  - CON-012-005
+```
+
 ### 4.2 Non-Functional Requirements
 
 ```
@@ -737,10 +821,10 @@ binary size (release build, stripped).
 ```
 NFR-012-003: Backward Compatibility
 
-With no .zetl/templates/ directory present, the output of `zetl serve`
-and `zetl build` SHALL be identical to the output produced by the
-current hardcoded HTML generation. This is a hard requirement for
-Phase 1 — no visual regressions.
+With no .zetl/themes/ directory present and no --theme flag, the output
+of `zetl serve` and `zetl build` SHALL be identical to the output
+produced by the current hardcoded HTML generation. This is a hard
+requirement for Phase 1 — no visual regressions.
 ```
 
 ```
@@ -756,30 +840,43 @@ able to write zetl templates without learning a new syntax.
 ## 5. Contract Specifications
 
 ```
-CON-012-001: Template Override Convention
+CON-012-001: Theme Directory Convention
 
-User templates are placed in .zetl/templates/ relative to the vault
-root. The following template names are recognized:
+Themes are named directories under .zetl/themes/ relative to the vault
+root. Each theme directory can contain the following template files:
 
   base.html    — master layout (defines blocks)
   index.html   — vault landing page (extends base.html)
   page.html    — single page view (extends base.html)
   folder.html  — folder index (extends base.html)
 
-Any other .html files in .zetl/templates/ can be used via
+A theme only needs to include the templates it wants to override.
+Missing templates fall back to the built-in "default" theme.
+
+Any other .html files in the theme directory can be used via
 {% include "filename.html" %} from within recognized templates.
 
+Directory structure:
+  .zetl/
+    themes/
+      <theme-name>/
+        base.html    (optional)
+        page.html    (optional)
+        index.html   (optional)
+        folder.html  (optional)
+        static/      (optional — theme-specific assets)
+
 Template loading precedence:
-  1. .zetl/templates/<name>.html (user override)
-  2. Built-in default (embedded in binary)
+  1. .zetl/themes/<active-theme>/<name>.html (theme override)
+  2. Built-in "default" theme (embedded in binary)
 
-Template inheritance works across both sources. A user page.html
+Template inheritance works across both tiers. A theme's page.html
 can {% extends "base.html" %} where base.html resolves to the
-built-in default if the user has not overridden it.
+built-in default if the theme has not overridden it.
 
-Example: Override only the page template
+Example: A "fountain" theme that only overrides the page template
 
-  .zetl/templates/page.html:
+  .zetl/themes/fountain/page.html:
     {% extends "base.html" %}
     {% block content %}
       <h1>{{ page.title }}</h1>
@@ -796,12 +893,22 @@ Verified by: TEST-012-003
 ```
 CON-012-002: Static Asset URL Convention (Serve)
 
-Files placed in .zetl/static/ are served at /_static/ during
-`zetl serve`.
+Static assets are served at /_static/ during `zetl serve` with a
+two-tier resolution order:
 
-  .zetl/static/fountain.js  →  GET /_static/fountain.js
-  .zetl/static/css/main.css →  GET /_static/css/main.css
-  .zetl/static/img/logo.png →  GET /_static/img/logo.png
+  1. .zetl/themes/<active-theme>/static/<path> (theme-specific)
+  2. .zetl/static/<path> (shared)
+
+Per-theme assets take precedence over shared assets on path conflict.
+
+Examples (with --theme fountain):
+  .zetl/themes/fountain/static/fountain.js  →  GET /_static/fountain.js
+  .zetl/themes/fountain/static/fountain.css →  GET /_static/fountain.css
+  .zetl/static/logo.png                     →  GET /_static/logo.png
+  .zetl/static/css/main.css                 →  GET /_static/css/main.css
+
+If .zetl/themes/fountain/static/logo.png AND .zetl/static/logo.png
+both exist, the theme-specific version is served.
 
 MIME types are inferred from file extension:
   .js   → application/javascript
@@ -811,7 +918,7 @@ MIME types are inferred from file extension:
   .svg  → image/svg+xml
   .woff2 → font/woff2
 
-If .zetl/static/ does not exist, all /_static/* requests return 404.
+If neither static directory exists, all /_static/* requests return 404.
 
 Implements: REQ-012-005
 Verified by: TEST-012-005
@@ -820,14 +927,21 @@ Verified by: TEST-012-005
 ```
 CON-012-003: Static Asset Output Convention (Build)
 
-During `zetl build`, if .zetl/static/ exists, its contents are copied
-to {out_dir}/_static/ preserving directory structure.
+During `zetl build`, static assets from both the shared directory and
+the active theme's static directory are merged into {out_dir}/_static/,
+preserving directory structure.
 
-Example:
-  .zetl/static/fountain.js  →  dist/_static/fountain.js
-  .zetl/static/css/main.css →  dist/_static/css/main.css
+Copy order:
+  1. .zetl/static/* → {out_dir}/_static/ (shared assets first)
+  2. .zetl/themes/<active-theme>/static/* → {out_dir}/_static/
+     (theme assets second — overwrite shared on conflict)
 
-If .zetl/static/ does not exist, no _static/ directory is created
+Examples (with --theme fountain):
+  .zetl/static/logo.png                     →  dist/_static/logo.png
+  .zetl/static/css/main.css                 →  dist/_static/css/main.css
+  .zetl/themes/fountain/static/fountain.js  →  dist/_static/fountain.js
+
+If neither static directory exists, no _static/ directory is created
 in the output.
 
 Implements: REQ-012-006
@@ -852,6 +966,7 @@ Global context (available in all templates):
   search_index   : string  — JSON array for client-side search
   zetl           : object
     .version     : string
+  theme          : string  — name of the active theme (e.g., "default", "fountain")
 
 page.html additional context:
   page           : object
@@ -881,6 +996,41 @@ Implements: REQ-012-004
 Verified by: TEST-012-004
 ```
 
+```
+CON-012-005: Theme Selection CLI Flag Convention
+
+The --theme flag is accepted by both `serve` and `build` commands:
+
+  zetl serve --theme <name>
+  zetl build --theme <name>
+
+Default value: "default"
+
+When --theme is "default":
+  - No disk lookup is performed for templates
+  - Built-in embedded templates are used exclusively
+  - Static assets are served from .zetl/static/ only
+
+When --theme is any other value:
+  - The system verifies .zetl/themes/<name>/ exists
+  - Templates are loaded from .zetl/themes/<name>/ with fallback
+    to built-in defaults
+  - Static assets are resolved from .zetl/themes/<name>/static/
+    then .zetl/static/
+
+Theme name validation:
+  - Must be non-empty
+  - Must not contain path separators (/ or \) or ".."
+  - Must be a valid directory name on the target OS
+
+Error on invalid theme:
+  Error: theme "nonexistent" not found at .zetl/themes/nonexistent/
+  Hint: available themes: default (built-in), fountain, docs-corp
+
+Implements: REQ-012-010
+Verified by: TEST-012-010
+```
+
 ---
 
 ## 6. Test Specifications
@@ -890,7 +1040,7 @@ TEST-012-001: Template Engine Renders Default Templates
 
 Scenario: Minijinja renders all built-in templates without error
 Given: A vault with at least 3 pages and 1 subfolder
-When: zetl build is run with no .zetl/templates/ directory
+When: zetl build is run with no .zetl/themes/ directory and no --theme flag
 Then:
   - All pages render to HTML without template errors
   - index.html is generated at the output root
@@ -906,7 +1056,7 @@ TEST-012-002: Default Theme Output Matches Current HTML
 
 Scenario: Template-rendered output is identical to hardcoded output
 Given: A vault with pages, backlinks, dead links, and subfolders
-When: zetl build is run with default templates (no .zetl/templates/)
+When: zetl build is run with default theme (no --theme flag)
 Then:
   - The generated HTML contains the same DaisyUI layout structure
   - The search modal is present with the search index embedded
@@ -919,35 +1069,43 @@ Verifies: REQ-012-002
 ```
 
 ```
-TEST-012-003: User Template Override with Fallback
+TEST-012-003: Named Theme Loading with Fallback
 
-Scenario: User overrides page.html while base.html falls back to default
-Given: A vault with .zetl/templates/page.html containing:
+Scenario: Theme overrides page.html while base.html falls back to default
+Given: A vault with .zetl/themes/test-theme/page.html containing:
        {% extends "base.html" %}
        {% block content %}
        <div class="custom-banner">Custom!</div>
        {{ page.content_html|safe }}
        {% endblock %}
-When: zetl serve is running and a page is requested
+When: zetl serve --theme test-theme is running and a page is requested
 Then:
   - The response HTML contains <div class="custom-banner">Custom!</div>
   - The response HTML contains the default base.html layout (DaisyUI shell)
   - The sidebar, search modal, and other base.html elements are present
 
-Scenario: User overrides base.html
-Given: A vault with .zetl/templates/base.html containing a minimal layout
-When: zetl build is run
+Scenario: Theme overrides base.html
+Given: A vault with .zetl/themes/minimal/base.html containing a minimal layout
+When: zetl build --theme minimal is run
 Then:
-  - All pages use the user's base.html layout
+  - All pages use the theme's base.html layout
   - Built-in page.html, index.html, folder.html still render correctly
-    within the user's base layout (assuming block names match)
+    within the theme's base layout (assuming block names match)
 
-Scenario: No .zetl/templates/ directory
-Given: A vault with no .zetl/ directory or no templates/ subdirectory
+Scenario: No .zetl/themes/ directory and no --theme flag
+Given: A vault with no .zetl/ directory or no themes/ subdirectory
 When: zetl serve or zetl build is run
 Then:
-  - Built-in defaults are used for all templates
-  - No errors or warnings about missing templates
+  - Built-in default theme is used for all templates
+  - No errors or warnings about missing themes
+
+Scenario: Multiple themes coexist
+Given: A vault with .zetl/themes/alpha/ and .zetl/themes/beta/,
+       each containing different page.html templates
+When: zetl build --theme alpha is run, then zetl build --theme beta
+Then:
+  - Each build uses the correct theme's templates
+  - The themes do not interfere with each other
 
 Verifies: REQ-012-003
 ```
@@ -975,6 +1133,7 @@ Then:
   - vault.stats.dead_links >= 1
   - search_index is a valid JSON array string
   - zetl.version matches the binary version
+  - theme == "default" (or the active theme name)
 
 Verifies: REQ-012-004
 ```
@@ -982,18 +1141,28 @@ Verifies: REQ-012-004
 ```
 TEST-012-005: Static Asset Serving in Serve Mode
 
-Scenario: Static files are served at /_static/
+Scenario: Shared static files are served at /_static/
 Given: A vault with .zetl/static/test.js containing "console.log('ok')"
        and .zetl/static/css/style.css containing "body { color: red; }"
-When: zetl serve is running
+When: zetl serve is running (default theme)
 Then:
   - GET /_static/test.js returns 200 with content-type application/javascript
   - GET /_static/css/style.css returns 200 with content-type text/css
   - Response bodies match file contents
   - GET /_static/nonexistent.js returns 404
 
-Scenario: No static directory
-Given: A vault with no .zetl/static/ directory
+Scenario: Theme-specific assets take precedence over shared assets
+Given: A vault with:
+       - .zetl/static/style.css containing "body { color: red; }"
+       - .zetl/themes/blue/static/style.css containing "body { color: blue; }"
+       - .zetl/static/logo.png (shared, not overridden by theme)
+When: zetl serve --theme blue is running
+Then:
+  - GET /_static/style.css returns the theme version ("body { color: blue; }")
+  - GET /_static/logo.png returns the shared version
+
+Scenario: No static directories
+Given: A vault with no .zetl/static/ directory and no theme static directory
 When: zetl serve is running
 Then:
   - GET /_static/anything returns 404
@@ -1005,15 +1174,20 @@ Verifies: REQ-012-005
 ```
 TEST-012-006: Static Asset Copying in Build Mode
 
-Scenario: Static files are copied to output
-Given: A vault with .zetl/static/app.js and .zetl/static/css/main.css
-When: zetl build -o dist is run
+Scenario: Shared and theme-specific static files are merged in output
+Given: A vault with:
+       - .zetl/static/common.js
+       - .zetl/static/style.css containing "shared"
+       - .zetl/themes/custom/static/theme.js
+       - .zetl/themes/custom/static/style.css containing "theme"
+When: zetl build --theme custom -o dist is run
 Then:
-  - dist/_static/app.js exists with matching content
-  - dist/_static/css/main.css exists with matching content
+  - dist/_static/common.js exists (from shared)
+  - dist/_static/theme.js exists (from theme)
+  - dist/_static/style.css contains "theme" (theme overwrites shared)
 
-Scenario: No static directory
-Given: A vault with no .zetl/static/ directory
+Scenario: No static directories
+Given: A vault with no .zetl/static/ directory and no theme static directory
 When: zetl build -o dist is run
 Then:
   - dist/_static/ does not exist
@@ -1063,14 +1237,14 @@ Verifies: REQ-012-007
 TEST-012-008: Mode-Aware Rendering
 
 Scenario: Serve mode includes edit UI
-Given: Default templates are in use
+Given: Default theme is in use
 When: A page is rendered in serve mode
 Then:
   - mode == "serve"
   - The HTML contains the edit button and save JavaScript
 
 Scenario: Build mode excludes edit UI
-Given: Default templates are in use
+Given: Default theme is in use
 When: A page is rendered in build mode
 Then:
   - mode == "build"
@@ -1082,23 +1256,59 @@ Verifies: REQ-012-008
 ```
 TEST-012-009: Template Error Reporting
 
-Scenario: Syntax error in user template (serve mode)
-Given: .zetl/templates/page.html contains {% if unclosed %}
-When: A page is requested via zetl serve
+Scenario: Syntax error in theme template (serve mode)
+Given: .zetl/themes/broken/page.html contains {% if unclosed %}
+When: A page is requested via zetl serve --theme broken
 Then:
   - The response is an HTML error page (not a 500 with no body)
   - The error message includes "page.html" and a line number
   - The error message describes the syntax issue
 
-Scenario: Syntax error in user template (build mode)
-Given: .zetl/templates/page.html contains {{ undefined_var.deep.access }}
-When: zetl build is run
+Scenario: Syntax error in theme template (build mode)
+Given: .zetl/themes/broken/page.html contains {{ undefined_var.deep.access }}
+When: zetl build --theme broken is run
 Then:
   - stderr contains the error with template name and line number
   - Exit code is non-zero
   - No partial HTML files are left in an inconsistent state
 
 Verifies: REQ-012-009
+```
+
+```
+TEST-012-010: Theme Selection CLI Flag
+
+Scenario: Valid theme is selected
+Given: A vault with .zetl/themes/fountain/ containing page.html
+When: zetl serve --theme fountain is run
+Then:
+  - The fountain theme's page.html is used for rendering
+  - The theme variable in templates equals "fountain"
+  - No errors on startup
+
+Scenario: Non-existent theme is selected
+Given: A vault with no .zetl/themes/nonexistent/ directory
+When: zetl serve --theme nonexistent is run
+Then:
+  - The command exits with a non-zero exit code
+  - stderr contains an error message naming the missing theme
+  - stderr contains a hint listing available themes
+
+Scenario: Default theme requires no disk directory
+Given: A vault with no .zetl/ directory
+When: zetl serve (no --theme flag) is run
+Then:
+  - Built-in default theme is used
+  - No error about missing .zetl/themes/default/
+
+Scenario: Invalid theme name is rejected
+Given: Any vault
+When: zetl serve --theme "../escape" is run
+Then:
+  - The command exits with a non-zero exit code
+  - stderr contains an error about invalid theme name
+
+Verifies: REQ-012-010
 ```
 
 ---
@@ -1113,6 +1323,7 @@ Template rendering errors SHALL be logged with:
   - Line number within the template
   - Error description (syntax error, undefined variable, etc.)
   - The page/slug being rendered when the error occurred
+  - The active theme name
 
 In serve mode, errors SHALL be logged to stderr AND returned as an
 HTML error page in the response.
@@ -1122,18 +1333,22 @@ exit code.
 ```
 
 ```
-OBS-012-002: Template Loading Diagnostics
+OBS-012-002: Theme Loading Diagnostics
 
 When --verbose is set, the system SHALL log:
-  - Which templates were loaded from disk (.zetl/templates/)
-  - Which templates fell back to built-in defaults
+  - The active theme name
+  - Which templates were loaded from the theme directory on disk
+  - Which templates fell back to the built-in default theme
   - The vault root path used for template resolution
+  - Which static asset directories are active (theme-specific, shared, or both)
 
 Example output:
-  [zetl] template "page.html" loaded from .zetl/templates/page.html
+  [zetl] active theme: "fountain"
+  [zetl] template "page.html" loaded from .zetl/themes/fountain/page.html
   [zetl] template "base.html" using built-in default
   [zetl] template "index.html" using built-in default
   [zetl] template "folder.html" using built-in default
+  [zetl] static assets: .zetl/themes/fountain/static/ + .zetl/static/
 ```
 
 ---
@@ -1153,7 +1368,7 @@ The default `base.html` template defines the following blocks that users can ove
 Example: Adding analytics without rewriting the layout
 
 ```jinja2
-{# .zetl/templates/base.html #}
+{# .zetl/themes/my-theme/base.html #}
 {% extends "base.html" %}
 
 {% block scripts %}
@@ -1191,26 +1406,30 @@ Note: The above pattern requires Minijinja's support for `{{ super() }}` within 
 
 **Verification:** `cargo build` succeeds. `zetl serve` and `zetl build` produce identical HTML. Existing tests pass.
 
-### Phase 2: User template override
+### Phase 2: Named themes and `--theme` flag
 
-**Goal:** Load user templates from `.zetl/templates/` with fallback to built-in defaults.
-
-**Files modified:**
-- `src/web/engine.rs` — extend `TemplateEngine::new()` to accept `vault_root` path; use `set_loader()` with disk-then-builtin fallback
-- `src/web/mod.rs` — pass `vault_root` to `TemplateEngine` constructor
-
-**Verification:** Drop a `page.html` in `.zetl/templates/`, verify it renders. Remove it, verify fallback to default.
-
-### Phase 3: Static asset serving
-
-**Goal:** Serve user files from `.zetl/static/` at `/_static/`.
+**Goal:** Support named theme directories under `.zetl/themes/` with a `--theme` CLI flag for theme selection. Templates load from the active theme with fallback to built-in defaults.
 
 **Files modified:**
-- `src/web/mod.rs` — add `/_static/` route serving from `.zetl/static/`
-- `src/web/build.rs` — copy `.zetl/static/` to `{out_dir}/_static/` after HTML generation
+- `src/web/engine.rs` — extend `TemplateEngine::new()` to accept `vault_root` and `theme` name; use `set_loader()` with theme-dir-then-builtin fallback
+- `src/web/mod.rs` — pass `vault_root` and `theme` to `TemplateEngine` constructor; store active theme name in `WebState`
+- `src/cli.rs` (or equivalent) — add `--theme <name>` argument to `serve` and `build` subcommands with default `"default"`
+- `src/web/context.rs` — add `theme` field to context structs
+
+**Theme name validation:** Reject names containing `/`, `\`, or `..`. Verify `.zetl/themes/<name>/` exists on disk for non-`"default"` themes.
+
+**Verification:** Create `.zetl/themes/test/page.html`, run `zetl serve --theme test`, verify the theme's template renders. Run without `--theme`, verify built-in default is used. Run with `--theme nonexistent`, verify clear error message.
+
+### Phase 3: Static asset serving (per-theme + shared)
+
+**Goal:** Serve user files from `.zetl/static/` (shared) and `.zetl/themes/<name>/static/` (per-theme) at `/_static/`, with theme-specific assets taking precedence.
+
+**Files modified:**
+- `src/web/mod.rs` — add `/_static/` route with two-tier static file lookup (theme dir first, then shared dir)
+- `src/web/build.rs` — copy `.zetl/static/` then `.zetl/themes/<name>/static/` to `{out_dir}/_static/` after HTML generation
 - `Cargo.toml` — optionally add `tower-http` with `fs` feature, or implement a manual static file handler
 
-**Verification:** Place a JS file in `.zetl/static/`, verify it's served and copied.
+**Verification:** Place assets in both shared and theme static directories, verify correct precedence in both serve and build modes.
 
 ### Phase 4: Frontmatter parsing
 
@@ -1238,19 +1457,20 @@ Note: The above pattern requires Minijinja's support for `{{ super() }}` within 
 | REQ-012-007    | —             | TEST-012-007   | ADR-014 | —          |
 | REQ-012-008    | —             | TEST-012-008   | —       | —          |
 | REQ-012-009    | —             | TEST-012-009   | —       | OBS-012-001|
+| REQ-012-010    | CON-012-005   | TEST-012-010   | —       | OBS-012-002|
 
 ---
 
 ## 11. Open Questions
 
 1. **Should template hot-reload be supported in serve mode?**
-   If a user edits `.zetl/templates/page.html` while `zetl serve` is running, should the next request pick up the change automatically? This requires either re-creating the Minijinja environment on each request (simple, slight performance cost) or integrating with SPEC-008's file watcher to invalidate the template cache. Recommendation: reload on every request in serve mode (templates are small, parsing is fast); cache in build mode.
+   If a user edits `.zetl/themes/fountain/page.html` while `zetl serve --theme fountain` is running, should the next request pick up the change automatically? This requires either re-creating the Minijinja environment on each request (simple, slight performance cost) or integrating with SPEC-008's file watcher to invalidate the template cache. Recommendation: reload on every request in serve mode (templates are small, parsing is fast); cache in build mode.
 
 2. **Should custom Minijinja filters be supported?**
    Users might want filters like `{{ page.content_raw|wordcount }}` or `{{ page.title|slugify }}`. Minijinja supports registering custom filters. This could be a future SPEC or a built-in set of zetl-specific filters. Recommendation: defer to a future SPEC; the built-in Minijinja filter set (upper, lower, trim, length, join, etc.) is sufficient for the initial release.
 
 3. **Should the default theme be extractable?**
-   A `zetl theme export` command could write the built-in templates to `.zetl/templates/` as a starting point for customisation. This is convenient but could be confusing (user now has a copy that diverges from updates). Recommendation: document that users can copy from the source repository; a dedicated command is a future enhancement.
+   A `zetl theme export [--theme default]` command could write the built-in templates to `.zetl/themes/<name>/` as a starting point for customisation. This is convenient but could be confusing (user now has a copy that diverges from updates). Recommendation: document that users can copy from the source repository; a dedicated command is a future enhancement.
 
 4. **How should template errors interact with the build process?**
    If one page fails to render, should `zetl build` abort immediately or continue rendering other pages and report errors at the end? Recommendation: fail fast — a partial build is worse than no build, because it might be deployed accidentally.
@@ -1258,21 +1478,30 @@ Note: The above pattern requires Minijinja's support for `{{ super() }}` within 
 5. **Should `{{ super() }}` be required for block extension?**
    Minijinja supports `{{ super() }}` to include the parent block's content when overriding. The default templates should be designed so that common use cases (adding a script, adding a stylesheet) work with `{{ super() }}` in the `scripts` and `styles` blocks. This is a template design decision, not an engine decision.
 
+6. **Should themes support a configuration file?**
+   A `theme.toml` or `theme.yaml` in each theme directory could declare metadata (name, author, description, required zetl version) and expose theme-specific variables to templates. This would enable a richer theme ecosystem but adds complexity. Recommendation: defer to a future SPEC; the directory-name-is-the-identity convention is sufficient for initial release.
+
+7. **Should `zetl theme list` be a command?**
+   Listing available themes (built-in + directories under `.zetl/themes/`) is useful for discoverability. The `--theme nonexistent` error message already hints at available themes. A dedicated `zetl theme list` command could be added as a convenience. Recommendation: the error hint is sufficient for now; a dedicated command is a future enhancement.
+
 ---
 
 ## 12. Future Considerations
 
 | Feature | Description |
 | --- | --- |
-| Theme packaging | `zetl theme install <url>` — download and install community themes |
+| Theme packaging | `zetl theme install <url>` — download and install community themes to `.zetl/themes/` |
+| Theme configuration | `theme.toml` metadata file for theme name, author, description, variables |
+| Theme listing | `zetl theme list` — enumerate available themes (built-in + user-installed) |
 | Template hot-reload | Integrate with SPEC-008 watch mode for live template reloading |
 | Custom filters | Register zetl-specific Minijinja filters (wordcount, reading_time, date formatting) |
 | RSS/Atom feeds | `feed.xml` template for RSS generation during build |
 | Sitemap generation | `sitemap.xml` template for SEO |
 | 404 page | Custom `404.html` template for serve mode |
-| Partial templates | Convention for `.zetl/templates/partials/` for reusable snippets |
+| Partial templates | Convention for `partials/` subdirectory within themes for reusable snippets |
 | Theme export | `zetl theme export` to copy built-in templates as customisation starting point |
 | Asset pipeline | Optional PostCSS/esbuild integration for CSS/JS processing |
+| Theme inheritance | Themes extending other user themes (not just the built-in default) |
 
 ---
 
