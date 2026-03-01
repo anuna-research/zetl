@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 212,
+    "insertions": 1442,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "tests/integration.rs"
+      "tests/web_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-verify-phase4-changes",
-      "content": "Modified 2 files (+212, -5): .hence/context-manifest.json, tests/integration.rs",
+      "key": "task-integration-test-changes",
+      "content": "Modified 2 files (+1442, -5): .hence/context-manifest.json, tests/web_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/verify-phase4-v1",
-  "evaluated_at": "2026-03-01T14:35:21Z",
+  "branch_name": "hence/integration-test-v1",
+  "evaluated_at": "2026-03-01T14:47:17Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
