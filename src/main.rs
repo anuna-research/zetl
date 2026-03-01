@@ -1423,7 +1423,23 @@ fn cmd_search(
 
     // REQ-013-006: When --near is given, compute the neighbourhood and use it to
     // filter results. REQ-013-008: suggest similar names if the page is unresolvable.
+    let mut near_resolved: Option<String> = None;
+    let mut near_neighbourhood_size: Option<usize> = None;
     let neighbourhood_set: Option<HashSet<String>> = if let Some(near_page) = near {
+        // REQ-013-006: graph requires zetl index — the lazy search-index build does
+        // not build the link graph. Check the cache before proceeding.
+        let cache_path = vault_root.join(".zetl").join("index.json");
+        if !cache_path.exists() {
+            let msg = "Graph required for --near. Run `zetl index` first.";
+            match cli.format {
+                OutputFormat::Json => exit_json_error(msg, 1),
+                OutputFormat::Table => {
+                    eprintln!("Error: {msg}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
         let pipeline = run_pipeline(cli)?;
 
         let resolved = match resolve_page_name(near_page, &pipeline.file_index) {
@@ -1460,7 +1476,21 @@ fn cmd_search(
             }
         };
 
+        // OBS-013-003: time the BFS and emit verbose stats to stderr.
+        let bfs_start = std::time::Instant::now();
         let set = pipeline.graph.neighbourhood(&resolved, depth_val)?;
+        let bfs_ms = bfs_start.elapsed().as_millis();
+        let size = set.len();
+
+        if cli.verbose > 0 {
+            eprintln!("near: {resolved}");
+            eprintln!("depth: {depth_val}");
+            eprintln!("neighbourhood size: {size}");
+            eprintln!("BFS time: {bfs_ms}ms");
+        }
+
+        near_resolved = Some(resolved);
+        near_neighbourhood_size = Some(size);
         Some(set)
     } else {
         None
@@ -1490,9 +1520,13 @@ fn cmd_search(
     };
 
     // Filter results to the neighbourhood if --near was specified.
+    // REQ-013-009: populate neighbourhood metadata in the output envelope.
     if let Some(ref set) = neighbourhood_set {
         output.results.retain(|r| set.contains(&r.page));
         output.total_matches = output.results.len();
+        output.near = near_resolved;
+        output.depth = Some(depth_val);
+        output.neighbourhood_size = near_neighbourhood_size;
     }
 
     if output.total_matches == 0 {
@@ -1519,9 +1553,17 @@ fn cmd_search(
                     Cell::new(r.context.as_deref().unwrap_or("")),
                 ]);
             }
+            // CON-013-001: include neighbourhood info in the header when --near is used.
+            let near_info = if let (Some(ref n), Some(d), Some(s)) =
+                (&output.near, output.depth, output.neighbourhood_size)
+            {
+                format!(", near: {n}, depth: {d}, {s} pages")
+            } else {
+                String::new()
+            };
             println!(
-                "Search results for '{}' ({} matches):",
-                query, output.total_matches
+                "Search results for '{}' ({} matches{}):",
+                query, output.total_matches, near_info
             );
             println!("{table}");
         }

@@ -25,6 +25,15 @@ pub struct SearchMatch {
 pub struct SearchOutput {
     pub query: String,
     pub total_matches: usize,
+    /// Resolved anchor page name (present only when --near is used). REQ-013-009.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub near: Option<String>,
+    /// Hop depth used (present only when --near is used). REQ-013-009.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<usize>,
+    /// Number of pages in the neighbourhood (present only when --near is used). REQ-013-009.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub neighbourhood_size: Option<usize>,
     pub results: Vec<SearchMatch>,
 }
 
@@ -234,6 +243,9 @@ pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOu
     Ok(SearchOutput {
         query: config.query.to_string(),
         total_matches: total,
+        near: None,
+        depth: None,
+        neighbourhood_size: None,
         results: all_matches,
     })
 }

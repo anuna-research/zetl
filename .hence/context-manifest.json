@@ -1,12 +1,12 @@
 {
-  "task_id": "near-depth-cli",
+  "task_id": "wire-graph-scoping",
   "token_budget": 8000,
-  "tokens_used": 333,
+  "tokens_used": 487,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add --near <PAGE> and --depth <N> flags to the Search subcommand in src/cli.rs:\n\n  --near <PAGE>   Restrict results to pages within --depth hops of PAGE.\n                  PAGE is resolved using the same page name resolution as\n                  other graph commands (case-insensitive, normalized\n                  whitespace/hyphens/underscores). Optional.\n  --depth <N>     Neighbourhood radius. Default: 1. Must be >= 1.\n                  Only valid when --near is specified.\n\nValidation in cmd_search() (REQ-013-007):\n  - --depth without --near → exit code 2, error message.\n  - --depth 0 or negative → exit code 2, error message.\n  - --near with unresolvable page → exit code 2, suggest similar names (REQ-013-008).\n\nREQ-013-006, REQ-013-007, REQ-013-008, CON-013-001.",
-      "token_cost": 194,
+      "content": "Integrate graph-scoped search into the search pipeline in cmd_search() / search.rs:\n\n  1. When --near is specified, require that the link graph is available (zetl index must have been run — the lazy index build from Phase 1 only builds the search index, not the graph). If no graph, exit with error: 'Graph required for --near. Run `zetl index` first.'\n  2. Compute the neighbourhood via graph.neighbourhood(anchor, depth).\n  3. After Tantivy returns document-level results, filter to only those whose page_name is in the neighbourhood set.\n  4. Continue with line-level expansion and heading detection as normal.\n\nUpdate SearchOutput with optional neighbourhood metadata (REQ-013-009):\n  pub struct SearchOutput {\n      pub query: String,\n      pub total_matches: usize,\n      pub near: Option<String>,              // resolved anchor page name\n      pub depth: Option<usize>,              // hop depth used\n      pub neighbourhood_size: Option<usize>, // pages in neighbourhood\n      pub results: Vec<SearchMatch>,\n  }\n\nThese fields are present only when --near is used. In JSON output they appear at the top level. In table output, the header line shows 'near: X, depth: N, M pages' per CON-013-001.\n\nAdd verbose stderr output per OBS-013-003: resolved anchor, depth, neighbourhood size, BFS time (ms).\n\nREQ-013-006, REQ-013-009, CON-013-001.",
+      "token_cost": 336,
       "priority": "PlanMeta"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 1 files (+226, -0): src/graph.rs",
       "token_cost": 10,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-near-depth-cli-changes",
+      "content": "Modified 2 files (+90, -1): src/cli.rs, src/main.rs",
+      "token_cost": 12,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:52:01Z"
+  "constructed_at": "2026-03-01T13:56:37Z"
 }
