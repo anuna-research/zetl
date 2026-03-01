@@ -3,25 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 90,
-    "deletions": 1,
+    "files_changed": 3,
+    "insertions": 67,
+    "deletions": 7,
     "file_list": [
-      "src/cli.rs",
-      "src/main.rs"
+      ".hence/context-manifest.json",
+      "src/main.rs",
+      "src/search.rs"
     ],
-    "dirty_files": 3
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-near-depth-cli-changes",
-      "content": "Modified 2 files (+90, -1): src/cli.rs, src/main.rs",
+      "key": "task-wire-graph-scoping-changes",
+      "content": "Modified 3 files (+67, -7): .hence/context-manifest.json, src/main.rs, src/search.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/near-depth-cli-v1",
-  "evaluated_at": "2026-03-01T13:56:31Z",
+  "branch_name": "hence/wire-graph-scoping-v1",
+  "evaluated_at": "2026-03-01T14:02:13Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
