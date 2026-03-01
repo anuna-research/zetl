@@ -1,12 +1,12 @@
 {
-  "task_id": "theme-cli",
+  "task_id": "theme-loader",
   "token_budget": 8000,
-  "tokens_used": 327,
+  "tokens_used": 379,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add --theme <name> argument to both Serve and Build subcommands in src/cli.rs. Default value: 'default'. Type: String. Pass the theme name through to WebState (for serve) and build_static (for build). Add theme name validation: reject names containing '/', '\\', or '..'. When theme is not 'default', verify .zetl/themes/<name>/ exists and is a directory — exit with clear error message if not found, including a hint listing available themes (scan .zetl/themes/ for directories). REQ-012-010, CON-012-005.",
-      "token_cost": 126,
+      "content": "Extend TemplateEngine in src/web/engine.rs to accept vault_root and theme name parameters. Use minijinja's Environment::set_loader() with a closure that implements the two-tier resolution: (1) check .zetl/themes/<active-theme>/<name>.html on disk, (2) fall back to built-in include_str!() default. When theme is 'default', skip disk lookup entirely (optimization). Template inheritance must work across tiers — a theme's page.html can {% extends 'base.html' %} where base.html resolves to the built-in default. Add the 'theme' variable to all template contexts. Per Open Question #1 in SPEC-012: reload templates on every request in serve mode (templates are small); cache in build mode. REQ-012-003, CON-012-001.",
+      "token_cost": 178,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:55:29Z"
+  "constructed_at": "2026-03-01T13:58:21Z"
 }
