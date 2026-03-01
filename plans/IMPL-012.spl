@@ -1,0 +1,510 @@
+;; ════════════════════════════════════════════════════════════════════════════
+;; IMPL-012: zetl — Named Themes for Serve and Build
+;; Implementation plan for SPEC-012
+;; ════════════════════════════════════════════════════════════════════════════
+
+(meta plan
+  (id "IMPL-012")
+  (title "zetl — Named Themes for Serve and Build")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-03-01")
+  (author "agent:claude")
+  (spec "SPEC-012")
+  (description "Replace hardcoded format!() HTML generation in serve and build commands with a Minijinja template engine and named theme system. Phase 1: extract current HTML into default templates with serializable context structs — zero visual change. Phase 2: add --theme CLI flag and theme-aware template loader with fallback to built-in defaults. Phase 3: static asset serving from .zetl/static/ (shared) and .zetl/themes/<name>/static/ (per-theme). Phase 4: parse YAML frontmatter into structured template data. Covers REQ-012-001 through REQ-012-010, ADR-012/013/014."))
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Agents
+;; ════════════════════════════════════════════════════════════════════════════
+
+(given agent-claude-available)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 1 — Extract Templates (Zero Behaviour Change)
+;; ════════════════════════════════════════════════════════════════════════════
+;;
+;; Goal: Replace hardcoded HTML string building with Minijinja template
+;; rendering. Output is pixel-identical to current format!() generation.
+;; This is the largest phase — it touches html.rs, routes.rs, build.rs,
+;; and introduces engine.rs, context.rs, and four template files.
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Add minijinja dependency ──────────────────────────────────────────
+
+(given task-add-minijinja)
+(given no-deps-add-minijinja)
+
+(meta task-add-minijinja
+  (description "Add minijinja (with 'builtins' and 'loader' features) to Cargo.toml. Also add serde as a dependency if not already present (needed for Serialize derives on context structs). Run cargo check to verify the dependency resolves and compiles. Do NOT add serde_yaml yet — that is Phase 4.")
+  (acceptance "cargo check passes with minijinja importable; no other code changes"))
+
+(normally r-ready-add-minijinja
+  (and task-add-minijinja no-deps-add-minijinja)
+  ready-add-minijinja)
+
+(normally r-assign-add-minijinja
+  (and ready-add-minijinja agent-claude-available)
+  assign-to-add-minijinja-claude)
+
+;; ── Task: Create context structs ────────────────────────────────────────────
+
+(given task-context-structs)
+
+(meta task-context-structs
+  (description "Create src/web/context.rs with Serde-serializable structs for template data: VaultContext, PageEntry, StatsContext, ZetlMeta, BreadcrumbEntry, BacklinkEntry, OutlinkEntry, PageContext, FolderContext, SubfolderEntry. Each struct derives Serialize. PageContext.frontmatter is serde_json::Value (empty object {} for now — actual parsing is Phase 4). Add builder functions that convert VaultData + page-specific data into these context structs. Export the module from src/web/mod.rs. See SPEC-012 §3.5 for exact struct definitions.")
+  (acceptance "cargo check passes; context structs compile with Serialize; builder functions accept VaultData references and return context structs"))
+
+(normally r-ready-context-structs
+  (and task-context-structs completed-add-minijinja)
+  ready-context-structs)
+
+(normally r-assign-context-structs
+  (and ready-context-structs agent-claude-available)
+  assign-to-context-structs-claude)
+
+;; ── Task: Extract base.html template ────────────────────────────────────────
+
+(given task-extract-base)
+
+(meta task-extract-base
+  (description "Create src/web/templates/base.html by extracting the master layout from html.rs::layout(). This template defines the DOCTYPE, <head> with DaisyUI/Tailwind CDN links, all inline CSS, the drawer layout, sidebar, search modal, and inline JS. Define blocks: {% block head %}, {% block styles %}, {% block sidebar %}, {% block content %}, {% block scripts %}. Use Minijinja syntax. Template variables: vault.name, vault.pages (for sidebar), search_index, zetl.version, theme. The sidebar navigation must match the current sidebar_html() output exactly — same nested <ul> structure, same slug links, same collision-aware display names.")
+  (acceptance "base.html is a valid Minijinja template; contains all 5 named blocks; includes full DaisyUI layout, search modal JS, sidebar generation via {% for %} over vault.pages; when rendered with correct context data, produces HTML structurally identical to current layout() output"))
+
+(normally r-ready-extract-base
+  (and task-extract-base completed-add-minijinja)
+  ready-extract-base)
+
+(normally r-assign-extract-base
+  (and ready-extract-base agent-claude-available)
+  assign-to-extract-base-claude)
+
+;; ── Task: Extract index.html template ───────────────────────────────────────
+
+(given task-extract-index)
+
+(meta task-extract-index
+  (description "Create src/web/templates/index.html by extracting the vault landing page from routes.rs::index_handler() and build.rs::render_index(). Template extends base.html. Overrides {% block content %} with the stats grid (total pages, total links, dead links, orphans) and the page listing cards. Variables: vault.stats.total_pages, vault.stats.total_links, vault.stats.dead_links, vault.stats.orphans, vault.pages[] with title, slug, outlink_count, backlink_count.")
+  (acceptance "index.html extends base.html; renders stats grid and page cards; output matches current index_handler HTML"))
+
+(normally r-ready-extract-index
+  (and task-extract-index completed-extract-base)
+  ready-extract-index)
+
+(normally r-assign-extract-index
+  (and ready-extract-index agent-claude-available)
+  assign-to-extract-index-claude)
+
+;; ── Task: Extract page.html template ────────────────────────────────────────
+
+(given task-extract-page)
+
+(meta task-extract-page
+  (description "Create src/web/templates/page.html by extracting the single-page view from routes.rs::page_handler() and build.rs::render_page(). Template extends base.html. Overrides {% block content %} with: breadcrumbs, page title, rendered markdown content (page.content_html|safe), backlinks panel, transclusion cards panel, SVG bridge lines JS, mobile tooltip preview JS. Overrides {% block scripts %} with edit-mode JS (save handler, toggle) wrapped in {% if mode == 'serve' %} conditional. Variables: page.title, page.slug, page.content_html, page.backlinks[], page.outlinks[], page.breadcrumbs[], page.transclusion_cards, page.is_new, page.raw_escaped, mode.")
+  (acceptance "page.html extends base.html; renders full page view with backlinks, transclusion, breadcrumbs; edit UI conditional on mode=='serve'; output matches current page_handler HTML for serve and render_page HTML for build"))
+
+(normally r-ready-extract-page
+  (and task-extract-page completed-extract-base)
+  ready-extract-page)
+
+(normally r-assign-extract-page
+  (and ready-extract-page agent-claude-available)
+  assign-to-extract-page-claude)
+
+;; ── Task: Extract folder.html template ──────────────────────────────────────
+
+(given task-extract-folder)
+
+(meta task-extract-folder
+  (description "Create src/web/templates/folder.html by extracting the folder index from routes.rs::render_folder_index() and build.rs::render_folder_index(). Template extends base.html. Overrides {% block content %} with: breadcrumbs, folder title, subfolder cards (with page counts), page cards (with link counts). Variables: folder.name, folder.slug, folder.breadcrumbs[], folder.subfolders[] (name, slug, page_count), folder.pages[] (title, slug, outlink_count, backlink_count), folder.total_pages.")
+  (acceptance "folder.html extends base.html; renders folder with subfolder and page cards; output matches current render_folder_index HTML"))
+
+(normally r-ready-extract-folder
+  (and task-extract-folder completed-extract-base)
+  ready-extract-folder)
+
+(normally r-assign-extract-folder
+  (and ready-extract-folder agent-claude-available)
+  assign-to-extract-folder-claude)
+
+;; ── Task: Create template engine ────────────────────────────────────────────
+
+(given task-engine)
+
+(meta task-engine
+  (description "Create src/web/engine.rs with TemplateEngine struct wrapping minijinja::Environment. For Phase 1, the loader uses include_str!() to embed the four built-in templates (base.html, index.html, page.html, folder.html) from src/web/templates/. Expose render methods: render_index(vault_ctx) -> Result<String>, render_page(vault_ctx, page_ctx, mode) -> Result<String>, render_folder(vault_ctx, folder_ctx) -> Result<String>. Each method builds a minijinja::context! combining the vault-level context with template-specific data, then calls env.get_template(name).render(ctx). Error handling: return anyhow::Result with context about which template failed. Export from src/web/mod.rs.")
+  (acceptance "TemplateEngine compiles; render methods accept context structs and return Result<String>; built-in templates load via include_str!; cargo check passes"))
+
+(normally r-ready-engine
+  (and task-engine completed-context-structs completed-extract-base completed-extract-index completed-extract-page completed-extract-folder)
+  ready-engine)
+
+(normally r-assign-engine
+  (and ready-engine agent-claude-available)
+  assign-to-engine-claude)
+
+;; ── Task: Refactor routes.rs to use template engine ─────────────────────────
+
+(given task-refactor-routes)
+
+(meta task-refactor-routes
+  (description "Refactor src/web/routes.rs to use TemplateEngine instead of format!() string concatenation. Store TemplateEngine in WebState (or as a separate shared state). Update index_handler to build VaultContext from VaultData, call engine.render_index(). Update page_handler to build PageContext (including backlinks, outlinks with colors, breadcrumbs, transclusion cards, edit state), call engine.render_page() with mode='serve'. Update render_folder_index to build FolderContext, call engine.render_folder(). Keep save_handler and preview_handler unchanged (they don't render full pages). Remove direct calls to html.rs::layout(), html.rs::sidebar_html(), html.rs::breadcrumb_html(). Keep using html.rs::search_index_json(), html.rs::html_escape(), html.rs::urlencoding().")
+  (acceptance "All serve-mode routes render via TemplateEngine; zetl serve produces pixel-identical HTML to pre-refactor output; save and preview handlers still work; cargo test passes"))
+
+(normally r-ready-refactor-routes
+  (and task-refactor-routes completed-engine)
+  ready-refactor-routes)
+
+(normally r-assign-refactor-routes
+  (and ready-refactor-routes agent-claude-available)
+  assign-to-refactor-routes-claude)
+
+;; ── Task: Refactor build.rs to use template engine ──────────────────────────
+
+(given task-refactor-build)
+
+(meta task-refactor-build
+  (description "Refactor src/web/build.rs to use TemplateEngine instead of format!() string concatenation. Create a TemplateEngine instance at the start of build_static(). Replace render_index(), render_page(), render_folder_index() calls with engine.render_index(), engine.render_page(mode='build'), engine.render_folder(). Remove duplicate sidebar_entries() and slug_for_page() if they can be shared with routes.rs (move to mod.rs or a shared util). Build mode must NOT include edit UI (mode='build' ensures this via template conditional).")
+  (acceptance "zetl build produces pixel-identical HTML to pre-refactor output; no edit UI in build output; build_static uses TemplateEngine exclusively; cargo test passes"))
+
+(normally r-ready-refactor-build
+  (and task-refactor-build completed-engine)
+  ready-refactor-build)
+
+(normally r-assign-refactor-build
+  (and ready-refactor-build agent-claude-available)
+  assign-to-refactor-build-claude)
+
+;; ── Task: Clean up html.rs ──────────────────────────────────────────────────
+
+(given task-cleanup-html)
+
+(meta task-cleanup-html
+  (description "Remove now-unused functions from src/web/html.rs: layout(), sidebar_html(), breadcrumb_html(). Keep search_index_json(), html_escape(), urlencoding() as they are still used by context builders and other code. If any functions have zero remaining callers, remove them. Update any use/import statements in routes.rs, build.rs, mod.rs.")
+  (acceptance "No compiler warnings about unused functions in html.rs; remaining functions (search_index_json, html_escape, urlencoding) are still used; cargo build --release succeeds cleanly"))
+
+(normally r-ready-cleanup-html
+  (and task-cleanup-html completed-refactor-routes completed-refactor-build)
+  ready-cleanup-html)
+
+(normally r-assign-cleanup-html
+  (and ready-cleanup-html agent-claude-available)
+  assign-to-cleanup-html-claude)
+
+;; ── Task: Verify Phase 1 — pixel-identical output ───────────────────────────
+
+(given task-verify-phase1)
+
+(meta task-verify-phase1
+  (description "End-to-end verification that Phase 1 produces identical output. Run zetl build on the demo-vault (or a test vault) and compare the generated HTML against a snapshot of the pre-refactor output. Check: (1) index.html structure matches, (2) page views have same DaisyUI layout, sidebar, search modal, backlinks panel, transclusion cards, (3) folder indices have same subfolder/page cards, (4) zetl serve renders all pages without template errors, (5) edit mode works in serve, (6) all existing tests pass. NFR-012-003.")
+  (acceptance "cargo test passes; zetl build output is structurally identical; zetl serve renders all pages; no template errors; edit/save works in serve mode"))
+
+(normally r-ready-verify-phase1
+  (and task-verify-phase1 completed-cleanup-html)
+  ready-verify-phase1)
+
+(normally r-assign-verify-phase1
+  (and ready-verify-phase1 agent-claude-available)
+  assign-to-verify-phase1-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 2 — Named Themes and --theme Flag
+;; ════════════════════════════════════════════════════════════════════════════
+;;
+;; Goal: Support named theme directories under .zetl/themes/ with a --theme
+;; CLI flag. Templates load from the active theme with fallback to built-in
+;; defaults. Template inheritance works across both tiers.
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Add --theme CLI flag ──────────────────────────────────────────────
+
+(given task-theme-cli)
+
+(meta task-theme-cli
+  (description "Add --theme <name> argument to both Serve and Build subcommands in src/cli.rs. Default value: 'default'. Type: String. Pass the theme name through to WebState (for serve) and build_static (for build). Add theme name validation: reject names containing '/', '\\', or '..'. When theme is not 'default', verify .zetl/themes/<name>/ exists and is a directory — exit with clear error message if not found, including a hint listing available themes (scan .zetl/themes/ for directories). REQ-012-010, CON-012-005.")
+  (acceptance "--theme flag accepted by both serve and build commands; default is 'default'; invalid names rejected with error; nonexistent themes produce helpful error with available theme list; cargo check passes"))
+
+(normally r-ready-theme-cli
+  (and task-theme-cli completed-verify-phase1)
+  ready-theme-cli)
+
+(normally r-assign-theme-cli
+  (and ready-theme-cli agent-claude-available)
+  assign-to-theme-cli-claude)
+
+;; ── Task: Theme-aware template loader ───────────────────────────────────────
+
+(given task-theme-loader)
+
+(meta task-theme-loader
+  (description "Extend TemplateEngine in src/web/engine.rs to accept vault_root and theme name parameters. Use minijinja's Environment::set_loader() with a closure that implements the two-tier resolution: (1) check .zetl/themes/<active-theme>/<name>.html on disk, (2) fall back to built-in include_str!() default. When theme is 'default', skip disk lookup entirely (optimization). Template inheritance must work across tiers — a theme's page.html can {% extends 'base.html' %} where base.html resolves to the built-in default. Add the 'theme' variable to all template contexts. Per Open Question #1 in SPEC-012: reload templates on every request in serve mode (templates are small); cache in build mode. REQ-012-003, CON-012-001.")
+  (acceptance "Theme templates loaded from .zetl/themes/<name>/ with fallback to built-in; cross-tier inheritance works; theme variable available in templates; default theme skips disk; serve mode reloads templates per request"))
+
+(normally r-ready-theme-loader
+  (and task-theme-loader completed-theme-cli)
+  ready-theme-loader)
+
+(normally r-assign-theme-loader
+  (and ready-theme-loader agent-claude-available)
+  assign-to-theme-loader-claude)
+
+;; ── Task: Theme error reporting ─────────────────────────────────────────────
+
+(given task-theme-errors)
+
+(meta task-theme-errors
+  (description "Implement template error reporting per REQ-012-009. In serve mode: when a template fails to render (syntax error, missing variable, inheritance error), return an HTML error page with the error message, template name, and line number — not a bare 500. In build mode: print the error to stderr with template name, line number, and the page/slug being rendered, then exit with non-zero code. Add verbose logging per OBS-012-002: when --verbose is set, log which templates loaded from theme directory vs built-in default. Never silently produce empty or partial HTML.")
+  (acceptance "Serve mode: broken template returns readable HTML error page; Build mode: broken template prints error to stderr and exits non-zero; verbose mode logs template resolution; no silent failures"))
+
+(normally r-ready-theme-errors
+  (and task-theme-errors completed-theme-loader)
+  ready-theme-errors)
+
+(normally r-assign-theme-errors
+  (and ready-theme-errors agent-claude-available)
+  assign-to-theme-errors-claude)
+
+;; ── Task: Verify Phase 2 — theme system ─────────────────────────────────────
+
+(given task-verify-phase2)
+
+(meta task-verify-phase2
+  (description "End-to-end verification of the theme system. Create test themes in a test vault: (1) a theme that overrides only page.html with a custom banner, verify the banner appears and base.html layout is inherited; (2) a theme that overrides base.html, verify all pages use it; (3) verify --theme default still works with no .zetl/ directory; (4) verify --theme nonexistent gives a clear error; (5) verify --theme '../escape' is rejected; (6) verify the theme variable is accessible in templates. TEST-012-003, TEST-012-010.")
+  (acceptance "All 6 scenarios pass; theme override + fallback works; CLI validation works; theme variable correct in all templates"))
+
+(normally r-ready-verify-phase2
+  (and task-verify-phase2 completed-theme-errors)
+  ready-verify-phase2)
+
+(normally r-assign-verify-phase2
+  (and ready-verify-phase2 agent-claude-available)
+  assign-to-verify-phase2-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 3 — Static Asset Serving (Per-Theme + Shared)
+;; ════════════════════════════════════════════════════════════════════════════
+;;
+;; Goal: Serve user files from .zetl/static/ (shared) and
+;; .zetl/themes/<name>/static/ (per-theme) at /_static/, with theme-specific
+;; assets taking precedence. Copy assets in build mode.
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Static asset serving in serve mode ────────────────────────────────
+
+(given task-static-serve)
+
+(meta task-static-serve
+  (description "Add a /_static/{*path} route to the Axum router in src/web/mod.rs. Implement two-tier file lookup: (1) .zetl/themes/<active-theme>/static/<path>, (2) .zetl/static/<path>. Per-theme assets take precedence. Infer MIME types from file extension (.js → application/javascript, .css → text/css, .png → image/png, .jpg → image/jpeg, .svg → image/svg+xml, .woff2 → font/woff2, etc.). Return 404 for missing files. If neither static directory exists, /_static/* returns 404 with no startup error. Prevent path traversal attacks (reject paths with '..', normalize). REQ-012-005, CON-012-002, ADR-013.")
+  (acceptance "GET /_static/foo.js serves file with correct MIME type; theme assets override shared assets at same path; 404 for nonexistent files; no path traversal; works with and without static directories"))
+
+(normally r-ready-static-serve
+  (and task-static-serve completed-verify-phase2)
+  ready-static-serve)
+
+(normally r-assign-static-serve
+  (and ready-static-serve agent-claude-available)
+  assign-to-static-serve-claude)
+
+;; ── Task: Static asset copying in build mode ────────────────────────────────
+
+(given task-static-build)
+
+(meta task-static-build
+  (description "Extend build_static() in src/web/build.rs to copy static assets to {out_dir}/_static/ after HTML generation. Copy order: (1) .zetl/static/ contents first (shared), (2) .zetl/themes/<active-theme>/static/ contents second (theme-specific, overwrites shared on conflict). Preserve directory structure within both sources. If neither directory exists, do not create _static/ in output. Use std::fs recursive copy. REQ-012-006, CON-012-003, ADR-013.")
+  (acceptance "Build output includes _static/ with merged assets; theme assets overwrite shared on conflict; directory structure preserved; no _static/ when no source dirs exist"))
+
+(normally r-ready-static-build
+  (and task-static-build completed-verify-phase2)
+  ready-static-build)
+
+(normally r-assign-static-build
+  (and ready-static-build agent-claude-available)
+  assign-to-static-build-claude)
+
+;; ── Task: Verify Phase 3 — static assets ────────────────────────────────────
+
+(given task-verify-phase3)
+
+(meta task-verify-phase3
+  (description "End-to-end verification of static asset handling. Serve mode: (1) shared .zetl/static/test.js returns 200 with correct MIME, (2) theme static overrides shared at same path, (3) 404 for nonexistent files, (4) no error when no static dirs exist. Build mode: (1) shared + theme assets merged in dist/_static/, (2) theme overwrites shared on conflict, (3) directory structure preserved, (4) no _static/ when no source dirs. TEST-012-005, TEST-012-006.")
+  (acceptance "All serve and build static asset scenarios pass; MIME types correct; precedence correct; no-static-dir graceful"))
+
+(normally r-ready-verify-phase3
+  (and task-verify-phase3 completed-static-serve completed-static-build)
+  ready-verify-phase3)
+
+(normally r-assign-verify-phase3
+  (and ready-verify-phase3 agent-claude-available)
+  assign-to-verify-phase3-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 4 — Frontmatter Parsing
+;; ════════════════════════════════════════════════════════════════════════════
+;;
+;; Goal: Parse YAML frontmatter into structured template data accessible
+;; as page.frontmatter in templates. Enables content-type-aware rendering.
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Add serde_yaml dependency ─────────────────────────────────────────
+
+(given task-add-serde-yaml)
+(given no-deps-add-serde-yaml)
+
+(meta task-add-serde-yaml
+  (description "Add serde_yaml to Cargo.toml. Run cargo check to verify it resolves and compiles. Note: the serde_yaml crate is maintained — if it has been deprecated in favour of an alternative (e.g., serde_yml), use the current best option that can deserialize YAML to serde_json::Value.")
+  (acceptance "cargo check passes with serde_yaml (or equivalent) importable"))
+
+(normally r-ready-add-serde-yaml
+  (and task-add-serde-yaml no-deps-add-serde-yaml)
+  ready-add-serde-yaml)
+
+(normally r-assign-add-serde-yaml
+  (and ready-add-serde-yaml agent-claude-available)
+  assign-to-add-serde-yaml-claude)
+
+;; ── Task: Parse frontmatter to JSON ─────────────────────────────────────────
+
+(given task-frontmatter-parse)
+
+(meta task-frontmatter-parse
+  (description "Add a parse_frontmatter(content: &str) -> serde_json::Value function to src/web/markdown.rs (or a new frontmatter.rs module). Extract the YAML block between --- fences at the start of the file. Parse it with serde_yaml into serde_json::Value. Return empty object {} for pages with no frontmatter. Return empty object {} for pages with malformed YAML, logging a warning. Do not alter the existing strip_frontmatter() behaviour — the new function parses the same block that strip_frontmatter discards. REQ-012-007, ADR-014.")
+  (acceptance "Valid YAML parses to correct serde_json::Value; no frontmatter returns {}; malformed YAML returns {} with warning logged; strip_frontmatter behaviour unchanged"))
+
+(normally r-ready-frontmatter-parse
+  (and task-frontmatter-parse completed-add-serde-yaml completed-verify-phase1)
+  ready-frontmatter-parse)
+
+(normally r-assign-frontmatter-parse
+  (and ready-frontmatter-parse agent-claude-available)
+  assign-to-frontmatter-parse-claude)
+
+;; ── Task: Wire frontmatter into template context ────────────────────────────
+
+(given task-frontmatter-context)
+
+(meta task-frontmatter-context
+  (description "Update the PageContext builder in src/web/context.rs to call parse_frontmatter() on the raw page content and populate PageContext.frontmatter with the result. Update both routes.rs page_handler and build.rs render_page to pass raw content through to the context builder so frontmatter can be extracted. Verify that page.frontmatter.key access works in templates. TEST-012-007.")
+  (acceptance "page.frontmatter accessible in templates; page.frontmatter.format works for frontmatter with format key; empty object for pages without frontmatter; templates render without error"))
+
+(normally r-ready-frontmatter-context
+  (and task-frontmatter-context completed-frontmatter-parse completed-verify-phase2)
+  ready-frontmatter-context)
+
+(normally r-assign-frontmatter-context
+  (and ready-frontmatter-context agent-claude-available)
+  assign-to-frontmatter-context-claude)
+
+;; ── Task: Verify Phase 4 — frontmatter ──────────────────────────────────────
+
+(given task-verify-phase4)
+
+(meta task-verify-phase4
+  (description "End-to-end verification of frontmatter parsing. (1) Create a test page with format: fountain, tags: [drama, screenplay], author: Jane Doe in frontmatter — verify all fields accessible in templates. (2) Page with no frontmatter — verify page.frontmatter is empty object. (3) Page with malformed YAML — verify empty object returned and warning logged. (4) Verify strip_frontmatter still works (markdown renders without frontmatter block visible). TEST-012-007.")
+  (acceptance "All 4 scenarios pass; frontmatter data correct in templates; no regressions in markdown rendering"))
+
+(normally r-ready-verify-phase4
+  (and task-verify-phase4 completed-frontmatter-context)
+  ready-verify-phase4)
+
+(normally r-assign-verify-phase4
+  (and ready-verify-phase4 agent-claude-available)
+  assign-to-verify-phase4-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Final — Integration Verification
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Full integration test ─────────────────────────────────────────────
+
+(given task-integration-test)
+
+(meta task-integration-test
+  (description "Comprehensive integration test covering the full SPEC-012 feature set. Create a test vault with: multiple pages (some with frontmatter, some without), dead links, backlinks, subfolders, a custom theme that overrides page.html with frontmatter-conditional rendering, shared and per-theme static assets. Verify: (1) zetl serve with default theme works, (2) zetl serve --theme custom works with overrides and fallback, (3) zetl build with default theme produces correct output, (4) zetl build --theme custom produces correct output with static assets, (5) edit mode works only in serve, (6) frontmatter accessible in custom theme, (7) static assets served with correct MIME types, (8) template errors produce readable messages. All REQ-012-* and TEST-012-*.")
+  (acceptance "All 8 scenarios pass; no regressions in existing functionality; cargo test passes; the full feature set from SPEC-012 is operational"))
+
+(normally r-ready-integration-test
+  (and task-integration-test completed-verify-phase3 completed-verify-phase4)
+  ready-integration-test)
+
+(normally r-assign-integration-test
+  (and ready-integration-test agent-claude-available)
+  assign-to-integration-test-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Rule Metadata
+;; ════════════════════════════════════════════════════════════════════════════
+
+(meta r-ready-add-minijinja
+  (description "Minijinja dependency has no prerequisites")
+  (justification "First task in Phase 1 — no existing code depends on it yet"))
+
+(meta r-ready-context-structs
+  (description "Context structs depend on minijinja being available for Serialize")
+  (justification "Structs use serde::Serialize which is pulled in with minijinja"))
+
+(meta r-ready-extract-base
+  (description "Base template extraction depends on minijinja for syntax validation")
+  (justification "Template must be valid Minijinja syntax to be useful"))
+
+(meta r-ready-extract-index
+  (description "Index template extends base.html")
+  (justification "Template inheritance requires base.html to exist first"))
+
+(meta r-ready-extract-page
+  (description "Page template extends base.html")
+  (justification "Template inheritance requires base.html to exist first"))
+
+(meta r-ready-extract-folder
+  (description "Folder template extends base.html")
+  (justification "Template inheritance requires base.html to exist first"))
+
+(meta r-ready-engine
+  (description "Engine requires all templates and context structs")
+  (justification "Engine loads templates via include_str! and renders context structs"))
+
+(meta r-ready-refactor-routes
+  (description "Routes refactor requires working template engine")
+  (justification "Replaces format!() with engine.render() calls"))
+
+(meta r-ready-refactor-build
+  (description "Build refactor requires working template engine")
+  (justification "Replaces format!() with engine.render() calls"))
+
+(meta r-ready-cleanup-html
+  (description "Cleanup depends on both routes and build being refactored")
+  (justification "Cannot remove functions until all callers are migrated"))
+
+(meta r-ready-verify-phase1
+  (description "Phase 1 verification depends on cleanup being complete")
+  (justification "Final check after all Phase 1 changes are in place"))
+
+(meta r-ready-theme-cli
+  (description "Theme CLI depends on Phase 1 being verified")
+  (justification "Phase 2 builds on a working template engine from Phase 1"))
+
+(meta r-ready-theme-loader
+  (description "Theme loader depends on CLI flag being available")
+  (justification "Loader needs the theme name from the CLI to resolve templates"))
+
+(meta r-ready-theme-errors
+  (description "Error reporting depends on theme loader being functional")
+  (justification "Errors only manifest when loading/rendering themed templates"))
+
+(meta r-ready-static-serve
+  (description "Static serving depends on Phase 2 for theme-aware paths")
+  (justification "Static resolution needs active theme name for per-theme directory"))
+
+(meta r-ready-static-build
+  (description "Static build depends on Phase 2 for theme-aware paths")
+  (justification "Asset copying needs active theme name for per-theme directory"))
+
+(meta r-ready-frontmatter-parse
+  (description "Frontmatter parsing depends on serde_yaml and Phase 1")
+  (justification "Needs YAML parser and working template context to wire into"))
+
+(meta r-ready-frontmatter-context
+  (description "Frontmatter context depends on parse function and Phase 2")
+  (justification "Needs parse_frontmatter() and theme-aware context structs"))
+
+(meta r-ready-integration-test
+  (description "Integration test depends on all phases being verified")
+  (justification "Final comprehensive test of the complete SPEC-012 feature set"))
