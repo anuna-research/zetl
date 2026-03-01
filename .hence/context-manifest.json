@@ -1,12 +1,12 @@
 {
-  "task_id": "refactor-search",
+  "task_id": "lazy-index",
   "token_budget": 8000,
-  "tokens_used": 544,
+  "tokens_used": 263,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Rewrite src/search.rs to query Tantivy instead of grep-scanning files. This is the core replacement per ADR-013-001.\n\nUpdated SearchMatch struct (SPEC-013 §4.7):\n  pub struct SearchMatch {\n      pub page: String,\n      pub path: String,\n      pub line: u32,\n      pub column: u32,\n      pub context: Option<String>,\n      pub heading: Option<String>,      // NEW: enclosing heading text\n      pub heading_level: Option<u8>,    // NEW: heading depth (1-6)\n      pub score: f64,                   // NEW: BM25 score\n  }\n\nUpdated SearchOutput struct:\n  pub struct SearchOutput {\n      pub query: String,\n      pub total_matches: usize,\n      pub results: Vec<SearchMatch>,\n      // near/depth/neighbourhood_size added in Phase 2\n  }\n\nRemove: SearchConfig.regex field, SearchConfig.body_only field (always body-only now), build_matcher(), Matcher enum, the entire grep-based find_matches_in_content().\n\nQuery flow (SPEC-013 §4.4):\n  1. Open or lazily build the Tantivy index.\n  2. Parse query with QueryParser against body field.\n  3. Execute with TopDocs collector, limited to --limit.\n  4. For each matched document:\n     a. Read the original file from disk.\n     b. Compute body_text_ranges.\n     c. Scan body text for query term occurrences (case-insensitive by default, case-sensitive with --case-sensitive). Find line/column for each occurrence.\n     d. Detect headings via detect_headings().\n     e. Attach heading context via find_heading_for_offset().\n     f. Emit SearchMatch entries with the document's BM25 score.\n  5. Order results by descending score, ties broken by path (ascending) then line (ascending).\n\nThe re-scanning step (4b-c) is necessary because Tantivy provides document-level scores but not character offsets. Split the query string on whitespace to get individual terms for re-scanning.\n\nRetain: --case-sensitive flag (for re-scan), --path filter (applied to Tantivy results), --context chars, --limit.\nRemove: --regex flag, --all flag.\n\nREQ-013-002, REQ-013-005, CON-013-001.",
-      "token_cost": 500,
+      "content": "Implement lazy index construction in the search path per REQ-013-004. When zetl search is invoked and no .zetl/search/ directory exists (SearchIndex::open returns None):\n\n  1. Print to stderr: 'Building search index (run `zetl index` to avoid this delay on future queries)'\n  2. Scan the vault (reuse the pipeline's scan_vault + parse flow).\n  3. Build the index via SearchIndex::build().\n  4. Persist the index in .zetl/search/ for future queries.\n  5. Continue with the search query.\n\nThis should be integrated into the search_vault() function or cmd_search() in main.rs. The lazy build does NOT build the link graph (only the search index). This means --near is unavailable without zetl index, but basic search works without prior indexing.\n\nREQ-013-004.",
+      "token_cost": 189,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 3 files (+338, -5): .hence/context-manifest.json, src/lib.rs, src/search_index.rs",
       "token_cost": 22,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-refactor-search-changes",
+      "content": "Modified 5 files (+99, -344): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/search.rs, tests/integration.rs",
+      "token_cost": 30,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:26:33Z"
+  "constructed_at": "2026-03-01T13:35:06Z"
 }
