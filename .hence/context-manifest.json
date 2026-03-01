@@ -1,12 +1,12 @@
 {
-  "task_id": "verify-phase4",
+  "task_id": "serve-cmdk",
   "token_budget": 8000,
-  "tokens_used": 297,
+  "tokens_used": 437,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "End-to-end verification of build mode search:\n\n  1. zetl build emits search-index.json in output directory (TEST-013-014).\n  2. search-index.json contains avgDl, docs (correct count), df (TEST-013-014).\n  3. Each doc has n, s, dl, tf with correct term frequencies (TEST-013-014).\n  4. Open built static site in browser, press Cmd+K — search-index.json fetched (TEST-013-015).\n  5. Type a query — results ranked by BM25 score (TEST-013-015).\n  6. Navigate results with keyboard and click to follow (TEST-013-015).\n  7. All Phase 1, 2, 3 tests still pass.\n\nTEST-013-014, TEST-013-015.",
-      "token_cost": 146,
+      "content": "Upgrade the existing Cmd+K search modal in the serve mode HTML (src/web/html.rs or the base template if IMPL-012 has landed) to query /api/search instead of filtering the sidebar page list.\n\nCurrent behavior: The Cmd+K modal filters a pre-built JSON array of page names client-side (fuzzy match on name only).\n\nNew behavior per REQ-013-013:\n  1. On keyup in the search input, debounce 150ms, then fetch GET /api/search?q=<input>&limit=20.\n  2. Display results showing: page name, heading (if present), context snippet, and BM25 score.\n  3. Keyboard navigation: arrow keys to move between results, Enter to navigate to the selected page.\n  4. Show a loading indicator while the fetch is in flight.\n  5. Clear results when input is cleared.\n\nThe existing page-name fuzzy filter can be kept as a fast fallback for very short queries (≤2 chars) or shown while waiting for the API response.\n\nResult display format:\n  <div class='search-result'>\n    <span class='page-name'>Page Name</span>\n    <span class='heading'>## Heading</span>\n    <span class='context'>...matching context...</span>\n    <span class='score'>8.72</span>\n  </div>\n\nREQ-013-013.",
+      "token_cost": 286,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:29:26Z"
+  "constructed_at": "2026-03-01T14:33:54Z"
 }
