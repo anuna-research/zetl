@@ -104,7 +104,63 @@ pub fn build_static(
         folder_count += 1;
     }
 
-    eprintln!("zetl build  →  {count} pages + {folder_count} folder indexes written to {out_dir}/");
+    // ── static assets ─────────────────────────────────────────────────
+    let static_copied = copy_static_assets(vault_root, out, theme)?;
+
+    eprintln!(
+        "zetl build  →  {count} pages + {folder_count} folder indexes written to {out_dir}/{}",
+        if static_copied { " (static assets copied)" } else { "" }
+    );
+    Ok(())
+}
+
+/// Copy static assets from `.zetl/static/` and `.zetl/themes/<theme>/static/` into `{out}/_static/`.
+///
+/// Returns `true` if any files were copied.
+fn copy_static_assets(vault_root: &Path, out: &Path, theme: &str) -> Result<bool> {
+    let shared_static = vault_root.join(".zetl/static");
+    let theme_static = vault_root.join(format!(".zetl/themes/{theme}/static"));
+
+    let shared_exists = shared_static.is_dir();
+    let theme_exists = theme != "default" && theme_static.is_dir();
+
+    if !shared_exists && !theme_exists {
+        return Ok(false);
+    }
+
+    let dest = out.join("_static");
+    std::fs::create_dir_all(&dest)
+        .with_context(|| format!("Cannot create _static directory: {}", dest.display()))?;
+
+    // (1) Shared static first
+    if shared_exists {
+        copy_dir_recursive(&shared_static, &dest)?;
+    }
+    // (2) Theme-specific second (overwrites shared on conflict)
+    if theme_exists {
+        copy_dir_recursive(&theme_static, &dest)?;
+    }
+
+    Ok(true)
+}
+
+/// Recursively copy the contents of `src` into `dest`, preserving directory structure.
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(src)
+        .with_context(|| format!("Cannot read directory: {}", src.display()))?
+    {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let target = dest.join(entry.file_name());
+
+        if file_type.is_dir() {
+            std::fs::create_dir_all(&target)?;
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else if file_type.is_file() {
+            std::fs::copy(entry.path(), &target)?;
+        }
+        // Skip symlinks and other special file types
+    }
     Ok(())
 }
 
@@ -158,4 +214,119 @@ fn build_transclusion_cards(data: &VaultData, vault_root: &Path, page_name: &str
         ));
     }
     cards
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_static_dirs_skips_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let out = tmp.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let result = copy_static_assets(tmp.path(), &out, "default").unwrap();
+        assert!(!result);
+        assert!(!out.join("_static").exists());
+    }
+
+    #[test]
+    fn shared_static_copies() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = tmp.path().join(".zetl/static");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(shared.join("app.css"), "body{}").unwrap();
+
+        let out = tmp.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let result = copy_static_assets(tmp.path(), &out, "default").unwrap();
+        assert!(result);
+        assert_eq!(
+            std::fs::read_to_string(out.join("_static/app.css")).unwrap(),
+            "body{}"
+        );
+    }
+
+    #[test]
+    fn theme_static_copies() {
+        let tmp = tempfile::tempdir().unwrap();
+        let theme_dir = tmp.path().join(".zetl/themes/ocean/static");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        std::fs::write(theme_dir.join("theme.js"), "alert(1)").unwrap();
+
+        let out = tmp.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let result = copy_static_assets(tmp.path(), &out, "ocean").unwrap();
+        assert!(result);
+        assert_eq!(
+            std::fs::read_to_string(out.join("_static/theme.js")).unwrap(),
+            "alert(1)"
+        );
+    }
+
+    #[test]
+    fn theme_overwrites_shared_on_conflict() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = tmp.path().join(".zetl/static");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(shared.join("style.css"), "shared").unwrap();
+
+        let theme_dir = tmp.path().join(".zetl/themes/custom/static");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        std::fs::write(theme_dir.join("style.css"), "theme").unwrap();
+
+        let out = tmp.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        copy_static_assets(tmp.path(), &out, "custom").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(out.join("_static/style.css")).unwrap(),
+            "theme"
+        );
+    }
+
+    #[test]
+    fn preserves_nested_directory_structure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = tmp.path().join(".zetl/static/fonts/woff2");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(shared.join("inter.woff2"), "fontdata").unwrap();
+
+        let out = tmp.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        copy_static_assets(tmp.path(), &out, "default").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(out.join("_static/fonts/woff2/inter.woff2")).unwrap(),
+            "fontdata"
+        );
+    }
+
+    #[test]
+    fn both_sources_merge_non_conflicting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shared = tmp.path().join(".zetl/static");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(shared.join("shared.js"), "shared").unwrap();
+
+        let theme_dir = tmp.path().join(".zetl/themes/duo/static");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        std::fs::write(theme_dir.join("theme.js"), "theme").unwrap();
+
+        let out = tmp.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        copy_static_assets(tmp.path(), &out, "duo").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(out.join("_static/shared.js")).unwrap(),
+            "shared"
+        );
+        assert_eq!(
+            std::fs::read_to_string(out.join("_static/theme.js")).unwrap(),
+            "theme"
+        );
+    }
 }
