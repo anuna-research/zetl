@@ -1,12 +1,12 @@
 {
-  "task_id": "add-minijinja",
+  "task_id": "context-structs",
   "token_budget": 8000,
-  "tokens_used": 91,
+  "tokens_used": 172,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add minijinja (with 'builtins' and 'loader' features) to Cargo.toml. Also add serde as a dependency if not already present (needed for Serialize derives on context structs). Run cargo check to verify the dependency resolves and compiles. Do NOT add serde_yaml yet — that is Phase 4.",
-      "token_cost": 71,
+      "content": "Create src/web/context.rs with Serde-serializable structs for template data: VaultContext, PageEntry, StatsContext, ZetlMeta, BreadcrumbEntry, BacklinkEntry, OutlinkEntry, PageContext, FolderContext, SubfolderEntry. Each struct derives Serialize. PageContext.frontmatter is serde_json::Value (empty object {} for now — actual parsing is Phase 4). Add builder functions that convert VaultData + page-specific data into these context structs. Export the module from src/web/mod.rs. See SPEC-012 §3.5 for exact struct definitions.",
+      "token_cost": 132,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 3 files (+26, -47): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-add-minijinja-changes",
+      "content": "Modified 3 files (+36, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:06:58Z"
+  "constructed_at": "2026-03-01T13:07:45Z"
 }
