@@ -314,7 +314,7 @@
         {% block sidebar %}
         <ul class="menu menu-sm">
           {%- for page in vault.pages %}
-          <li><a href="/{{ page.slug }}"{% if active_slug == page.slug %} class="active"{% endif %}>{{ page.title }}</a></li>
+          <li><a href="/{{ page.slug | safe }}" class="{% if active_slug == page.slug %}active{% endif %}">{{ page.title }}</a></li>
           {%- endfor %}
         </ul>
         {% endblock %}

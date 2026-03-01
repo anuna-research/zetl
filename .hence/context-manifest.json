@@ -1,12 +1,12 @@
 {
-  "task_id": "cleanup-html",
+  "task_id": "verify-phase1",
   "token_budget": 8000,
-  "tokens_used": 284,
+  "tokens_used": 329,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Remove now-unused functions from src/web/html.rs: layout(), sidebar_html(), breadcrumb_html(). Keep search_index_json(), html_escape(), urlencoding() as they are still used by context builders and other code. If any functions have zero remaining callers, remove them. Update any use/import statements in routes.rs, build.rs, mod.rs.",
-      "token_cost": 83,
+      "content": "End-to-end verification that Phase 1 produces identical output. Run zetl build on the demo-vault (or a test vault) and compare the generated HTML against a snapshot of the pre-refactor output. Check: (1) index.html structure matches, (2) page views have same DaisyUI layout, sidebar, search modal, backlinks panel, transclusion cards, (3) folder indices have same subfolder/page cards, (4) zetl serve renders all pages without template errors, (5) edit mode works in serve, (6) all existing tests pass. NFR-012-003.",
+      "token_cost": 128,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:34:58Z"
+  "constructed_at": "2026-03-01T13:37:01Z"
 }
