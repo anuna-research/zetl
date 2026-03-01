@@ -47,6 +47,7 @@ pub struct WebState {
     pub data: Arc<RwLock<VaultData>>,
     pub vault_root: Arc<PathBuf>,
     pub engine: Arc<TemplateEngine>,
+    pub theme: String,
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.
