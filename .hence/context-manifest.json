@@ -1,12 +1,12 @@
 {
-  "task_id": "verify-phase2",
+  "task_id": "tantivy-webstate",
   "token_budget": 8000,
-  "tokens_used": 786,
+  "tokens_used": 324,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "End-to-end verification of graph-scoped search. Test with a vault that has known link structure (e.g., A→B, A→C, B→D, E isolated):\n\n  1. --near A (depth 1): results include A, B, C\n  2. --near A --depth 2: results include A, B, C, D\n  3. Backlinks: X→Y, --near Y includes X (bidirectional, TEST-013-006).\n  4. --depth without --near: exit code 2 (TEST-013-007).\n  5. --depth 0: exit code 2 (TEST-013-007).\n  6. Case-insensitive anchor resolution: --near 'spaced repetition' resolves to 'Spaced Repetition' (TEST-013-008).\n  7. Unresolvable anchor: exit code 2 with suggestions (TEST-013-008).\n  8. Neighbourhood metadata present in JSON output (TEST-013-009).\n  9. Neighbourhood metadata absent without --near (TEST-013-009).\n  10. --near composes with --path and --context (TEST-013-016).\n  11. All existing Phase 1 tests still pass.\n\nTEST-013-006 through TEST-013-009, TEST-013-016.",
-      "token_cost": 223,
+      "content": "Extend WebState in src/web/mod.rs to hold a Tantivy IndexReader. During server startup in cmd_serve():\n\n  1. Build or open the Tantivy search index (same logic as zetl index).\n  2. Obtain an IndexReader from the SearchIndex.\n  3. Store the reader (or the SearchIndex itself) in WebState alongside the existing VaultData.\n\nThe IndexReader is thread-safe and can be shared across requests via Arc. When the vault is re-indexed (e.g., on file change in watch mode), the reader should be refreshed or rebuilt.\n\nWebState addition:\n  pub struct WebState {\n      pub data: Arc<RwLock<VaultData>>,\n      pub vault_root: Arc<PathBuf>,\n      pub search_index: Arc<SearchIndex>,  // NEW\n  }\n\nREQ-013-012.",
+      "token_cost": 173,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:02:18Z"
+  "constructed_at": "2026-03-01T14:09:52Z"
 }

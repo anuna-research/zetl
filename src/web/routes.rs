@@ -7,6 +7,7 @@ use axum::response::{Html, IntoResponse, Response};
 use crate::scanner::page_slug_from_path;
 use crate::web::html::{breadcrumb_html, html_escape, layout, search_index_json, sidebar_html, urlencoding};
 use crate::web::markdown;
+use crate::search_index::SearchIndex;
 use crate::web::{reindex, VaultData, WebState};
 
 /// Build sidebar entries as `(display_name, slug)` tuples.
@@ -628,9 +629,14 @@ pub async fn save_handler(
         return (StatusCode::INTERNAL_SERVER_ERROR, "Write failed").into_response();
     }
 
-    // Re-index the vault so the graph/links reflect the edit
+    // Re-index the vault so the graph/links and search index reflect the edit.
     match reindex(&state.vault_root) {
         Ok(new_data) => {
+            // Rebuild Tantivy search index so the reader picks up the new content
+            // (ReloadPolicy::OnCommitWithDelay causes the existing reader to reload).
+            if let Err(e) = SearchIndex::build(&state.vault_root, &new_data.files) {
+                eprintln!("search index rebuild error: {e}");
+            }
             *state.data.write().unwrap() = new_data;
         }
         Err(e) => {

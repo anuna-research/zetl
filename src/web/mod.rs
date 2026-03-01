@@ -12,6 +12,7 @@ use axum::routing::get;
 
 use crate::graph::LinkGraph;
 use crate::scanner::{page_slug_from_path, resolve_page_name, scan_vault};
+use crate::search_index::SearchIndex;
 use crate::types::ParsedFile;
 
 /// Snapshot of vault data that can be swapped after re-indexing.
@@ -27,10 +28,14 @@ pub struct VaultData {
 }
 
 /// Shared state passed to all handlers via axum State.
+///
+/// `search_index` is thread-safe and shared across requests via Arc.
+/// REQ-013-012.
 #[derive(Clone)]
 pub struct WebState {
     pub data: Arc<RwLock<VaultData>>,
     pub vault_root: Arc<PathBuf>,
+    pub search_index: Arc<SearchIndex>,
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.
