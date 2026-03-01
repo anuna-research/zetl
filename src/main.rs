@@ -1311,15 +1311,12 @@ fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn cmd_search(
     cli: &Cli,
     query: &str,
     context: usize,
     limit: usize,
-    regex: bool,
     case_sensitive: bool,
-    all: bool,
     path_filter: Option<&str>,
 ) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
@@ -1329,9 +1326,7 @@ fn cmd_search(
         query,
         context_chars: context,
         limit,
-        regex,
         case_sensitive,
-        body_only: !all,
         path_filter,
     };
 
@@ -1339,11 +1334,7 @@ fn cmd_search(
         Ok(o) => o,
         Err(e) => {
             let msg = format!("{e}");
-            let code = if msg.contains("Empty search query") || msg.contains("Invalid regex") {
-                2
-            } else {
-                1
-            };
+            let code = if msg.contains("Empty search query") { 2 } else { 1 };
             match cli.format {
                 OutputFormat::Json => exit_json_error(&msg, code),
                 OutputFormat::Table => {
@@ -5935,18 +5926,14 @@ fn main() -> anyhow::Result<()> {
             query,
             context,
             limit,
-            regex,
             case_sensitive,
-            all,
             path,
         } => cmd_search(
             &cli,
             query,
             *context,
             *limit,
-            *regex,
             *case_sensitive,
-            *all,
             path.as_deref(),
         ),
         Command::List => cmd_list(&cli),

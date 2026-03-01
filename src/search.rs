@@ -2,11 +2,10 @@ use std::path::Path;
 
 use anyhow::Result;
 use globset::GlobBuilder;
-use ignore::WalkBuilder;
-use regex::Regex;
 use serde::Serialize;
 
-use crate::scanner::{body_text_ranges, page_name_from_path};
+use crate::scanner::{body_text_ranges, scan_vault};
+use crate::search_index::SearchIndex;
 
 /// A single search match within a file.
 #[derive(Debug, Serialize)]
@@ -16,13 +15,15 @@ pub struct SearchMatch {
     pub line: u32,
     pub column: u32,
     pub context: Option<String>,
+    pub heading: Option<String>,
+    pub heading_level: Option<u8>,
+    pub score: f64,
 }
 
 /// Output envelope for the search command.
 #[derive(Debug, Serialize)]
 pub struct SearchOutput {
     pub query: String,
-    pub regex: bool,
     pub total_matches: usize,
     pub results: Vec<SearchMatch>,
 }
@@ -99,30 +100,33 @@ pub struct SearchConfig<'a> {
     pub query: &'a str,
     pub context_chars: usize,
     pub limit: usize,
-    pub regex: bool,
     pub case_sensitive: bool,
-    pub body_only: bool,
     pub path_filter: Option<&'a str>,
 }
 
-/// Search all Markdown files in `vault_root` for matches.
+/// Search all Markdown files in `vault_root` for matches via Tantivy.
 ///
-/// Walks the directory tree respecting ignore patterns (same as scan_vault),
-/// reads each file, and matches the query against content. When `body_only`
-/// is true, matches inside frontmatter, code blocks, inline code, and HTML
-/// comments are skipped.
+/// Opens the Tantivy index at `.zetl/search/`, building it lazily if absent.
+/// Queries the index against the body field, then re-scans each matched document
+/// for precise line/column positions and heading context.
+///
+/// REQ-013-002, REQ-013-005, CON-013-001.
 pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOutput> {
-    // Reject empty/whitespace queries before entering the match loop
-    // (empty pattern matches every byte position, causing UTF-8 boundary panics)
     if config.query.trim().is_empty() {
         anyhow::bail!("Empty search query");
     }
 
-    let matcher = build_matcher(config)?;
+    // Open the Tantivy index, building it lazily if it doesn't exist.
+    let index = match SearchIndex::open(vault_root)? {
+        Some(idx) => idx,
+        None => {
+            let files = scan_vault(vault_root, &[])?;
+            SearchIndex::build(vault_root, &files)?
+        }
+    };
 
-    // Build path filter glob if specified
+    // Build path filter glob if specified.
     let path_glob = if let Some(pattern) = config.path_filter {
-        // Normalize: "concepts/" → "concepts/**"
         let pat = if pattern.ends_with('/') {
             format!("{pattern}**")
         } else {
@@ -138,116 +142,99 @@ pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOu
         None
     };
 
+    // Query the index for top-scoring documents (limited to config.limit documents).
+    let hits = index.query(config.query, config.limit)?;
+
+    // Split query into individual terms for re-scanning.
+    let terms: Vec<String> = config
+        .query
+        .split_whitespace()
+        .map(|t| {
+            if config.case_sensitive {
+                t.to_string()
+            } else {
+                t.to_lowercase()
+            }
+        })
+        .collect();
+
     let mut all_matches: Vec<SearchMatch> = Vec::new();
-    let mut total = 0usize;
 
-    let mut builder = WalkBuilder::new(vault_root);
-    builder
-        .hidden(false)
-        .git_ignore(true)
-        .git_global(false)
-        .git_exclude(false);
-
-    let zetlignore = vault_root.join(".zetlignore");
-    if zetlignore.exists() {
-        builder.add_ignore(&zetlignore);
-    }
-
-    let mut overrides = ignore::overrides::OverrideBuilder::new(vault_root);
-    overrides.add("!.git/")?;
-    overrides.add("!node_modules/")?;
-    overrides.add("!.zetl/")?;
-    builder.overrides(overrides.build()?);
-
-    for entry in builder.build() {
-        let entry = entry?;
-        let path = entry.path();
-
-        if !path.is_file() {
-            continue;
-        }
-        let ext = path.extension().and_then(|e| e.to_str());
-        if ext != Some("md") {
-            continue;
-        }
-
-        let rel_path = path.strip_prefix(vault_root).unwrap_or(path);
-
-        // Apply path filter if specified
+    for hit in hits {
+        // Apply optional path filter.
+        let rel_path = std::path::Path::new(&hit.path);
         if let Some(ref glob) = path_glob {
             if !glob.is_match(rel_path) {
                 continue;
             }
         }
 
-        let page_name = page_name_from_path(rel_path);
-        let content = match std::fs::read_to_string(path) {
+        // Read the original file from disk.
+        let abs_path = vault_root.join(&hit.path);
+        let content = match std::fs::read_to_string(&abs_path) {
             Ok(c) => c,
             Err(_) => continue,
         };
 
-        let body_ranges = if config.body_only {
-            Some(body_text_ranges(&content))
+        let body_ranges = body_text_ranges(&content);
+        let line_starts: Vec<usize> = std::iter::once(0)
+            .chain(content.match_indices('\n').map(|(i, _)| i + 1))
+            .collect();
+
+        let headings = detect_headings(&content, &body_ranges);
+
+        let search_content = if config.case_sensitive {
+            content.clone()
         } else {
-            None
+            content.to_lowercase()
         };
 
-        let file_matches = find_matches_in_content(
-            &content,
-            &matcher,
-            &page_name,
-            &rel_path.to_string_lossy(),
-            config.context_chars,
-            body_ranges.as_deref(),
-        );
+        // Scan for each query term within body text only.
+        for term in &terms {
+            let mut start = 0usize;
+            while let Some(pos) = search_content[start..].find(term.as_str()) {
+                let byte_offset = start + pos;
+                start = byte_offset + 1;
 
-        for m in file_matches {
-            total += 1;
-            if all_matches.len() < config.limit {
-                all_matches.push(m);
+                if !in_body_text(byte_offset, &body_ranges) {
+                    continue;
+                }
+
+                let (line, col) = byte_offset_to_line_col(&line_starts, byte_offset);
+                let ctx =
+                    extract_search_context(&content, byte_offset, term.len(), config.context_chars);
+                let (heading, heading_level) = find_heading_for_offset(&headings, byte_offset);
+
+                all_matches.push(SearchMatch {
+                    page: hit.page_name.clone(),
+                    path: hit.path.clone(),
+                    line,
+                    column: col,
+                    context: ctx,
+                    heading,
+                    heading_level,
+                    score: hit.score,
+                });
             }
         }
     }
 
-    // Sort by path, then line
-    all_matches.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
+    // Sort by descending score, ties broken by path (ascending), then line (ascending).
+    all_matches.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.path.cmp(&b.path))
+            .then(a.line.cmp(&b.line))
+    });
 
+    let total = all_matches.len();
+    all_matches.truncate(config.limit);
     Ok(SearchOutput {
         query: config.query.to_string(),
-        regex: config.regex,
         total_matches: total,
         results: all_matches,
     })
-}
-
-/// Internal matcher abstraction — literal or regex.
-enum Matcher {
-    Literal {
-        pattern: String,
-        case_sensitive: bool,
-    },
-    Regex(Regex),
-}
-
-fn build_matcher(config: &SearchConfig) -> Result<Matcher> {
-    if config.regex {
-        let pattern = if config.case_sensitive {
-            config.query.to_string()
-        } else {
-            format!("(?i){}", config.query)
-        };
-        let re = Regex::new(&pattern).map_err(|e| anyhow::anyhow!("Invalid regex: {e}"))?;
-        Ok(Matcher::Regex(re))
-    } else {
-        Ok(Matcher::Literal {
-            pattern: if config.case_sensitive {
-                config.query.to_string()
-            } else {
-                config.query.to_lowercase()
-            },
-            case_sensitive: config.case_sensitive,
-        })
-    }
 }
 
 /// Check if a byte offset falls within any of the body-text ranges.
@@ -255,82 +242,6 @@ fn in_body_text(byte_offset: usize, body_ranges: &[(usize, usize)]) -> bool {
     body_ranges
         .iter()
         .any(|&(start, end)| byte_offset >= start && byte_offset < end)
-}
-
-/// Find all matches in a single file's content.
-fn find_matches_in_content(
-    content: &str,
-    matcher: &Matcher,
-    page_name: &str,
-    rel_path: &str,
-    context_chars: usize,
-    body_ranges: Option<&[(usize, usize)]>,
-) -> Vec<SearchMatch> {
-    let mut results = Vec::new();
-
-    // Pre-compute line start byte offsets for O(1) line/column lookup
-    let line_starts: Vec<usize> = std::iter::once(0)
-        .chain(content.match_indices('\n').map(|(i, _)| i + 1))
-        .collect();
-
-    match matcher {
-        Matcher::Literal {
-            pattern,
-            case_sensitive,
-        } => {
-            let search_content = if *case_sensitive {
-                content.to_string()
-            } else {
-                content.to_lowercase()
-            };
-
-            let mut start = 0;
-            while let Some(pos) = search_content[start..].find(pattern.as_str()) {
-                let byte_offset = start + pos;
-                start = byte_offset + 1;
-
-                if let Some(ranges) = body_ranges {
-                    if !in_body_text(byte_offset, ranges) {
-                        continue;
-                    }
-                }
-
-                let (line, col) = byte_offset_to_line_col(&line_starts, byte_offset);
-                let ctx =
-                    extract_search_context(content, byte_offset, pattern.len(), context_chars);
-                results.push(SearchMatch {
-                    page: page_name.to_string(),
-                    path: rel_path.to_string(),
-                    line,
-                    column: col,
-                    context: ctx,
-                });
-            }
-        }
-        Matcher::Regex(re) => {
-            for mat in re.find_iter(content) {
-                let byte_offset = mat.start();
-
-                if let Some(ranges) = body_ranges {
-                    if !in_body_text(byte_offset, ranges) {
-                        continue;
-                    }
-                }
-
-                let (line, col) = byte_offset_to_line_col(&line_starts, byte_offset);
-                let ctx = extract_search_context(content, byte_offset, mat.len(), context_chars);
-                results.push(SearchMatch {
-                    page: page_name.to_string(),
-                    path: rel_path.to_string(),
-                    line,
-                    column: col,
-                    context: ctx,
-                });
-            }
-        }
-    }
-
-    results
 }
 
 /// Convert a byte offset to (line, column), both 1-indexed.
@@ -342,7 +253,6 @@ fn byte_offset_to_line_col(line_starts: &[usize], byte_offset: usize) -> (u32, u
     ((line_idx + 1) as u32, (col + 1) as u32)
 }
 
-/// Extract context characters around a match.
 /// Snap a byte index to the nearest char boundary at or before it.
 fn floor_char_boundary(s: &str, index: usize) -> usize {
     let mut i = index.min(s.len());
@@ -422,56 +332,6 @@ mod tests {
         assert!(in_body_text(5, &ranges));
         assert!(!in_body_text(15, &ranges));
         assert!(in_body_text(25, &ranges));
-    }
-
-    #[test]
-    fn test_literal_case_insensitive() {
-        let content = "Hello World\nhello again\nGoodbye";
-        let matcher = Matcher::Literal {
-            pattern: "hello".to_string(),
-            case_sensitive: false,
-        };
-        let matches = find_matches_in_content(content, &matcher, "Test", "test.md", 0, None);
-        assert_eq!(matches.len(), 2);
-        assert_eq!(matches[0].line, 1);
-        assert_eq!(matches[1].line, 2);
-    }
-
-    #[test]
-    fn test_literal_case_sensitive() {
-        let content = "Hello World\nhello again";
-        let matcher = Matcher::Literal {
-            pattern: "Hello".to_string(),
-            case_sensitive: true,
-        };
-        let matches = find_matches_in_content(content, &matcher, "Test", "test.md", 0, None);
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].line, 1);
-    }
-
-    #[test]
-    fn test_body_text_exclusion() {
-        let content = "body match\nexcluded match\nbody match again";
-        // Only lines 1 and 3 are body text (bytes 0..11 and 26..44)
-        let body_ranges = vec![(0, 11), (26, 44)];
-        let matcher = Matcher::Literal {
-            pattern: "match".to_string(),
-            case_sensitive: false,
-        };
-        let matches =
-            find_matches_in_content(content, &matcher, "Test", "test.md", 0, Some(&body_ranges));
-        assert_eq!(matches.len(), 2);
-        assert_eq!(matches[0].line, 1);
-        assert_eq!(matches[1].line, 3);
-    }
-
-    #[test]
-    fn test_regex_matching() {
-        let content = "note notes notation";
-        let re = Regex::new(r"(?i)\bnotes?\b").unwrap();
-        let matcher = Matcher::Regex(re);
-        let matches = find_matches_in_content(content, &matcher, "Test", "test.md", 0, None);
-        assert_eq!(matches.len(), 2); // "note" and "notes", not "notation"
     }
 
     // ── detect_headings ──────────────────────────────────────────────────────
@@ -592,18 +452,5 @@ mod tests {
         let (text, level) = find_heading_for_offset(&headings, text_offset);
         assert_eq!(text.as_deref(), Some("C"));
         assert_eq!(level, Some(3));
-    }
-
-    #[test]
-    fn test_column_numbers() {
-        let content = "abc match xyz";
-        let matcher = Matcher::Literal {
-            pattern: "match".to_string(),
-            case_sensitive: false,
-        };
-        let matches = find_matches_in_content(content, &matcher, "Test", "test.md", 0, None);
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].line, 1);
-        assert_eq!(matches[0].column, 5); // 1-indexed: 'match' starts at byte 4, col = 5
     }
 }

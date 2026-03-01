@@ -1053,69 +1053,6 @@ fn test_014_body_text_exclusion() {
     );
 }
 
-#[test]
-fn test_014_search_all_mode() {
-    let dir = TempDir::new().expect("create temp dir");
-
-    write_file(
-        dir.path(),
-        "Mixed.md",
-        "---\ntitle: Quick Start Guide\n---\n\n# Mixed\n\nBody has quick overview.\n\n```\nquick_sort(arr)\n```\n\nMore body text.\n",
-    );
-
-    // --all mode: should find "quick" in frontmatter, body, and code block
-    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("quick").arg("--all"));
-
-    let total = json["total_matches"].as_u64().expect("total_matches");
-    assert!(
-        total >= 3,
-        "with --all, should find matches in frontmatter, body, and code block, got total: {total}"
-    );
-}
-
-// ===========================================================================
-// TEST-015: Regex Search
-// ===========================================================================
-
-#[test]
-fn test_015_regex_search() {
-    let dir = TempDir::new().expect("create temp dir");
-
-    write_file(
-        dir.path(),
-        "Words.md",
-        "# Words\n\nI have a note and some notes but not notation.\n",
-    );
-
-    let json = run_json(
-        zetl_cmd(dir.path())
-            .arg("search")
-            .arg(r"\bnotes?\b")
-            .arg("--regex"),
-    );
-
-    let results = json["results"].as_array().expect("results should be array");
-
-    // Should match "note" and "notes" but not "notation"
-    assert_eq!(
-        results.len(),
-        2,
-        "regex \\bnotes?\\b should match 'note' and 'notes', got: {results:?}"
-    );
-}
-
-#[test]
-fn test_015_invalid_regex() {
-    let dir = TempDir::new().expect("create temp dir");
-    write_file(dir.path(), "A.md", "# A\n\nContent.\n");
-
-    let mut cmd = zetl_cmd(dir.path());
-    cmd.arg("search").arg("[invalid").arg("--regex");
-
-    // Should fail (bad regex)
-    cmd.assert().failure();
-}
-
 // ===========================================================================
 // TEST-016: Case Sensitivity
 // ===========================================================================
@@ -1285,22 +1222,6 @@ fn test_020_json_error_backlinks_not_found() {
     assert!(!status.success());
     assert!(json["error"].as_str().unwrap().contains("Page not found"));
     assert_eq!(json["code"].as_i64(), Some(1));
-}
-
-#[test]
-fn test_020_json_error_invalid_regex() {
-    let dir = TempDir::new().unwrap();
-    write_file(dir.path(), "A.md", "# A\n\nContent.\n");
-
-    let (json, status) = run_json_any(
-        zetl_cmd(dir.path())
-            .arg("search")
-            .arg("[bad")
-            .arg("--regex"),
-    );
-    assert!(!status.success());
-    assert!(json["error"].as_str().unwrap().contains("Invalid regex"));
-    assert_eq!(json["code"].as_i64(), Some(2));
 }
 
 // ===========================================================================

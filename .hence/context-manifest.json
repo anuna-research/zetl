@@ -1,12 +1,12 @@
 {
-  "task_id": "search-index-module",
+  "task_id": "refactor-search",
   "token_budget": 8000,
-  "tokens_used": 442,
+  "tokens_used": 544,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create src/search_index.rs with the Tantivy index management layer. This module encapsulates all Tantivy interaction:\n\nSchema: Three fields per document:\n  - page_name: STRING (stored, indexed for filtering)\n  - path: STRING (stored, not indexed)\n  - body: TEXT (indexed for full-text search, stored)\n\nTokenization: Tantivy's default tokenizer (lowercase, split on whitespace/punctuation).\n\nIndex location: .zetl/search/ directory.\n\nPublic API:\n  - SearchIndex::build(vault_root, files: &[ParsedFile]) -> Result<SearchIndex>\n    Creates/opens .zetl/search/, iterates files, extracts body text using scanner::body_text_ranges(), creates one Tantivy document per file. Clears and rebuilds the full index (incremental update handled at the caller level via cache).\n  - SearchIndex::open(vault_root) -> Result<Option<SearchIndex>>\n    Opens an existing index from .zetl/search/. Returns None if directory doesn't exist.\n  - SearchIndex::query(query_str, limit) -> Result<Vec<SearchHit>>\n    Parses query with QueryParser against the body field, executes with TopDocs collector, returns Vec of (page_name, path, score) tuples.\n  - SearchIndex::reader() -> Result<IndexReader>\n    For serve mode: returns a reader that can be held across requests.\n\nSearchHit struct: { page_name: String, path: String, score: f64 }\n\nBody text extraction: For each file, concatenate the byte ranges from body_text_ranges() into a single string. This reuses the same exclusion logic as SPEC-002 (no frontmatter, code blocks, inline code, HTML comments). Import body_text_ranges from scanner.rs.\n\nError handling: Return anyhow::Result with context about which file or query failed.\n\nREQ-013-001, ADR-013-001.",
-      "token_cost": 420,
+      "content": "Rewrite src/search.rs to query Tantivy instead of grep-scanning files. This is the core replacement per ADR-013-001.\n\nUpdated SearchMatch struct (SPEC-013 §4.7):\n  pub struct SearchMatch {\n      pub page: String,\n      pub path: String,\n      pub line: u32,\n      pub column: u32,\n      pub context: Option<String>,\n      pub heading: Option<String>,      // NEW: enclosing heading text\n      pub heading_level: Option<u8>,    // NEW: heading depth (1-6)\n      pub score: f64,                   // NEW: BM25 score\n  }\n\nUpdated SearchOutput struct:\n  pub struct SearchOutput {\n      pub query: String,\n      pub total_matches: usize,\n      pub results: Vec<SearchMatch>,\n      // near/depth/neighbourhood_size added in Phase 2\n  }\n\nRemove: SearchConfig.regex field, SearchConfig.body_only field (always body-only now), build_matcher(), Matcher enum, the entire grep-based find_matches_in_content().\n\nQuery flow (SPEC-013 §4.4):\n  1. Open or lazily build the Tantivy index.\n  2. Parse query with QueryParser against body field.\n  3. Execute with TopDocs collector, limited to --limit.\n  4. For each matched document:\n     a. Read the original file from disk.\n     b. Compute body_text_ranges.\n     c. Scan body text for query term occurrences (case-insensitive by default, case-sensitive with --case-sensitive). Find line/column for each occurrence.\n     d. Detect headings via detect_headings().\n     e. Attach heading context via find_heading_for_offset().\n     f. Emit SearchMatch entries with the document's BM25 score.\n  5. Order results by descending score, ties broken by path (ascending) then line (ascending).\n\nThe re-scanning step (4b-c) is necessary because Tantivy provides document-level scores but not character offsets. Split the query string on whitespace to get individual terms for re-scanning.\n\nRetain: --case-sensitive flag (for re-scan), --path filter (applied to Tantivy results), --context chars, --limit.\nRemove: --regex flag, --all flag.\n\nREQ-013-002, REQ-013-005, CON-013-001.",
+      "token_cost": 500,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 1 files (+187, -0): src/search.rs",
       "token_cost": 10,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-search-index-module-changes",
+      "content": "Modified 3 files (+338, -5): .hence/context-manifest.json, src/lib.rs, src/search_index.rs",
+      "token_cost": 22,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T13:19:54Z"
+  "constructed_at": "2026-03-01T13:26:33Z"
 }

@@ -118,7 +118,7 @@ pub enum Command {
 
     /// Search vault file contents for text
     Search {
-        /// Search string (literal text, or regex with --regex)
+        /// Search string
         query: String,
         /// Include N characters of surrounding text
         #[arg(long, default_value = "0")]
@@ -126,15 +126,9 @@ pub enum Command {
         /// Max results to return
         #[arg(long, default_value = "50")]
         limit: usize,
-        /// Interpret query as a regular expression
-        #[arg(long)]
-        regex: bool,
         /// Require exact case match
         #[arg(long)]
         case_sensitive: bool,
-        /// Search raw file content (include frontmatter, code blocks, comments)
-        #[arg(long)]
-        all: bool,
         /// Restrict results to files matching glob (relative to vault root)
         #[arg(long)]
         path: Option<String>,
