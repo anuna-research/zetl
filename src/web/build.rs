@@ -271,7 +271,7 @@ fn render_index(data: &VaultData, sidebar: &str, search_index: &str) -> String {
         grid = grid,
     );
 
-    layout("Vault", sidebar, &content, None, None, search_index)
+    layout("Vault", sidebar, &content, None, None, search_index, true)
 }
 
 /// Render a folder index page for static build.
@@ -362,7 +362,7 @@ fn render_folder_index(
         grid = grid,
     );
 
-    layout(folder_name, sidebar, &content, None, None, search_index)
+    layout(folder_name, sidebar, &content, None, None, search_index, true)
 }
 
 /// Render a single page (mirrors `page_handler` in routes.rs, minus edit UI).
@@ -628,5 +628,5 @@ fn render_page(
         colors_json = colors_json,
     );
 
-    layout(page_name, sidebar, &content, Some(current_slug), right_panel, search_index)
+    layout(page_name, sidebar, &content, Some(current_slug), right_panel, search_index, true)
 }
