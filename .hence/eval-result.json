@@ -3,31 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 86,
-    "deletions": 1003,
+    "files_changed": 3,
+    "insertions": 57,
+    "deletions": 21,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml",
-      "src/web/engine.rs",
-      "src/web/templates/base.html",
-      "src/web/templates/folder.html",
-      "src/web/templates/index.html",
-      "src/web/templates/page.html"
+      "src/main.rs",
+      "src/web/engine.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-compile-time-embedding-changes",
-      "content": "Modified 8 files (+86, -1003): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/templates/base.html and 3 more",
+      "key": "task-three-tier-resolution-changes",
+      "content": "Modified 3 files (+57, -21): .hence/context-manifest.json, src/main.rs, src/web/engine.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/compile-time-embedding-v1",
-  "evaluated_at": "2026-03-02T06:16:52Z",
+  "branch_name": "hence/three-tier-resolution-v1",
+  "evaluated_at": "2026-03-02T06:21:07Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
