@@ -217,6 +217,12 @@ pub enum Command {
         command: ThemeCommand,
     },
 
+    /// Hook management
+    Hook {
+        #[command(subcommand)]
+        command: HookCommand,
+    },
+
     /// Defeasible reasoning over vault-wide SPL
     #[cfg(feature = "reason")]
     Reason {
@@ -262,6 +268,16 @@ pub enum ThemeCommand {
         /// Overwrite existing theme directory
         #[arg(long)]
         force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum HookCommand {
+    /// List all active hooks for the current vault and theme
+    List {
+        /// Theme name (looks in .zetl/themes/<name>/hooks/)
+        #[arg(long, default_value = "default")]
+        theme: String,
     },
 }
 

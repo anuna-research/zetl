@@ -10,7 +10,7 @@ use serde::Serialize;
 use zetl::cache::{
     files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache,
 };
-use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, OutputFormat, ThemeCommand};
+use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, HookCommand, OutputFormat, ThemeCommand};
 use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::graph::LinkGraph;
 use zetl::merkle::{
@@ -3038,6 +3038,72 @@ fn cmd_theme_export(cli: &Cli, name: &str, force: bool) -> Result<()> {
                 theme_dir.display(),
                 files_written,
             );
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_hook_list(cli: &Cli, theme: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // Resolve theme hooks directory (disk-installed or bundled).
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &vault_root,
+        theme_hooks.path(),
+        cli.verbose > 0,
+    );
+
+    #[derive(Serialize)]
+    struct HookEntry {
+        name: String,
+        source: String,
+        path: String,
+        executable: bool,
+    }
+
+    #[derive(Serialize)]
+    struct HookListOutput {
+        hooks: Vec<HookEntry>,
+        total: usize,
+    }
+
+    let entries: Vec<HookEntry> = manifest
+        .hooks
+        .iter()
+        .map(|h| HookEntry {
+            name: h.name.clone(),
+            source: h.source.to_string(),
+            path: h.path.display().to_string(),
+            executable: h.executable,
+        })
+        .collect();
+
+    let output = HookListOutput {
+        total: entries.len(),
+        hooks: entries,
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            if output.hooks.is_empty() {
+                println!("No hooks found.");
+            } else {
+                let mut table = Table::new();
+                table.set_header(vec!["Name", "Source", "Path", "Executable"]);
+                for h in &output.hooks {
+                    table.add_row(vec![
+                        Cell::new(&h.name),
+                        Cell::new(&h.source),
+                        Cell::new(&h.path),
+                        Cell::new(if h.executable { "yes" } else { "no" }),
+                    ]);
+                }
+                println!("{table}");
+            }
         }
     }
 
@@ -6834,6 +6900,9 @@ fn main() -> anyhow::Result<()> {
             } => cmd_theme_install(&cli, source, path.as_deref(), name.as_deref(), *force),
             ThemeCommand::Remove { name } => cmd_theme_remove(&cli, name),
             ThemeCommand::Export { name, force } => cmd_theme_export(&cli, name, *force),
+        },
+        Command::Hook { command } => match command {
+            HookCommand::List { theme } => cmd_hook_list(&cli, theme),
         },
         Command::Serve { port, theme } => cmd_serve(&cli, *port, theme),
         Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),
