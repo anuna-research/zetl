@@ -3,25 +3,24 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 80,
+    "files_changed": 1,
+    "insertions": 308,
     "deletions": 0,
     "file_list": [
-      "src/cli.rs",
-      "src/main.rs"
+      "src/web/theme.rs"
     ],
     "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-theme-remove-cmd-changes",
-      "content": "Modified 2 files (+80, -0): src/cli.rs, src/main.rs",
+      "key": "task-source-parsing-changes",
+      "content": "Modified 1 files (+308, -0): src/web/theme.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/theme-remove-cmd-v1",
-  "evaluated_at": "2026-03-02T06:50:59Z",
+  "branch_name": "hence/source-parsing-v1",
+  "evaluated_at": "2026-03-02T06:54:43Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
