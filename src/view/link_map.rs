@@ -145,9 +145,9 @@ pub fn build_annotated_lines(
             // Anchor glyph immediately after the closing ]].
             let glyph_span = if is_no_color {
                 if is_dead {
-                    Span::raw(format!("![{}]", ordinal))
+                    Span::raw(format!("![{ordinal}]"))
                 } else {
-                    Span::raw(format!("[{}]", ordinal))
+                    Span::raw(format!("[{ordinal}]"))
                 }
             } else {
                 let color = if is_dead {
@@ -156,7 +156,7 @@ pub fn build_annotated_lines(
                 } else {
                     link_colors.get(ordinal).color()
                 };
-                Span::styled(format!("[{}]", ordinal), Style::default().fg(color))
+                Span::styled(format!("[{ordinal}]"), Style::default().fg(color))
             };
             spans.push(glyph_span);
 

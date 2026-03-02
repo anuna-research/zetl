@@ -1,11 +1,18 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
+use axum::Json;
+use serde::Deserialize;
 
-use crate::scanner::page_slug_from_path;
+use crate::scanner::{body_text_ranges, page_slug_from_path};
+use crate::search::{
+    byte_offset_to_line_col, detect_headings, extract_search_context, find_heading_for_offset,
+    in_body_text, SearchMatch, SearchOutput,
+};
+use crate::search_index::SearchIndex;
 use crate::web::context::{build_folder_context, build_page_context, build_vault_context};
 use crate::web::engine::TemplateError;
 use crate::web::html::{html_escape, urlencoding};
@@ -22,7 +29,7 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
         .unwrap_or_else(|| "vault".to_string());
 
     let vault_ctx = build_vault_context(&data, &vault_name);
-    match state.engine.render_index(&vault_ctx) {
+    match state.engine.render_index(&vault_ctx, "serve") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
     }
@@ -58,7 +65,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
             let folder_name = slug.rsplit('/').next().unwrap_or(slug);
             let vault_ctx = build_vault_context(&data, &vault_name);
             let folder_ctx = build_folder_context(&data, slug, folder_name);
-            return match state.engine.render_folder(&vault_ctx, &folder_ctx) {
+            return match state.engine.render_folder(&vault_ctx, &folder_ctx, "serve") {
                 Ok(html) => Html(html).into_response(),
                 Err(e) => render_error_response(e),
             };
@@ -87,7 +94,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
             String::new(),
             name.clone(),
             slug.to_string(),
-            Some(format!("# {}\n", name)),
+            Some(format!("# {name}\n")),
         )
     };
 
@@ -167,7 +174,7 @@ pub async fn save_handler(
         if let Some(file) = file {
             state.vault_root.join(&file.path)
         } else {
-            state.vault_root.join(format!("{}.md", slug))
+            state.vault_root.join(format!("{slug}.md"))
         }
     };
 
@@ -184,9 +191,14 @@ pub async fn save_handler(
         return (StatusCode::INTERNAL_SERVER_ERROR, "Write failed").into_response();
     }
 
-    // Re-index the vault so the graph/links reflect the edit
+    // Re-index the vault so the graph/links and search index reflect the edit.
     match reindex(&state.vault_root) {
         Ok(new_data) => {
+            // Rebuild Tantivy search index so the reader picks up the new content
+            // (ReloadPolicy::OnCommitWithDelay causes the existing reader to reload).
+            if let Err(e) = SearchIndex::build(&state.vault_root, &new_data.files) {
+                eprintln!("search index rebuild error: {e}");
+            }
             *state.data.write().unwrap() = new_data;
         }
         Err(e) => {
@@ -229,6 +241,112 @@ pub async fn preview_handler(
     };
 
     Html(preview)
+}
+
+/// Query parameters for GET /api/search.
+#[derive(Deserialize)]
+pub struct SearchParams {
+    pub q: Option<String>,
+    pub limit: Option<usize>,
+}
+
+/// GET /api/search — Full-text search over the vault index.
+///
+/// Query parameters:
+///   - q (required): search query string
+///   - limit (optional, default 20): max results
+///
+/// Returns 400 if `q` is absent or whitespace-only.
+///
+/// REQ-013-012, CON-013-003.
+pub async fn api_search_handler(
+    State(state): State<WebState>,
+    Query(params): Query<SearchParams>,
+) -> Response {
+    let q = match params.q.as_deref() {
+        Some(s) if !s.trim().is_empty() => s.to_string(),
+        _ => {
+            return (StatusCode::BAD_REQUEST, "Missing or empty 'q' parameter").into_response();
+        }
+    };
+
+    let limit = params.limit.unwrap_or(20).max(1);
+
+    let hits = match state.search_index.query(&q, limit) {
+        Ok(hits) => hits,
+        Err(e) => {
+            eprintln!("api/search error: {e}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Search failed").into_response();
+        }
+    };
+
+    let terms: Vec<String> = q.split_whitespace().map(|t| t.to_lowercase()).collect();
+
+    let mut all_matches: Vec<SearchMatch> = Vec::new();
+
+    for hit in &hits {
+        let abs_path = state.vault_root.join(&hit.path);
+        let content = match std::fs::read_to_string(&abs_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let body_ranges = body_text_ranges(&content);
+        let line_starts: Vec<usize> = std::iter::once(0)
+            .chain(content.match_indices('\n').map(|(i, _)| i + 1))
+            .collect();
+        let headings = detect_headings(&content, &body_ranges);
+        let search_content = content.to_lowercase();
+
+        for term in &terms {
+            let mut start = 0usize;
+            while let Some(pos) = search_content[start..].find(term.as_str()) {
+                let byte_offset = start + pos;
+                start = byte_offset + 1;
+
+                if !in_body_text(byte_offset, &body_ranges) {
+                    continue;
+                }
+
+                let (line, col) = byte_offset_to_line_col(&line_starts, byte_offset);
+                let ctx = extract_search_context(&content, byte_offset, term.len(), 80);
+                let (heading, heading_level) = find_heading_for_offset(&headings, byte_offset);
+
+                all_matches.push(SearchMatch {
+                    page: hit.page_name.clone(),
+                    path: hit.path.clone(),
+                    line,
+                    column: col,
+                    context: ctx,
+                    heading,
+                    heading_level,
+                    score: hit.score,
+                });
+            }
+        }
+    }
+
+    all_matches.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.path.cmp(&b.path))
+            .then(a.line.cmp(&b.line))
+    });
+
+    let total = all_matches.len();
+    all_matches.truncate(limit);
+
+    let output = SearchOutput {
+        query: q,
+        total_matches: total,
+        near: None,
+        depth: None,
+        neighbourhood_size: None,
+        results: all_matches,
+    };
+
+    Json(output).into_response()
 }
 
 /// GET /_static/{*path} — Serve static assets with two-tier lookup.
@@ -376,6 +494,7 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::graph::LinkGraph;
+    use crate::search_index::SearchIndex;
     use crate::web::engine::TemplateEngine;
     use crate::web::{VaultData, WebState};
 
@@ -389,9 +508,11 @@ mod tests {
             page_slug_map: HashMap::new(),
             collision_names: HashSet::new(),
         };
+        let search_index = SearchIndex::build(vault_root, &[]).unwrap();
         WebState {
             data: Arc::new(RwLock::new(data)),
             vault_root: Arc::new(vault_root.to_path_buf()),
+            search_index: Arc::new(search_index),
             engine: Arc::new(TemplateEngine::new(vault_root, theme, false, false)),
             theme: theme.to_string(),
         }

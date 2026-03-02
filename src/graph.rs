@@ -1,4 +1,5 @@
 use crate::types::ParsedFile;
+use anyhow::{anyhow, Result};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
@@ -286,6 +287,70 @@ impl LinkGraph {
         }
 
         None
+    }
+
+    /// Return the set of page names reachable from `anchor` within `depth` hops,
+    /// traversing both outgoing and incoming edges (bidirectional BFS).
+    ///
+    /// The anchor itself is always included in the result.
+    /// Returns an error if `anchor` is not found in the graph, with suggestions.
+    pub fn neighbourhood(&self, anchor: &str, depth: usize) -> Result<HashSet<String>> {
+        // 1. Resolve anchor to a node in the graph
+        let &start_idx = self.node_map.get(anchor).ok_or_else(|| {
+            let anchor_lower = anchor.to_lowercase();
+            let mut similar: Vec<&str> = self
+                .node_map
+                .keys()
+                .filter(|name| {
+                    let n = name.to_lowercase();
+                    n.contains(&anchor_lower) || anchor_lower.contains(n.as_str())
+                })
+                .map(|s| s.as_str())
+                .collect();
+            similar.sort();
+            similar.truncate(5);
+            if similar.is_empty() {
+                anyhow!("Page not found: '{anchor}'")
+            } else {
+                anyhow!(
+                    "Page not found: '{anchor}'. Did you mean: {}",
+                    similar.join(", ")
+                )
+            }
+        })?;
+
+        // 2. Initialize visited (by NodeIndex) and queue
+        let mut visited: HashSet<NodeIndex> = HashSet::new();
+        let mut queue: VecDeque<(NodeIndex, usize)> = VecDeque::new();
+        visited.insert(start_idx);
+        queue.push_back((start_idx, 0));
+
+        // 3. BFS – bidirectional: follow both outgoing and incoming edges
+        while let Some((node, d)) = queue.pop_front() {
+            // a. If depth reached, skip expanding this node
+            if d >= depth {
+                continue;
+            }
+
+            // b. Explore both edge directions
+            let neighbors: Vec<NodeIndex> = self
+                .graph
+                .neighbors_directed(node, Direction::Outgoing)
+                .chain(self.graph.neighbors_directed(node, Direction::Incoming))
+                .collect();
+
+            for neighbor in neighbors {
+                if visited.insert(neighbor) {
+                    queue.push_back((neighbor, d + 1));
+                }
+            }
+        }
+
+        // 4. Convert visited node indices to page names
+        Ok(visited
+            .into_iter()
+            .map(|idx| self.graph[idx].clone())
+            .collect())
     }
 
     /// Compute graph statistics.
@@ -869,6 +934,168 @@ mod tests {
         assert_eq!(stats.pages, 0);
         assert_eq!(stats.links, 0);
         assert_eq!(stats.connected_components, 0);
+    }
+
+    // ── neighbourhood() tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_neighbourhood_depth0_returns_only_anchor() {
+        let graph = simple_graph(); // A->B, A->C, B->C, C->A
+        let result = graph.neighbourhood("A", 0).unwrap();
+        assert_eq!(result, HashSet::from(["A".to_string()]));
+    }
+
+    #[test]
+    fn test_neighbourhood_depth1_outgoing() {
+        // Chain: A -> B -> C (no back-edges)
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![("C", 1)]),
+            make_file("C", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        // From A at depth 1: A + outgoing neighbour B + incoming (none) = {A, B}
+        let result = graph.neighbourhood("A", 1).unwrap();
+        assert_eq!(result, HashSet::from(["A".to_string(), "B".to_string()]));
+    }
+
+    #[test]
+    fn test_neighbourhood_depth1_bidirectional() {
+        // A -> B, C -> B  (B has two incoming edges)
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![]),
+            make_file("C", vec![("B", 1)]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        // From B at depth 1: B + outgoing (none) + incoming {A, C} = {A, B, C}
+        let result = graph.neighbourhood("B", 1).unwrap();
+        assert_eq!(
+            result,
+            HashSet::from(["A".to_string(), "B".to_string(), "C".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_neighbourhood_depth2_chain() {
+        // A -> B -> C -> D
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![("C", 1)]),
+            make_file("C", vec![("D", 1)]),
+            make_file("D", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+            ("D".to_string(), "D".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        // From A at depth 2: A -> B (d=1) -> C (d=2), C is visited but not expanded
+        let result = graph.neighbourhood("A", 2).unwrap();
+        assert_eq!(
+            result,
+            HashSet::from(["A".to_string(), "B".to_string(), "C".to_string()])
+        );
+
+        // From B at depth 2 (bidirectional): B <- A (d=1) -> nothing new;
+        //   B -> C (d=1) -> D (d=2)
+        let result2 = graph.neighbourhood("B", 2).unwrap();
+        assert_eq!(
+            result2,
+            HashSet::from([
+                "A".to_string(),
+                "B".to_string(),
+                "C".to_string(),
+                "D".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_neighbourhood_anchor_always_included() {
+        let graph = simple_graph();
+        for depth in [0, 1, 2, 5] {
+            let result = graph.neighbourhood("B", depth).unwrap();
+            assert!(result.contains("B"), "anchor missing at depth {depth}");
+        }
+    }
+
+    #[test]
+    fn test_neighbourhood_not_found_error() {
+        let graph = simple_graph();
+        let err = graph.neighbourhood("NoSuchPage", 2).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("not found"), "expected 'not found' in: {msg}");
+        assert!(msg.contains("NoSuchPage"), "expected page name in: {msg}");
+    }
+
+    #[test]
+    fn test_neighbourhood_not_found_suggests_similar() {
+        // Graph with page "Alpha" — querying "alpha" (lowercase) should suggest it
+        let files = vec![make_file("Alpha", vec![])];
+        let resolved: HashMap<String, String> = [("Alpha".to_string(), "Alpha".to_string())]
+            .into_iter()
+            .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let err = graph.neighbourhood("alpha", 1).unwrap_err();
+        let msg = err.to_string();
+        // "Alpha" should appear in the suggestion list
+        assert!(msg.contains("Alpha"), "expected suggestion in: {msg}");
+    }
+
+    #[test]
+    fn test_neighbourhood_cycle_terminates() {
+        // A -> B -> C -> A (cycle)
+        let graph = simple_graph();
+        // Should terminate without infinite loop
+        let result = graph.neighbourhood("A", 10).unwrap();
+        // All three nodes reachable
+        assert_eq!(
+            result,
+            HashSet::from(["A".to_string(), "B".to_string(), "C".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_neighbourhood_isolated_node() {
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![]),
+            make_file("Isolated", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("Isolated".to_string(), "Isolated".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let result = graph.neighbourhood("Isolated", 5).unwrap();
+        assert_eq!(result, HashSet::from(["Isolated".to_string()]));
     }
 
     #[test]

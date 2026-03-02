@@ -49,7 +49,7 @@ pub fn render_to_html(content: &str, slug_map: &HashMap<String, String>) -> Stri
             let line = line_starts.partition_point(|&s| s <= range.start) + fm_lines;
             if anchored_lines.insert(line) {
                 events.push(Event::Html(
-                    format!("<a id=\"line-{}\" class=\"line-anchor\"></a>", line).into(),
+                    format!("<a id=\"line-{line}\" class=\"line-anchor\"></a>").into(),
                 ));
             }
         }
@@ -178,9 +178,7 @@ fn rewrite_wikilinks(html: &str, re: &Regex, slug_map: &HashMap<String, String>)
             chars.next();
         } else if html[i..].starts_with("</code>") || html[i..].starts_with("</pre>") {
             let tag_end = html[i..].find('>').map(|p| i + p + 1).unwrap_or(html.len());
-            if depth > 0 {
-                depth -= 1;
-            }
+            depth = depth.saturating_sub(1);
             if depth == 0 {
                 result.push_str(&html[segment_start..tag_end]);
                 segment_start = tag_end;

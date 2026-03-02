@@ -27,7 +27,7 @@ fn create_test_vault(pages: &[(&str, &str)]) -> (tempfile::TempDir, Vec<(String,
 
     let mut file_index = Vec::new();
     for (name, content) in pages {
-        let filename = format!("{}.md", name);
+        let filename = format!("{name}.md");
         let path = root.join(&filename);
         std::fs::write(&path, content).unwrap();
         file_index.push((name.to_string(), PathBuf::from(&filename)));
@@ -124,16 +124,14 @@ fn test_071_basic_launch() {
     let status = lines.last().unwrap();
     assert!(
         status.contains("zetl view") && status.contains("PageA"),
-        "unexpected status bar: {:?}",
-        status
+        "unexpected status bar: {status:?}"
     );
 
     // The content area (row 1 onwards, left pane) shows the note text.
     let content = lines[1..].join("\n");
     assert!(
         content.contains("See"),
-        "expected note content, got:\n{}",
-        content
+        "expected note content, got:\n{content}"
     );
 }
 
@@ -156,13 +154,11 @@ fn test_072_anchor_glyphs() {
     let content = lines[1..].join(" ");
     assert!(
         content.contains("[1]"),
-        "expected [1] anchor glyph in content, got:\n{}",
-        content
+        "expected [1] anchor glyph in content, got:\n{content}"
     );
     assert!(
         content.contains("[2]"),
-        "expected [2] anchor glyph in content, got:\n{}",
-        content
+        "expected [2] anchor glyph in content, got:\n{content}"
     );
 }
 
@@ -179,8 +175,7 @@ fn test_072_dead_link_no_color() {
         let content = lines[1..].join(" ");
         assert!(
             content.contains("![1]"),
-            "expected ![1] for dead link in no-color mode, content: {}",
-            content
+            "expected ![1] for dead link in no-color mode, content: {content}"
         );
     });
     std::env::remove_var("NO_COLOR");
@@ -236,7 +231,7 @@ fn test_074_scroll_tracking() {
     // the second link is 20 lines down — below the initial viewport.
     let mut content = String::from("Link 1: [[PageB]] is here.\n");
     for i in 0..20 {
-        content.push_str(&format!("Padding line {}.\n", i));
+        content.push_str(&format!("Padding line {i}.\n"));
     }
     content.push_str("Link 2: [[PageC]] appears later.\n");
 
@@ -261,8 +256,7 @@ fn test_074_scroll_tracking() {
         .join("\n");
     assert!(
         context_before.contains("[1]") || context_before.contains("PageB"),
-        "expected link 1 card in context pane before scroll: {}",
-        context_before
+        "expected link 1 card in context pane before scroll: {context_before}"
     );
 
     // Scroll down 20 lines so link 2 becomes visible and link 1 scrolls out.
@@ -280,8 +274,7 @@ fn test_074_scroll_tracking() {
         .join("\n");
     assert!(
         context_after.contains("[2]") || context_after.contains("PageC"),
-        "expected link 2 card in context pane after scroll: {}",
-        context_after
+        "expected link 2 card in context pane after scroll: {context_after}"
     );
 }
 
@@ -362,8 +355,7 @@ fn test_075_focused_card_expanded() {
     // (Top border ┌ is on row 0 which may be included or excluded depending on extraction.)
     assert!(
         context.contains('│') || context.contains('└') || context.contains('['),
-        "expected focused card border or content in context pane: {}",
-        context
+        "expected focused card border or content in context pane: {context}"
     );
 }
 
@@ -442,7 +434,7 @@ fn test_076_history_depth_limit() {
         .map(|i| {
             let content = format!("[[Page{}]]", i + 1);
             (
-                Box::leak(format!("Page{}", i).into_boxed_str()) as &str,
+                Box::leak(format!("Page{i}").into_boxed_str()) as &str,
                 content,
             )
         })
@@ -456,7 +448,7 @@ fn test_076_history_depth_limit() {
 
     // Navigate 51 times (which should trigger truncation at 50).
     for i in 1..=51 {
-        let target = format!("Page{}", i);
+        let target = format!("Page{i}");
         // Directly call navigate_to via handle_key — use navigate_to indirectly
         // by manipulating current_page to the right target link.
         // For simplicity, use the pub method via navigate_to path:
@@ -515,14 +507,12 @@ fn test_077_combined_context_pane() {
     // Forward card for PageC should appear.
     assert!(
         context.contains("PageC"),
-        "expected forward link card: {}",
-        context
+        "expected forward link card: {context}"
     );
     // Backlinks section for PageB should appear.
     assert!(
         context.contains("PageB"),
-        "expected backlink entry: {}",
-        context
+        "expected backlink entry: {context}"
     );
 }
 
@@ -552,8 +542,7 @@ fn test_077_back_mode_shows_backlinks() {
 
     assert!(
         context.contains("PageB"),
-        "expected PageB in backlinks list: {}",
-        context
+        "expected PageB in backlinks list: {context}"
     );
 }
 
@@ -576,8 +565,7 @@ fn test_077_back_mode_orphan_message() {
     // With no backlinks, the backlinks section is omitted — no '←' arrow should appear.
     assert!(
         !context.contains('←'),
-        "expected no backlinks section when page has no backlinks: {}",
-        context
+        "expected no backlinks section when page has no backlinks: {context}"
     );
 }
 
@@ -609,8 +597,7 @@ fn test_078_no_color_mode() {
             bridge_content.contains("|||")
                 || bridge_content.contains("---")
                 || bridge_content.contains("==="),
-            "expected no-color bridge filler '|||' or connectors '---'/'===': {}",
-            bridge_content
+            "expected no-color bridge filler '|||' or connectors '---'/'===': {bridge_content}"
         );
 
         // Dead links should render with '![N]'.
@@ -621,8 +608,7 @@ fn test_078_no_color_mode() {
         let content2 = lines2[1..].join(" ");
         assert!(
             content2.contains("![1]"),
-            "expected '![1]' for dead link in no-color mode: {}",
-            content2
+            "expected '![1]' for dead link in no-color mode: {content2}"
         );
     });
     std::env::remove_var("NO_COLOR");
@@ -737,13 +723,11 @@ fn test_picker_filters_pages() {
         filtered
             .iter()
             .all(|t: &&str| t.to_lowercase().contains("al")),
-        "expected only 'Al*' pages but got: {:?}",
-        filtered
+        "expected only 'Al*' pages but got: {filtered:?}"
     );
     assert!(
         filtered.len() < 3,
-        "expected fewer results after filtering, got: {:?}",
-        filtered
+        "expected fewer results after filtering, got: {filtered:?}"
     );
 }
 

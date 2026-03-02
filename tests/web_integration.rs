@@ -23,6 +23,7 @@ use axum::routing::get;
 use axum::Router;
 use tower::ServiceExt;
 
+use zetl::search_index::SearchIndex;
 use zetl::web::engine::TemplateEngine;
 use zetl::web::routes::{
     index_handler, page_handler, preview_handler, save_handler, static_handler,
@@ -50,9 +51,11 @@ fn zetl_cmd(vault: &Path) -> assert_cmd::Command {
 /// Build a WebState by re-indexing a vault directory (uses the real scanner/graph).
 fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
     let data = zetl::web::reindex(&vault_root.to_path_buf()).expect("reindex");
+    let search_index = SearchIndex::build(vault_root, &data.files).expect("build search index");
     WebState {
         data: Arc::new(RwLock::new(data)),
         vault_root: Arc::new(vault_root.to_path_buf()),
+        search_index: Arc::new(search_index),
         engine: Arc::new(TemplateEngine::new(vault_root, theme, true, false)),
         theme: theme.to_string(),
     }

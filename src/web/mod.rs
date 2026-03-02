@@ -6,7 +6,7 @@ pub mod markdown;
 pub mod routes;
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use axum::routing::get;
@@ -14,6 +14,7 @@ use axum::Router;
 
 use crate::graph::LinkGraph;
 use crate::scanner::{page_slug_from_path, resolve_page_name, scan_vault};
+use crate::search_index::SearchIndex;
 use crate::types::ParsedFile;
 
 use self::engine::TemplateEngine;
@@ -42,16 +43,20 @@ impl VaultData {
 }
 
 /// Shared state passed to all handlers via axum State.
+///
+/// `search_index` is thread-safe and shared across requests via Arc.
+/// REQ-013-012.
 #[derive(Clone)]
 pub struct WebState {
     pub data: Arc<RwLock<VaultData>>,
     pub vault_root: Arc<PathBuf>,
+    pub search_index: Arc<SearchIndex>,
     pub engine: Arc<TemplateEngine>,
     pub theme: String,
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.
-pub fn reindex(vault_root: &PathBuf) -> anyhow::Result<VaultData> {
+pub fn reindex(vault_root: &Path) -> anyhow::Result<VaultData> {
     let files = scan_vault(vault_root, &[])?;
 
     let file_index: Vec<(String, PathBuf)> = files
@@ -136,6 +141,7 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
 pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", get(routes::index_handler))
+        .route("/api/search", get(routes::api_search_handler))
         .route("/_static/{*path}", get(routes::static_handler))
         .route("/preview/{*path}", get(routes::preview_handler))
         .route(

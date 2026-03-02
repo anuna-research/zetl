@@ -915,13 +915,13 @@ pub fn build_merkle_leaves<'a>(
                         // Close a link: append `](url)`.
                         TagEnd::Link => {
                             let url = link_url_stack.pop().unwrap_or_default();
-                            text_buf.push_str(&format!("]({})", url));
+                            text_buf.push_str(&format!("]({url})"));
                             // Do NOT decrement depth.
                         }
                         // Close an image: append `](url)`.
                         TagEnd::Image => {
                             let url = link_url_stack.pop().unwrap_or_default();
-                            text_buf.push_str(&format!("]({})", url));
+                            text_buf.push_str(&format!("]({url})"));
                             // Do NOT decrement depth.
                         }
                         _ => {
@@ -966,7 +966,7 @@ pub fn build_merkle_leaves<'a>(
                                     // Code blocks: language tag + raw content (whitespace-significant).
                                     LeafType::CodeBlock { language } => {
                                         let lang = language.as_deref().unwrap_or("");
-                                        format!("{}\n{}", lang, raw_buf)
+                                        format!("{lang}\n{raw_buf}")
                                     }
                                     // SPL: raw content hash (dual AST hash is a separate pass).
                                     LeafType::SplBlock => raw_buf.clone(),

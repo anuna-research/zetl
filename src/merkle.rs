@@ -404,7 +404,7 @@ pub fn detect_sections(leaves: &[MerkleLeaf]) -> Vec<Section> {
         // Check whether this SPL block falls in the same grounding section as
         // the previous one.  Two SPL blocks share a section iff they were
         // grounded by the same heading (same line and level; level 0 = preamble).
-        let same_as_prev = sections.last().map_or(false, |prev| {
+        let same_as_prev = sections.last().is_some_and(|prev| {
             prev.heading_line == sec.heading_line && prev.heading_level == sec.heading_level
         });
 
@@ -559,7 +559,7 @@ impl std::fmt::Display for BlockIdResolutionError {
                 )
             }
             Self::PageNotFound { page_name } => {
-                write!(f, "page '{}' not found in vault", page_name)
+                write!(f, "page '{page_name}' not found in vault")
             }
         }
     }
@@ -679,10 +679,7 @@ pub fn classify_source_ref(s: &str) -> SourceRefType {
     if s.starts_with('^') {
         return SourceRefType::LocalRef;
     }
-    if s.len() >= 8
-        && s.bytes()
-            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F'))
-    {
+    if s.len() >= 8 && s.bytes().all(|b| b.is_ascii_hexdigit()) {
         return SourceRefType::HashRef;
     }
     SourceRefType::Unknown
@@ -741,6 +738,7 @@ pub fn validate_source_refs(
 }
 
 /// Validate a single raw source-ref string and push any error onto `out`.
+#[allow(clippy::too_many_arguments)]
 fn validate_one_source_ref(
     source_ref: &str,
     source_file: &std::path::Path,
@@ -758,8 +756,7 @@ fn validate_one_source_ref(
                     out.push(Diagnostic {
                         level: DiagnosticLevel::Error,
                         message: format!(
-                            "content hash {} not found — source content may have been modified or removed",
-                            source_ref
+                            "content hash {source_ref} not found — source content may have been modified or removed"
                         ),
                         file: source_file.to_path_buf(),
                         line: spl_line,
@@ -769,7 +766,7 @@ fn validate_one_source_ref(
                 HashResolutionResult::Ambiguous { prefix, .. } => {
                     out.push(Diagnostic {
                         level: DiagnosticLevel::Error,
-                        message: format!("ambiguous hash prefix {} — use a longer prefix", prefix),
+                        message: format!("ambiguous hash prefix {prefix} — use a longer prefix"),
                         file: source_file.to_path_buf(),
                         line: spl_line,
                         column: 0,
@@ -787,8 +784,7 @@ fn validate_one_source_ref(
                 out.push(Diagnostic {
                     level: DiagnosticLevel::Error,
                     message: format!(
-                        "source references ^{} which does not exist in this file",
-                        block_id
+                        "source references ^{block_id} which does not exist in this file"
                     ),
                     file: source_file.to_path_buf(),
                     line: spl_line,
@@ -802,7 +798,7 @@ fn validate_one_source_ref(
             if crate::scanner::resolve_page_name(page_name, file_index).is_none() {
                 out.push(Diagnostic {
                     level: DiagnosticLevel::Error,
-                    message: format!("page {} not found", page_name),
+                    message: format!("page {page_name} not found"),
                     file: source_file.to_path_buf(),
                     line: spl_line,
                     column: 0,
@@ -825,7 +821,7 @@ fn validate_one_source_ref(
                 Err(BlockIdResolutionError::PageNotFound { page_name: ref pn }) => {
                     out.push(Diagnostic {
                         level: DiagnosticLevel::Error,
-                        message: format!("page {} not found", pn),
+                        message: format!("page {pn} not found"),
                         file: source_file.to_path_buf(),
                         line: spl_line,
                         column: 0,
@@ -834,7 +830,7 @@ fn validate_one_source_ref(
                 Err(BlockIdResolutionError::BlockIdNotFound { .. }) => {
                     out.push(Diagnostic {
                         level: DiagnosticLevel::Error,
-                        message: format!("block-id not found in {}", page_name),
+                        message: format!("block-id not found in {page_name}"),
                         file: source_file.to_path_buf(),
                         line: spl_line,
                         column: 0,
@@ -884,7 +880,7 @@ mod tests {
         ];
         let mut seen = std::collections::HashSet::new();
         for tag in tags {
-            assert!(seen.insert(tag), "duplicate tag: 0x{:02x}", tag);
+            assert!(seen.insert(tag), "duplicate tag: 0x{tag:02x}");
         }
     }
 
@@ -1966,7 +1962,7 @@ mod tests {
         let index = build_vault_hash_index(&files);
 
         let diags = validate_source_refs(&files, &file_index, &index);
-        assert!(diags.is_empty(), "expected no errors but got: {:?}", diags);
+        assert!(diags.is_empty(), "expected no errors but got: {diags:?}");
     }
 
     #[test]
@@ -2033,8 +2029,7 @@ mod tests {
         let diags = validate_source_refs(&files, &file_index, &index);
         assert!(
             diags.is_empty(),
-            "duplicate content should be valid; got: {:?}",
-            diags
+            "duplicate content should be valid; got: {diags:?}"
         );
     }
 
@@ -2070,8 +2065,7 @@ mod tests {
         let diags = validate_source_refs(&files, &file_index, &index);
         assert!(
             diags.is_empty(),
-            "found block-id should be valid; got: {:?}",
-            diags
+            "found block-id should be valid; got: {diags:?}"
         );
     }
 
@@ -2110,8 +2104,7 @@ mod tests {
         let diags = validate_source_refs(&files, &file_index, &index);
         assert!(
             diags.is_empty(),
-            "existing page ref should be valid; got: {:?}",
-            diags
+            "existing page ref should be valid; got: {diags:?}"
         );
     }
 
@@ -2174,8 +2167,7 @@ mod tests {
         let diags = validate_source_refs(&files, &file_index, &index);
         assert!(
             diags.is_empty(),
-            "valid cross-file ref should have no errors; got: {:?}",
-            diags
+            "valid cross-file ref should have no errors; got: {diags:?}"
         );
     }
 
@@ -2192,8 +2184,7 @@ mod tests {
         let diags = validate_source_refs(&files, &file_index, &index);
         assert!(
             diags.is_empty(),
-            "unknown refs should be silently skipped; got: {:?}",
-            diags
+            "unknown refs should be silently skipped; got: {diags:?}"
         );
     }
 

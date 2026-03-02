@@ -23,6 +23,13 @@ fn zetl_cmd(vault: &Path) -> Command {
     cmd
 }
 
+/// Build a `Command` without `--no-cache` (uses the incremental file cache).
+fn zetl_cmd_cached(vault: &Path) -> Command {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    cmd.arg("-d").arg(vault.as_os_str());
+    cmd
+}
+
 /// Create a file relative to `root`, creating parent directories as needed.
 fn write_file(root: &Path, relative: &str, content: &str) {
     let full = root.join(relative);
@@ -43,6 +50,20 @@ fn run_json(cmd: &mut Command) -> Value {
     );
     serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"))
+}
+
+/// Run the command, assert success, parse stdout as JSON, and return stderr too.
+fn run_json_with_stderr(cmd: &mut Command) -> (Value, String) {
+    let output = cmd.output().expect("failed to execute zetl");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "zetl exited with non-zero status.\nstdout: {stdout}\nstderr: {stderr}",
+    );
+    let json = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"));
+    (json, stderr.into_owned())
 }
 
 /// Run the command (may fail) and parse stdout as JSON regardless of exit code.
@@ -2861,5 +2882,1381 @@ fn test_012_007_strip_frontmatter_from_rendered_html() {
     assert!(
         html.contains("Visible body text"),
         "markdown body should appear in rendered HTML"
+    );
+}
+
+// ===========================================================================
+// Phase 1 verification tests (IMPL-013)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. zetl index JSON includes search_index_docs and search_index_size_kb
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_v1_index_json_has_search_fields() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\n\nSome content.\n");
+
+    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+
+    assert!(
+        json["search_index_docs"].as_u64().is_some(),
+        "index output must include 'search_index_docs', got: {json}"
+    );
+    assert!(
+        json["search_index_size_kb"].as_u64().is_some(),
+        "index output must include 'search_index_size_kb', got: {json}"
+    );
+    assert_eq!(
+        json["search_index_docs"].as_u64().unwrap(),
+        1,
+        "should report 1 indexed document"
+    );
+    assert!(
+        json["search_index_size_kb"].as_u64().unwrap() > 0,
+        "search index should have non-zero size after indexing"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 2. Search results carry score, heading, heading_level (BM25 fields)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_v1_search_results_have_bm25_fields() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Page.md",
+        "# Introduction\n\nThis page discusses alpha deeply.\n\n## Details\n\nMore alpha content.\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("alpha"));
+    let results = json["results"].as_array().expect("results array");
+
+    assert!(
+        !results.is_empty(),
+        "should find at least one result for 'alpha'"
+    );
+
+    for result in results {
+        assert!(
+            result["score"].as_f64().is_some() && result["score"].as_f64().unwrap() > 0.0,
+            "every result must have a positive 'score', got: {result}"
+        );
+        // heading may be null (before any heading), but the field must exist
+        assert!(
+            result.get("heading").is_some(),
+            "every result must have a 'heading' field, got: {result}"
+        );
+        assert!(
+            result.get("heading_level").is_some(),
+            "every result must have a 'heading_level' field, got: {result}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-001: Exclusion zones — inline code and HTML comments
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_001_inline_code_excluded() {
+    let dir = TempDir::new().unwrap();
+    // "exclusion_zeta" only appears in an inline code span → must not be found
+    write_file(
+        dir.path(),
+        "Inline.md",
+        "# Inline\n\nNormal body text.\n`exclusion_zeta in inline code`\nMore body text.\n",
+    );
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("search").arg("exclusion_zeta");
+    cmd.assert().failure(); // no matches → exit 1
+}
+
+#[test]
+fn test_013_001_html_comment_excluded() {
+    let dir = TempDir::new().unwrap();
+    // "exclusion_eta" only appears in an HTML comment → must not be found
+    write_file(
+        dir.path(),
+        "Comment.md",
+        "# Comment\n\nNormal body text.\n<!-- exclusion_eta in HTML comment -->\nMore body text.\n",
+    );
+
+    let mut cmd = zetl_cmd(dir.path());
+    cmd.arg("search").arg("exclusion_eta");
+    cmd.assert().failure(); // no matches → exit 1
+}
+
+#[test]
+fn test_013_001_body_text_found_around_exclusion_zones() {
+    let dir = TempDir::new().unwrap();
+    // "bodyterm" in body text is found; "bodyterm" in inline code / comment is not double-counted
+    write_file(
+        dir.path(),
+        "Mixed.md",
+        "# Mixed\n\nbodyterm in body.\n`bodyterm in inline code`\n<!-- bodyterm in comment -->\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("bodyterm"));
+    let total = json["total_matches"].as_u64().expect("total_matches");
+    assert_eq!(
+        total, 1,
+        "only the body-text occurrence should be found, got: {total}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-002: Relevance ranking — more occurrences → higher BM25 score
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_002_relevance_ranking() {
+    let dir = TempDir::new().unwrap();
+
+    // Rich.md has many occurrences of "quux"; Sparse.md has one.
+    write_file(
+        dir.path(),
+        "Rich.md",
+        "# Rich\n\nquux quux quux quux quux quux quux quux quux quux\n",
+    );
+    write_file(
+        dir.path(),
+        "Sparse.md",
+        "# Sparse\n\nOnly one quux here in this longer sentence.\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("quux"));
+    let results = json["results"].as_array().expect("results array");
+
+    // Collect (page, score) pairs
+    let rich_score = results
+        .iter()
+        .find(|r| r["page"].as_str() == Some("Rich"))
+        .map(|r| r["score"].as_f64().unwrap())
+        .expect("should have a result for Rich");
+
+    let sparse_score = results
+        .iter()
+        .find(|r| r["page"].as_str() == Some("Sparse"))
+        .map(|r| r["score"].as_f64().unwrap())
+        .expect("should have a result for Sparse");
+
+    assert!(
+        rich_score > sparse_score,
+        "Rich.md (many quux) should score higher than Sparse.md (one quux): rich={rich_score}, sparse={sparse_score}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-005: Line-level results — same file, multiple lines, same score
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_005_line_level_results_separate_and_same_score() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Multi.md",
+        "# Multi\n\nThe term zephyr on line 3.\n\nThe term zephyr on line 5.\n\nThe term zephyr on line 7.\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("zephyr"));
+    let results = json["results"].as_array().expect("results array");
+
+    assert_eq!(
+        results.len(),
+        3,
+        "should have 3 separate line-level results for 3 occurrences, got: {results:?}"
+    );
+
+    let lines: Vec<u64> = results
+        .iter()
+        .map(|r| r["line"].as_u64().expect("line field"))
+        .collect();
+    assert!(lines.contains(&3), "should have a result on line 3");
+    assert!(lines.contains(&5), "should have a result on line 5");
+    assert!(lines.contains(&7), "should have a result on line 7");
+
+    // All results from the same document share the same BM25 score
+    let scores: Vec<f64> = results
+        .iter()
+        .map(|r| r["score"].as_f64().expect("score field"))
+        .collect();
+    let first_score = scores[0];
+    for s in &scores {
+        assert_eq!(
+            *s, first_score,
+            "all results from the same document should share the same score, got: {scores:?}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 6. Heading context — matches under headings show correct heading/level
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_v1_heading_context_correct() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Sections.md",
+        "# Overview\n\nIntroductory text.\n\n## Implementation\n\nThis section has the searchterm here.\n\n### Sub-section\n\nAnother searchterm occurrence.\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("searchterm"));
+    let results = json["results"].as_array().expect("results array");
+
+    assert_eq!(results.len(), 2, "should have 2 results for 'searchterm'");
+
+    // Sort by line to get stable order
+    let mut sorted = results.clone();
+    sorted.sort_by_key(|r| r["line"].as_u64().unwrap_or(0));
+
+    // First occurrence is under "## Implementation"
+    assert_eq!(
+        sorted[0]["heading"].as_str(),
+        Some("Implementation"),
+        "first match should be under 'Implementation', got: {:?}",
+        sorted[0]["heading"]
+    );
+    assert_eq!(
+        sorted[0]["heading_level"].as_u64(),
+        Some(2),
+        "first match heading level should be 2"
+    );
+
+    // Second occurrence is under "### Sub-section"
+    assert_eq!(
+        sorted[1]["heading"].as_str(),
+        Some("Sub-section"),
+        "second match should be under 'Sub-section', got: {:?}",
+        sorted[1]["heading"]
+    );
+    assert_eq!(
+        sorted[1]["heading_level"].as_u64(),
+        Some(3),
+        "second match heading level should be 3"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-011: Headings inside code blocks are not used as enclosing headings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_011_heading_in_code_block_not_used_as_context() {
+    let dir = TempDir::new().unwrap();
+    // The "# Fake Heading" inside the fenced code block must not be recognized as a
+    // heading, so the match after the code block should still report "Real Heading".
+    write_file(
+        dir.path(),
+        "FakeHeading.md",
+        "# Real Heading\n\nBody text before code.\n\n```\n# Fake Heading\n```\n\nBody text after code with codeheadingterm.\n",
+    );
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("codeheadingterm"));
+    let results = json["results"].as_array().expect("results array");
+
+    assert_eq!(results.len(), 1, "should find exactly one match");
+    assert_eq!(
+        results[0]["heading"].as_str(),
+        Some("Real Heading"),
+        "match after the code block should be under 'Real Heading', not the fake one inside code; got: {:?}",
+        results[0]["heading"]
+    );
+    assert_eq!(
+        results[0]["heading_level"].as_u64(),
+        Some(1),
+        "heading level should be 1 (Real Heading)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-003: Index invalidation — modify file → new content searchable
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_003_index_invalidation_after_file_change() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Evolving.md",
+        "# Evolving\n\nThis file has oldterm content.\n",
+    );
+
+    // Build initial index (with cache so the cache file is saved for incremental detection)
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // "newterm" is not yet in the file
+    {
+        let mut cmd = zetl_cmd_cached(dir.path());
+        cmd.arg("search").arg("newterm");
+        cmd.assert().failure();
+    }
+
+    // Modify the file: replace content
+    write_file(
+        dir.path(),
+        "Evolving.md",
+        "# Evolving\n\nThis file now has newterm content.\n",
+    );
+
+    // Re-index (incremental — detects file change and rebuilds search index)
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // Now "newterm" should be found
+    let json = run_json(zetl_cmd_cached(dir.path()).arg("search").arg("newterm"));
+    assert_eq!(
+        json["total_matches"].as_u64().unwrap(),
+        1,
+        "newterm should be found after re-indexing the modified file"
+    );
+
+    // And "oldterm" should no longer be indexed
+    {
+        let mut cmd = zetl_cmd_cached(dir.path());
+        cmd.arg("search").arg("oldterm");
+        cmd.assert().failure();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-003: --no-cache forces full rebuild even when nothing changed
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_003_no_cache_forces_rebuild() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Stable.md",
+        "# Stable\n\nThis file contains stableterm.\n",
+    );
+
+    // First: build with cache (normal operation)
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // Second: rebuild with --no-cache (should delete and fully rebuild the search index)
+    let json = run_json(zetl_cmd(dir.path()).arg("index"));
+
+    // Index should report the correct document count after forced rebuild
+    assert_eq!(
+        json["search_index_docs"].as_u64().unwrap(),
+        1,
+        "--no-cache rebuild should index all documents"
+    );
+
+    // Search should still work after the forced rebuild
+    let search_json = run_json(zetl_cmd(dir.path()).arg("search").arg("stableterm"));
+    assert_eq!(
+        search_json["total_matches"].as_u64().unwrap(),
+        1,
+        "stableterm should be findable after --no-cache rebuild"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-004: Lazy index — search builds the index on the fly
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_004_lazy_index_built_on_search() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "LazyDoc.md",
+        "# LazyDoc\n\nThis document has lazyterm content.\n",
+    );
+
+    // Ensure no .zetl/search/ directory exists (fresh vault — no prior `zetl index`)
+    let search_dir = dir.path().join(".zetl").join("search");
+    assert!(
+        !search_dir.exists(),
+        "search dir must not exist before the lazy test"
+    );
+
+    // Run `zetl search` without a prior `zetl index` — should build index lazily
+    let (json, stderr) = run_json_with_stderr(zetl_cmd(dir.path()).arg("search").arg("lazyterm"));
+
+    // The result should be found
+    assert_eq!(
+        json["total_matches"].as_u64().unwrap(),
+        1,
+        "lazyterm should be found even without prior zetl index"
+    );
+
+    // Stderr must contain the lazy-build advisory message
+    assert!(
+        stderr.contains("Building search index"),
+        "stderr must warn about lazy index build, got: {stderr:?}"
+    );
+}
+
+// ===========================================================================
+// Phase 2: Graph-Scoped Search
+// TEST-013-006: --near filters results to the neighbourhood (bidirectional BFS)
+// TEST-013-007: --depth without --near or --depth 0 → exit code 2
+// TEST-013-008: Case-insensitive anchor resolution; unresolvable → exit code 2
+// TEST-013-009: Neighbourhood metadata present/absent in JSON
+// TEST-013-016: --near composes with --path and --context
+// ===========================================================================
+
+/// Build a vault with a known link structure for Phase 2 tests.
+///
+/// Forward links:  A→B, A→C, B→D
+/// Isolated:       E
+/// Backlink probe: X→Y
+///
+/// Every page contains "graphterm" so neighbourhood filtering can be tested.
+/// "Spaced Repetition.md" exists for the case-insensitive anchor test (TEST-013-008).
+fn build_phase2_vault(root: &Path) {
+    write_file(root, "A.md", "# A\n\ngraphterm\n\n[[B]] [[C]]\n");
+    write_file(root, "B.md", "# B\n\ngraphterm\n\n[[D]]\n");
+    write_file(root, "C.md", "# C\n\ngraphterm\n");
+    write_file(root, "D.md", "# D\n\ngraphterm\n");
+    write_file(root, "E.md", "# E\n\ngraphterm\n"); // isolated
+    write_file(root, "X.md", "# X\n\ngraphterm\n\n[[Y]]\n");
+    write_file(root, "Y.md", "# Y\n\ngraphterm\n");
+    write_file(
+        root,
+        "Spaced Repetition.md",
+        "# Spaced Repetition\n\nspacedterm\n",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-006: --near A depth 1 → results limited to {A, B, C}
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_006_near_depth1_outgoing() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    // Build link graph (required for --near); must use cached mode so index.json is saved.
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("A"),
+    );
+
+    let results = json["results"].as_array().expect("results array");
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+
+    // A, B, C are within 1 hop of A (bidirectional)
+    assert!(pages.contains(&"A"), "A (anchor) must be in results");
+    assert!(
+        pages.contains(&"B"),
+        "B (outgoing 1-hop) must be in results"
+    );
+    assert!(
+        pages.contains(&"C"),
+        "C (outgoing 1-hop) must be in results"
+    );
+
+    // D is 2 hops away; E is isolated — both excluded at depth 1
+    assert!(
+        !pages.contains(&"D"),
+        "D (2 hops) must be excluded at depth 1"
+    );
+    assert!(!pages.contains(&"E"), "E (isolated) must be excluded");
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-006: --near A --depth 2 → results include D (2 hops via B)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_006_near_depth2_includes_second_hop() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("A")
+            .arg("--depth")
+            .arg("2"),
+    );
+
+    let results = json["results"].as_array().expect("results array");
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+
+    assert!(pages.contains(&"A"), "A must be in results");
+    assert!(pages.contains(&"B"), "B must be in results");
+    assert!(pages.contains(&"C"), "C must be in results");
+    assert!(
+        pages.contains(&"D"),
+        "D (2 hops via B) must be in results at depth 2"
+    );
+
+    // E is isolated even at depth 2
+    assert!(!pages.contains(&"E"), "E (isolated) must be excluded");
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-006: Backlinks — --near Y includes X (X→Y, bidirectional BFS)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_006_near_includes_backlinks() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("Y"),
+    );
+
+    let results = json["results"].as_array().expect("results array");
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+
+    // Y is the anchor; X has a forward link to Y, so X is in Y's backlink neighbourhood
+    assert!(pages.contains(&"Y"), "Y (anchor) must be in results");
+    assert!(
+        pages.contains(&"X"),
+        "X must be included (X→Y backlink, bidirectional BFS)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-007: --depth without --near → exit code 2
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_007_depth_without_near_exits_2() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    zetl_cmd(dir.path())
+        .arg("search")
+        .arg("graphterm")
+        .arg("--depth")
+        .arg("1")
+        .assert()
+        .code(2);
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-007: --depth 0 (with --near) → exit code 2
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_007_depth_zero_exits_2() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    zetl_cmd(dir.path())
+        .arg("search")
+        .arg("graphterm")
+        .arg("--near")
+        .arg("A")
+        .arg("--depth")
+        .arg("0")
+        .assert()
+        .code(2);
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-008: Case-insensitive anchor resolution
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_008_case_insensitive_anchor_resolution() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // "spaced repetition" (lowercase) should resolve to "Spaced Repetition"
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("spacedterm")
+            .arg("--near")
+            .arg("spaced repetition"),
+    );
+
+    // The resolved anchor in the output should be the correctly-cased page name
+    let near_field = json["near"].as_str().expect("near field present in output");
+    assert_eq!(
+        near_field, "Spaced Repetition",
+        "anchor should resolve to canonical casing"
+    );
+
+    let results = json["results"].as_array().expect("results array");
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+    assert!(
+        pages.contains(&"Spaced Repetition"),
+        "Spaced Repetition page must be in results"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-008: Unresolvable anchor → exit code 2 with suggestions
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_008_unresolvable_anchor_exits_2_with_suggestions() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // Use a name that partially matches "Spaced Repetition" to trigger suggestions
+    let output = zetl_cmd(dir.path())
+        .arg("search")
+        .arg("graphterm")
+        .arg("--near")
+        .arg("spaced")
+        .output()
+        .expect("execute zetl");
+
+    assert_eq!(output.status.code(), Some(2), "should exit with code 2");
+
+    // The JSON error response should mention a suggestion
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("failed to parse JSON: {e}\nstdout: {stdout}"));
+    let error_msg = json["error"].as_str().expect("error field in JSON");
+    assert!(
+        error_msg.contains("Spaced Repetition"),
+        "error message should suggest 'Spaced Repetition', got: {error_msg}"
+    );
+}
+
+#[test]
+fn test_013_008_completely_unknown_anchor_exits_2() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    zetl_cmd(dir.path())
+        .arg("search")
+        .arg("graphterm")
+        .arg("--near")
+        .arg("NoSuchPageXYZ123")
+        .assert()
+        .code(2);
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-009: Neighbourhood metadata present in JSON when --near is used
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_009_neighbourhood_metadata_present_with_near() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("A")
+            .arg("--depth")
+            .arg("1"),
+    );
+
+    // REQ-013-009: near, depth, neighbourhood_size must appear in output
+    assert!(
+        json["near"].as_str().is_some(),
+        "near field must be present when --near is used"
+    );
+    assert_eq!(
+        json["near"].as_str().unwrap(),
+        "A",
+        "near should be the resolved anchor name"
+    );
+    assert_eq!(
+        json["depth"].as_u64(),
+        Some(1),
+        "depth field must equal the requested depth"
+    );
+    assert!(
+        json["neighbourhood_size"].as_u64().is_some(),
+        "neighbourhood_size field must be present"
+    );
+    // A at depth 1: {A, B, C} = 3 pages
+    assert_eq!(
+        json["neighbourhood_size"].as_u64().unwrap(),
+        3,
+        "neighbourhood of A at depth 1 is {{A, B, C}} = 3 pages"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-009: Neighbourhood metadata absent when --near is NOT used
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_009_neighbourhood_metadata_absent_without_near() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    let json = run_json(zetl_cmd(dir.path()).arg("search").arg("graphterm"));
+
+    // REQ-013-009: fields must be omitted from the envelope when --near is not used
+    assert!(
+        json.get("near").is_none() || json["near"].is_null(),
+        "near field must be absent when --near is not used"
+    );
+    assert!(
+        json.get("depth").is_none() || json["depth"].is_null(),
+        "depth field must be absent when --near is not used"
+    );
+    assert!(
+        json.get("neighbourhood_size").is_none() || json["neighbourhood_size"].is_null(),
+        "neighbourhood_size field must be absent when --near is not used"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-016: --near composes with --path and --context
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_016_near_composes_with_path_filter() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    // --near A (neighbourhood {A, B, C} at depth 1) AND --path B.md
+    // Expected: only B.md result (C and A excluded by --path)
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("A")
+            .arg("--path")
+            .arg("B.md"),
+    );
+
+    let results = json["results"].as_array().expect("results array");
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+
+    // Only B.md matches both the neighbourhood filter and the path filter
+    assert_eq!(
+        pages,
+        vec!["B"],
+        "--path B.md should restrict to B within the neighbourhood"
+    );
+}
+
+#[test]
+fn test_013_016_near_composes_with_context() {
+    let dir = TempDir::new().unwrap();
+    build_phase2_vault(dir.path());
+
+    run_json(zetl_cmd_cached(dir.path()).arg("index"));
+
+    let json = run_json(
+        zetl_cmd(dir.path())
+            .arg("search")
+            .arg("graphterm")
+            .arg("--near")
+            .arg("A")
+            .arg("--context")
+            .arg("20"),
+    );
+
+    let results = json["results"].as_array().expect("results array");
+
+    // All results in the neighbourhood should have context snippets
+    for result in results {
+        assert!(
+            result["context"].as_str().is_some(),
+            "context must be present when --context is specified, result: {result:?}"
+        );
+    }
+
+    // Results should still be limited to the neighbourhood
+    let pages: Vec<&str> = results.iter().filter_map(|r| r["page"].as_str()).collect();
+    assert!(
+        !pages.contains(&"E"),
+        "E (isolated) must be excluded even with --context"
+    );
+    assert!(
+        !pages.contains(&"D"),
+        "D (2+ hops) must be excluded at default depth 1 even with --context"
+    );
+}
+
+// ===========================================================================
+// Phase 4: Static build search
+// TEST-013-014: zetl build emits search-index.json with BM25 corpus statistics
+// TEST-013-015: Generated HTML includes Cmd+K modal, BM25 fetch, and keyboard nav
+// ===========================================================================
+
+/// Run `zetl build --out-dir <out>` against the vault at `vault`, assert success.
+fn run_build(vault: &Path, out_dir: &Path) {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    cmd.arg("-d")
+        .arg(vault)
+        .arg("--no-cache")
+        .arg("build")
+        .arg("--out-dir")
+        .arg(out_dir);
+    let output = cmd.output().expect("failed to execute zetl build");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "zetl build exited with non-zero status.\nstderr: {stderr}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-014: search-index.json is emitted in the output directory
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_014_build_emits_search_index_json() {
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Alpha.md",
+        "# Alpha\n\nalpha content uniqueterm here\n",
+    );
+    write_file(
+        dir.path(),
+        "Beta.md",
+        "# Beta\n\nbeta content uniqueterm here\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let search_index_path = out_dir.join("search-index.json");
+    assert!(
+        search_index_path.exists(),
+        "search-index.json must be written to output directory"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-014: search-index.json contains avgDl, docs (correct count), df
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_014_search_index_top_level_fields() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Alpha.md", "# Alpha\n\nalpha content here\n");
+    write_file(dir.path(), "Beta.md", "# Beta\n\nbeta content here\n");
+    write_file(dir.path(), "Gamma.md", "# Gamma\n\ngamma content here\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let json_str = fs::read_to_string(out_dir.join("search-index.json")).unwrap();
+    let json: Value =
+        serde_json::from_str(&json_str).expect("search-index.json must be valid JSON");
+
+    assert!(
+        json["avgDl"].is_number(),
+        "search-index.json must contain 'avgDl' as a number, got: {json}"
+    );
+    assert!(
+        json["docs"].is_array(),
+        "search-index.json must contain 'docs' as an array, got: {json}"
+    );
+    assert!(
+        json["df"].is_object(),
+        "search-index.json must contain 'df' as an object, got: {json}"
+    );
+
+    let docs = json["docs"].as_array().unwrap();
+    assert_eq!(
+        docs.len(),
+        3,
+        "docs array must have one entry per vault file (3 files)"
+    );
+
+    assert!(
+        json["avgDl"].as_f64().unwrap() > 0.0,
+        "avgDl must be > 0 for non-empty files"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-014: each doc has n, s, dl, tf with correct term frequencies
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_014_doc_fields_and_term_frequencies() {
+    let dir = TempDir::new().unwrap();
+    // "rareword" appears 3 times in Alpha only; "shared" appears in both
+    write_file(
+        dir.path(),
+        "Alpha.md",
+        "# Alpha\n\nrareword rareword rareword shared\n",
+    );
+    write_file(dir.path(), "Beta.md", "# Beta\n\nshared content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let json_str = fs::read_to_string(out_dir.join("search-index.json")).unwrap();
+    let json: Value = serde_json::from_str(&json_str).unwrap();
+    let docs = json["docs"].as_array().unwrap();
+
+    // Every doc must have n, s, dl, tf
+    for doc in docs {
+        assert!(doc["n"].is_string(), "doc must have 'n' (page name): {doc}");
+        assert!(doc["s"].is_string(), "doc must have 's' (slug): {doc}");
+        assert!(
+            doc["dl"].is_number(),
+            "doc must have 'dl' (doc length): {doc}"
+        );
+        assert!(
+            doc["tf"].is_object(),
+            "doc must have 'tf' (term frequencies): {doc}"
+        );
+    }
+
+    // Locate Alpha doc
+    let alpha = docs
+        .iter()
+        .find(|d| d["n"].as_str() == Some("Alpha"))
+        .expect("Alpha doc must be present");
+
+    // rareword appears 3 times in Alpha
+    assert_eq!(
+        alpha["tf"]["rareword"].as_u64().unwrap_or(0),
+        3,
+        "rareword must have tf=3 in Alpha"
+    );
+
+    // shared appears once in Alpha
+    assert_eq!(
+        alpha["tf"]["shared"].as_u64().unwrap_or(0),
+        1,
+        "shared must have tf=1 in Alpha"
+    );
+
+    // dl for Alpha must equal sum of tf values
+    let expected_dl: u64 = alpha["tf"]
+        .as_object()
+        .unwrap()
+        .values()
+        .filter_map(|v| v.as_u64())
+        .sum();
+    assert_eq!(
+        alpha["dl"].as_u64().unwrap(),
+        expected_dl,
+        "dl must equal the sum of all tf values"
+    );
+
+    // df["rareword"] must be 1 (only Alpha contains it)
+    let df = &json["df"];
+    assert_eq!(
+        df["rareword"].as_u64().unwrap_or(0),
+        1,
+        "rareword must appear in df=1 document"
+    );
+
+    // df["shared"] must be 2 (both Alpha and Beta contain it)
+    assert_eq!(
+        df["shared"].as_u64().unwrap_or(0),
+        2,
+        "shared must appear in df=2 documents"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-015: generated HTML includes Cmd+K search modal
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_015_html_has_search_modal() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+
+    assert!(
+        html.contains("search-overlay"),
+        "index.html must contain search overlay element"
+    );
+    assert!(
+        html.contains("search-input"),
+        "index.html must contain search input element"
+    );
+    assert!(
+        html.contains("openSearch"),
+        "index.html must contain openSearch function"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-015: generated HTML fetches search-index.json on open
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_015_html_fetches_search_index_json() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+
+    assert!(
+        html.contains("fetch('/search-index.json')"),
+        "index.html must fetch /search-index.json to load BM25 index"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-015: generated HTML scores results by BM25
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_015_html_includes_bm25_scorer() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+
+    assert!(
+        html.contains("bm25Search"),
+        "index.html must include the bm25Search function"
+    );
+    // BM25 parameters (k1=1.2, b=0.75) from SPEC-013 §4.9
+    assert!(
+        html.contains("1.2"),
+        "bm25Search must use k1=1.2 per SPEC-013 §4.9"
+    );
+    assert!(
+        html.contains("0.75"),
+        "bm25Search must use b=0.75 per SPEC-013 §4.9"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-015: generated HTML includes keyboard navigation (ArrowDown/Up/Enter)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_015_html_keyboard_navigation() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+
+    assert!(
+        html.contains("ArrowDown"),
+        "index.html must handle ArrowDown key for keyboard navigation"
+    );
+    assert!(
+        html.contains("ArrowUp"),
+        "index.html must handle ArrowUp key for keyboard navigation"
+    );
+    assert!(
+        html.contains("'Enter'") || html.contains("\"Enter\""),
+        "index.html must handle Enter key to navigate to selected result"
+    );
+    assert!(
+        html.contains("'Escape'") || html.contains("\"Escape\""),
+        "index.html must handle Escape to close search modal"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-015: generated HTML results link to correct page paths
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_015_html_result_links_use_slug() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let out_dir = dir.path().join("dist");
+    run_build(dir.path(), &out_dir);
+
+    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
+
+    // Results use item.s (slug) as their href
+    assert!(
+        html.contains("item.s") || html.contains("filtered[active].s"),
+        "index.html must build result links from the slug field (item.s)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-012: Serve mode search API
+// ---------------------------------------------------------------------------
+
+/// Extract body as a String from raw bytes returned by http_get.
+fn body_string(body: &[u8]) -> String {
+    String::from_utf8_lossy(body).into_owned()
+}
+
+#[test]
+fn test_013_012_api_search_returns_bm25_results() {
+    // Vault with several occurrences of "algorithm" so Tantivy finds something.
+    let dir = TempDir::new().unwrap();
+    write_file(
+        dir.path(),
+        "Algorithm.md",
+        "# Introduction\n\nThis page discusses the algorithm deeply.\n\n## Details\n\nThe algorithm is efficient and the algorithm is correct.\n",
+    );
+    write_file(
+        dir.path(),
+        "Other.md",
+        "# Other\n\nUnrelated content with no hits.\n",
+    );
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+
+    let (status_line, _headers, body_bytes) = http_get(port, "/api/search?q=algorithm");
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        status_line.contains("200"),
+        "GET /api/search?q=algorithm must return 200, got: {status_line}"
+    );
+
+    let body = body_string(&body_bytes);
+    let json: Value = serde_json::from_str(&body)
+        .unwrap_or_else(|e| panic!("response is not valid JSON: {e}\nbody: {body}"));
+
+    let results = json["results"]
+        .as_array()
+        .expect("results must be an array");
+    assert!(
+        !results.is_empty(),
+        "should find at least one result for 'algorithm'"
+    );
+
+    // Every result must carry the required BM25 fields.
+    for result in results {
+        assert!(
+            result["score"].as_f64().is_some() && result["score"].as_f64().unwrap() > 0.0,
+            "every result must have a positive 'score', got: {result}"
+        );
+        assert!(
+            result["page"].as_str().is_some(),
+            "every result must have a 'page' field, got: {result}"
+        );
+        assert!(
+            result["path"].as_str().is_some(),
+            "every result must have a 'path' field, got: {result}"
+        );
+        assert!(
+            result["line"].as_u64().is_some(),
+            "every result must have a 'line' field, got: {result}"
+        );
+        assert!(
+            result.get("heading").is_some(),
+            "every result must have a 'heading' field (may be null), got: {result}"
+        );
+        assert!(
+            result.get("context").is_some(),
+            "every result must have a 'context' field, got: {result}"
+        );
+    }
+
+    // Results should be ordered by descending score.
+    let scores: Vec<f64> = results
+        .iter()
+        .map(|r| r["score"].as_f64().unwrap_or(0.0))
+        .collect();
+    let mut sorted = scores.clone();
+    sorted.sort_by(|a, b| b.partial_cmp(a).unwrap());
+    assert_eq!(
+        scores, sorted,
+        "results must be ordered by descending BM25 score"
+    );
+}
+
+#[test]
+fn test_013_012_api_search_empty_query_returns_400() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Note.md", "# Note\n\nsome content\n");
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+
+    // Empty string for q
+    let (status_empty, _, _) = http_get(port, "/api/search?q=");
+    // Missing q entirely
+    let (status_missing, _, _) = http_get(port, "/api/search");
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        status_empty.contains("400"),
+        "GET /api/search?q= must return 400 Bad Request, got: {status_empty}"
+    );
+    assert!(
+        status_missing.contains("400"),
+        "GET /api/search (no q param) must return 400 Bad Request, got: {status_missing}"
+    );
+}
+
+#[test]
+fn test_013_012_api_search_limit_parameter() {
+    let dir = TempDir::new().unwrap();
+    // Create a file with many occurrences of "test" so there are more than 3 matches.
+    write_file(
+        dir.path(),
+        "Many.md",
+        "# Many\n\ntest line one.\n\ntest line two.\n\ntest line three.\n\ntest line four.\n\ntest line five.\n",
+    );
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+    let (status_line, _headers, body_bytes) = http_get(port, "/api/search?q=test&limit=3");
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        status_line.contains("200"),
+        "GET /api/search?q=test&limit=3 must return 200, got: {status_line}"
+    );
+
+    let body = body_string(&body_bytes);
+    let json: Value = serde_json::from_str(&body)
+        .unwrap_or_else(|e| panic!("response is not valid JSON: {e}\nbody: {body}"));
+
+    let results = json["results"]
+        .as_array()
+        .expect("results must be an array");
+    assert!(
+        results.len() <= 3,
+        "limit=3 must return at most 3 results, got {}",
+        results.len()
+    );
+    // There should be at least 1 result (the file does contain "test").
+    assert!(
+        !results.is_empty(),
+        "should find at least one result for 'test'"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TEST-013-013: Serve mode Cmd+K full-text search modal
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_013_013_serve_html_search_modal_fields() {
+    // The HTML served by zetl serve must contain the Cmd+K modal elements
+    // that display page name, heading, context, and score to the user.
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+    let (status_line, _headers, body_bytes) = http_get(port, "/");
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(status_line.contains("200"), "GET / must return 200");
+    let html = body_string(&body_bytes);
+
+    assert!(
+        html.contains("search-overlay"),
+        "serve HTML must contain the search overlay element"
+    );
+    assert!(
+        html.contains("search-input"),
+        "serve HTML must contain the search input element"
+    );
+    assert!(
+        html.contains("openSearch"),
+        "serve HTML must contain the openSearch function"
+    );
+    // Results render page name, heading, context, score.
+    assert!(
+        html.contains("page-name"),
+        "serve HTML must render .page-name in results"
+    );
+    assert!(
+        html.contains("heading"),
+        "serve HTML must render .heading in results"
+    );
+    assert!(
+        html.contains("context"),
+        "serve HTML must render .context in results"
+    );
+    assert!(
+        html.contains("score"),
+        "serve HTML must render .score in results"
+    );
+    // Results come from the /api/search backend.
+    assert!(
+        html.contains("/api/search"),
+        "serve HTML must query the /api/search endpoint for full-text results"
+    );
+}
+
+#[test]
+fn test_013_013_serve_html_keyboard_navigation() {
+    let dir = TempDir::new().unwrap();
+    write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
+
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+    let (status_line, _headers, body_bytes) = http_get(port, "/");
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(status_line.contains("200"), "GET / must return 200");
+    let html = body_string(&body_bytes);
+
+    assert!(
+        html.contains("ArrowDown"),
+        "serve HTML must handle ArrowDown for keyboard navigation"
+    );
+    assert!(
+        html.contains("ArrowUp"),
+        "serve HTML must handle ArrowUp for keyboard navigation"
+    );
+    assert!(
+        html.contains("'Enter'") || html.contains("\"Enter\""),
+        "serve HTML must handle Enter to follow the selected result"
+    );
+    assert!(
+        html.contains("'Escape'") || html.contains("\"Escape\""),
+        "serve HTML must handle Escape to close the search modal"
     );
 }

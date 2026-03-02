@@ -40,7 +40,7 @@ pub fn detect_color_mode() -> ColorMode {
     }
 
     // Rule 3: 256-color.
-    if std::env::var("TERM").map_or(false, |t| t.contains("256color")) {
+    if std::env::var("TERM").is_ok_and(|t| t.contains("256color")) {
         return ColorMode::Color256;
     }
 

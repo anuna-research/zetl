@@ -227,7 +227,9 @@
       padding: 0.25rem 0;
     }
     .search-result {
-      display: block;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
       padding: 0.5rem 1rem;
       text-decoration: none;
       color: oklch(var(--bc));
@@ -247,6 +249,27 @@
     .search-result .sr-slug {
       font-size: 0.75rem;
       opacity: 0.5;
+    }
+    .search-result .page-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .search-result .heading {
+      font-size: 0.78rem;
+      opacity: 0.6;
+      font-style: italic;
+    }
+    .search-result .context {
+      font-size: 0.78rem;
+      opacity: 0.5;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .search-result .score {
+      font-size: 0.7rem;
+      opacity: 0.4;
+      font-family: monospace;
     }
     .search-hint {
       padding: 1rem;
@@ -332,100 +355,75 @@
 
   <script>
   (function(){
-    var idx=JSON.parse(document.getElementById('zetl-search-index').textContent);
+    var MODE='{{ mode }}';
     var overlay=document.getElementById('search-overlay');
     var input=document.getElementById('search-input');
     var results=document.getElementById('search-results');
     var active=-1;
-    var filtered=idx;
+    var filtered=[];
 
-    /* ── Sublime-style fuzzy match ─────────────────────────────────
-       Returns null (no match) or {score, indices}.
-       Characters must appear in order. Bonuses for:
-       - consecutive runs, word-boundary starts, camelCase,
-       - match near the beginning of the string.                   */
-    function fuzzyMatch(query, text){
-      var ql=query.length, tl=text.length;
-      if(ql===0) return {score:0,indices:[]};
-      if(ql>tl) return null;
-      var qLow=query.toLowerCase(), tLow=text.toLowerCase();
+    var pageList=(function(){
+      try{return JSON.parse(document.getElementById('zetl-search-index').textContent||'[]');}
+      catch(e){return [];}
+    })();
 
-      /* first pass: can we match at all? */
+    function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    function slugFromPath(path){return path.replace(/\.[^/.]+$/,'').toLowerCase().replace(/ /g,'-');}
+
+    /* ── Fuzzy matching (works in all modes, no fetch needed) ─── */
+    function fuzzyMatch(query,text){
+      var ql=query.length,tl=text.length;
+      if(ql===0)return{score:0,indices:[]};
+      if(ql>tl)return null;
+      var qLow=query.toLowerCase(),tLow=text.toLowerCase();
       var qi=0;
-      for(var ti=0;ti<tl&&qi<ql;ti++){
-        if(tLow[ti]===qLow[qi]) qi++;
-      }
-      if(qi<ql) return null;
-
-      /* greedy-with-backtrack scoring pass */
-      var bestScore=-Infinity, bestIndices=null;
+      for(var ti=0;ti<tl&&qi<ql;ti++){if(tLow[ti]===qLow[qi])qi++;}
+      if(qi<ql)return null;
+      var bestScore=-Infinity,bestIndices=null;
       function solve(qi2,ti2,indices,score,prevMatch){
-        if(qi2===ql){
-          if(score>bestScore){ bestScore=score; bestIndices=indices.slice(); }
-          return;
-        }
+        if(qi2===ql){if(score>bestScore){bestScore=score;bestIndices=indices.slice();}return;}
         var remaining=ql-qi2;
         for(var t=ti2;t<=tl-remaining;t++){
           if(tLow[t]===qLow[qi2]){
             var s=0;
-            /* consecutive bonus */
-            if(prevMatch===t-1) s+=5;
-            /* word boundary: start, after space/dash/underscore/slash/dot */
-            if(t===0) s+=8;
-            else{
-              var prev=text[t-1];
-              if(prev===' '||prev==='-'||prev==='_'||prev==='/'||prev==='.') s+=7;
-              /* camelCase boundary */
-              else if(text[t]===text[t].toUpperCase()&&prev===prev.toLowerCase()&&/[a-zA-Z]/.test(prev)) s+=6;
-            }
-            /* exact case match bonus */
-            if(text[t]===query[qi2]) s+=1;
-            /* proximity to start bonus */
-            s+=Math.max(0, 3-Math.floor(t/4));
-            indices.push(t);
-            solve(qi2+1,t+1,indices,score+s,t);
-            indices.pop();
+            if(prevMatch===t-1)s+=5;
+            if(t===0)s+=8;
+            else{var prev=text[t-1];if(prev===' '||prev==='-'||prev==='_'||prev==='/'||prev==='.')s+=7;else if(text[t]===text[t].toUpperCase()&&prev===prev.toLowerCase()&&/[a-zA-Z]/.test(prev))s+=6;}
+            if(text[t]===query[qi2])s+=1;
+            s+=Math.max(0,3-Math.floor(t/4));
+            indices.push(t);solve(qi2+1,t+1,indices,score+s,t);indices.pop();
           }
         }
       }
       solve(0,0,[],0,-2);
-      if(!bestIndices) return null;
-      return {score:bestScore,indices:bestIndices};
+      if(!bestIndices)return null;
+      return{score:bestScore,indices:bestIndices};
     }
 
-    function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-
-    /* highlight matched chars with <b> */
     function highlight(text,indices){
-      var set={};
-      indices.forEach(function(i){set[i]=true;});
+      var set={};indices.forEach(function(i){set[i]=true;});
       var out='';
-      for(var i=0;i<text.length;i++){
-        var c=esc(text[i]);
-        if(set[i]) out+='<b>'+c+'</b>';
-        else out+=c;
-      }
+      for(var i=0;i<text.length;i++){var c=esc(text[i]);out+=set[i]?'<b>'+c+'</b>':c;}
       return out;
     }
 
-    window.openSearch=function(){
-      overlay.classList.add('open');
-      input.value='';
-      active=0;
-      filtered=idx.slice();
-      render(filtered,null);
-      input.focus();
-    };
-    window.closeSearch=function(){
-      overlay.classList.remove('open');
-    };
+    function fuzzyFilter(q){
+      if(!q)return pageList.map(function(p){return{n:p.n,s:p.s,_indices:null};});
+      var scored=[];
+      pageList.forEach(function(p){
+        var m=fuzzyMatch(q,p.n);
+        if(m)scored.push({n:p.n,s:p.s,score:m.score,_indices:m.indices});
+      });
+      scored.sort(function(a,b){return b.score-a.score;});
+      return scored;
+    }
 
-    function render(items,query){
+    /* ── Render (two styles: fuzzy name results vs full-text) ─── */
+    function renderFuzzy(items){
       results.innerHTML='';
       if(items.length===0){
         results.innerHTML='<div class="search-hint">No results</div>';
-        active=-1;
-        return;
+        active=-1;return;
       }
       items.forEach(function(item,i){
         var a=document.createElement('a');
@@ -433,38 +431,145 @@
         a.href='/'+item.s;
         var nameHtml=item._indices?highlight(item.n,item._indices):esc(item.n);
         a.innerHTML='<div class="sr-name">'+nameHtml+'</div><div class="sr-slug">'+esc(item.s)+'</div>';
-        a.addEventListener('mouseenter',function(){
-          active=i;
-          updateActive();
-        });
+        a.addEventListener('mouseenter',function(){active=i;updateActive();});
         results.appendChild(a);
       });
     }
 
-    function getFiltered(){
-      var q=input.value;
-      if(!q){ return idx.map(function(it){return {n:it.n,s:it.s,_indices:null};});}
-      var scored=[];
-      idx.forEach(function(item){
-        var m=fuzzyMatch(q,item.n);
-        if(m) scored.push({n:item.n,s:item.s,score:m.score,_indices:m.indices});
+    function renderFullText(items){
+      results.innerHTML='';
+      if(!input.value){
+        results.innerHTML='<div class="search-hint">Type to search pages\u2026</div>';
+        active=-1;return;
+      }
+      if(items.length===0){
+        results.innerHTML='<div class="search-hint">No results</div>';
+        active=-1;return;
+      }
+      active=0;
+      items.forEach(function(item,i){
+        var a=document.createElement('a');
+        a.className='search-result'+(i===0?' sr-active':'');
+        a.href='/'+item.slug+(item.line?'#line-'+item.line:'');
+        var html='<span class="page-name">'+esc(item.page)+'</span>';
+        if(item.heading)html+='<span class="heading">'+esc(item.heading)+'</span>';
+        if(item.context)html+='<span class="context">'+esc(item.context)+'</span>';
+        if(item.score)html+='<span class="score">'+item.score.toFixed(2)+'</span>';
+        a.innerHTML=html;
+        a.addEventListener('mouseenter',function(){active=i;updateActive();});
+        results.appendChild(a);
       });
-      scored.sort(function(a,b){return b.score-a.score;});
-      return scored;
     }
 
     function updateActive(){
       var els=results.querySelectorAll('.search-result');
-      els.forEach(function(el,i){
-        el.classList.toggle('sr-active',i===active);
-      });
+      els.forEach(function(el,i){el.classList.toggle('sr-active',i===active);});
       if(active>=0&&els[active])els[active].scrollIntoView({block:'nearest'});
     }
 
+    /* ── BM25 scorer for build mode (client-side) ──────────────── */
+    var searchIndex=null;
+    function bm25Search(q,index){
+      var k1=1.2,b=0.75;
+      var terms=q.toLowerCase().split(/\W+/).filter(Boolean);
+      var n=index.docs.length;var avgDl=index.avgDl||1;var scores={};
+      terms.forEach(function(term){
+        var df=index.df[term]||0;if(df===0)return;
+        var idf=Math.log((n-df+0.5)/(df+0.5)+1);
+        index.docs.forEach(function(doc,i){
+          var tf=doc.tf[term]||0;if(tf===0)return;
+          var norm=1-b+b*(doc.dl/avgDl);
+          var sc=idf*(tf*(k1+1))/(tf+k1*norm);
+          scores[i]=(scores[i]||0)+sc;
+        });
+      });
+      return Object.keys(scores).map(function(i){
+        var doc=index.docs[parseInt(i)];
+        return{page:doc.n,slug:doc.s,score:scores[i]};
+      }).sort(function(a,b){return b.score-a.score;});
+    }
+
+    /* ── Serve mode: /api/search (Tantivy full-text) ───────────── */
+    var currentCtrl=null;
+    var debounceTimer=null;
+    function serveSearch(q){
+      if(q.length<=2){
+        filtered=fuzzyFilter(q);
+        active=0;renderFuzzy(filtered);return;
+      }
+      results.innerHTML='<div class="search-hint">Searching\u2026</div>';
+      if(currentCtrl){currentCtrl.abort();}
+      currentCtrl=new AbortController();
+      fetch('/api/search?q='+encodeURIComponent(q)+'&limit=20',{signal:currentCtrl.signal})
+        .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
+        .then(function(data){
+          currentCtrl=null;
+          filtered=(data.results||[]).map(function(m){
+            return{page:m.page,slug:slugFromPath(m.path),heading:m.heading||null,context:m.context||null,score:m.score,line:m.line||0};
+          });
+          renderFullText(filtered);
+        })
+        .catch(function(err){
+          currentCtrl=null;
+          if(err&&err.name==='AbortError')return;
+          filtered=fuzzyFilter(q);
+          active=0;renderFuzzy(filtered);
+        });
+    }
+
+    /* ── Build mode: fuzzy + BM25 content search ───────────────── */
+    function buildSearchRun(){
+      var q=input.value;
+      if(!q){
+        filtered=fuzzyFilter('');
+        active=0;renderFuzzy(filtered);return;
+      }
+      /* Always show fuzzy name matches first */
+      if(!searchIndex){
+        filtered=fuzzyFilter(q);
+        active=0;renderFuzzy(filtered);return;
+      }
+      /* BM25 content search for longer queries when index is available */
+      if(q.length>2){
+        var bm25=bm25Search(q,searchIndex).slice(0,20);
+        if(bm25.length>0){filtered=bm25;renderFullText(filtered);return;}
+      }
+      filtered=fuzzyFilter(q);
+      active=0;renderFuzzy(filtered);
+    }
+
+    function runSearch(){
+      var q=input.value;
+      if(MODE==='serve'){
+        if(!q){filtered=fuzzyFilter('');active=0;renderFuzzy(filtered);return;}
+        serveSearch(q);
+      }else{
+        buildSearchRun();
+      }
+    }
+
+    /* ── Open / close ──────────────────────────────────────────── */
+    window.openSearch=function(){
+      overlay.classList.add('open');
+      input.value='';
+      filtered=fuzzyFilter('');
+      active=0;renderFuzzy(filtered);
+      input.focus();
+      if(MODE==='build'&&!searchIndex){
+        fetch('/search-index.json')
+          .then(function(r){return r.json();})
+          .then(function(data){searchIndex=data;if(input.value)runSearch();})
+          .catch(function(){});
+      }
+    };
+    window.closeSearch=function(){
+      overlay.classList.remove('open');
+      if(currentCtrl){currentCtrl.abort();currentCtrl=null;}
+    };
+
+    /* ── Input / keyboard ──────────────────────────────────────── */
     input.addEventListener('input',function(){
-      active=0;
-      filtered=getFiltered();
-      render(filtered,input.value);
+      active=0;runSearch();
     });
 
     document.addEventListener('keydown',function(e){
@@ -487,7 +592,10 @@
       }else if(e.key==='Enter'){
         e.preventDefault();
         if(active>=0&&active<filtered.length){
-          window.location.href='/'+filtered[active].s;
+          var s=filtered[active];
+          var href=s.slug||s.s;
+          var line=s.line;
+          window.location.href='/'+href+(line?'#line-'+line:'');
         }
       }
     });

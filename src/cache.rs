@@ -149,10 +149,7 @@ fn format_rfc3339_utc(t: std::time::SystemTime) -> String {
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = if month <= 2 { y + 1 } else { y };
 
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        year, month, day, hour, min, sec
-    )
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{min:02}:{sec:02}Z")
 }
 
 /// Compute the vault-level Merkle root from a slice of parsed files and
@@ -171,7 +168,7 @@ fn vault_root_hex(files: &[ParsedFile]) -> Option<String> {
         None
     } else {
         let h = compute_vault_root(&pairs);
-        Some(h.iter().map(|b| format!("{:02x}", b)).collect())
+        Some(h.iter().map(|b| format!("{b:02x}")).collect())
     }
 }
 
@@ -215,10 +212,7 @@ pub fn files_needing_reparse(
                 if cached_file.mtime == *mtime {
                     // Tier 1: mtime unchanged.
                     // .md files missing a Merkle root need backfilling.
-                    let missing_merkle = path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .map_or(false, |ext| ext == "md")
+                    let missing_merkle = (path.extension().and_then(|e| e.to_str()) == Some("md"))
                         && cached_file.file_merkle.is_none();
                     if missing_merkle {
                         needs_full_reparse.push(path.clone());

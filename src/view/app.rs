@@ -372,7 +372,7 @@ impl ViewApp {
 
         if self.debug_render {
             let total_ms = render_start.elapsed().as_millis();
-            eprintln!("[zetl view] render  total_ms={}", total_ms);
+            eprintln!("[zetl view] render  total_ms={total_ms}");
         }
     }
 
@@ -492,9 +492,9 @@ impl ViewApp {
 
         for (page, line_num) in entries.iter().take(max_visible) {
             let text = if *line_num > 0 {
-                format!("  ← {}  · {}", page, line_num)
+                format!("  ← {page}  · {line_num}")
             } else {
-                format!("  ← {}", page)
+                format!("  ← {page}")
             };
             lines.push(Line::raw(text));
         }
@@ -699,7 +699,7 @@ impl ViewApp {
         let n_more = cards.len().saturating_sub(rendered_count);
         if n_more > 0 && area.height > 0 {
             frame.render_widget(
-                Paragraph::new(format!("↓ {} more", n_more)).style(Style::default().dim()),
+                Paragraph::new(format!("↓ {n_more} more")).style(Style::default().dim()),
                 Rect {
                     x: area.x,
                     y: area.y + area.height - 1,
@@ -821,7 +821,7 @@ impl ViewApp {
                     FocusState::FocusMode { focused_index }
                         if self.link_map
                             .get(focused_index)
-                            .map_or(false, |e| e.ordinal == ordinal)
+                            .is_some_and(|e| e.ordinal == ordinal)
                 );
 
                 let (connector, style) = if is_no_color {
@@ -999,9 +999,9 @@ impl ViewApp {
         {
             let abs_idx = i + picker.list_scroll;
             let line = if abs_idx == picker.selected {
-                Line::styled(format!("▶ {}", title), Style::default().bold().reversed())
+                Line::styled(format!("▶ {title}"), Style::default().bold().reversed())
             } else {
-                Line::raw(format!("  {}", title))
+                Line::raw(format!("  {title}"))
             };
             lines.push(line);
         }
@@ -1423,8 +1423,8 @@ impl ViewApp {
 
         if let Some(line) = lines.get_mut(focused_line) {
             let is_no_color = self.color_mode == ColorMode::NoColor;
-            let plain = format!("[{}]", ord);
-            let bang = format!("![{}]", ord);
+            let plain = format!("[{ord}]");
+            let bang = format!("![{ord}]");
             for span in line.spans.iter_mut() {
                 if span.content.as_ref() == plain.as_str() || span.content.as_ref() == bang.as_str()
                 {

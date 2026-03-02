@@ -18,6 +18,7 @@ use zetl::merkle::{
 };
 use zetl::scanner::{resolve_page_name, scan_vault};
 use zetl::search::{search_vault, SearchConfig};
+use zetl::search_index::SearchIndex;
 use zetl::simhash::SimHashIndex;
 use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, ParsedFile};
 
@@ -322,6 +323,30 @@ fn exit_page_not_found(format: &OutputFormat, message: &str) -> ! {
     }
 }
 
+// ── Filesystem helpers ─────────────────────────────────────────────────────
+
+/// Recursively sum the byte sizes of all files under `path` and return the
+/// result in whole kilobytes (rounded down).  Returns 0 if the path does not
+/// exist or cannot be read.
+fn dir_size_kb(path: &Path) -> u64 {
+    fn sum_bytes(path: &Path) -> u64 {
+        let mut total = 0u64;
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                if let Ok(meta) = entry.metadata() {
+                    if meta.is_dir() {
+                        total += sum_bytes(&entry.path());
+                    } else {
+                        total += meta.len();
+                    }
+                }
+            }
+        }
+        total
+    }
+    sum_bytes(path) / 1024
+}
+
 // ── Command handlers ───────────────────────────────────────────────────────
 
 fn cmd_index(cli: &Cli) -> Result<()> {
@@ -351,6 +376,39 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         eprintln!("tier2_misses: {}", s.tier2_misses);
     }
 
+    // Build or skip the Tantivy search index (REQ-013-001, REQ-013-003).
+    //
+    // Strategy (v1): rebuild the entire index from scratch whenever any file
+    // changed (files_hashed > 0), the index directory is absent, or --no-cache
+    // was requested.  For --no-cache, the existing index directory is deleted
+    // first so Tantivy starts with a clean on-disk layout.
+    let search_dir = pipeline.vault_root.join(".zetl").join("search");
+    let needs_rebuild =
+        cli.no_cache || pipeline.scan_stats.files_hashed > 0 || !search_dir.exists();
+
+    let (search_index_docs, search_index_build_ms) = if needs_rebuild {
+        if cli.no_cache && search_dir.exists() {
+            std::fs::remove_dir_all(&search_dir)
+                .with_context(|| format!("removing search index directory {search_dir:?}"))?;
+        }
+        let idx_start = Instant::now();
+        SearchIndex::build(&pipeline.vault_root, &pipeline.files)
+            .context("building search index")?;
+        let idx_elapsed_ms = idx_start.elapsed().as_millis();
+        (pipeline.files.len(), idx_elapsed_ms)
+    } else {
+        (pipeline.files.len(), 0)
+    };
+
+    let search_index_size_kb = dir_size_kb(&search_dir);
+
+    // OBS-013-001: verbose search index stats.
+    if cli.verbose > 0 {
+        eprintln!("documents indexed: {search_index_docs}");
+        eprintln!("search index size: {search_index_size_kb} KB");
+        eprintln!("search index build time: {search_index_build_ms}ms");
+    }
+
     let total_links: usize = pipeline.files.iter().map(|f| f.links.len()).sum();
     let total_diagnostics: usize = pipeline.files.iter().map(|f| f.diagnostics.len()).sum();
     let dead_links = pipeline.graph.dead_links();
@@ -362,6 +420,8 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         dead_links: usize,
         diagnostics: usize,
         elapsed_ms: u128,
+        search_index_docs: usize,
+        search_index_size_kb: u64,
     }
 
     let result = IndexResult {
@@ -370,6 +430,8 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         dead_links: dead_links.len(),
         diagnostics: total_diagnostics,
         elapsed_ms: elapsed.as_millis(),
+        search_index_docs,
+        search_index_size_kb,
     };
 
     match cli.format {
@@ -393,6 +455,14 @@ fn cmd_index(cli: &Cli) -> Result<()> {
             table.add_row(vec![
                 Cell::new("Elapsed (ms)"),
                 Cell::new(result.elapsed_ms),
+            ]);
+            table.add_row(vec![
+                Cell::new("Search index docs"),
+                Cell::new(result.search_index_docs),
+            ]);
+            table.add_row(vec![
+                Cell::new("Search index size (KB)"),
+                Cell::new(result.search_index_size_kb),
             ]);
             println!("{table}");
         }
@@ -1317,29 +1387,128 @@ fn cmd_search(
     query: &str,
     context: usize,
     limit: usize,
-    regex: bool,
     case_sensitive: bool,
-    all: bool,
     path_filter: Option<&str>,
+    near: Option<&str>,
+    depth: Option<usize>,
 ) -> Result<()> {
+    // REQ-013-007: --depth without --near is an error (exit 2).
+    if depth.is_some() && near.is_none() {
+        let msg = "--depth requires --near to be specified";
+        match cli.format {
+            OutputFormat::Json => exit_json_error(msg, 2),
+            OutputFormat::Table => {
+                eprintln!("Error: {msg}");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let depth_val = depth.unwrap_or(1);
+
+    // REQ-013-007: --depth 0 is an error (exit 2).
+    if depth_val == 0 {
+        let msg = "--depth must be >= 1";
+        match cli.format {
+            OutputFormat::Json => exit_json_error(msg, 2),
+            OutputFormat::Table => {
+                eprintln!("Error: {msg}");
+                std::process::exit(2);
+            }
+        }
+    }
+
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // REQ-013-006: When --near is given, compute the neighbourhood and use it to
+    // filter results. REQ-013-008: suggest similar names if the page is unresolvable.
+    let mut near_resolved: Option<String> = None;
+    let mut near_neighbourhood_size: Option<usize> = None;
+    let neighbourhood_set: Option<HashSet<String>> = if let Some(near_page) = near {
+        // REQ-013-006: graph requires zetl index — the lazy search-index build does
+        // not build the link graph. Check the cache before proceeding.
+        let cache_path = vault_root.join(".zetl").join("index.json");
+        if !cache_path.exists() {
+            let msg = "Graph required for --near. Run `zetl index` first.";
+            match cli.format {
+                OutputFormat::Json => exit_json_error(msg, 1),
+                OutputFormat::Table => {
+                    eprintln!("Error: {msg}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        let pipeline = run_pipeline(cli)?;
+
+        let resolved = match resolve_page_name(near_page, &pipeline.file_index) {
+            Some(r) => r,
+            None => {
+                // REQ-013-008: suggest similar names (substring containment).
+                let mut similar: Vec<&str> = pipeline
+                    .file_index
+                    .iter()
+                    .filter(|(name, _)| {
+                        let n = name.to_lowercase();
+                        let q = near_page.to_lowercase();
+                        n.contains(&q) || q.contains(n.as_str())
+                    })
+                    .map(|(name, _)| name.as_str())
+                    .collect();
+                similar.sort();
+                similar.truncate(5);
+                let msg = if similar.is_empty() {
+                    format!("Page not found: '{near_page}'")
+                } else {
+                    format!(
+                        "Page not found: '{near_page}'. Did you mean: {}",
+                        similar.join(", ")
+                    )
+                };
+                match cli.format {
+                    OutputFormat::Json => exit_json_error(&msg, 2),
+                    OutputFormat::Table => {
+                        eprintln!("Error: {msg}");
+                        std::process::exit(2);
+                    }
+                }
+            }
+        };
+
+        // OBS-013-003: time the BFS and emit verbose stats to stderr.
+        let bfs_start = std::time::Instant::now();
+        let set = pipeline.graph.neighbourhood(&resolved, depth_val)?;
+        let bfs_ms = bfs_start.elapsed().as_millis();
+        let size = set.len();
+
+        if cli.verbose > 0 {
+            eprintln!("near: {resolved}");
+            eprintln!("depth: {depth_val}");
+            eprintln!("neighbourhood size: {size}");
+            eprintln!("BFS time: {bfs_ms}ms");
+        }
+
+        near_resolved = Some(resolved);
+        near_neighbourhood_size = Some(size);
+        Some(set)
+    } else {
+        None
+    };
 
     let config = SearchConfig {
         query,
         context_chars: context,
         limit,
-        regex,
         case_sensitive,
-        body_only: !all,
         path_filter,
     };
 
-    let output = match search_vault(&vault_root, &config) {
+    let mut output = match search_vault(&vault_root, &config) {
         Ok(o) => o,
         Err(e) => {
             let msg = format!("{e}");
-            let code = if msg.contains("Empty search query") || msg.contains("Invalid regex") {
+            let code = if msg.contains("Empty search query") {
                 2
             } else {
                 1
@@ -1353,6 +1522,16 @@ fn cmd_search(
             }
         }
     };
+
+    // Filter results to the neighbourhood if --near was specified.
+    // REQ-013-009: populate neighbourhood metadata in the output envelope.
+    if let Some(ref set) = neighbourhood_set {
+        output.results.retain(|r| set.contains(&r.page));
+        output.total_matches = output.results.len();
+        output.near = near_resolved;
+        output.depth = Some(depth_val);
+        output.neighbourhood_size = near_neighbourhood_size;
+    }
 
     if output.total_matches == 0 {
         match cli.format {
@@ -1368,21 +1547,27 @@ fn cmd_search(
         OutputFormat::Json => print_json(&output)?,
         OutputFormat::Table => {
             let mut table = Table::new();
-            let mut headers = vec!["Page", "Line", "Col"];
-            if context > 0 {
-                headers.push("Context");
-            }
-            table.set_header(headers);
+            table.set_header(vec!["Page", "Score", "Line", "Heading", "Context"]);
             for r in &output.results {
-                let mut row = vec![Cell::new(&r.page), Cell::new(r.line), Cell::new(r.column)];
-                if context > 0 {
-                    row.push(Cell::new(r.context.as_deref().unwrap_or("")));
-                }
-                table.add_row(row);
+                table.add_row(vec![
+                    Cell::new(&r.page),
+                    Cell::new(format!("{:.3}", r.score)),
+                    Cell::new(r.line),
+                    Cell::new(r.heading.as_deref().unwrap_or("")),
+                    Cell::new(r.context.as_deref().unwrap_or("")),
+                ]);
             }
+            // CON-013-001: include neighbourhood info in the header when --near is used.
+            let near_info = if let (Some(ref n), Some(d), Some(s)) =
+                (&output.near, output.depth, output.neighbourhood_size)
+            {
+                format!(", near: {n}, depth: {d}, {s} pages")
+            } else {
+                String::new()
+            };
             println!(
-                "Search results for '{}' ({} matches):",
-                query, output.total_matches
+                "Search results for '{}' ({} matches{}):",
+                query, output.total_matches, near_info
             );
             println!("{table}");
         }
@@ -1477,15 +1662,14 @@ fn cmd_blocks(
     let pipeline = run_pipeline(cli)?;
 
     // ── Helper: convert hex ContentHash to string ──────────────────────────
-    let hash_to_hex = |h: &zetl::types::ContentHash| -> String {
-        h.iter().map(|b| format!("{:02x}", b)).collect()
-    };
+    let hash_to_hex =
+        |h: &zetl::types::ContentHash| -> String { h.iter().map(|b| format!("{b:02x}")).collect() };
 
     // ── Helper: derive a type label string from a LeafType ─────────────────
     fn leaf_type_label(leaf_type: &zetl::types::LeafType) -> String {
         use zetl::types::LeafType;
         match leaf_type {
-            LeafType::Heading { level } => format!("heading-{}", level),
+            LeafType::Heading { level } => format!("heading-{level}"),
             LeafType::Paragraph => "paragraph".to_string(),
             LeafType::CodeBlock { .. } => "code".to_string(),
             LeafType::SplBlock => "spl".to_string(),
@@ -2273,10 +2457,7 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
 /// When theme is not 'default', verify .zetl/themes/<name>/ exists and is a directory.
 fn validate_theme(theme: &str, vault_root: &std::path::Path) -> Result<()> {
     if theme.contains('/') || theme.contains('\\') || theme.contains("..") {
-        anyhow::bail!(
-            "invalid theme name '{}': must not contain '/', '\\', or '..'",
-            theme
-        );
+        anyhow::bail!("invalid theme name '{theme}': must not contain '/', '\\', or '..'",);
     }
 
     if theme != "default" {
@@ -2303,10 +2484,7 @@ fn validate_theme(theme: &str, vault_root: &std::path::Path) -> Result<()> {
                 format!("available themes: {}", available.join(", "))
             };
             anyhow::bail!(
-                "theme '{}' not found: directory .zetl/themes/{}/ does not exist\nhint: {}",
-                theme,
-                theme,
-                hint
+                "theme '{theme}' not found: directory .zetl/themes/{theme}/ does not exist\nhint: {hint}",
             );
         }
     }
@@ -2333,6 +2511,10 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         collision_names,
     };
 
+    // Build the Tantivy search index for serve mode (REQ-013-012).
+    let search_index = SearchIndex::build(&pipeline.vault_root, &data.files)
+        .context("building search index for serve")?;
+
     let engine = zetl::web::engine::TemplateEngine::new(
         &pipeline.vault_root,
         theme,
@@ -2342,6 +2524,7 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
         vault_root: std::sync::Arc::new(pipeline.vault_root),
+        search_index: std::sync::Arc::new(search_index),
         engine: std::sync::Arc::new(engine),
         theme: theme.to_string(),
     };
@@ -5992,19 +6175,19 @@ fn main() -> anyhow::Result<()> {
             query,
             context,
             limit,
-            regex,
             case_sensitive,
-            all,
             path,
+            near,
+            depth,
         } => cmd_search(
             &cli,
             query,
             *context,
             *limit,
-            *regex,
             *case_sensitive,
-            *all,
             path.as_deref(),
+            near.as_deref(),
+            *depth,
         ),
         Command::List => cmd_list(&cli),
         Command::Stats { top } => cmd_stats(&cli, *top),

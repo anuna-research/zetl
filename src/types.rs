@@ -107,7 +107,7 @@ pub mod content_hash_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S: Serializer>(hash: &[u8; 32], s: S) -> Result<S::Ok, S::Error> {
-        let hex: String = hash.iter().map(|b| format!("{:02x}", b)).collect();
+        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
         hex.serialize(s)
     }
 

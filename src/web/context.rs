@@ -240,7 +240,7 @@ pub fn build_folder_context(
     let prefix = if folder_slug.is_empty() {
         String::new()
     } else {
-        format!("{}/", folder_slug)
+        format!("{folder_slug}/")
     };
 
     let mut pages = Vec::new();
@@ -291,7 +291,7 @@ pub fn build_folder_context(
             let sub_slug = if prefix.is_empty() {
                 name.clone()
             } else {
-                format!("{}{}", prefix, name)
+                format!("{prefix}{name}")
             };
             SubfolderEntry {
                 name,
