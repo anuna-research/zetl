@@ -1,12 +1,12 @@
 {
-  "task_id": "verbose-logging",
+  "task_id": "context-builder",
   "token_budget": 8000,
-  "tokens_used": 85,
+  "tokens_used": 103,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add verbose logging for hook discovery and execution: log hook name/source/path/duration/exit-code/stdout/stderr under --verbose; log which directories were checked, hooks found, and hooks skipped with reasons",
-      "token_cost": 52,
+      "content": "Implement vault context serialiser: build JSON object with hook name, vault_root, theme, zetl_version, pages array (name, path, slug, frontmatter, outlinks, backlinks, is_orphan), and stats (total_pages, total_links, dead_links, orphans)",
+      "token_cost": 59,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 1 files (+430, -6): src/hooks/mod.rs",
       "token_cost": 11,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-verbose-logging-changes",
+      "content": "Modified 1 files (+174, -7): src/hooks/mod.rs",
+      "token_cost": 11,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T11:32:28Z"
+  "constructed_at": "2026-03-02T11:36:42Z"
 }
