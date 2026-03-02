@@ -1,75 +1,88 @@
 {
-  "task_id": "integration-test",
+  "task_id": "verify-phase3",
   "token_budget": 8000,
-  "tokens_used": 389,
+  "tokens_used": 474,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Comprehensive integration test covering the full SPEC-012 feature set. Create a test vault with: multiple pages (some with frontmatter, some without), dead links, backlinks, subfolders, a custom theme that overrides page.html with frontmatter-conditional rendering, shared and per-theme static assets. Verify: (1) zetl serve with default theme works, (2) zetl serve --theme custom works with overrides and fallback, (3) zetl build with default theme produces correct output, (4) zetl build --theme custom produces correct output with static assets, (5) edit mode works only in serve, (6) frontmatter accessible in custom theme, (7) static assets served with correct MIME types, (8) template errors produce readable messages. All REQ-012-* and TEST-012-*.",
-      "token_cost": 188,
+      "content": "Final end-to-end verification of SPEC-014:\n\n1. zetl theme list shows three bundled themes: default, minimal, docs.\n2. zetl theme export default → customise → zetl serve --theme default uses disk copy.\n3. zetl theme export minimal → zetl theme list shows 'installed (shadows bundled)'.\n4. zetl theme install <real-github-repo> → zetl serve --theme <name> → zetl theme remove <name>.\n5. zetl theme install <repo>#<tag> --path <subdir> --name custom-name → verify all flags.\n6. zetl build --theme docs produces valid static site.\n7. zetl build --theme minimal produces CDN-free static site.\n8. Three-tier resolution verified end-to-end.\n9. All error paths produce clear, actionable messages.\n10. --verbose produces detailed logging for all theme operations.\n11. Binary size impact < 100 KB from bundled themes.\n12. cargo test passes with no regressions.\n\nAll TEST-014-* scenarios.",
+      "token_cost": 222,
       "priority": "PlanMeta"
     },
     {
-      "source": "memory/episodic/task-add-serde-yaml-changes",
-      "content": "Modified 3 files (+26, -47): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "source": "memory/episodic/task-verify-phase1-changes",
+      "content": "Modified 4 files (+371, -6): .hence/context-manifest.json, src/web/engine.rs, tests/integration.rs, tests/web_integration.rs",
+      "token_cost": 31,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-verify-phase2-changes",
+      "content": "Modified 2 files (+619, -3): src/web/theme.rs, tests/integration.rs",
+      "token_cost": 16,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-extract-default-theme-changes",
+      "content": "Modified 5 files (+998, -0): themes/default/base.html, themes/default/folder.html, themes/default/index.html, themes/default/page.html, themes/default/theme.toml",
+      "token_cost": 40,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-compile-time-embedding-changes",
+      "content": "Modified 8 files (+86, -1003): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/templates/base.html and 3 more",
+      "token_cost": 35,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-three-tier-resolution-changes",
+      "content": "Modified 3 files (+57, -21): .hence/context-manifest.json, src/main.rs, src/web/engine.rs",
+      "token_cost": 22,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theme-toml-parsing-changes",
+      "content": "Modified 4 files (+435, -0): Cargo.lock, Cargo.toml, src/web/mod.rs, src/web/theme.rs",
+      "token_cost": 21,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theme-list-changes",
+      "content": "Modified 3 files (+189, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs",
       "token_cost": 20,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-add-minijinja-changes",
-      "content": "Modified 3 files (+36, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
-      "token_cost": 20,
+      "source": "memory/episodic/task-create-minimal-theme-changes",
+      "content": "Modified 6 files (+1101, -5): .hence/context-manifest.json, themes/minimal/base.html, themes/minimal/folder.html, themes/minimal/index.html, themes/minimal/page.html and 1 more",
+      "token_cost": 44,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-context-structs-changes",
-      "content": "Modified 3 files (+502, -5): .hence/context-manifest.json, src/web/context.rs, src/web/mod.rs",
-      "token_cost": 23,
+      "source": "memory/episodic/task-theme-remove-cmd-changes",
+      "content": "Modified 2 files (+80, -0): src/cli.rs, src/main.rs",
+      "token_cost": 12,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-extract-base-changes",
-      "content": "Modified 1 files (+499, -0): src/web/templates/base.html",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-extract-index-changes",
-      "content": "Modified 1 files (+38, -0): src/web/templates/index.html",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-extract-page-changes",
-      "content": "Modified 1 files (+261, -0): src/web/templates/page.html",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-extract-folder-changes",
-      "content": "Modified 1 files (+45, -0): src/web/templates/folder.html",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-engine-changes",
-      "content": "Modified 5 files (+214, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/mod.rs",
-      "token_cost": 29,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-refactor-routes-changes",
-      "content": "Modified 4 files (+79, -485): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs",
-      "token_cost": 26,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-refactor-build-changes",
-      "content": "Modified 4 files (+68, -456): .hence/context-manifest.json, src/web/build.rs, src/web/mod.rs, src/web/routes.rs",
-      "token_cost": 27,
+      "source": "memory/episodic/task-source-parsing-changes",
+      "content": "Modified 1 files (+308, -0): src/web/theme.rs",
+      "token_cost": 11,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:35:27Z"
+  "constructed_at": "2026-03-02T07:34:59Z",
+  "task_completed": "2026-03-02",
+  "verification_results": {
+    "cargo_test": "60 passed, 0 failed",
+    "theme_list": "3 bundled themes: default, docs, minimal",
+    "theme_export": "default and minimal export to .zetl/themes/, show 'installed (shadows bundled)'",
+    "build_docs": "valid static site produced",
+    "build_minimal": "CDN-free static site produced",
+    "three_tier_resolution": "disk > bundled:theme > bundled:default, verified end-to-end",
+    "error_paths": "actionable messages for unknown theme, bad repo, non-existent remove",
+    "verbose_logging": "resolution tier shown for each template",
+    "binary_size": "97812 bytes raw (< 100 KB = 102400 bytes budget)",
+    "fix_applied": "trimmed decorative CSS comment dashes in base.html files to meet size budget"
+  }
 }

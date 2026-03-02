@@ -211,6 +211,12 @@ pub enum Command {
         main_width: u8,
     },
 
+    /// Theme management
+    Theme {
+        #[command(subcommand)]
+        command: ThemeCommand,
+    },
+
     /// Defeasible reasoning over vault-wide SPL
     #[cfg(feature = "reason")]
     Reason {
@@ -223,6 +229,39 @@ pub enum Command {
     Reason {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
         _args: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ThemeCommand {
+    /// List available themes (bundled + installed)
+    List,
+    /// Install a theme from a git repository
+    Install {
+        /// Theme source (user/repo, URL, or git@... with optional #ref)
+        source: String,
+        /// Subdirectory within the repository to use as theme root
+        #[arg(long)]
+        path: Option<String>,
+        /// Override the installed theme directory name
+        #[arg(long)]
+        name: Option<String>,
+        /// Overwrite existing theme directory
+        #[arg(long)]
+        force: bool,
+    },
+    /// Remove an installed theme
+    Remove {
+        /// Theme name to remove
+        name: String,
+    },
+    /// Export a bundled theme to .zetl/themes/ for customisation
+    Export {
+        /// Bundled theme name to export
+        name: String,
+        /// Overwrite existing theme directory
+        #[arg(long)]
+        force: bool,
     },
 }
 

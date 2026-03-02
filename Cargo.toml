@@ -11,6 +11,7 @@ reason = ["dep:spindle-core", "dep:spindle-parser"]
 
 [dependencies]
 anyhow = "1"
+tempfile = "3"
 blake3 = "1"
 clap = { version = "4", features = ["derive"] }
 comfy-table = "7"
@@ -26,7 +27,9 @@ ratatui = "0.29"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 minijinja = { version = "2", features = ["builtins", "loader", "urlencode"] }
+include_dir = "0.7"
 serde_yaml_ng = "0.10"
+toml = "0.8"
 tui-input = "0.11"
 spindle-core = { git = "ssh://git@codeberg.org/anuna/spindle-rust.git", optional = true, features = ["serde"] }
 spindle-parser = { git = "ssh://git@codeberg.org/anuna/spindle-rust.git", optional = true }

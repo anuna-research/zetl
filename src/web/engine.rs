@@ -1,9 +1,64 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
+use include_dir::{include_dir, Dir};
 use minijinja::{context, Environment};
 
 use super::context::{FolderContext, PageContext, VaultContext};
+
+// ── Bundled themes ──────────────────────────────────────────────────────────
+
+static BUNDLED_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/themes");
+
+/// Look up a template from the compile-time-embedded themes directory.
+///
+/// Returns the UTF-8 content of `themes/<theme>/<name>` if it exists,
+/// or `None` when the theme or template file is not found.
+pub fn bundled_template(theme: &str, name: &str) -> Option<&'static str> {
+    BUNDLED_THEMES
+        .get_file(format!("{theme}/{name}"))
+        .and_then(|f| f.contents_utf8())
+}
+
+/// Return the names of all theme directories embedded at compile time.
+pub fn bundled_theme_names() -> Vec<&'static str> {
+    BUNDLED_THEMES
+        .dirs()
+        .map(|d| d.path().file_name().and_then(|n| n.to_str()).unwrap_or(""))
+        .filter(|n| !n.is_empty())
+        .collect()
+}
+
+/// Return all files in a bundled theme as (relative_path, content_bytes) pairs.
+///
+/// Paths are relative to the theme root (e.g., `"page.html"`). Returns an
+/// empty vec if the named theme is not found in the embedded bundle.
+pub fn bundled_theme_files(theme: &str) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+    let Some(dir) = BUNDLED_THEMES.get_dir(theme) else {
+        return Vec::new();
+    };
+    let mut files = Vec::new();
+    collect_dir_files(dir, theme, &mut files);
+    files
+}
+
+fn collect_dir_files(
+    dir: &include_dir::Dir<'_>,
+    strip_prefix: &str,
+    out: &mut Vec<(std::path::PathBuf, Vec<u8>)>,
+) {
+    for file in dir.files() {
+        let rel = file
+            .path()
+            .strip_prefix(strip_prefix)
+            .unwrap_or(file.path())
+            .to_path_buf();
+        out.push((rel, file.contents().to_vec()));
+    }
+    for sub in dir.dirs() {
+        collect_dir_files(sub, strip_prefix, out);
+    }
+}
 
 // ── TemplateError ──────────────────────────────────────────────────────────
 
@@ -121,11 +176,12 @@ impl std::error::Error for TemplateError {}
 
 // ── TemplateEngine ─────────────────────────────────────────────────────────
 
-/// Template engine wrapping a minijinja::Environment with two-tier template resolution.
+/// Template engine wrapping a minijinja::Environment with three-tier template resolution.
 ///
 /// Templates resolve in order:
 /// 1. `.zetl/themes/<theme>/<name>` on disk (skipped when theme is "default")
-/// 2. Built-in default templates embedded via `include_str!()`
+/// 2. Bundled theme matching the active theme name (compile-time embed)
+/// 3. Bundled `default` theme as final fallback (compile-time embed)
 ///
 /// When `reload` is true (serve mode), a fresh Environment is built for each render
 /// call so that on-disk template edits take effect immediately. When false (build mode),
@@ -139,7 +195,7 @@ pub struct TemplateEngine {
 
 const KNOWN_TEMPLATES: &[&str] = &["base.html", "index.html", "page.html", "folder.html"];
 
-/// Build a minijinja Environment with the two-tier template loader.
+/// Build a minijinja Environment with the three-tier template loader.
 fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
     let mut env = Environment::new();
     let vr = vault_root.to_path_buf();
@@ -152,14 +208,12 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
                 return Ok(Some(content));
             }
         }
-        // Tier 2: fall back to built-in defaults
-        Ok(match name {
-            "base.html" => Some(include_str!("templates/base.html").to_string()),
-            "index.html" => Some(include_str!("templates/index.html").to_string()),
-            "page.html" => Some(include_str!("templates/page.html").to_string()),
-            "folder.html" => Some(include_str!("templates/folder.html").to_string()),
-            _ => None,
-        })
+        // Tier 2: check bundled theme for the active theme name
+        if let Some(content) = bundled_template(&t, name) {
+            return Ok(Some(content.to_string()));
+        }
+        // Tier 3: fall back to built-in default theme embedded at compile time
+        Ok(bundled_template("default", name).map(|s| s.to_string()))
     });
     env
 }
@@ -178,11 +232,15 @@ impl TemplateEngine {
                 if theme != "default" {
                     let theme_path = vault_root.join(".zetl/themes").join(theme).join(name);
                     if theme_path.exists() {
-                        eprintln!("  theme: {name} ← .zetl/themes/{theme}/{name}");
+                        eprintln!("  theme: {name} <- .zetl/themes/{theme}/{name} (disk)");
                         continue;
                     }
                 }
-                eprintln!("  theme: {name} ← built-in default");
+                if bundled_template(theme, name).is_some() {
+                    eprintln!("  theme: {name} <- bundled:{theme}/{name} (bundled)");
+                } else {
+                    eprintln!("  theme: {name} <- bundled:default/{name} (fallback)");
+                }
             }
         }
 
@@ -646,6 +704,33 @@ mod tests {
         let err = engine.render_index(&vault, "serve", "").unwrap_err();
         assert_eq!(err.kind, "EmptyOutput");
         assert!(err.message.contains("empty output"));
+    }
+
+    // ── bundled_template / bundled_theme_names tests ───────────────────────
+
+    #[test]
+    fn test_bundled_template_default_exists() {
+        for name in KNOWN_TEMPLATES {
+            assert!(
+                bundled_template("default", name).is_some(),
+                "missing bundled default template: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bundled_template_unknown_returns_none() {
+        assert!(bundled_template("default", "nonexistent.html").is_none());
+        assert!(bundled_template("nosuchtheme", "page.html").is_none());
+    }
+
+    #[test]
+    fn test_bundled_theme_names_contains_default() {
+        let names = bundled_theme_names();
+        assert!(
+            names.contains(&"default"),
+            "expected 'default' in bundled_theme_names(), got: {names:?}"
+        );
     }
 
     #[test]

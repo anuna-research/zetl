@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} — zetl{% endblock %}
+
+{% block content %}
+<main class="p-6 sm:p-8 lg:p-10 max-w-4xl">
+
+  {# Breadcrumbs #}
+  <nav class="text-sm breadcrumbs mb-6">
+    <ul>
+      <li><a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a></li>
+      {%- for crumb in page.breadcrumbs %}
+      <li><a href="{{ root_path }}{{ crumb.slug | safe }}/{{ index_file }}">{{ crumb.title }}</a></li>
+      {%- endfor %}
+      <li>{{ page.title }}</li>
+    </ul>
+  </nav>
+
+  {# View mode wrapper (serve only) #}
+  {% if mode == "serve" %}<div id="view-mode"{% if page.is_new %} style="display:none"{% endif %}>
+    {% if page.raw_escaped %}
+    <div class="flex justify-end mb-4">
+      <button onclick="toggleEdit()" class="btn btn-sm btn-outline">Edit</button>
+    </div>
+    {% endif %}
+  {% endif %}
+
+  <article class="prose prose-lg max-w-none" id="docs-article">{{ page.content_html | safe }}</article>
+
+  {% if page.backlinks %}
+  <div class="divider mt-10 mb-4"></div>
+  <p class="text-xs font-bold uppercase tracking-widest opacity-40 mb-3">Backlinks</p>
+  <ul class="list-none space-y-1 not-prose">
+    {%- for bl in page.backlinks %}
+    <li>
+      <a href="{{ root_path }}{{ bl.slug | safe }}/{{ index_file }}#line-{{ bl.line }}" class="link link-secondary text-sm">{{ bl.title }}</a>
+      <span class="text-xs opacity-40 ml-2">line {{ bl.line }}</span>
+    </li>
+    {%- endfor %}
+  </ul>
+  {% endif %}
+
+  {% if mode == "serve" %}</div>{% endif %}
+
+  {# Edit mode (serve only) #}
+  {% if mode == "serve" and page.raw_escaped %}
+  <div id="edit-mode"{% if not page.is_new %} style="display:none"{% endif %}>
+    <div class="flex gap-2 mb-4">
+      <button onclick="saveEdit()" class="btn btn-sm btn-primary">Save</button>
+      <button onclick="toggleEdit()" class="btn btn-sm btn-outline">Cancel</button>
+    </div>
+    <textarea id="editor" class="textarea textarea-bordered w-full font-mono"
+              style="min-height:80vh">{{ page.raw_escaped | safe }}</textarea>
+  </div>
+  {% endif %}
+
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* TOC builder: scan headings, populate #toc-nav, track active heading */
+(function(){
+  var article=document.getElementById('docs-article');
+  var tocNav=document.getElementById('toc-nav');
+  if(!article||!tocNav)return;
+  var headings=article.querySelectorAll('h1,h2,h3,h4');
+  if(!headings.length)return;
+  var ul=document.createElement('ul');
+  ul.className='toc-list';
+  headings.forEach(function(h,i){
+    if(!h.id)h.id='h-'+i;
+    var level=parseInt(h.tagName.slice(1),10);
+    var li=document.createElement('li');
+    li.className='toc-item toc-h'+level;
+    var a=document.createElement('a');
+    a.href='#'+h.id;
+    a.className='toc-link';
+    a.textContent=h.textContent;
+    li.appendChild(a);
+    ul.appendChild(li);
+  });
+  tocNav.innerHTML='';
+  tocNav.appendChild(ul);
+  /* Active heading via IntersectionObserver */
+  if('IntersectionObserver' in window){
+    var links=tocNav.querySelectorAll('.toc-link');
+    var obs=new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(entry.isIntersecting){
+          links.forEach(function(l){l.classList.remove('toc-active');});
+          var a=tocNav.querySelector('a[href="#'+entry.target.id+'"]');
+          if(a)a.classList.add('toc-active');
+        }
+      });
+    },{rootMargin:'-5% 0px -80% 0px'});
+    headings.forEach(function(h){obs.observe(h);});
+  }
+})();
+
+/* Copy buttons for code blocks */
+(function(){
+  if(!navigator.clipboard)return;
+  document.querySelectorAll('.prose pre').forEach(function(pre){
+    var btn=document.createElement('button');
+    btn.className='copy-btn';
+    btn.textContent='Copy';
+    btn.addEventListener('click',function(){
+      var code=pre.querySelector('code');
+      navigator.clipboard.writeText(code?code.textContent:pre.textContent).then(function(){
+        btn.textContent='Copied!';
+        btn.classList.add('copied');
+        setTimeout(function(){btn.textContent='Copy';btn.classList.remove('copied');},2000);
+      });
+    });
+    pre.appendChild(btn);
+  });
+})();
+</script>
+
+{% if mode == "serve" %}
+<script>
+function toggleEdit(){
+  var vm=document.getElementById('view-mode');
+  var em=document.getElementById('edit-mode');
+  if(em.style.display==='none'){em.style.display='block';vm.style.display='none';}
+  else{em.style.display='none';vm.style.display='block';}
+}
+async function saveEdit(){
+  var content=document.getElementById('editor').value;
+  var res=await fetch(window.location.pathname,{method:'PUT',headers:{'Content-Type':'text/plain; charset=utf-8'},body:content});
+  if(res.ok)window.location.reload();
+  else alert('Save failed: '+res.status);
+}
+</script>
+{% endif %}
+{% endblock %}
