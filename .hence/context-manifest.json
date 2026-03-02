@@ -1,12 +1,12 @@
 {
-  "task_id": "fountain-base-template",
+  "task_id": "fountain-page-template",
   "token_budget": 8000,
-  "tokens_used": 393,
+  "tokens_used": 8000,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create themes/fountain/base.html and theme.toml. Base template: no CDN dependencies, self-contained. Loads Courier Prime via font-face from bundled WOFF2 files. Screenplay CSS: content area approx 6 inches wide, left margin wider than right, single-spaced, 12pt Courier Prime with fallback. Element CSS: scene headings uppercase bold, action left-aligned full width, character names centered approx 3.7 inches from left, dialogue centered approx 2.5 inches wide, parenthetical narrower than dialogue, transitions right-aligned uppercase. White page on grey background with dark mode support. Collapsible sidebar collapsed by default. REQ-015-001, REQ-015-002, ADR-015-001, ADR-015-003.",
-      "token_cost": 171,
+      "content": "Create themes/fountain/page.html extending base.html. Enhanced prev/next scene navigation at top and bottom: prev arrow with title, position indicator showing Scene N of M, next arrow with title. Styled to match screenplay aesthetics. Sidebar shows scenes in chain order when page is part of a chain, falls back to alphabetical. Content area renders page.content_html within screenplay-formatted page. REQ-015-003.",
+      "token_cost": 103,
       "priority": "PlanMeta"
     },
     {
@@ -56,9 +56,14 @@
       "content": "Modified 7 files (+115, -5): .hence/context-manifest.json, themes/fountain/static/CourierPrime-Bold.woff2, themes/fountain/static/CourierPrime-BoldItalic.woff2, themes/fountain/static/CourierPrime-Italic.woff2, themes/fountain/static/CourierPrime-Regular.woff2 and 2 more",
       "token_cost": 67,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-fountain-base-template-changes",
+      "content": "Modified 3 files (+825, -8): .hence/context-manifest.json, themes/fountain/base.html, themes/fountain/theme.toml",
+      "token_cost": 28,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T10:39:04Z",
-  "task_changes": "Modified 2 files (+390, -1): themes/fountain/base.html (created), themes/fountain/theme.toml (overrides updated)"
+  "constructed_at": "2026-03-02T10:48:05Z"
 }

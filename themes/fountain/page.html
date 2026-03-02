@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} — {{ vault.name }}{% endblock %}
+
+{% block styles %}
+  /* ── Scene navigation (above / below the paper sheet) ── */
+  .fn-scene-nav {
+    width: 100%;
+    max-width: 8.5in;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-family: 'Courier Prime', 'Courier New', Courier, monospace;
+    font-size: 10pt;
+  }
+  .fn-scene-nav-top  { margin-bottom: 0.6rem; }
+  .fn-scene-nav-bot  { margin-top: 0.6rem; }
+
+  .fn-scene-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    padding: 0.25rem 0.55rem;
+    border: 1px solid var(--btn-border);
+    border-radius: 3px;
+    background: var(--btn-bg);
+    color: var(--btn-text);
+    text-decoration: none;
+    font-family: inherit;
+    font-size: 10pt;
+    max-width: 40%;
+    min-width: 0;
+    line-height: 1.3;
+  }
+  .fn-scene-btn:hover { opacity: 0.75; }
+  .fn-scene-btn svg  { flex-shrink: 0; }
+  .fn-scene-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .fn-scene-indicator {
+    font-size: 9pt;
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-align: center;
+  }
+
+  /* ── Sidebar chain section ── */
+  .fn-chain-header {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
+  .fn-chain-pos {
+    font-size: 0.75rem;
+    color: var(--sidebar-text);
+    margin-bottom: 0.2rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .fn-chain-link {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--sidebar-link);
+    text-decoration: none;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    padding: 0.1rem 0;
+  }
+  .fn-chain-link:hover { color: var(--sidebar-text); text-decoration: underline; }
+  .fn-chain-link svg  { flex-shrink: 0; opacity: 0.55; }
+{% endblock %}
+
+{# ── Sidebar: chain position + alphabetical page list ── #}
+{% block sidebar %}
+  {% if page.chain_head_slug %}
+  <div>
+    <div class="fn-chain-header">Scenes</div>
+    <div class="fn-chain-pos">Scene {{ page.chain_position }} of {{ page.chain_length }}</div>
+    {% if page.prev_page %}
+    <a href="{{ root_path }}{{ page.prev_page.slug | safe }}/{{ index_file }}" class="fn-chain-link">
+      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="none"
+           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+      </svg>
+      {{ page.prev_page.title }}
+    </a>
+    {% endif %}
+    {% if page.next_page %}
+    <a href="{{ root_path }}{{ page.next_page.slug | safe }}/{{ index_file }}" class="fn-chain-link">
+      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="none"
+           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+      </svg>
+      {{ page.next_page.title }}
+    </a>
+    {% endif %}
+  </div>
+  <div class="sp-divider"></div>
+  {% endif %}
+  <nav>
+    <ul class="sp-nav">
+      {%- for p in vault.pages %}
+      <li>
+        <a href="{{ root_path }}{{ p.slug | safe }}/{{ index_file }}"
+           class="{% if active_slug == p.slug %}active{% endif %}">
+          {{ p.title }}
+        </a>
+      </li>
+      {%- endfor %}
+    </ul>
+  </nav>
+{% endblock %}
+
+{# ── Scene navigation — above the paper ── #}
+{% block before_page %}
+{% if page.prev_page or page.next_page %}
+<nav class="fn-scene-nav fn-scene-nav-top" aria-label="Scene navigation">
+  {% if page.prev_page %}
+  <a href="{{ root_path }}{{ page.prev_page.slug | safe }}/{{ index_file }}" class="fn-scene-btn">
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none"
+         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+    <span class="fn-scene-title">{{ page.prev_page.title }}</span>
+  </a>
+  {% else %}
+  <span></span>
+  {% endif %}
+
+  {% if page.chain_position and page.chain_length %}
+  <span class="fn-scene-indicator">Scene {{ page.chain_position }} of {{ page.chain_length }}</span>
+  {% endif %}
+
+  {% if page.next_page %}
+  <a href="{{ root_path }}{{ page.next_page.slug | safe }}/{{ index_file }}" class="fn-scene-btn">
+    <span class="fn-scene-title">{{ page.next_page.title }}</span>
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none"
+         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+    </svg>
+  </a>
+  {% else %}
+  <span></span>
+  {% endif %}
+</nav>
+{% endif %}
+{% endblock %}
+
+{# ── Screenplay content ── #}
+{% block content %}
+  {{ page.content_html | safe }}
+{% endblock %}
+
+{# ── Scene navigation — below the paper ── #}
+{% block after_page %}
+{% if page.prev_page or page.next_page %}
+<nav class="fn-scene-nav fn-scene-nav-bot" aria-label="Scene navigation">
+  {% if page.prev_page %}
+  <a href="{{ root_path }}{{ page.prev_page.slug | safe }}/{{ index_file }}" class="fn-scene-btn">
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none"
+         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+    <span class="fn-scene-title">{{ page.prev_page.title }}</span>
+  </a>
+  {% else %}
+  <span></span>
+  {% endif %}
+
+  {% if page.chain_position and page.chain_length %}
+  <span class="fn-scene-indicator">Scene {{ page.chain_position }} of {{ page.chain_length }}</span>
+  {% endif %}
+
+  {% if page.next_page %}
+  <a href="{{ root_path }}{{ page.next_page.slug | safe }}/{{ index_file }}" class="fn-scene-btn">
+    <span class="fn-scene-title">{{ page.next_page.title }}</span>
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none"
+         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+    </svg>
+  </a>
+  {% else %}
+  <span></span>
+  {% endif %}
+</nav>
+{% endif %}
+{% endblock %}
