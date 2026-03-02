@@ -14,7 +14,7 @@ static BUNDLED_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/themes");
 ///
 /// Returns the UTF-8 content of `themes/<theme>/<name>` if it exists,
 /// or `None` when the theme or template file is not found.
-pub(crate) fn bundled_template(theme: &str, name: &str) -> Option<&'static str> {
+pub fn bundled_template(theme: &str, name: &str) -> Option<&'static str> {
     BUNDLED_THEMES
         .get_file(format!("{theme}/{name}"))
         .and_then(|f| f.contents_utf8())

@@ -1412,3 +1412,359 @@ fn test_build_all_pages_rendered() {
         );
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TEST-014-003: Bundled Theme Directory Structure
+// TEST-014-004: Three-Tier Template Resolution
+// TEST-014-005: Theme Listing
+// REQ-014-003: Bundled themes embedded at compile time
+// REQ-014-004: Three-tier resolution order
+// REQ-014-005: zetl theme list output
+// NFR-014-002: Binary size impact ≤ 100 KB
+// OBS-014-002: --verbose shows template resolution tier
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// TEST-014-003: All required bundled templates exist for both default and minimal themes.
+#[test]
+fn test_bundled_default_theme_has_all_templates() {
+    use zetl::web::engine::bundled_template;
+    for name in &["base.html", "index.html", "page.html", "folder.html"] {
+        assert!(
+            bundled_template("default", name).is_some(),
+            "bundled default theme missing template: {name}"
+        );
+    }
+}
+
+#[test]
+fn test_bundled_minimal_theme_has_all_templates() {
+    use zetl::web::engine::bundled_template;
+    for name in &["base.html", "index.html", "page.html", "folder.html"] {
+        assert!(
+            bundled_template("minimal", name).is_some(),
+            "bundled minimal theme missing template: {name}"
+        );
+    }
+}
+
+#[test]
+fn test_bundled_minimal_theme_has_no_cdn_links() {
+    use zetl::web::engine::bundled_template;
+    let cdn_patterns = ["cdn.jsdelivr.net", "fonts.googleapis.com", "unpkg.com", "cdnjs.cloudflare.com"];
+    for name in &["base.html", "index.html", "page.html", "folder.html"] {
+        let content = bundled_template("minimal", name).unwrap_or("");
+        for cdn in &cdn_patterns {
+            assert!(
+                !content.contains(cdn),
+                "minimal theme {name} contains CDN reference to {cdn}: NFR-014-002 requires no CDN"
+            );
+        }
+    }
+}
+
+/// TEST-014-004 (scenario 1): zetl serve --theme minimal renders with bundled minimal templates.
+#[tokio::test]
+async fn test_serve_minimal_theme_uses_bundled_templates() {
+    let tmp = tempfile::tempdir().unwrap();
+    build_test_vault(tmp.path());
+
+    // No .zetl/themes/minimal/ on disk — must resolve from bundled minimal theme (Tier 2).
+    let state = build_web_state(tmp.path(), "minimal");
+    let app = full_router(state);
+
+    let (status, body, _ct) = get_response(&app, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("<!DOCTYPE html>") || body.contains("<!doctype html>"),
+        "minimal theme index should render valid HTML"
+    );
+    // Minimal theme uses system fonts (no CDN)
+    assert!(
+        !body.contains("cdn.jsdelivr.net") && !body.contains("fonts.googleapis.com"),
+        "minimal theme serve output must not contain CDN links"
+    );
+    // Minimal theme uses system fonts stack (distinctive feature vs default theme)
+    assert!(
+        body.contains("-apple-system") || body.contains("BlinkMacSystemFont"),
+        "minimal theme should use system font stack (no external fonts)"
+    );
+}
+
+/// TEST-014-004 (scenario 1): zetl build --theme minimal produces valid static site.
+#[test]
+fn test_build_minimal_theme_produces_valid_site() {
+    let tmp = tempfile::tempdir().unwrap();
+    build_test_vault(tmp.path());
+
+    let out_dir = tmp.path().join("dist-minimal");
+    zetl_cmd(tmp.path())
+        .arg("build")
+        .arg("-o")
+        .arg(out_dir.as_os_str())
+        .arg("--theme")
+        .arg("minimal")
+        .assert()
+        .success();
+
+    // Index page exists and is valid HTML
+    let index = fs::read_to_string(out_dir.join("index.html")).unwrap();
+    assert!(
+        index.contains("<!DOCTYPE html>") || index.contains("<!doctype html>"),
+        "minimal build index should be valid HTML"
+    );
+    // No CDN links in build output
+    assert!(
+        !index.contains("cdn.jsdelivr.net") && !index.contains("fonts.googleapis.com"),
+        "minimal build output must not contain CDN links"
+    );
+
+    // Page files exist and are valid
+    let page_one = fs::read_to_string(out_dir.join("page-one/index.html")).unwrap();
+    assert!(
+        page_one.contains("<!DOCTYPE html>") || page_one.contains("<!doctype html>"),
+        "minimal build page-one should be valid HTML"
+    );
+    assert!(
+        !page_one.is_empty(),
+        "minimal build page-one should have content"
+    );
+}
+
+/// TEST-014-005 (scenario 1): zetl theme list shows bundled themes (no .zetl/themes/).
+#[test]
+fn test_theme_list_shows_bundled_themes() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_file(tmp.path(), "hello.md", "# Hello\n\nWorld.\n");
+
+    let output = zetl_cmd(tmp.path())
+        .arg("theme")
+        .arg("list")
+        .output()
+        .expect("run theme list");
+
+    assert!(output.status.success(), "theme list should exit 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Parse JSON
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .expect("theme list should produce valid JSON");
+
+    let themes = json["themes"].as_array().expect("themes should be array");
+    let names: Vec<&str> = themes
+        .iter()
+        .map(|t| t["name"].as_str().unwrap_or(""))
+        .collect();
+
+    assert!(
+        names.contains(&"default"),
+        "theme list should include 'default' bundled theme, got: {names:?}"
+    );
+    assert!(
+        names.contains(&"minimal"),
+        "theme list should include 'minimal' bundled theme, got: {names:?}"
+    );
+
+    // All listed themes should show source = "bundled" when no .zetl/themes/ exists
+    for theme in themes {
+        let source = theme["source"].as_str().unwrap_or("");
+        assert!(
+            source == "bundled" || source.starts_with("installed"),
+            "theme source should be 'bundled' or 'installed*', got: {source:?}"
+        );
+    }
+
+    // Both bundled themes should have version metadata
+    for theme_name in &["default", "minimal"] {
+        let t = themes.iter().find(|t| t["name"].as_str() == Some(theme_name)).unwrap();
+        assert!(
+            t["version"].as_str().is_some(),
+            "bundled theme {theme_name} should have a version"
+        );
+        assert_eq!(
+            t["source"].as_str(),
+            Some("bundled"),
+            "bundled theme {theme_name} should have source 'bundled'"
+        );
+    }
+}
+
+/// TEST-014-005 (scenario 3): .zetl/themes/minimal/ shadows bundled minimal.
+/// zetl theme list shows 'installed (shadows bundled)'.
+#[test]
+fn test_theme_list_minimal_shadows_bundled() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_file(tmp.path(), "hello.md", "# Hello\n\nWorld.\n");
+
+    // Create an on-disk minimal theme override (Tier 1 override)
+    write_file(
+        tmp.path(),
+        ".zetl/themes/minimal/page.html",
+        r#"{% extends "base.html" %}{% block title %}DISK-MINIMAL: {{ page.title }}{% endblock %}{% block content %}<p>disk-minimal-page</p>{% endblock %}"#,
+    );
+
+    let output = zetl_cmd(tmp.path())
+        .arg("theme")
+        .arg("list")
+        .output()
+        .expect("run theme list");
+
+    assert!(output.status.success(), "theme list should exit 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .expect("theme list should produce valid JSON");
+
+    let themes = json["themes"].as_array().expect("themes should be array");
+    let minimal = themes
+        .iter()
+        .find(|t| t["name"].as_str() == Some("minimal"))
+        .expect("minimal theme should appear in list");
+
+    let source = minimal["source"].as_str().unwrap_or("");
+    assert_eq!(
+        source,
+        "installed (shadows bundled)",
+        "disk minimal should be shown as 'installed (shadows bundled)', got: {source:?}"
+    );
+}
+
+/// TEST-014-004 (scenario 2): .zetl/themes/minimal/page.html overrides bundled minimal.
+/// page.html resolves from disk (Tier 1), base.html from bundled minimal (Tier 2).
+#[tokio::test]
+async fn test_serve_minimal_theme_disk_page_overrides_bundled() {
+    let tmp = tempfile::tempdir().unwrap();
+    build_test_vault(tmp.path());
+
+    // Create an on-disk page.html override for the minimal theme
+    write_file(
+        tmp.path(),
+        ".zetl/themes/minimal/page.html",
+        r#"{% extends "base.html" %}{% block title %}DISK-MINIMAL: {{ page.title }}{% endblock %}{% block content %}<div class="disk-minimal-marker">DISK_MINIMAL_OVERRIDE</div>{{ page.content_html | safe }}{% endblock %}"#,
+    );
+
+    let state = build_web_state(tmp.path(), "minimal");
+    let app = full_router(state);
+
+    let (status, body, _ct) = get_response(&app, "/page-one").await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Tier 1: disk page.html override should be used
+    assert!(
+        body.contains("DISK_MINIMAL_OVERRIDE"),
+        "disk .zetl/themes/minimal/page.html should override bundled minimal page.html (Tier 1)"
+    );
+    assert!(
+        body.contains("DISK-MINIMAL: page-one") || body.contains("DISK-MINIMAL:"),
+        "custom title from disk template should appear"
+    );
+
+    // Tier 2: bundled minimal base.html should be the layout base
+    // (system fonts, no CDN, minimal layout — we check that CDN-free structure holds)
+    assert!(
+        !body.contains("cdn.jsdelivr.net") && !body.contains("fonts.googleapis.com"),
+        "base.html from bundled minimal should not contain CDN refs"
+    );
+    // base.html provides the outer structure
+    assert!(
+        body.contains("<!DOCTYPE html>") || body.contains("<!doctype html>"),
+        "base.html from bundled minimal should provide HTML structure"
+    );
+}
+
+/// TEST-014-004 (scenario 3): .zetl/themes/custom/ with only page.html.
+/// page.html from disk (Tier 1), base.html from bundled default (Tier 3 fallback).
+/// This is already tested in test_serve_custom_theme_overrides_page / test_serve_custom_theme_falls_back_to_default_base
+/// but adding explicit Tier 3 verification here.
+#[tokio::test]
+async fn test_three_tier_custom_theme_tier3_fallback() {
+    let tmp = tempfile::tempdir().unwrap();
+    build_test_vault(tmp.path());
+
+    // The test vault already has .zetl/themes/custom/page.html
+    // Index and base.html are NOT overridden — must fall back to Tier 3 (bundled default)
+    let state = build_web_state(tmp.path(), "custom");
+    let app = full_router(state);
+
+    // page.html: from disk (Tier 1)
+    let (status, body, _ct) = get_response(&app, "/page-one").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("CUSTOM_THEME_MARKER"),
+        "page.html should come from disk (Tier 1): custom/page.html"
+    );
+
+    // index.html: no disk override → falls back to bundled default (Tier 3)
+    let (status, index_body, _ct) = get_response(&app, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        !index_body.contains("CUSTOM_THEME_MARKER"),
+        "index.html should come from bundled default (Tier 3), not custom theme"
+    );
+    assert!(
+        index_body.contains("page-one"),
+        "index from bundled default should list pages"
+    );
+}
+
+/// OBS-014-002: --verbose shows resolution tier per template.
+#[test]
+fn test_verbose_shows_template_resolution_tiers() {
+    let tmp = tempfile::tempdir().unwrap();
+    build_test_vault(tmp.path());
+
+    let out_dir = tmp.path().join("dist-verbose");
+    let output = zetl_cmd(tmp.path())
+        .arg("--verbose")
+        .arg("build")
+        .arg("-o")
+        .arg(out_dir.as_os_str())
+        .arg("--theme")
+        .arg("custom")
+        .output()
+        .expect("run build with --verbose");
+
+    assert!(output.status.success(), "verbose build should succeed");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Should show resolution tier for each template
+    assert!(
+        stderr.contains("theme:") || stderr.contains("bundled:") || stderr.contains("disk"),
+        "verbose output should show template resolution info, got stderr: {stderr}"
+    );
+
+    // page.html should show as disk (Tier 1) for custom theme
+    assert!(
+        stderr.contains("page.html") && (stderr.contains("disk") || stderr.contains(".zetl/themes")),
+        "verbose output should show page.html resolved from disk for custom theme"
+    );
+
+    // index.html should show as bundled default fallback (Tier 3)
+    assert!(
+        stderr.contains("index.html") && (stderr.contains("bundled:default") || stderr.contains("fallback")),
+        "verbose output should show index.html from bundled default (Tier 3 fallback)"
+    );
+}
+
+/// NFR-014-002: Binary size increase from bundled themes is < 100 KB.
+///
+/// This test measures the raw (uncompressed) size of bundled theme content as an
+/// upper-bound proxy. The actual binary impact is smaller after compression, so if
+/// the raw content fits within 100 KB we are well within the NFR budget.
+#[test]
+fn test_bundled_theme_size_within_budget() {
+    use zetl::web::engine::{bundled_template, bundled_theme_names};
+    let template_names = &["base.html", "index.html", "page.html", "folder.html", "theme.toml"];
+    let mut total_bytes: usize = 0;
+    for theme in bundled_theme_names() {
+        for name in template_names {
+            if let Some(content) = bundled_template(theme, name) {
+                total_bytes += content.len();
+            }
+        }
+    }
+    const BUDGET_BYTES: usize = 100 * 1024; // 100 KB
+    assert!(
+        total_bytes <= BUDGET_BYTES,
+        "bundled theme content totals {total_bytes} bytes, exceeds 100 KB budget (NFR-014-002)"
+    );
+}
