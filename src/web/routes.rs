@@ -131,8 +131,8 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
             .unwrap_or_else(|| format!("<p><em>{}</em></p>", html_escape("(page does not exist)")));
 
         transclusion_cards.push_str(&format!(
-            r#"<div class="transclusion-card" data-target-href="/{href}" style="border-left-color: {color};">
-  <a href="/{href}" class="tc-title" style="color: {color};">{name}</a>
+            r#"<div class="transclusion-card" data-target-href="/{href}/" style="border-left-color: {color};">
+  <a href="/{href}/" class="tc-title" style="color: {color};">{name}</a>
   <div class="tc-excerpt prose prose-sm max-w-none">{preview}</div>
 </div>"#,
             href = href,

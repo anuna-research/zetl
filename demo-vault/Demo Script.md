@@ -4,7 +4,7 @@
 
 zetl is a CLI that turns your Markdown notes into a queryable knowledge graph. Point it at a folder of [[Wikilinks|wikilink]]-connected files — Obsidian, Logseq, Foam, or plain Markdown — and it gives you [[Graph Queries|graph queries]], [[Vault Diagnostics|validation]], [[Search|full-text search]], and a web UI, all from a single binary.
 
-It's designed LLM-agent-first. Every command outputs structured [[JSON by Default|JSON]] with deterministic schemas, non-zero exit codes on failure, and structured error objects — so an AI agent can call `zetl search`, `zetl check`, or `zetl links` and parse the results without scraping human-formatted text. Humans get the same data with `--format table`.
+It's designed LLM-agent-first. Every command outputs structured [[JSON by Default|JSON]] with deterministic schemas, non-zero exit codes on failure, and structured error objects — so an AI agent can call `zetl search`, `zetl check`, or `zetl links` and parse the results without scraping human-formatted text. Humans get the same data with `zetl -f table <command>`.
 
 ## Vault scan
 
@@ -86,4 +86,4 @@ zetl is written in [[Rust for CLI|Rust]] for speed and ships as a single binary.
 - [[Scanner]] parses wikilinks with an incremental two-tier cache (mtime + BLAKE3 hash)
 - [[Link Graph]] stores the bidirectional graph in memory for fast traversal
 - [[Reasoning Engine]] runs [[Defeasible Reasoning]] over [[Spindle Lisp]] code blocks with full [[Provenance]] tracking
-- [[JSON by Default]] keeps CLI output agent-friendly — pipe it to `jq`, feed it to an LLM, or read it as a human with `--format table`
+- [[JSON by Default]] keeps CLI output agent-friendly — pipe it to `jq`, feed it to an LLM, or read it as a human with `-f table`

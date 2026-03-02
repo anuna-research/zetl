@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::collections::HashMap;
 
+use crate::scanner::page_slug_from_path;
 use crate::web::markdown::parse_frontmatter;
 use crate::web::VaultData;
 
@@ -97,21 +98,22 @@ pub struct FolderContext {
 pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
     let graph_stats = data.graph.stats(0);
 
-    let pages: Vec<PageEntry> = data
-        .page_names
+    let mut pages: Vec<PageEntry> = data
+        .files
         .iter()
-        .map(|name| {
-            let slug = data.page_slug_map.get(name).cloned().unwrap_or_default();
-            let outlink_count = data.graph.forward_links(name).len();
-            let backlink_count = data.graph.backlinks(name).len();
+        .map(|file| {
+            let slug = page_slug_from_path(&file.path);
+            let outlink_count = data.graph.forward_links(&file.page_name).len();
+            let backlink_count = data.graph.backlinks(&file.page_name).len();
             PageEntry {
-                title: name.clone(),
+                title: file.page_name.clone(),
                 slug,
                 outlink_count,
                 backlink_count,
             }
         })
         .collect();
+    pages.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
 
     let stats = StatsContext {
         total_pages: graph_stats.pages,

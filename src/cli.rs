@@ -121,7 +121,7 @@ pub enum Command {
         /// Search string
         query: String,
         /// Include N characters of surrounding text
-        #[arg(long, default_value = "0")]
+        #[arg(long, default_value = "40")]
         context: usize,
         /// Max results to return
         #[arg(long, default_value = "50")]

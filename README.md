@@ -159,7 +159,7 @@ zetl -d ./demo-vault links "Cache" --with-conclusions
 zetl -d ./demo-vault backlinks "Reasoning Engine" --with-conclusions
 ```
 
-All commands default to JSON output. Add `--format table` (or `--format natural`/`--format dot` for explain) for human-readable output.
+All commands default to JSON output. Pass `-f table` as a global flag (before the subcommand) for human-readable output, e.g. `zetl -f table stats`. The `reason explain` subcommand also accepts `--format natural` and `--format dot`.
 
 ## SPL in Markdown
 

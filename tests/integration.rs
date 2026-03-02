@@ -1228,11 +1228,11 @@ fn test_017_search_respects_ignores() {
 fn test_018_search_result_limiting() {
     let dir = TempDir::new().expect("create temp dir");
 
-    // Create files with many matches
+    // Create files with many matches on distinct lines (dedup collapses same-line hits)
     write_file(
         dir.path(),
         "Many.md",
-        "# Many\n\nthe the the the the\nthe the the the the\nthe the the the the\n",
+        "# Many\n\nthe cat\nthe dog\nthe fox\nthe bat\nthe owl\n",
     );
 
     let json = run_json(

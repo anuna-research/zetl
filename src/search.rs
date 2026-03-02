@@ -240,6 +240,26 @@ pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOu
             .then(a.line.cmp(&b.line))
     });
 
+    // Dedup by (path, line): keep the entry with the longest context per line.
+    {
+        let mut seen = std::collections::HashMap::<(String, u32), usize>::new();
+        let mut deduped: Vec<SearchMatch> = Vec::new();
+        for m in all_matches {
+            let key = (m.path.clone(), m.line);
+            if let Some(&idx) = seen.get(&key) {
+                // Keep the longer context snippet.
+                let ctx_len = |c: &Option<String>| c.as_ref().map_or(0, |s| s.len());
+                if ctx_len(&m.context) > ctx_len(&deduped[idx].context) {
+                    deduped[idx].context = m.context;
+                }
+            } else {
+                seen.insert(key, deduped.len());
+                deduped.push(m);
+            }
+        }
+        all_matches = deduped;
+    }
+
     let total = all_matches.len();
     all_matches.truncate(config.limit);
     Ok(SearchOutput {

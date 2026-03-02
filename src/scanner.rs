@@ -42,6 +42,19 @@ pub fn scan_vault(root: &Path, ignore_patterns: &[String]) -> Result<Vec<ParsedF
     }
     builder.overrides(overrides.build()?);
 
+    // Skip subdirectories that are nested vaults (contain their own .zetl/).
+    // This prevents a parent vault from absorbing pages that belong to a
+    // child vault, similar to how git ignores nested git repos.
+    builder.filter_entry(|entry| {
+        if entry.depth() > 0
+            && entry.file_type().map_or(false, |ft| ft.is_dir())
+            && entry.path().join(".zetl").is_dir()
+        {
+            return false;
+        }
+        true
+    });
+
     let mut parsed_files = Vec::new();
 
     for entry in builder.build() {
