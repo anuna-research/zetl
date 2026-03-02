@@ -2970,6 +2970,82 @@ fn cmd_theme_remove(cli: &Cli, name: &str) -> Result<()> {
     Ok(())
 }
 
+fn cmd_theme_export(cli: &Cli, name: &str, force: bool) -> Result<()> {
+    // 1. Validate name (rejects path traversal and invalid chars).
+    zetl::web::theme::validate_theme_name(name)
+        .with_context(|| format!("invalid theme name {:?}", name))?;
+
+    // 2. Check name is a bundled theme.
+    let is_bundled = zetl::web::engine::bundled_theme_names().contains(&name);
+    if !is_bundled {
+        anyhow::bail!("only bundled themes can be exported");
+    }
+
+    // 3. Resolve vault root.
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // 4. Check if .zetl/themes/<name>/ already exists.
+    let theme_dir = vault_root.join(".zetl/themes").join(name);
+    if theme_dir.is_dir() && !force {
+        anyhow::bail!(
+            ".zetl/themes/{name}/ already exists\nhint: use --force to overwrite",
+        );
+    }
+
+    // 5. Create the destination directory.
+    std::fs::create_dir_all(&theme_dir)
+        .with_context(|| format!("failed to create theme directory {}", theme_dir.display()))?;
+
+    // 6. Write all embedded theme files to disk.
+    let files = zetl::web::engine::bundled_theme_files(name);
+    let files_written = files.len();
+    for (rel_path, contents) in &files {
+        let dest = theme_dir.join(rel_path);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create directory {}", parent.display())
+            })?;
+        }
+        std::fs::write(&dest, contents)
+            .with_context(|| format!("failed to write {}", dest.display()))?;
+    }
+
+    // 7. Output result JSON.
+    #[derive(Serialize)]
+    struct ExportedInfo {
+        name: String,
+        path: String,
+        files_written: usize,
+    }
+    #[derive(Serialize)]
+    struct ThemeExportOutput {
+        exported: ExportedInfo,
+    }
+
+    let output = ThemeExportOutput {
+        exported: ExportedInfo {
+            name: name.to_string(),
+            path: theme_dir.display().to_string(),
+            files_written,
+        },
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            println!(
+                "Exported theme {:?} to {} ({} files)",
+                name,
+                theme_dir.display(),
+                files_written,
+            );
+        }
+    }
+
+    Ok(())
+}
+
 fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -6692,6 +6768,7 @@ fn main() -> anyhow::Result<()> {
                 cmd_theme_install(&cli, source, path.as_deref(), name.as_deref(), *force)
             }
             ThemeCommand::Remove { name } => cmd_theme_remove(&cli, name),
+            ThemeCommand::Export { name, force } => cmd_theme_export(&cli, name, *force),
         },
         Command::Serve { port, theme } => cmd_serve(&cli, *port, theme),
         Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),

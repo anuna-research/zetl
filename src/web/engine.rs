@@ -29,6 +29,37 @@ pub fn bundled_theme_names() -> Vec<&'static str> {
         .collect()
 }
 
+/// Return all files in a bundled theme as (relative_path, content_bytes) pairs.
+///
+/// Paths are relative to the theme root (e.g., `"page.html"`). Returns an
+/// empty vec if the named theme is not found in the embedded bundle.
+pub fn bundled_theme_files(theme: &str) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+    let Some(dir) = BUNDLED_THEMES.get_dir(theme) else {
+        return Vec::new();
+    };
+    let mut files = Vec::new();
+    collect_dir_files(dir, theme, &mut files);
+    files
+}
+
+fn collect_dir_files(
+    dir: &include_dir::Dir<'_>,
+    strip_prefix: &str,
+    out: &mut Vec<(std::path::PathBuf, Vec<u8>)>,
+) {
+    for file in dir.files() {
+        let rel = file
+            .path()
+            .strip_prefix(strip_prefix)
+            .unwrap_or(file.path())
+            .to_path_buf();
+        out.push((rel, file.contents().to_vec()));
+    }
+    for sub in dir.dirs() {
+        collect_dir_files(sub, strip_prefix, out);
+    }
+}
+
 // ── TemplateError ──────────────────────────────────────────────────────────
 
 /// Structured template error with context extracted from minijinja.

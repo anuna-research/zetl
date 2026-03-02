@@ -4,26 +4,26 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 4,
-    "insertions": 605,
-    "deletions": 11,
+    "insertions": 121,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "themes/docs/base.html",
-      "themes/docs/page.html",
-      "themes/docs/theme.toml"
+      "src/cli.rs",
+      "src/main.rs",
+      "src/web/engine.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-create-docs-theme-changes",
-      "content": "Modified 4 files (+605, -11): .hence/context-manifest.json, themes/docs/base.html, themes/docs/page.html, themes/docs/theme.toml",
+      "key": "task-theme-export-cmd-changes",
+      "content": "Modified 4 files (+121, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/engine.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/create-docs-theme-v1",
-  "evaluated_at": "2026-03-02T07:23:55Z",
+  "branch_name": "hence/theme-export-cmd-v1",
+  "evaluated_at": "2026-03-02T07:29:17Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
