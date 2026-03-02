@@ -31,6 +31,9 @@ pub struct VaultData {
     pub page_slug_map: HashMap<String, String>,
     /// Page names that appear in more than one folder (need disambiguation in display)
     pub collision_names: HashSet<String>,
+    /// Maps page_name → (prev_page_name, next_page_name) for chain walking.
+    /// Only contains pages that declare at least one chain pointer in frontmatter.
+    pub chain_prev_next: HashMap<String, (Option<String>, Option<String>)>,
 }
 
 impl VaultData {
@@ -88,6 +91,8 @@ pub fn reindex(vault_root: &Path) -> anyhow::Result<VaultData> {
     // Build page_slug_map: page_name → slug (kebab-case relative path)
     let (page_slug_map, collision_names) = build_slug_map(&files);
 
+    let chain_prev_next = build_chain_prev_next(vault_root, &files, &page_slug_map);
+
     Ok(VaultData {
         files,
         graph,
@@ -95,6 +100,7 @@ pub fn reindex(vault_root: &Path) -> anyhow::Result<VaultData> {
         resolved: graph_resolved,
         page_slug_map,
         collision_names,
+        chain_prev_next,
     })
 }
 
@@ -138,6 +144,47 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
         .collect();
 
     (page_slug_map, collision_names)
+}
+
+/// Build the chain_prev_next map by reading each markdown file's frontmatter
+/// and resolving prev/next targets to their canonical page names.
+///
+/// Only pages that declare at least one chain pointer are included in the map.
+pub fn build_chain_prev_next(
+    vault_root: &Path,
+    files: &[ParsedFile],
+    page_slug_map: &HashMap<String, String>,
+) -> HashMap<String, (Option<String>, Option<String>)> {
+    use self::chain::extract_chain_target;
+    use self::markdown::parse_frontmatter;
+
+    let mut map = HashMap::new();
+    for file in files {
+        if !file.path.extension().map_or(false, |e| e == "md") {
+            continue;
+        }
+        let content = match std::fs::read_to_string(vault_root.join(&file.path)) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let fm = parse_frontmatter(&content);
+        let prev = extract_chain_target(&fm, "prev")
+            .and_then(|n| canonical_page_name(&n, page_slug_map));
+        let next = extract_chain_target(&fm, "next")
+            .and_then(|n| canonical_page_name(&n, page_slug_map));
+        if prev.is_some() || next.is_some() {
+            map.insert(file.page_name.clone(), (prev, next));
+        }
+    }
+    map
+}
+
+/// Case-insensitive lookup of the canonical page name (key in page_slug_map).
+fn canonical_page_name(target: &str, page_slug_map: &HashMap<String, String>) -> Option<String> {
+    page_slug_map
+        .keys()
+        .find(|k| k.eq_ignore_ascii_case(target))
+        .cloned()
 }
 
 pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
