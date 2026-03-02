@@ -236,6 +236,11 @@ pub enum Command {
 pub enum ThemeCommand {
     /// List available themes (bundled + installed)
     List,
+    /// Remove an installed theme
+    Remove {
+        /// Theme name to remove
+        name: String,
+    },
 }
 
 #[cfg(feature = "reason")]
