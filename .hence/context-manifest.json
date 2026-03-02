@@ -1,12 +1,12 @@
 {
-  "task_id": "theme-list",
+  "task_id": "create-minimal-theme",
   "token_budget": 8000,
-  "tokens_used": 350,
+  "tokens_used": 384,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement the `zetl theme list` subcommand per REQ-014-012, CON-014-003.\n\nAdd to cli.rs a Theme subcommand group:\n```rust\n/// Theme management\nTheme {\n    #[command(subcommand)]\n    command: ThemeCommand,\n},\n```\n\nWith ThemeCommand enum starting with List (other variants added in Phase 2):\n```rust\npub enum ThemeCommand {\n    /// List available themes (bundled + installed)\n    List,\n}\n```\n\nImplementation in main.rs (new fn cmd_theme_list):\n1. Collect bundled themes from bundled_theme_names(), load manifests via load_bundled_manifest().\n2. Scan .zetl/themes/ for installed themes, load manifests via load_theme_manifest().\n3. Determine source for each: 'bundled', 'installed', or 'installed (shadows bundled)'.\n4. For installed themes with .zetl-source.toml, include origin URL.\n5. Output JSON by default\n\nJSON schema per CON-014-003. Table columns: Name, Source, Version, Description.\n\nREQ-014-005, REQ-014-012, CON-014-003.",
-      "token_cost": 232,
+      "content": "Create themes/minimal/ — a stripped-down theme that demonstrates theme authoring with the smallest possible surface. This theme overrides base.html to remove the DaisyUI/Tailwind CDN dependencies and uses inline CSS for a clean, typography-focused look. page.html, index.html, and folder.html extend the minimal base.html.\n\nDesign constraints:\n  - No CDN dependencies — fully self-contained HTML/CSS\n  - System font stack only (no web fonts)\n  - Light background, dark text, minimal colour palette\n  - Sidebar navigation still functional\n  - Search modal still works (reuse the JS from default or simplify)\n  - Responsive: readable on mobile without the drawer component\n\nAdd theme.toml:\n```toml\n[theme]\nname = \"minimal\"\nversion = \"0.9.0\"\ndescription = \"A minimal, typography-focused theme with no CDN dependencies\"\nauthor = \"zetl contributors\"\nlicense = \"AGPL-3.0\"\n\n[theme.templates]\noverrides = [\"base.html\", \"index.html\", \"page.html\", \"folder.html\"]\n```\n\nREQ-014-003, NFR-014-002.",
+      "token_cost": 246,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 4 files (+435, -0): Cargo.lock, Cargo.toml, src/web/mod.rs, src/web/theme.rs",
       "token_cost": 21,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theme-list-changes",
+      "content": "Modified 3 files (+189, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T06:24:53Z"
+  "constructed_at": "2026-03-02T06:28:35Z"
 }
