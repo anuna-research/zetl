@@ -1,12 +1,12 @@
 {
-  "task_id": "wire-post-index",
+  "task_id": "bundled-hook-extraction",
   "token_budget": 8000,
-  "tokens_used": 241,
+  "tokens_used": 263,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Wire post-index hook invocation into cmd_index(): invoke hook with base context after scan and indexing completes",
-      "token_cost": 28,
+      "content": "For bundled (compile-time embedded) themes: extract hook files to .zetl/cache/hooks/<theme>/ before execution; refresh extracted hooks when zetl binary version changes; make extracted hooks executable",
+      "token_cost": 50,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T12:33:04Z"
+  "constructed_at": "2026-03-02T12:37:00Z"
 }
