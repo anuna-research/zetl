@@ -211,6 +211,12 @@ pub enum Command {
         main_width: u8,
     },
 
+    /// Theme management
+    Theme {
+        #[command(subcommand)]
+        command: ThemeCommand,
+    },
+
     /// Defeasible reasoning over vault-wide SPL
     #[cfg(feature = "reason")]
     Reason {
@@ -224,6 +230,12 @@ pub enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
         _args: Vec<String>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum ThemeCommand {
+    /// List available themes (bundled + installed)
+    List,
 }
 
 #[cfg(feature = "reason")]

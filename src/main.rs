@@ -10,7 +10,7 @@ use serde::Serialize;
 use zetl::cache::{
     files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache,
 };
-use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, OutputFormat};
+use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, OutputFormat, ThemeCommand};
 use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::graph::LinkGraph;
 use zetl::merkle::{
@@ -2507,6 +2507,168 @@ fn validate_theme(theme: &str, vault_root: &std::path::Path) -> Result<()> {
             anyhow::bail!(
                 "theme '{theme}' not found: not a bundled theme and .zetl/themes/{theme}/ does not exist\nhint: {hint}",
             );
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_theme_list(cli: &Cli) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    #[derive(Serialize)]
+    struct ThemeEntry {
+        name: String,
+        source: String,
+        version: Option<String>,
+        description: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        origin_url: Option<String>,
+    }
+
+    #[derive(Serialize)]
+    struct ThemeListOutput {
+        themes: Vec<ThemeEntry>,
+        total: usize,
+    }
+
+    // Collect bundled theme names into a set for shadow detection.
+    let bundled_names: std::collections::HashSet<String> = zetl::web::engine::bundled_theme_names()
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    let mut entries: Vec<ThemeEntry> = Vec::new();
+
+    // 1. Bundled themes (only those not shadowed by an installed theme — handled below).
+    let mut bundled_entries: std::collections::BTreeMap<String, ThemeEntry> =
+        std::collections::BTreeMap::new();
+    for name in &bundled_names {
+        let (version, description) =
+            match zetl::web::theme::load_bundled_manifest(name) {
+                Ok(Some(m)) => (Some(m.theme.version), m.theme.description),
+                Ok(None) => (None, None),
+                Err(e) => {
+                    eprintln!("warning: failed to load bundled manifest for {name:?}: {e}");
+                    (None, None)
+                }
+            };
+        bundled_entries.insert(
+            name.clone(),
+            ThemeEntry {
+                name: name.clone(),
+                source: "bundled".to_string(),
+                version,
+                description,
+                origin_url: None,
+            },
+        );
+    }
+
+    // 2. Installed themes from .zetl/themes/.
+    let themes_dir = vault_root.join(".zetl/themes");
+    let mut installed_names: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    if themes_dir.is_dir() {
+        let read_dir = std::fs::read_dir(&themes_dir)
+            .with_context(|| format!("failed to read {}", themes_dir.display()))?;
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+
+            let (version, description) =
+                match zetl::web::theme::load_theme_manifest(&path) {
+                    Ok(Some(m)) => (Some(m.theme.version), m.theme.description),
+                    Ok(None) => (None, None),
+                    Err(e) => {
+                        eprintln!("warning: failed to load manifest for installed theme {name:?}: {e}");
+                        (None, None)
+                    }
+                };
+
+            let origin_url = {
+                let source_path = path.join(".zetl-source.toml");
+                if source_path.exists() {
+                    match std::fs::read_to_string(&source_path) {
+                        Ok(content) => match zetl::web::theme::parse_theme_source(&content) {
+                            Ok(ts) => Some(ts.source.url),
+                            Err(e) => {
+                                eprintln!(
+                                    "warning: failed to parse .zetl-source.toml for {name:?}: {e}"
+                                );
+                                None
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!(
+                                "warning: failed to read .zetl-source.toml for {name:?}: {e}"
+                            );
+                            None
+                        }
+                    }
+                } else {
+                    None
+                }
+            };
+
+            let source = if bundled_names.contains(&name) {
+                "installed (shadows bundled)".to_string()
+            } else {
+                "installed".to_string()
+            };
+
+            installed_names.insert(name.clone());
+            entries.push(ThemeEntry {
+                name,
+                source,
+                version,
+                description,
+                origin_url,
+            });
+        }
+    }
+
+    // Add bundled themes that are not shadowed by an installed theme.
+    for (name, entry) in bundled_entries {
+        if !installed_names.contains(&name) {
+            entries.push(entry);
+        }
+    }
+
+    // Sort by name for stable output.
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let total = entries.len();
+    let output = ThemeListOutput {
+        themes: entries,
+        total,
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            if output.themes.is_empty() {
+                println!("No themes found.");
+            } else {
+                let mut table = Table::new();
+                table.set_header(vec!["Name", "Source", "Version", "Description"]);
+                for t in &output.themes {
+                    table.add_row(vec![
+                        Cell::new(&t.name),
+                        Cell::new(&t.source),
+                        Cell::new(t.version.as_deref().unwrap_or("-")),
+                        Cell::new(t.description.as_deref().unwrap_or("-")),
+                    ]);
+                }
+                println!("{table}");
+            }
         }
     }
 
@@ -6229,6 +6391,9 @@ fn main() -> anyhow::Result<()> {
             context_lines,
             main_width,
         } => cmd_view(&cli, page.as_deref(), *context_lines, *main_width),
+        Command::Theme { command } => match command {
+            ThemeCommand::List => cmd_theme_list(&cli),
+        },
         Command::Serve { port, theme } => cmd_serve(&cli, *port, theme),
         Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),
         #[cfg(feature = "reason")]
