@@ -1,8 +1,7 @@
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::scanner::page_slug_from_path;
-use crate::web::chain::{compute_chain_position, extract_chain_target, resolve_page_name};
 use crate::web::markdown::parse_frontmatter;
 use crate::web::VaultData;
 
@@ -21,12 +20,6 @@ pub struct PageEntry {
     pub slug: String,
     pub outlink_count: usize,
     pub backlink_count: usize,
-    /// True if this page is the head (first page) of a chain (prev=None, next=Some).
-    pub is_chain_head: bool,
-    /// True if this page appears in any chain (as head, middle, or tail).
-    pub is_in_chain: bool,
-    /// For chain heads, the total number of pages in the chain; None otherwise.
-    pub chain_length: Option<usize>,
 }
 
 #[derive(Serialize)]
@@ -49,12 +42,6 @@ pub struct BreadcrumbEntry {
 }
 
 // ── Page-specific structs ───────────────────────────────────────────
-
-#[derive(Serialize)]
-pub struct ChainLink {
-    pub title: String,
-    pub slug: String,
-}
 
 #[derive(Serialize)]
 pub struct BacklinkEntry {
@@ -84,11 +71,6 @@ pub struct PageContext {
     pub transclusion_cards: String,
     pub is_new: bool,
     pub raw_escaped: Option<String>,
-    pub prev_page: Option<ChainLink>,
-    pub next_page: Option<ChainLink>,
-    pub chain_position: Option<usize>,
-    pub chain_length: Option<usize>,
-    pub chain_head_slug: Option<String>,
 }
 
 // ── Folder-specific structs ─────────────────────────────────────────
@@ -114,12 +96,7 @@ pub struct FolderContext {
 
 /// Build a `VaultContext` from `VaultData` and a vault name.
 pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
-    use crate::web::chain::find_chain_heads;
-
     let graph_stats = data.graph.stats(0);
-
-    let chain_heads_set: HashSet<String> =
-        find_chain_heads(&data.chain_prev_next).into_iter().collect();
 
     let mut pages: Vec<PageEntry> = data
         .files
@@ -128,21 +105,11 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
             let slug = page_slug_from_path(&file.path);
             let outlink_count = data.graph.forward_links(&file.page_name).len();
             let backlink_count = data.graph.backlinks(&file.page_name).len();
-            let is_chain_head = chain_heads_set.contains(&file.page_name);
-            let is_in_chain = data.chain_prev_next.contains_key(&file.page_name);
-            let chain_length = if is_chain_head {
-                Some(walk_chain_length(&file.page_name, &data.chain_prev_next))
-            } else {
-                None
-            };
             PageEntry {
                 title: file.page_name.clone(),
                 slug,
                 outlink_count,
                 backlink_count,
-                is_chain_head,
-                is_in_chain,
-                chain_length,
             }
         })
         .collect();
@@ -249,18 +216,6 @@ pub fn build_page_context(
     let is_new = !data.resolved.contains(page_name);
     let frontmatter = parse_frontmatter(content_raw);
 
-    let prev_page = extract_chain_target(&frontmatter, "prev").and_then(|name| {
-        resolve_page_name(&name, &data.page_slug_map).map(|s| ChainLink { title: name, slug: s })
-    });
-    let next_page = extract_chain_target(&frontmatter, "next").and_then(|name| {
-        resolve_page_name(&name, &data.page_slug_map).map(|s| ChainLink { title: name, slug: s })
-    });
-
-    let (chain_position, chain_length, chain_head_slug) =
-        compute_chain_position(page_name, &data.chain_prev_next, &data.page_slug_map)
-            .map(|(pos, len, head)| (Some(pos), Some(len), Some(head)))
-            .unwrap_or((None, None, None));
-
     PageContext {
         title: page_name.to_string(),
         slug: slug.to_string(),
@@ -273,11 +228,6 @@ pub fn build_page_context(
         transclusion_cards: String::new(),
         is_new,
         raw_escaped: None,
-        prev_page,
-        next_page,
-        chain_position,
-        chain_length,
-        chain_head_slug,
     }
 }
 
@@ -326,24 +276,11 @@ pub fn build_folder_context(
             // Direct child page
             let outlink_count = data.graph.forward_links(page_name).len();
             let backlink_count = data.graph.backlinks(page_name).len();
-            let is_chain_head = data
-                .chain_prev_next
-                .get(page_name)
-                .map_or(false, |(prev, next)| prev.is_none() && next.is_some());
-            let is_in_chain = data.chain_prev_next.contains_key(page_name);
-            let chain_length = if is_chain_head {
-                Some(walk_chain_length(page_name, &data.chain_prev_next))
-            } else {
-                None
-            };
             pages.push(PageEntry {
                 title: page_name.clone(),
                 slug: slug.clone(),
                 outlink_count,
                 backlink_count,
-                is_chain_head,
-                is_in_chain,
-                chain_length,
             });
         }
     }
@@ -380,39 +317,11 @@ pub fn build_folder_context(
     }
 }
 
-/// Walk a chain starting at `head`, following `next` pointers, and return the total length.
-///
-/// Stops when there is no next pointer or a cycle is detected.
-fn walk_chain_length(
-    head: &str,
-    chain_prev_next: &HashMap<String, (Option<String>, Option<String>)>,
-) -> usize {
-    let mut length = 0;
-    let mut current = head.to_string();
-    let mut seen = HashSet::new();
-    loop {
-        if seen.contains(&current) {
-            break;
-        }
-        seen.insert(current.clone());
-        length += 1;
-        match chain_prev_next
-            .get(&current)
-            .and_then(|(_, n)| n.as_ref())
-        {
-            Some(n) => current = n.clone(),
-            None => break,
-        }
-    }
-    length
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::graph::LinkGraph;
     use crate::types::{ParsedFile, WikiLink};
-    use std::collections::HashSet;
     use std::path::PathBuf;
     use std::time::SystemTime;
 
@@ -465,8 +374,7 @@ mod tests {
             page_names,
             resolved,
             page_slug_map,
-            collision_names: HashSet::new(),
-            chain_prev_next: HashMap::new(),
+            collision_names: std::collections::HashSet::new(),
         }
     }
 
@@ -594,52 +502,4 @@ mod tests {
         assert_eq!(ctx.frontmatter, serde_json::json!({}));
     }
 
-    #[test]
-    fn test_chain_fields_none_without_frontmatter() {
-        let files = vec![make_file("A", vec![])];
-        let data = make_vault_data(files);
-        let ctx = build_page_context(&data, "A", "A", "", "");
-        assert!(ctx.prev_page.is_none());
-        assert!(ctx.next_page.is_none());
-        assert!(ctx.chain_position.is_none());
-        assert!(ctx.chain_length.is_none());
-        assert!(ctx.chain_head_slug.is_none());
-    }
-
-    #[test]
-    fn test_chain_prev_next_resolved() {
-        let files = vec![
-            make_file("A", vec![]),
-            make_file("B", vec![]),
-            make_file("C", vec![]),
-        ];
-        let data = make_vault_data(files);
-        let raw = "---\nprev: A\nnext: C\n---";
-        let ctx = build_page_context(&data, "B", "B", "", raw);
-        let prev = ctx.prev_page.unwrap();
-        assert_eq!(prev.title, "A");
-        assert_eq!(prev.slug, "A");
-        let next = ctx.next_page.unwrap();
-        assert_eq!(next.title, "C");
-        assert_eq!(next.slug, "C");
-    }
-
-    #[test]
-    fn test_chain_unknown_target_is_none() {
-        let files = vec![make_file("A", vec![])];
-        let data = make_vault_data(files);
-        let raw = "---\nprev: Ghost\n---";
-        let ctx = build_page_context(&data, "A", "A", "", raw);
-        assert!(ctx.prev_page.is_none());
-    }
-
-    #[test]
-    fn test_chain_wikilink_syntax_in_frontmatter() {
-        let files = vec![make_file("A", vec![]), make_file("B", vec![])];
-        let data = make_vault_data(files);
-        let raw = "---\nnext: \"[[B]]\"\n---";
-        let ctx = build_page_context(&data, "A", "A", "", raw);
-        let next = ctx.next_page.unwrap();
-        assert_eq!(next.title, "B");
-    }
 }

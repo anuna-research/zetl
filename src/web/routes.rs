@@ -510,7 +510,6 @@ mod tests {
             resolved: HashSet::new(),
             page_slug_map: HashMap::new(),
             collision_names: HashSet::new(),
-            chain_prev_next: HashMap::new(),
         };
         let search_index = SearchIndex::build(vault_root, &[]).unwrap();
         WebState {

@@ -819,7 +819,6 @@ fn cmd_check(
     show_syntax: bool,
     show_spl: bool,
     show_drift: bool,
-    show_chains: bool,
     fail_on: &FailLevel,
 ) -> Result<()> {
     #[cfg(not(feature = "reason"))]
@@ -831,7 +830,7 @@ fn cmd_check(
 
     // If none of the flags are set, show all
     let show_all =
-        !show_dead_links && !show_orphans && !show_syntax && !show_spl && !show_drift && !show_chains;
+        !show_dead_links && !show_orphans && !show_syntax && !show_spl && !show_drift;
 
     let dead = if show_all || show_dead_links {
         pipeline.graph.dead_links()
@@ -907,34 +906,6 @@ fn cmd_check(
         vec![]
     };
 
-    // Validate chain integrity (REQ-015-006).
-    let chain_diagnostics: Vec<zetl::web::chain::ChainDiagnostic> = if show_all || show_chains {
-        let (page_slug_map, _) = zetl::web::build_slug_map(&pipeline.files);
-        let diags = zetl::web::chain::validate_chain_links(
-            &pipeline.vault_root,
-            &pipeline.files,
-            &page_slug_map,
-        );
-        // OBS-015-001: verbose chain summary.
-        if cli.verbose > 0 {
-            let chain_prev_next =
-                zetl::web::build_chain_prev_next(&pipeline.vault_root, &pipeline.files, &page_slug_map);
-            let (chain_count, lengths) = zetl::web::chain::chain_summary(&chain_prev_next);
-            eprintln!("chains found: {chain_count}");
-            if !lengths.is_empty() {
-                let lengths_str = lengths
-                    .iter()
-                    .map(|l| l.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                eprintln!("chain lengths: [{lengths_str}]");
-            }
-        }
-        diags
-    } else {
-        vec![]
-    };
-
     // OBS-008: compute summary fields from theory cache.
     let total_spl_blocks: usize = pipeline.files.iter().map(|f| f.spl_blocks.len()).sum();
 
@@ -984,8 +955,6 @@ fn cmd_check(
         drifted_blocks_info: usize,
         explicitly_grounded_facts: usize,
         broken_groundings: usize,
-        chain_errors: usize,
-        chain_warnings: usize,
     }
 
     #[derive(Serialize)]
@@ -995,7 +964,6 @@ fn cmd_check(
         syntax_errors: Vec<zetl::types::Diagnostic>,
         spl_diagnostics: Vec<zetl::types::Diagnostic>,
         drift_diagnostics: Vec<DriftDiagnostic>,
-        chain_diagnostics: Vec<zetl::web::chain::ChainDiagnostic>,
         summary: CheckSummary,
     }
 
@@ -1006,15 +974,6 @@ fn cmd_check(
     let drifted_blocks_info = drift_diagnostics
         .iter()
         .filter(|d| matches!(d.severity, DriftSeverity::Info))
-        .count();
-
-    let chain_errors = chain_diagnostics
-        .iter()
-        .filter(|d| d.level == "error")
-        .count();
-    let chain_warnings = chain_diagnostics
-        .iter()
-        .filter(|d| d.level == "warning")
         .count();
 
     let summary = CheckSummary {
@@ -1032,8 +991,6 @@ fn cmd_check(
         drifted_blocks_info,
         explicitly_grounded_facts,
         broken_groundings,
-        chain_errors,
-        chain_warnings,
     };
 
     let output = CheckOutput {
@@ -1042,7 +999,6 @@ fn cmd_check(
         syntax_errors: diagnostics,
         spl_diagnostics,
         drift_diagnostics,
-        chain_diagnostics,
         summary,
     };
 
@@ -1129,21 +1085,6 @@ fn cmd_check(
                 println!();
             }
 
-            if !output.chain_diagnostics.is_empty() {
-                let mut table = Table::new();
-                table.set_header(vec!["Level", "Kind", "Message"]);
-                for d in &output.chain_diagnostics {
-                    table.add_row(vec![
-                        Cell::new(&d.level),
-                        Cell::new(&d.kind),
-                        Cell::new(&d.message),
-                    ]);
-                }
-                println!("Chain Diagnostics:");
-                println!("{table}");
-                println!();
-            }
-
             // OBS-008: always print summary stats table.
             {
                 let mut sum_table = Table::new();
@@ -1168,14 +1109,6 @@ fn cmd_check(
                     Cell::new("Broken groundings"),
                     Cell::new(output.summary.broken_groundings),
                 ]);
-                sum_table.add_row(vec![
-                    Cell::new("Chain errors"),
-                    Cell::new(output.summary.chain_errors),
-                ]);
-                sum_table.add_row(vec![
-                    Cell::new("Chain warnings"),
-                    Cell::new(output.summary.chain_warnings),
-                ]);
                 println!("Summary:");
                 println!("{sum_table}");
                 println!();
@@ -1186,7 +1119,6 @@ fn cmd_check(
                 && output.syntax_errors.is_empty()
                 && output.spl_diagnostics.is_empty()
                 && output.drift_diagnostics.is_empty()
-                && output.chain_diagnostics.is_empty()
             {
                 println!("No issues found.");
             }
@@ -1203,8 +1135,7 @@ fn cmd_check(
         || output
             .spl_diagnostics
             .iter()
-            .any(|d| d.level == DiagnosticLevel::Error)
-        || output.summary.chain_errors > 0;
+            .any(|d| d.level == DiagnosticLevel::Error);
 
     let has_warnings = output
         .syntax_errors
@@ -1217,8 +1148,7 @@ fn cmd_check(
         || output
             .drift_diagnostics
             .iter()
-            .any(|d| matches!(d.severity, DriftSeverity::Warning))
-        || output.summary.chain_warnings > 0;
+            .any(|d| matches!(d.severity, DriftSeverity::Warning));
 
     let should_fail = match fail_on {
         FailLevel::Error => has_errors,
@@ -3124,8 +3054,6 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     page_names.sort_by_key(|a| a.to_lowercase());
 
     let (page_slug_map, collision_names) = zetl::web::build_slug_map(&pipeline.files);
-    let chain_prev_next =
-        zetl::web::build_chain_prev_next(&pipeline.vault_root, &pipeline.files, &page_slug_map);
 
     let data = zetl::web::VaultData {
         files: pipeline.files,
@@ -3134,7 +3062,6 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         resolved: pipeline.graph_resolved,
         page_slug_map,
         collision_names,
-        chain_prev_next,
     };
 
     // Build the Tantivy search index for serve mode (REQ-013-012).
@@ -3169,8 +3096,6 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
     page_names.sort_by_key(|a| a.to_lowercase());
 
     let (page_slug_map, collision_names) = zetl::web::build_slug_map(&pipeline.files);
-    let chain_prev_next =
-        zetl::web::build_chain_prev_next(&pipeline.vault_root, &pipeline.files, &page_slug_map);
 
     let data = zetl::web::VaultData {
         files: pipeline.files,
@@ -3179,7 +3104,6 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
         resolved: pipeline.graph_resolved,
         page_slug_map,
         collision_names,
-        chain_prev_next,
     };
 
     zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme, cli.verbose > 0)?;
@@ -6793,9 +6717,8 @@ fn main() -> anyhow::Result<()> {
             syntax,
             spl,
             drift,
-            chains,
             fail_on,
-        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, *drift, *chains, fail_on),
+        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, *drift, fail_on),
         Command::Similar {
             query,
             threshold,

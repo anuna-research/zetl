@@ -37,7 +37,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Page entry with optional chain badge */
+  /* Page entry */
   .fn-page-entry {
     display: flex;
     align-items: baseline;
@@ -49,24 +49,6 @@
     text-decoration: none;
   }
   .fn-page-entry a:hover { text-decoration: underline; }
-  .fn-chain-badge {
-    font-size: 0.72em;
-    color: var(--muted);
-    white-space: nowrap;
-    flex-shrink: 0;
-    font-variant-numeric: tabular-nums;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    padding: 0.05em 0.35em;
-    line-height: 1.5;
-  }
-  .fn-chain-badge-head {
-    color: var(--sidebar-active);
-    border-color: var(--sidebar-border);
-    background: var(--sidebar-bg);
-  }
 
   /* Section spacing */
   p.scene-heading.fn-section-gap { margin-top: 1.5em; }
@@ -129,16 +111,6 @@
   {%- for page in folder.pages %}
   <p class="action fn-page-entry">
     <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
-    {%- if page.is_chain_head %}
-    <span class="fn-chain-badge fn-chain-badge-head">
-      screenplay
-      {%- if page.chain_length %} · {{ page.chain_length }}
-      {%- if page.chain_length == 1 %} scene{%- else %} scenes{%- endif %}
-      {%- endif %}
-    </span>
-    {%- elif page.is_in_chain %}
-    <span class="fn-chain-badge">in chain</span>
-    {%- endif %}
   </p>
   {%- endfor %}
   {%- endif %}

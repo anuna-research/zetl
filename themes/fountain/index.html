@@ -23,7 +23,7 @@
     margin-top: 0.25em;
   }
 
-  /* Screenplay entry row */
+  /* Page entry row */
   .fn-sp-entry {
     display: flex;
     align-items: baseline;
@@ -38,47 +38,16 @@
   .fn-sp-entry a:hover {
     text-decoration: underline;
   }
-  .fn-sp-meta {
-    font-size: 0.82em;
-    color: var(--muted);
-    white-space: nowrap;
-    flex-shrink: 0;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* Reference page entry */
-  .fn-ref-entry {
-    margin: 0.3em 0;
-  }
-  .fn-ref-entry a {
-    color: var(--link);
-    text-decoration: none;
-  }
-  .fn-ref-entry a:hover {
-    text-decoration: underline;
-  }
-
-  /* Section spacing — overrides scene-heading's margin-top */
-  p.scene-heading.fn-section-gap { margin-top: 1.5em; }
 {% endblock %}
 
-{# ── Sidebar: chain heads first, then reference pages ── #}
+{# ── Sidebar: alphabetical page list ── #}
 {% block sidebar %}
   <nav>
     <ul class="sp-nav">
       {%- for page in vault.pages %}
-      {%- if page.is_chain_head %}
       <li>
         <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
       </li>
-      {%- endif %}
-      {%- endfor %}
-      {%- for page in vault.pages %}
-      {%- if not page.is_in_chain %}
-      <li>
-        <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
-      </li>
-      {%- endif %}
       {%- endfor %}
     </ul>
   </nav>
@@ -95,29 +64,11 @@
     </div>
   </div>
 
-  {# ── Screenplays section: chain heads ── #}
-  <p class="scene-heading">Screenplays</p>
+  {# ── Pages (alphabetical) ── #}
+  <p class="scene-heading">Pages</p>
   {%- for page in vault.pages %}
-  {%- if page.is_chain_head %}
   <p class="action fn-sp-entry">
     <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
-    {%- if page.chain_length %}
-    <span class="fn-sp-meta">
-      {{- page.chain_length -}}
-      {%- if page.chain_length == 1 %} scene{%- else %} scenes{%- endif %}
-    </span>
-    {%- endif %}
   </p>
-  {%- endif %}
-  {%- endfor %}
-
-  {# ── Reference Pages section: pages not part of any chain ── #}
-  <p class="scene-heading fn-section-gap">Reference Pages</p>
-  {%- for page in vault.pages %}
-  {%- if not page.is_in_chain %}
-  <p class="action fn-ref-entry">
-    <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
-  </p>
-  {%- endif %}
   {%- endfor %}
 {% endblock %}

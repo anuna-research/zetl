@@ -21,31 +21,6 @@
       </ul>
     </nav>
 
-    {# Chain prev/next navigation — top #}
-    {% if page.prev_page or page.next_page %}
-    <nav class="flex items-center justify-between mb-4 gap-2">
-      {% if page.prev_page %}
-      <a href="{{ root_path }}{{ page.prev_page.slug | safe }}/{{ index_file }}" class="btn btn-sm btn-outline gap-1 max-w-[40%]">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-        <span class="truncate">{{ page.prev_page.title }}</span>
-      </a>
-      {% else %}
-      <span></span>
-      {% endif %}
-      {% if page.chain_position and page.chain_length %}
-      <span class="text-sm opacity-50 shrink-0 tabular-nums">{{ page.chain_position }} of {{ page.chain_length }}</span>
-      {% endif %}
-      {% if page.next_page %}
-      <a href="{{ root_path }}{{ page.next_page.slug | safe }}/{{ index_file }}" class="btn btn-sm btn-outline gap-1 max-w-[40%]">
-        <span class="truncate">{{ page.next_page.title }}</span>
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-      </a>
-      {% else %}
-      <span></span>
-      {% endif %}
-    </nav>
-    {% endif %}
-
     {# View mode wrapper (serve only, for edit toggle) #}
     {% if mode == "serve" %}<div id="view-mode"{% if page.is_new %} style="display:none"{% endif %}>
       {% if page.raw_escaped %}
@@ -68,31 +43,6 @@
       </ul>
       {% endif %}
     {% if mode == "serve" %}</div>{% endif %}
-
-    {# Chain prev/next navigation — bottom #}
-    {% if page.prev_page or page.next_page %}
-    <nav class="flex items-center justify-between mt-4 gap-2">
-      {% if page.prev_page %}
-      <a href="{{ root_path }}{{ page.prev_page.slug | safe }}/{{ index_file }}" class="btn btn-sm btn-outline gap-1 max-w-[40%]">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-        <span class="truncate">{{ page.prev_page.title }}</span>
-      </a>
-      {% else %}
-      <span></span>
-      {% endif %}
-      {% if page.chain_position and page.chain_length %}
-      <span class="text-sm opacity-50 shrink-0 tabular-nums">{{ page.chain_position }} of {{ page.chain_length }}</span>
-      {% endif %}
-      {% if page.next_page %}
-      <a href="{{ root_path }}{{ page.next_page.slug | safe }}/{{ index_file }}" class="btn btn-sm btn-outline gap-1 max-w-[40%]">
-        <span class="truncate">{{ page.next_page.title }}</span>
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-      </a>
-      {% else %}
-      <span></span>
-      {% endif %}
-    </nav>
-    {% endif %}
 
     {# Edit mode (serve only) #}
     {% if mode == "serve" and page.raw_escaped %}

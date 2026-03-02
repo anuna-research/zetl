@@ -427,9 +427,6 @@ mod tests {
                 slug: "hello".to_string(),
                 outlink_count: 1,
                 backlink_count: 0,
-                is_chain_head: false,
-                is_in_chain: false,
-                chain_length: None,
             }],
             stats: StatsContext {
                 total_pages: 1,
@@ -453,11 +450,6 @@ mod tests {
             transclusion_cards: String::new(),
             is_new: false,
             raw_escaped: None,
-            prev_page: None,
-            next_page: None,
-            chain_position: None,
-            chain_length: None,
-            chain_head_slug: None,
         }
     }
 
@@ -510,9 +502,6 @@ mod tests {
                 slug: "test".to_string(),
                 outlink_count: 0,
                 backlink_count: 0,
-                is_chain_head: false,
-                is_in_chain: false,
-                chain_length: None,
             }],
             stats: StatsContext {
                 total_pages: 1,
