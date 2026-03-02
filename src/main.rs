@@ -2675,6 +2675,227 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
+fn cmd_theme_install(
+    cli: &Cli,
+    source: &str,
+    path_flag: Option<&str>,
+    name_flag: Option<&str>,
+    force: bool,
+) -> Result<()> {
+    use zetl::web::theme::{
+        clone_theme, parse_install_source, resolve_theme_name, validate_theme_name,
+        write_provenance,
+    };
+
+    // REQ-014-016: validate --path before any filesystem operations.
+    if let Some(p) = path_flag {
+        // Reject absolute paths and any component that would escape the repo root.
+        let path_buf = std::path::Path::new(p);
+        if path_buf.is_absolute() {
+            anyhow::bail!("--path must be a relative path within the repository, got {:?}", p);
+        }
+        for component in path_buf.components() {
+            use std::path::Component;
+            match component {
+                Component::Normal(_) => {}
+                Component::CurDir => {}
+                _ => {
+                    anyhow::bail!(
+                        "--path {:?} contains a disallowed component; \
+                         only relative paths without '..' are permitted",
+                        p
+                    );
+                }
+            }
+        }
+    }
+
+    // REQ-014-016: validate --name before any filesystem operations.
+    if let Some(n) = name_flag {
+        validate_theme_name(n)
+            .with_context(|| format!("invalid --name {:?}", n))?;
+    }
+
+    // 1. Parse source.
+    let install_source = parse_install_source(source)?;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("cannot resolve vault directory: {}", cli.dir))?;
+    let themes_dir = vault_root.join(".zetl/themes");
+
+    // We need a temporary clone to read the manifest so we can resolve the
+    // final name — but we first need to detect if the target already exists.
+    // We do a two-pass approach:
+    //   a. Clone into a temp dir to read theme.toml.
+    //   b. Resolve final name.
+    //   c. Check if target exists; error if !force.
+    //   d. Move temp clone into final location.
+
+    // Clone into a unique temporary directory inside .zetl/themes/.
+    std::fs::create_dir_all(&themes_dir)
+        .with_context(|| format!("failed to create {}", themes_dir.display()))?;
+
+    let tmp_dir = themes_dir.join(format!(
+        ".install-tmp-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos()
+    ));
+
+    // 3. Clone.
+    let clone_result = clone_theme(
+        &zetl::web::theme::ThemeInstallSource {
+            url: install_source.url.clone(),
+            git_ref: install_source.git_ref.clone(),
+            path: path_flag.map(str::to_string),
+        },
+        &tmp_dir,
+    )
+    .with_context(|| format!("failed to clone {:?}", source))?;
+
+    // 4. Read theme.toml from cloned files if present.
+    let manifest = zetl::web::theme::load_theme_manifest(&tmp_dir).unwrap_or_else(|e| {
+        if !cli.quiet {
+            eprintln!("warning: failed to read theme.toml: {e}");
+        }
+        None
+    });
+
+    // 5. Warn if min_zetl_version is set and current version is older.
+    if let Some(ref m) = manifest {
+        if let Some(ref min_ver) = m.theme.min_zetl_version {
+            let current = env!("CARGO_PKG_VERSION");
+            if semver_less_than(current, min_ver) && !cli.quiet {
+                eprintln!(
+                    "warning: theme requires zetl >= {min_ver} but current version is {current}"
+                );
+            }
+        }
+    }
+
+    // 6. Resolve final name.
+    let resolved_name = resolve_theme_name(
+        name_flag,
+        manifest.as_ref(),
+        path_flag,
+        &install_source,
+    )
+    .with_context(|| "could not determine theme name")?;
+
+    let target_dir = themes_dir.join(&resolved_name);
+
+    // 2. REQ-014-010: check if target already exists; require --force or error.
+    if target_dir.exists() {
+        if !force {
+            // Clean up temp clone before erroring.
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            anyhow::bail!(
+                "theme {:?} is already installed; use --force to overwrite",
+                resolved_name
+            );
+        }
+        // 7. If --force and target exists, delete it.
+        std::fs::remove_dir_all(&target_dir)
+            .with_context(|| format!("failed to remove existing theme {}", target_dir.display()))?;
+    }
+
+    // 8. Move temp clone to final location.
+    std::fs::rename(&tmp_dir, &target_dir).or_else(|_| {
+        // rename may fail across mount points; fall back to copy + delete.
+        let r = copy_dir_all(&tmp_dir, &target_dir);
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        r
+    })?;
+
+    // 9. Write provenance.
+    let prov_source = zetl::web::theme::ThemeInstallSource {
+        url: install_source.url.clone(),
+        git_ref: install_source.git_ref.clone(),
+        path: path_flag.map(str::to_string),
+    };
+    write_provenance(&target_dir, &prov_source, &clone_result)
+        .with_context(|| "failed to write provenance")?;
+
+    // 10. Output JSON.
+    let version = manifest.as_ref().map(|m| m.theme.version.clone());
+
+    #[derive(Serialize)]
+    struct InstalledInfo {
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        version: Option<String>,
+        source: String,
+        #[serde(rename = "ref", skip_serializing_if = "Option::is_none")]
+        git_ref: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    }
+    #[derive(Serialize)]
+    struct ThemeInstallOutput {
+        installed: InstalledInfo,
+    }
+
+    let output = ThemeInstallOutput {
+        installed: InstalledInfo {
+            name: resolved_name.clone(),
+            version,
+            source: install_source.url.clone(),
+            git_ref: install_source.git_ref.clone(),
+            path: path_flag.map(str::to_string),
+        },
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            println!("Installed theme {:?}", resolved_name);
+        }
+    }
+
+    Ok(())
+}
+
+/// Copy the directory tree at `src` into `dst` (created if missing).
+fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+    std::fs::create_dir_all(dst)
+        .with_context(|| format!("failed to create {}", dst.display()))?;
+    for entry in std::fs::read_dir(src)
+        .with_context(|| format!("failed to read {}", src.display()))?
+        .flatten()
+    {
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            copy_dir_all(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)
+                .with_context(|| format!("failed to copy {} to {}", from.display(), to.display()))?;
+        }
+    }
+    Ok(())
+}
+
+/// Return `true` if SemVer string `a` is strictly less than `b`.
+///
+/// Compares only the MAJOR.MINOR.PATCH numeric prefix; pre-release and build
+/// metadata are ignored.  Returns `false` on any parse error so that a
+/// malformed version string does not abort the install.
+fn semver_less_than(a: &str, b: &str) -> bool {
+    fn parse(v: &str) -> Option<(u64, u64, u64)> {
+        let core = v.split(&['-', '+'][..]).next()?;
+        let mut parts = core.splitn(3, '.');
+        let major = parts.next()?.parse().ok()?;
+        let minor = parts.next()?.parse().ok()?;
+        let patch = parts.next()?.parse().ok()?;
+        Some((major, minor, patch))
+    }
+    match (parse(a), parse(b)) {
+        (Some(va), Some(vb)) => va < vb,
+        _ => false,
+    }
+}
+
 fn cmd_theme_remove(cli: &Cli, name: &str) -> Result<()> {
     // 1. Validate name (rejects path traversal and invalid chars).
     zetl::web::theme::validate_theme_name(name)
@@ -6467,6 +6688,9 @@ fn main() -> anyhow::Result<()> {
         } => cmd_view(&cli, page.as_deref(), *context_lines, *main_width),
         Command::Theme { command } => match command {
             ThemeCommand::List => cmd_theme_list(&cli),
+            ThemeCommand::Install { source, path, name, force } => {
+                cmd_theme_install(&cli, source, path.as_deref(), name.as_deref(), *force)
+            }
             ThemeCommand::Remove { name } => cmd_theme_remove(&cli, name),
         },
         Command::Serve { port, theme } => cmd_serve(&cli, *port, theme),

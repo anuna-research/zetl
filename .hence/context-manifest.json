@@ -1,12 +1,12 @@
 {
-  "task_id": "provenance",
+  "task_id": "theme-install-cmd",
   "token_budget": 8000,
-  "tokens_used": 429,
+  "tokens_used": 843,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement .zetl-source.toml provenance writing per REQ-014-011.\n\nAfter clone_theme() succeeds and files are copied to .zetl/themes/<name>/, write .zetl-source.toml:\n\n```toml\n[source]\nurl = \"https://github.com/user/repo.git\"\nref = \"v2.0.0\"\ncommit = \"abc1234def5678...\"\npath = \"themes/garden\"\ninstalled_at = \"2026-03-02T14:30:00Z\"\nzetl_version = \"0.9.0\"\n```\n\nPublic API:\n  - write_provenance(theme_dir: &Path, source: &ThemeInstallSource, clone_result: &CloneResult) -> Result<()>\n  - read_provenance(theme_dir: &Path) -> Option<ThemeSource>\n    (Uses the ThemeSource struct from task-theme-toml-parsing.)\n\nThe installed_at timestamp uses UTC ISO 8601. zetl_version is read from env!(\"CARGO_PKG_VERSION\").\n\nREQ-014-011.",
-      "token_cost": 179,
+      "content": "Wire up the `zetl theme install` CLI subcommand per CON-014-002.\n\nAdd to ThemeCommand enum:\n```rust\n/// Install a theme from a git repository\nInstall {\n    /// Theme source (user/repo, URL, or git@... with optional #ref)\n    source: String,\n    /// Subdirectory within the repository to use as theme root\n    #[arg(long)]\n    path: Option<String>,\n    /// Override the installed theme directory name\n    #[arg(long)]\n    name: Option<String>,\n    /// Overwrite existing theme directory\n    #[arg(long)]\n    force: bool,\n},\n```\n\nImplementation in cmd_theme_install():\n1. Parse source with parse_install_source().\n2. Check if target name already exists in .zetl/themes/. If so, require --force or error (REQ-014-010).\n3. Clone with clone_theme().\n4. Read theme.toml from cloned files if present\n5. If min_zetl_version is present and current version is older, print warning.\n6. Resolve final name with resolve_theme_name().\n7. If --force and target exists, delete it.\n8. Move/copy files to .zetl/themes/<name>/.\n9. Write provenance with write_provenance().\n10. Output JSON: { installed: { name, version, source, ref, path } }.\n\nPath traversal checks per REQ-014-016: validate name and --path before any filesystem operations.\n\nREQ-014-006 through REQ-014-011, REQ-014-015, REQ-014-016, CON-014-002.",
+      "token_cost": 323,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T07:00:06Z"
+  "constructed_at": "2026-03-02T07:03:55Z"
 }
