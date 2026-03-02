@@ -1,12 +1,12 @@
 {
-  "task_id": "create-docs-theme",
+  "task_id": "theme-export-cmd",
   "token_budget": 8000,
-  "tokens_used": 712,
+  "tokens_used": 512,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create themes/docs/ — a documentation-oriented theme optimised for technical writing. Design goals:\n\n- Clean, professional look suitable for project documentation\n- Wide content area (no transclusion sidebar by default)\n- Table of contents generated from headings in the sidebar\n- Code block syntax highlighting emphasis\n- Print-friendly styles\n- CDN-based (Tailwind/DaisyUI) like the default theme, but with a documentation-focused layout\n\nAdd theme.toml:\n```toml\n[theme]\nname = \"docs\"\nversion = \"0.9.0\"\ndescription = \"A documentation-oriented theme for technical writing\"\nauthor = \"zetl contributors\"\nlicense = \"AGPL-3.0\"\n\n[theme.templates]\noverrides = [\"base.html\", \"page.html\"]\n```\n\nThis theme may only override base.html and page.html, inheriting index.html and folder.html from the default theme (demonstrating partial override with three-tier resolution).\n\nNFR-014-002 — keep total bundled themes under 100 KB.",
-      "token_cost": 230,
+      "content": "Implement `zetl theme export <name>` per REQ-014-014.\n\nAdd to ThemeCommand enum:\n```rust\n/// Export a bundled theme to .zetl/themes/ for customisation\nExport {\n    /// Bundled theme name to export\n    name: String,\n    /// Overwrite existing theme directory\n    #[arg(long)]\n    force: bool,\n},\n```\n\nImplementation:\n1. Check name is a bundled theme (bundled_theme_names().contains(name)). If not, error: 'only bundled themes can be exported\n2. If .zetl/themes/<name>/ exists and no --force, error with hint.\n3. Create .zetl/themes/<name>/.\n4. Write all files from the embedded theme directory to disk.\n5. Output JSON: { exported: { name, path, files_written: usize } }.\n\nAfter export, the user's copy takes precedence (Tier 1 > Tier 2), so they can immediately edit and see changes in serve mode.\n\nREQ-014-014.",
+      "token_cost": 202,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T07:16:01Z"
+  "constructed_at": "2026-03-02T07:24:00Z"
 }

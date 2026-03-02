@@ -255,6 +255,14 @@ pub enum ThemeCommand {
         /// Theme name to remove
         name: String,
     },
+    /// Export a bundled theme to .zetl/themes/ for customisation
+    Export {
+        /// Bundled theme name to export
+        name: String,
+        /// Overwrite existing theme directory
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[cfg(feature = "reason")]
