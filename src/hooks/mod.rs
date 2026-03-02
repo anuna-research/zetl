@@ -11,11 +11,14 @@
 
 pub mod context;
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
+
+/// Default timeout for hook execution in seconds.
+pub const HOOK_TIMEOUT_SECS: u64 = 30;
 
 /// Recognised hook lifecycle points (REQ-016-002).
 pub const HOOK_NAMES: &[&str] = &[
@@ -250,12 +253,14 @@ pub struct HookOutput {
     pub stderr: String,
     /// Wall-clock execution duration.
     pub duration: Duration,
+    /// Whether the hook was killed due to exceeding the timeout.
+    pub timed_out: bool,
 }
 
 impl HookOutput {
-    /// Whether the hook exited successfully (exit code 0).
+    /// Whether the hook exited successfully (exit code 0, not timed out).
     pub fn success(&self) -> bool {
-        self.exit_code == Some(0)
+        self.exit_code == Some(0) && !self.timed_out
     }
 }
 
@@ -282,11 +287,25 @@ pub fn execute_hook(
 /// Like [`execute_hook`], but with verbose logging to stderr when `verbose` is true.
 ///
 /// Logs hook name, source, path, duration, exit code, and captured stdout/stderr.
+/// Enforces a timeout of [`HOOK_TIMEOUT_SECS`] seconds — if the hook exceeds
+/// this limit, the process is killed, a warning is logged to stderr, and the
+/// result is returned with `timed_out = true` so the parent operation can continue.
 pub fn execute_hook_verbose(
     hook: &DiscoveredHook,
     context_json: &[u8],
     env: &HookEnv,
     verbose: bool,
+) -> Result<HookOutput, std::io::Error> {
+    execute_hook_with_timeout(hook, context_json, env, verbose, Duration::from_secs(HOOK_TIMEOUT_SECS))
+}
+
+/// Core hook executor with configurable timeout.
+fn execute_hook_with_timeout(
+    hook: &DiscoveredHook,
+    context_json: &[u8],
+    env: &HookEnv,
+    verbose: bool,
+    timeout: Duration,
 ) -> Result<HookOutput, std::io::Error> {
     if verbose {
         eprintln!("[hooks] executing '{}' (source: {}, path: {})",
@@ -294,6 +313,7 @@ pub fn execute_hook_verbose(
     }
 
     let start = Instant::now();
+    let timeout_secs = timeout.as_secs();
 
     let mut cmd = Command::new(&hook.path);
     cmd.current_dir(&env.vault_root)
@@ -317,23 +337,74 @@ pub fn execute_hook_verbose(
         let _ = stdin.write_all(context_json);
     }
 
-    let output = child.wait_with_output()?;
+    // Take stdout/stderr handles so reader threads can drain them in parallel
+    // (prevents pipe-buffer deadlock if the hook produces large output).
+    let stdout_handle = child.stdout.take();
+    let stderr_handle = child.stderr.take();
+
+    let stdout_thread = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut h) = stdout_handle {
+            let _ = h.read_to_end(&mut buf);
+        }
+        buf
+    });
+    let stderr_thread = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut h) = stderr_handle {
+            let _ = h.read_to_end(&mut buf);
+        }
+        buf
+    });
+
+    // Poll for exit with timeout.
+    let poll_interval = Duration::from_millis(100);
+    let mut timed_out = false;
+
+    let status = loop {
+        match child.try_wait()? {
+            Some(status) => break status,
+            None => {
+                if start.elapsed() >= timeout {
+                    timed_out = true;
+                    let _ = child.kill();
+                    break child.wait()?;
+                }
+                std::thread::sleep(poll_interval);
+            }
+        }
+    };
+
+    let stdout_bytes = stdout_thread.join().unwrap_or_default();
+    let stderr_bytes = stderr_thread.join().unwrap_or_default();
     let duration = start.elapsed();
+
+    if timed_out {
+        eprintln!(
+            "warning: hook '{}' exceeded {}s timeout and was killed (source: {}, path: {})",
+            hook.name, timeout_secs, hook.source, hook.path.display()
+        );
+    }
 
     let result = HookOutput {
         hook_name: hook.name.clone(),
         source: hook.source.clone(),
         path: hook.path.clone(),
-        exit_code: output.status.code(),
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        exit_code: if timed_out { None } else { status.code() },
+        stdout: String::from_utf8_lossy(&stdout_bytes).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
         duration,
+        timed_out,
     };
 
     if verbose {
-        let code_str = match result.exit_code {
-            Some(c) => c.to_string(),
-            None => "killed".to_string(),
+        let code_str = if result.timed_out {
+            "timeout".to_string()
+        } else {
+            match result.exit_code {
+                Some(c) => c.to_string(),
+                None => "killed".to_string(),
+            }
         };
         eprintln!("[hooks] '{}' finished: exit_code={}, duration={:.1}ms",
             result.hook_name, code_str, result.duration.as_secs_f64() * 1000.0);
@@ -1141,5 +1212,60 @@ mod tests {
         // Path should still be valid
         let path = theme_hooks.path().unwrap();
         assert!(path.join("post-build").is_file());
+    }
+
+    // ── Timeout tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn hook_killed_on_timeout() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        // Hook that sleeps forever
+        create_script(
+            &hooks_dir,
+            "post-build",
+            "#!/bin/sh\nsleep 300\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        // Use a 1-second timeout for fast testing
+        let result = execute_hook_with_timeout(
+            hook, b"{}", &test_env(tmp.path()), false, Duration::from_secs(1),
+        ).unwrap();
+
+        assert!(result.timed_out);
+        assert!(!result.success());
+        assert!(result.exit_code.is_none()); // killed by signal
+        assert!(result.duration >= Duration::from_secs(1));
+    }
+
+    #[test]
+    fn fast_hook_not_timed_out() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(&hooks_dir, "post-build", "#!/bin/sh\necho ok\n");
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let result = execute_hook_with_timeout(
+            hook, b"{}", &test_env(tmp.path()), false, Duration::from_secs(5),
+        ).unwrap();
+
+        assert!(!result.timed_out);
+        assert!(result.success());
+        assert_eq!(result.exit_code, Some(0));
+        assert!(result.stdout.contains("ok"));
+    }
+
+    #[test]
+    fn default_timeout_constant_is_30() {
+        assert_eq!(HOOK_TIMEOUT_SECS, 30);
     }
 }
