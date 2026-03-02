@@ -6,4 +6,4 @@ author = "zetl contributors"
 license = "AGPL-3.0"
 
 [theme.templates]
-overrides = []
+overrides = ["base.html"]

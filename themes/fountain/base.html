@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ vault.name }} — zetl{% endblock %}</title>
+  <script type="application/json" id="zetl-search-index">{{ search_index | safe }}</script>
+  {% if bm25_index %}<script type="application/json" id="zetl-bm25-index">{{ bm25_index | safe }}</script>{% endif %}
+  <style>
+    /* ── Courier Prime via bundled WOFF2 ── */
+    @font-face {
+      font-family: 'Courier Prime';
+      src: url('{{ root_path }}_static/CourierPrime-Regular.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Courier Prime';
+      src: url('{{ root_path }}_static/CourierPrime-Bold.woff2') format('woff2');
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Courier Prime';
+      src: url('{{ root_path }}_static/CourierPrime-Italic.woff2') format('woff2');
+      font-weight: 400;
+      font-style: italic;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Courier Prime';
+      src: url('{{ root_path }}_static/CourierPrime-BoldItalic.woff2') format('woff2');
+      font-weight: 700;
+      font-style: italic;
+      font-display: swap;
+    }
+
+    /* ── CSS variables ── */
+    :root {
+      --bg:             #c8c8c8;
+      --page-bg:        #ffffff;
+      --page-text:      #1a1a1a;
+      --sidebar-bg:     #f0f0ee;
+      --sidebar-border: #c0c0be;
+      --sidebar-text:   #2a2a2a;
+      --sidebar-link:   #444;
+      --sidebar-active: #000;
+      --border:         #d0d0ce;
+      --btn-bg:         #e8e8e6;
+      --btn-border:     #aaa;
+      --btn-text:       #333;
+      --link:           #1a4f7a;
+      --link-hover:     #0d3357;
+      --search-bg:      #fff;
+      --search-border:  #ccc;
+      --search-shadow:  rgba(0,0,0,0.18);
+      --overlay-bg:     rgba(0,0,0,0.45);
+      --muted:          #777;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:             #1c1c1c;
+        --page-bg:        #f5f5ef;  /* keep the page light — like paper */
+        --page-text:      #1a1a1a;
+        --sidebar-bg:     #242424;
+        --sidebar-border: #383836;
+        --sidebar-text:   #d0d0ce;
+        --sidebar-link:   #b0b0ae;
+        --sidebar-active: #f0f0ee;
+        --border:         #404040;
+        --btn-bg:         #303030;
+        --btn-border:     #505050;
+        --btn-text:       #c8c8c8;
+        --link:           #5b9bd5;
+        --link-hover:     #82b8e8;
+        --search-bg:      #2a2a28;
+        --search-border:  #464644;
+        --search-shadow:  rgba(0,0,0,0.55);
+        --overlay-bg:     rgba(0,0,0,0.68);
+        --muted:          #888;
+      }
+    }
+
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Base ── */
+    body {
+      background: var(--bg);
+      font-family: 'Courier Prime', 'Courier New', Courier, monospace;
+      font-size: 12pt;
+      line-height: 1;
+      color: var(--page-text);
+      min-height: 100vh;
+    }
+
+    /* ── Layout ── */
+    .sp-layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ── */
+    .sp-sidebar {
+      position: fixed;
+      top: 0;
+      left: -280px;
+      width: 280px;
+      height: 100vh;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--sidebar-border);
+      overflow-y: auto;
+      z-index: 200;
+      transition: left 0.22s ease;
+      padding: 1.25rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .sp-sidebar.is-open {
+      left: 0;
+    }
+    .sp-sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--overlay-bg);
+      z-index: 199;
+    }
+    .sp-sidebar-overlay.is-open {
+      display: block;
+    }
+
+    /* Sidebar brand / title */
+    .sp-brand {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--sidebar-text);
+      text-decoration: none;
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    .sp-brand:hover { text-decoration: underline; }
+
+    .sp-divider {
+      height: 1px;
+      background: var(--sidebar-border);
+    }
+
+    /* Sidebar navigation */
+    .sp-nav { list-style: none; display: flex; flex-direction: column; gap: 0.05rem; }
+    .sp-nav a {
+      display: block;
+      padding: 0.2rem 0.4rem;
+      color: var(--sidebar-link);
+      text-decoration: none;
+      font-size: 0.82rem;
+      border-radius: 3px;
+    }
+    .sp-nav a:hover  { background: var(--border); color: var(--sidebar-text); }
+    .sp-nav a.active { background: var(--border); color: var(--sidebar-active); font-weight: 700; }
+
+    /* ── Main content ── */
+    .sp-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem 1rem 3rem;
+    }
+
+    /* ── Topbar ── */
+    .sp-topbar {
+      width: 100%;
+      max-width: 8.5in;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .sp-toggle {
+      background: var(--btn-bg);
+      border: 1px solid var(--btn-border);
+      color: var(--btn-text);
+      padding: 0.35rem 0.6rem;
+      border-radius: 4px;
+      cursor: pointer;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .sp-toggle:hover { opacity: 0.75; }
+    .sp-vault-link {
+      font-weight: 600;
+      text-decoration: none;
+      color: var(--sidebar-text);
+      font-size: 0.9rem;
+    }
+    .sp-vault-link:hover { text-decoration: underline; }
+
+    /* ── Screenplay page (white sheet on grey) ── */
+    .sp-page {
+      background: var(--page-bg);
+      color: var(--page-text);
+      width: 100%;
+      max-width: 8.5in;
+      min-height: 11in;
+      /* left margin 1.5in, right margin 1in → 6in content width */
+      padding: 1in 1in 1in 1.5in;
+      box-shadow: 0 2px 14px rgba(0,0,0,0.22);
+      color-scheme: light;
+      font-family: 'Courier Prime', 'Courier New', Courier, monospace;
+      font-size: 12pt;
+      line-height: 1;
+    }
+
+    /* Normalise inner <main> added by default page.html */
+    .sp-page main {
+      padding: 0;
+      max-width: none;
+      width: 100%;
+    }
+
+    /* ── Screenplay element CSS ── */
+
+    /* Scene heading — uppercase, bold, full content width */
+    .scene-heading,
+    p.scene-heading {
+      text-transform: uppercase;
+      font-weight: 700;
+      margin-top: 1em;
+      margin-bottom: 0;
+      width: 100%;
+      text-align: left;
+    }
+
+    /* Action — left-aligned, full content width */
+    .action,
+    p.action {
+      text-align: left;
+      width: 100%;
+      margin: 0.5em 0;
+    }
+
+    /* Character name — approx 3.7in from left page edge = 2.2in from content left */
+    .character,
+    p.character {
+      margin-left: 2.2in;
+      text-transform: uppercase;
+      margin-bottom: 0;
+      margin-top: 1em;
+    }
+
+    /* Dialogue — 2.5in wide, starting 1in from content left
+       Centre of dialogue (1in + 1.25in = 2.25in) ≈ character indent (2.2in) */
+    .dialogue,
+    p.dialogue {
+      margin-left: 1in;
+      width: 2.5in;
+      margin-top: 0;
+      margin-bottom: 0.25em;
+    }
+
+    /* Parenthetical — narrower than dialogue, slightly more indented */
+    .parenthetical,
+    p.parenthetical {
+      margin-left: 1.3in;
+      width: 2in;
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+
+    /* Transition — right-aligned, uppercase */
+    .transition,
+    p.transition {
+      text-transform: uppercase;
+      text-align: right;
+      width: 100%;
+      margin: 1em 0;
+    }
+
+    /* ── Basic prose fallback (for default page.html content) ── */
+    .sp-page h1, .sp-page h2, .sp-page h3,
+    .sp-page h4, .sp-page h5, .sp-page h6 {
+      font-weight: 700;
+      line-height: 1.3;
+      margin: 1em 0 0.4em;
+    }
+    .sp-page h1 { font-size: 1.4em; }
+    .sp-page h2 { font-size: 1.2em; }
+    .sp-page h3 { font-size: 1.05em; }
+    .sp-page p  { margin: 0.6em 0; line-height: 1.5; }
+    .sp-page ul, .sp-page ol { margin: 0.6em 0 0.6em 1.4em; line-height: 1.5; }
+    .sp-page li { margin: 0.15em 0; }
+    .sp-page pre {
+      font-family: inherit;
+      background: rgba(0,0,0,0.04);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 0.75em 1em;
+      overflow-x: auto;
+      margin: 0.8em 0;
+      line-height: 1.4;
+    }
+    .sp-page code {
+      font-family: inherit;
+      background: rgba(0,0,0,0.06);
+      padding: 0.1em 0.3em;
+      border-radius: 2px;
+      font-size: 0.92em;
+    }
+    .sp-page pre code { background: none; padding: 0; font-size: inherit; }
+    .sp-page blockquote {
+      border-left: 3px solid var(--border);
+      margin: 0.8em 0;
+      padding: 0.2em 0.8em;
+      color: var(--muted);
+    }
+    .sp-page hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 1.2em 0;
+    }
+    .sp-page table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 0.8em 0;
+      font-size: 0.92em;
+    }
+    .sp-page th, .sp-page td {
+      border: 1px solid var(--border);
+      padding: 0.3em 0.6em;
+      text-align: left;
+    }
+    .sp-page th { font-weight: 700; background: rgba(0,0,0,0.04); }
+    .sp-page img { max-width: 100%; height: auto; }
+
+    /* ── Breadcrumbs (default page.html) ── */
+    nav.text-sm.breadcrumbs { font-size: 0.78rem; margin-bottom: 0.8rem; color: var(--muted); }
+    nav.text-sm.breadcrumbs ul { list-style: none; display: flex; flex-wrap: wrap; gap: 0.2rem; }
+    nav.text-sm.breadcrumbs ul li::before { content: '/'; margin-right: 0.2rem; opacity: 0.4; }
+    nav.text-sm.breadcrumbs ul li:first-child::before { content: none; }
+    nav.text-sm.breadcrumbs a { color: var(--link); text-decoration: none; }
+    nav.text-sm.breadcrumbs a:hover { text-decoration: underline; }
+
+    /* ── Prev/Next navigation buttons (default page.html) ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.3rem 0.6rem;
+      border: 1px solid var(--btn-border);
+      border-radius: 4px;
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      text-decoration: none;
+      font-family: inherit;
+      font-size: 0.8rem;
+      cursor: pointer;
+      line-height: 1.3;
+    }
+    .btn:hover { opacity: 0.8; }
+    .btn svg { flex-shrink: 0; }
+
+    /* Chain nav flex row */
+    nav.flex.items-center {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin: 0.6rem 0;
+    }
+    .truncate { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 28ch; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    .opacity-50 { opacity: 0.5; }
+    .text-sm { font-size: 0.82rem; }
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0.8rem 0;
+    }
+
+    /* ── Backlinks ── */
+    .sp-page .link-secondary { color: var(--link); text-decoration: underline; }
+    .sp-page .link-secondary:hover { color: var(--link-hover); }
+    .sp-page .text-xs { font-size: 0.75rem; }
+    .sp-page .ml-2 { margin-left: 0.5rem; }
+
+    /* ── Edit/textarea (serve mode) ── */
+    .sp-page textarea {
+      width: 100%;
+      font-family: inherit;
+      font-size: 0.9rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.5rem;
+      background: var(--page-bg);
+      color: var(--page-text);
+      resize: vertical;
+    }
+    .sp-page .flex.gap-2 { display: flex; gap: 0.5rem; }
+    .sp-page .mb-4 { margin-bottom: 1rem; }
+    .sp-page .btn-primary { background: var(--link); color: #fff; border-color: var(--link); }
+    .sp-page .btn-primary:hover { opacity: 0.85; }
+    .sp-page .justify-end { justify-content: flex-end; display: flex; }
+
+    /* ── Links ── */
+    a { color: var(--link); }
+    a:hover { color: var(--link-hover); }
+    a.link-error { color: #b22222; text-decoration: underline wavy; }
+    a.wikilink { text-decoration-thickness: 2px; text-underline-offset: 3px; }
+
+    /* ── Line anchors ── */
+    .line-anchor { scroll-margin-top: 2rem; }
+    :has(> .line-anchor:target) {
+      animation: sp-line-hl 2s ease-out;
+      border-radius: 3px;
+    }
+    @keyframes sp-line-hl {
+      0%   { background: rgba(255,200,40,0.38); }
+      100% { background: transparent; }
+    }
+
+    /* ── Search button (in sidebar) ── */
+    .sp-search-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.3rem 0.55rem;
+      border: 1px solid var(--btn-border);
+      border-radius: 4px;
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      font-family: inherit;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+    .sp-search-btn:hover { opacity: 0.8; }
+    .sp-search-btn kbd { margin-left: auto; font-size: 0.68rem; opacity: 0.55; }
+
+    /* ── Search modal ── */
+    .sp-search-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--overlay-bg);
+      z-index: 300;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 15vh;
+    }
+    .sp-search-overlay.open { display: flex; }
+    .sp-search-dialog {
+      background: var(--search-bg);
+      border: 1px solid var(--search-border);
+      border-radius: 8px;
+      width: 90vw;
+      max-width: 480px;
+      box-shadow: 0 16px 48px var(--search-shadow);
+      overflow: hidden;
+    }
+    .sp-search-input {
+      width: 100%;
+      border: none;
+      outline: none;
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      background: transparent;
+      color: var(--sidebar-text);
+      border-bottom: 1px solid var(--search-border);
+      font-family: inherit;
+    }
+    .sp-search-results { max-height: 40vh; overflow-y: auto; }
+    .sp-search-result {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      padding: 0.5rem 1rem;
+      text-decoration: none;
+      color: var(--sidebar-text);
+      cursor: pointer;
+      border-bottom: 1px solid var(--search-border);
+    }
+    .sp-search-result:last-child { border-bottom: none; }
+    .sp-search-result:hover,
+    .sp-search-result.sr-active { background: rgba(128,128,128,0.12); }
+    .sp-search-result .sr-name { font-weight: 600; font-size: 0.9rem; }
+    .sp-search-result .sr-name b { color: var(--link); font-weight: 700; }
+    .sp-search-result .sr-slug { font-size: 0.72rem; opacity: 0.48; }
+    .sp-search-result .page-name { font-weight: 600; font-size: 0.88rem; }
+    .sp-search-result .heading { font-size: 0.76rem; opacity: 0.58; font-style: italic; }
+    .sp-search-result .context { font-size: 0.76rem; opacity: 0.48; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .sp-search-result .score { font-size: 0.68rem; opacity: 0.38; }
+    .sp-search-hint { padding: 1rem; text-align: center; font-size: 0.82rem; opacity: 0.5; color: var(--sidebar-text); }
+
+    {% block styles %}{% endblock %}
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+  <div class="sp-layout">
+
+    <!-- Sidebar overlay (click to close) -->
+    <div class="sp-sidebar-overlay" id="sp-overlay" onclick="spCloseSidebar()"></div>
+
+    <!-- Sidebar (collapsed by default) -->
+    <aside class="sp-sidebar" id="sp-sidebar">
+      <a href="{{ root_path }}{{ index_file }}" class="sp-brand">{{ vault.name }}</a>
+      <div class="sp-divider"></div>
+      <button class="sp-search-btn" onclick="spOpenSearch()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        Search…
+        <kbd>⌘K</kbd>
+      </button>
+      {% block sidebar %}
+      <nav>
+        <ul class="sp-nav">
+          {%- for page in vault.pages %}
+          <li>
+            <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}"
+               class="{% if active_slug == page.slug %}active{% endif %}">
+              {{ page.title }}
+            </a>
+          </li>
+          {%- endfor %}
+        </ul>
+      </nav>
+      {% endblock %}
+    </aside>
+
+    <!-- Main content -->
+    <div class="sp-main">
+
+      <!-- Topbar -->
+      <div class="sp-topbar">
+        <button class="sp-toggle" onclick="spToggleSidebar()" aria-label="Toggle navigation">
+          <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" fill="none"
+               viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+        <a href="{{ root_path }}{{ index_file }}" class="sp-vault-link">{{ vault.name }}</a>
+      </div>
+
+      <!-- Screenplay page (white sheet) -->
+      <div class="sp-page">
+        {% block content %}{% endblock %}
+      </div>
+
+    </div><!-- /.sp-main -->
+  </div><!-- /.sp-layout -->
+
+  <!-- Search modal (Cmd+K) -->
+  <div class="sp-search-overlay" id="sp-search-overlay"
+       onclick="if(event.target===this)spCloseSearch()">
+    <div class="sp-search-dialog">
+      <input class="sp-search-input" id="sp-search-input" type="text"
+             placeholder="Search pages…" autocomplete="off">
+      <div class="sp-search-results" id="sp-search-results"></div>
+    </div>
+  </div>
+
+  <script>
+  /* ── Sidebar ── */
+  function spToggleSidebar() {
+    document.getElementById('sp-sidebar').classList.toggle('is-open');
+    document.getElementById('sp-overlay').classList.toggle('is-open');
+  }
+  function spCloseSidebar() {
+    document.getElementById('sp-sidebar').classList.remove('is-open');
+    document.getElementById('sp-overlay').classList.remove('is-open');
+  }
+
+  /* ── Search (fuzzy + BM25 — mirrors default theme logic) ── */
+  (function(){
+    var MODE='{{ mode }}';
+    var ROOT='{{ root_path | safe }}';
+    var IDXFILE='{{ index_file }}';
+    var overlay=document.getElementById('sp-search-overlay');
+    var input=document.getElementById('sp-search-input');
+    var results=document.getElementById('sp-search-results');
+    var active=-1;
+    var filtered=[];
+
+    var pageList=(function(){
+      try{return JSON.parse(document.getElementById('zetl-search-index').textContent||'[]');}
+      catch(e){return [];}
+    })();
+
+    function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    function slugFromPath(p){return p.replace(/\.[^/.]+$/,'').toLowerCase().replace(/ /g,'-');}
+
+    function fuzzyMatch(query,text){
+      var ql=query.length,tl=text.length;
+      if(ql===0)return{score:0,indices:[]};
+      if(ql>tl)return null;
+      var qLow=query.toLowerCase(),tLow=text.toLowerCase();
+      var qi=0;
+      for(var ti=0;ti<tl&&qi<ql;ti++){if(tLow[ti]===qLow[qi])qi++;}
+      if(qi<ql)return null;
+      var bestScore=-Infinity,bestIndices=null;
+      function solve(qi2,ti2,indices,score,prevMatch){
+        if(qi2===ql){if(score>bestScore){bestScore=score;bestIndices=indices.slice();}return;}
+        var remaining=ql-qi2;
+        for(var t=ti2;t<=tl-remaining;t++){
+          if(tLow[t]===qLow[qi2]){
+            var s=0;
+            if(prevMatch===t-1)s+=5;
+            if(t===0)s+=8;
+            else{var prev=text[t-1];if(prev===' '||prev==='-'||prev==='_'||prev==='/'||prev==='.')s+=7;else if(text[t]===text[t].toUpperCase()&&prev===prev.toLowerCase()&&/[a-zA-Z]/.test(prev))s+=6;}
+            if(text[t]===query[qi2])s+=1;
+            s+=Math.max(0,3-Math.floor(t/4));
+            indices.push(t);solve(qi2+1,t+1,indices,score+s,t);indices.pop();
+          }
+        }
+      }
+      solve(0,0,[],0,-2);
+      if(!bestIndices)return null;
+      return{score:bestScore,indices:bestIndices};
+    }
+
+    function highlight(text,indices){
+      var set={};indices.forEach(function(i){set[i]=true;});
+      var out='';
+      for(var i=0;i<text.length;i++){var c=esc(text[i]);out+=set[i]?'<b>'+c+'</b>':c;}
+      return out;
+    }
+
+    function fuzzyFilter(q){
+      if(!q)return pageList.map(function(p){return{n:p.n,s:p.s,_indices:null};});
+      var scored=[];
+      pageList.forEach(function(p){
+        var m=fuzzyMatch(q,p.n);
+        if(m)scored.push({n:p.n,s:p.s,score:m.score,_indices:m.indices});
+      });
+      scored.sort(function(a,b){return b.score-a.score;});
+      return scored;
+    }
+
+    function renderFuzzy(items){
+      results.innerHTML='';
+      if(items.length===0){results.innerHTML='<div class="sp-search-hint">No results</div>';active=-1;return;}
+      items.forEach(function(item,i){
+        var a=document.createElement('a');
+        a.className='sp-search-result'+(i===active?' sr-active':'');
+        a.href=ROOT+item.s+'/'+IDXFILE;
+        var nameHtml=item._indices?highlight(item.n,item._indices):esc(item.n);
+        a.innerHTML='<div class="sr-name">'+nameHtml+'</div><div class="sr-slug">'+esc(item.s)+'</div>';
+        a.addEventListener('mouseenter',function(){active=i;updateActive();});
+        results.appendChild(a);
+      });
+    }
+
+    function renderFullText(items){
+      results.innerHTML='';
+      if(!input.value){results.innerHTML='<div class="sp-search-hint">Type to search pages\u2026</div>';active=-1;return;}
+      if(items.length===0){results.innerHTML='<div class="sp-search-hint">No results</div>';active=-1;return;}
+      active=0;
+      items.forEach(function(item,i){
+        var a=document.createElement('a');
+        a.className='sp-search-result'+(i===0?' sr-active':'');
+        a.href=ROOT+item.slug+'/'+IDXFILE+(item.line?'#line-'+item.line:'');
+        var html='<span class="page-name">'+esc(item.page)+'</span>';
+        if(item.heading)html+='<span class="heading">'+esc(item.heading)+'</span>';
+        if(item.context)html+='<span class="context">'+esc(item.context)+'</span>';
+        if(item.score)html+='<span class="score">'+item.score.toFixed(2)+'</span>';
+        a.innerHTML=html;
+        a.addEventListener('mouseenter',function(){active=i;updateActive();});
+        results.appendChild(a);
+      });
+    }
+
+    function updateActive(){
+      var els=results.querySelectorAll('.sp-search-result');
+      els.forEach(function(el,i){el.classList.toggle('sr-active',i===active);});
+      if(active>=0&&els[active])els[active].scrollIntoView({block:'nearest'});
+    }
+
+    var searchIndex=(function(){
+      try{var el=document.getElementById('zetl-bm25-index');return el?JSON.parse(el.textContent):null;}
+      catch(e){return null;}
+    })();
+
+    function findBestSection(doc,terms){
+      if(!doc.secs||!doc.secs.length)return null;
+      var best=null,bestCount=-1;
+      doc.secs.forEach(function(sec){
+        var text=(sec.h+' '+sec.t).toLowerCase();
+        var count=0;
+        terms.forEach(function(t){var idx=0;while((idx=text.indexOf(t,idx))!==-1){count++;idx+=t.length;}});
+        if(count>bestCount){bestCount=count;best=sec;}
+      });
+      return bestCount>0?best:null;
+    }
+
+    function extractContext(text,terms){
+      if(!text)return null;
+      var lower=text.toLowerCase();
+      var bestPos=-1;
+      terms.forEach(function(t){var idx=lower.indexOf(t);if(idx!==-1&&(bestPos===-1||idx<bestPos))bestPos=idx;});
+      if(bestPos===-1)bestPos=0;
+      var start=Math.max(0,bestPos-40);
+      var end=Math.min(text.length,start+120);
+      var snippet=text.substring(start,end);
+      if(start>0)snippet='\u2026'+snippet;
+      if(end<text.length)snippet+='\u2026';
+      return snippet;
+    }
+
+    function bm25Search(q,index){
+      var k1=1.2,b=0.75;
+      var terms=q.toLowerCase().split(/\W+/).filter(Boolean);
+      var n=index.docs.length;var avgDl=index.avgDl||1;var scores={};
+      terms.forEach(function(term){
+        var df=index.df[term]||0;if(df===0)return;
+        var idf=Math.log((n-df+0.5)/(df+0.5)+1);
+        index.docs.forEach(function(doc,i){
+          var tf=doc.tf[term]||0;if(tf===0)return;
+          var norm=1-b+b*(doc.dl/avgDl);
+          scores[i]=(scores[i]||0)+idf*(tf*(k1+1))/(tf+k1*norm);
+        });
+      });
+      return Object.keys(scores).map(function(i){
+        var doc=index.docs[parseInt(i)];
+        var sec=findBestSection(doc,terms);
+        return{page:doc.n,slug:doc.s,score:scores[i],heading:sec?sec.h||null:null,context:sec?extractContext(sec.t,terms):null,line:sec?sec.l||0:0};
+      }).sort(function(a,b){return b.score-a.score;});
+    }
+
+    var currentCtrl=null;
+    function serveSearch(q){
+      if(q.length<=2){filtered=fuzzyFilter(q);active=0;renderFuzzy(filtered);return;}
+      results.innerHTML='<div class="sp-search-hint">Searching\u2026</div>';
+      if(currentCtrl){currentCtrl.abort();}
+      currentCtrl=new AbortController();
+      fetch(ROOT+'api/search?q='+encodeURIComponent(q)+'&limit=20',{signal:currentCtrl.signal})
+        .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
+        .then(function(data){
+          currentCtrl=null;
+          filtered=(data.results||[]).map(function(m){return{page:m.page,slug:slugFromPath(m.path),heading:m.heading||null,context:m.context||null,score:m.score,line:m.line||0};});
+          renderFullText(filtered);
+        })
+        .catch(function(err){
+          currentCtrl=null;
+          if(err&&err.name==='AbortError')return;
+          filtered=fuzzyFilter(q);active=0;renderFuzzy(filtered);
+        });
+    }
+
+    function buildSearchRun(){
+      var q=input.value;
+      if(!q){filtered=fuzzyFilter('');active=0;renderFuzzy(filtered);return;}
+      if(!searchIndex){filtered=fuzzyFilter(q);active=0;renderFuzzy(filtered);return;}
+      if(q.length>2){
+        var bm25=bm25Search(q,searchIndex).slice(0,20);
+        if(bm25.length>0){filtered=bm25;renderFullText(filtered);return;}
+      }
+      filtered=fuzzyFilter(q);active=0;renderFuzzy(filtered);
+    }
+
+    function runSearch(){
+      var q=input.value;
+      if(MODE==='serve'){if(!q){filtered=fuzzyFilter('');active=0;renderFuzzy(filtered);return;}serveSearch(q);}
+      else{buildSearchRun();}
+    }
+
+    window.spOpenSearch=function(){
+      overlay.classList.add('open');
+      input.value='';
+      filtered=fuzzyFilter('');active=0;renderFuzzy(filtered);
+      input.focus();
+    };
+    window.spCloseSearch=function(){
+      overlay.classList.remove('open');
+      if(currentCtrl){currentCtrl.abort();currentCtrl=null;}
+    };
+
+    input.addEventListener('input',function(){active=0;runSearch();});
+
+    document.addEventListener('keydown',function(e){
+      if((e.metaKey||e.ctrlKey)&&e.key==='k'){
+        e.preventDefault();
+        if(overlay.classList.contains('open'))spCloseSearch();else spOpenSearch();
+        return;
+      }
+      if(!overlay.classList.contains('open'))return;
+      if(e.key==='Escape'){spCloseSearch();return;}
+      if(e.key==='ArrowDown'){e.preventDefault();if(active<filtered.length-1)active++;updateActive();}
+      else if(e.key==='ArrowUp'){e.preventDefault();if(active>0)active--;updateActive();}
+      else if(e.key==='Enter'){
+        e.preventDefault();
+        if(active>=0&&active<filtered.length){
+          var s=filtered[active];
+          var href=s.slug||s.s;
+          window.location.href=ROOT+href+'/'+IDXFILE+(s.line?'#line-'+s.line:'');
+        }
+      }
+    });
+  })();
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

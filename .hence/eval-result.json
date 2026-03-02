@@ -3,30 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 115,
-    "deletions": 5,
+    "files_changed": 3,
+    "insertions": 825,
+    "deletions": 8,
     "file_list": [
       ".hence/context-manifest.json",
-      "themes/fountain/static/CourierPrime-Bold.woff2",
-      "themes/fountain/static/CourierPrime-BoldItalic.woff2",
-      "themes/fountain/static/CourierPrime-Italic.woff2",
-      "themes/fountain/static/CourierPrime-Regular.woff2",
-      "themes/fountain/static/OFL.txt",
+      "themes/fountain/base.html",
       "themes/fountain/theme.toml"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-courier-prime-fonts-changes",
-      "content": "Modified 7 files (+115, -5): .hence/context-manifest.json, themes/fountain/static/CourierPrime-Bold.woff2, themes/fountain/static/CourierPrime-BoldItalic.woff2, themes/fountain/static/CourierPrime-Italic.woff2, themes/fountain/static/CourierPrime-Regular.woff2 and 2 more",
+      "key": "task-fountain-base-template-changes",
+      "content": "Modified 3 files (+825, -8): .hence/context-manifest.json, themes/fountain/base.html, themes/fountain/theme.toml",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/courier-prime-fonts-v1",
-  "evaluated_at": "2026-03-02T10:38:59Z",
+  "branch_name": "hence/fountain-base-template-v1",
+  "evaluated_at": "2026-03-02T10:48:00Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
