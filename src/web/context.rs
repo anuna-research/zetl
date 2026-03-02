@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::scanner::page_slug_from_path;
+use crate::web::chain::{extract_chain_target, resolve_page_name};
 use crate::web::markdown::parse_frontmatter;
 use crate::web::VaultData;
 
@@ -44,6 +45,12 @@ pub struct BreadcrumbEntry {
 // ── Page-specific structs ───────────────────────────────────────────
 
 #[derive(Serialize)]
+pub struct ChainLink {
+    pub title: String,
+    pub slug: String,
+}
+
+#[derive(Serialize)]
 pub struct BacklinkEntry {
     pub title: String,
     pub slug: String,
@@ -71,6 +78,11 @@ pub struct PageContext {
     pub transclusion_cards: String,
     pub is_new: bool,
     pub raw_escaped: Option<String>,
+    pub prev_page: Option<ChainLink>,
+    pub next_page: Option<ChainLink>,
+    pub chain_position: Option<usize>,
+    pub chain_length: Option<usize>,
+    pub chain_head_slug: Option<String>,
 }
 
 // ── Folder-specific structs ─────────────────────────────────────────
@@ -216,6 +228,13 @@ pub fn build_page_context(
     let is_new = !data.resolved.contains(page_name);
     let frontmatter = parse_frontmatter(content_raw);
 
+    let prev_page = extract_chain_target(&frontmatter, "prev").and_then(|name| {
+        resolve_page_name(&name, &data.page_slug_map).map(|s| ChainLink { title: name, slug: s })
+    });
+    let next_page = extract_chain_target(&frontmatter, "next").and_then(|name| {
+        resolve_page_name(&name, &data.page_slug_map).map(|s| ChainLink { title: name, slug: s })
+    });
+
     PageContext {
         title: page_name.to_string(),
         slug: slug.to_string(),
@@ -228,6 +247,11 @@ pub fn build_page_context(
         transclusion_cards: String::new(),
         is_new,
         raw_escaped: None,
+        prev_page,
+        next_page,
+        chain_position: None,
+        chain_length: None,
+        chain_head_slug: None,
     }
 }
 
@@ -501,5 +525,54 @@ mod tests {
         let raw = "# Just a heading\nSome content.";
         let ctx = build_page_context(&data, "A", "A", "<h1>Just a heading</h1>", raw);
         assert_eq!(ctx.frontmatter, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_chain_fields_none_without_frontmatter() {
+        let files = vec![make_file("A", vec![])];
+        let data = make_vault_data(files);
+        let ctx = build_page_context(&data, "A", "A", "", "");
+        assert!(ctx.prev_page.is_none());
+        assert!(ctx.next_page.is_none());
+        assert!(ctx.chain_position.is_none());
+        assert!(ctx.chain_length.is_none());
+        assert!(ctx.chain_head_slug.is_none());
+    }
+
+    #[test]
+    fn test_chain_prev_next_resolved() {
+        let files = vec![
+            make_file("A", vec![]),
+            make_file("B", vec![]),
+            make_file("C", vec![]),
+        ];
+        let data = make_vault_data(files);
+        let raw = "---\nprev: A\nnext: C\n---";
+        let ctx = build_page_context(&data, "B", "B", "", raw);
+        let prev = ctx.prev_page.unwrap();
+        assert_eq!(prev.title, "A");
+        assert_eq!(prev.slug, "A");
+        let next = ctx.next_page.unwrap();
+        assert_eq!(next.title, "C");
+        assert_eq!(next.slug, "C");
+    }
+
+    #[test]
+    fn test_chain_unknown_target_is_none() {
+        let files = vec![make_file("A", vec![])];
+        let data = make_vault_data(files);
+        let raw = "---\nprev: Ghost\n---";
+        let ctx = build_page_context(&data, "A", "A", "", raw);
+        assert!(ctx.prev_page.is_none());
+    }
+
+    #[test]
+    fn test_chain_wikilink_syntax_in_frontmatter() {
+        let files = vec![make_file("A", vec![]), make_file("B", vec![])];
+        let data = make_vault_data(files);
+        let raw = "---\nnext: \"[[B]]\"\n---";
+        let ctx = build_page_context(&data, "A", "A", "", raw);
+        let next = ctx.next_page.unwrap();
+        assert_eq!(next.title, "B");
     }
 }

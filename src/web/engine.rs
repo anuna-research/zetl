@@ -450,6 +450,11 @@ mod tests {
             transclusion_cards: String::new(),
             is_new: false,
             raw_escaped: None,
+            prev_page: None,
+            next_page: None,
+            chain_position: None,
+            chain_length: None,
+            chain_head_slug: None,
         }
     }
 
