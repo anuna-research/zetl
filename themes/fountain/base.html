@@ -550,10 +550,14 @@
         <a href="{{ root_path }}{{ index_file }}" class="sp-vault-link">{{ vault.name }}</a>
       </div>
 
+      {% block before_page %}{% endblock %}
+
       <!-- Screenplay page (white sheet) -->
       <div class="sp-page">
         {% block content %}{% endblock %}
       </div>
+
+      {% block after_page %}{% endblock %}
 
     </div><!-- /.sp-main -->
   </div><!-- /.sp-layout -->

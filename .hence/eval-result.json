@@ -4,25 +4,25 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 825,
-    "deletions": 8,
+    "insertions": 216,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
       "themes/fountain/base.html",
-      "themes/fountain/theme.toml"
+      "themes/fountain/page.html"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-fountain-base-template-changes",
-      "content": "Modified 3 files (+825, -8): .hence/context-manifest.json, themes/fountain/base.html, themes/fountain/theme.toml",
+      "key": "task-fountain-page-template-changes",
+      "content": "Modified 3 files (+216, -6): .hence/context-manifest.json, themes/fountain/base.html, themes/fountain/page.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/fountain-base-template-v1",
-  "evaluated_at": "2026-03-02T10:48:00Z",
+  "branch_name": "hence/fountain-page-template-v1",
+  "evaluated_at": "2026-03-02T10:52:19Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
