@@ -1,4 +1,5 @@
 pub mod build;
+pub mod chain;
 pub mod context;
 pub mod engine;
 pub mod html;
