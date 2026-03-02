@@ -1,12 +1,12 @@
 {
-  "task_id": "theme-export-cmd",
+  "task_id": "verbose-logging",
   "token_budget": 8000,
-  "tokens_used": 512,
+  "tokens_used": 474,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement `zetl theme export <name>` per REQ-014-014.\n\nAdd to ThemeCommand enum:\n```rust\n/// Export a bundled theme to .zetl/themes/ for customisation\nExport {\n    /// Bundled theme name to export\n    name: String,\n    /// Overwrite existing theme directory\n    #[arg(long)]\n    force: bool,\n},\n```\n\nImplementation:\n1. Check name is a bundled theme (bundled_theme_names().contains(name)). If not, error: 'only bundled themes can be exported\n2. If .zetl/themes/<name>/ exists and no --force, error with hint.\n3. Create .zetl/themes/<name>/.\n4. Write all files from the embedded theme directory to disk.\n5. Output JSON: { exported: { name, path, files_written: usize } }.\n\nAfter export, the user's copy takes precedence (Tier 1 > Tier 2), so they can immediately edit and see changes in serve mode.\n\nREQ-014-014.",
-      "token_cost": 202,
+      "content": "Add verbose logging and polish error messages across all theme operations per OBS-014-001, OBS-014-002.\n\nInstall verbose output (--verbose or -v):\n  - Resolved git URL\n  - Ref and resolved commit SHA\n  - Clone duration (ms)\n  - Number of files copied\n  - Total size of installed theme (bytes)\n  - Min zetl version warning if applicable\n\nTemplate resolution verbose output (already partially in place from task-three-tier-resolution):\n  - Ensure all three tiers are logged distinctly\n  - Format: 'theme: <template> <- <source> (<tier>)'\n\nError message improvements:\n  - All error messages should include actionable hints\n  - Network errors: suggest checking connectivity\n  - Repo not found: show the resolved URL that was tried\n  - Name collision: show --force flag\n  - Invalid name: show sanitised suggestion\n  - Missing git: show install instructions per platform\n\nOBS-014-001, OBS-014-002.",
+      "token_cost": 222,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T07:24:00Z"
+  "constructed_at": "2026-03-02T07:29:23Z"
 }

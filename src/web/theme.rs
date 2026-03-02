@@ -197,17 +197,28 @@ pub struct ThemeSourceInfo {
 
 /// Validate that `name` matches the pattern `^[a-z0-9][a-z0-9_-]*$`.
 ///
-/// Returns a descriptive error on failure.
+/// Returns a descriptive error on failure, including a sanitised suggestion.
 pub fn validate_theme_name(name: &str) -> Result<()> {
     let re = Regex::new(r"^[a-z0-9][a-z0-9_-]*$").unwrap();
     if re.is_match(name) {
         Ok(())
     } else {
-        bail!(
-            "invalid theme name {:?}: must match ^[a-z0-9][a-z0-9_-]*$ \
-             (lowercase letters, digits, hyphens, underscores; must start with a letter or digit)",
-            name
-        )
+        let sanitized = sanitize_theme_name(name);
+        if sanitized.is_empty() {
+            bail!(
+                "invalid theme name {:?}: must match ^[a-z0-9][a-z0-9_-]*$ \
+                 (lowercase letters, digits, hyphens, underscores; must start with a letter or digit)",
+                name
+            )
+        } else {
+            bail!(
+                "invalid theme name {:?}: must match ^[a-z0-9][a-z0-9_-]*$ \
+                 (lowercase letters, digits, hyphens, underscores; must start with a letter or digit)\n\
+                 hint: try {:?} instead",
+                name,
+                sanitized
+            )
+        }
     }
 }
 
@@ -467,8 +478,14 @@ fn is_sha_ref(r: &str) -> bool {
 fn git_run(cmd: &mut std::process::Command) -> Result<std::process::Output> {
     cmd.output().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
+            #[cfg(target_os = "macos")]
+            let hint = "\nhint: install git with: brew install git  (or: xcode-select --install)";
+            #[cfg(target_os = "windows")]
+            let hint = "\nhint: install git from https://git-scm.com/download/win or with: winget install Git.Git";
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            let hint = "\nhint: install git with: sudo apt install git  (or: sudo dnf install git)";
             anyhow::anyhow!(
-                "git is required for theme installation but was not found on PATH"
+                "git is required for theme installation but was not found on PATH{hint}"
             )
         } else {
             anyhow::anyhow!("failed to run git: {}", e)
@@ -491,7 +508,35 @@ fn git_do_clone(git_ref: Option<&str>, url: &str, target: &Path, shallow: bool) 
     let out = git_run(&mut cmd)?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
-        bail!("git clone failed: {}", stderr.trim());
+        let stderr_str = stderr.trim();
+
+        let looks_like_network = stderr_str.contains("Could not resolve host")
+            || stderr_str.contains("Failed to connect")
+            || stderr_str.contains("Connection refused")
+            || stderr_str.contains("Network is unreachable")
+            || stderr_str.contains("timed out");
+
+        let looks_like_not_found = stderr_str.contains("Repository not found")
+            || stderr_str.contains("repository not found")
+            || stderr_str.contains("does not exist")
+            || stderr_str.contains("Authentication failed");
+
+        if looks_like_network {
+            bail!(
+                "git clone failed: {stderr_str}\n\
+                 hint: check your network connectivity and try again"
+            );
+        } else if looks_like_not_found {
+            bail!(
+                "git clone failed: {stderr_str}\n\
+                 hint: repository not found at {url} — verify the URL is correct and you have access"
+            );
+        } else {
+            bail!(
+                "git clone failed: {stderr_str}\n\
+                 hint: tried to clone from {url}"
+            );
+        }
     }
     Ok(())
 }
