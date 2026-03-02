@@ -1,12 +1,12 @@
 {
-  "task_id": "theme-toml-parsing",
+  "task_id": "theme-list",
   "token_budget": 8000,
-  "tokens_used": 624,
+  "tokens_used": 350,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add theme manifest parsing. Create a new module src/theme.rs (or src/web/theme.rs) with:\n\n```rust\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ThemeManifest {\n    pub theme: ThemeInfo,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ThemeInfo {\n    pub name: String,\n    pub version: String,\n    #[serde(default)]\n    pub description: Option<String>,\n    #[serde(default)]\n    pub author: Option<String>,\n    #[serde(default)]\n    pub license: Option<String>,\n    #[serde(default)]\n    pub homepage: Option<String>,\n    #[serde(default)]\n    pub min_zetl_version: Option<String>,\n    #[serde(default)]\n    pub templates: Option<ThemeTemplates>,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ThemeTemplates {\n    #[serde(default)]\n    pub overrides: Vec<String>,\n}\n```\n\nAdd `toml` crate to Cargo.toml (use latest stable, likely 0.8+).\n\nPublic API:\n  - parse_theme_manifest(content: &str) -> Result<ThemeManifest>\n    Parses TOML content. Validates name matches ^[a-z0-9][a-z0-9_-]*$ and version is valid SemVer (use the `semver` crate or a simple regex\n  - load_theme_manifest(theme_dir: &Path) -> Option<ThemeManifest>\n    Reads theme.toml from the given directory. Returns None if file doesn't exist. Returns error context if file exists but is malformed.\n  - load_bundled_manifest(theme_name: &str) -> Option<ThemeManifest>\n    Reads theme.toml from the embedded theme directory.\n  - validate_theme_name(name: &str) -> Result<()>\n    Validates the name pattern. Returns descriptive error on failure.\n\nAlso parse .zetl-source.toml (provenance) with a separate struct — needed for theme list in the next task:\n\n```rust\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ThemeSource {\n    pub source: ThemeSourceInfo,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ThemeSourceInfo {\n    pub url: String,\n    #[serde(default)]\n    pub ref_name: Option<String>,\n    pub commit: String,\n    #[serde(default)]\n    pub path: Option<String>,\n    pub installed_at: String,\n    pub zetl_version: String,\n}\n```\n\nREQ-014-001, REQ-014-002, CON-014-001.",
-      "token_cost": 527,
+      "content": "Implement the `zetl theme list` subcommand per REQ-014-012, CON-014-003.\n\nAdd to cli.rs a Theme subcommand group:\n```rust\n/// Theme management\nTheme {\n    #[command(subcommand)]\n    command: ThemeCommand,\n},\n```\n\nWith ThemeCommand enum starting with List (other variants added in Phase 2):\n```rust\npub enum ThemeCommand {\n    /// List available themes (bundled + installed)\n    List,\n}\n```\n\nImplementation in main.rs (new fn cmd_theme_list):\n1. Collect bundled themes from bundled_theme_names(), load manifests via load_bundled_manifest().\n2. Scan .zetl/themes/ for installed themes, load manifests via load_theme_manifest().\n3. Determine source for each: 'bundled', 'installed', or 'installed (shadows bundled)'.\n4. For installed themes with .zetl-source.toml, include origin URL.\n5. Output JSON by default\n\nJSON schema per CON-014-003. Table columns: Name, Source, Version, Description.\n\nREQ-014-005, REQ-014-012, CON-014-003.",
+      "token_cost": 232,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 3 files (+57, -21): .hence/context-manifest.json, src/main.rs, src/web/engine.rs",
       "token_cost": 22,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theme-toml-parsing-changes",
+      "content": "Modified 4 files (+435, -0): Cargo.lock, Cargo.toml, src/web/mod.rs, src/web/theme.rs",
+      "token_cost": 21,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T06:21:13Z"
+  "constructed_at": "2026-03-02T06:24:53Z"
 }
