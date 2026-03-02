@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 61,
+    "insertions": 461,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "themes/default/page.html"
+      "tests/integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-prevnext-default-theme-changes",
-      "content": "Modified 2 files (+61, -5): .hence/context-manifest.json, themes/default/page.html",
+      "key": "task-chain-integration-tests-changes",
+      "content": "Modified 2 files (+461, -5): .hence/context-manifest.json, tests/integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/prevnext-default-theme-v1",
-  "evaluated_at": "2026-03-02T10:11:41Z",
+  "branch_name": "hence/chain-integration-tests-v1",
+  "evaluated_at": "2026-03-02T10:29:34Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
