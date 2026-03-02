@@ -36,6 +36,9 @@ pub struct HookContext {
     /// Number of pages rendered during build (only present for post-build).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pages_rendered: Option<usize>,
+    /// Server port (only present for pre-serve).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
     /// Diagnostics collected during check (only present for post-check).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostics: Option<HookDiagnostics>,
@@ -153,6 +156,7 @@ pub fn build_hook_context(
         stats,
         out_dir: None,
         pages_rendered: None,
+        port: None,
         diagnostics: None,
     }
 }
