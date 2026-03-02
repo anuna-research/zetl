@@ -29,6 +29,26 @@ pub fn bundled_theme_names() -> Vec<&'static str> {
         .collect()
 }
 
+/// Return hook files from a bundled theme's `hooks/` subdirectory.
+///
+/// Returns `(hook_name, content_bytes)` pairs for each file under
+/// `themes/<theme>/hooks/`. Returns an empty vec if the theme has no hooks
+/// or is not found in the embedded bundle.
+pub fn bundled_theme_hook_files(theme: &str) -> Vec<(String, Vec<u8>)> {
+    let all = bundled_theme_files(theme);
+    all.into_iter()
+        .filter_map(|(path, content)| {
+            let path_str = path.to_string_lossy();
+            if let Some(name) = path_str.strip_prefix("hooks/") {
+                if !name.is_empty() && !name.contains('/') {
+                    return Some((name.to_string(), content));
+                }
+            }
+            None
+        })
+        .collect()
+}
+
 /// Return all files in a bundled theme as (relative_path, content_bytes) pairs.
 ///
 /// Paths are relative to the theme root (e.g., `"page.html"`). Returns an
@@ -755,5 +775,21 @@ mod tests {
         };
         let s = format!("{err}");
         assert_eq!(s, "something failed");
+    }
+
+    // ── bundled_theme_hook_files tests ───────────────────────────────────
+
+    #[test]
+    fn test_bundled_theme_hook_files_unknown_theme() {
+        let hooks = bundled_theme_hook_files("nosuchtheme");
+        assert!(hooks.is_empty());
+    }
+
+    #[test]
+    fn test_bundled_theme_hook_files_no_hooks_subdir() {
+        // The default bundled theme has no hooks/ subdirectory,
+        // so this should return an empty vec.
+        let hooks = bundled_theme_hook_files("default");
+        assert!(hooks.is_empty());
     }
 }

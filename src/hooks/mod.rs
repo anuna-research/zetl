@@ -124,12 +124,72 @@ pub fn discover_hooks_verbose(
     HookManifest { hooks, warnings }
 }
 
+/// Resolved theme hooks directory.
+///
+/// Wraps an optional path to the hooks directory. When hooks come from a
+/// bundled theme, the directory is a temporary extraction that lives as long
+/// as this struct.
+pub struct ThemeHooksDir {
+    path: Option<PathBuf>,
+    /// Keeps the temporary directory alive for bundled hook extractions.
+    _temp: Option<tempfile::TempDir>,
+}
+
+impl ThemeHooksDir {
+    /// Returns the path to the hooks directory, if any.
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+}
+
+/// Resolve the theme hooks directory, checking disk-installed themes first,
+/// then falling back to bundled themes.
+///
+/// Resolution order:
+/// 1. **Disk-installed:** `.zetl/themes/<name>/hooks/` — if this directory
+///    exists on disk, it is used directly.
+/// 2. **Bundled:** If the theme is compiled into the binary and has hook files
+///    in its `hooks/` subdirectory, they are extracted to a temporary directory
+///    with executable permissions set.
+///
+/// The returned [`ThemeHooksDir`] must be kept alive until hook execution is
+/// complete (it owns the temporary extraction directory for bundled hooks).
+pub fn resolve_theme_hooks(vault_root: &Path, theme: &str) -> ThemeHooksDir {
+    // 1. Disk-installed theme hooks
+    if let Some(dir) = resolve_theme_hooks_dir(vault_root, theme) {
+        return ThemeHooksDir {
+            path: Some(dir),
+            _temp: None,
+        };
+    }
+
+    // 2. Bundled theme hooks
+    let bundled_hooks = crate::web::engine::bundled_theme_hook_files(theme);
+    if bundled_hooks.is_empty() {
+        return ThemeHooksDir {
+            path: None,
+            _temp: None,
+        };
+    }
+
+    match extract_bundled_hooks(&bundled_hooks) {
+        Ok((path, temp)) => ThemeHooksDir {
+            path: Some(path),
+            _temp: Some(temp),
+        },
+        Err(_) => ThemeHooksDir {
+            path: None,
+            _temp: None,
+        },
+    }
+}
+
 /// Resolve the theme hooks directory path, if it exists on disk.
 ///
 /// For disk-installed themes: `.zetl/themes/<name>/hooks/`
 /// Returns `None` if the directory does not exist.
 ///
-/// Bundled theme hook extraction is handled separately (Phase 3).
+/// Prefer [`resolve_theme_hooks`] which also handles bundled themes.
 pub fn resolve_theme_hooks_dir(vault_root: &Path, theme: &str) -> Option<PathBuf> {
     let dir = vault_root
         .join(".zetl")
@@ -321,6 +381,28 @@ pub fn run_hooks_verbose(
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
+
+/// Extract bundled hook files to a temporary directory with executable permissions.
+///
+/// Returns `(hooks_dir_path, temp_dir_handle)`. The `TempDir` must be kept alive
+/// until hook execution is complete.
+fn extract_bundled_hooks(
+    hook_files: &[(String, Vec<u8>)],
+) -> Result<(PathBuf, tempfile::TempDir), std::io::Error> {
+    let temp = tempfile::TempDir::new()?;
+    let hooks_dir = temp.path().to_path_buf();
+
+    for (name, content) in hook_files {
+        let path = hooks_dir.join(name);
+        std::fs::write(&path, content)?;
+        // Set executable permission
+        let mut perms = std::fs::metadata(&path)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms)?;
+    }
+
+    Ok((hooks_dir, temp))
+}
 
 /// Scan a single hooks directory and append discovered hooks.
 fn scan_hooks_dir(
@@ -960,5 +1042,104 @@ mod tests {
         assert_eq!(results.len(), 1);
         let output = results[0].as_ref().unwrap();
         assert!(output.stdout.contains("ran"));
+    }
+
+    // ── ThemeHooksDir / resolve_theme_hooks tests ───────────────────────
+
+    #[test]
+    fn resolve_theme_hooks_disk_installed() {
+        let tmp = TempDir::new().unwrap();
+        let theme_hooks = tmp.path().join(".zetl").join("themes").join("my-theme").join("hooks");
+        fs::create_dir_all(&theme_hooks).unwrap();
+        create_hook(&theme_hooks, "post-build", true);
+
+        let resolved = resolve_theme_hooks(tmp.path(), "my-theme");
+        assert!(resolved.path().is_some());
+        assert_eq!(resolved.path().unwrap(), theme_hooks);
+    }
+
+    #[test]
+    fn resolve_theme_hooks_no_theme() {
+        let tmp = TempDir::new().unwrap();
+        let resolved = resolve_theme_hooks(tmp.path(), "nonexistent");
+        assert!(resolved.path().is_none());
+    }
+
+    #[test]
+    fn resolve_theme_hooks_disk_priority_over_bundled() {
+        // When a disk-installed theme has hooks/, it should be preferred.
+        let tmp = TempDir::new().unwrap();
+        let theme_hooks = tmp.path().join(".zetl").join("themes").join("default").join("hooks");
+        fs::create_dir_all(&theme_hooks).unwrap();
+        create_hook(&theme_hooks, "post-build", true);
+
+        let resolved = resolve_theme_hooks(tmp.path(), "default");
+        assert!(resolved.path().is_some());
+        assert_eq!(resolved.path().unwrap(), theme_hooks);
+    }
+
+    #[test]
+    fn resolve_theme_hooks_bundled_no_hooks() {
+        // Bundled "default" theme has no hooks/ subdirectory.
+        let tmp = TempDir::new().unwrap();
+        let resolved = resolve_theme_hooks(tmp.path(), "default");
+        assert!(resolved.path().is_none());
+    }
+
+    #[test]
+    fn extract_bundled_hooks_creates_executable_files() {
+        let hook_files = vec![
+            ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
+            ("on-save".to_string(), b"#!/bin/sh\necho saved\n".to_vec()),
+        ];
+
+        let (dir, _temp) = extract_bundled_hooks(&hook_files).unwrap();
+
+        // Both files should exist
+        assert!(dir.join("post-build").is_file());
+        assert!(dir.join("on-save").is_file());
+
+        // Both should be executable
+        assert!(is_executable(&dir.join("post-build")));
+        assert!(is_executable(&dir.join("on-save")));
+
+        // Content should match
+        let content = fs::read_to_string(dir.join("post-build")).unwrap();
+        assert_eq!(content, "#!/bin/sh\necho ok\n");
+    }
+
+    #[test]
+    fn extracted_bundled_hooks_are_discoverable() {
+        let hook_files = vec![
+            ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
+        ];
+
+        let (dir, _temp) = extract_bundled_hooks(&hook_files).unwrap();
+
+        // The extracted directory should work with discover_hooks
+        let tmp = TempDir::new().unwrap();
+        let manifest = discover_hooks(tmp.path(), Some(&dir));
+        assert_eq!(manifest.hooks.len(), 1);
+        assert_eq!(manifest.hooks[0].name, "post-build");
+        assert_eq!(manifest.hooks[0].source, HookSource::Theme);
+        assert!(manifest.hooks[0].executable);
+    }
+
+    #[test]
+    fn theme_hooks_dir_path_lifetime() {
+        // Ensure the TempDir stays alive as long as ThemeHooksDir
+        let hook_files = vec![
+            ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
+        ];
+
+        let (dir, temp) = extract_bundled_hooks(&hook_files).unwrap();
+        let theme_hooks = ThemeHooksDir {
+            path: Some(dir),
+            _temp: Some(temp),
+        };
+
+        // Path should still be valid
+        let path = theme_hooks.path().unwrap();
+        assert!(path.join("post-build").is_file());
     }
 }

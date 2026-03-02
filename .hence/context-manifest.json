@@ -1,12 +1,12 @@
 {
-  "task_id": "wire-post-build",
+  "task_id": "theme-hook-discovery",
   "token_budget": 8000,
-  "tokens_used": 107,
+  "tokens_used": 141,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Wire post-build hook invocation into build_static(): discover hooks, invoke with context including out_dir and pages_rendered fields, set ZETL_OUT_DIR env var",
-      "token_cost": 39,
+      "content": "Add theme hook discovery: check active theme's hooks/ directory (.zetl/themes/<name>/hooks/ for disk-installed; embedded path for bundled themes); run theme hooks before vault hooks at each lifecycle point",
+      "token_cost": 51,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 3 files (+398, -5): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs",
       "token_cost": 24,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-wire-post-build-changes",
+      "content": "Modified 3 files (+83, -5): .hence/context-manifest.json, src/hooks/context.rs, src/main.rs",
+      "token_cost": 22,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T11:41:17Z"
+  "constructed_at": "2026-03-02T11:45:34Z"
 }

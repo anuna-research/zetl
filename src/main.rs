@@ -3109,10 +3109,10 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
 
     // ── post-build hooks (REQ-016-004: non-fatal) ──────────────────────
     let verbose = cli.verbose > 0;
-    let theme_hooks_dir = zetl::hooks::resolve_theme_hooks_dir(&pipeline.vault_root, theme);
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
     let manifest = zetl::hooks::discover_hooks_verbose(
         &pipeline.vault_root,
-        theme_hooks_dir.as_deref(),
+        theme_hooks.path(),
         verbose,
     );
 
