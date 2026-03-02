@@ -14,7 +14,7 @@ It's designed LLM-agent-first. Every command outputs structured [[JSON by Defaul
 zetl index
 ```
 
-25 pages, 157 links — ready to query.
+26 pages, 180 links — ready to query.
 
 ## Graph queries
 
@@ -26,7 +26,7 @@ zetl backlinks "Reasoning Engine"
 zetl path Cache "Spindle Lisp"
 ```
 
-`zetl links` with `--depth 2` gives you the full two-hop neighbourhood around [[Scanner]]. `zetl backlinks` on [[Reasoning Engine]] returns 19 pages. `zetl path` finds the shortest route from [[Cache]] to [[Spindle Lisp]].
+`zetl links` with `--depth 2` gives you the full two-hop neighbourhood around [[Scanner]]. `zetl backlinks` on [[Reasoning Engine]] returns 21 backlinks. `zetl path` finds the shortest route from [[Cache]] to [[Spindle Lisp]].
 
 ## Validation
 
