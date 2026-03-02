@@ -1,12 +1,12 @@
 {
-  "task_id": "fountain-integration-tests",
+  "task_id": "verify-phase2",
   "token_budget": 8000,
-  "tokens_used": 374,
+  "tokens_used": 440,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add integration tests for the fountain theme. Verify: zetl build --theme fountain produces HTML with Courier Prime font-face and no CDN URLs; WOFF2 fonts copied to _static/ in build output; 3-scene chain vault has prev/next navigation with correct links and positions; non-chain pages have no scene nav; zetl theme list shows fountain as bundled. TEST-015-001, TEST-015-002, TEST-015-003.",
-      "token_cost": 97,
+      "content": "Final end-to-end verification. Verify: zetl serve --theme fountain renders screenplay pages with Courier Prime and grey background; scene headings uppercase bold, character names centered, dialogue narrower; prev/next nav with Scene N of M; sidebar collapsed by default, shows chain order when opened; dark mode works; zetl build --theme fountain produces self-contained static site with fonts in _static/ and no CDN refs; zetl theme list shows fountain; chaining works with both default and fountain themes; zetl check validates chains; non-chain pages normal; multi-chain vault works; cargo test passes. TEST-015-001 through TEST-015-007, NFR-015-001.",
+      "token_cost": 163,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T11:02:53Z"
+  "constructed_at": "2026-03-02T11:09:43Z"
 }
