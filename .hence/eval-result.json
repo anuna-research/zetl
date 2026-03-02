@@ -3,25 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 46,
-    "deletions": 6,
+    "files_changed": 3,
+    "insertions": 128,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/main.rs"
+      "src/hooks/context.rs",
+      "src/web/routes.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-theme-install-hooks-changes",
-      "content": "Modified 2 files (+46, -6): .hence/context-manifest.json, src/main.rs",
+      "key": "task-on-save-hook-changes",
+      "content": "Modified 3 files (+128, -5): .hence/context-manifest.json, src/hooks/context.rs, src/web/routes.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/theme-install-hooks-v1",
-  "evaluated_at": "2026-03-02T12:27:09Z",
+  "branch_name": "hence/on-save-hook-v1",
+  "evaluated_at": "2026-03-02T12:32:59Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
