@@ -302,3 +302,374 @@
 (meta d-no-execute-without-discovery
   (description "Hook executor depends on hook discovery being complete")
   (justification "Executor needs discovery module to find hook files before spawning"))
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T11:23:11Z"
+  (given delegated-v1-hook-discovery-to-agent:claude)
+  (given (during (leased-v1-hook-discovery) (moment "2026-03-02T11:23:11Z") (moment "2026-03-02T11:53:11Z")))
+  (given claim-v1-hook-discovery-by-claude)
+  (normally r-cl-state-v1-hook-discovery-by-claude claim-v1-hook-discovery-by-claude state-claimed-v1-hook-discovery-by-claude)
+  (normally r-cl-chain-v1-hook-discovery-by-claude state-claimed-v1-hook-discovery-by-claude claimed-hook-discovery)
+)
+
+;; Propagation rules: failures in 'hook-discovery' block downstream tasks
+(normally r-propagate-hook-executor-from-hook-discovery-failed failed-hook-discovery upstream-blocked-hook-executor)
+(normally r-propagate-hook-executor-from-hook-discovery-permanently-failed permanently-failed-hook-discovery upstream-blocked-hook-executor)
+(normally r-propagate-hook-executor-from-hook-discovery-stale-v1 stale-v1-hook-discovery upstream-blocked-hook-executor)
+(normally r-propagate-hook-executor-from-hook-discovery-timeout-v1 timeout-v1-hook-discovery upstream-blocked-hook-executor)
+(normally r-propagate-hook-executor-from-hook-discovery-blocked upstream-blocked-hook-discovery upstream-blocked-hook-executor)
+(normally r-propagate-hook-list-cmd-from-hook-discovery-failed failed-hook-discovery upstream-blocked-hook-list-cmd)
+(normally r-propagate-hook-list-cmd-from-hook-discovery-permanently-failed permanently-failed-hook-discovery upstream-blocked-hook-list-cmd)
+(normally r-propagate-hook-list-cmd-from-hook-discovery-stale-v1 stale-v1-hook-discovery upstream-blocked-hook-list-cmd)
+(normally r-propagate-hook-list-cmd-from-hook-discovery-timeout-v1 timeout-v1-hook-discovery upstream-blocked-hook-list-cmd)
+(normally r-propagate-hook-list-cmd-from-hook-discovery-blocked upstream-blocked-hook-discovery upstream-blocked-hook-list-cmd)
+(normally r-propagate-theme-hook-discovery-from-hook-discovery-failed failed-hook-discovery upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-hook-discovery-permanently-failed permanently-failed-hook-discovery upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-hook-discovery-stale-v1 stale-v1-hook-discovery upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-hook-discovery-timeout-v1 timeout-v1-hook-discovery upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-hook-discovery-blocked upstream-blocked-hook-discovery upstream-blocked-theme-hook-discovery)
+(normally r-propagate-verbose-logging-from-hook-discovery-failed failed-hook-discovery upstream-blocked-verbose-logging)
+(normally r-propagate-verbose-logging-from-hook-discovery-permanently-failed permanently-failed-hook-discovery upstream-blocked-verbose-logging)
+(normally r-propagate-verbose-logging-from-hook-discovery-stale-v1 stale-v1-hook-discovery upstream-blocked-verbose-logging)
+(normally r-propagate-verbose-logging-from-hook-discovery-timeout-v1 timeout-v1-hook-discovery upstream-blocked-verbose-logging)
+(normally r-propagate-verbose-logging-from-hook-discovery-blocked upstream-blocked-hook-discovery upstream-blocked-verbose-logging)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-hook-run-cmd-from-hook-executor-blocked upstream-blocked-hook-executor upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-timeout-from-hook-executor-blocked upstream-blocked-hook-executor upstream-blocked-hook-timeout)
+(normally r-propagate-on-save-hook-from-hook-executor-blocked upstream-blocked-hook-executor upstream-blocked-on-save-hook)
+(normally r-propagate-post-check-hook-from-hook-executor-blocked upstream-blocked-hook-executor upstream-blocked-post-check-hook)
+(normally r-propagate-pre-hooks-from-hook-executor-blocked upstream-blocked-hook-executor upstream-blocked-pre-hooks)
+(normally r-propagate-theme-hook-discovery-from-hook-executor-blocked upstream-blocked-hook-executor upstream-blocked-theme-hook-discovery)
+(normally r-propagate-verbose-logging-from-hook-executor-blocked upstream-blocked-hook-executor upstream-blocked-verbose-logging)
+(normally r-propagate-wire-post-build-from-hook-executor-blocked upstream-blocked-hook-executor upstream-blocked-wire-post-build)
+(normally r-propagate-wire-post-index-from-hook-executor-blocked upstream-blocked-hook-executor upstream-blocked-wire-post-index)
+(normally r-propagate-hook-run-cmd-from-hook-list-cmd-blocked upstream-blocked-hook-list-cmd upstream-blocked-hook-run-cmd)
+(normally r-propagate-bundled-hook-extraction-from-theme-hook-discovery-blocked upstream-blocked-theme-hook-discovery upstream-blocked-bundled-hook-extraction)
+(normally r-propagate-hook-list-cmd-from-theme-hook-discovery-blocked upstream-blocked-theme-hook-discovery upstream-blocked-hook-list-cmd)
+(normally r-propagate-theme-install-hooks-from-theme-hook-discovery-blocked upstream-blocked-theme-hook-discovery upstream-blocked-theme-install-hooks)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T11:28:22Z"
+  (given completed-hook-discovery)
+  (given eval-result-v1-hook-discovery-by-claude)
+  (given eval-confidence-v1-hook-discovery-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T11:28:27Z"
+  (given delegated-v1-hook-executor-to-agent:claude)
+  (given (during (leased-v1-hook-executor) (moment "2026-03-02T11:28:27Z") (moment "2026-03-02T11:58:27Z")))
+  (given claim-v1-hook-executor-by-claude)
+  (normally r-cl-state-v1-hook-executor-by-claude claim-v1-hook-executor-by-claude state-claimed-v1-hook-executor-by-claude)
+  (normally r-cl-chain-v1-hook-executor-by-claude state-claimed-v1-hook-executor-by-claude claimed-hook-executor)
+)
+
+;; Propagation rules: failures in 'hook-executor' block downstream tasks
+(normally r-propagate-hook-run-cmd-from-hook-executor-failed failed-hook-executor upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-run-cmd-from-hook-executor-permanently-failed permanently-failed-hook-executor upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-run-cmd-from-hook-executor-stale-v1 stale-v1-hook-executor upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-run-cmd-from-hook-executor-timeout-v1 timeout-v1-hook-executor upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-timeout-from-hook-executor-failed failed-hook-executor upstream-blocked-hook-timeout)
+(normally r-propagate-hook-timeout-from-hook-executor-permanently-failed permanently-failed-hook-executor upstream-blocked-hook-timeout)
+(normally r-propagate-hook-timeout-from-hook-executor-stale-v1 stale-v1-hook-executor upstream-blocked-hook-timeout)
+(normally r-propagate-hook-timeout-from-hook-executor-timeout-v1 timeout-v1-hook-executor upstream-blocked-hook-timeout)
+(normally r-propagate-on-save-hook-from-hook-executor-failed failed-hook-executor upstream-blocked-on-save-hook)
+(normally r-propagate-on-save-hook-from-hook-executor-permanently-failed permanently-failed-hook-executor upstream-blocked-on-save-hook)
+(normally r-propagate-on-save-hook-from-hook-executor-stale-v1 stale-v1-hook-executor upstream-blocked-on-save-hook)
+(normally r-propagate-on-save-hook-from-hook-executor-timeout-v1 timeout-v1-hook-executor upstream-blocked-on-save-hook)
+(normally r-propagate-post-check-hook-from-hook-executor-failed failed-hook-executor upstream-blocked-post-check-hook)
+(normally r-propagate-post-check-hook-from-hook-executor-permanently-failed permanently-failed-hook-executor upstream-blocked-post-check-hook)
+(normally r-propagate-post-check-hook-from-hook-executor-stale-v1 stale-v1-hook-executor upstream-blocked-post-check-hook)
+(normally r-propagate-post-check-hook-from-hook-executor-timeout-v1 timeout-v1-hook-executor upstream-blocked-post-check-hook)
+(normally r-propagate-pre-hooks-from-hook-executor-failed failed-hook-executor upstream-blocked-pre-hooks)
+(normally r-propagate-pre-hooks-from-hook-executor-permanently-failed permanently-failed-hook-executor upstream-blocked-pre-hooks)
+(normally r-propagate-pre-hooks-from-hook-executor-stale-v1 stale-v1-hook-executor upstream-blocked-pre-hooks)
+(normally r-propagate-pre-hooks-from-hook-executor-timeout-v1 timeout-v1-hook-executor upstream-blocked-pre-hooks)
+(normally r-propagate-theme-hook-discovery-from-hook-executor-failed failed-hook-executor upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-hook-executor-permanently-failed permanently-failed-hook-executor upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-hook-executor-stale-v1 stale-v1-hook-executor upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-hook-executor-timeout-v1 timeout-v1-hook-executor upstream-blocked-theme-hook-discovery)
+(normally r-propagate-verbose-logging-from-hook-executor-failed failed-hook-executor upstream-blocked-verbose-logging)
+(normally r-propagate-verbose-logging-from-hook-executor-permanently-failed permanently-failed-hook-executor upstream-blocked-verbose-logging)
+(normally r-propagate-verbose-logging-from-hook-executor-stale-v1 stale-v1-hook-executor upstream-blocked-verbose-logging)
+(normally r-propagate-verbose-logging-from-hook-executor-timeout-v1 timeout-v1-hook-executor upstream-blocked-verbose-logging)
+(normally r-propagate-wire-post-build-from-hook-executor-failed failed-hook-executor upstream-blocked-wire-post-build)
+(normally r-propagate-wire-post-build-from-hook-executor-permanently-failed permanently-failed-hook-executor upstream-blocked-wire-post-build)
+(normally r-propagate-wire-post-build-from-hook-executor-stale-v1 stale-v1-hook-executor upstream-blocked-wire-post-build)
+(normally r-propagate-wire-post-build-from-hook-executor-timeout-v1 timeout-v1-hook-executor upstream-blocked-wire-post-build)
+(normally r-propagate-wire-post-index-from-hook-executor-failed failed-hook-executor upstream-blocked-wire-post-index)
+(normally r-propagate-wire-post-index-from-hook-executor-permanently-failed permanently-failed-hook-executor upstream-blocked-wire-post-index)
+(normally r-propagate-wire-post-index-from-hook-executor-stale-v1 stale-v1-hook-executor upstream-blocked-wire-post-index)
+(normally r-propagate-wire-post-index-from-hook-executor-timeout-v1 timeout-v1-hook-executor upstream-blocked-wire-post-index)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T11:32:23Z"
+  (given completed-hook-executor)
+  (given eval-result-v1-hook-executor-by-claude)
+  (given eval-confidence-v1-hook-executor-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T11:32:28Z"
+  (given delegated-v1-verbose-logging-to-agent:claude)
+  (given (during (leased-v1-verbose-logging) (moment "2026-03-02T11:32:28Z") (moment "2026-03-02T12:02:28Z")))
+  (given claim-v1-verbose-logging-by-claude)
+  (normally r-cl-state-v1-verbose-logging-by-claude claim-v1-verbose-logging-by-claude state-claimed-v1-verbose-logging-by-claude)
+  (normally r-cl-chain-v1-verbose-logging-by-claude state-claimed-v1-verbose-logging-by-claude claimed-verbose-logging)
+)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T11:36:36Z"
+  (given completed-verbose-logging)
+  (given eval-result-v1-verbose-logging-by-claude)
+  (given eval-confidence-v1-verbose-logging-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T11:36:42Z"
+  (given delegated-v1-context-builder-to-agent:claude)
+  (given (during (leased-v1-context-builder) (moment "2026-03-02T11:36:42Z") (moment "2026-03-02T12:06:42Z")))
+  (given claim-v1-context-builder-by-claude)
+  (normally r-cl-state-v1-context-builder-by-claude claim-v1-context-builder-by-claude state-claimed-v1-context-builder-by-claude)
+  (normally r-cl-chain-v1-context-builder-by-claude state-claimed-v1-context-builder-by-claude claimed-context-builder)
+)
+
+;; Propagation rules: failures in 'context-builder' block downstream tasks
+(normally r-propagate-hook-run-cmd-from-context-builder-failed failed-context-builder upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-run-cmd-from-context-builder-permanently-failed permanently-failed-context-builder upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-run-cmd-from-context-builder-stale-v1 stale-v1-context-builder upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-run-cmd-from-context-builder-timeout-v1 timeout-v1-context-builder upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-run-cmd-from-context-builder-blocked upstream-blocked-context-builder upstream-blocked-hook-run-cmd)
+(normally r-propagate-on-save-hook-from-context-builder-failed failed-context-builder upstream-blocked-on-save-hook)
+(normally r-propagate-on-save-hook-from-context-builder-permanently-failed permanently-failed-context-builder upstream-blocked-on-save-hook)
+(normally r-propagate-on-save-hook-from-context-builder-stale-v1 stale-v1-context-builder upstream-blocked-on-save-hook)
+(normally r-propagate-on-save-hook-from-context-builder-timeout-v1 timeout-v1-context-builder upstream-blocked-on-save-hook)
+(normally r-propagate-on-save-hook-from-context-builder-blocked upstream-blocked-context-builder upstream-blocked-on-save-hook)
+(normally r-propagate-post-check-hook-from-context-builder-failed failed-context-builder upstream-blocked-post-check-hook)
+(normally r-propagate-post-check-hook-from-context-builder-permanently-failed permanently-failed-context-builder upstream-blocked-post-check-hook)
+(normally r-propagate-post-check-hook-from-context-builder-stale-v1 stale-v1-context-builder upstream-blocked-post-check-hook)
+(normally r-propagate-post-check-hook-from-context-builder-timeout-v1 timeout-v1-context-builder upstream-blocked-post-check-hook)
+(normally r-propagate-post-check-hook-from-context-builder-blocked upstream-blocked-context-builder upstream-blocked-post-check-hook)
+(normally r-propagate-pre-hooks-from-context-builder-failed failed-context-builder upstream-blocked-pre-hooks)
+(normally r-propagate-pre-hooks-from-context-builder-permanently-failed permanently-failed-context-builder upstream-blocked-pre-hooks)
+(normally r-propagate-pre-hooks-from-context-builder-stale-v1 stale-v1-context-builder upstream-blocked-pre-hooks)
+(normally r-propagate-pre-hooks-from-context-builder-timeout-v1 timeout-v1-context-builder upstream-blocked-pre-hooks)
+(normally r-propagate-pre-hooks-from-context-builder-blocked upstream-blocked-context-builder upstream-blocked-pre-hooks)
+(normally r-propagate-theme-hook-discovery-from-context-builder-failed failed-context-builder upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-context-builder-permanently-failed permanently-failed-context-builder upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-context-builder-stale-v1 stale-v1-context-builder upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-context-builder-timeout-v1 timeout-v1-context-builder upstream-blocked-theme-hook-discovery)
+(normally r-propagate-theme-hook-discovery-from-context-builder-blocked upstream-blocked-context-builder upstream-blocked-theme-hook-discovery)
+(normally r-propagate-wire-post-build-from-context-builder-failed failed-context-builder upstream-blocked-wire-post-build)
+(normally r-propagate-wire-post-build-from-context-builder-permanently-failed permanently-failed-context-builder upstream-blocked-wire-post-build)
+(normally r-propagate-wire-post-build-from-context-builder-stale-v1 stale-v1-context-builder upstream-blocked-wire-post-build)
+(normally r-propagate-wire-post-build-from-context-builder-timeout-v1 timeout-v1-context-builder upstream-blocked-wire-post-build)
+(normally r-propagate-wire-post-build-from-context-builder-blocked upstream-blocked-context-builder upstream-blocked-wire-post-build)
+(normally r-propagate-wire-post-index-from-context-builder-failed failed-context-builder upstream-blocked-wire-post-index)
+(normally r-propagate-wire-post-index-from-context-builder-permanently-failed permanently-failed-context-builder upstream-blocked-wire-post-index)
+(normally r-propagate-wire-post-index-from-context-builder-stale-v1 stale-v1-context-builder upstream-blocked-wire-post-index)
+(normally r-propagate-wire-post-index-from-context-builder-timeout-v1 timeout-v1-context-builder upstream-blocked-wire-post-index)
+(normally r-propagate-wire-post-index-from-context-builder-blocked upstream-blocked-context-builder upstream-blocked-wire-post-index)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T11:41:12Z"
+  (given completed-context-builder)
+  (given eval-result-v1-context-builder-by-claude)
+  (given eval-confidence-v1-context-builder-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T11:41:17Z"
+  (given delegated-v1-wire-post-build-to-agent:claude)
+  (given (during (leased-v1-wire-post-build) (moment "2026-03-02T11:41:17Z") (moment "2026-03-02T12:11:17Z")))
+  (given claim-v1-wire-post-build-by-claude)
+  (normally r-cl-state-v1-wire-post-build-by-claude claim-v1-wire-post-build-by-claude state-claimed-v1-wire-post-build-by-claude)
+  (normally r-cl-chain-v1-wire-post-build-by-claude state-claimed-v1-wire-post-build-by-claude claimed-wire-post-build)
+)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T11:45:29Z"
+  (given completed-wire-post-build)
+  (given eval-result-v1-wire-post-build-by-claude)
+  (given eval-confidence-v1-wire-post-build-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T11:45:34Z"
+  (given delegated-v1-theme-hook-discovery-to-agent:claude)
+  (given (during (leased-v1-theme-hook-discovery) (moment "2026-03-02T11:45:34Z") (moment "2026-03-02T12:15:34Z")))
+  (given claim-v1-theme-hook-discovery-by-claude)
+  (normally r-cl-state-v1-theme-hook-discovery-by-claude claim-v1-theme-hook-discovery-by-claude state-claimed-v1-theme-hook-discovery-by-claude)
+  (normally r-cl-chain-v1-theme-hook-discovery-by-claude state-claimed-v1-theme-hook-discovery-by-claude claimed-theme-hook-discovery)
+)
+
+;; Propagation rules: failures in 'theme-hook-discovery' block downstream tasks
+(normally r-propagate-bundled-hook-extraction-from-theme-hook-discovery-failed failed-theme-hook-discovery upstream-blocked-bundled-hook-extraction)
+(normally r-propagate-bundled-hook-extraction-from-theme-hook-discovery-permanently-failed permanently-failed-theme-hook-discovery upstream-blocked-bundled-hook-extraction)
+(normally r-propagate-bundled-hook-extraction-from-theme-hook-discovery-stale-v1 stale-v1-theme-hook-discovery upstream-blocked-bundled-hook-extraction)
+(normally r-propagate-bundled-hook-extraction-from-theme-hook-discovery-timeout-v1 timeout-v1-theme-hook-discovery upstream-blocked-bundled-hook-extraction)
+(normally r-propagate-hook-list-cmd-from-theme-hook-discovery-failed failed-theme-hook-discovery upstream-blocked-hook-list-cmd)
+(normally r-propagate-hook-list-cmd-from-theme-hook-discovery-permanently-failed permanently-failed-theme-hook-discovery upstream-blocked-hook-list-cmd)
+(normally r-propagate-hook-list-cmd-from-theme-hook-discovery-stale-v1 stale-v1-theme-hook-discovery upstream-blocked-hook-list-cmd)
+(normally r-propagate-hook-list-cmd-from-theme-hook-discovery-timeout-v1 timeout-v1-theme-hook-discovery upstream-blocked-hook-list-cmd)
+(normally r-propagate-theme-install-hooks-from-theme-hook-discovery-failed failed-theme-hook-discovery upstream-blocked-theme-install-hooks)
+(normally r-propagate-theme-install-hooks-from-theme-hook-discovery-permanently-failed permanently-failed-theme-hook-discovery upstream-blocked-theme-install-hooks)
+(normally r-propagate-theme-install-hooks-from-theme-hook-discovery-stale-v1 stale-v1-theme-hook-discovery upstream-blocked-theme-install-hooks)
+(normally r-propagate-theme-install-hooks-from-theme-hook-discovery-timeout-v1 timeout-v1-theme-hook-discovery upstream-blocked-theme-install-hooks)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T11:52:30Z"
+  (given completed-theme-hook-discovery)
+  (given eval-result-v1-theme-hook-discovery-by-claude)
+  (given eval-confidence-v1-theme-hook-discovery-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T11:52:35Z"
+  (given delegated-v1-hook-list-cmd-to-agent:claude)
+  (given (during (leased-v1-hook-list-cmd) (moment "2026-03-02T11:52:35Z") (moment "2026-03-02T12:22:35Z")))
+  (given claim-v1-hook-list-cmd-by-claude)
+  (normally r-cl-state-v1-hook-list-cmd-by-claude claim-v1-hook-list-cmd-by-claude state-claimed-v1-hook-list-cmd-by-claude)
+  (normally r-cl-chain-v1-hook-list-cmd-by-claude state-claimed-v1-hook-list-cmd-by-claude claimed-hook-list-cmd)
+)
+
+;; Propagation rules: failures in 'hook-list-cmd' block downstream tasks
+(normally r-propagate-hook-run-cmd-from-hook-list-cmd-failed failed-hook-list-cmd upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-run-cmd-from-hook-list-cmd-permanently-failed permanently-failed-hook-list-cmd upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-run-cmd-from-hook-list-cmd-stale-v1 stale-v1-hook-list-cmd upstream-blocked-hook-run-cmd)
+(normally r-propagate-hook-run-cmd-from-hook-list-cmd-timeout-v1 timeout-v1-hook-list-cmd upstream-blocked-hook-run-cmd)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T11:57:47Z"
+  (given completed-hook-list-cmd)
+  (given eval-result-v1-hook-list-cmd-by-claude)
+  (given eval-confidence-v1-hook-list-cmd-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T11:57:52Z"
+  (given delegated-v1-hook-timeout-to-agent:claude)
+  (given (during (leased-v1-hook-timeout) (moment "2026-03-02T11:57:52Z") (moment "2026-03-02T12:27:52Z")))
+  (given claim-v1-hook-timeout-by-claude)
+  (normally r-cl-state-v1-hook-timeout-by-claude claim-v1-hook-timeout-by-claude state-claimed-v1-hook-timeout-by-claude)
+  (normally r-cl-chain-v1-hook-timeout-by-claude state-claimed-v1-hook-timeout-by-claude claimed-hook-timeout)
+)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T12:03:07Z"
+  (given completed-hook-timeout)
+  (given eval-result-v1-hook-timeout-by-claude)
+  (given eval-confidence-v1-hook-timeout-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T12:03:12Z"
+  (given delegated-v1-hook-run-cmd-to-agent:claude)
+  (given (during (leased-v1-hook-run-cmd) (moment "2026-03-02T12:03:12Z") (moment "2026-03-02T12:33:12Z")))
+  (given claim-v1-hook-run-cmd-by-claude)
+  (normally r-cl-state-v1-hook-run-cmd-by-claude claim-v1-hook-run-cmd-by-claude state-claimed-v1-hook-run-cmd-by-claude)
+  (normally r-cl-chain-v1-hook-run-cmd-by-claude state-claimed-v1-hook-run-cmd-by-claude claimed-hook-run-cmd)
+)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T12:08:53Z"
+  (given completed-hook-run-cmd)
+  (given eval-result-v1-hook-run-cmd-by-claude)
+  (given eval-confidence-v1-hook-run-cmd-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T12:08:58Z"
+  (given delegated-v1-post-check-hook-to-agent:claude)
+  (given (during (leased-v1-post-check-hook) (moment "2026-03-02T12:08:58Z") (moment "2026-03-02T12:38:58Z")))
+  (given claim-v1-post-check-hook-by-claude)
+  (normally r-cl-state-v1-post-check-hook-by-claude claim-v1-post-check-hook-by-claude state-claimed-v1-post-check-hook-by-claude)
+  (normally r-cl-chain-v1-post-check-hook-by-claude state-claimed-v1-post-check-hook-by-claude claimed-post-check-hook)
+)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T12:16:07Z"
+  (given completed-post-check-hook)
+  (given eval-result-v1-post-check-hook-by-claude)
+  (given eval-confidence-v1-post-check-hook-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T12:16:12Z"
+  (given delegated-v1-pre-hooks-to-agent:claude)
+  (given (during (leased-v1-pre-hooks) (moment "2026-03-02T12:16:12Z") (moment "2026-03-02T12:46:12Z")))
+  (given claim-v1-pre-hooks-by-claude)
+  (normally r-cl-state-v1-pre-hooks-by-claude claim-v1-pre-hooks-by-claude state-claimed-v1-pre-hooks-by-claude)
+  (normally r-cl-chain-v1-pre-hooks-by-claude state-claimed-v1-pre-hooks-by-claude claimed-pre-hooks)
+)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T12:22:55Z"
+  (given completed-pre-hooks)
+  (given eval-result-v1-pre-hooks-by-claude)
+  (given eval-confidence-v1-pre-hooks-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T12:23:01Z"
+  (given delegated-v1-theme-install-hooks-to-agent:claude)
+  (given (during (leased-v1-theme-install-hooks) (moment "2026-03-02T12:23:01Z") (moment "2026-03-02T12:53:01Z")))
+  (given claim-v1-theme-install-hooks-by-claude)
+  (normally r-cl-state-v1-theme-install-hooks-by-claude claim-v1-theme-install-hooks-by-claude state-claimed-v1-theme-install-hooks-by-claude)
+  (normally r-cl-chain-v1-theme-install-hooks-by-claude state-claimed-v1-theme-install-hooks-by-claude claimed-theme-install-hooks)
+)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T12:27:09Z"
+  (given completed-theme-install-hooks)
+  (given eval-result-v1-theme-install-hooks-by-claude)
+  (given eval-confidence-v1-theme-install-hooks-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T12:27:15Z"
+  (given delegated-v1-on-save-hook-to-agent:claude)
+  (given (during (leased-v1-on-save-hook) (moment "2026-03-02T12:27:15Z") (moment "2026-03-02T12:57:15Z")))
+  (given claim-v1-on-save-hook-by-claude)
+  (normally r-cl-state-v1-on-save-hook-by-claude claim-v1-on-save-hook-by-claude state-claimed-v1-on-save-hook-by-claude)
+  (normally r-cl-chain-v1-on-save-hook-by-claude state-claimed-v1-on-save-hook-by-claude claimed-on-save-hook)
+)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T12:32:59Z"
+  (given completed-on-save-hook)
+  (given eval-result-v1-on-save-hook-by-claude)
+  (given eval-confidence-v1-on-save-hook-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T12:33:04Z"
+  (given delegated-v1-wire-post-index-to-agent:claude)
+  (given (during (leased-v1-wire-post-index) (moment "2026-03-02T12:33:04Z") (moment "2026-03-02T13:03:04Z")))
+  (given claim-v1-wire-post-index-by-claude)
+  (normally r-cl-state-v1-wire-post-index-by-claude claim-v1-wire-post-index-by-claude state-claimed-v1-wire-post-index-by-claude)
+  (normally r-cl-chain-v1-wire-post-index-by-claude state-claimed-v1-wire-post-index-by-claude claimed-wire-post-index)
+)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T12:36:55Z"
+  (given completed-wire-post-index)
+  (given eval-result-v1-wire-post-index-by-claude)
+  (given eval-confidence-v1-wire-post-index-1.00)
+)
+
+(claims supervisor:ed25519:xfRAzZFG
+  :at "2026-03-02T12:37:00Z"
+  (given delegated-v1-bundled-hook-extraction-to-agent:claude)
+  (given (during (leased-v1-bundled-hook-extraction) (moment "2026-03-02T12:37:00Z") (moment "2026-03-02T13:07:00Z")))
+  (given claim-v1-bundled-hook-extraction-by-claude)
+  (normally r-cl-state-v1-bundled-hook-extraction-by-claude claim-v1-bundled-hook-extraction-by-claude state-claimed-v1-bundled-hook-extraction-by-claude)
+  (normally r-cl-chain-v1-bundled-hook-extraction-by-claude state-claimed-v1-bundled-hook-extraction-by-claude claimed-bundled-hook-extraction)
+)
+
+(claims evaluator:ed25519:3jB3fzQT
+  :at "2026-03-02T12:42:34Z"
+  (given completed-bundled-hook-extraction)
+  (given eval-result-v1-bundled-hook-extraction-by-claude)
+  (given eval-confidence-v1-bundled-hook-extraction-1.00)
+)
