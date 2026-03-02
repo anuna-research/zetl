@@ -307,6 +307,225 @@ fn validate_semver(version: &str) -> Result<()> {
     }
 }
 
+// ── Git clone ─────────────────────────────────────────────────────────────────
+
+/// Result of a successful [`clone_theme`] operation.
+#[derive(Debug, Clone)]
+pub struct CloneResult {
+    pub commit_sha: String,
+    pub files_copied: usize,
+    pub total_bytes: u64,
+}
+
+/// Clone a theme repository into `target_dir`.
+///
+/// 1. Creates a temporary directory.
+/// 2. Clones the repository (shallow for branch/tag refs, full for commit SHAs).
+/// 3. If `source.path` is set, verifies the subdirectory exists.
+/// 4. Copies theme files to `target_dir`, excluding `.git/`, `.github/`,
+///    `.gitignore`, and `.gitattributes`.
+/// 5. Returns the resolved commit SHA, file count, and total bytes written.
+pub fn clone_theme(source: &ThemeInstallSource, target_dir: &Path) -> Result<CloneResult> {
+    let tmp = tempfile::tempdir().context("failed to create temporary directory")?;
+    let tmpdir = tmp.path();
+
+    let is_sha = source.git_ref.as_deref().map(is_sha_ref).unwrap_or(false);
+    if is_sha {
+        // Full clone required to check out an arbitrary commit SHA.
+        git_do_clone(None, &source.url, tmpdir, false)?;
+        git_do_checkout(tmpdir, source.git_ref.as_deref().unwrap())?;
+    } else {
+        // Shallow clone with optional branch/tag ref.
+        git_do_clone(source.git_ref.as_deref(), &source.url, tmpdir, true)?;
+    }
+
+    let commit_sha = git_rev_parse_head(tmpdir)?;
+
+    let source_dir = match &source.path {
+        Some(path) => {
+            let subdir = tmpdir.join(path);
+            if !subdir.is_dir() {
+                let hints = find_theme_toml_dirs(tmpdir);
+                if hints.is_empty() {
+                    bail!("path {:?} was not found in the cloned repository", path);
+                }
+                bail!(
+                    "path {:?} was not found in the cloned repository; \
+                     directories containing theme.toml: {}",
+                    path,
+                    hints.join(", ")
+                );
+            }
+            subdir
+        }
+        None => tmpdir.to_path_buf(),
+    };
+
+    std::fs::create_dir_all(target_dir)
+        .with_context(|| format!("failed to create {}", target_dir.display()))?;
+    let (files_copied, total_bytes) = copy_theme_files(&source_dir, target_dir)?;
+
+    Ok(CloneResult { commit_sha, files_copied, total_bytes })
+}
+
+// ── Git helpers ───────────────────────────────────────────────────────────────
+
+/// Returns `true` if `r` looks like a commit SHA: at least 7 hex characters.
+fn is_sha_ref(r: &str) -> bool {
+    r.len() >= 7 && r.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Execute `cmd`, mapping "executable not found" to a friendly error.
+fn git_run(cmd: &mut std::process::Command) -> Result<std::process::Output> {
+    cmd.output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            anyhow::anyhow!(
+                "git is required for theme installation but was not found on PATH"
+            )
+        } else {
+            anyhow::anyhow!("failed to run git: {}", e)
+        }
+    })
+}
+
+/// Run `git clone [--depth 1] [--branch <ref>] <url> <target>`.
+fn git_do_clone(git_ref: Option<&str>, url: &str, target: &Path, shallow: bool) -> Result<()> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("clone");
+    if shallow {
+        cmd.args(["--depth", "1"]);
+    }
+    if let Some(r) = git_ref {
+        cmd.args(["--branch", r]);
+    }
+    cmd.arg(url).arg(target);
+
+    let out = git_run(&mut cmd)?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        bail!("git clone failed: {}", stderr.trim());
+    }
+    Ok(())
+}
+
+/// Run `git -C <dir> checkout <sha>`.
+fn git_do_checkout(dir: &Path, sha: &str) -> Result<()> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C").arg(dir).args(["checkout", sha]);
+
+    let out = git_run(&mut cmd)?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        bail!("git checkout {:?} failed: {}", sha, stderr.trim());
+    }
+    Ok(())
+}
+
+/// Run `git -C <dir> rev-parse HEAD` and return the trimmed commit SHA.
+fn git_rev_parse_head(dir: &Path) -> Result<String> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C").arg(dir).args(["rev-parse", "HEAD"]);
+
+    let out = git_run(&mut cmd)?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        bail!("git rev-parse HEAD failed: {}", stderr.trim());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Recursively find subdirectories of `root` that contain a `theme.toml`.
+///
+/// Skips `.git` and `.github` directories. Returns paths relative to `root`,
+/// sorted lexicographically.
+fn find_theme_toml_dirs(root: &Path) -> Vec<String> {
+    let mut hints = Vec::new();
+    find_theme_toml_dirs_inner(root, root, &mut hints);
+    hints.sort();
+    hints
+}
+
+fn find_theme_toml_dirs_inner(root: &Path, dir: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name == ".git" || name == ".github" {
+            continue;
+        }
+        if path.join("theme.toml").exists() {
+            if let Ok(rel) = path.strip_prefix(root) {
+                out.push(rel.to_string_lossy().into_owned());
+            }
+        }
+        find_theme_toml_dirs_inner(root, &path, out);
+    }
+}
+
+// ── File copy helpers ─────────────────────────────────────────────────────────
+
+/// Copy theme files from `src` to `dst`.
+///
+/// Excludes `.git/`, `.github/`, `.gitignore`, and `.gitattributes`.
+/// Preserves directory structure.
+///
+/// Returns `(files_copied, total_bytes)`.
+fn copy_theme_files(src: &Path, dst: &Path) -> Result<(usize, u64)> {
+    let mut files = 0usize;
+    let mut bytes = 0u64;
+    copy_dir_recursive(src, src, dst, &mut files, &mut bytes)?;
+    Ok((files, bytes))
+}
+
+fn copy_dir_recursive(
+    root: &Path,
+    current: &Path,
+    dst_root: &Path,
+    files: &mut usize,
+    bytes: &mut u64,
+) -> Result<()> {
+    for entry in std::fs::read_dir(current)
+        .with_context(|| format!("failed to read directory {}", current.display()))?
+        .flatten()
+    {
+        let path = entry.path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+        if path.is_dir() {
+            if name == ".git" || name == ".github" {
+                continue;
+            }
+            let rel = path.strip_prefix(root).expect("path is under root");
+            let dest = dst_root.join(rel);
+            std::fs::create_dir_all(&dest)
+                .with_context(|| format!("failed to create directory {}", dest.display()))?;
+            copy_dir_recursive(root, &path, dst_root, files, bytes)?;
+        } else if path.is_file() {
+            if name == ".gitignore" || name == ".gitattributes" {
+                continue;
+            }
+            let rel = path.strip_prefix(root).expect("path is under root");
+            let dest = dst_root.join(rel);
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent).with_context(|| {
+                    format!("failed to create directory {}", parent.display())
+                })?;
+            }
+            let n = std::fs::copy(&path, &dest).with_context(|| {
+                format!("failed to copy {} to {}", path.display(), dest.display())
+            })?;
+            *files += 1;
+            *bytes += n;
+        }
+    }
+    Ok(())
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -677,5 +896,136 @@ zetl_version = "0.2.0"
         let s = parse_theme_source(toml).unwrap();
         assert_eq!(s.source.ref_name.as_deref(), Some("main"));
         assert_eq!(s.source.path.as_deref(), Some("themes/dark"));
+    }
+
+    // ── is_sha_ref ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_sha_ref_full() {
+        // 40 hex chars = full SHA
+        assert!(is_sha_ref("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"));
+    }
+
+    #[test]
+    fn test_is_sha_ref_short() {
+        // 7–39 hex chars = short SHA prefix
+        assert!(is_sha_ref("a1b2c3d"));
+        assert!(is_sha_ref("deadbeef"));
+    }
+
+    #[test]
+    fn test_is_sha_ref_too_short() {
+        // Fewer than 7 chars → not treated as SHA
+        assert!(!is_sha_ref("abc123"));
+        assert!(!is_sha_ref("main"));
+        assert!(!is_sha_ref("v1.0"));
+    }
+
+    #[test]
+    fn test_is_sha_ref_non_hex() {
+        // Non-hex characters → not a SHA
+        assert!(!is_sha_ref("feature-branch"));
+        assert!(!is_sha_ref("release/1.0"));
+    }
+
+    // ── find_theme_toml_dirs ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_find_theme_toml_dirs_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let hints = find_theme_toml_dirs(tmp.path());
+        assert!(hints.is_empty());
+    }
+
+    #[test]
+    fn test_find_theme_toml_dirs_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let theme_dir = tmp.path().join("themes").join("dark");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        std::fs::write(theme_dir.join("theme.toml"), "").unwrap();
+
+        let hints = find_theme_toml_dirs(tmp.path());
+        assert_eq!(hints, vec!["themes/dark"]);
+    }
+
+    #[test]
+    fn test_find_theme_toml_dirs_skips_git() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Put a theme.toml inside .git — should be ignored
+        let git_dir = tmp.path().join(".git").join("hooks");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("theme.toml"), "").unwrap();
+
+        let hints = find_theme_toml_dirs(tmp.path());
+        assert!(hints.is_empty());
+    }
+
+    // ── copy_theme_files ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_copy_theme_files_basic() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+
+        std::fs::write(src.path().join("theme.toml"), "[theme]\nname=\"x\"\nversion=\"1.0.0\"\n")
+            .unwrap();
+        std::fs::write(src.path().join("base.html"), "<html></html>").unwrap();
+
+        let (count, bytes) = copy_theme_files(src.path(), dst.path()).unwrap();
+        assert_eq!(count, 2);
+        assert!(bytes > 0);
+        assert!(dst.path().join("theme.toml").exists());
+        assert!(dst.path().join("base.html").exists());
+    }
+
+    #[test]
+    fn test_copy_theme_files_excludes_git() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+
+        // Regular file
+        std::fs::write(src.path().join("index.html"), "<html></html>").unwrap();
+        // .git directory — should be skipped
+        let git_dir = src.path().join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("config"), "[core]").unwrap();
+        // .github directory — should be skipped
+        let github_dir = src.path().join(".github");
+        std::fs::create_dir_all(&github_dir).unwrap();
+        std::fs::write(github_dir.join("workflows.yml"), "on: push").unwrap();
+
+        let (count, _) = copy_theme_files(src.path(), dst.path()).unwrap();
+        assert_eq!(count, 1);
+        assert!(!dst.path().join(".git").exists());
+        assert!(!dst.path().join(".github").exists());
+    }
+
+    #[test]
+    fn test_copy_theme_files_excludes_gitignore() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+
+        std::fs::write(src.path().join("style.css"), "body {}").unwrap();
+        std::fs::write(src.path().join(".gitignore"), "*.log").unwrap();
+        std::fs::write(src.path().join(".gitattributes"), "* text=auto").unwrap();
+
+        let (count, _) = copy_theme_files(src.path(), dst.path()).unwrap();
+        assert_eq!(count, 1);
+        assert!(!dst.path().join(".gitignore").exists());
+        assert!(!dst.path().join(".gitattributes").exists());
+    }
+
+    #[test]
+    fn test_copy_theme_files_preserves_structure() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+
+        let sub = src.path().join("assets").join("css");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("style.css"), "body {}").unwrap();
+
+        let (count, _) = copy_theme_files(src.path(), dst.path()).unwrap();
+        assert_eq!(count, 1);
+        assert!(dst.path().join("assets").join("css").join("style.css").exists());
     }
 }
