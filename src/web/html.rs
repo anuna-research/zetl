@@ -174,7 +174,7 @@ pub fn layout(
       items.forEach(function(item,i){
         var a=document.createElement('a');
         a.className='search-result'+(i===0?' sr-active':'');
-        a.href='/'+item.slug;
+        a.href='/'+item.slug+(item.line?'#line-'+item.line:'');
         var html='<span class="page-name">'+esc(item.page)+'</span>';
         if(item.heading)html+='<span class="heading">'+esc(item.heading)+'</span>';
         if(item.context)html+='<span class="context">'+esc(item.context)+'</span>';
@@ -218,7 +218,8 @@ pub fn layout(
               slug:slugFromPath(m.path),
               heading:m.heading||null,
               context:m.context||null,
-              score:m.score
+              score:m.score,
+              line:m.line||0
             };
           });
           render(filtered);
@@ -278,7 +279,8 @@ pub fn layout(
       }else if(e.key==='Enter'){
         e.preventDefault();
         if(active>=0&&active<filtered.length){
-          window.location.href='/'+filtered[active].slug;
+          var s=filtered[active];
+          window.location.href='/'+s.slug+(s.line?'#line-'+s.line:'');
         }
       }
     });
