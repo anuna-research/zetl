@@ -1,12 +1,17 @@
-//! Hook discovery for zetl lifecycle hooks (SPEC-016, REQ-016-001).
+//! Lifecycle hooks for zetl vault operations (SPEC-016).
 //!
-//! Scans `.zetl/hooks/` (vault hooks) and the active theme's `hooks/`
-//! directory (theme hooks) for executable hook files matching recognised
-//! lifecycle points. Non-executable hooks produce a warning with a
-//! `chmod +x` hint. Unrecognised filenames are silently ignored.
+//! This module provides:
+//! - **Discovery** (REQ-016-001): Scan `.zetl/hooks/` and theme `hooks/`
+//!   directories for executable hook files matching recognised lifecycle points.
+//! - **Execution** (REQ-016-003): Spawn hooks as child processes, write JSON
+//!   context to stdin, set ZETL_* environment variables, capture output, and
+//!   report exit codes.
 
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 /// Recognised hook lifecycle points (REQ-016-002).
 pub const HOOK_NAMES: &[&str] = &[
@@ -117,6 +122,121 @@ pub fn hooks_for<'a>(manifest: &'a HookManifest, hook_name: &str) -> Vec<&'a Dis
         .hooks
         .iter()
         .filter(|h| h.name == hook_name && h.executable)
+        .collect()
+}
+
+// ── Hook Execution (REQ-016-003, REQ-016-004, REQ-016-005) ──────────────────
+
+/// Environment context passed to hook processes.
+///
+/// The executor sets `ZETL_HOOK` automatically from the hook's name.
+/// Callers provide vault-level variables and any hook-specific extras
+/// (e.g. `ZETL_OUT_DIR` for build hooks, `ZETL_SAVED_FILE` for on-save).
+pub struct HookEnv {
+    /// Absolute path to the vault root (working directory + `ZETL_VAULT_ROOT`).
+    pub vault_root: PathBuf,
+    /// Active theme name (`ZETL_THEME`). Empty string if no theme.
+    pub theme: String,
+    /// zetl version string (`ZETL_VERSION`).
+    pub zetl_version: String,
+    /// Additional hook-specific environment variables.
+    pub extra_vars: Vec<(String, String)>,
+}
+
+/// Result of executing a single hook process (REQ-016-003).
+#[derive(Debug)]
+pub struct HookOutput {
+    /// Hook name that was executed.
+    pub hook_name: String,
+    /// Where the hook came from (theme or vault).
+    pub source: HookSource,
+    /// Absolute path to the hook that was executed.
+    pub path: PathBuf,
+    /// Process exit code (`None` if killed by signal).
+    pub exit_code: Option<i32>,
+    /// Captured stdout from the hook.
+    pub stdout: String,
+    /// Captured stderr from the hook.
+    pub stderr: String,
+    /// Wall-clock execution duration.
+    pub duration: Duration,
+}
+
+impl HookOutput {
+    /// Whether the hook exited successfully (exit code 0).
+    pub fn success(&self) -> bool {
+        self.exit_code == Some(0)
+    }
+}
+
+/// Execute a single discovered hook (CON-016-002).
+///
+/// Spawns the hook as a child process with:
+/// - Working directory set to `env.vault_root`
+/// - `ZETL_HOOK` set to the hook's name
+/// - `ZETL_VAULT_ROOT`, `ZETL_THEME`, `ZETL_VERSION` from `env`
+/// - Any additional variables from `env.extra_vars`
+/// - `context_json` written to stdin (then stdin closed)
+///
+/// Returns the captured output regardless of exit code.
+/// The caller decides whether to abort (pre-hooks) or warn (post-hooks)
+/// per REQ-016-004.
+pub fn execute_hook(
+    hook: &DiscoveredHook,
+    context_json: &[u8],
+    env: &HookEnv,
+) -> Result<HookOutput, std::io::Error> {
+    let start = Instant::now();
+
+    let mut cmd = Command::new(&hook.path);
+    cmd.current_dir(&env.vault_root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("ZETL_HOOK", &hook.name)
+        .env("ZETL_VAULT_ROOT", &env.vault_root)
+        .env("ZETL_THEME", &env.theme)
+        .env("ZETL_VERSION", &env.zetl_version);
+
+    for (key, val) in &env.extra_vars {
+        cmd.env(key, val);
+    }
+
+    let mut child = cmd.spawn()?;
+
+    // Write context JSON to stdin, then close the pipe.
+    if let Some(mut stdin) = child.stdin.take() {
+        // Ignore write errors — the hook may have exited early.
+        let _ = stdin.write_all(context_json);
+    }
+
+    let output = child.wait_with_output()?;
+    let duration = start.elapsed();
+
+    Ok(HookOutput {
+        hook_name: hook.name.clone(),
+        source: hook.source.clone(),
+        path: hook.path.clone(),
+        exit_code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        duration,
+    })
+}
+
+/// Execute all hooks for a lifecycle point sequentially (REQ-016-003).
+///
+/// Discovers executable hooks matching `hook_name` (theme first, then vault)
+/// and runs them in order. Returns a result for each hook.
+pub fn run_hooks(
+    manifest: &HookManifest,
+    hook_name: &str,
+    context_json: &[u8],
+    env: &HookEnv,
+) -> Vec<Result<HookOutput, std::io::Error>> {
+    hooks_for(manifest, hook_name)
+        .into_iter()
+        .map(|hook| execute_hook(hook, context_json, env))
         .collect()
 }
 
@@ -365,5 +485,309 @@ mod tests {
         let manifest = discover_hooks(tmp.path(), None);
         assert_eq!(manifest.hooks.len(), 1);
         assert_eq!(manifest.hooks[0].name, "on-save");
+    }
+
+    // ── Executor tests (REQ-016-003, REQ-016-004, REQ-016-005) ─────────────
+
+    /// Helper: create a hook script with custom content and make it executable.
+    fn create_script(dir: &Path, name: &str, script: &str) {
+        let path = dir.join(name);
+        fs::write(&path, script).unwrap();
+        let mut perms = fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&path, perms).unwrap();
+    }
+
+    fn test_env(vault_root: &Path) -> HookEnv {
+        HookEnv {
+            vault_root: vault_root.to_path_buf(),
+            theme: "test-theme".to_string(),
+            zetl_version: "0.1.0-test".to_string(),
+            extra_vars: vec![],
+        }
+    }
+
+    #[test]
+    fn executor_receives_json_on_stdin() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        // Hook that reads stdin and writes it to a file
+        let out_file = tmp.path().join("stdin_capture.json");
+        create_script(
+            &hooks_dir,
+            "post-build",
+            &format!(
+                "#!/bin/sh\ncat > '{}'\n",
+                out_file.display()
+            ),
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+        let context = br#"{"hook":"post-build","vault_root":"/tmp"}"#;
+
+        let result = execute_hook(hook, context, &test_env(tmp.path())).unwrap();
+        assert!(result.success());
+
+        let captured = fs::read_to_string(&out_file).unwrap();
+        assert_eq!(captured, r#"{"hook":"post-build","vault_root":"/tmp"}"#);
+    }
+
+    #[test]
+    fn executor_sets_working_directory() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        // Hook that prints pwd
+        create_script(&hooks_dir, "post-build", "#!/bin/sh\npwd\n");
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let result = execute_hook(hook, b"{}", &test_env(tmp.path())).unwrap();
+        assert!(result.success());
+
+        // Resolve symlinks for macOS /private/var/... vs /var/...
+        let expected = fs::canonicalize(tmp.path()).unwrap();
+        let actual = PathBuf::from(result.stdout.trim());
+        let actual = fs::canonicalize(&actual).unwrap_or(actual);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn executor_sets_zetl_env_vars() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(
+            &hooks_dir,
+            "post-build",
+            "#!/bin/sh\necho \"HOOK=$ZETL_HOOK\"\necho \"THEME=$ZETL_THEME\"\necho \"VERSION=$ZETL_VERSION\"\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let result = execute_hook(hook, b"{}", &test_env(tmp.path())).unwrap();
+        assert!(result.success());
+        assert!(result.stdout.contains("HOOK=post-build"));
+        assert!(result.stdout.contains("THEME=test-theme"));
+        assert!(result.stdout.contains("VERSION=0.1.0-test"));
+    }
+
+    #[test]
+    fn executor_sets_vault_root_env() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(
+            &hooks_dir,
+            "post-build",
+            "#!/bin/sh\necho \"$ZETL_VAULT_ROOT\"\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let result = execute_hook(hook, b"{}", &test_env(tmp.path())).unwrap();
+        assert!(result.success());
+
+        let expected = fs::canonicalize(tmp.path()).unwrap();
+        let actual = PathBuf::from(result.stdout.trim());
+        let actual = fs::canonicalize(&actual).unwrap_or(actual);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn executor_sets_extra_env_vars() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(
+            &hooks_dir,
+            "post-build",
+            "#!/bin/sh\necho \"OUTDIR=$ZETL_OUT_DIR\"\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let mut env = test_env(tmp.path());
+        env.extra_vars
+            .push(("ZETL_OUT_DIR".to_string(), "/tmp/dist".to_string()));
+
+        let result = execute_hook(hook, b"{}", &env).unwrap();
+        assert!(result.success());
+        assert!(result.stdout.contains("OUTDIR=/tmp/dist"));
+    }
+
+    #[test]
+    fn executor_captures_exit_code_zero() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(&hooks_dir, "post-build", "#!/bin/sh\nexit 0\n");
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let result = execute_hook(hook, b"{}", &test_env(tmp.path())).unwrap();
+        assert!(result.success());
+        assert_eq!(result.exit_code, Some(0));
+    }
+
+    #[test]
+    fn executor_captures_nonzero_exit() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(
+            &hooks_dir,
+            "post-build",
+            "#!/bin/sh\necho 'hook error' >&2\nexit 1\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let result = execute_hook(hook, b"{}", &test_env(tmp.path())).unwrap();
+        assert!(!result.success());
+        assert_eq!(result.exit_code, Some(1));
+        assert!(result.stderr.contains("hook error"));
+    }
+
+    #[test]
+    fn executor_captures_stdout_and_stderr() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(
+            &hooks_dir,
+            "post-build",
+            "#!/bin/sh\necho 'out message'\necho 'err message' >&2\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let result = execute_hook(hook, b"{}", &test_env(tmp.path())).unwrap();
+        assert!(result.success());
+        assert_eq!(result.stdout.trim(), "out message");
+        assert_eq!(result.stderr.trim(), "err message");
+    }
+
+    #[test]
+    fn executor_reports_duration() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(&hooks_dir, "post-build", "#!/bin/sh\ntrue\n");
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let result = execute_hook(hook, b"{}", &test_env(tmp.path())).unwrap();
+        // Duration should be non-negative (process spawned and exited)
+        assert!(result.duration.as_nanos() > 0);
+    }
+
+    #[test]
+    fn executor_preserves_hook_metadata() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(&hooks_dir, "on-save", "#!/bin/sh\ntrue\n");
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let result = execute_hook(hook, b"{}", &test_env(tmp.path())).unwrap();
+        assert_eq!(result.hook_name, "on-save");
+        assert_eq!(result.source, HookSource::Vault);
+        assert_eq!(result.path, hooks_dir.join("on-save"));
+    }
+
+    #[test]
+    fn run_hooks_executes_matching_hooks() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(
+            &hooks_dir,
+            "post-build",
+            "#!/bin/sh\necho 'post-build ran'\n",
+        );
+        create_script(
+            &hooks_dir,
+            "on-save",
+            "#!/bin/sh\necho 'on-save ran'\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let results = run_hooks(&manifest, "post-build", b"{}", &test_env(tmp.path()));
+
+        assert_eq!(results.len(), 1);
+        let output = results[0].as_ref().unwrap();
+        assert_eq!(output.hook_name, "post-build");
+        assert!(output.stdout.contains("post-build ran"));
+    }
+
+    #[test]
+    fn run_hooks_returns_empty_for_no_match() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(&hooks_dir, "post-build", "#!/bin/sh\ntrue\n");
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let results = run_hooks(&manifest, "pre-serve", b"{}", &test_env(tmp.path()));
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn run_hooks_theme_before_vault() {
+        let tmp = TempDir::new().unwrap();
+
+        // Vault hook
+        let vault_hooks = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&vault_hooks).unwrap();
+        create_script(
+            &vault_hooks,
+            "post-build",
+            "#!/bin/sh\necho 'vault'\n",
+        );
+
+        // Theme hook
+        let theme_hooks = tmp.path().join("theme-hooks");
+        fs::create_dir_all(&theme_hooks).unwrap();
+        create_script(
+            &theme_hooks,
+            "post-build",
+            "#!/bin/sh\necho 'theme'\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), Some(&theme_hooks));
+        let results = run_hooks(&manifest, "post-build", b"{}", &test_env(tmp.path()));
+
+        assert_eq!(results.len(), 2);
+        let first = results[0].as_ref().unwrap();
+        let second = results[1].as_ref().unwrap();
+        assert_eq!(first.source, HookSource::Theme);
+        assert_eq!(second.source, HookSource::Vault);
+        assert!(first.stdout.contains("theme"));
+        assert!(second.stdout.contains("vault"));
     }
 }
