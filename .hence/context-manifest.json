@@ -1,12 +1,12 @@
 {
-  "task_id": "theme-hook-discovery",
+  "task_id": "hook-list-cmd",
   "token_budget": 8000,
-  "tokens_used": 141,
+  "tokens_used": 165,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add theme hook discovery: check active theme's hooks/ directory (.zetl/themes/<name>/hooks/ for disk-installed; embedded path for bundled themes); run theme hooks before vault hooks at each lifecycle point",
-      "token_cost": 51,
+      "content": "Add zetl hook list subcommand: list all active hooks for current vault and theme with name, source (theme/vault), path, and executable status; default output JSON; -f table for human-readable table",
+      "token_cost": 49,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 3 files (+83, -5): .hence/context-manifest.json, src/hooks/context.rs, src/main.rs",
       "token_cost": 22,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theme-hook-discovery-changes",
+      "content": "Modified 4 files (+231, -8): .hence/context-manifest.json, src/hooks/mod.rs, src/main.rs, src/web/engine.rs",
+      "token_cost": 26,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T11:45:34Z"
+  "constructed_at": "2026-03-02T11:52:35Z"
 }
