@@ -29,7 +29,7 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
         .unwrap_or_else(|| "vault".to_string());
 
     let vault_ctx = build_vault_context(&data, &vault_name);
-    match state.engine.render_index(&vault_ctx) {
+    match state.engine.render_index(&vault_ctx, "serve") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
     }
@@ -65,7 +65,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
             let folder_name = slug.rsplit('/').next().unwrap_or(slug);
             let vault_ctx = build_vault_context(&data, &vault_name);
             let folder_ctx = build_folder_context(&data, slug, folder_name);
-            return match state.engine.render_folder(&vault_ctx, &folder_ctx) {
+            return match state.engine.render_folder(&vault_ctx, &folder_ctx, "serve") {
                 Ok(html) => Html(html).into_response(),
                 Err(e) => render_error_response(e),
             };

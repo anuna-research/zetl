@@ -120,7 +120,7 @@ pub fn build_static(
     write_search_index_json(data, vault_root, out)?;
 
     // ── index.html ──────────────────────────────────────────────────────
-    let index_html = engine.render_index(&vault_ctx).map_err(|e| {
+    let index_html = engine.render_index(&vault_ctx, "build").map_err(|e| {
         eprintln!("{}", e.stderr_line("index"));
         anyhow::anyhow!("{e}")
     })?;
@@ -180,7 +180,7 @@ pub fn build_static(
 
         let folder_name = folder.rsplit('/').next().unwrap_or(folder);
         let folder_ctx = build_folder_context(data, folder, folder_name);
-        let folder_html = engine.render_folder(&vault_ctx, &folder_ctx).map_err(|e| {
+        let folder_html = engine.render_folder(&vault_ctx, &folder_ctx, "build").map_err(|e| {
             eprintln!("{}", e.stderr_line(folder));
             anyhow::anyhow!("{e}")
         })?;

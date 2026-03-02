@@ -3930,10 +3930,9 @@ fn test_013_015_html_fetches_search_index_json() {
 
     let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
 
-    // Template engine embeds the search index inline via zetl-search-index script tag
     assert!(
-        html.contains("zetl-search-index"),
-        "index.html must contain the zetl-search-index script tag"
+        html.contains("fetch('/search-index.json')"),
+        "index.html must fetch /search-index.json to load BM25 index"
     );
 }
 
@@ -3951,14 +3950,18 @@ fn test_013_015_html_includes_bm25_scorer() {
 
     let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
 
-    // Template engine uses fuzzy search with the embedded search index
     assert!(
-        html.contains("fuzzyMatch"),
-        "index.html must include the fuzzyMatch function for search"
+        html.contains("bm25Search"),
+        "index.html must include the bm25Search function"
+    );
+    // BM25 parameters (k1=1.2, b=0.75) from SPEC-013 §4.9
+    assert!(
+        html.contains("1.2"),
+        "bm25Search must use k1=1.2 per SPEC-013 §4.9"
     );
     assert!(
-        html.contains("openSearch"),
-        "index.html must include the openSearch function for Cmd+K"
+        html.contains("0.75"),
+        "bm25Search must use b=0.75 per SPEC-013 §4.9"
     );
 }
 
@@ -4202,19 +4205,27 @@ fn test_013_013_serve_html_search_modal_fields() {
         html.contains("openSearch"),
         "serve HTML must contain the openSearch function"
     );
-    // Template engine renders search results with sr-name and sr-slug classes.
+    // Results render page name, heading, context, score.
     assert!(
-        html.contains("sr-name"),
-        "serve HTML must render .sr-name in search results"
+        html.contains("page-name"),
+        "serve HTML must render .page-name in results"
     );
     assert!(
-        html.contains("sr-slug"),
-        "serve HTML must render .sr-slug in search results"
+        html.contains("heading"),
+        "serve HTML must render .heading in results"
     );
-    // Search uses the embedded zetl-search-index JSON.
     assert!(
-        html.contains("zetl-search-index"),
-        "serve HTML must contain the zetl-search-index script tag"
+        html.contains("context"),
+        "serve HTML must render .context in results"
+    );
+    assert!(
+        html.contains("score"),
+        "serve HTML must render .score in results"
+    );
+    // Results come from the /api/search backend.
+    assert!(
+        html.contains("/api/search"),
+        "serve HTML must query the /api/search endpoint for full-text results"
     );
 }
 
