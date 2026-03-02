@@ -4,23 +4,23 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 1,
-    "insertions": 61,
-    "deletions": 0,
+    "insertions": 230,
+    "deletions": 10,
     "file_list": [
-      "src/main.rs"
+      "src/hooks/mod.rs"
     ],
     "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-wire-post-index-changes",
-      "content": "Modified 1 files (+61, -0): src/main.rs",
+      "key": "task-bundled-hook-extraction-changes",
+      "content": "Modified 1 files (+230, -10): src/hooks/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/wire-post-index-v1",
-  "evaluated_at": "2026-03-02T12:36:55Z",
+  "branch_name": "hence/bundled-hook-extraction-v1",
+  "evaluated_at": "2026-03-02T12:42:34Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

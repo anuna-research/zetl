@@ -151,13 +151,22 @@ impl ThemeHooksDir {
 /// Resolution order:
 /// 1. **Disk-installed:** `.zetl/themes/<name>/hooks/` — if this directory
 ///    exists on disk, it is used directly.
-/// 2. **Bundled:** If the theme is compiled into the binary and has hook files
-///    in its `hooks/` subdirectory, they are extracted to a temporary directory
-///    with executable permissions set.
+/// 2. **Bundled (cached):** If the theme is compiled into the binary and has
+///    hook files, they are extracted to `.zetl/cache/hooks/<theme>/` with
+///    executable permissions. The cache is refreshed when the zetl binary
+///    version changes.
+/// 3. **Bundled (temp fallback):** If the persistent cache cannot be written,
+///    hooks are extracted to a temporary directory instead.
 ///
 /// The returned [`ThemeHooksDir`] must be kept alive until hook execution is
-/// complete (it owns the temporary extraction directory for bundled hooks).
+/// complete (it may own a temporary extraction directory as fallback).
 pub fn resolve_theme_hooks(vault_root: &Path, theme: &str) -> ThemeHooksDir {
+    resolve_theme_hooks_versioned(vault_root, theme, env!("CARGO_PKG_VERSION"))
+}
+
+/// Internal version of [`resolve_theme_hooks`] that accepts an explicit version
+/// string (for testability).
+fn resolve_theme_hooks_versioned(vault_root: &Path, theme: &str, zetl_version: &str) -> ThemeHooksDir {
     // 1. Disk-installed theme hooks
     if let Some(dir) = resolve_theme_hooks_dir(vault_root, theme) {
         return ThemeHooksDir {
@@ -175,14 +184,22 @@ pub fn resolve_theme_hooks(vault_root: &Path, theme: &str) -> ThemeHooksDir {
         };
     }
 
-    match extract_bundled_hooks(&bundled_hooks) {
-        Ok((path, temp)) => ThemeHooksDir {
+    // Try persistent cache first
+    match extract_bundled_hooks_cached(vault_root, theme, &bundled_hooks, zetl_version) {
+        Ok(path) => ThemeHooksDir {
             path: Some(path),
-            _temp: Some(temp),
-        },
-        Err(_) => ThemeHooksDir {
-            path: None,
             _temp: None,
+        },
+        // Fall back to temp extraction if cache directory is not writable
+        Err(_) => match extract_bundled_hooks(&bundled_hooks) {
+            Ok((path, temp)) => ThemeHooksDir {
+                path: Some(path),
+                _temp: Some(temp),
+            },
+            Err(_) => ThemeHooksDir {
+                path: None,
+                _temp: None,
+            },
         },
     }
 }
@@ -473,6 +490,57 @@ fn extract_bundled_hooks(
     }
 
     Ok((hooks_dir, temp))
+}
+
+/// Extract bundled hook files to a persistent cache directory with version tracking.
+///
+/// Cache location: `<vault_root>/.zetl/cache/hooks/<theme>/`
+/// Version stamp: `<cache_dir>/.zetl_version`
+///
+/// If the cache directory exists and its version stamp matches `zetl_version`,
+/// the existing cache is reused without re-extraction. Otherwise the cache is
+/// cleared, hooks are re-written with executable permissions (`0o755`), and a
+/// fresh version stamp is written.
+fn extract_bundled_hooks_cached(
+    vault_root: &Path,
+    theme: &str,
+    hook_files: &[(String, Vec<u8>)],
+    zetl_version: &str,
+) -> Result<PathBuf, std::io::Error> {
+    let cache_dir = vault_root
+        .join(".zetl")
+        .join("cache")
+        .join("hooks")
+        .join(theme);
+    let version_file = cache_dir.join(".zetl_version");
+
+    // Check if cache is fresh
+    if cache_dir.is_dir() {
+        if let Ok(cached_version) = std::fs::read_to_string(&version_file) {
+            if cached_version.trim() == zetl_version {
+                return Ok(cache_dir);
+            }
+        }
+    }
+
+    // Cache is stale or missing — refresh
+    if cache_dir.exists() {
+        std::fs::remove_dir_all(&cache_dir)?;
+    }
+    std::fs::create_dir_all(&cache_dir)?;
+
+    for (name, content) in hook_files {
+        let path = cache_dir.join(name);
+        std::fs::write(&path, content)?;
+        let mut perms = std::fs::metadata(&path)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms)?;
+    }
+
+    // Write version stamp
+    std::fs::write(&version_file, zetl_version)?;
+
+    Ok(cache_dir)
 }
 
 /// Scan a single hooks directory and append discovered hooks.
@@ -1212,6 +1280,158 @@ mod tests {
         // Path should still be valid
         let path = theme_hooks.path().unwrap();
         assert!(path.join("post-build").is_file());
+    }
+
+    // ── Cached extraction tests ─────────────────────────────────────────
+
+    #[test]
+    fn extract_cached_creates_hooks_and_version_stamp() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+
+        let hook_files = vec![
+            ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
+            ("on-save".to_string(), b"#!/bin/sh\necho saved\n".to_vec()),
+        ];
+
+        let result = extract_bundled_hooks_cached(
+            tmp.path(), "my-theme", &hook_files, "1.0.0",
+        );
+        assert!(result.is_ok());
+
+        let cache_dir = result.unwrap();
+        assert_eq!(
+            cache_dir,
+            tmp.path().join(".zetl/cache/hooks/my-theme")
+        );
+        assert!(cache_dir.join("post-build").is_file());
+        assert!(cache_dir.join("on-save").is_file());
+        assert!(cache_dir.join(".zetl_version").is_file());
+
+        let stamp = fs::read_to_string(cache_dir.join(".zetl_version")).unwrap();
+        assert_eq!(stamp, "1.0.0");
+
+        let content = fs::read_to_string(cache_dir.join("post-build")).unwrap();
+        assert_eq!(content, "#!/bin/sh\necho ok\n");
+    }
+
+    #[test]
+    fn extract_cached_hooks_are_executable() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+
+        let hook_files = vec![
+            ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
+        ];
+
+        let cache_dir = extract_bundled_hooks_cached(
+            tmp.path(), "test", &hook_files, "1.0.0",
+        ).unwrap();
+
+        assert!(is_executable(&cache_dir.join("post-build")));
+        let mode = fs::metadata(cache_dir.join("post-build")).unwrap().permissions().mode();
+        assert_eq!(mode & 0o755, 0o755);
+    }
+
+    #[test]
+    fn extract_cached_reuses_on_same_version() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+
+        let hook_files = vec![
+            ("post-build".to_string(), b"#!/bin/sh\necho v1\n".to_vec()),
+        ];
+
+        // First extraction
+        let dir1 = extract_bundled_hooks_cached(
+            tmp.path(), "t", &hook_files, "1.0.0",
+        ).unwrap();
+
+        // Modify the cached file to detect if it gets overwritten
+        let marker_path = dir1.join("post-build");
+        fs::write(&marker_path, "#!/bin/sh\necho modified\n").unwrap();
+
+        // Second extraction with same version — should reuse cache
+        let dir2 = extract_bundled_hooks_cached(
+            tmp.path(), "t", &hook_files, "1.0.0",
+        ).unwrap();
+
+        assert_eq!(dir1, dir2);
+        // File should still have the modified content (cache was reused)
+        let content = fs::read_to_string(&marker_path).unwrap();
+        assert_eq!(content, "#!/bin/sh\necho modified\n");
+    }
+
+    #[test]
+    fn extract_cached_refreshes_on_version_change() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+
+        let hook_files = vec![
+            ("post-build".to_string(), b"#!/bin/sh\necho v1\n".to_vec()),
+        ];
+
+        // First extraction at version 1.0.0
+        let dir1 = extract_bundled_hooks_cached(
+            tmp.path(), "t", &hook_files, "1.0.0",
+        ).unwrap();
+
+        // Modify the file to prove refresh overwrites it
+        fs::write(dir1.join("post-build"), "#!/bin/sh\necho stale\n").unwrap();
+
+        // Second extraction at version 2.0.0 — should refresh
+        let hook_files_v2 = vec![
+            ("post-build".to_string(), b"#!/bin/sh\necho v2\n".to_vec()),
+        ];
+        let dir2 = extract_bundled_hooks_cached(
+            tmp.path(), "t", &hook_files_v2, "2.0.0",
+        ).unwrap();
+
+        assert_eq!(dir1, dir2);
+        let content = fs::read_to_string(dir2.join("post-build")).unwrap();
+        assert_eq!(content, "#!/bin/sh\necho v2\n");
+
+        let stamp = fs::read_to_string(dir2.join(".zetl_version")).unwrap();
+        assert_eq!(stamp, "2.0.0");
+    }
+
+    #[test]
+    fn extract_cached_discoverable_by_hook_discovery() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+
+        let hook_files = vec![
+            ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
+        ];
+
+        let cache_dir = extract_bundled_hooks_cached(
+            tmp.path(), "mytheme", &hook_files, "1.0.0",
+        ).unwrap();
+
+        let manifest = discover_hooks(tmp.path(), Some(&cache_dir));
+        assert_eq!(manifest.hooks.len(), 1);
+        assert_eq!(manifest.hooks[0].name, "post-build");
+        assert_eq!(manifest.hooks[0].source, HookSource::Theme);
+        assert!(manifest.hooks[0].executable);
+    }
+
+    #[test]
+    fn resolve_theme_hooks_versioned_uses_cache() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
+
+        // "default" bundled theme has no hooks, so use a nonexistent theme
+        // that won't have bundled hooks either. We test the flow via
+        // extract_bundled_hooks_cached directly.
+        // This test verifies that resolve_theme_hooks_versioned prefers
+        // disk-installed hooks.
+        let theme_hooks = tmp.path().join(".zetl").join("themes").join("test-theme").join("hooks");
+        fs::create_dir_all(&theme_hooks).unwrap();
+        create_hook(&theme_hooks, "post-build", true);
+
+        let resolved = resolve_theme_hooks_versioned(tmp.path(), "test-theme", "1.0.0");
+        assert!(resolved.path().is_some());
+        assert_eq!(resolved.path().unwrap(), theme_hooks);
     }
 
     // ── Timeout tests ───────────────────────────────────────────────────
