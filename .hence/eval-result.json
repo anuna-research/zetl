@@ -4,26 +4,26 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 4,
-    "insertions": 231,
-    "deletions": 8,
+    "insertions": 202,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/mod.rs",
+      "src/cli.rs",
       "src/main.rs",
-      "src/web/engine.rs"
+      "tests/integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-theme-hook-discovery-changes",
-      "content": "Modified 4 files (+231, -8): .hence/context-manifest.json, src/hooks/mod.rs, src/main.rs, src/web/engine.rs",
+      "key": "task-hook-list-cmd-changes",
+      "content": "Modified 4 files (+202, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/theme-hook-discovery-v1",
-  "evaluated_at": "2026-03-02T11:52:30Z",
+  "branch_name": "hence/hook-list-cmd-v1",
+  "evaluated_at": "2026-03-02T11:57:47Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
