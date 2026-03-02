@@ -3,26 +3,24 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 128,
-    "deletions": 5,
+    "files_changed": 1,
+    "insertions": 61,
+    "deletions": 0,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/hooks/context.rs",
-      "src/web/routes.rs"
+      "src/main.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-on-save-hook-changes",
-      "content": "Modified 3 files (+128, -5): .hence/context-manifest.json, src/hooks/context.rs, src/web/routes.rs",
+      "key": "task-wire-post-index-changes",
+      "content": "Modified 1 files (+61, -0): src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/on-save-hook-v1",
-  "evaluated_at": "2026-03-02T12:32:59Z",
+  "branch_name": "hence/wire-post-index-v1",
+  "evaluated_at": "2026-03-02T12:36:55Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

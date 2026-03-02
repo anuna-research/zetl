@@ -1,12 +1,12 @@
 {
-  "task_id": "on-save-hook",
+  "task_id": "wire-post-index",
   "token_budget": 8000,
-  "tokens_used": 274,
+  "tokens_used": 241,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement on-save hook in the save handler after reindex: invoke with context including saved.file, saved.page, saved.content_length fields; set ZETL_SAVED_FILE and ZETL_SAVED_PAGE env vars; run asynchronously so save response returns immediately",
-      "token_cost": 61,
+      "content": "Wire post-index hook invocation into cmd_index(): invoke hook with base context after scan and indexing completes",
+      "token_cost": 28,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T12:27:15Z"
+  "constructed_at": "2026-03-02T12:33:04Z"
 }

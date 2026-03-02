@@ -468,6 +468,67 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         }
     }
 
+    // ── post-index hooks (non-fatal) ────────────────────────────────
+    let verbose = cli.verbose > 0;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, "");
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        verbose,
+    );
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    if !zetl::hooks::hooks_for(&manifest, "post-index").is_empty() {
+        let ctx = zetl::hooks::context::build_hook_context(
+            "post-index",
+            &pipeline.vault_root,
+            "",
+            env!("CARGO_PKG_VERSION"),
+            &pipeline.files,
+            &pipeline.graph,
+        );
+
+        let context_json = serde_json::to_vec(&ctx)?;
+
+        let hook_env = zetl::hooks::HookEnv {
+            vault_root: pipeline.vault_root.clone(),
+            theme: String::new(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![],
+        };
+
+        let results = zetl::hooks::run_hooks_verbose(
+            &manifest,
+            "post-index",
+            &context_json,
+            &hook_env,
+            verbose,
+        );
+
+        for result in results {
+            match result {
+                Ok(output) if !output.success() => {
+                    eprintln!(
+                        "warning: post-index hook '{}' ({}) exited with code {}",
+                        output.path.display(),
+                        output.source,
+                        output.exit_code.unwrap_or(-1),
+                    );
+                    if !output.stderr.is_empty() {
+                        eprintln!("  stderr: {}", output.stderr.trim_end());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("warning: post-index hook failed to execute: {e}");
+                }
+                _ => {}
+            }
+        }
+    }
+
     Ok(())
 }
 
