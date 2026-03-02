@@ -5381,3 +5381,160 @@ fn test_015_007_multichain_independent_navigation() {
         "Three chain nav must not reference chain-1 pages"
     );
 }
+
+/// TEST-015-007c: `zetl check --chains` reports a `fan_in` diagnostic (level
+/// "error", kind "fan_in") when two pages both declare the same page as their
+/// `next`, and exits with a non-zero status code.
+#[test]
+fn test_015_007_check_reports_fan_in() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    // Two pages (Fork A and Fork B) both point to Shared as their next.
+    write_file(
+        dir.path(),
+        "Fork A.md",
+        "---\nnext: Shared\n---\n# Fork A\n\nPoints to Shared.\n",
+    );
+    write_file(
+        dir.path(),
+        "Fork B.md",
+        "---\nnext: Shared\n---\n# Fork B\n\nAlso points to Shared.\n",
+    );
+    write_file(
+        dir.path(),
+        "Shared.md",
+        "# Shared\n\nMultiple predecessors.\n",
+    );
+
+    let (json, status) =
+        run_json_any(zetl_cmd(dir.path()).arg("check").arg("--chains"));
+
+    let diags = json["chain_diagnostics"]
+        .as_array()
+        .expect("chain_diagnostics should be an array");
+
+    assert!(
+        !diags.is_empty(),
+        "should report at least one chain diagnostic for fan-in, got empty array"
+    );
+
+    let has_fan_in = diags
+        .iter()
+        .any(|d| d["kind"].as_str() == Some("fan_in"));
+    assert!(
+        has_fan_in,
+        "should report a 'fan_in' diagnostic; got: {diags:?}"
+    );
+
+    let summary_errors = json["summary"]["chain_errors"].as_u64().unwrap_or(0);
+    assert!(
+        summary_errors > 0,
+        "summary.chain_errors should be > 0 for a fan-in"
+    );
+
+    assert!(
+        !status.success(),
+        "zetl check --chains should exit non-zero when fan-in is detected"
+    );
+}
+
+/// TEST-015-007d: `zetl check --chains` exits zero and reports no errors for a
+/// well-formed 5-page linear chain, and the built HTML contains correct prev/next
+/// links and position counters for every page in the chain.
+#[test]
+fn test_015_007_valid_5scene_chain() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    // Build a 5-page linear chain: Scene 1 → … → Scene 5.
+    write_file(
+        dir.path(),
+        "Scene 1.md",
+        "---\nnext: Scene 2\n---\n# Scene 1\n\nOpening.\n",
+    );
+    write_file(
+        dir.path(),
+        "Scene 2.md",
+        "---\nprev: Scene 1\nnext: Scene 3\n---\n# Scene 2\n\nRising action.\n",
+    );
+    write_file(
+        dir.path(),
+        "Scene 3.md",
+        "---\nprev: Scene 2\nnext: Scene 4\n---\n# Scene 3\n\nClimax.\n",
+    );
+    write_file(
+        dir.path(),
+        "Scene 4.md",
+        "---\nprev: Scene 3\nnext: Scene 5\n---\n# Scene 4\n\nFalling action.\n",
+    );
+    write_file(
+        dir.path(),
+        "Scene 5.md",
+        "---\nprev: Scene 4\n---\n# Scene 5\n\nResolution.\n",
+    );
+
+    // ── zetl check --chains should pass (zero exit) with no errors ────────
+    let (check_json, check_status) =
+        run_json_any(zetl_cmd(dir.path()).arg("check").arg("--chains"));
+    assert!(
+        check_status.success(),
+        "zetl check --chains should exit zero for a valid 5-scene chain; output: {check_json}"
+    );
+    let chain_errors = check_json["summary"]["chain_errors"].as_u64().unwrap_or(0);
+    assert_eq!(
+        chain_errors, 0,
+        "summary.chain_errors should be 0 for a valid chain"
+    );
+
+    // ── Build and inspect HTML output ─────────────────────────────────────
+    let out_dir = dir.path().join("dist");
+    let build_output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build");
+    assert!(
+        build_output.status.success(),
+        "zetl build failed: {}",
+        String::from_utf8_lossy(&build_output.stderr)
+    );
+
+    // Scene 1: head — 1 of 5, next to Scene 2, no prev.
+    let s1 = fs::read_to_string(out_dir.join("scene-1/index.html"))
+        .expect("scene-1/index.html");
+    assert!(s1.contains("1 of 5"), "Scene 1 should show '1 of 5'");
+    assert!(
+        s1.contains(r#"<span class="truncate">Scene 2</span>"#),
+        "Scene 1 should have next nav to Scene 2"
+    );
+    assert!(
+        !s1.contains(r#"<span class="truncate">Scene 5</span>"#),
+        "Scene 1 must not have any nav to Scene 5"
+    );
+
+    // Scene 3: middle — 3 of 5, prev Scene 2, next Scene 4.
+    let s3 = fs::read_to_string(out_dir.join("scene-3/index.html"))
+        .expect("scene-3/index.html");
+    assert!(s3.contains("3 of 5"), "Scene 3 should show '3 of 5'");
+    assert!(
+        s3.contains(r#"<span class="truncate">Scene 2</span>"#),
+        "Scene 3 should have prev nav to Scene 2"
+    );
+    assert!(
+        s3.contains(r#"<span class="truncate">Scene 4</span>"#),
+        "Scene 3 should have next nav to Scene 4"
+    );
+
+    // Scene 5: tail — 5 of 5, prev Scene 4, no next.
+    let s5 = fs::read_to_string(out_dir.join("scene-5/index.html"))
+        .expect("scene-5/index.html");
+    assert!(s5.contains("5 of 5"), "Scene 5 should show '5 of 5'");
+    assert!(
+        s5.contains(r#"<span class="truncate">Scene 4</span>"#),
+        "Scene 5 should have prev nav to Scene 4"
+    );
+    assert!(
+        !s5.contains(r#"<span class="truncate">Scene 1</span>"#),
+        "Scene 5 must not have any nav to Scene 1"
+    );
+}
