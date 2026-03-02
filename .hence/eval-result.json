@@ -3,25 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 147,
-    "deletions": 15,
+    "files_changed": 4,
+    "insertions": 299,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/mod.rs"
+      "src/cli.rs",
+      "src/main.rs",
+      "tests/integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-hook-timeout-changes",
-      "content": "Modified 2 files (+147, -15): .hence/context-manifest.json, src/hooks/mod.rs",
+      "key": "task-hook-run-cmd-changes",
+      "content": "Modified 4 files (+299, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/hook-timeout-v1",
-  "evaluated_at": "2026-03-02T12:03:07Z",
+  "branch_name": "hence/hook-run-cmd-v1",
+  "evaluated_at": "2026-03-02T12:08:53Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
