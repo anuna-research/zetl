@@ -4,25 +4,25 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 398,
+    "insertions": 83,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
       "src/hooks/context.rs",
-      "src/hooks/mod.rs"
+      "src/main.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-context-builder-changes",
-      "content": "Modified 3 files (+398, -5): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs",
+      "key": "task-wire-post-build-changes",
+      "content": "Modified 3 files (+83, -5): .hence/context-manifest.json, src/hooks/context.rs, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/context-builder-v1",
-  "evaluated_at": "2026-03-02T11:41:12Z",
+  "branch_name": "hence/wire-post-build-v1",
+  "evaluated_at": "2026-03-02T11:45:29Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
