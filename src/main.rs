@@ -2675,6 +2675,80 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
+fn cmd_theme_remove(cli: &Cli, name: &str) -> Result<()> {
+    // 1. Validate name (rejects path traversal and invalid chars).
+    zetl::web::theme::validate_theme_name(name)
+        .with_context(|| format!("invalid theme name {:?}", name))?;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // 2. Check if this is a bundled-only theme (not installed on disk).
+    let bundled_names: std::collections::HashSet<String> =
+        zetl::web::engine::bundled_theme_names()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+    let is_bundled = bundled_names.contains(name);
+
+    let theme_dir = vault_root.join(".zetl/themes").join(name);
+    if !theme_dir.is_dir() {
+        if is_bundled {
+            anyhow::bail!("cannot remove bundled theme {:?}", name);
+        } else {
+            anyhow::bail!("theme {:?} is not installed", name);
+        }
+    }
+
+    // 3. Warn if the installed theme shadows a bundled theme.
+    let was_shadowing = is_bundled;
+    if was_shadowing && !cli.quiet {
+        eprintln!(
+            "warning: removing installed version of {:?}; the bundled theme will be used instead",
+            name
+        );
+    }
+
+    // 4. Delete .zetl/themes/<name>/ recursively.
+    std::fs::remove_dir_all(&theme_dir)
+        .with_context(|| format!("failed to remove theme directory {}", theme_dir.display()))?;
+
+    // 5. Output result JSON.
+    #[derive(Serialize)]
+    struct RemovedInfo {
+        name: String,
+        was_shadowing: bool,
+    }
+    #[derive(Serialize)]
+    struct ThemeRemoveOutput {
+        removed: RemovedInfo,
+    }
+
+    let output = ThemeRemoveOutput {
+        removed: RemovedInfo {
+            name: name.to_string(),
+            was_shadowing,
+        },
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            println!(
+                "Removed theme {:?}{}",
+                name,
+                if was_shadowing {
+                    " (was shadowing bundled theme)"
+                } else {
+                    ""
+                }
+            );
+        }
+    }
+
+    Ok(())
+}
+
 fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -6393,6 +6467,7 @@ fn main() -> anyhow::Result<()> {
         } => cmd_view(&cli, page.as_deref(), *context_lines, *main_width),
         Command::Theme { command } => match command {
             ThemeCommand::List => cmd_theme_list(&cli),
+            ThemeCommand::Remove { name } => cmd_theme_remove(&cli, name),
         },
         Command::Serve { port, theme } => cmd_serve(&cli, *port, theme),
         Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),
