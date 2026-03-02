@@ -1,12 +1,12 @@
 {
-  "task_id": "hook-run-cmd",
+  "task_id": "post-check-hook",
   "token_budget": 8000,
-  "tokens_used": 223,
+  "tokens_used": 227,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add zetl hook run <name> subcommand: run vault pipeline to build context, invoke named hook(s) with appropriate context, print stdout to terminal, print stderr to stderr, exit with hook's exit code; accept -- with extra JSON fields merged into context",
-      "token_cost": 62,
+      "content": "Implement post-check hook after diagnostics collection: invoke with context including diagnostics.dead_links, diagnostics.orphans, diagnostics.syntax_errors arrays",
+      "token_cost": 40,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 2 files (+147, -15): .hence/context-manifest.json, src/hooks/mod.rs",
       "token_cost": 19,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-hook-run-cmd-changes",
+      "content": "Modified 4 files (+299, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/integration.rs",
+      "token_cost": 26,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T12:03:12Z"
+  "constructed_at": "2026-03-02T12:08:58Z"
 }

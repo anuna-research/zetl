@@ -102,6 +102,9 @@ pub enum Command {
         /// Exit non-zero if issues at level
         #[arg(long, default_value = "error")]
         fail_on: FailLevel,
+        /// Theme name for hook discovery (looks in .zetl/themes/<name>/hooks/)
+        #[arg(long, default_value = "default")]
+        theme: String,
     },
 
     /// Find pages with similar names (SimHash)

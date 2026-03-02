@@ -10,9 +10,9 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::graph::LinkGraph;
+use crate::graph::{DeadLink, LinkGraph, Orphan};
 use crate::scanner::page_slug_from_path;
-use crate::types::ParsedFile;
+use crate::types::{Diagnostic, ParsedFile};
 use crate::web::markdown::parse_frontmatter;
 
 /// Base hook context written to stdin (CON-016-001).
@@ -36,6 +36,20 @@ pub struct HookContext {
     /// Number of pages rendered during build (only present for post-build).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pages_rendered: Option<usize>,
+    /// Diagnostics collected during check (only present for post-check).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<HookDiagnostics>,
+}
+
+/// Diagnostics payload for post-check hooks.
+#[derive(Debug, Serialize)]
+pub struct HookDiagnostics {
+    /// Links pointing to non-existent pages.
+    pub dead_links: Vec<DeadLink>,
+    /// Pages with zero incoming links.
+    pub orphans: Vec<Orphan>,
+    /// Markdown syntax errors.
+    pub syntax_errors: Vec<Diagnostic>,
 }
 
 /// A single page in the hook context.
@@ -139,6 +153,7 @@ pub fn build_hook_context(
         stats,
         out_dir: None,
         pages_rendered: None,
+        diagnostics: None,
     }
 }
 
@@ -387,5 +402,89 @@ mod tests {
         let page = &ctx.pages[0];
         assert_eq!(page.path, "notes/My Note.md");
         assert_eq!(page.slug, "notes/my-note");
+    }
+
+    #[test]
+    fn diagnostics_absent_by_default() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let ctx = build_hook_context("post-build", tmp.path(), "", "0.1.0", &files, &graph);
+        assert!(ctx.diagnostics.is_none());
+
+        // Ensure "diagnostics" key is absent from JSON when None.
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(val.get("diagnostics").is_none());
+    }
+
+    #[test]
+    fn diagnostics_serialises_for_post_check() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("Page.md"), "Link to [[Missing]]\n").unwrap();
+
+        let mut page = make_parsed_file("Page", "Page.md");
+        page.links.push(crate::types::WikiLink {
+            target_page: "Missing".to_string(),
+            raw_target: "Missing".to_string(),
+            heading: None,
+            block_ref: None,
+            alias: None,
+            is_embed: false,
+            line: 1,
+            column: 9,
+        });
+        page.diagnostics.push(crate::types::Diagnostic {
+            level: crate::types::DiagnosticLevel::Error,
+            message: "bad syntax".to_string(),
+            file: PathBuf::from("Page.md"),
+            line: 3,
+            column: 1,
+        });
+
+        let files = vec![page];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx = build_hook_context("post-check", tmp.path(), "", "0.1.0", &files, &graph);
+
+        // Attach diagnostics like cmd_check does.
+        let dead_links = graph.dead_links();
+        let orphans = graph.orphans();
+        let syntax_errors: Vec<crate::types::Diagnostic> =
+            files.iter().flat_map(|f| f.diagnostics.clone()).collect();
+
+        ctx.diagnostics = Some(HookDiagnostics {
+            dead_links,
+            orphans,
+            syntax_errors,
+        });
+
+        let json = serde_json::to_string_pretty(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let diag = &val["diagnostics"];
+        assert!(diag.is_object());
+
+        // dead_links array with one entry.
+        let dl = &diag["dead_links"];
+        assert!(dl.is_array());
+        assert_eq!(dl.as_array().unwrap().len(), 1);
+        assert_eq!(dl[0]["source"], "Page");
+        assert_eq!(dl[0]["target"], "Missing");
+
+        // orphans array (Page has no incoming links).
+        let orph = &diag["orphans"];
+        assert!(orph.is_array());
+        assert_eq!(orph.as_array().unwrap().len(), 1);
+        assert_eq!(orph[0]["page"], "Page");
+
+        // syntax_errors array with one entry.
+        let se = &diag["syntax_errors"];
+        assert!(se.is_array());
+        assert_eq!(se.as_array().unwrap().len(), 1);
+        assert_eq!(se[0]["message"], "bad syntax");
     }
 }
