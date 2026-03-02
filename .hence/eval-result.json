@@ -3,25 +3,24 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 351,
-    "deletions": 0,
+    "files_changed": 1,
+    "insertions": 211,
+    "deletions": 3,
     "file_list": [
-      "Cargo.toml",
       "src/web/theme.rs"
     ],
     "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-git-clone-changes",
-      "content": "Modified 2 files (+351, -0): Cargo.toml, src/web/theme.rs",
+      "key": "task-provenance-changes",
+      "content": "Modified 1 files (+211, -3): src/web/theme.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/git-clone-v1",
-  "evaluated_at": "2026-03-02T07:00:00Z",
+  "branch_name": "hence/provenance-v1",
+  "evaluated_at": "2026-03-02T07:03:50Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
