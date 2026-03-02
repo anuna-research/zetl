@@ -1,18 +1,24 @@
 {
-  "task_id": "verify-phase2",
+  "task_id": "create-docs-theme",
   "token_budget": 8000,
-  "tokens_used": 456,
+  "tokens_used": 712,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "End-to-end verification of Phase 2:\n\n1. zetl theme install <github-shorthand> installs theme from GitHub.\n2. zetl theme install <url>#<tag> installs at specific version.\n3. zetl theme install <url> --path <subdir> extracts correct subdirectory.\n4. zetl theme install with --name overrides theme name.\n5. Duplicate install without --force fails\n6. .zetl-source.toml written with correct provenance.\n7. zetl theme list shows the installed theme with origin.\n8. zetl serve --theme <installed> renders correctly.\n9. zetl theme remove <installed> deletes theme.\n10. zetl theme remove default fails (bundled).\n11. Invalid source strings produce clear errors.\n12. Path traversal attempts rejected.\n13. Missing git on PATH produces helpful error.\n14. cargo test passes.\n\nTEST-014-006 through TEST-014-013, TEST-014-015, TEST-014-016.",
-      "token_cost": 206,
+      "content": "Create themes/docs/ — a documentation-oriented theme optimised for technical writing. Design goals:\n\n- Clean, professional look suitable for project documentation\n- Wide content area (no transclusion sidebar by default)\n- Table of contents generated from headings in the sidebar\n- Code block syntax highlighting emphasis\n- Print-friendly styles\n- CDN-based (Tailwind/DaisyUI) like the default theme, but with a documentation-focused layout\n\nAdd theme.toml:\n```toml\n[theme]\nname = \"docs\"\nversion = \"0.9.0\"\ndescription = \"A documentation-oriented theme for technical writing\"\nauthor = \"zetl contributors\"\nlicense = \"AGPL-3.0\"\n\n[theme.templates]\noverrides = [\"base.html\", \"page.html\"]\n```\n\nThis theme may only override base.html and page.html, inheriting index.html and folder.html from the default theme (demonstrating partial override with three-tier resolution).\n\nNFR-014-002 — keep total bundled themes under 100 KB.",
+      "token_cost": 230,
       "priority": "PlanMeta"
     },
     {
       "source": "memory/episodic/task-verify-phase1-changes",
       "content": "Modified 4 files (+371, -6): .hence/context-manifest.json, src/web/engine.rs, tests/integration.rs, tests/web_integration.rs",
       "token_cost": 31,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-verify-phase2-changes",
+      "content": "Modified 2 files (+619, -3): src/web/theme.rs, tests/integration.rs",
+      "token_cost": 16,
       "priority": "AgentMemory"
     },
     {
@@ -62,14 +68,8 @@
       "content": "Modified 1 files (+308, -0): src/web/theme.rs",
       "token_cost": 11,
       "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-git-clone-changes",
-      "content": "Modified 2 files (+351, -0): Cargo.toml, src/web/theme.rs",
-      "token_cost": 14,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T07:07:22Z"
+  "constructed_at": "2026-03-02T07:16:01Z"
 }
