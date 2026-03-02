@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Vault — zetl{% endblock %}
+
+{% block content %}
+      <main class="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
+        <h1 class="text-3xl font-bold mb-6">Vault</h1>
+
+<div class="stats shadow mb-8">
+  <div class="stat">
+    <div class="stat-title">Pages</div>
+    <div class="stat-value text-primary">{{ vault.stats.total_pages }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-title">Links</div>
+    <div class="stat-value">{{ vault.stats.total_links }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-title">Dead links</div>
+    <div class="stat-value text-error">{{ vault.stats.dead_links }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-title">Orphans</div>
+    <div class="stat-value text-warning">{{ vault.stats.orphans }}</div>
+  </div>
+</div>
+
+<h2 class="text-xl font-semibold mb-4">All Pages</h2>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+  {% for page in vault.pages %}
+  <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+    <div class="card-body p-4">
+      <h3 class="card-title text-sm">{{ page.title }}</h3>
+      <p class="text-xs opacity-60">{{ page.outlink_count }} out · {{ page.backlink_count }} in</p>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+      </main>
+{% endblock %}
