@@ -1,13 +1,19 @@
 {
-  "task_id": "verify-phase1",
+  "task_id": "courier-prime-fonts",
   "token_budget": 8000,
-  "tokens_used": 225,
+  "tokens_used": 295,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "End-to-end verification of Phase 1. Create 5-scene chain vault. Verify: serve shows prev/next nav with position indicators; build HTML contains correct links; zetl check passes on valid chain; broken chain reported; cycle reported; fan-in reported; non-chain pages have no nav; multi-chain vault works. cargo test passes. TEST-015-003 through TEST-015-007.",
-      "token_cost": 89,
+      "content": "Download and bundle Courier Prime WOFF2 font files for the fountain theme. Create themes/fountain/static/ with Regular, Italic, Bold, BoldItalic WOFF2 files and OFL.txt license. Fonts are approximately 30-50 KB each and will be embedded via include_dir at compile time. NFR-015-001.",
+      "token_cost": 70,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-verify-phase1-changes",
+      "content": "Modified 2 files (+168, -5): .hence/context-manifest.json, tests/integration.rs",
+      "token_cost": 19,
+      "priority": "AgentMemory"
     },
     {
       "source": "memory/episodic/task-parse-chain-frontmatter-changes",
@@ -47,5 +53,7 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T10:29:39Z"
+  "constructed_at": "2026-03-02T10:34:01Z",
+  "task_completed_at": "2026-03-02T21:37:00Z",
+  "task_outcome": "Created themes/fountain/static/ with CourierPrime-Regular.woff2 (27 KB), CourierPrime-Italic.woff2 (30 KB), CourierPrime-Bold.woff2 (28 KB), CourierPrime-BoldItalic.woff2 (31 KB), and OFL.txt license. Added themes/fountain/theme.toml. Fonts converted from source TTF via fonttools woff2. Build verified with cargo check."
 }
