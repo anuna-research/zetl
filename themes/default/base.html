@@ -196,7 +196,7 @@
       .wikilink-tooltip { display: none !important; }
     }
 
-    /* ── Search modal (Cmd+K) ─────────────────────────── */
+    /* ── Search modal (Cmd+K) */
     .search-overlay {
       position: fixed; inset: 0;
       background: rgba(0,0,0,0.4);
@@ -373,7 +373,7 @@
     function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
     function slugFromPath(path){return path.replace(/\.[^/.]+$/,'').toLowerCase().replace(/ /g,'-');}
 
-    /* ── Fuzzy matching (works in all modes, no fetch needed) ─── */
+    /* ── Fuzzy matching (works in all modes, no fetch needed) */
     function fuzzyMatch(query,text){
       var ql=query.length,tl=text.length;
       if(ql===0)return{score:0,indices:[]};
@@ -421,7 +421,7 @@
       return scored;
     }
 
-    /* ── Render (two styles: fuzzy name results vs full-text) ─── */
+    /* ── Render (two styles: fuzzy name results vs full-text) */
     function renderFuzzy(items){
       results.innerHTML='';
       if(items.length===0){
@@ -470,7 +470,7 @@
       if(active>=0&&els[active])els[active].scrollIntoView({block:'nearest'});
     }
 
-    /* ── BM25 scorer for build mode (client-side) ──────────────── */
+    /* ── BM25 scorer for build mode (client-side) */
     var searchIndex=(function(){
       try{var el=document.getElementById('zetl-bm25-index');
         return el?JSON.parse(el.textContent):null;}
@@ -535,7 +535,7 @@
       }).sort(function(a,b){return b.score-a.score;});
     }
 
-    /* ── Serve mode: /api/search (Tantivy full-text) ───────────── */
+    /* ── Serve mode: /api/search (Tantivy full-text) */
     var currentCtrl=null;
     var debounceTimer=null;
     function serveSearch(q){
@@ -563,7 +563,7 @@
         });
     }
 
-    /* ── Build mode: fuzzy + BM25 content search ───────────────── */
+    /* ── Build mode: fuzzy + BM25 content search */
     function buildSearchRun(){
       var q=input.value;
       if(!q){
@@ -594,7 +594,7 @@
       }
     }
 
-    /* ── Open / close ──────────────────────────────────────────── */
+    /* ── Open / close */
     window.openSearch=function(){
       overlay.classList.add('open');
       input.value='';
@@ -607,7 +607,7 @@
       if(currentCtrl){currentCtrl.abort();currentCtrl=null;}
     };
 
-    /* ── Input / keyboard ──────────────────────────────────────── */
+    /* ── Input / keyboard */
     input.addEventListener('input',function(){
       active=0;runSearch();
     });
