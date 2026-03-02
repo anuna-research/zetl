@@ -401,4 +401,4 @@ make clean              # remove build artifacts
 
 ## License
 
-MIT
+[AGPL-3.0](LICENSE)
