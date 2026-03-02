@@ -2454,7 +2454,8 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
 }
 
 /// Validate a theme name: reject names containing '/', '\', or '..'.
-/// When theme is not 'default', verify .zetl/themes/<name>/ exists and is a directory.
+/// When theme is not 'default', verify it exists on disk (.zetl/themes/<name>/)
+/// or is a bundled theme. Both can be true (disk shadows bundled).
 fn validate_theme(theme: &str, vault_root: &std::path::Path) -> Result<()> {
     if theme.contains('/') || theme.contains('\\') || theme.contains("..") {
         anyhow::bail!("invalid theme name '{theme}': must not contain '/', '\\', or '..'",);
@@ -2462,29 +2463,49 @@ fn validate_theme(theme: &str, vault_root: &std::path::Path) -> Result<()> {
 
     if theme != "default" {
         let theme_dir = vault_root.join(".zetl/themes").join(theme);
-        if !theme_dir.is_dir() {
+        let is_disk_theme = theme_dir.is_dir();
+        let is_bundled = zetl::web::engine::bundled_theme_names().contains(&theme);
+
+        if !is_disk_theme && !is_bundled {
             let themes_root = vault_root.join(".zetl/themes");
-            let mut available: Vec<String> = Vec::new();
+            let mut disk_themes: Vec<String> = Vec::new();
             if themes_root.is_dir() {
                 if let Ok(entries) = std::fs::read_dir(&themes_root) {
                     for entry in entries.flatten() {
                         if entry.path().is_dir() {
                             if let Some(name) = entry.file_name().to_str() {
-                                available.push(name.to_string());
+                                disk_themes.push(name.to_string());
                             }
                         }
                     }
                 }
             }
-            available.sort();
+            disk_themes.sort();
 
-            let hint = if available.is_empty() {
-                "no custom themes found in .zetl/themes/".to_string()
+            let mut bundled: Vec<String> = zetl::web::engine::bundled_theme_names()
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect();
+            bundled.sort();
+
+            let all_available: Vec<String> = {
+                let mut combined = disk_themes;
+                for b in &bundled {
+                    if !combined.contains(b) {
+                        combined.push(b.clone());
+                    }
+                }
+                combined.sort();
+                combined
+            };
+
+            let hint = if all_available.is_empty() {
+                "no themes available".to_string()
             } else {
-                format!("available themes: {}", available.join(", "))
+                format!("available themes: {}", all_available.join(", "))
             };
             anyhow::bail!(
-                "theme '{theme}' not found: directory .zetl/themes/{theme}/ does not exist\nhint: {hint}",
+                "theme '{theme}' not found: not a bundled theme and .zetl/themes/{theme}/ does not exist\nhint: {hint}",
             );
         }
     }

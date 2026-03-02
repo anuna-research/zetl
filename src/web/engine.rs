@@ -21,7 +21,7 @@ pub(crate) fn bundled_template(theme: &str, name: &str) -> Option<&'static str> 
 }
 
 /// Return the names of all theme directories embedded at compile time.
-pub(crate) fn bundled_theme_names() -> Vec<&'static str> {
+pub fn bundled_theme_names() -> Vec<&'static str> {
     BUNDLED_THEMES
         .dirs()
         .map(|d| d.path().file_name().and_then(|n| n.to_str()).unwrap_or(""))
@@ -145,11 +145,12 @@ impl std::error::Error for TemplateError {}
 
 // ── TemplateEngine ─────────────────────────────────────────────────────────
 
-/// Template engine wrapping a minijinja::Environment with two-tier template resolution.
+/// Template engine wrapping a minijinja::Environment with three-tier template resolution.
 ///
 /// Templates resolve in order:
 /// 1. `.zetl/themes/<theme>/<name>` on disk (skipped when theme is "default")
-/// 2. Built-in default templates from the compile-time-embedded `themes/` directory
+/// 2. Bundled theme matching the active theme name (compile-time embed)
+/// 3. Bundled `default` theme as final fallback (compile-time embed)
 ///
 /// When `reload` is true (serve mode), a fresh Environment is built for each render
 /// call so that on-disk template edits take effect immediately. When false (build mode),
@@ -163,7 +164,7 @@ pub struct TemplateEngine {
 
 const KNOWN_TEMPLATES: &[&str] = &["base.html", "index.html", "page.html", "folder.html"];
 
-/// Build a minijinja Environment with the two-tier template loader.
+/// Build a minijinja Environment with the three-tier template loader.
 fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
     let mut env = Environment::new();
     let vr = vault_root.to_path_buf();
@@ -176,7 +177,11 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
                 return Ok(Some(content));
             }
         }
-        // Tier 2: fall back to built-in default theme embedded at compile time
+        // Tier 2: check bundled theme for the active theme name
+        if let Some(content) = bundled_template(&t, name) {
+            return Ok(Some(content.to_string()));
+        }
+        // Tier 3: fall back to built-in default theme embedded at compile time
         Ok(bundled_template("default", name).map(|s| s.to_string()))
     });
     env
@@ -196,11 +201,15 @@ impl TemplateEngine {
                 if theme != "default" {
                     let theme_path = vault_root.join(".zetl/themes").join(theme).join(name);
                     if theme_path.exists() {
-                        eprintln!("  theme: {name} ← .zetl/themes/{theme}/{name}");
+                        eprintln!("  theme: {name} <- .zetl/themes/{theme}/{name} (disk)");
                         continue;
                     }
                 }
-                eprintln!("  theme: {name} ← built-in default");
+                if bundled_template(theme, name).is_some() {
+                    eprintln!("  theme: {name} <- bundled:{theme}/{name}");
+                } else {
+                    eprintln!("  theme: {name} <- bundled:default/{name} (fallback)");
+                }
             }
         }
 
