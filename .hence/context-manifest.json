@@ -1,12 +1,12 @@
 {
-  "task_id": "create-minimal-theme",
+  "task_id": "verify-phase1",
   "token_budget": 8000,
-  "tokens_used": 384,
+  "tokens_used": 510,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create themes/minimal/ — a stripped-down theme that demonstrates theme authoring with the smallest possible surface. This theme overrides base.html to remove the DaisyUI/Tailwind CDN dependencies and uses inline CSS for a clean, typography-focused look. page.html, index.html, and folder.html extend the minimal base.html.\n\nDesign constraints:\n  - No CDN dependencies — fully self-contained HTML/CSS\n  - System font stack only (no web fonts)\n  - Light background, dark text, minimal colour palette\n  - Sidebar navigation still functional\n  - Search modal still works (reuse the JS from default or simplify)\n  - Responsive: readable on mobile without the drawer component\n\nAdd theme.toml:\n```toml\n[theme]\nname = \"minimal\"\nversion = \"0.9.0\"\ndescription = \"A minimal, typography-focused theme with no CDN dependencies\"\nauthor = \"zetl contributors\"\nlicense = \"AGPL-3.0\"\n\n[theme.templates]\noverrides = [\"base.html\", \"index.html\", \"page.html\", \"folder.html\"]\n```\n\nREQ-014-003, NFR-014-002.",
-      "token_cost": 246,
+      "content": "End-to-end verification of Phase 1:\n\n1. src/web/templates/ no longer exists — templates sourced from themes/default/.\n2. zetl serve (no --theme) renders identically to before (no visual regression).\n3. zetl serve --theme minimal renders with the minimal theme (no CDN, system fonts).\n4. zetl build --theme minimal produces valid static site.\n5. zetl theme list shows both bundled themes with correct metadata.\n6. Create .zetl/themes/custom/ with a page.html override. zetl serve --theme custom uses disk template for page.html, falls back to bundled default for others (three-tier).\n7. Create .zetl/themes/minimal/ with a page.html override. zetl serve --theme minimal uses disk page.html (Tier 1), bundled minimal base.html (Tier 2). zetl theme list shows 'installed (shadows bundled)'.\n8. --verbose shows resolution tier per template.\n9. Binary size increase from bundled themes is < 100 KB (NFR-014-002).\n10. cargo test passes.\n\nTEST-014-001 through TEST-014-005.",
+      "token_cost": 242,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 3 files (+189, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-create-minimal-theme-changes",
+      "content": "Modified 6 files (+1101, -5): .hence/context-manifest.json, themes/minimal/base.html, themes/minimal/folder.html, themes/minimal/index.html, themes/minimal/page.html and 1 more",
+      "token_cost": 44,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T06:28:35Z"
+  "constructed_at": "2026-03-02T17:50:00Z"
 }
