@@ -1,0 +1,304 @@
+;; Plan metadata
+(meta plan
+  (id "IMPL-016")
+  (title "zetl hooks — Git-Style Lifecycle Hooks for Vault Operations")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-03-02")
+  (author "agent:architect")
+  (spec "SPEC-016")
+  (description "Implement git-style lifecycle hooks for zetl vault operations: hook discovery, execution engine, context passing, theme-bundled hooks, and management commands"))
+
+;; Agents
+(given agent-coder-available)
+
+;; Tasks — Phase 1: Core Hook Execution Engine
+(given task-hook-discovery)
+(given task-hook-executor)
+(given task-context-builder)
+(given task-wire-post-build)
+(given task-wire-post-index)
+
+;; Tasks — Phase 2: Pre-Hooks, On-Save, Pre-Serve, Post-Check
+(given task-pre-hooks)
+(given task-on-save-hook)
+(given task-post-check-hook)
+(given task-hook-timeout)
+
+;; Tasks — Phase 3: Theme-Bundled Hooks
+(given task-theme-hook-discovery)
+(given task-bundled-hook-extraction)
+(given task-theme-install-hooks)
+
+;; Tasks — Phase 4: Management Commands and Polish
+(given task-hook-list-cmd)
+(given task-hook-run-cmd)
+(given task-verbose-logging)
+
+;; Dependency facts — Phase 1 tasks have no blockers
+(given no-deps-hook-discovery)
+(given no-deps-context-builder)
+
+;; Task metadata — Phase 1
+(meta task-hook-discovery
+  (description "Add hook discovery module: scan .zetl/hooks/ and theme hooks directories; detect executable permissions; warn on non-executable hooks")
+  (acceptance "Hook files in .zetl/hooks/ are discovered; non-executable files produce a warning with chmod hint; unrecognised names silently ignored; no hooks directory produces no warnings")
+  (context-files "src/web/mod.rs" "src/main.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-hook-executor
+  (description "Add hook execution engine: spawn hook as child process, write JSON context to stdin, set ZETL_* environment variables, set working directory to vault root, capture stdout/stderr, handle exit codes")
+  (acceptance "Hook receives JSON on stdin; working directory is vault root; ZETL_HOOK, ZETL_VAULT_ROOT, ZETL_THEME, ZETL_VERSION env vars set; post-hook non-zero exit logs warning but does not abort; exit code 0 logs stdout at verbose level")
+  (context-files "src/main.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-context-builder
+  (description "Implement vault context serialiser: build JSON object with hook name, vault_root, theme, zetl_version, pages array (name, path, slug, frontmatter, outlinks, backlinks, is_orphan), and stats (total_pages, total_links, dead_links, orphans)")
+  (acceptance "Context JSON validates against CON-016-001 schema; pages array contains correct frontmatter and link data; stats match zetl check output")
+  (context-files "src/web/context.rs" "src/web/engine.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-wire-post-build
+  (description "Wire post-build hook invocation into build_static(): discover hooks, invoke with context including out_dir and pages_rendered fields, set ZETL_OUT_DIR env var")
+  (acceptance "post-build hook runs after build completes; hook can write file to $ZETL_OUT_DIR; failing hook logs warning but build output is intact")
+  (context-files "src/web/engine.rs" "src/web/routes.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-wire-post-index
+  (description "Wire post-index hook invocation into cmd_index(): invoke hook with base context after scan and indexing completes")
+  (acceptance "post-index hook runs after index completes; failing hook logs warning but does not abort")
+  (context-files "src/main.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+;; Task metadata — Phase 2
+(meta task-pre-hooks
+  (description "Implement pre-build and pre-serve hooks with abort-on-failure semantics: non-zero exit aborts the parent operation and prints hook stderr as error message")
+  (acceptance "pre-build hook exiting 1 aborts build; pre-serve hook exiting 1 aborts server start; hook stderr printed as error; ZETL_OUT_DIR set for pre-build; ZETL_PORT set for pre-serve")
+  (context-files "src/main.rs" "src/web/engine.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-on-save-hook
+  (description "Implement on-save hook in the save handler after reindex: invoke with context including saved.file, saved.page, saved.content_length fields; set ZETL_SAVED_FILE and ZETL_SAVED_PAGE env vars; run asynchronously so save response returns immediately")
+  (acceptance "on-save hook fires after page edit in serve mode; hook receives saved file context; hook runs in background task; hook errors logged to server stderr; ZETL_SAVED_FILE matches relative path of saved file")
+  (context-files "src/web/routes.rs" "src/web/engine.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-post-check-hook
+  (description "Implement post-check hook after diagnostics collection: invoke with context including diagnostics.dead_links, diagnostics.orphans, diagnostics.syntax_errors arrays")
+  (acceptance "post-check hook fires after zetl check; diagnostics count in context matches zetl check output; hook failure logs warning but check output is intact")
+  (context-files "src/main.rs" "src/web/engine.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-hook-timeout
+  (description "Enforce 30-second timeout on all hook executions: kill process on timeout, log warning, parent operation continues")
+  (acceptance "Hook containing sleep 60 is killed after 30 seconds; warning logged; parent operation continues normally; exit code 128+ logged")
+  (context-files "src/main.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+;; Task metadata — Phase 3
+(meta task-theme-hook-discovery
+  (description "Add theme hook discovery: check active theme's hooks/ directory (.zetl/themes/<name>/hooks/ for disk-installed; embedded path for bundled themes); run theme hooks before vault hooks at each lifecycle point")
+  (acceptance "Active theme's post-build hook is invoked before vault post-build hook; switching to --theme default stops previous theme's hooks from running; zetl hook list shows theme source correctly")
+  (context-files "src/web/engine.rs" "src/main.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-bundled-hook-extraction
+  (description "For bundled (compile-time embedded) themes: extract hook files to .zetl/cache/hooks/<theme>/ before execution; refresh extracted hooks when zetl binary version changes; make extracted hooks executable")
+  (acceptance "Bundled theme hooks extracted to cache directory; extracted hooks are executable; cache refreshed on version change; hook invoked correctly from cache path")
+  (context-files "src/main.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-theme-install-hooks
+  (description "Update zetl theme install to make hook files executable (chmod +x) during installation; log installed hooks to output")
+  (acceptance "zetl theme install makes hooks executable; installation log shows 'theme: installed hooks/post-build (executable)'; non-executable hook after install produces warning with chmod hint")
+  (context-files "src/main.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+;; Task metadata — Phase 4
+(meta task-hook-list-cmd
+  (description "Add zetl hook list subcommand: list all active hooks for current vault and theme with name, source (theme/vault), path, and executable status; default output JSON; -f table for human-readable table")
+  (acceptance "zetl hook list shows all hooks with correct source and path; empty list on no hooks with no error; JSON schema matches CON-016-010 spec; table format is readable")
+  (context-files "src/main.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-hook-run-cmd
+  (description "Add zetl hook run <name> subcommand: run vault pipeline to build context, invoke named hook(s) with appropriate context, print stdout to terminal, print stderr to stderr, exit with hook's exit code; accept -- with extra JSON fields merged into context")
+  (acceptance "zetl hook run post-build invokes hook with real vault data; stdout printed to terminal; zetl hook run on-save -- '{...}' merges extra fields; zetl hook run nonexistent returns error; exit code matches hook exit code")
+  (context-files "src/main.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+(meta task-verbose-logging
+  (description "Add verbose logging for hook discovery and execution: log hook name/source/path/duration/exit-code/stdout/stderr under --verbose; log which directories were checked, hooks found, and hooks skipped with reasons")
+  (acceptance "zetl --verbose build logs hook discovery and execution details; stdout truncated to 1 KB; stderr logged as warning on non-zero exit; hook duration in ms reported; non-verbose mode is silent on success")
+  (context-files "src/main.rs" "src/web/engine.rs")
+  (evaluate-checks "test:cargo test" "lint:cargo clippy"))
+
+;; Readiness rules — Phase 1
+(normally r-ready-hook-discovery
+  (and task-hook-discovery no-deps-hook-discovery)
+  ready-hook-discovery)
+
+(normally r-ready-context-builder
+  (and task-context-builder no-deps-context-builder)
+  ready-context-builder)
+
+(normally r-ready-hook-executor
+  (and task-hook-executor completed-hook-discovery)
+  ready-hook-executor)
+
+(normally r-ready-wire-post-build
+  (and task-wire-post-build completed-hook-executor completed-context-builder)
+  ready-wire-post-build)
+
+(normally r-ready-wire-post-index
+  (and task-wire-post-index completed-hook-executor completed-context-builder)
+  ready-wire-post-index)
+
+;; Readiness rules — Phase 2
+(normally r-ready-hook-timeout
+  (and task-hook-timeout completed-hook-executor)
+  ready-hook-timeout)
+
+(normally r-ready-pre-hooks
+  (and task-pre-hooks completed-hook-executor completed-context-builder)
+  ready-pre-hooks)
+
+(normally r-ready-on-save-hook
+  (and task-on-save-hook completed-hook-executor completed-context-builder)
+  ready-on-save-hook)
+
+(normally r-ready-post-check-hook
+  (and task-post-check-hook completed-hook-executor completed-context-builder)
+  ready-post-check-hook)
+
+;; Readiness rules — Phase 3 (requires Phase 1 complete)
+(normally r-ready-theme-hook-discovery
+  (and task-theme-hook-discovery completed-hook-discovery completed-hook-executor completed-context-builder)
+  ready-theme-hook-discovery)
+
+(normally r-ready-bundled-hook-extraction
+  (and task-bundled-hook-extraction completed-theme-hook-discovery)
+  ready-bundled-hook-extraction)
+
+(normally r-ready-theme-install-hooks
+  (and task-theme-install-hooks completed-theme-hook-discovery)
+  ready-theme-install-hooks)
+
+;; Readiness rules — Phase 4 (requires Phase 1, 2, and 3 complete)
+(normally r-ready-hook-list-cmd
+  (and task-hook-list-cmd
+       completed-hook-discovery
+       completed-theme-hook-discovery)
+  ready-hook-list-cmd)
+
+(normally r-ready-hook-run-cmd
+  (and task-hook-run-cmd
+       completed-hook-executor
+       completed-context-builder
+       completed-hook-list-cmd)
+  ready-hook-run-cmd)
+
+(normally r-ready-verbose-logging
+  (and task-verbose-logging
+       completed-hook-executor
+       completed-hook-discovery)
+  ready-verbose-logging)
+
+;; Assignment rules — all tasks assigned to coder
+(normally r-assign-hook-discovery
+  (and ready-hook-discovery agent-coder-available)
+  assign-to-hook-discovery-coder)
+
+(normally r-assign-hook-executor
+  (and ready-hook-executor agent-coder-available)
+  assign-to-hook-executor-coder)
+
+(normally r-assign-context-builder
+  (and ready-context-builder agent-coder-available)
+  assign-to-context-builder-coder)
+
+(normally r-assign-wire-post-build
+  (and ready-wire-post-build agent-coder-available)
+  assign-to-wire-post-build-coder)
+
+(normally r-assign-wire-post-index
+  (and ready-wire-post-index agent-coder-available)
+  assign-to-wire-post-index-coder)
+
+(normally r-assign-pre-hooks
+  (and ready-pre-hooks agent-coder-available)
+  assign-to-pre-hooks-coder)
+
+(normally r-assign-on-save-hook
+  (and ready-on-save-hook agent-coder-available)
+  assign-to-on-save-hook-coder)
+
+(normally r-assign-post-check-hook
+  (and ready-post-check-hook agent-coder-available)
+  assign-to-post-check-hook-coder)
+
+(normally r-assign-hook-timeout
+  (and ready-hook-timeout agent-coder-available)
+  assign-to-hook-timeout-coder)
+
+(normally r-assign-theme-hook-discovery
+  (and ready-theme-hook-discovery agent-coder-available)
+  assign-to-theme-hook-discovery-coder)
+
+(normally r-assign-bundled-hook-extraction
+  (and ready-bundled-hook-extraction agent-coder-available)
+  assign-to-bundled-hook-extraction-coder)
+
+(normally r-assign-theme-install-hooks
+  (and ready-theme-install-hooks agent-coder-available)
+  assign-to-theme-install-hooks-coder)
+
+(normally r-assign-hook-list-cmd
+  (and ready-hook-list-cmd agent-coder-available)
+  assign-to-hook-list-cmd-coder)
+
+(normally r-assign-hook-run-cmd
+  (and ready-hook-run-cmd agent-coder-available)
+  assign-to-hook-run-cmd-coder)
+
+(normally r-assign-verbose-logging
+  (and ready-verbose-logging agent-coder-available)
+  assign-to-verbose-logging-coder)
+
+;; Safety constraints
+;; Pre-hooks that abort must not be treated as non-fatal
+(except d-block-build-on-pre-hook-failure
+  (and failed-pre-hooks pre-hook-type-pre-build)
+  (not ready-wire-post-build))
+
+(except d-block-serve-on-pre-hook-failure
+  (and failed-pre-hooks pre-hook-type-pre-serve)
+  (not ready-on-save-hook))
+
+;; Hook execution must not proceed without discovery
+(except d-no-execute-without-discovery
+  (not completed-hook-discovery)
+  (not ready-hook-executor))
+
+;; Theme hook extraction must complete before theme hook discovery can assign work
+(except d-no-theme-hooks-without-extraction
+  (and task-bundled-hook-extraction (not completed-bundled-hook-extraction))
+  (not assign-to-theme-hook-discovery-coder))
+
+;; Superiority relations
+(prefer d-block-build-on-pre-hook-failure r-ready-wire-post-build)
+(prefer d-block-serve-on-pre-hook-failure r-ready-on-save-hook)
+(prefer d-no-execute-without-discovery r-ready-hook-executor)
+
+;; Rule metadata
+(meta d-block-build-on-pre-hook-failure
+  (description "A failing pre-build hook aborts the build pipeline")
+  (justification "REQ-016-004: pre-hooks can abort parent operation via non-zero exit"))
+
+(meta d-block-serve-on-pre-hook-failure
+  (description "A failing pre-serve hook aborts the server start")
+  (justification "REQ-016-004: pre-serve is an abort-capable lifecycle point"))
+
+(meta d-no-execute-without-discovery
+  (description "Hook executor depends on hook discovery being complete")
+  (justification "Executor needs discovery module to find hook files before spawning"))
