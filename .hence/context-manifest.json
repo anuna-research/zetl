@@ -1,15 +1,21 @@
 {
-  "task_id": "extract-default-theme",
+  "task_id": "compile-time-embedding",
   "token_budget": 8000,
-  "tokens_used": 180,
+  "tokens_used": 367,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create the themes/ directory at the repository root. Move the current built-in templates from src/web/templates/ (base.html, index.html, page.html, folder.html) into themes/default/. Add a theme.toml manifest:\n\n```toml\n[theme]\nname = \"default\"\nversion = \"0.9.0\"\ndescription = \"The default zetl theme\"\nauthor = \"zetl contributors\"\nlicense = \"AGPL-3.0\"\n\n[theme.templates]\noverrides = [\"base.html\", \"index.html\", \"page.html\", \"folder.html\"]\n```\n\nKeep src/web/templates/ intact for now — the include_str!() calls still reference them. The next task (compile-time embedding) will switch the source of truth. The templates in themes/default/ must be byte-for-byte identical to src/web/templates/ at this point.\n\nREQ-014-003.",
-      "token_cost": 180,
+      "content": "Replace the hardcoded include_str!() calls in engine.rs with a compile-time embedding mechanism that loads all themes from the themes/ directory.\n\nApproach: Use the `include_dir` crate (or a build.rs that generates a static HashMap). The key decision is:\n\nOption A — `include_dir` crate:\n  Add `include_dir = \"0.7\"` to Cargo.toml. In engine.rs:\n  ```rust\n  use include_dir::{include_dir, Dir}\n  static BUNDLED_THEMES: Dir = include_dir!(\"$CARGO_MANIFEST_DIR/themes\");\n  ```\n  Lookup: BUNDLED_THEMES.get_file(format!(\"{theme}/{template}\"))\n\nOption B — build.rs codegen:\n  Generate a Rust source file that contains static &str constants for each theme/template pair. More control, no extra dependency.\n\nRecommendation: Option A is simpler and well-maintained. Use it unless the dependency is unacceptable.\n\nAfter this task, delete src/web/templates/ — themes/default/ is now the single source of truth for built-in templates. Update all references.\n\nCreate a helper function:\n  fn bundled_template(theme: &str, name: &str) -> Option<&'static str>\nthat looks up a template from the embedded directory. Returns None if the theme or template does not exist.\n\nAlso create:\n  fn bundled_theme_names() -> Vec<&'static str>\nthat returns the list of all embedded theme directory names.\n\nREQ-014-004, ADR-014-002.",
+      "token_cost": 327,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-extract-default-theme-changes",
+      "content": "Modified 5 files (+998, -0): themes/default/base.html, themes/default/folder.html, themes/default/index.html, themes/default/page.html, themes/default/theme.toml",
+      "token_cost": 40,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T06:13:06Z"
+  "constructed_at": "2026-03-02T06:13:53Z"
 }

@@ -3,28 +3,31 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 998,
-    "deletions": 0,
+    "files_changed": 8,
+    "insertions": 86,
+    "deletions": 1003,
     "file_list": [
-      "themes/default/base.html",
-      "themes/default/folder.html",
-      "themes/default/index.html",
-      "themes/default/page.html",
-      "themes/default/theme.toml"
+      ".hence/context-manifest.json",
+      "Cargo.lock",
+      "Cargo.toml",
+      "src/web/engine.rs",
+      "src/web/templates/base.html",
+      "src/web/templates/folder.html",
+      "src/web/templates/index.html",
+      "src/web/templates/page.html"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-extract-default-theme-changes",
-      "content": "Modified 5 files (+998, -0): themes/default/base.html, themes/default/folder.html, themes/default/index.html, themes/default/page.html, themes/default/theme.toml",
+      "key": "task-compile-time-embedding-changes",
+      "content": "Modified 8 files (+86, -1003): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/templates/base.html and 3 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/extract-default-theme-v1",
-  "evaluated_at": "2026-03-02T06:13:48Z",
+  "branch_name": "hence/compile-time-embedding-v1",
+  "evaluated_at": "2026-03-02T06:16:52Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

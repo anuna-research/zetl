@@ -1,9 +1,33 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
+use include_dir::{include_dir, Dir};
 use minijinja::{context, Environment};
 
 use super::context::{FolderContext, PageContext, VaultContext};
+
+// ── Bundled themes ──────────────────────────────────────────────────────────
+
+static BUNDLED_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/themes");
+
+/// Look up a template from the compile-time-embedded themes directory.
+///
+/// Returns the UTF-8 content of `themes/<theme>/<name>` if it exists,
+/// or `None` when the theme or template file is not found.
+pub(crate) fn bundled_template(theme: &str, name: &str) -> Option<&'static str> {
+    BUNDLED_THEMES
+        .get_file(format!("{theme}/{name}"))
+        .and_then(|f| f.contents_utf8())
+}
+
+/// Return the names of all theme directories embedded at compile time.
+pub(crate) fn bundled_theme_names() -> Vec<&'static str> {
+    BUNDLED_THEMES
+        .dirs()
+        .map(|d| d.path().file_name().and_then(|n| n.to_str()).unwrap_or(""))
+        .filter(|n| !n.is_empty())
+        .collect()
+}
 
 // ── TemplateError ──────────────────────────────────────────────────────────
 
@@ -125,7 +149,7 @@ impl std::error::Error for TemplateError {}
 ///
 /// Templates resolve in order:
 /// 1. `.zetl/themes/<theme>/<name>` on disk (skipped when theme is "default")
-/// 2. Built-in default templates embedded via `include_str!()`
+/// 2. Built-in default templates from the compile-time-embedded `themes/` directory
 ///
 /// When `reload` is true (serve mode), a fresh Environment is built for each render
 /// call so that on-disk template edits take effect immediately. When false (build mode),
@@ -152,14 +176,8 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
                 return Ok(Some(content));
             }
         }
-        // Tier 2: fall back to built-in defaults
-        Ok(match name {
-            "base.html" => Some(include_str!("templates/base.html").to_string()),
-            "index.html" => Some(include_str!("templates/index.html").to_string()),
-            "page.html" => Some(include_str!("templates/page.html").to_string()),
-            "folder.html" => Some(include_str!("templates/folder.html").to_string()),
-            _ => None,
-        })
+        // Tier 2: fall back to built-in default theme embedded at compile time
+        Ok(bundled_template("default", name).map(|s| s.to_string()))
     });
     env
 }
@@ -646,6 +664,33 @@ mod tests {
         let err = engine.render_index(&vault, "serve", "").unwrap_err();
         assert_eq!(err.kind, "EmptyOutput");
         assert!(err.message.contains("empty output"));
+    }
+
+    // ── bundled_template / bundled_theme_names tests ───────────────────────
+
+    #[test]
+    fn test_bundled_template_default_exists() {
+        for name in KNOWN_TEMPLATES {
+            assert!(
+                bundled_template("default", name).is_some(),
+                "missing bundled default template: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bundled_template_unknown_returns_none() {
+        assert!(bundled_template("default", "nonexistent.html").is_none());
+        assert!(bundled_template("nosuchtheme", "page.html").is_none());
+    }
+
+    #[test]
+    fn test_bundled_theme_names_contains_default() {
+        let names = bundled_theme_names();
+        assert!(
+            names.contains(&"default"),
+            "expected 'default' in bundled_theme_names(), got: {names:?}"
+        );
     }
 
     #[test]
