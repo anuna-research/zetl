@@ -8,7 +8,12 @@ use crate::web::html::{html_escape, urlencoding};
 /// Render markdown content to HTML, rewriting `[[wikilinks]]` into `<a>` tags.
 /// `slug_map` maps resolved page names to their URL slugs (e.g. "Scanner" → "architecture/Scanner").
 /// Links whose target is not in `slug_map` get `class="link-error"`.
-pub fn render_to_html(content: &str, slug_map: &HashMap<String, String>, root_path: &str, index_file: &str) -> String {
+pub fn render_to_html(
+    content: &str,
+    slug_map: &HashMap<String, String>,
+    root_path: &str,
+    index_file: &str,
+) -> String {
     let stripped = strip_frontmatter(content);
     let fm_lines = frontmatter_line_count(content);
     let options = Options::ENABLE_TABLES
@@ -109,7 +114,12 @@ pub fn render_preview(content: &str) -> String {
 
 /// Render a markdown preview as styled HTML, limited to ~12 block-level elements.
 /// Wikilinks are rewritten into clickable `<a>` tags.
-pub fn render_preview_html(content: &str, slug_map: &HashMap<String, String>, root_path: &str, index_file: &str) -> String {
+pub fn render_preview_html(
+    content: &str,
+    slug_map: &HashMap<String, String>,
+    root_path: &str,
+    index_file: &str,
+) -> String {
     let content = strip_frontmatter(content);
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
@@ -155,7 +165,13 @@ pub fn render_preview_html(content: &str, slug_map: &HashMap<String, String>, ro
 }
 
 /// Replace [[wikilinks]] with <a> tags in HTML, skipping content inside <code>/<pre>.
-fn rewrite_wikilinks(html: &str, re: &Regex, slug_map: &HashMap<String, String>, root_path: &str, index_file: &str) -> String {
+fn rewrite_wikilinks(
+    html: &str,
+    re: &Regex,
+    slug_map: &HashMap<String, String>,
+    root_path: &str,
+    index_file: &str,
+) -> String {
     let mut result = String::with_capacity(html.len());
     let mut depth: usize = 0;
 

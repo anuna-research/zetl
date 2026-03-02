@@ -4358,7 +4358,11 @@ fn test_014_006_theme_install_from_local_file_url() {
     // Repo without a theme.toml so the name falls back to the repo dir name.
     let repo_dir = dir.path().join("my-theme-repo");
     fs::create_dir_all(&repo_dir).unwrap();
-    write_file(&repo_dir, "base.html", "<html><body>test theme</body></html>");
+    write_file(
+        &repo_dir,
+        "base.html",
+        "<html><body>test theme</body></html>",
+    );
     git_init_commit(&repo_dir, "Initial theme");
 
     let url = file_url(&repo_dir);
@@ -4380,8 +4384,14 @@ fn test_014_006_theme_install_from_local_file_url() {
 
     // Theme directory must exist on disk.
     let theme_dir = vault.join(".zetl/themes/my-theme-repo");
-    assert!(theme_dir.is_dir(), ".zetl/themes/my-theme-repo must exist after install");
-    assert!(theme_dir.join("base.html").exists(), "base.html must be present");
+    assert!(
+        theme_dir.is_dir(),
+        ".zetl/themes/my-theme-repo must exist after install"
+    );
+    assert!(
+        theme_dir.join("base.html").exists(),
+        "base.html must be present"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -4414,7 +4424,10 @@ fn test_014_007_theme_install_at_specific_tag() {
 
     // Name comes from theme.toml ("tagged-theme"), not the repo dir name.
     let theme_dir = vault.join(".zetl/themes/tagged-theme");
-    assert!(theme_dir.is_dir(), "theme dir must exist after tagged install");
+    assert!(
+        theme_dir.is_dir(),
+        "theme dir must exist after tagged install"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -4443,7 +4456,11 @@ fn test_014_008_theme_install_with_path_subdir() {
     let url = file_url(&repo_dir);
 
     let mut cmd = zetl_cmd(&vault);
-    cmd.arg("theme").arg("install").arg(&url).arg("--path").arg("themes/light");
+    cmd.arg("theme")
+        .arg("install")
+        .arg(&url)
+        .arg("--path")
+        .arg("themes/light");
     let json = run_json(&mut cmd);
 
     // Name derived from the last component of --path.
@@ -4460,9 +4477,15 @@ fn test_014_008_theme_install_with_path_subdir() {
 
     let theme_dir = vault.join(".zetl/themes/light");
     assert!(theme_dir.is_dir(), ".zetl/themes/light must exist");
-    assert!(theme_dir.join("theme.toml").exists(), "theme.toml must be present");
+    assert!(
+        theme_dir.join("theme.toml").exists(),
+        "theme.toml must be present"
+    );
     // The README from repo root must NOT be copied.
-    assert!(!theme_dir.join("README.md").exists(), "README.md should not be copied");
+    assert!(
+        !theme_dir.join("README.md").exists(),
+        "README.md should not be copied"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -4483,7 +4506,11 @@ fn test_014_009_theme_install_with_name_override() {
     let url = file_url(&repo_dir);
 
     let mut cmd = zetl_cmd(&vault);
-    cmd.arg("theme").arg("install").arg(&url).arg("--name").arg("custom-name");
+    cmd.arg("theme")
+        .arg("install")
+        .arg(&url)
+        .arg("--name")
+        .arg("custom-name");
     let json = run_json(&mut cmd);
 
     assert_eq!(
@@ -4575,7 +4602,10 @@ fn test_014_011_zetl_source_toml_provenance() {
 
     // Name comes from theme.toml ("prov-theme"), not the repo dir name.
     let source_path = vault.join(".zetl/themes/prov-theme/.zetl-source.toml");
-    assert!(source_path.exists(), ".zetl-source.toml must exist after install");
+    assert!(
+        source_path.exists(),
+        ".zetl-source.toml must exist after install"
+    );
 
     let content = fs::read_to_string(&source_path).expect("read .zetl-source.toml");
 
@@ -4690,7 +4720,11 @@ fn test_014_013_serve_with_installed_theme() {
     // Install the theme into the vault.
     run_json(&mut {
         let mut cmd = zetl_cmd(&vault);
-        cmd.arg("theme").arg("install").arg(&url).arg("--name").arg("serve-theme");
+        cmd.arg("theme")
+            .arg("install")
+            .arg(&url)
+            .arg("--name")
+            .arg("serve-theme");
         cmd
     });
 
@@ -4701,7 +4735,10 @@ fn test_014_013_serve_with_installed_theme() {
     let _ = child.kill();
     let _ = child.wait();
 
-    assert!(status_line.contains("200"), "GET / must return 200; got: {status_line}");
+    assert!(
+        status_line.contains("200"),
+        "GET / must return 200; got: {status_line}"
+    );
     let html = body_string(&body_bytes);
     assert!(
         html.contains("serve-theme-sentinel"),
@@ -4728,7 +4765,11 @@ fn test_014_015_theme_remove_installed() {
     // Install.
     run_json(&mut {
         let mut cmd = zetl_cmd(&vault);
-        cmd.arg("theme").arg("install").arg(&url).arg("--name").arg("rm-theme");
+        cmd.arg("theme")
+            .arg("install")
+            .arg(&url)
+            .arg("--name")
+            .arg("rm-theme");
         cmd
     });
 
@@ -4747,7 +4788,10 @@ fn test_014_015_theme_remove_installed() {
         "rm-theme",
         "removed.name must be 'rm-theme'; got {json}"
     );
-    assert!(!theme_dir.exists(), "theme directory must be deleted after removal");
+    assert!(
+        !theme_dir.exists(),
+        "theme directory must be deleted after removal"
+    );
 
     // After removal, theme list must not include rm-theme as installed.
     let list = run_json(&mut {
@@ -4757,7 +4801,9 @@ fn test_014_015_theme_remove_installed() {
     });
     let themes = list["themes"].as_array().unwrap();
     assert!(
-        !themes.iter().any(|t| t["name"].as_str() == Some("rm-theme")),
+        !themes
+            .iter()
+            .any(|t| t["name"].as_str() == Some("rm-theme")),
         "rm-theme must not appear in theme list after removal"
     );
 }
@@ -4784,7 +4830,10 @@ fn test_014_016_theme_remove_bundled_fails() {
             .expect("run zetl")
     };
 
-    assert!(!output.status.success(), "removing bundled 'default' theme must fail");
+    assert!(
+        !output.status.success(),
+        "removing bundled 'default' theme must fail"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("bundled") || stderr.contains("cannot remove"),
@@ -4874,7 +4923,9 @@ fn test_014_path_traversal_rejected() {
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            stderr.contains("disallowed") || stderr.contains("relative") || stderr.contains("absolute"),
+            stderr.contains("disallowed")
+                || stderr.contains("relative")
+                || stderr.contains("absolute"),
             "error for --path {:?} must explain the rejection; got: {stderr}",
             path
         );

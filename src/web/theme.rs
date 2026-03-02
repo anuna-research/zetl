@@ -62,7 +62,7 @@ pub fn parse_install_source(source: &str) -> Result<ThemeInstallSource> {
     if slash_count == 1 {
         let (user, repo) = without_ref.split_once('/').unwrap();
         if !user.is_empty() && !repo.is_empty() {
-            let url = format!("https://github.com/{}/{}.git", user, repo);
+            let url = format!("https://github.com/{user}/{repo}.git");
             return Ok(ThemeInstallSource {
                 url,
                 git_ref: git_ref.map(str::to_string),
@@ -72,9 +72,8 @@ pub fn parse_install_source(source: &str) -> Result<ThemeInstallSource> {
     }
 
     bail!(
-        "unrecognized source {:?}: expected 'user/repo', 'https://...', 'file://...', \
-         or 'git@...' (optionally with '#ref')",
-        source
+        "unrecognized source {source:?}: expected 'user/repo', 'https://...', 'file://...', \
+         or 'git@...' (optionally with '#ref')"
     )
 }
 
@@ -124,7 +123,7 @@ pub fn resolve_theme_name(
             if !last.is_empty() {
                 let sanitized = sanitize_theme_name(last);
                 validate_theme_name(&sanitized).with_context(|| {
-                    format!("cannot derive a valid theme name from path component {:?}", last)
+                    format!("cannot derive a valid theme name from path component {last:?}")
                 })?;
                 return Ok(sanitized);
             }
@@ -206,17 +205,14 @@ pub fn validate_theme_name(name: &str) -> Result<()> {
         let sanitized = sanitize_theme_name(name);
         if sanitized.is_empty() {
             bail!(
-                "invalid theme name {:?}: must match ^[a-z0-9][a-z0-9_-]*$ \
-                 (lowercase letters, digits, hyphens, underscores; must start with a letter or digit)",
-                name
+                "invalid theme name {name:?}: must match ^[a-z0-9][a-z0-9_-]*$ \
+                 (lowercase letters, digits, hyphens, underscores; must start with a letter or digit)"
             )
         } else {
             bail!(
-                "invalid theme name {:?}: must match ^[a-z0-9][a-z0-9_-]*$ \
+                "invalid theme name {name:?}: must match ^[a-z0-9][a-z0-9_-]*$ \
                  (lowercase letters, digits, hyphens, underscores; must start with a letter or digit)\n\
-                 hint: try {:?} instead",
-                name,
-                sanitized
+                 hint: try {sanitized:?} instead"
             )
         }
     }
@@ -228,11 +224,9 @@ pub fn validate_theme_name(name: &str) -> Result<()> {
 /// - `theme.name` matches `^[a-z0-9][a-z0-9_-]*$`
 /// - `theme.version` is a valid SemVer string (e.g. `"1.0.0"`)
 pub fn parse_theme_manifest(content: &str) -> Result<ThemeManifest> {
-    let manifest: ThemeManifest =
-        toml::from_str(content).context("failed to parse theme.toml")?;
+    let manifest: ThemeManifest = toml::from_str(content).context("failed to parse theme.toml")?;
 
-    validate_theme_name(&manifest.theme.name)
-        .with_context(|| "theme.toml: invalid name field")?;
+    validate_theme_name(&manifest.theme.name).with_context(|| "theme.toml: invalid name field")?;
 
     validate_semver(&manifest.theme.version)
         .with_context(|| format!("theme.toml: invalid version {:?}", manifest.theme.version))?;
@@ -264,12 +258,8 @@ pub fn load_bundled_manifest(theme_name: &str) -> Result<Option<ThemeManifest>> 
     let Some(content) = bundled_template(theme_name, "theme.toml") else {
         return Ok(None);
     };
-    let manifest = parse_theme_manifest(content).with_context(|| {
-        format!(
-            "malformed bundled theme manifest for {:?}",
-            theme_name
-        )
-    })?;
+    let manifest = parse_theme_manifest(content)
+        .with_context(|| format!("malformed bundled theme manifest for {theme_name:?}"))?;
     Ok(Some(manifest))
 }
 
@@ -299,8 +289,8 @@ pub fn write_provenance(
         },
     };
 
-    let content = toml::to_string_pretty(&record)
-        .context("failed to serialize provenance record")?;
+    let content =
+        toml::to_string_pretty(&record).context("failed to serialize provenance record")?;
 
     let dest = theme_dir.join(".zetl-source.toml");
     std::fs::write(&dest, content)
@@ -334,7 +324,7 @@ fn unix_secs_to_iso8601(secs: u64) -> String {
     let tod = secs % 86400;
     let (h, m, s) = (tod / 3600, (tod % 3600) / 60, tod % 60);
     let (year, month, day) = days_to_ymd((secs / 86400) as i64);
-    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", year, month, day, h, m, s)
+    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
 }
 
 /// Convert a count of days since the Unix epoch to `(year, month, day)`.
@@ -348,8 +338,20 @@ fn days_to_ymd(mut days: i64) -> (i32, u32, u32) {
         days -= dy;
         year += 1;
     }
-    let month_days: [u32; 12] =
-        [31, if is_leap_year(year) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days: [u32; 12] = [
+        31,
+        if is_leap_year(year) { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut month = 1u32;
     for &md in &month_days {
         if days < md as i64 {
@@ -371,7 +373,14 @@ fn split_ref(s: &str) -> (&str, Option<&str>) {
     match s.find('#') {
         Some(pos) => {
             let git_ref = &s[pos + 1..];
-            (&s[..pos], if git_ref.is_empty() { None } else { Some(git_ref) })
+            (
+                &s[..pos],
+                if git_ref.is_empty() {
+                    None
+                } else {
+                    Some(git_ref)
+                },
+            )
         }
         None => (s, None),
     }
@@ -383,9 +392,7 @@ fn split_ref(s: &str) -> (&str, Option<&str>) {
 /// Returns the last slash-or-colon-separated segment, with any `.git` suffix
 /// stripped.
 fn repo_name_from_url(url: &str) -> Option<String> {
-    let last = url
-        .rsplit(|c| c == '/' || c == ':')
-        .find(|s| !s.is_empty())?;
+    let last = url.rsplit(['/', ':']).find(|s| !s.is_empty())?;
     let name = last.strip_suffix(".git").unwrap_or(last);
     Some(name.to_string())
 }
@@ -400,8 +407,7 @@ fn validate_semver(version: &str) -> Result<()> {
         Ok(())
     } else {
         bail!(
-            "version {:?} is not valid SemVer (expected MAJOR.MINOR.PATCH, e.g. \"1.0.0\")",
-            version
+            "version {version:?} is not valid SemVer (expected MAJOR.MINOR.PATCH, e.g. \"1.0.0\")"
         )
     }
 }
@@ -446,13 +452,12 @@ pub fn clone_theme(source: &ThemeInstallSource, target_dir: &Path) -> Result<Clo
             if !subdir.is_dir() {
                 let hints = find_theme_toml_dirs(tmpdir);
                 if hints.is_empty() {
-                    bail!("path {:?} was not found in the cloned repository", path);
+                    bail!("path {path:?} was not found in the cloned repository");
                 }
+                let dirs = hints.join(", ");
                 bail!(
-                    "path {:?} was not found in the cloned repository; \
-                     directories containing theme.toml: {}",
-                    path,
-                    hints.join(", ")
+                    "path {path:?} was not found in the cloned repository; \
+                     directories containing theme.toml: {dirs}"
                 );
             }
             subdir
@@ -464,7 +469,11 @@ pub fn clone_theme(source: &ThemeInstallSource, target_dir: &Path) -> Result<Clo
         .with_context(|| format!("failed to create {}", target_dir.display()))?;
     let (files_copied, total_bytes) = copy_theme_files(&source_dir, target_dir)?;
 
-    Ok(CloneResult { commit_sha, files_copied, total_bytes })
+    Ok(CloneResult {
+        commit_sha,
+        files_copied,
+        total_bytes,
+    })
 }
 
 // ── Git helpers ───────────────────────────────────────────────────────────────
@@ -488,7 +497,7 @@ fn git_run(cmd: &mut std::process::Command) -> Result<std::process::Output> {
                 "git is required for theme installation but was not found on PATH{hint}"
             )
         } else {
-            anyhow::anyhow!("failed to run git: {}", e)
+            anyhow::anyhow!("failed to run git: {e}")
         }
     })
 }
@@ -645,9 +654,8 @@ fn copy_dir_recursive(
             let rel = path.strip_prefix(root).expect("path is under root");
             let dest = dst_root.join(rel);
             if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent).with_context(|| {
-                    format!("failed to create directory {}", parent.display())
-                })?;
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create directory {}", parent.display()))?;
             }
             let n = std::fs::copy(&path, &dest).with_context(|| {
                 format!("failed to copy {} to {}", path.display(), dest.display())
@@ -669,7 +677,15 @@ mod tests {
 
     #[test]
     fn test_valid_theme_names() {
-        for name in &["default", "my-theme", "theme2", "a", "0", "dark_mode", "a1-b2"] {
+        for name in &[
+            "default",
+            "my-theme",
+            "theme2",
+            "a",
+            "0",
+            "dark_mode",
+            "a1-b2",
+        ] {
             assert!(
                 validate_theme_name(name).is_ok(),
                 "expected {:?} to be valid",
@@ -762,7 +778,10 @@ overrides = ["base.html", "index.html", "page.html", "folder.html"]
 "#;
         let m = parse_theme_manifest(toml).unwrap();
         assert_eq!(m.theme.name, "default");
-        assert_eq!(m.theme.description.as_deref(), Some("The default zetl theme"));
+        assert_eq!(
+            m.theme.description.as_deref(),
+            Some("The default zetl theme")
+        );
         let templates = m.theme.templates.unwrap();
         assert_eq!(templates.overrides.len(), 4);
         assert!(templates.overrides.contains(&"base.html".to_string()));
@@ -956,9 +975,13 @@ name = "my-theme"
     fn test_resolve_prefers_name_flag() {
         let src = make_source("https://github.com/user/repo.git");
         let manifest = make_manifest("manifest-name");
-        let name =
-            resolve_theme_name(Some("flag-name"), Some(&manifest), Some("themes/path"), &src)
-                .unwrap();
+        let name = resolve_theme_name(
+            Some("flag-name"),
+            Some(&manifest),
+            Some("themes/path"),
+            &src,
+        )
+        .unwrap();
         assert_eq!(name, "flag-name");
     }
 
@@ -1100,8 +1123,11 @@ zetl_version = "0.2.0"
         let src = tempfile::tempdir().unwrap();
         let dst = tempfile::tempdir().unwrap();
 
-        std::fs::write(src.path().join("theme.toml"), "[theme]\nname=\"x\"\nversion=\"1.0.0\"\n")
-            .unwrap();
+        std::fs::write(
+            src.path().join("theme.toml"),
+            "[theme]\nname=\"x\"\nversion=\"1.0.0\"\n",
+        )
+        .unwrap();
         std::fs::write(src.path().join("base.html"), "<html></html>").unwrap();
 
         let (count, bytes) = copy_theme_files(src.path(), dst.path()).unwrap();
@@ -1159,7 +1185,12 @@ zetl_version = "0.2.0"
 
         let (count, _) = copy_theme_files(src.path(), dst.path()).unwrap();
         assert_eq!(count, 1);
-        assert!(dst.path().join("assets").join("css").join("style.css").exists());
+        assert!(dst
+            .path()
+            .join("assets")
+            .join("css")
+            .join("style.css")
+            .exists());
     }
 
     // ── unix_secs_to_iso8601 ─────────────────────────────────────────────────
@@ -1205,7 +1236,11 @@ zetl_version = "0.2.0"
     // ── write_provenance / read_provenance ───────────────────────────────────
 
     fn make_clone_result(sha: &str) -> CloneResult {
-        CloneResult { commit_sha: sha.to_string(), files_copied: 5, total_bytes: 1024 }
+        CloneResult {
+            commit_sha: sha.to_string(),
+            files_copied: 5,
+            total_bytes: 1024,
+        }
     }
 
     #[test]
@@ -1243,8 +1278,7 @@ zetl_version = "0.2.0"
 
         write_provenance(tmp.path(), &source, &clone).unwrap();
 
-        let content =
-            std::fs::read_to_string(tmp.path().join(".zetl-source.toml")).unwrap();
+        let content = std::fs::read_to_string(tmp.path().join(".zetl-source.toml")).unwrap();
         // Optional fields must be absent when None
         assert!(!content.contains("ref ="));
         assert!(!content.contains("path ="));

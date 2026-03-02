@@ -2545,15 +2545,14 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
     let mut bundled_entries: std::collections::BTreeMap<String, ThemeEntry> =
         std::collections::BTreeMap::new();
     for name in &bundled_names {
-        let (version, description) =
-            match zetl::web::theme::load_bundled_manifest(name) {
-                Ok(Some(m)) => (Some(m.theme.version), m.theme.description),
-                Ok(None) => (None, None),
-                Err(e) => {
-                    eprintln!("warning: failed to load bundled manifest for {name:?}: {e}");
-                    (None, None)
-                }
-            };
+        let (version, description) = match zetl::web::theme::load_bundled_manifest(name) {
+            Ok(Some(m)) => (Some(m.theme.version), m.theme.description),
+            Ok(None) => (None, None),
+            Err(e) => {
+                eprintln!("warning: failed to load bundled manifest for {name:?}: {e}");
+                (None, None)
+            }
+        };
         bundled_entries.insert(
             name.clone(),
             ThemeEntry {
@@ -2568,8 +2567,7 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
 
     // 2. Installed themes from .zetl/themes/.
     let themes_dir = vault_root.join(".zetl/themes");
-    let mut installed_names: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
+    let mut installed_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     if themes_dir.is_dir() {
         let read_dir = std::fs::read_dir(&themes_dir)
             .with_context(|| format!("failed to read {}", themes_dir.display()))?;
@@ -2583,15 +2581,14 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
                 None => continue,
             };
 
-            let (version, description) =
-                match zetl::web::theme::load_theme_manifest(&path) {
-                    Ok(Some(m)) => (Some(m.theme.version), m.theme.description),
-                    Ok(None) => (None, None),
-                    Err(e) => {
-                        eprintln!("warning: failed to load manifest for installed theme {name:?}: {e}");
-                        (None, None)
-                    }
-                };
+            let (version, description) = match zetl::web::theme::load_theme_manifest(&path) {
+                Ok(Some(m)) => (Some(m.theme.version), m.theme.description),
+                Ok(None) => (None, None),
+                Err(e) => {
+                    eprintln!("warning: failed to load manifest for installed theme {name:?}: {e}");
+                    (None, None)
+                }
+            };
 
             let origin_url = {
                 let source_path = path.join(".zetl-source.toml");
@@ -2692,7 +2689,7 @@ fn cmd_theme_install(
         // Reject absolute paths and any component that would escape the repo root.
         let path_buf = std::path::Path::new(p);
         if path_buf.is_absolute() {
-            anyhow::bail!("--path must be a relative path within the repository, got {:?}", p);
+            anyhow::bail!("--path must be a relative path within the repository, got {p:?}");
         }
         for component in path_buf.components() {
             use std::path::Component;
@@ -2701,9 +2698,8 @@ fn cmd_theme_install(
                 Component::CurDir => {}
                 _ => {
                     anyhow::bail!(
-                        "--path {:?} contains a disallowed component; \
-                         only relative paths without '..' are permitted",
-                        p
+                        "--path {p:?} contains a disallowed component; \
+                         only relative paths without '..' are permitted"
                     );
                 }
             }
@@ -2712,8 +2708,7 @@ fn cmd_theme_install(
 
     // REQ-014-016: validate --name before any filesystem operations.
     if let Some(n) = name_flag {
-        validate_theme_name(n)
-            .with_context(|| format!("invalid --name {:?}", n))?;
+        validate_theme_name(n).with_context(|| format!("invalid --name {n:?}"))?;
     }
 
     // 1. Parse source.
@@ -2760,11 +2755,11 @@ fn cmd_theme_install(
         },
         &tmp_dir,
     )
-    .with_context(|| format!("failed to clone {:?}", source))?;
+    .with_context(|| format!("failed to clone {source:?}"))?;
     let clone_ms = clone_start.elapsed().as_millis();
     if cli.verbose > 0 {
         eprintln!("theme: commit={}", clone_result.commit_sha);
-        eprintln!("theme: clone={}ms", clone_ms);
+        eprintln!("theme: clone={clone_ms}ms");
         eprintln!("theme: files={}", clone_result.files_copied);
         eprintln!("theme: size={} bytes", clone_result.total_bytes);
     }
@@ -2790,13 +2785,9 @@ fn cmd_theme_install(
     }
 
     // 6. Resolve final name.
-    let resolved_name = resolve_theme_name(
-        name_flag,
-        manifest.as_ref(),
-        path_flag,
-        &install_source,
-    )
-    .with_context(|| "could not determine theme name")?;
+    let resolved_name =
+        resolve_theme_name(name_flag, manifest.as_ref(), path_flag, &install_source)
+            .with_context(|| "could not determine theme name")?;
 
     let target_dir = themes_dir.join(&resolved_name);
 
@@ -2805,10 +2796,7 @@ fn cmd_theme_install(
         if !force {
             // Clean up temp clone before erroring.
             let _ = std::fs::remove_dir_all(&tmp_dir);
-            anyhow::bail!(
-                "theme {:?} is already installed; use --force to overwrite",
-                resolved_name
-            );
+            anyhow::bail!("theme {resolved_name:?} is already installed; use --force to overwrite");
         }
         // 7. If --force and target exists, delete it.
         std::fs::remove_dir_all(&target_dir)
@@ -2864,7 +2852,7 @@ fn cmd_theme_install(
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
         OutputFormat::Table => {
-            println!("Installed theme {:?}", resolved_name);
+            println!("Installed theme {resolved_name:?}");
         }
     }
 
@@ -2873,8 +2861,7 @@ fn cmd_theme_install(
 
 /// Copy the directory tree at `src` into `dst` (created if missing).
 fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
-    std::fs::create_dir_all(dst)
-        .with_context(|| format!("failed to create {}", dst.display()))?;
+    std::fs::create_dir_all(dst).with_context(|| format!("failed to create {}", dst.display()))?;
     for entry in std::fs::read_dir(src)
         .with_context(|| format!("failed to read {}", src.display()))?
         .flatten()
@@ -2884,8 +2871,9 @@ fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
         if from.is_dir() {
             copy_dir_all(&from, &to)?;
         } else {
-            std::fs::copy(&from, &to)
-                .with_context(|| format!("failed to copy {} to {}", from.display(), to.display()))?;
+            std::fs::copy(&from, &to).with_context(|| {
+                format!("failed to copy {} to {}", from.display(), to.display())
+            })?;
         }
     }
     Ok(())
@@ -2914,25 +2902,24 @@ fn semver_less_than(a: &str, b: &str) -> bool {
 fn cmd_theme_remove(cli: &Cli, name: &str) -> Result<()> {
     // 1. Validate name (rejects path traversal and invalid chars).
     zetl::web::theme::validate_theme_name(name)
-        .with_context(|| format!("invalid theme name {:?}", name))?;
+        .with_context(|| format!("invalid theme name {name:?}"))?;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
     // 2. Check if this is a bundled-only theme (not installed on disk).
-    let bundled_names: std::collections::HashSet<String> =
-        zetl::web::engine::bundled_theme_names()
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect();
+    let bundled_names: std::collections::HashSet<String> = zetl::web::engine::bundled_theme_names()
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
     let is_bundled = bundled_names.contains(name);
 
     let theme_dir = vault_root.join(".zetl/themes").join(name);
     if !theme_dir.is_dir() {
         if is_bundled {
-            anyhow::bail!("cannot remove bundled theme {:?}", name);
+            anyhow::bail!("cannot remove bundled theme {name:?}");
         } else {
-            anyhow::bail!("theme {:?} is not installed", name);
+            anyhow::bail!("theme {name:?} is not installed");
         }
     }
 
@@ -2940,8 +2927,7 @@ fn cmd_theme_remove(cli: &Cli, name: &str) -> Result<()> {
     let was_shadowing = is_bundled;
     if was_shadowing && !cli.quiet {
         eprintln!(
-            "warning: removing installed version of {:?}; the bundled theme will be used instead",
-            name
+            "warning: removing installed version of {name:?}; the bundled theme will be used instead"
         );
     }
 
@@ -2988,7 +2974,7 @@ fn cmd_theme_remove(cli: &Cli, name: &str) -> Result<()> {
 fn cmd_theme_export(cli: &Cli, name: &str, force: bool) -> Result<()> {
     // 1. Validate name (rejects path traversal and invalid chars).
     zetl::web::theme::validate_theme_name(name)
-        .with_context(|| format!("invalid theme name {:?}", name))?;
+        .with_context(|| format!("invalid theme name {name:?}"))?;
 
     // 2. Check name is a bundled theme.
     let is_bundled = zetl::web::engine::bundled_theme_names().contains(&name);
@@ -3003,9 +2989,7 @@ fn cmd_theme_export(cli: &Cli, name: &str, force: bool) -> Result<()> {
     // 4. Check if .zetl/themes/<name>/ already exists.
     let theme_dir = vault_root.join(".zetl/themes").join(name);
     if theme_dir.is_dir() && !force {
-        anyhow::bail!(
-            ".zetl/themes/{name}/ already exists\nhint: use --force to overwrite",
-        );
+        anyhow::bail!(".zetl/themes/{name}/ already exists\nhint: use --force to overwrite",);
     }
 
     // 5. Create the destination directory.
@@ -3018,9 +3002,8 @@ fn cmd_theme_export(cli: &Cli, name: &str, force: bool) -> Result<()> {
     for (rel_path, contents) in &files {
         let dest = theme_dir.join(rel_path);
         if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create directory {}", parent.display())
-            })?;
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
         }
         std::fs::write(&dest, contents)
             .with_context(|| format!("failed to write {}", dest.display()))?;
@@ -6779,9 +6762,12 @@ fn main() -> anyhow::Result<()> {
         } => cmd_view(&cli, page.as_deref(), *context_lines, *main_width),
         Command::Theme { command } => match command {
             ThemeCommand::List => cmd_theme_list(&cli),
-            ThemeCommand::Install { source, path, name, force } => {
-                cmd_theme_install(&cli, source, path.as_deref(), name.as_deref(), *force)
-            }
+            ThemeCommand::Install {
+                source,
+                path,
+                name,
+                force,
+            } => cmd_theme_install(&cli, source, path.as_deref(), name.as_deref(), *force),
             ThemeCommand::Remove { name } => cmd_theme_remove(&cli, name),
             ThemeCommand::Export { name, force } => cmd_theme_export(&cli, name, *force),
         },

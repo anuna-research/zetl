@@ -1450,7 +1450,12 @@ fn test_bundled_minimal_theme_has_all_templates() {
 #[test]
 fn test_bundled_minimal_theme_has_no_cdn_links() {
     use zetl::web::engine::bundled_template;
-    let cdn_patterns = ["cdn.jsdelivr.net", "fonts.googleapis.com", "unpkg.com", "cdnjs.cloudflare.com"];
+    let cdn_patterns = [
+        "cdn.jsdelivr.net",
+        "fonts.googleapis.com",
+        "unpkg.com",
+        "cdnjs.cloudflare.com",
+    ];
     for name in &["base.html", "index.html", "page.html", "folder.html"] {
         let content = bundled_template("minimal", name).unwrap_or("");
         for cdn in &cdn_patterns {
@@ -1546,8 +1551,8 @@ fn test_theme_list_shows_bundled_themes() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Parse JSON
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("theme list should produce valid JSON");
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("theme list should produce valid JSON");
 
     let themes = json["themes"].as_array().expect("themes should be array");
     let names: Vec<&str> = themes
@@ -1575,7 +1580,10 @@ fn test_theme_list_shows_bundled_themes() {
 
     // Both bundled themes should have version metadata
     for theme_name in &["default", "minimal"] {
-        let t = themes.iter().find(|t| t["name"].as_str() == Some(theme_name)).unwrap();
+        let t = themes
+            .iter()
+            .find(|t| t["name"].as_str() == Some(theme_name))
+            .unwrap();
         assert!(
             t["version"].as_str().is_some(),
             "bundled theme {theme_name} should have a version"
@@ -1610,8 +1618,8 @@ fn test_theme_list_minimal_shadows_bundled() {
 
     assert!(output.status.success(), "theme list should exit 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("theme list should produce valid JSON");
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("theme list should produce valid JSON");
 
     let themes = json["themes"].as_array().expect("themes should be array");
     let minimal = themes
@@ -1621,8 +1629,7 @@ fn test_theme_list_minimal_shadows_bundled() {
 
     let source = minimal["source"].as_str().unwrap_or("");
     assert_eq!(
-        source,
-        "installed (shadows bundled)",
+        source, "installed (shadows bundled)",
         "disk minimal should be shown as 'installed (shadows bundled)', got: {source:?}"
     );
 }
@@ -1734,13 +1741,15 @@ fn test_verbose_shows_template_resolution_tiers() {
 
     // page.html should show as disk (Tier 1) for custom theme
     assert!(
-        stderr.contains("page.html") && (stderr.contains("disk") || stderr.contains(".zetl/themes")),
+        stderr.contains("page.html")
+            && (stderr.contains("disk") || stderr.contains(".zetl/themes")),
         "verbose output should show page.html resolved from disk for custom theme"
     );
 
     // index.html should show as bundled default fallback (Tier 3)
     assert!(
-        stderr.contains("index.html") && (stderr.contains("bundled:default") || stderr.contains("fallback")),
+        stderr.contains("index.html")
+            && (stderr.contains("bundled:default") || stderr.contains("fallback")),
         "verbose output should show index.html from bundled default (Tier 3 fallback)"
     );
 }
@@ -1753,7 +1762,13 @@ fn test_verbose_shows_template_resolution_tiers() {
 #[test]
 fn test_bundled_theme_size_within_budget() {
     use zetl::web::engine::{bundled_template, bundled_theme_names};
-    let template_names = &["base.html", "index.html", "page.html", "folder.html", "theme.toml"];
+    let template_names = &[
+        "base.html",
+        "index.html",
+        "page.html",
+        "folder.html",
+        "theme.toml",
+    ];
     let mut total_bytes: usize = 0;
     for theme in bundled_theme_names() {
         for name in template_names {

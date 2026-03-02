@@ -237,10 +237,12 @@ pub fn build_static(
     let bm25_json = write_search_index_json(data, vault_root, out)?;
 
     // ── index.html ──────────────────────────────────────────────────────
-    let index_html = engine.render_index(&vault_ctx, "build", &bm25_json).map_err(|e| {
-        eprintln!("{}", e.stderr_line("index"));
-        anyhow::anyhow!("{e}")
-    })?;
+    let index_html = engine
+        .render_index(&vault_ctx, "build", &bm25_json)
+        .map_err(|e| {
+            eprintln!("{}", e.stderr_line("index"));
+            anyhow::anyhow!("{e}")
+        })?;
     std::fs::write(out.join("index.html"), index_html)?;
 
     // ── per-page HTML ───────────────────────────────────────────────────
@@ -255,9 +257,11 @@ pub fn build_static(
             .with_context(|| format!("Cannot read {}", full_path.display()))?;
 
         let root_path = compute_root_path(&slug);
-        let rendered = markdown::render_to_html(&content, &data.page_slug_map, &root_path, "index.html");
+        let rendered =
+            markdown::render_to_html(&content, &data.page_slug_map, &root_path, "index.html");
         let mut page_ctx = build_page_context(data, &file.page_name, &slug, &rendered, &content);
-        page_ctx.transclusion_cards = build_transclusion_cards(data, vault_root, &file.page_name, &root_path);
+        page_ctx.transclusion_cards =
+            build_transclusion_cards(data, vault_root, &file.page_name, &root_path);
 
         let page_html = engine
             .render_page(&vault_ctx, &page_ctx, "build", &bm25_json)
@@ -298,10 +302,12 @@ pub fn build_static(
 
         let folder_name = folder.rsplit('/').next().unwrap_or(folder);
         let folder_ctx = build_folder_context(data, folder, folder_name);
-        let folder_html = engine.render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json).map_err(|e| {
-            eprintln!("{}", e.stderr_line(folder));
-            anyhow::anyhow!("{e}")
-        })?;
+        let folder_html = engine
+            .render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json)
+            .map_err(|e| {
+                eprintln!("{}", e.stderr_line(folder));
+                anyhow::anyhow!("{e}")
+            })?;
         std::fs::write(folder_dir.join("index.html"), folder_html)?;
         folder_count += 1;
     }
@@ -371,7 +377,12 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
 }
 
 /// Build transclusion card HTML for a page's forward links.
-fn build_transclusion_cards(data: &VaultData, vault_root: &Path, page_name: &str, root_path: &str) -> String {
+fn build_transclusion_cards(
+    data: &VaultData,
+    vault_root: &Path,
+    page_name: &str,
+    root_path: &str,
+) -> String {
     let forward_links = data.graph.forward_links(page_name);
     let mut seen_targets = HashSet::new();
     let mut unique_targets: Vec<String> = Vec::new();
@@ -400,7 +411,14 @@ fn build_transclusion_cards(data: &VaultData, vault_root: &Path, page_name: &str
                 let full_path = vault_root.join(&file.path);
                 std::fs::read_to_string(&full_path).ok()
             })
-            .map(|content| markdown::render_preview_html(&content, &data.page_slug_map, root_path, "index.html"))
+            .map(|content| {
+                markdown::render_preview_html(
+                    &content,
+                    &data.page_slug_map,
+                    root_path,
+                    "index.html",
+                )
+            })
             .unwrap_or_else(|| format!("<p><em>{}</em></p>", html_escape("(page does not exist)")));
 
         cards.push_str(&format!(

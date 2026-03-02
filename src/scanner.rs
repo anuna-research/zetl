@@ -47,7 +47,7 @@ pub fn scan_vault(root: &Path, ignore_patterns: &[String]) -> Result<Vec<ParsedF
     // child vault, similar to how git ignores nested git repos.
     builder.filter_entry(|entry| {
         if entry.depth() > 0
-            && entry.file_type().map_or(false, |ft| ft.is_dir())
+            && entry.file_type().is_some_and(|ft| ft.is_dir())
             && entry.path().join(".zetl").is_dir()
         {
             return false;
