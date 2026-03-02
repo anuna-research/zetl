@@ -6,6 +6,10 @@
 //! - **Execution** (REQ-016-003): Spawn hooks as child processes, write JSON
 //!   context to stdin, set ZETL_* environment variables, capture output, and
 //!   report exit codes.
+//! - **Context** (CON-016-001): Serialise vault data to the JSON schema
+//!   written to hook stdin.
+
+pub mod context;
 
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
