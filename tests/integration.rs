@@ -4931,3 +4931,453 @@ fn test_014_path_traversal_rejected() {
         );
     }
 }
+
+// ===========================================================================
+// TEST-015-003: Basic 3-scene chain navigation in built HTML
+// ===========================================================================
+
+/// Build a 3-page linear chain vault: Step 1 → Step 2 → Step 3.
+///
+/// Slugs: step-1, step-2, step-3.
+fn build_chain003_vault(root: &Path) {
+    write_file(
+        root,
+        "Step 1.md",
+        "---\nnext: Step 2\n---\n# Step 1\n\nFirst step.\n",
+    );
+    write_file(
+        root,
+        "Step 2.md",
+        "---\nprev: Step 1\nnext: Step 3\n---\n# Step 2\n\nMiddle step.\n",
+    );
+    write_file(
+        root,
+        "Step 3.md",
+        "---\nprev: Step 2\n---\n# Step 3\n\nLast step.\n",
+    );
+}
+
+/// TEST-015-003: The middle page of a 3-page chain includes both a prev and a
+/// next navigation link and displays the correct "2 of 3" position counter in
+/// the built static HTML.
+#[test]
+fn test_015_003_chain_navigation_built_html() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_chain003_vault(dir.path());
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("step-2/index.html"))
+        .expect("step-2/index.html should be built");
+
+    // Chain nav prev-button title is "Step 1" (truncate span only appears in chain nav).
+    assert!(
+        html.contains(r#"<span class="truncate">Step 1</span>"#),
+        "step-2 page should have a prev nav button labelled 'Step 1'"
+    );
+    // Chain nav next-button title is "Step 3".
+    assert!(
+        html.contains(r#"<span class="truncate">Step 3</span>"#),
+        "step-2 page should have a next nav button labelled 'Step 3'"
+    );
+    // Position counter shows "2 of 3".
+    assert!(
+        html.contains("2 of 3"),
+        "step-2 page should show '2 of 3' position counter"
+    );
+}
+
+// ===========================================================================
+// TEST-015-004: Chain head has no prev; chain tail has no next
+// ===========================================================================
+
+/// TEST-015-004: The chain head (Step 1) shows "1 of 3" and has a next link
+/// to Step 2 but no backward navigation; the chain tail (Step 3) shows
+/// "3 of 3" and has a prev link to Step 2 but no forward navigation.
+#[test]
+fn test_015_004_chain_head_tail_bounds() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_chain003_vault(dir.path());
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Head (step-1): position 1 of 3, next link to step-2, no prev link.
+    let head_html = fs::read_to_string(out_dir.join("step-1/index.html"))
+        .expect("step-1/index.html should be built");
+    // Position 1 of 3 confirms this is the chain head.
+    assert!(
+        head_html.contains("1 of 3"),
+        "chain head should show '1 of 3'"
+    );
+    // The chain nav next-button title should be "Step 2".
+    assert!(
+        head_html.contains(r#"<span class="truncate">Step 2</span>"#),
+        "chain head should have a next nav button labelled 'Step 2'"
+    );
+    // Head has no prev: no chain nav button for a prior step.
+    // The <span class="truncate"> class is exclusive to chain nav buttons.
+    // Only the next-button title ("Step 2") should appear, not any prev title.
+    assert!(
+        !head_html.contains(r#"<span class="truncate">Step 0</span>"#),
+        "chain head must not have a prev nav button for a non-existent Step 0"
+    );
+
+    // Tail (step-3): position 3 of 3, prev link to step-2, no next link.
+    let tail_html = fs::read_to_string(out_dir.join("step-3/index.html"))
+        .expect("step-3/index.html should be built");
+    // Position 3 of 3 confirms this is the chain tail.
+    assert!(
+        tail_html.contains("3 of 3"),
+        "chain tail should show '3 of 3'"
+    );
+    // The chain nav prev-button title should be "Step 2".
+    assert!(
+        tail_html.contains(r#"<span class="truncate">Step 2</span>"#),
+        "chain tail should have a prev nav button labelled 'Step 2'"
+    );
+    // Tail has no next: no chain nav button for a subsequent step.
+    assert!(
+        !tail_html.contains(r#"<span class="truncate">Step 4</span>"#),
+        "chain tail must not have a next nav button for a non-existent Step 4"
+    );
+}
+
+// ===========================================================================
+// TEST-015-005: Non-chain pages have no chain navigation
+// ===========================================================================
+
+/// TEST-015-005: A page with no chain frontmatter fields (no prev/next) must
+/// not produce any chain navigation elements in the built HTML.
+#[test]
+fn test_015_005_nonchain_page_no_nav() {
+    let dir = TempDir::new().expect("create temp dir");
+    build_chain003_vault(dir.path());
+
+    // Add a standalone page with no chain frontmatter.
+    write_file(
+        dir.path(),
+        "Standalone.md",
+        "# Standalone\n\nThis page is not part of any chain.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("standalone/index.html"))
+        .expect("standalone/index.html should be built");
+
+    // The chain position counter (rendered with class "tabular-nums") must not
+    // appear — it is only emitted inside the chain nav block.
+    assert!(
+        !html.contains("tabular-nums"),
+        "standalone page should not have a chain position counter (tabular-nums class absent)"
+    );
+    // No chain nav buttons: <span class="truncate"> only appears inside chain
+    // prev/next link buttons, never in sidebar or breadcrumbs.
+    assert!(
+        !html.contains(r#"<span class="truncate">"#),
+        "standalone page must not contain any chain nav buttons (no truncate spans)"
+    );
+}
+
+// ===========================================================================
+// TEST-015-006: Wikilink syntax in frontmatter + broken chain check
+// ===========================================================================
+
+/// TEST-015-006a: prev/next values written as `[[Wikilink]]` syntax in YAML
+/// frontmatter are resolved correctly and produce the expected nav links in the
+/// built HTML.
+#[test]
+fn test_015_006_wikilink_syntax_in_frontmatter() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    write_file(
+        dir.path(),
+        "Page A.md",
+        "---\nnext: \"[[Page B]]\"\n---\n# Page A\n\nFirst page.\n",
+    );
+    write_file(
+        dir.path(),
+        "Page B.md",
+        "---\nprev: \"[[Page A]]\"\n---\n# Page B\n\nSecond page.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Page A must have a next nav button labelled "Page B".
+    // The <span class="truncate"> pattern appears only in chain nav buttons.
+    let page_a_html = fs::read_to_string(out_dir.join("page-a/index.html"))
+        .expect("page-a/index.html should be built");
+    assert!(
+        page_a_html.contains(r#"<span class="truncate">Page B</span>"#),
+        "Page A should have a next nav button labelled 'Page B' (wikilink syntax resolved)"
+    );
+
+    // Page B must have a prev nav button labelled "Page A".
+    let page_b_html = fs::read_to_string(out_dir.join("page-b/index.html"))
+        .expect("page-b/index.html should be built");
+    assert!(
+        page_b_html.contains(r#"<span class="truncate">Page A</span>"#),
+        "Page B should have a prev nav button labelled 'Page A' (wikilink syntax resolved)"
+    );
+}
+
+/// TEST-015-006b: `zetl check --chains` reports a `broken_forward_link` error
+/// (level "error", kind "broken_forward_link") when a next/prev target does not
+/// exist in the vault, and exits with a non-zero status code.
+#[test]
+fn test_015_006_check_reports_broken_chain() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    write_file(
+        dir.path(),
+        "Source.md",
+        "---\nnext: NonExistent\n---\n# Source\n\nLinks to a ghost page.\n",
+    );
+
+    let (json, status) =
+        run_json_any(zetl_cmd(dir.path()).arg("check").arg("--chains"));
+
+    let diags = json["chain_diagnostics"]
+        .as_array()
+        .expect("chain_diagnostics should be an array");
+
+    assert!(
+        !diags.is_empty(),
+        "should report at least one chain diagnostic for a broken link, got empty array"
+    );
+
+    let has_broken = diags
+        .iter()
+        .any(|d| d["kind"].as_str() == Some("broken_forward_link"));
+    assert!(
+        has_broken,
+        "should report a 'broken_forward_link' diagnostic; got: {diags:?}"
+    );
+
+    let summary_errors = json["summary"]["chain_errors"].as_u64().unwrap_or(0);
+    assert!(
+        summary_errors > 0,
+        "summary.chain_errors should be > 0 for a broken chain link"
+    );
+
+    assert!(
+        !status.success(),
+        "zetl check --chains should exit non-zero when chain errors are present"
+    );
+}
+
+// ===========================================================================
+// TEST-015-007: Cycle detection + multi-chain independent navigation
+// ===========================================================================
+
+/// TEST-015-007a: `zetl check --chains` reports a `cycle` diagnostic (level
+/// "error", kind "cycle") when pages form a circular next-pointer chain, and
+/// exits with a non-zero status code.
+#[test]
+fn test_015_007_check_reports_cycle() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    // Two pages pointing at each other via `next` form a cycle.
+    write_file(
+        dir.path(),
+        "Cycle A.md",
+        "---\nnext: Cycle B\n---\n# Cycle A\n\nPoints to B.\n",
+    );
+    write_file(
+        dir.path(),
+        "Cycle B.md",
+        "---\nnext: Cycle A\n---\n# Cycle B\n\nPoints back to A.\n",
+    );
+
+    let (json, status) =
+        run_json_any(zetl_cmd(dir.path()).arg("check").arg("--chains"));
+
+    let diags = json["chain_diagnostics"]
+        .as_array()
+        .expect("chain_diagnostics should be an array");
+
+    assert!(
+        !diags.is_empty(),
+        "should report at least one chain diagnostic for a cycle, got empty array"
+    );
+
+    let has_cycle = diags
+        .iter()
+        .any(|d| d["kind"].as_str() == Some("cycle"));
+    assert!(
+        has_cycle,
+        "should report a 'cycle' diagnostic; got: {diags:?}"
+    );
+
+    let summary_errors = json["summary"]["chain_errors"].as_u64().unwrap_or(0);
+    assert!(
+        summary_errors > 0,
+        "summary.chain_errors should be > 0 for a cycle"
+    );
+
+    assert!(
+        !status.success(),
+        "zetl check --chains should exit non-zero when a cycle is detected"
+    );
+}
+
+/// TEST-015-007b: A vault with two independent 3-page chains produces correct
+/// prev/next navigation for each chain independently. Pages in one chain must
+/// not appear as navigation targets in the other chain's pages.
+#[test]
+fn test_015_007_multichain_independent_navigation() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    // Chain 1: Alpha → Beta → Gamma
+    write_file(
+        dir.path(),
+        "Alpha.md",
+        "---\nnext: Beta\n---\n# Alpha\n\nChain 1 start.\n",
+    );
+    write_file(
+        dir.path(),
+        "Beta.md",
+        "---\nprev: Alpha\nnext: Gamma\n---\n# Beta\n\nChain 1 middle.\n",
+    );
+    write_file(
+        dir.path(),
+        "Gamma.md",
+        "---\nprev: Beta\n---\n# Gamma\n\nChain 1 end.\n",
+    );
+
+    // Chain 2: One → Two → Three
+    write_file(
+        dir.path(),
+        "One.md",
+        "---\nnext: Two\n---\n# One\n\nChain 2 start.\n",
+    );
+    write_file(
+        dir.path(),
+        "Two.md",
+        "---\nprev: One\nnext: Three\n---\n# Two\n\nChain 2 middle.\n",
+    );
+    write_file(
+        dir.path(),
+        "Three.md",
+        "---\nprev: Two\n---\n# Three\n\nChain 2 end.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build");
+    assert!(
+        output.status.success(),
+        "zetl build failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // ── Chain 1: Alpha (head) ──────────────────────────────────────────────
+    // The <span class="truncate"> pattern is exclusive to chain nav buttons.
+    let alpha_html = fs::read_to_string(out_dir.join("alpha/index.html"))
+        .expect("alpha/index.html should be built");
+    assert!(alpha_html.contains("1 of 3"), "Alpha should show '1 of 3'");
+    assert!(
+        alpha_html.contains(r#"<span class="truncate">Beta</span>"#),
+        "Alpha should have a next nav button labelled 'Beta'"
+    );
+    // Alpha's chain nav must not link to any chain-2 page.
+    assert!(
+        !alpha_html.contains(r#"<span class="truncate">One</span>"#)
+            && !alpha_html.contains(r#"<span class="truncate">Two</span>"#)
+            && !alpha_html.contains(r#"<span class="truncate">Three</span>"#),
+        "Alpha chain nav must not reference chain-2 pages (One/Two/Three)"
+    );
+
+    // ── Chain 1: Gamma (tail) ──────────────────────────────────────────────
+    let gamma_html = fs::read_to_string(out_dir.join("gamma/index.html"))
+        .expect("gamma/index.html should be built");
+    assert!(gamma_html.contains("3 of 3"), "Gamma should show '3 of 3'");
+    assert!(
+        gamma_html.contains(r#"<span class="truncate">Beta</span>"#),
+        "Gamma should have a prev nav button labelled 'Beta'"
+    );
+    assert!(
+        !gamma_html.contains(r#"<span class="truncate">One</span>"#)
+            && !gamma_html.contains(r#"<span class="truncate">Two</span>"#)
+            && !gamma_html.contains(r#"<span class="truncate">Three</span>"#),
+        "Gamma chain nav must not reference chain-2 pages"
+    );
+
+    // ── Chain 2: One (head) ───────────────────────────────────────────────
+    let one_html = fs::read_to_string(out_dir.join("one/index.html"))
+        .expect("one/index.html should be built");
+    assert!(one_html.contains("1 of 3"), "One should show '1 of 3'");
+    assert!(
+        one_html.contains(r#"<span class="truncate">Two</span>"#),
+        "One should have a next nav button labelled 'Two'"
+    );
+    assert!(
+        !one_html.contains(r#"<span class="truncate">Alpha</span>"#)
+            && !one_html.contains(r#"<span class="truncate">Beta</span>"#)
+            && !one_html.contains(r#"<span class="truncate">Gamma</span>"#),
+        "One chain nav must not reference chain-1 pages (Alpha/Beta/Gamma)"
+    );
+
+    // ── Chain 2: Three (tail) ─────────────────────────────────────────────
+    let three_html = fs::read_to_string(out_dir.join("three/index.html"))
+        .expect("three/index.html should be built");
+    assert!(three_html.contains("3 of 3"), "Three should show '3 of 3'");
+    assert!(
+        three_html.contains(r#"<span class="truncate">Two</span>"#),
+        "Three should have a prev nav button labelled 'Two'"
+    );
+    assert!(
+        !three_html.contains(r#"<span class="truncate">Alpha</span>"#)
+            && !three_html.contains(r#"<span class="truncate">Beta</span>"#)
+            && !three_html.contains(r#"<span class="truncate">Gamma</span>"#),
+        "Three chain nav must not reference chain-1 pages"
+    );
+}

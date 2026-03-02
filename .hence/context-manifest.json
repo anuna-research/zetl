@@ -1,12 +1,12 @@
 {
-  "task_id": "prevnext-default-theme",
+  "task_id": "chain-integration-tests",
   "token_budget": 8000,
-  "tokens_used": 184,
+  "tokens_used": 229,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add conditional prev/next navigation to themes/default/page.html. Show a nav bar with left arrow link to prev_page, position indicator showing N of M, and right arrow link to next_page. Render at top and bottom of content area. Only show when page.prev_page or page.next_page exists. Use DaisyUI classes consistent with existing theme. REQ-015-003.",
-      "token_cost": 87,
+      "content": "Add integration tests for scene chaining to tests/integration.rs. Test: basic 3-scene chain navigation with correct prev/next links and position in built HTML; chain head has no prev and shows 1 of 3; chain tail has no next; non-chain pages have no nav; wikilink syntax in frontmatter resolves correctly; zetl check reports broken chain errors; zetl check reports cycle errors; multi-chain vault works independently. TEST-015-003 through TEST-015-007.",
+      "token_cost": 112,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 4 files (+412, -9): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/chain.rs",
       "token_cost": 25,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-prevnext-default-theme-changes",
+      "content": "Modified 2 files (+61, -5): .hence/context-manifest.json, themes/default/page.html",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T10:09:20Z"
+  "constructed_at": "2026-03-02T10:11:47Z"
 }
