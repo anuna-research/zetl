@@ -1,12 +1,12 @@
 {
-  "task_id": "theme-install-cmd",
+  "task_id": "verify-phase2",
   "token_budget": 8000,
-  "tokens_used": 843,
+  "tokens_used": 456,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Wire up the `zetl theme install` CLI subcommand per CON-014-002.\n\nAdd to ThemeCommand enum:\n```rust\n/// Install a theme from a git repository\nInstall {\n    /// Theme source (user/repo, URL, or git@... with optional #ref)\n    source: String,\n    /// Subdirectory within the repository to use as theme root\n    #[arg(long)]\n    path: Option<String>,\n    /// Override the installed theme directory name\n    #[arg(long)]\n    name: Option<String>,\n    /// Overwrite existing theme directory\n    #[arg(long)]\n    force: bool,\n},\n```\n\nImplementation in cmd_theme_install():\n1. Parse source with parse_install_source().\n2. Check if target name already exists in .zetl/themes/. If so, require --force or error (REQ-014-010).\n3. Clone with clone_theme().\n4. Read theme.toml from cloned files if present\n5. If min_zetl_version is present and current version is older, print warning.\n6. Resolve final name with resolve_theme_name().\n7. If --force and target exists, delete it.\n8. Move/copy files to .zetl/themes/<name>/.\n9. Write provenance with write_provenance().\n10. Output JSON: { installed: { name, version, source, ref, path } }.\n\nPath traversal checks per REQ-014-016: validate name and --path before any filesystem operations.\n\nREQ-014-006 through REQ-014-011, REQ-014-015, REQ-014-016, CON-014-002.",
-      "token_cost": 323,
+      "content": "End-to-end verification of Phase 2:\n\n1. zetl theme install <github-shorthand> installs theme from GitHub.\n2. zetl theme install <url>#<tag> installs at specific version.\n3. zetl theme install <url> --path <subdir> extracts correct subdirectory.\n4. zetl theme install with --name overrides theme name.\n5. Duplicate install without --force fails\n6. .zetl-source.toml written with correct provenance.\n7. zetl theme list shows the installed theme with origin.\n8. zetl serve --theme <installed> renders correctly.\n9. zetl theme remove <installed> deletes theme.\n10. zetl theme remove default fails (bundled).\n11. Invalid source strings produce clear errors.\n12. Path traversal attempts rejected.\n13. Missing git on PATH produces helpful error.\n14. cargo test passes.\n\nTEST-014-006 through TEST-014-013, TEST-014-015, TEST-014-016.",
+      "token_cost": 206,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T07:03:55Z"
+  "constructed_at": "2026-03-02T07:07:22Z"
 }
