@@ -184,6 +184,9 @@ pub enum Command {
         /// Port to listen on
         #[arg(short, long, default_value = "3000")]
         port: u16,
+        /// Theme name (looks in .zetl/themes/<name>/)
+        #[arg(long, default_value = "default")]
+        theme: String,
     },
 
     /// Generate a static HTML site from the vault
@@ -191,6 +194,9 @@ pub enum Command {
         /// Output directory
         #[arg(short, long, default_value = "dist")]
         out_dir: String,
+        /// Theme name (looks in .zetl/themes/<name>/)
+        #[arg(long, default_value = "default")]
+        theme: String,
     },
 
     /// Launch the Xanadu-style two-pane view for a note (SPEC-009)

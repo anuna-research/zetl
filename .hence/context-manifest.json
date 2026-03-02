@@ -1,75 +1,75 @@
 {
   "task_id": "integration-test",
   "token_budget": 8000,
-  "tokens_used": 458,
+  "tokens_used": 389,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Comprehensive integration test covering the full SPEC-013 feature set. Create or use a test vault with: multiple pages with known content, known link structure, headings at various levels, exclusion zones (code blocks, frontmatter with searchable terms, HTML comments), and at least one isolated page.\n\nVerify:\n  1. zetl index builds both link graph and search index.\n  2. zetl search returns BM25-scored results with heading context — relevance ranking correct.\n  3. Exclusion zones: frontmatter/code/comments not indexed.\n  4. --near restricts to neighbourhood correctly (bidirectional).\n  5. --near composes with --path, --context, --case-sensitive, --limit.\n  6. zetl serve /api/search returns same results as CLI (minus graph scoping).\n  7. Serve mode Cmd+K shows full-text results with heading context.\n  8. zetl build emits valid search-index.json.\n  9. Build mode Cmd+K performs client-side BM25 search.\n  10. Index invalidation: modify a file, re-index, verify search reflects changes.\n  11. Lazy index: search without prior index works.\n  12. All NFR targets met: index build ≤5s, query ≤100ms, BFS ≤50ms, API ≤50ms (for reasonable corpus sizes).\n  13. cargo test passes.\n\nAll REQ-013-*, TEST-013-*, NFR-013-*.",
-      "token_cost": 307,
+      "content": "Comprehensive integration test covering the full SPEC-012 feature set. Create a test vault with: multiple pages (some with frontmatter, some without), dead links, backlinks, subfolders, a custom theme that overrides page.html with frontmatter-conditional rendering, shared and per-theme static assets. Verify: (1) zetl serve with default theme works, (2) zetl serve --theme custom works with overrides and fallback, (3) zetl build with default theme produces correct output, (4) zetl build --theme custom produces correct output with static assets, (5) edit mode works only in serve, (6) frontmatter accessible in custom theme, (7) static assets served with correct MIME types, (8) template errors produce readable messages. All REQ-012-* and TEST-012-*.",
+      "token_cost": 188,
       "priority": "PlanMeta"
     },
     {
-      "source": "memory/episodic/task-add-tantivy-changes",
-      "content": "Modified 2 files (+667, -8): Cargo.lock, Cargo.toml",
-      "token_cost": 12,
+      "source": "memory/episodic/task-add-serde-yaml-changes",
+      "content": "Modified 3 files (+26, -47): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "token_cost": 20,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-heading-detection-changes",
-      "content": "Modified 1 files (+187, -0): src/search.rs",
-      "token_cost": 10,
+      "source": "memory/episodic/task-add-minijinja-changes",
+      "content": "Modified 3 files (+36, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "token_cost": 20,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-search-index-module-changes",
-      "content": "Modified 3 files (+338, -5): .hence/context-manifest.json, src/lib.rs, src/search_index.rs",
-      "token_cost": 22,
+      "source": "memory/episodic/task-context-structs-changes",
+      "content": "Modified 3 files (+502, -5): .hence/context-manifest.json, src/web/context.rs, src/web/mod.rs",
+      "token_cost": 23,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-refactor-search-changes",
-      "content": "Modified 5 files (+99, -344): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/search.rs, tests/integration.rs",
-      "token_cost": 30,
+      "source": "memory/episodic/task-extract-base-changes",
+      "content": "Modified 1 files (+499, -0): src/web/templates/base.html",
+      "token_cost": 14,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-lazy-index-changes",
-      "content": "Modified 1 files (+1, -0): src/search.rs",
-      "token_cost": 10,
+      "source": "memory/episodic/task-extract-index-changes",
+      "content": "Modified 1 files (+38, -0): src/web/templates/index.html",
+      "token_cost": 14,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-integrate-index-changes",
-      "content": "Modified 2 files (+82, -5): .hence/context-manifest.json, src/main.rs",
-      "token_cost": 17,
+      "source": "memory/episodic/task-extract-page-changes",
+      "content": "Modified 1 files (+261, -0): src/web/templates/page.html",
+      "token_cost": 14,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-update-cli-changes",
-      "content": "Modified 1 files (+8, -10): src/main.rs",
-      "token_cost": 9,
+      "source": "memory/episodic/task-extract-folder-changes",
+      "content": "Modified 1 files (+45, -0): src/web/templates/folder.html",
+      "token_cost": 14,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-verify-phase1-changes",
-      "content": "Modified 2 files (+444, -5): .hence/context-manifest.json, tests/integration.rs",
-      "token_cost": 19,
+      "source": "memory/episodic/task-engine-changes",
+      "content": "Modified 5 files (+214, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/mod.rs",
+      "token_cost": 29,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-neighbourhood-bfs-changes",
-      "content": "Modified 1 files (+226, -0): src/graph.rs",
-      "token_cost": 10,
+      "source": "memory/episodic/task-refactor-routes-changes",
+      "content": "Modified 4 files (+79, -485): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs",
+      "token_cost": 26,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-near-depth-cli-changes",
-      "content": "Modified 2 files (+90, -1): src/cli.rs, src/main.rs",
-      "token_cost": 12,
+      "source": "memory/episodic/task-refactor-build-changes",
+      "content": "Modified 4 files (+68, -456): .hence/context-manifest.json, src/web/build.rs, src/web/mod.rs, src/web/routes.rs",
+      "token_cost": 27,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:45:13Z"
+  "constructed_at": "2026-03-01T14:35:27Z"
 }

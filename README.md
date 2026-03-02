@@ -15,6 +15,7 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Page viewer** — Xanadu-inspired two-pane reader with context cards, bridge connectors, and wikilink navigation
 - **Web UI** — local web server with rendered pages, transclusion panels, backlink navigation, and inline editing
 - **Static site export** — generate a deployable HTML site from your vault (same look, no server required)
+- **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context
 - **Content-addressable blocks** — BLAKE3 Merkle leaves for headings, paragraphs, code blocks, and SPL
 - **Incremental caching** — two-tier (mtime + hash) index for both wikilinks and reasoning theories
 - **Agent-friendly** — JSON by default, structured errors, non-zero exit codes
@@ -107,10 +108,12 @@ zetl -d ./my-vault view "Some Page" --context-lines 10   # taller context cards
 # Web UI
 zetl -d ./my-vault serve                                 # http://localhost:3000
 zetl -d ./my-vault serve --port 8080
+zetl -d ./my-vault serve --theme paper                   # custom theme
 
 # Static site export
 zetl -d ./my-vault build                                 # generates dist/
 zetl -d ./my-vault build --out-dir site                  # custom output directory
+zetl -d ./my-vault build --theme paper                   # build with custom theme
 ```
 
 ### Reasoning commands
@@ -240,11 +243,12 @@ zetl view "Page Name" --context-lines 10 --main-width 60
 
 ### Live server (`zetl serve`)
 
-Local web UI for browsing the vault. Renders Markdown pages with a sidebar, backlink list, transclusion panel (forward-link excerpt cards with SVG bridge connectors), and inline edit mode with save-and-reindex.
+Local web UI for browsing the vault. Renders Markdown pages with a sidebar, backlink list, transclusion panel (forward-link excerpt cards with SVG bridge connectors), and inline edit mode with save-and-reindex. Pages are rendered through a Minijinja template engine with YAML frontmatter available in templates.
 
 ```bash
 zetl -d ./my-vault serve              # http://localhost:3000
 zetl -d ./my-vault serve --port 8080
+zetl -d ./my-vault serve --theme paper  # use a custom theme
 ```
 
 ### Static site (`zetl build`)
@@ -254,6 +258,7 @@ Generates a static HTML site with the same look and feel as `zetl serve`, minus 
 ```bash
 zetl -d ./my-vault build                  # generates dist/
 zetl -d ./my-vault build --out-dir site   # custom output directory
+zetl -d ./my-vault build --theme paper    # build with a custom theme
 
 # Preview locally
 python3 -m http.server -d dist 8080
@@ -263,10 +268,111 @@ Output structure:
 ```
 dist/
   index.html              # vault overview with stats and page grid
+  _static/                # copied from .zetl/themes/<theme>/static/
   page/
     Some Page/index.html   # one page per note
     Another/index.html
 ```
+
+### Themes
+
+Both `serve` and `build` support custom themes via `--theme <name>`. Themes live in `.zetl/themes/<name>/` and can override any of the four built-in Minijinja templates:
+
+```
+.zetl/themes/paper/
+  base.html       # master layout (sidebar, search modal, scripts)
+  index.html      # vault landing page
+  page.html       # single page view
+  folder.html     # folder index
+```
+
+You only need to provide the templates you want to override — the rest fall back to the built-in defaults. All templates use [Minijinja](https://github.com/mitsuhiko/minijinja) syntax and extend `base.html` via `{% extends "base.html" %}`.
+
+### Frontmatter
+
+YAML frontmatter is parsed and available in page templates as `page.frontmatter`. For example, a page with:
+
+```markdown
+---
+tags: [rust, cli]
+status: draft
+---
+# My Page
+```
+
+exposes `page.frontmatter.tags` and `page.frontmatter.status` in templates.
+
+### Static assets
+
+Place static files (CSS, JS, images) in `.zetl/themes/<theme>/static/`. During `serve`, they're available at `/_static/<path>`. During `build`, they're copied to `_static/` in the output directory.
+
+### Theme authoring reference
+
+Templates use [Minijinja](https://github.com/mitsuhiko/minijinja) (Jinja2-compatible). All child templates should `{% extends "base.html" %}` and override blocks. You only need to provide the templates you want to change — missing ones fall back to the built-in defaults.
+
+#### Template blocks
+
+`base.html` defines these blocks for child templates:
+
+| Block | Used by | Purpose |
+|-------|---------|---------|
+| `title` | all | Page `<title>` |
+| `head` | all | Extra `<head>` content |
+| `styles` | all | Extra `<style>` rules |
+| `content` | all | Main content area |
+| `sidebar` | all | Sidebar page list |
+| `scripts` | all | Extra `<script>` tags |
+
+#### Template variables
+
+**All templates** receive:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `vault.name` | string | Vault directory name |
+| `vault.pages` | array | All pages (`title`, `slug`, `outlink_count`, `backlink_count`) |
+| `vault.stats` | object | `total_pages`, `total_links`, `dead_links`, `orphans` |
+| `search_index` | string | JSON search index (use with `{{ search_index \| safe }}`) |
+| `theme` | string | Active theme name |
+| `active_slug` | string | Current page slug (for sidebar highlighting) |
+
+**`page.html`** also receives:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `page.title` | string | Page name |
+| `page.slug` | string | URL slug |
+| `page.content_html` | string | Rendered HTML (use with `\| safe`) |
+| `page.frontmatter` | object | Parsed YAML frontmatter (e.g. `page.frontmatter.tags`) |
+| `page.backlinks` | array | Backlinks (`title`, `slug`, `line`) |
+| `page.outlinks` | array | Outgoing links (`title`, `slug`, `is_dead`, `color`) |
+| `page.breadcrumbs` | array | Path breadcrumbs (`title`, `slug`) |
+| `page.transclusion_cards` | string | Pre-rendered transclusion HTML (`\| safe`) |
+| `page.is_new` | bool | True if page doesn't exist yet (new page mode) |
+| `page.raw_escaped` | string? | Raw markdown source (serve mode only, for editor) |
+| `mode` | string | `"serve"` or `"build"` |
+
+**`folder.html`** also receives:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `folder.name` | string | Folder name |
+| `folder.slug` | string | Folder slug |
+| `folder.breadcrumbs` | array | Path breadcrumbs (`title`, `slug`) |
+| `folder.subfolders` | array | Child folders (`name`, `slug`, `page_count`) |
+| `folder.pages` | array | Pages in folder (`title`, `slug`, `outlink_count`, `backlink_count`) |
+| `folder.total_pages` | int | Count of direct child pages |
+
+#### Minimal example
+
+A theme that only changes the color scheme (override just `base.html`):
+
+```
+.zetl/themes/dark/
+  base.html
+```
+
+The child templates (`index.html`, `page.html`, `folder.html`) automatically fall back to the built-ins and extend your custom `base.html`.
 
 ## Compatibility
 

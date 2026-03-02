@@ -3,26 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 270,
-    "deletions": 149,
+    "files_changed": 2,
+    "insertions": 1442,
+    "deletions": 5,
     "file_list": [
-      "src/web/build.rs",
-      "src/web/html.rs",
-      "src/web/routes.rs"
+      ".hence/context-manifest.json",
+      "tests/web_integration.rs"
     ],
-    "dirty_files": 2
+    "dirty_files": 0
   },
   "learnings": [
     {
       "key": "task-integration-test-changes",
-      "content": "Modified 3 files (+270, -149): src/web/build.rs, src/web/html.rs, src/web/routes.rs",
+      "content": "Modified 2 files (+1442, -5): .hence/context-manifest.json, tests/web_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
   "branch_name": "hence/integration-test-v1",
-  "evaluated_at": "2026-03-01T14:51:05Z",
+  "evaluated_at": "2026-03-01T14:47:17Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
