@@ -1,12 +1,12 @@
 {
-  "task_id": "theme-remove-cmd",
+  "task_id": "source-parsing",
   "token_budget": 8000,
-  "tokens_used": 350,
+  "tokens_used": 581,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement `zetl theme remove <name>` per REQ-014-013.\n\nAdd to ThemeCommand enum:\n```rust\n/// Remove an installed theme\nRemove {\n    /// Theme name to remove\n    name: String,\n},\n```\n\nImplementation:\n1. Validate the name (no path traversal).\n2. Check if name is a bundled-only theme (no .zetl/themes/<name>/ on disk). If so, error: 'cannot remove bundled theme'.\n3. If theme shadows a bundled theme, warn: 'removing installed version\n4. Delete .zetl/themes/<name>/ recursively.\n5. Output JSON: { removed: { name, was_shadowing: bool } }.\n\nREQ-014-013.",
-      "token_cost": 137,
+      "content": "Implement git source format parsing in src/theme.rs per REQ-014-006, REQ-014-007.\n\nCreate a ThemeSource struct (not to be confused with .zetl-source.toml — this is the parsed install source):\n\n```rust\npub struct ThemeInstallSource {\n    pub url: String,            // Resolved git URL\n    pub git_ref: Option<String>, // Branch, tag, or SHA\n    pub path: Option<String>,   // Subdirectory within repo\n}\n```\n\nPublic API:\n  - parse_install_source(source: &str) -> Result<ThemeInstallSource>\n    Parses the source string and resolves:\n    - 'user/repo' -> https://github.com/user/repo.git (exactly one slash, no protocol)\n    - 'user/repo#v2.0' -> same URL + ref='v2.0'\n    - 'https://...' -> used directly, extract #ref if present\n    - 'git@...' -> used directly, extract #ref if present\n    Reject anything that doesn't match these patterns.\n\n  - sanitize_theme_name(raw: &str) -> String\n    Lowercase, replace non-alphanumeric with hyphens, strip leading/trailing hyphens.\n    Used for deriving a name from a repo URL when no --name or manifest name.\n\n  - resolve_theme_name(name_flag: Option<&str>, manifest: Option<&ThemeManifest>, path: Option<&str>, source: &ThemeInstallSource) -> Result<String>\n    Precedence per REQ-014-009:\n    1. --name flag\n    2. manifest.theme.name\n    3. Last component of --path\n    4. Repo name from URL\n    Validate result with validate_theme_name().\n\nREQ-014-006, REQ-014-007, REQ-014-009.",
+      "token_cost": 356,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,14 @@
       "content": "Modified 6 files (+1101, -5): .hence/context-manifest.json, themes/minimal/base.html, themes/minimal/folder.html, themes/minimal/index.html, themes/minimal/page.html and 1 more",
       "token_cost": 44,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theme-remove-cmd-changes",
+      "content": "Modified 2 files (+80, -0): src/cli.rs, src/main.rs",
+      "token_cost": 12,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T06:44:59Z"
+  "constructed_at": "2026-03-02T06:51:04Z"
 }

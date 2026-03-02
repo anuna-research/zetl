@@ -12,6 +12,134 @@ use serde::{Deserialize, Serialize};
 
 use super::engine::bundled_template;
 
+// ── Install source ────────────────────────────────────────────────────────────
+
+/// Parsed representation of a `zetl theme install <source>` argument.
+///
+/// This is distinct from [`ThemeSource`], which is the provenance record stored
+/// in `.zetl-source.toml` after installation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThemeInstallSource {
+    pub url: String,             // Resolved git URL
+    pub git_ref: Option<String>, // Branch, tag, or SHA
+    pub path: Option<String>,    // Subdirectory within repo
+}
+
+/// Parse a theme install source string into a [`ThemeInstallSource`].
+///
+/// Accepts:
+/// - `user/repo` — GitHub shorthand (exactly one slash, no protocol)
+/// - `user/repo#ref` — same with an optional git ref
+/// - `https://...` or `http://...` — full URL, optional `#ref` fragment
+/// - `git@...` — SCP-style SSH URL, optional `#ref` fragment
+///
+/// Rejects anything that doesn't match one of these patterns.
+pub fn parse_install_source(source: &str) -> Result<ThemeInstallSource> {
+    if source.starts_with("https://") || source.starts_with("http://") {
+        let (url, git_ref) = split_ref(source);
+        return Ok(ThemeInstallSource {
+            url: url.to_string(),
+            git_ref: git_ref.map(str::to_string),
+            path: None,
+        });
+    }
+
+    if source.starts_with("git@") {
+        let (url, git_ref) = split_ref(source);
+        return Ok(ThemeInstallSource {
+            url: url.to_string(),
+            git_ref: git_ref.map(str::to_string),
+            path: None,
+        });
+    }
+
+    // GitHub shorthand: exactly one slash, no protocol
+    let (without_ref, git_ref) = split_ref(source);
+    let slash_count = without_ref.matches('/').count();
+    if slash_count == 1 {
+        let (user, repo) = without_ref.split_once('/').unwrap();
+        if !user.is_empty() && !repo.is_empty() {
+            let url = format!("https://github.com/{}/{}.git", user, repo);
+            return Ok(ThemeInstallSource {
+                url,
+                git_ref: git_ref.map(str::to_string),
+                path: None,
+            });
+        }
+    }
+
+    bail!(
+        "unrecognized source {:?}: expected 'user/repo', 'https://...', or 'git@...' \
+         (optionally with '#ref')",
+        source
+    )
+}
+
+/// Derive a safe theme name from an arbitrary raw string.
+///
+/// Lowercases the input, replaces every non-alphanumeric character with a
+/// hyphen, then strips leading/trailing hyphens.
+pub fn sanitize_theme_name(raw: &str) -> String {
+    let replaced: String = raw
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect();
+    replaced.trim_matches('-').to_string()
+}
+
+/// Determine the theme name to use for a freshly installed theme.
+///
+/// Precedence (REQ-014-009):
+/// 1. `--name` flag
+/// 2. `manifest.theme.name`
+/// 3. Last path component of `--path`
+/// 4. Repo name derived from the resolved git URL
+///
+/// The chosen name is validated with [`validate_theme_name`] before returning.
+pub fn resolve_theme_name(
+    name_flag: Option<&str>,
+    manifest: Option<&ThemeManifest>,
+    path: Option<&str>,
+    source: &ThemeInstallSource,
+) -> Result<String> {
+    // 1. --name flag
+    if let Some(name) = name_flag {
+        validate_theme_name(name)?;
+        return Ok(name.to_string());
+    }
+
+    // 2. manifest.theme.name
+    if let Some(m) = manifest {
+        validate_theme_name(&m.theme.name)?;
+        return Ok(m.theme.name.clone());
+    }
+
+    // 3. Last component of --path
+    if let Some(p) = path {
+        if let Some(last) = Path::new(p).file_name().and_then(|n| n.to_str()) {
+            if !last.is_empty() {
+                let sanitized = sanitize_theme_name(last);
+                validate_theme_name(&sanitized).with_context(|| {
+                    format!("cannot derive a valid theme name from path component {:?}", last)
+                })?;
+                return Ok(sanitized);
+            }
+        }
+    }
+
+    // 4. Repo name from URL
+    if let Some(raw) = repo_name_from_url(&source.url) {
+        let sanitized = sanitize_theme_name(&raw);
+        validate_theme_name(&sanitized).with_context(|| {
+            format!("cannot derive a valid theme name from URL {:?}", source.url)
+        })?;
+        return Ok(sanitized);
+    }
+
+    bail!("could not determine a theme name; please specify --name")
+}
+
 // ── Manifest structs ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +265,31 @@ pub fn parse_theme_source(content: &str) -> Result<ThemeSource> {
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
+
+/// Split a source string on the first `#`, returning `(base, Some(ref))` or
+/// `(source, None)` if no `#` is present.
+fn split_ref(s: &str) -> (&str, Option<&str>) {
+    match s.find('#') {
+        Some(pos) => {
+            let git_ref = &s[pos + 1..];
+            (&s[..pos], if git_ref.is_empty() { None } else { Some(git_ref) })
+        }
+        None => (s, None),
+    }
+}
+
+/// Extract the repository name from a git URL.
+///
+/// Works for both `https://host/user/repo.git` and `git@host:user/repo.git`.
+/// Returns the last slash-or-colon-separated segment, with any `.git` suffix
+/// stripped.
+fn repo_name_from_url(url: &str) -> Option<String> {
+    let last = url
+        .rsplit(|c| c == '/' || c == ':')
+        .find(|s| !s.is_empty())?;
+    let name = last.strip_suffix(".git").unwrap_or(last);
+    Some(name.to_string())
+}
 
 /// Validate that `version` is a well-formed SemVer string.
 ///
@@ -335,6 +488,161 @@ name = "my-theme"
     fn test_load_bundled_manifest_unknown() {
         let result = load_bundled_manifest("no-such-theme").unwrap();
         assert!(result.is_none());
+    }
+
+    // ── parse_install_source ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_github_shorthand() {
+        let src = parse_install_source("user/repo").unwrap();
+        assert_eq!(src.url, "https://github.com/user/repo.git");
+        assert!(src.git_ref.is_none());
+        assert!(src.path.is_none());
+    }
+
+    #[test]
+    fn test_github_shorthand_with_ref() {
+        let src = parse_install_source("user/repo#v2.0").unwrap();
+        assert_eq!(src.url, "https://github.com/user/repo.git");
+        assert_eq!(src.git_ref.as_deref(), Some("v2.0"));
+    }
+
+    #[test]
+    fn test_https_url() {
+        let src = parse_install_source("https://example.com/user/theme.git").unwrap();
+        assert_eq!(src.url, "https://example.com/user/theme.git");
+        assert!(src.git_ref.is_none());
+    }
+
+    #[test]
+    fn test_https_url_with_ref() {
+        let src = parse_install_source("https://example.com/user/theme.git#main").unwrap();
+        assert_eq!(src.url, "https://example.com/user/theme.git");
+        assert_eq!(src.git_ref.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn test_ssh_url() {
+        let src = parse_install_source("git@github.com:user/repo.git").unwrap();
+        assert_eq!(src.url, "git@github.com:user/repo.git");
+        assert!(src.git_ref.is_none());
+    }
+
+    #[test]
+    fn test_ssh_url_with_ref() {
+        let src = parse_install_source("git@github.com:user/repo.git#v1.0").unwrap();
+        assert_eq!(src.url, "git@github.com:user/repo.git");
+        assert_eq!(src.git_ref.as_deref(), Some("v1.0"));
+    }
+
+    #[test]
+    fn test_invalid_source_rejected() {
+        for bad in &[
+            "not-a-valid-source",
+            "a/b/c",          // too many slashes for shorthand
+            "/leading-slash", // empty user part
+            "#just-ref",      // no URL
+            "ftp://example.com/repo.git",
+        ] {
+            assert!(
+                parse_install_source(bad).is_err(),
+                "expected {:?} to be rejected",
+                bad
+            );
+        }
+    }
+
+    // ── sanitize_theme_name ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_sanitize_simple() {
+        assert_eq!(sanitize_theme_name("my-theme"), "my-theme");
+        assert_eq!(sanitize_theme_name("MyTheme"), "mytheme");
+        assert_eq!(sanitize_theme_name("my.theme"), "my-theme");
+        assert_eq!(sanitize_theme_name("my_theme"), "my-theme");
+    }
+
+    #[test]
+    fn test_sanitize_strips_edges() {
+        assert_eq!(sanitize_theme_name("-foo-"), "foo");
+        assert_eq!(sanitize_theme_name("---bar---"), "bar");
+        assert_eq!(sanitize_theme_name(".hidden"), "hidden");
+    }
+
+    #[test]
+    fn test_sanitize_repo_name() {
+        assert_eq!(sanitize_theme_name("dark-theme"), "dark-theme");
+        assert_eq!(sanitize_theme_name("zetl.theme"), "zetl-theme");
+    }
+
+    // ── resolve_theme_name ───────────────────────────────────────────────────
+
+    fn make_source(url: &str) -> ThemeInstallSource {
+        ThemeInstallSource {
+            url: url.to_string(),
+            git_ref: None,
+            path: None,
+        }
+    }
+
+    fn make_manifest(name: &str) -> ThemeManifest {
+        ThemeManifest {
+            theme: ThemeInfo {
+                name: name.to_string(),
+                version: "1.0.0".to_string(),
+                description: None,
+                author: None,
+                license: None,
+                homepage: None,
+                min_zetl_version: None,
+                templates: None,
+            },
+        }
+    }
+
+    #[test]
+    fn test_resolve_prefers_name_flag() {
+        let src = make_source("https://github.com/user/repo.git");
+        let manifest = make_manifest("manifest-name");
+        let name =
+            resolve_theme_name(Some("flag-name"), Some(&manifest), Some("themes/path"), &src)
+                .unwrap();
+        assert_eq!(name, "flag-name");
+    }
+
+    #[test]
+    fn test_resolve_prefers_manifest_over_path() {
+        let src = make_source("https://github.com/user/repo.git");
+        let manifest = make_manifest("manifest-name");
+        let name = resolve_theme_name(None, Some(&manifest), Some("themes/path"), &src).unwrap();
+        assert_eq!(name, "manifest-name");
+    }
+
+    #[test]
+    fn test_resolve_uses_path_component() {
+        let src = make_source("https://github.com/user/repo.git");
+        let name = resolve_theme_name(None, None, Some("themes/dark"), &src).unwrap();
+        assert_eq!(name, "dark");
+    }
+
+    #[test]
+    fn test_resolve_falls_back_to_url() {
+        let src = make_source("https://github.com/user/my-theme.git");
+        let name = resolve_theme_name(None, None, None, &src).unwrap();
+        assert_eq!(name, "my-theme");
+    }
+
+    #[test]
+    fn test_resolve_ssh_url() {
+        let src = make_source("git@github.com:user/cool-theme.git");
+        let name = resolve_theme_name(None, None, None, &src).unwrap();
+        assert_eq!(name, "cool-theme");
+    }
+
+    #[test]
+    fn test_resolve_invalid_name_flag_rejected() {
+        let src = make_source("https://github.com/user/repo.git");
+        assert!(resolve_theme_name(Some("BadName"), None, None, &src).is_err());
     }
 
     // ── parse_theme_source ───────────────────────────────────────────────────
