@@ -25,11 +25,125 @@ fn tokenize_and_count(text: &str) -> HashMap<String, usize> {
     counts
 }
 
-/// Write `{out_dir}/search-index.json` with BM25-style corpus statistics.
+/// Compute a relative root path for build mode based on slug depth.
 ///
-/// Schema per CON-013-004: avgDl, docs[{n,s,dl,tf}], df.
-/// REQ-013-014, ADR-013-004.
-fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) -> Result<()> {
+/// For the root index (empty slug), returns `"./"`.
+/// For a page at `hello`, returns `"../"`.
+/// For a page at `architecture/scanner`, returns `"../../"`.
+fn compute_root_path(slug: &str) -> String {
+    if slug.is_empty() {
+        "./".to_string()
+    } else {
+        let depth = slug.split('/').count();
+        "../".repeat(depth)
+    }
+}
+
+/// Extract sections from markdown content for search context.
+///
+/// Splits content by headings, returning each section's heading text,
+/// body text (excluding code blocks, frontmatter, HTML comments), and
+/// its 1-based line number in the original file.
+fn extract_sections(content: &str) -> Vec<serde_json::Value> {
+    let mut sections: Vec<serde_json::Value> = Vec::new();
+    let mut current_heading = String::new();
+    let mut current_text = String::new();
+    let mut current_line: usize = 1;
+    let mut in_frontmatter = false;
+    let mut _frontmatter_started = false;
+    let mut in_code_fence = false;
+
+    for (i, line) in content.lines().enumerate() {
+        let line_num = i + 1;
+        let trimmed = line.trim();
+
+        // Track frontmatter (--- delimited at start of file)
+        if line_num == 1 && trimmed == "---" {
+            in_frontmatter = true;
+            _frontmatter_started = true;
+            continue;
+        }
+        if in_frontmatter {
+            if trimmed == "---" {
+                in_frontmatter = false;
+            }
+            continue;
+        }
+
+        // Track fenced code blocks
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_code_fence = !in_code_fence;
+            continue;
+        }
+        if in_code_fence {
+            continue;
+        }
+
+        // Skip HTML comments (single-line)
+        if trimmed.starts_with("<!--") && trimmed.ends_with("-->") {
+            continue;
+        }
+
+        // Detect heading lines
+        let heading_match = if trimmed.starts_with('#') {
+            let level = trimmed.chars().take_while(|&c| c == '#').count();
+            if level <= 6 {
+                let rest = trimmed[level..].trim();
+                if !rest.is_empty() {
+                    Some(rest.to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(heading) = heading_match {
+            // Close current section
+            let text = current_text.trim().to_string();
+            if !text.is_empty() || !current_heading.is_empty() {
+                sections.push(serde_json::json!({
+                    "h": current_heading,
+                    "t": text,
+                    "l": current_line,
+                }));
+            }
+            current_heading = heading;
+            current_text = String::new();
+            current_line = line_num;
+        } else if !trimmed.is_empty() {
+            if !current_text.is_empty() {
+                current_text.push(' ');
+            }
+            current_text.push_str(trimmed);
+        }
+    }
+
+    // Close final section
+    let text = current_text.trim().to_string();
+    if !text.is_empty() || !current_heading.is_empty() {
+        sections.push(serde_json::json!({
+            "h": current_heading,
+            "t": text,
+            "l": current_line,
+        }));
+    }
+
+    sections
+}
+
+/// Build the BM25 search index JSON and write it to `{out_dir}/search-index.json`.
+///
+/// Returns the JSON string so callers can also embed it inline in HTML
+/// (needed for `file://` protocol where `fetch` is blocked by CORS).
+///
+/// Schema: avgDl, docs[{n,s,dl,tf,secs}], df.
+/// Each doc includes `secs` — an array of sections with heading (h),
+/// body text (t), and line number (l) — for rich search context.
+fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) -> Result<String> {
     let mut doc_entries: Vec<serde_json::Value> = Vec::with_capacity(data.files.len());
     let mut df: HashMap<String, usize> = HashMap::new();
     let mut total_dl: usize = 0;
@@ -65,11 +179,14 @@ fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) 
             .map(|(k, v)| (k, serde_json::Value::Number(v.into())))
             .collect();
 
+        let sections = extract_sections(&content);
+
         doc_entries.push(serde_json::json!({
             "n": file.page_name,
             "s": slug,
             "dl": dl,
             "tf": tf_json,
+            "secs": sections,
         }));
     }
 
@@ -91,10 +208,10 @@ fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) 
     });
 
     let json_str = serde_json::to_string(&index).context("serializing search-index.json")?;
-    std::fs::write(out_dir.join("search-index.json"), json_str)
+    std::fs::write(out_dir.join("search-index.json"), &json_str)
         .context("writing search-index.json")?;
 
-    Ok(())
+    Ok(json_str)
 }
 
 /// Generate a complete static HTML site from the vault data.
@@ -117,10 +234,10 @@ pub fn build_static(
     let vault_ctx = build_vault_context(data, &vault_name);
 
     // ── search-index.json ────────────────────────────────────────────────
-    write_search_index_json(data, vault_root, out)?;
+    let bm25_json = write_search_index_json(data, vault_root, out)?;
 
     // ── index.html ──────────────────────────────────────────────────────
-    let index_html = engine.render_index(&vault_ctx, "build").map_err(|e| {
+    let index_html = engine.render_index(&vault_ctx, "build", &bm25_json).map_err(|e| {
         eprintln!("{}", e.stderr_line("index"));
         anyhow::anyhow!("{e}")
     })?;
@@ -137,12 +254,13 @@ pub fn build_static(
         let content = std::fs::read_to_string(&full_path)
             .with_context(|| format!("Cannot read {}", full_path.display()))?;
 
-        let rendered = markdown::render_to_html(&content, &data.page_slug_map);
+        let root_path = compute_root_path(&slug);
+        let rendered = markdown::render_to_html(&content, &data.page_slug_map, &root_path, "index.html");
         let mut page_ctx = build_page_context(data, &file.page_name, &slug, &rendered, &content);
-        page_ctx.transclusion_cards = build_transclusion_cards(data, vault_root, &file.page_name);
+        page_ctx.transclusion_cards = build_transclusion_cards(data, vault_root, &file.page_name, &root_path);
 
         let page_html = engine
-            .render_page(&vault_ctx, &page_ctx, "build")
+            .render_page(&vault_ctx, &page_ctx, "build", &bm25_json)
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(&slug));
                 anyhow::anyhow!("{e}")
@@ -180,7 +298,7 @@ pub fn build_static(
 
         let folder_name = folder.rsplit('/').next().unwrap_or(folder);
         let folder_ctx = build_folder_context(data, folder, folder_name);
-        let folder_html = engine.render_folder(&vault_ctx, &folder_ctx, "build").map_err(|e| {
+        let folder_html = engine.render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json).map_err(|e| {
             eprintln!("{}", e.stderr_line(folder));
             anyhow::anyhow!("{e}")
         })?;
@@ -253,7 +371,7 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
 }
 
 /// Build transclusion card HTML for a page's forward links.
-fn build_transclusion_cards(data: &VaultData, vault_root: &Path, page_name: &str) -> String {
+fn build_transclusion_cards(data: &VaultData, vault_root: &Path, page_name: &str, root_path: &str) -> String {
     let forward_links = data.graph.forward_links(page_name);
     let mut seen_targets = HashSet::new();
     let mut unique_targets: Vec<String> = Vec::new();
@@ -282,14 +400,15 @@ fn build_transclusion_cards(data: &VaultData, vault_root: &Path, page_name: &str
                 let full_path = vault_root.join(&file.path);
                 std::fs::read_to_string(&full_path).ok()
             })
-            .map(|content| markdown::render_preview_html(&content, &data.page_slug_map))
+            .map(|content| markdown::render_preview_html(&content, &data.page_slug_map, root_path, "index.html"))
             .unwrap_or_else(|| format!("<p><em>{}</em></p>", html_escape("(page does not exist)")));
 
         cards.push_str(&format!(
-            r#"<div class="transclusion-card" data-target-href="/{href}" style="border-left-color: {color};">
-  <a href="/{href}" class="tc-title" style="color: {color};">{name}</a>
+            r#"<div class="transclusion-card" data-target-href="{root_path}{href}/index.html" style="border-left-color: {color};">
+  <a href="{root_path}{href}/index.html" class="tc-title" style="color: {color};">{name}</a>
   <div class="tc-excerpt prose prose-sm max-w-none">{preview}</div>
 </div>"#,
+            root_path = root_path,
             href = href,
             color = color,
             name = html_escape(target),

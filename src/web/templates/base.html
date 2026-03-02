@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ vault.name }} — zetl{% endblock %}</title>
   <script type="application/json" id="zetl-search-index">{{ search_index | safe }}</script>
+  {% if bm25_index %}<script type="application/json" id="zetl-bm25-index">{{ bm25_index | safe }}</script>{% endif %}
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
   {% block head %}{% endblock %}
@@ -327,7 +328,7 @@
     <div class="drawer-side">
       <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
       <aside class="bg-base-200 w-64 min-h-screen p-4">
-        <a href="/" class="text-xl font-bold mb-4 block">zetl</a>
+        <a href="{{ root_path }}{{ index_file }}" class="text-xl font-bold mb-4 block">zetl</a>
         <div class="divider my-1"></div>
         <button class="search-btn" onclick="openSearch()">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -337,7 +338,7 @@
         {% block sidebar %}
         <ul class="menu menu-sm">
           {%- for page in vault.pages %}
-          <li><a href="/{{ page.slug | safe }}" class="{% if active_slug == page.slug %}active{% endif %}">{{ page.title }}</a></li>
+          <li><a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}" class="{% if active_slug == page.slug %}active{% endif %}">{{ page.title }}</a></li>
           {%- endfor %}
         </ul>
         {% endblock %}
@@ -356,6 +357,8 @@
   <script>
   (function(){
     var MODE='{{ mode }}';
+    var ROOT='{{ root_path | safe }}';
+    var IDXFILE='{{ index_file }}';
     var overlay=document.getElementById('search-overlay');
     var input=document.getElementById('search-input');
     var results=document.getElementById('search-results');
@@ -428,7 +431,7 @@
       items.forEach(function(item,i){
         var a=document.createElement('a');
         a.className='search-result'+(i===active?' sr-active':'');
-        a.href='/'+item.s;
+        a.href=ROOT+item.s+'/'+IDXFILE;
         var nameHtml=item._indices?highlight(item.n,item._indices):esc(item.n);
         a.innerHTML='<div class="sr-name">'+nameHtml+'</div><div class="sr-slug">'+esc(item.s)+'</div>';
         a.addEventListener('mouseenter',function(){active=i;updateActive();});
@@ -450,7 +453,7 @@
       items.forEach(function(item,i){
         var a=document.createElement('a');
         a.className='search-result'+(i===0?' sr-active':'');
-        a.href='/'+item.slug+(item.line?'#line-'+item.line:'');
+        a.href=ROOT+item.slug+'/'+IDXFILE+(item.line?'#line-'+item.line:'');
         var html='<span class="page-name">'+esc(item.page)+'</span>';
         if(item.heading)html+='<span class="heading">'+esc(item.heading)+'</span>';
         if(item.context)html+='<span class="context">'+esc(item.context)+'</span>';
@@ -468,7 +471,44 @@
     }
 
     /* ── BM25 scorer for build mode (client-side) ──────────────── */
-    var searchIndex=null;
+    var searchIndex=(function(){
+      try{var el=document.getElementById('zetl-bm25-index');
+        return el?JSON.parse(el.textContent):null;}
+      catch(e){return null;}
+    })();
+
+    function findBestSection(doc,terms){
+      if(!doc.secs||!doc.secs.length)return null;
+      var best=null,bestCount=-1;
+      doc.secs.forEach(function(sec){
+        var text=(sec.h+' '+sec.t).toLowerCase();
+        var count=0;
+        terms.forEach(function(t){
+          var idx=0;
+          while((idx=text.indexOf(t,idx))!==-1){count++;idx+=t.length;}
+        });
+        if(count>bestCount){bestCount=count;best=sec;}
+      });
+      return bestCount>0?best:null;
+    }
+
+    function extractContext(text,terms){
+      if(!text)return null;
+      var lower=text.toLowerCase();
+      var bestPos=-1;
+      terms.forEach(function(t){
+        var idx=lower.indexOf(t);
+        if(idx!==-1&&(bestPos===-1||idx<bestPos))bestPos=idx;
+      });
+      if(bestPos===-1)bestPos=0;
+      var start=Math.max(0,bestPos-40);
+      var end=Math.min(text.length,start+120);
+      var snippet=text.substring(start,end);
+      if(start>0)snippet='\u2026'+snippet;
+      if(end<text.length)snippet+='\u2026';
+      return snippet;
+    }
+
     function bm25Search(q,index){
       var k1=1.2,b=0.75;
       var terms=q.toLowerCase().split(/\W+/).filter(Boolean);
@@ -485,7 +525,13 @@
       });
       return Object.keys(scores).map(function(i){
         var doc=index.docs[parseInt(i)];
-        return{page:doc.n,slug:doc.s,score:scores[i]};
+        var sec=findBestSection(doc,terms);
+        return{
+          page:doc.n,slug:doc.s,score:scores[i],
+          heading:sec?sec.h||null:null,
+          context:sec?extractContext(sec.t,terms):null,
+          line:sec?sec.l||0:0
+        };
       }).sort(function(a,b){return b.score-a.score;});
     }
 
@@ -500,7 +546,7 @@
       results.innerHTML='<div class="search-hint">Searching\u2026</div>';
       if(currentCtrl){currentCtrl.abort();}
       currentCtrl=new AbortController();
-      fetch('/api/search?q='+encodeURIComponent(q)+'&limit=20',{signal:currentCtrl.signal})
+      fetch(ROOT+'api/search?q='+encodeURIComponent(q)+'&limit=20',{signal:currentCtrl.signal})
         .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
         .then(function(data){
           currentCtrl=null;
@@ -555,12 +601,6 @@
       filtered=fuzzyFilter('');
       active=0;renderFuzzy(filtered);
       input.focus();
-      if(MODE==='build'&&!searchIndex){
-        fetch('/search-index.json')
-          .then(function(r){return r.json();})
-          .then(function(data){searchIndex=data;if(input.value)runSearch();})
-          .catch(function(){});
-      }
     };
     window.closeSearch=function(){
       overlay.classList.remove('open');
@@ -595,7 +635,7 @@
           var s=filtered[active];
           var href=s.slug||s.s;
           var line=s.line;
-          window.location.href='/'+href+(line?'#line-'+line:'');
+          window.location.href=ROOT+href+'/'+IDXFILE+(line?'#line-'+line:'');
         }
       }
     });

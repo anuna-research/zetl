@@ -8,9 +8,9 @@
   {# Breadcrumbs #}
   <nav class="text-sm breadcrumbs mb-4">
     <ul>
-      <li><a href="/">{{ vault.name }}</a></li>
+      <li><a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a></li>
       {%- for crumb in folder.breadcrumbs %}
-      <li><a href="/{{ crumb.slug | safe }}/">{{ crumb.title }}</a></li>
+      <li><a href="{{ root_path }}{{ crumb.slug | safe }}/{{ index_file }}">{{ crumb.title }}</a></li>
       {%- endfor %}
       <li>{{ folder.name }}</li>
     </ul>
@@ -22,7 +22,7 @@
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
     {# Subfolder cards #}
     {% for sub in folder.subfolders %}
-    <a href="/{{ sub.slug | safe }}/" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+    <a href="{{ root_path }}{{ sub.slug | safe }}/{{ index_file }}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
       <div class="card-body p-4">
         <h3 class="card-title text-sm">{{ sub.name }}/</h3>
         <p class="text-xs opacity-60">{{ sub.page_count }} pages</p>
@@ -32,7 +32,7 @@
 
     {# Page cards #}
     {% for page in folder.pages %}
-    <a href="/{{ page.slug | safe }}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+    <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
       <div class="card-body p-4">
         <h3 class="card-title text-sm">{{ page.title }}</h3>
         <p class="text-xs opacity-60">{{ page.outlink_count }} out · {{ page.backlink_count }} in</p>

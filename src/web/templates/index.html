@@ -28,7 +28,7 @@
 <h2 class="text-xl font-semibold mb-4">All Pages</h2>
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {% for page in vault.pages %}
-  <a href="/{{ page.slug | safe }}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+  <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}" class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
     <div class="card-body p-4">
       <h3 class="card-title text-sm">{{ page.title }}</h3>
       <p class="text-xs opacity-60">{{ page.outlink_count }} out · {{ page.backlink_count }} in</p>

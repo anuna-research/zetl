@@ -13,9 +13,9 @@
     {# Breadcrumbs #}
     <nav class="text-sm breadcrumbs mb-4">
       <ul>
-        <li><a href="/">{{ vault.name }}</a></li>
+        <li><a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a></li>
         {%- for crumb in page.breadcrumbs %}
-        <li><a href="/{{ crumb.slug | safe }}/">{{ crumb.title }}</a></li>
+        <li><a href="{{ root_path }}{{ crumb.slug | safe }}/{{ index_file }}">{{ crumb.title }}</a></li>
         {%- endfor %}
         <li>{{ page.title }}</li>
       </ul>
@@ -36,7 +36,7 @@
       <ul class="list-none space-y-1">
         {%- for bl in page.backlinks %}
         <li>
-          <a href="/{{ bl.slug | safe }}#line-{{ bl.line }}" class="link link-secondary">{{ bl.title }}</a>
+          <a href="{{ root_path }}{{ bl.slug | safe }}/{{ index_file }}#line-{{ bl.line }}" class="link link-secondary">{{ bl.title }}</a>
           <span class="text-xs opacity-50 ml-2">line {{ bl.line }}</span>
         </li>
         {%- endfor %}
