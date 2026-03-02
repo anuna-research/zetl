@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::scanner::page_slug_from_path;
 use crate::web::chain::{compute_chain_position, extract_chain_target, resolve_page_name};
@@ -21,6 +21,12 @@ pub struct PageEntry {
     pub slug: String,
     pub outlink_count: usize,
     pub backlink_count: usize,
+    /// True if this page is the head (first page) of a chain (prev=None, next=Some).
+    pub is_chain_head: bool,
+    /// True if this page appears in any chain (as head, middle, or tail).
+    pub is_in_chain: bool,
+    /// For chain heads, the total number of pages in the chain; None otherwise.
+    pub chain_length: Option<usize>,
 }
 
 #[derive(Serialize)]
@@ -108,7 +114,12 @@ pub struct FolderContext {
 
 /// Build a `VaultContext` from `VaultData` and a vault name.
 pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
+    use crate::web::chain::find_chain_heads;
+
     let graph_stats = data.graph.stats(0);
+
+    let chain_heads_set: HashSet<String> =
+        find_chain_heads(&data.chain_prev_next).into_iter().collect();
 
     let mut pages: Vec<PageEntry> = data
         .files
@@ -117,11 +128,21 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
             let slug = page_slug_from_path(&file.path);
             let outlink_count = data.graph.forward_links(&file.page_name).len();
             let backlink_count = data.graph.backlinks(&file.page_name).len();
+            let is_chain_head = chain_heads_set.contains(&file.page_name);
+            let is_in_chain = data.chain_prev_next.contains_key(&file.page_name);
+            let chain_length = if is_chain_head {
+                Some(walk_chain_length(&file.page_name, &data.chain_prev_next))
+            } else {
+                None
+            };
             PageEntry {
                 title: file.page_name.clone(),
                 slug,
                 outlink_count,
                 backlink_count,
+                is_chain_head,
+                is_in_chain,
+                chain_length,
             }
         })
         .collect();
@@ -305,11 +326,24 @@ pub fn build_folder_context(
             // Direct child page
             let outlink_count = data.graph.forward_links(page_name).len();
             let backlink_count = data.graph.backlinks(page_name).len();
+            let is_chain_head = data
+                .chain_prev_next
+                .get(page_name)
+                .map_or(false, |(prev, next)| prev.is_none() && next.is_some());
+            let is_in_chain = data.chain_prev_next.contains_key(page_name);
+            let chain_length = if is_chain_head {
+                Some(walk_chain_length(page_name, &data.chain_prev_next))
+            } else {
+                None
+            };
             pages.push(PageEntry {
                 title: page_name.clone(),
                 slug: slug.clone(),
                 outlink_count,
                 backlink_count,
+                is_chain_head,
+                is_in_chain,
+                chain_length,
             });
         }
     }
@@ -344,6 +378,33 @@ pub fn build_folder_context(
         pages,
         total_pages,
     }
+}
+
+/// Walk a chain starting at `head`, following `next` pointers, and return the total length.
+///
+/// Stops when there is no next pointer or a cycle is detected.
+fn walk_chain_length(
+    head: &str,
+    chain_prev_next: &HashMap<String, (Option<String>, Option<String>)>,
+) -> usize {
+    let mut length = 0;
+    let mut current = head.to_string();
+    let mut seen = HashSet::new();
+    loop {
+        if seen.contains(&current) {
+            break;
+        }
+        seen.insert(current.clone());
+        length += 1;
+        match chain_prev_next
+            .get(&current)
+            .and_then(|(_, n)| n.as_ref())
+        {
+            Some(n) => current = n.clone(),
+            None => break,
+        }
+    }
+    length
 }
 
 #[cfg(test)]

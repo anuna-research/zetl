@@ -427,6 +427,9 @@ mod tests {
                 slug: "hello".to_string(),
                 outlink_count: 1,
                 backlink_count: 0,
+                is_chain_head: false,
+                is_in_chain: false,
+                chain_length: None,
             }],
             stats: StatsContext {
                 total_pages: 1,
@@ -507,6 +510,9 @@ mod tests {
                 slug: "test".to_string(),
                 outlink_count: 0,
                 backlink_count: 0,
+                is_chain_head: false,
+                is_in_chain: false,
+                chain_length: None,
             }],
             stats: StatsContext {
                 total_pages: 1,

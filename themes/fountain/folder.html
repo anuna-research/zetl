@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}{{ folder.name }} — {{ vault.name }}{% endblock %}
+
+{% block styles %}
+  /* ── Folder listing page ── */
+
+  /* Breadcrumb row */
+  .fn-folder-crumbs {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-bottom: 0.6em;
+  }
+  .fn-folder-crumbs a {
+    color: var(--link);
+    text-decoration: none;
+  }
+  .fn-folder-crumbs a:hover { text-decoration: underline; }
+  .fn-folder-crumbs .fn-crumb-sep {
+    margin: 0 0.3em;
+    opacity: 0.4;
+  }
+
+  /* Subfolder entry */
+  .fn-sub-entry {
+    margin: 0.3em 0;
+  }
+  .fn-sub-entry a {
+    color: var(--link);
+    text-decoration: none;
+  }
+  .fn-sub-entry a:hover { text-decoration: underline; }
+  .fn-sub-count {
+    font-size: 0.8em;
+    color: var(--muted);
+    margin-left: 0.6em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Page entry with optional chain badge */
+  .fn-page-entry {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6em;
+    margin: 0.3em 0;
+  }
+  .fn-page-entry a {
+    color: var(--link);
+    text-decoration: none;
+  }
+  .fn-page-entry a:hover { text-decoration: underline; }
+  .fn-chain-badge {
+    font-size: 0.72em;
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 0.05em 0.35em;
+    line-height: 1.5;
+  }
+  .fn-chain-badge-head {
+    color: var(--sidebar-active);
+    border-color: var(--sidebar-border);
+    background: var(--sidebar-bg);
+  }
+
+  /* Section spacing */
+  p.scene-heading.fn-section-gap { margin-top: 1.5em; }
+{% endblock %}
+
+{# ── Sidebar: vault pages navigation ── #}
+{% block sidebar %}
+  <nav>
+    <ul class="sp-nav">
+      {%- for page in vault.pages %}
+      <li>
+        <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
+      </li>
+      {%- endfor %}
+    </ul>
+  </nav>
+{% endblock %}
+
+{# ── Folder listing content ── #}
+{% block content %}
+  {# ── Breadcrumbs ── #}
+  <div class="fn-folder-crumbs">
+    <a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a>
+    {%- for crumb in folder.breadcrumbs %}
+    <span class="fn-crumb-sep">/</span>
+    <a href="{{ root_path }}{{ crumb.slug | safe }}/{{ index_file }}">{{ crumb.title }}</a>
+    {%- endfor %}
+    <span class="fn-crumb-sep">/</span>
+    {{ folder.name }}
+  </div>
+
+  {# ── Folder heading ── #}
+  <p class="scene-heading">{{ folder.name }}/</p>
+  <p class="action" style="margin-bottom:1em;">
+    {{ folder.total_pages -}}
+    {%- if folder.total_pages == 1 %} page{%- else %} pages{%- endif %}
+    {%- if folder.subfolders %},
+    {{ folder.subfolders | length -}}
+    {%- if folder.subfolders | length == 1 %} subfolder{%- else %} subfolders{%- endif %}
+    {%- endif %}
+  </p>
+
+  {# ── Subfolders ── #}
+  {%- if folder.subfolders %}
+  <p class="scene-heading fn-section-gap">Folders</p>
+  {%- for sub in folder.subfolders %}
+  <p class="action fn-sub-entry">
+    <a href="{{ root_path }}{{ sub.slug | safe }}/{{ index_file }}">{{ sub.name }}/</a>
+    <span class="fn-sub-count">
+      {{- sub.page_count -}}
+      {%- if sub.page_count == 1 %} page{%- else %} pages{%- endif %}
+    </span>
+  </p>
+  {%- endfor %}
+  {%- endif %}
+
+  {# ── Pages ── #}
+  {%- if folder.pages %}
+  <p class="scene-heading fn-section-gap">Pages</p>
+  {%- for page in folder.pages %}
+  <p class="action fn-page-entry">
+    <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
+    {%- if page.is_chain_head %}
+    <span class="fn-chain-badge fn-chain-badge-head">
+      screenplay
+      {%- if page.chain_length %} · {{ page.chain_length }}
+      {%- if page.chain_length == 1 %} scene{%- else %} scenes{%- endif %}
+      {%- endif %}
+    </span>
+    {%- elif page.is_in_chain %}
+    <span class="fn-chain-badge">in chain</span>
+    {%- endif %}
+  </p>
+  {%- endfor %}
+  {%- endif %}
+{% endblock %}

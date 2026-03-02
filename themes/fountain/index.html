@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vault.name }} — zetl{% endblock %}
+
+{% block styles %}
+  /* ── Vault landing page ── */
+
+  /* Title block — centred like a screenplay title page */
+  .fn-vault-header {
+    text-align: center;
+    margin: 2.5em 0 3em;
+  }
+  .fn-vault-name {
+    text-transform: uppercase;
+    font-weight: 700;
+    font-size: 1.5em;
+    letter-spacing: 0.18em;
+    margin-bottom: 0.4em;
+  }
+  .fn-vault-tagline {
+    font-size: 0.85em;
+    color: var(--muted);
+    margin-top: 0.25em;
+  }
+
+  /* Screenplay entry row */
+  .fn-sp-entry {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 0.35em 0;
+    gap: 0.5em;
+  }
+  .fn-sp-entry a {
+    color: var(--link);
+    text-decoration: none;
+  }
+  .fn-sp-entry a:hover {
+    text-decoration: underline;
+  }
+  .fn-sp-meta {
+    font-size: 0.82em;
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Reference page entry */
+  .fn-ref-entry {
+    margin: 0.3em 0;
+  }
+  .fn-ref-entry a {
+    color: var(--link);
+    text-decoration: none;
+  }
+  .fn-ref-entry a:hover {
+    text-decoration: underline;
+  }
+
+  /* Section spacing — overrides scene-heading's margin-top */
+  p.scene-heading.fn-section-gap { margin-top: 1.5em; }
+{% endblock %}
+
+{# ── Sidebar: chain heads first, then reference pages ── #}
+{% block sidebar %}
+  <nav>
+    <ul class="sp-nav">
+      {%- for page in vault.pages %}
+      {%- if page.is_chain_head %}
+      <li>
+        <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
+      </li>
+      {%- endif %}
+      {%- endfor %}
+      {%- for page in vault.pages %}
+      {%- if not page.is_in_chain %}
+      <li>
+        <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
+      </li>
+      {%- endif %}
+      {%- endfor %}
+    </ul>
+  </nav>
+{% endblock %}
+
+{# ── Vault landing content ── #}
+{% block content %}
+  {# ── Title block ── #}
+  <div class="fn-vault-header">
+    <div class="fn-vault-name">{{ vault.name }}</div>
+    <div class="fn-vault-tagline">
+      {{ vault.stats.total_pages -}}
+      {%- if vault.stats.total_pages == 1 %} page{%- else %} pages{%- endif %}
+    </div>
+  </div>
+
+  {# ── Screenplays section: chain heads ── #}
+  <p class="scene-heading">Screenplays</p>
+  {%- for page in vault.pages %}
+  {%- if page.is_chain_head %}
+  <p class="action fn-sp-entry">
+    <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
+    {%- if page.chain_length %}
+    <span class="fn-sp-meta">
+      {{- page.chain_length -}}
+      {%- if page.chain_length == 1 %} scene{%- else %} scenes{%- endif %}
+    </span>
+    {%- endif %}
+  </p>
+  {%- endif %}
+  {%- endfor %}
+
+  {# ── Reference Pages section: pages not part of any chain ── #}
+  <p class="scene-heading fn-section-gap">Reference Pages</p>
+  {%- for page in vault.pages %}
+  {%- if not page.is_in_chain %}
+  <p class="action fn-ref-entry">
+    <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
+  </p>
+  {%- endif %}
+  {%- endfor %}
+{% endblock %}
