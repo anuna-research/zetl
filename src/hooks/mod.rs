@@ -473,6 +473,11 @@ pub fn run_hooks_verbose(
         eprintln!("[hooks] running lifecycle point '{}': {} hook(s) matched",
             hook_name, matching.len());
     }
+    // Pre-hooks are abort-capable: stop after the first failure so later
+    // hooks don't execute and mutate state.  Post/on-* hooks are non-fatal
+    // and must always run all matches (callers warn-and-continue).
+    let fail_fast = hook_name.starts_with("pre-");
+
     let mut results = Vec::with_capacity(matching.len());
     for hook in &matching {
         let result = execute_hook_verbose(hook, context_json, env, verbose);
@@ -481,9 +486,7 @@ pub fn run_hooks_verbose(
             Err(_) => true,
         };
         results.push(result);
-        // Short-circuit on first failure so pre-hooks can abort before
-        // later hooks execute and mutate state.
-        if failed {
+        if fail_fast && failed {
             break;
         }
     }
