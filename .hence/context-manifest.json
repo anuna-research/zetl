@@ -1,12 +1,12 @@
 {
-  "task_id": "context-builder",
+  "task_id": "wire-post-build",
   "token_budget": 8000,
-  "tokens_used": 103,
+  "tokens_used": 107,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement vault context serialiser: build JSON object with hook name, vault_root, theme, zetl_version, pages array (name, path, slug, frontmatter, outlinks, backlinks, is_orphan), and stats (total_pages, total_links, dead_links, orphans)",
-      "token_cost": 59,
+      "content": "Wire post-build hook invocation into build_static(): discover hooks, invoke with context including out_dir and pages_rendered fields, set ZETL_OUT_DIR env var",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 1 files (+174, -7): src/hooks/mod.rs",
       "token_cost": 11,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-context-builder-changes",
+      "content": "Modified 3 files (+398, -5): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs",
+      "token_cost": 24,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T11:36:42Z"
+  "constructed_at": "2026-03-02T11:41:17Z"
 }

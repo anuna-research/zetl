@@ -30,6 +30,12 @@ pub struct HookContext {
     pub pages: Vec<HookPageEntry>,
     /// Aggregate vault statistics.
     pub stats: HookStats,
+    /// Output directory for build hooks (only present for post-build).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub out_dir: Option<String>,
+    /// Number of pages rendered during build (only present for post-build).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pages_rendered: Option<usize>,
 }
 
 /// A single page in the hook context.
@@ -131,6 +137,8 @@ pub fn build_hook_context(
         zetl_version: zetl_version.to_string(),
         pages,
         stats,
+        out_dir: None,
+        pages_rendered: None,
     }
 }
 
