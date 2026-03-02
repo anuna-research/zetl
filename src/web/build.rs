@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 
 use crate::scanner::{body_text_ranges, page_slug_from_path};
 use crate::web::context::{build_folder_context, build_page_context, build_vault_context};
-use crate::web::engine::TemplateEngine;
+use crate::web::engine::{bundled_theme_files, TemplateEngine};
 use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::VaultData;
@@ -326,8 +326,10 @@ pub fn build_static(
     Ok(())
 }
 
-/// Copy static assets from `.zetl/static/` and `.zetl/themes/<theme>/static/` into `{out}/_static/`.
+/// Copy static assets from `.zetl/static/`, `.zetl/themes/<theme>/static/`, and
+/// the bundled theme's `static/` directory into `{out}/_static/`.
 ///
+/// Priority (lowest to highest): bundled theme → vault shared → installed theme.
 /// Returns `true` if any files were copied.
 fn copy_static_assets(vault_root: &Path, out: &Path, theme: &str) -> Result<bool> {
     let shared_static = vault_root.join(".zetl/static");
@@ -336,7 +338,14 @@ fn copy_static_assets(vault_root: &Path, out: &Path, theme: &str) -> Result<bool
     let shared_exists = shared_static.is_dir();
     let theme_exists = theme != "default" && theme_static.is_dir();
 
-    if !shared_exists && !theme_exists {
+    // Collect bundled theme static files (paths beginning with "static/").
+    let bundled_statics: Vec<_> = bundled_theme_files(theme)
+        .into_iter()
+        .filter(|(p, _)| p.starts_with("static"))
+        .collect();
+    let bundled_exists = !bundled_statics.is_empty();
+
+    if !shared_exists && !theme_exists && !bundled_exists {
         return Ok(false);
     }
 
@@ -344,11 +353,29 @@ fn copy_static_assets(vault_root: &Path, out: &Path, theme: &str) -> Result<bool
     std::fs::create_dir_all(&dest)
         .with_context(|| format!("Cannot create _static directory: {}", dest.display()))?;
 
-    // (1) Shared static first
+    // (1) Bundled theme static files first (lowest priority)
+    if bundled_exists {
+        for (rel_path, bytes) in &bundled_statics {
+            // Strip the leading "static/" component.
+            let file_rel = rel_path
+                .strip_prefix("static")
+                .unwrap_or(rel_path.as_path());
+            let target = dest.join(file_rel);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).with_context(|| {
+                    format!("Cannot create directory: {}", parent.display())
+                })?;
+            }
+            std::fs::write(&target, bytes)
+                .with_context(|| format!("Cannot write {}", target.display()))?;
+        }
+    }
+
+    // (2) Shared vault static (overwrites bundled on conflict)
     if shared_exists {
         copy_dir_recursive(&shared_static, &dest)?;
     }
-    // (2) Theme-specific second (overwrites shared on conflict)
+    // (3) Installed theme-specific static (overwrites everything on conflict)
     if theme_exists {
         copy_dir_recursive(&theme_static, &dest)?;
     }

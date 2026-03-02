@@ -1,12 +1,12 @@
 {
-  "task_id": "fountain-index-folder",
+  "task_id": "fountain-integration-tests",
   "token_budget": 8000,
-  "tokens_used": 1200,
+  "tokens_used": 374,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create themes/fountain/index.html and folder.html extending base.html. Index page: vault landing with screenplay aesthetics, lists detected chain heads as Screenplays section, lists non-chain pages as Reference Pages, includes search functionality. Folder page: folder listing with screenplay aesthetic, shows which pages are part of chains. REQ-015-001.",
-      "token_cost": 88,
+      "content": "Add integration tests for the fountain theme. Verify: zetl build --theme fountain produces HTML with Courier Prime font-face and no CDN URLs; WOFF2 fonts copied to _static/ in build output; 3-scene chain vault has prev/next navigation with correct links and positions; non-chain pages have no scene nav; zetl theme list shows fountain as bundled. TEST-015-001, TEST-015-002, TEST-015-003.",
+      "token_cost": 97,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T10:52:24Z"
+  "constructed_at": "2026-03-02T11:02:53Z"
 }

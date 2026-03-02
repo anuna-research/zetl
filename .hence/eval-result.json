@@ -3,30 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 355,
-    "deletions": 11,
+    "files_changed": 3,
+    "insertions": 328,
+    "deletions": 10,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/context.rs",
-      "src/web/engine.rs",
-      "tests/web_integration.rs",
-      "themes/fountain/base.html",
-      "themes/fountain/folder.html",
-      "themes/fountain/index.html"
+      "src/web/build.rs",
+      "tests/integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-fountain-index-folder-changes",
-      "content": "Modified 7 files (+355, -11): .hence/context-manifest.json, src/web/context.rs, src/web/engine.rs, tests/web_integration.rs, themes/fountain/base.html and 2 more",
+      "key": "task-fountain-integration-tests-changes",
+      "content": "Modified 3 files (+328, -10): .hence/context-manifest.json, src/web/build.rs, tests/integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/fountain-index-folder-v1",
-  "evaluated_at": "2026-03-02T11:02:47Z",
+  "branch_name": "hence/fountain-integration-tests-v1",
+  "evaluated_at": "2026-03-02T11:09:37Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
