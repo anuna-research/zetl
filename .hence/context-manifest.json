@@ -1,12 +1,12 @@
 {
-  "task_id": "three-tier-resolution",
+  "task_id": "theme-toml-parsing",
   "token_budget": 8000,
-  "tokens_used": 460,
+  "tokens_used": 624,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Refactor the template loader in engine.rs build_env() to implement three-tier resolution per REQ-014-004:\n\n1. Tier 1 (User Theme): .zetl/themes/<active-theme>/<template>.html on disk\n2. Tier 2 (Bundled Theme): bundled_template(active_theme, template) from compile-time embed\n3. Tier 3 (Default Fallback): bundled_template(\"default\", template) from compile-time embed\n\nCurrent code only has Tier 1 (disk) and Tier 2 (hardcoded default). The change is:\n- Replace the match statement in the loader with calls to bundled_template()\n- Add the intermediate Tier 2 lookup for the active theme name\n- Tier 3 is the final fallback to \"default\"\n\nWhen --theme default: Tier 1 is skipped (existing behaviour), Tier 2 = Tier 3.\nWhen --theme minimal: Tier 1 checks disk, Tier 2 checks bundled minimal/, Tier 3 falls back to bundled default/.\nWhen --theme custom-user-theme: Tier 1 checks disk, Tier 2 has no bundled match (returns None), Tier 3 falls back to default.\n\nUpdate validate_theme() in main.rs: currently it requires .zetl/themes/<name>/ to exist for non-default themes. It must now also accept names that match a bundled theme (bundled_theme_names().contains(theme)). A theme is valid if it exists on disk OR is bundled. Both can be true (installed shadows bundled).\n\nUpdate verbose logging to show which tier resolved each template (OBS-014-002):\n  theme: base.html  <- .zetl/themes/garden/base.html (disk)\n  theme: index.html <- bundled:minimal/index.html\n  theme: page.html  <- bundled:default/page.html (fallback)\n\nREQ-014-004, OBS-014-002.",
-      "token_cost": 385,
+      "content": "Add theme manifest parsing. Create a new module src/theme.rs (or src/web/theme.rs) with:\n\n```rust\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ThemeManifest {\n    pub theme: ThemeInfo,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ThemeInfo {\n    pub name: String,\n    pub version: String,\n    #[serde(default)]\n    pub description: Option<String>,\n    #[serde(default)]\n    pub author: Option<String>,\n    #[serde(default)]\n    pub license: Option<String>,\n    #[serde(default)]\n    pub homepage: Option<String>,\n    #[serde(default)]\n    pub min_zetl_version: Option<String>,\n    #[serde(default)]\n    pub templates: Option<ThemeTemplates>,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ThemeTemplates {\n    #[serde(default)]\n    pub overrides: Vec<String>,\n}\n```\n\nAdd `toml` crate to Cargo.toml (use latest stable, likely 0.8+).\n\nPublic API:\n  - parse_theme_manifest(content: &str) -> Result<ThemeManifest>\n    Parses TOML content. Validates name matches ^[a-z0-9][a-z0-9_-]*$ and version is valid SemVer (use the `semver` crate or a simple regex\n  - load_theme_manifest(theme_dir: &Path) -> Option<ThemeManifest>\n    Reads theme.toml from the given directory. Returns None if file doesn't exist. Returns error context if file exists but is malformed.\n  - load_bundled_manifest(theme_name: &str) -> Option<ThemeManifest>\n    Reads theme.toml from the embedded theme directory.\n  - validate_theme_name(name: &str) -> Result<()>\n    Validates the name pattern. Returns descriptive error on failure.\n\nAlso parse .zetl-source.toml (provenance) with a separate struct — needed for theme list in the next task:\n\n```rust\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ThemeSource {\n    pub source: ThemeSourceInfo,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ThemeSourceInfo {\n    pub url: String,\n    #[serde(default)]\n    pub ref_name: Option<String>,\n    pub commit: String,\n    #[serde(default)]\n    pub path: Option<String>,\n    pub installed_at: String,\n    pub zetl_version: String,\n}\n```\n\nREQ-014-001, REQ-014-002, CON-014-001.",
+      "token_cost": 527,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 8 files (+86, -1003): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/templates/base.html and 3 more",
       "token_cost": 35,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-three-tier-resolution-changes",
+      "content": "Modified 3 files (+57, -21): .hence/context-manifest.json, src/main.rs, src/web/engine.rs",
+      "token_cost": 22,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T06:16:58Z"
+  "constructed_at": "2026-03-02T06:21:13Z"
 }
