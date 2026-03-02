@@ -1,12 +1,12 @@
 {
-  "task_id": "source-parsing",
+  "task_id": "git-clone",
   "token_budget": 8000,
-  "tokens_used": 581,
+  "tokens_used": 601,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement git source format parsing in src/theme.rs per REQ-014-006, REQ-014-007.\n\nCreate a ThemeSource struct (not to be confused with .zetl-source.toml — this is the parsed install source):\n\n```rust\npub struct ThemeInstallSource {\n    pub url: String,            // Resolved git URL\n    pub git_ref: Option<String>, // Branch, tag, or SHA\n    pub path: Option<String>,   // Subdirectory within repo\n}\n```\n\nPublic API:\n  - parse_install_source(source: &str) -> Result<ThemeInstallSource>\n    Parses the source string and resolves:\n    - 'user/repo' -> https://github.com/user/repo.git (exactly one slash, no protocol)\n    - 'user/repo#v2.0' -> same URL + ref='v2.0'\n    - 'https://...' -> used directly, extract #ref if present\n    - 'git@...' -> used directly, extract #ref if present\n    Reject anything that doesn't match these patterns.\n\n  - sanitize_theme_name(raw: &str) -> String\n    Lowercase, replace non-alphanumeric with hyphens, strip leading/trailing hyphens.\n    Used for deriving a name from a repo URL when no --name or manifest name.\n\n  - resolve_theme_name(name_flag: Option<&str>, manifest: Option<&ThemeManifest>, path: Option<&str>, source: &ThemeInstallSource) -> Result<String>\n    Precedence per REQ-014-009:\n    1. --name flag\n    2. manifest.theme.name\n    3. Last component of --path\n    4. Repo name from URL\n    Validate result with validate_theme_name().\n\nREQ-014-006, REQ-014-007, REQ-014-009.",
-      "token_cost": 356,
+      "content": "Implement the git clone and file copy logic for theme installation per REQ-014-006, ADR-014-003.\n\nPublic API in src/theme.rs:\n  - clone_theme(source: &ThemeInstallSource, target_dir: &Path) -> Result<CloneResult>\n\nProcess:\n1. Create a temporary directory (tempfile::tempdir).\n2. Run `git clone --depth 1 [--branch <ref>] <url> <tmpdir>`.\n   - If ref is present and looks like a branch/tag name, use --branch.\n   - If ref looks like a commit SHA (40 hex chars or 7+ hex prefix), do a full clone then `git checkout <sha>`.\n   - If git is not on PATH, return a clear error: 'git is required for theme installation but was not found on PATH'.\n3. If --path is specified, verify <tmpdir>/<path> exists and is a directory.\n   - On failure, scan <tmpdir> for directories containing theme.toml and list them as hints.\n4. Copy theme files from the source directory (tmpdir root or tmpdir/path) to target_dir:\n   - Copy all files except .git/, .github/, .gitignore, .gitattributes.\n   - Preserve directory structure.\n5. Return CloneResult { commit_sha: String, files_copied: usize, total_bytes: u64 }.\n\nCloneResult:\n```rust\npub struct CloneResult {\n    pub commit_sha: String,\n    pub files_copied: usize,\n    pub total_bytes: u64,\n}\n```\n\nGet the commit SHA via `git -C <tmpdir> rev-parse HEAD` before cleanup.\n\nUse std::process::Command for git operations. Do NOT use libgit2 — keep the dependency light (ADR-014-003).\n\nREQ-014-006, REQ-014-008, REQ-014-015, ADR-014-003.",
+      "token_cost": 365,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 2 files (+80, -0): src/cli.rs, src/main.rs",
       "token_cost": 12,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-source-parsing-changes",
+      "content": "Modified 1 files (+308, -0): src/web/theme.rs",
+      "token_cost": 11,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T06:51:04Z"
+  "constructed_at": "2026-03-02T06:54:48Z"
 }
