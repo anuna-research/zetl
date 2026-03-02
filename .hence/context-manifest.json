@@ -1,12 +1,12 @@
 {
-  "task_id": "hook-executor",
+  "task_id": "verbose-logging",
   "token_budget": 8000,
-  "tokens_used": 71,
+  "tokens_used": 85,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add hook execution engine: spawn hook as child process, write JSON context to stdin, set ZETL_* environment variables, set working directory to vault root, capture stdout/stderr, handle exit codes",
-      "token_cost": 49,
+      "content": "Add verbose logging for hook discovery and execution: log hook name/source/path/duration/exit-code/stdout/stderr under --verbose; log which directories were checked, hooks found, and hooks skipped with reasons",
+      "token_cost": 52,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 3 files (+375, -78): .hence/context-manifest.json, src/hooks/mod.rs, src/lib.rs",
       "token_cost": 22,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-hook-executor-changes",
+      "content": "Modified 1 files (+430, -6): src/hooks/mod.rs",
+      "token_cost": 11,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T11:28:27Z"
+  "constructed_at": "2026-03-02T11:32:28Z"
 }
