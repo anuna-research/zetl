@@ -99,6 +99,9 @@ pub enum Command {
         /// Show only drift diagnostics (SPL blocks with changed grounding since last theory build)
         #[arg(long)]
         drift: bool,
+        /// Show only chain integrity diagnostics (broken links, asymmetry, cycles, fan-in, orphans)
+        #[arg(long)]
+        chains: bool,
         /// Exit non-zero if issues at level
         #[arg(long, default_value = "error")]
         fail_on: FailLevel,
