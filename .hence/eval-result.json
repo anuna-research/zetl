@@ -3,26 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 134,
-    "deletions": 8,
+    "files_changed": 2,
+    "insertions": 46,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/context.rs",
       "src/main.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-pre-hooks-changes",
-      "content": "Modified 3 files (+134, -8): .hence/context-manifest.json, src/hooks/context.rs, src/main.rs",
+      "key": "task-theme-install-hooks-changes",
+      "content": "Modified 2 files (+46, -6): .hence/context-manifest.json, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/pre-hooks-v1",
-  "evaluated_at": "2026-03-02T12:22:55Z",
+  "branch_name": "hence/theme-install-hooks-v1",
+  "evaluated_at": "2026-03-02T12:27:09Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

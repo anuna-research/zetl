@@ -1,12 +1,12 @@
 {
-  "task_id": "pre-hooks",
+  "task_id": "theme-install-hooks",
   "token_budget": 8000,
-  "tokens_used": 251,
+  "tokens_used": 242,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement pre-build and pre-serve hooks with abort-on-failure semantics: non-zero exit aborts the parent operation and prints hook stderr as error message",
-      "token_cost": 38,
+      "content": "Update zetl theme install to make hook files executable (chmod +x) during installation; log installed hooks to output",
+      "token_cost": 29,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T12:16:12Z"
+  "constructed_at": "2026-03-02T12:23:01Z"
 }
