@@ -1,12 +1,12 @@
 {
-  "task_id": "hook-timeout",
+  "task_id": "hook-run-cmd",
   "token_budget": 8000,
-  "tokens_used": 170,
+  "tokens_used": 223,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Enforce 30-second timeout on all hook executions: kill process on timeout, log warning, parent operation continues",
-      "token_cost": 28,
+      "content": "Add zetl hook run <name> subcommand: run vault pipeline to build context, invoke named hook(s) with appropriate context, print stdout to terminal, print stderr to stderr, exit with hook's exit code; accept -- with extra JSON fields merged into context",
+      "token_cost": 62,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,14 @@
       "content": "Modified 4 files (+202, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/integration.rs",
       "token_cost": 26,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-hook-timeout-changes",
+      "content": "Modified 2 files (+147, -15): .hence/context-manifest.json, src/hooks/mod.rs",
+      "token_cost": 19,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T11:57:52Z"
+  "constructed_at": "2026-03-02T12:03:12Z"
 }

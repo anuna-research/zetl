@@ -3110,6 +3110,115 @@ fn cmd_hook_list(cli: &Cli, theme: &str) -> Result<()> {
     Ok(())
 }
 
+fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<()> {
+    // Validate hook name.
+    if !zetl::hooks::HOOK_NAMES.contains(&name) {
+        anyhow::bail!(
+            "unknown hook name '{}'. Valid names: {}",
+            name,
+            zetl::hooks::HOOK_NAMES.join(", "),
+        );
+    }
+
+    let verbose = cli.verbose > 0;
+
+    // Run the vault pipeline to build full context.
+    let pipeline = run_pipeline(cli)?;
+
+    // Discover hooks.
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        verbose,
+    );
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    let matching = zetl::hooks::hooks_for(&manifest, name);
+    if matching.is_empty() {
+        anyhow::bail!("no executable hook found for '{name}'");
+    }
+
+    // Build context JSON.
+    let ctx = zetl::hooks::context::build_hook_context(
+        name,
+        &pipeline.vault_root,
+        theme,
+        env!("CARGO_PKG_VERSION"),
+        &pipeline.files,
+        &pipeline.graph,
+    );
+    let mut context_value = serde_json::to_value(&ctx)?;
+
+    // Merge extra JSON fields from -- arguments.
+    if !extra.is_empty() {
+        let extra_str = extra.join(" ");
+        let extra_value: serde_json::Value = serde_json::from_str(&extra_str)
+            .with_context(|| format!("invalid JSON after --: {extra_str}"))?;
+        if let (Some(base), Some(overlay)) = (context_value.as_object_mut(), extra_value.as_object()) {
+            for (k, v) in overlay {
+                base.insert(k.clone(), v.clone());
+            }
+        } else {
+            anyhow::bail!("extra JSON after -- must be an object, got: {extra_str}");
+        }
+    }
+
+    let context_json = serde_json::to_vec(&context_value)?;
+
+    let hook_env = zetl::hooks::HookEnv {
+        vault_root: pipeline.vault_root.clone(),
+        theme: theme.to_string(),
+        zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+        extra_vars: vec![],
+    };
+
+    // Run all matching hooks sequentially, streaming output.
+    let results = zetl::hooks::run_hooks_verbose(
+        &manifest,
+        name,
+        &context_json,
+        &hook_env,
+        verbose,
+    );
+
+    let mut last_exit_code: i32 = 0;
+
+    for result in results {
+        match result {
+            Ok(output) => {
+                // Print stdout to stdout.
+                if !output.stdout.is_empty() {
+                    print!("{}", output.stdout);
+                }
+                // Print stderr to stderr.
+                if !output.stderr.is_empty() {
+                    eprint!("{}", output.stderr);
+                }
+                if output.timed_out {
+                    eprintln!("error: hook '{}' timed out", output.path.display());
+                    last_exit_code = 124; // conventional timeout exit code
+                } else {
+                    last_exit_code = output.exit_code.unwrap_or(1);
+                }
+            }
+            Err(e) => {
+                eprintln!("error: hook failed to execute: {e}");
+                last_exit_code = 1;
+            }
+        }
+    }
+
+    if last_exit_code != 0 {
+        std::process::exit(last_exit_code);
+    }
+
+    Ok(())
+}
+
 fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -6903,6 +7012,7 @@ fn main() -> anyhow::Result<()> {
         },
         Command::Hook { command } => match command {
             HookCommand::List { theme } => cmd_hook_list(&cli, theme),
+            HookCommand::Run { name, theme, extra } => cmd_hook_run(&cli, name, theme, extra),
         },
         Command::Serve { port, theme } => cmd_serve(&cli, *port, theme),
         Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),
