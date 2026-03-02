@@ -1,12 +1,12 @@
 {
-  "task_id": "compile-time-embedding",
+  "task_id": "three-tier-resolution",
   "token_budget": 8000,
-  "tokens_used": 367,
+  "tokens_used": 460,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Replace the hardcoded include_str!() calls in engine.rs with a compile-time embedding mechanism that loads all themes from the themes/ directory.\n\nApproach: Use the `include_dir` crate (or a build.rs that generates a static HashMap). The key decision is:\n\nOption A — `include_dir` crate:\n  Add `include_dir = \"0.7\"` to Cargo.toml. In engine.rs:\n  ```rust\n  use include_dir::{include_dir, Dir}\n  static BUNDLED_THEMES: Dir = include_dir!(\"$CARGO_MANIFEST_DIR/themes\");\n  ```\n  Lookup: BUNDLED_THEMES.get_file(format!(\"{theme}/{template}\"))\n\nOption B — build.rs codegen:\n  Generate a Rust source file that contains static &str constants for each theme/template pair. More control, no extra dependency.\n\nRecommendation: Option A is simpler and well-maintained. Use it unless the dependency is unacceptable.\n\nAfter this task, delete src/web/templates/ — themes/default/ is now the single source of truth for built-in templates. Update all references.\n\nCreate a helper function:\n  fn bundled_template(theme: &str, name: &str) -> Option<&'static str>\nthat looks up a template from the embedded directory. Returns None if the theme or template does not exist.\n\nAlso create:\n  fn bundled_theme_names() -> Vec<&'static str>\nthat returns the list of all embedded theme directory names.\n\nREQ-014-004, ADR-014-002.",
-      "token_cost": 327,
+      "content": "Refactor the template loader in engine.rs build_env() to implement three-tier resolution per REQ-014-004:\n\n1. Tier 1 (User Theme): .zetl/themes/<active-theme>/<template>.html on disk\n2. Tier 2 (Bundled Theme): bundled_template(active_theme, template) from compile-time embed\n3. Tier 3 (Default Fallback): bundled_template(\"default\", template) from compile-time embed\n\nCurrent code only has Tier 1 (disk) and Tier 2 (hardcoded default). The change is:\n- Replace the match statement in the loader with calls to bundled_template()\n- Add the intermediate Tier 2 lookup for the active theme name\n- Tier 3 is the final fallback to \"default\"\n\nWhen --theme default: Tier 1 is skipped (existing behaviour), Tier 2 = Tier 3.\nWhen --theme minimal: Tier 1 checks disk, Tier 2 checks bundled minimal/, Tier 3 falls back to bundled default/.\nWhen --theme custom-user-theme: Tier 1 checks disk, Tier 2 has no bundled match (returns None), Tier 3 falls back to default.\n\nUpdate validate_theme() in main.rs: currently it requires .zetl/themes/<name>/ to exist for non-default themes. It must now also accept names that match a bundled theme (bundled_theme_names().contains(theme)). A theme is valid if it exists on disk OR is bundled. Both can be true (installed shadows bundled).\n\nUpdate verbose logging to show which tier resolved each template (OBS-014-002):\n  theme: base.html  <- .zetl/themes/garden/base.html (disk)\n  theme: index.html <- bundled:minimal/index.html\n  theme: page.html  <- bundled:default/page.html (fallback)\n\nREQ-014-004, OBS-014-002.",
+      "token_cost": 385,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 5 files (+998, -0): themes/default/base.html, themes/default/folder.html, themes/default/index.html, themes/default/page.html, themes/default/theme.toml",
       "token_cost": 40,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-compile-time-embedding-changes",
+      "content": "Modified 8 files (+86, -1003): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/templates/base.html and 3 more",
+      "token_cost": 35,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T06:13:53Z"
+  "constructed_at": "2026-03-02T06:16:58Z"
 }
