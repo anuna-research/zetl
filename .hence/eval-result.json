@@ -3,26 +3,24 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 375,
-    "deletions": 78,
+    "files_changed": 1,
+    "insertions": 430,
+    "deletions": 6,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/hooks/mod.rs",
-      "src/lib.rs"
+      "src/hooks/mod.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-hook-discovery-changes",
-      "content": "Modified 3 files (+375, -78): .hence/context-manifest.json, src/hooks/mod.rs, src/lib.rs",
+      "key": "task-hook-executor-changes",
+      "content": "Modified 1 files (+430, -6): src/hooks/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/hook-discovery-v1",
-  "evaluated_at": "2026-03-02T11:28:22Z",
+  "branch_name": "hence/hook-executor-v1",
+  "evaluated_at": "2026-03-02T11:32:22Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

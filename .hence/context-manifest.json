@@ -1,15 +1,21 @@
 {
-  "task_id": "hook-discovery",
+  "task_id": "hook-executor",
   "token_budget": 8000,
-  "tokens_used": 33,
+  "tokens_used": 71,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add hook discovery module: scan .zetl/hooks/ and theme hooks directories; detect executable permissions; warn on non-executable hooks",
-      "token_cost": 33,
+      "content": "Add hook execution engine: spawn hook as child process, write JSON context to stdin, set ZETL_* environment variables, set working directory to vault root, capture stdout/stderr, handle exit codes",
+      "token_cost": 49,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-hook-discovery-changes",
+      "content": "Modified 3 files (+375, -78): .hence/context-manifest.json, src/hooks/mod.rs, src/lib.rs",
+      "token_cost": 22,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T11:23:11Z"
+  "constructed_at": "2026-03-02T11:28:27Z"
 }
