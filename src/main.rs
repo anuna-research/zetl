@@ -820,6 +820,7 @@ fn cmd_check(
     show_spl: bool,
     show_drift: bool,
     fail_on: &FailLevel,
+    theme: &str,
 ) -> Result<()> {
     #[cfg(not(feature = "reason"))]
     if show_spl {
@@ -1120,6 +1121,81 @@ fn cmd_check(
                 && output.drift_diagnostics.is_empty()
             {
                 println!("No issues found.");
+            }
+        }
+    }
+
+    // ── post-check hooks (REQ-016-004: non-fatal) ──────────────────────
+    let verbose = cli.verbose > 0;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        verbose,
+    );
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    if !zetl::hooks::hooks_for(&manifest, "post-check").is_empty() {
+        // Collect full diagnostics for hook context (unfiltered by display flags).
+        let hook_dead_links = pipeline.graph.dead_links();
+        let hook_orphans = pipeline.graph.orphans();
+        let hook_syntax_errors: Vec<zetl::types::Diagnostic> = pipeline
+            .files
+            .iter()
+            .flat_map(|f| f.diagnostics.clone())
+            .collect();
+
+        let mut ctx = zetl::hooks::context::build_hook_context(
+            "post-check",
+            &pipeline.vault_root,
+            theme,
+            env!("CARGO_PKG_VERSION"),
+            &pipeline.files,
+            &pipeline.graph,
+        );
+        ctx.diagnostics = Some(zetl::hooks::context::HookDiagnostics {
+            dead_links: hook_dead_links,
+            orphans: hook_orphans,
+            syntax_errors: hook_syntax_errors,
+        });
+
+        let context_json = serde_json::to_vec(&ctx)?;
+
+        let hook_env = zetl::hooks::HookEnv {
+            vault_root: pipeline.vault_root.clone(),
+            theme: theme.to_string(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![],
+        };
+
+        let results = zetl::hooks::run_hooks_verbose(
+            &manifest,
+            "post-check",
+            &context_json,
+            &hook_env,
+            verbose,
+        );
+
+        for result in results {
+            match result {
+                Ok(hook_output) if !hook_output.success() => {
+                    eprintln!(
+                        "warning: post-check hook '{}' ({}) exited with code {}",
+                        hook_output.path.display(),
+                        hook_output.source,
+                        hook_output.exit_code.unwrap_or(-1),
+                    );
+                    if !hook_output.stderr.is_empty() {
+                        eprintln!("  stderr: {}", hook_output.stderr.trim_end());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("warning: post-check hook failed to execute: {e}");
+                }
+                _ => {}
             }
         }
     }
@@ -6956,7 +7032,8 @@ fn main() -> anyhow::Result<()> {
             spl,
             drift,
             fail_on,
-        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, *drift, fail_on),
+            theme,
+        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, *drift, fail_on, theme),
         Command::Similar {
             query,
             threshold,
