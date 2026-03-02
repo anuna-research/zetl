@@ -494,6 +494,7 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::graph::LinkGraph;
+    use crate::search_index::SearchIndex;
     use crate::web::engine::TemplateEngine;
     use crate::web::{VaultData, WebState};
 
@@ -507,9 +508,11 @@ mod tests {
             page_slug_map: HashMap::new(),
             collision_names: HashSet::new(),
         };
+        let search_index = SearchIndex::build(vault_root, &[]).unwrap();
         WebState {
             data: Arc::new(RwLock::new(data)),
             vault_root: Arc::new(vault_root.to_path_buf()),
+            search_index: Arc::new(search_index),
             engine: Arc::new(TemplateEngine::new(vault_root, theme, false, false)),
             theme: theme.to_string(),
         }

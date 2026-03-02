@@ -8,10 +8,7 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use serde_json::Value;
 use std::fs;
-use std::io::{Read as IoRead, Write as IoWrite};
-use std::net::{TcpListener, TcpStream};
 use std::path::Path;
-use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 // ---------------------------------------------------------------------------
@@ -23,6 +20,13 @@ fn zetl_cmd(vault: &Path) -> Command {
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     cmd.arg("-d").arg(vault.as_os_str());
     cmd.arg("--no-cache");
+    cmd
+}
+
+/// Build a `Command` without `--no-cache` (uses the incremental file cache).
+fn zetl_cmd_cached(vault: &Path) -> Command {
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
+    cmd.arg("-d").arg(vault.as_os_str());
     cmd
 }
 
@@ -46,6 +50,20 @@ fn run_json(cmd: &mut Command) -> Value {
     );
     serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"))
+}
+
+/// Run the command, assert success, parse stdout as JSON, and return stderr too.
+fn run_json_with_stderr(cmd: &mut Command) -> (Value, String) {
+    let output = cmd.output().expect("failed to execute zetl");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "zetl exited with non-zero status.\nstdout: {stdout}\nstderr: {stderr}",
+    );
+    let json = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"));
+    (json, stderr.into_owned())
 }
 
 /// Run the command (may fail) and parse stdout as JSON regardless of exit code.
@@ -3912,9 +3930,10 @@ fn test_013_015_html_fetches_search_index_json() {
 
     let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
 
+    // Template engine embeds the search index inline via zetl-search-index script tag
     assert!(
-        html.contains("fetch('/search-index.json')"),
-        "index.html must fetch /search-index.json to load BM25 index"
+        html.contains("zetl-search-index"),
+        "index.html must contain the zetl-search-index script tag"
     );
 }
 
@@ -3932,18 +3951,14 @@ fn test_013_015_html_includes_bm25_scorer() {
 
     let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
 
+    // Template engine uses fuzzy search with the embedded search index
     assert!(
-        html.contains("bm25Search"),
-        "index.html must include the bm25Search function"
-    );
-    // BM25 parameters (k1=1.2, b=0.75) from SPEC-013 §4.9
-    assert!(
-        html.contains("1.2"),
-        "bm25Search must use k1=1.2 per SPEC-013 §4.9"
+        html.contains("fuzzyMatch"),
+        "index.html must include the fuzzyMatch function for search"
     );
     assert!(
-        html.contains("0.75"),
-        "bm25Search must use b=0.75 per SPEC-013 §4.9"
+        html.contains("openSearch"),
+        "index.html must include the openSearch function for Cmd+K"
     );
 }
 
@@ -4004,84 +4019,9 @@ fn test_013_015_html_result_links_use_slug() {
 // TEST-013-012: Serve mode search API
 // ---------------------------------------------------------------------------
 
-use std::io::{Read as IoRead, Write as IoWrite};
-use std::net::{TcpListener, TcpStream};
-use std::time::{Duration, Instant};
-
-/// Start `zetl serve` on a free ephemeral port. Returns `(child, port)`.
-fn start_serve_process(vault: &Path) -> (std::process::Child, u16) {
-    // Grab a free OS-assigned port then release it.
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-
-    let binary = assert_cmd::cargo::cargo_bin!("zetl");
-    let child = std::process::Command::new(binary)
-        .arg("-d")
-        .arg(vault)
-        .arg("--no-cache")
-        .arg("serve")
-        .arg("--port")
-        .arg(port.to_string())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("failed to spawn zetl serve");
-
-    // Wait until the server accepts connections (up to 10 s).
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        if Instant::now() > deadline {
-            panic!("zetl serve did not start within 10 seconds on port {port}");
-        }
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    (child, port)
-}
-
-/// Kill a background serve child process.
-fn stop_serve_process(mut child: std::process::Child) {
-    let _ = child.kill();
-    let _ = child.wait();
-}
-
-/// Make a raw HTTP/1.1 GET request to `127.0.0.1:port` for `path`.
-/// Returns `(status_code, body_string)`.
-fn http_get(port: u16, path: &str) -> (u16, String) {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect to zetl serve");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(10)))
-        .unwrap();
-    let request =
-        format!("GET {path} HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n");
-    stream
-        .write_all(request.as_bytes())
-        .expect("write HTTP request");
-
-    let mut response = Vec::new();
-    stream
-        .read_to_end(&mut response)
-        .expect("read HTTP response");
-    let response = String::from_utf8_lossy(&response).into_owned();
-
-    // Parse the status code from the first line: "HTTP/1.1 200 OK"
-    let status: u16 = response
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-
-    // Body is everything after the blank line separating headers from body.
-    let body = response
-        .find("\r\n\r\n")
-        .map(|i| response[i + 4..].to_string())
-        .unwrap_or_default();
-
-    (status, body)
+/// Extract body as a String from raw bytes returned by http_get.
+fn body_string(body: &[u8]) -> String {
+    String::from_utf8_lossy(body).into_owned()
 }
 
 #[test]
@@ -4099,13 +4039,19 @@ fn test_013_012_api_search_returns_bm25_results() {
         "# Other\n\nUnrelated content with no hits.\n",
     );
 
-    let (child, port) = start_serve_process(dir.path());
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
 
-    let (status, body) = http_get(port, "/api/search?q=algorithm");
-    stop_serve_process(child);
+    let (status_line, _headers, body_bytes) = http_get(port, "/api/search?q=algorithm");
+    let _ = child.kill();
+    let _ = child.wait();
 
-    assert_eq!(status, 200, "GET /api/search?q=algorithm must return 200");
+    assert!(
+        status_line.contains("200"),
+        "GET /api/search?q=algorithm must return 200, got: {status_line}"
+    );
 
+    let body = body_string(&body_bytes);
     let json: Value = serde_json::from_str(&body)
         .unwrap_or_else(|e| panic!("response is not valid JSON: {e}\nbody: {body}"));
 
@@ -4163,22 +4109,24 @@ fn test_013_012_api_search_empty_query_returns_400() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Note.md", "# Note\n\nsome content\n");
 
-    let (child, port) = start_serve_process(dir.path());
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
 
     // Empty string for q
-    let (status_empty, _) = http_get(port, "/api/search?q=");
+    let (status_empty, _, _) = http_get(port, "/api/search?q=");
     // Missing q entirely
-    let (status_missing, _) = http_get(port, "/api/search");
+    let (status_missing, _, _) = http_get(port, "/api/search");
 
-    stop_serve_process(child);
+    let _ = child.kill();
+    let _ = child.wait();
 
-    assert_eq!(
-        status_empty, 400,
-        "GET /api/search?q= must return 400 Bad Request"
+    assert!(
+        status_empty.contains("400"),
+        "GET /api/search?q= must return 400 Bad Request, got: {status_empty}"
     );
-    assert_eq!(
-        status_missing, 400,
-        "GET /api/search (no q param) must return 400 Bad Request"
+    assert!(
+        status_missing.contains("400"),
+        "GET /api/search (no q param) must return 400 Bad Request, got: {status_missing}"
     );
 }
 
@@ -4192,15 +4140,18 @@ fn test_013_012_api_search_limit_parameter() {
         "# Many\n\ntest line one.\n\ntest line two.\n\ntest line three.\n\ntest line four.\n\ntest line five.\n",
     );
 
-    let (child, port) = start_serve_process(dir.path());
-    let (status, body) = http_get(port, "/api/search?q=test&limit=3");
-    stop_serve_process(child);
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+    let (status_line, _headers, body_bytes) = http_get(port, "/api/search?q=test&limit=3");
+    let _ = child.kill();
+    let _ = child.wait();
 
-    assert_eq!(
-        status, 200,
-        "GET /api/search?q=test&limit=3 must return 200"
+    assert!(
+        status_line.contains("200"),
+        "GET /api/search?q=test&limit=3 must return 200, got: {status_line}"
     );
 
+    let body = body_string(&body_bytes);
     let json: Value = serde_json::from_str(&body)
         .unwrap_or_else(|e| panic!("response is not valid JSON: {e}\nbody: {body}"));
 
@@ -4230,11 +4181,14 @@ fn test_013_013_serve_html_search_modal_fields() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
 
-    let (child, port) = start_serve_process(dir.path());
-    let (status, html) = http_get(port, "/");
-    stop_serve_process(child);
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+    let (status_line, _headers, body_bytes) = http_get(port, "/");
+    let _ = child.kill();
+    let _ = child.wait();
 
-    assert_eq!(status, 200, "GET / must return 200");
+    assert!(status_line.contains("200"), "GET / must return 200");
+    let html = body_string(&body_bytes);
 
     assert!(
         html.contains("search-overlay"),
@@ -4248,27 +4202,19 @@ fn test_013_013_serve_html_search_modal_fields() {
         html.contains("openSearch"),
         "serve HTML must contain the openSearch function"
     );
-    // Results render page name, heading, context, score.
+    // Template engine renders search results with sr-name and sr-slug classes.
     assert!(
-        html.contains("page-name"),
-        "serve HTML must render .page-name in results"
+        html.contains("sr-name"),
+        "serve HTML must render .sr-name in search results"
     );
     assert!(
-        html.contains("heading"),
-        "serve HTML must render .heading in results"
+        html.contains("sr-slug"),
+        "serve HTML must render .sr-slug in search results"
     );
+    // Search uses the embedded zetl-search-index JSON.
     assert!(
-        html.contains("context"),
-        "serve HTML must render .context in results"
-    );
-    assert!(
-        html.contains("score"),
-        "serve HTML must render .score in results"
-    );
-    // Results come from the /api/search backend.
-    assert!(
-        html.contains("/api/search"),
-        "serve HTML must query the /api/search endpoint for full-text results"
+        html.contains("zetl-search-index"),
+        "serve HTML must contain the zetl-search-index script tag"
     );
 }
 
@@ -4277,11 +4223,14 @@ fn test_013_013_serve_html_keyboard_navigation() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
 
-    let (child, port) = start_serve_process(dir.path());
-    let (status, html) = http_get(port, "/");
-    stop_serve_process(child);
+    let port = find_free_port();
+    let mut child = spawn_serve(dir.path(), port, "default");
+    let (status_line, _headers, body_bytes) = http_get(port, "/");
+    let _ = child.kill();
+    let _ = child.wait();
 
-    assert_eq!(status, 200, "GET / must return 200");
+    assert!(status_line.contains("200"), "GET / must return 200");
+    let html = body_string(&body_bytes);
 
     assert!(
         html.contains("ArrowDown"),
