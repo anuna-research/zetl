@@ -156,7 +156,7 @@ pub fn layout(
 
     function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-    function slugFromPath(path){return path.replace(/\.md$/i,'').toLowerCase().replace(/ /g,'-');}
+    function slugFromPath(path){return path.replace(/\.[^/.]+$/,'').toLowerCase().replace(/ /g,'-');}
 
     function render(items){
       results.innerHTML='';
