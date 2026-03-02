@@ -361,7 +361,6 @@
     var results=document.getElementById('search-results');
     var active=-1;
     var filtered=[];
-    var debounceTimer=null;
 
     var pageList=(function(){
       try{return JSON.parse(document.getElementById('zetl-search-index').textContent||'[]');}
@@ -371,26 +370,81 @@
     function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
     function slugFromPath(path){return path.replace(/\.[^/.]+$/,'').toLowerCase().replace(/ /g,'-');}
 
-    function fastFilter(q){
-      var ql=q.toLowerCase();
-      return pageList
-        .filter(function(p){return p.n.toLowerCase().indexOf(ql)>=0;})
-        .slice(0,10)
-        .map(function(p){return {page:p.n,slug:p.s,score:0};});
+    /* ── Fuzzy matching (works in all modes, no fetch needed) ─── */
+    function fuzzyMatch(query,text){
+      var ql=query.length,tl=text.length;
+      if(ql===0)return{score:0,indices:[]};
+      if(ql>tl)return null;
+      var qLow=query.toLowerCase(),tLow=text.toLowerCase();
+      var qi=0;
+      for(var ti=0;ti<tl&&qi<ql;ti++){if(tLow[ti]===qLow[qi])qi++;}
+      if(qi<ql)return null;
+      var bestScore=-Infinity,bestIndices=null;
+      function solve(qi2,ti2,indices,score,prevMatch){
+        if(qi2===ql){if(score>bestScore){bestScore=score;bestIndices=indices.slice();}return;}
+        var remaining=ql-qi2;
+        for(var t=ti2;t<=tl-remaining;t++){
+          if(tLow[t]===qLow[qi2]){
+            var s=0;
+            if(prevMatch===t-1)s+=5;
+            if(t===0)s+=8;
+            else{var prev=text[t-1];if(prev===' '||prev==='-'||prev==='_'||prev==='/'||prev==='.')s+=7;else if(text[t]===text[t].toUpperCase()&&prev===prev.toLowerCase()&&/[a-zA-Z]/.test(prev))s+=6;}
+            if(text[t]===query[qi2])s+=1;
+            s+=Math.max(0,3-Math.floor(t/4));
+            indices.push(t);solve(qi2+1,t+1,indices,score+s,t);indices.pop();
+          }
+        }
+      }
+      solve(0,0,[],0,-2);
+      if(!bestIndices)return null;
+      return{score:bestScore,indices:bestIndices};
     }
 
-    /* ── Render result items ───────────────────────────────────── */
-    function render(items){
+    function highlight(text,indices){
+      var set={};indices.forEach(function(i){set[i]=true;});
+      var out='';
+      for(var i=0;i<text.length;i++){var c=esc(text[i]);out+=set[i]?'<b>'+c+'</b>':c;}
+      return out;
+    }
+
+    function fuzzyFilter(q){
+      if(!q)return pageList.map(function(p){return{n:p.n,s:p.s,_indices:null};});
+      var scored=[];
+      pageList.forEach(function(p){
+        var m=fuzzyMatch(q,p.n);
+        if(m)scored.push({n:p.n,s:p.s,score:m.score,_indices:m.indices});
+      });
+      scored.sort(function(a,b){return b.score-a.score;});
+      return scored;
+    }
+
+    /* ── Render (two styles: fuzzy name results vs full-text) ─── */
+    function renderFuzzy(items){
+      results.innerHTML='';
+      if(items.length===0){
+        results.innerHTML='<div class="search-hint">No results</div>';
+        active=-1;return;
+      }
+      items.forEach(function(item,i){
+        var a=document.createElement('a');
+        a.className='search-result'+(i===active?' sr-active':'');
+        a.href='/'+item.s;
+        var nameHtml=item._indices?highlight(item.n,item._indices):esc(item.n);
+        a.innerHTML='<div class="sr-name">'+nameHtml+'</div><div class="sr-slug">'+esc(item.s)+'</div>';
+        a.addEventListener('mouseenter',function(){active=i;updateActive();});
+        results.appendChild(a);
+      });
+    }
+
+    function renderFullText(items){
       results.innerHTML='';
       if(!input.value){
         results.innerHTML='<div class="search-hint">Type to search pages\u2026</div>';
-        active=-1;
-        return;
+        active=-1;return;
       }
       if(items.length===0){
         results.innerHTML='<div class="search-hint">No results</div>';
-        active=-1;
-        return;
+        active=-1;return;
       }
       active=0;
       items.forEach(function(item,i){
@@ -407,15 +461,9 @@
       });
     }
 
-    function showLoading(){
-      results.innerHTML='<div class="search-hint">Searching\u2026</div>';
-    }
-
     function updateActive(){
       var els=results.querySelectorAll('.search-result');
-      els.forEach(function(el,i){
-        el.classList.toggle('sr-active',i===active);
-      });
+      els.forEach(function(el,i){el.classList.toggle('sr-active',i===active);});
       if(active>=0&&els[active])els[active].scrollIntoView({block:'nearest'});
     }
 
@@ -424,16 +472,12 @@
     function bm25Search(q,index){
       var k1=1.2,b=0.75;
       var terms=q.toLowerCase().split(/\W+/).filter(Boolean);
-      var n=index.docs.length;
-      var avgDl=index.avgDl||1;
-      var scores={};
+      var n=index.docs.length;var avgDl=index.avgDl||1;var scores={};
       terms.forEach(function(term){
-        var df=index.df[term]||0;
-        if(df===0)return;
+        var df=index.df[term]||0;if(df===0)return;
         var idf=Math.log((n-df+0.5)/(df+0.5)+1);
         index.docs.forEach(function(doc,i){
-          var tf=doc.tf[term]||0;
-          if(tf===0)return;
+          var tf=doc.tf[term]||0;if(tf===0)return;
           var norm=1-b+b*(doc.dl/avgDl);
           var sc=idf*(tf*(k1+1))/(tf+k1*norm);
           scores[i]=(scores[i]||0)+sc;
@@ -441,15 +485,19 @@
       });
       return Object.keys(scores).map(function(i){
         var doc=index.docs[parseInt(i)];
-        return {page:doc.n,slug:doc.s,score:scores[i]};
+        return{page:doc.n,slug:doc.s,score:scores[i]};
       }).sort(function(a,b){return b.score-a.score;});
     }
 
     /* ── Serve mode: /api/search (Tantivy full-text) ───────────── */
     var currentCtrl=null;
+    var debounceTimer=null;
     function serveSearch(q){
-      if(q.length<=2){filtered=fastFilter(q);render(filtered);return;}
-      showLoading();
+      if(q.length<=2){
+        filtered=fuzzyFilter(q);
+        active=0;renderFuzzy(filtered);return;
+      }
+      results.innerHTML='<div class="search-hint">Searching\u2026</div>';
       if(currentCtrl){currentCtrl.abort();}
       currentCtrl=new AbortController();
       fetch('/api/search?q='+encodeURIComponent(q)+'&limit=20',{signal:currentCtrl.signal})
@@ -457,43 +505,56 @@
         .then(function(data){
           currentCtrl=null;
           filtered=(data.results||[]).map(function(m){
-            return {
-              page:m.page,
-              slug:slugFromPath(m.path),
-              heading:m.heading||null,
-              context:m.context||null,
-              score:m.score,
-              line:m.line||0
-            };
+            return{page:m.page,slug:slugFromPath(m.path),heading:m.heading||null,context:m.context||null,score:m.score,line:m.line||0};
           });
-          render(filtered);
+          renderFullText(filtered);
         })
         .catch(function(err){
           currentCtrl=null;
           if(err&&err.name==='AbortError')return;
-          filtered=fastFilter(q);
-          render(filtered);
+          filtered=fuzzyFilter(q);
+          active=0;renderFuzzy(filtered);
         });
     }
 
-    /* ── Build mode: client-side BM25 via /search-index.json ───── */
-    function buildSearch(q){
-      if(q.length<=2||!searchIndex){filtered=fastFilter(q);render(filtered);return;}
-      filtered=bm25Search(q,searchIndex).slice(0,20);
-      render(filtered);
+    /* ── Build mode: fuzzy + BM25 content search ───────────────── */
+    function buildSearchRun(){
+      var q=input.value;
+      if(!q){
+        filtered=fuzzyFilter('');
+        active=0;renderFuzzy(filtered);return;
+      }
+      /* Always show fuzzy name matches first */
+      if(!searchIndex){
+        filtered=fuzzyFilter(q);
+        active=0;renderFuzzy(filtered);return;
+      }
+      /* BM25 content search for longer queries when index is available */
+      if(q.length>2){
+        var bm25=bm25Search(q,searchIndex).slice(0,20);
+        if(bm25.length>0){filtered=bm25;renderFullText(filtered);return;}
+      }
+      filtered=fuzzyFilter(q);
+      active=0;renderFuzzy(filtered);
     }
 
     function runSearch(){
       var q=input.value;
-      if(!q){filtered=[];render([]);return;}
-      if(MODE==='serve') serveSearch(q);
-      else buildSearch(q);
+      if(MODE==='serve'){
+        if(!q){filtered=fuzzyFilter('');active=0;renderFuzzy(filtered);return;}
+        serveSearch(q);
+      }else{
+        buildSearchRun();
+      }
     }
 
     /* ── Open / close ──────────────────────────────────────────── */
     window.openSearch=function(){
       overlay.classList.add('open');
-      input.value='';active=-1;filtered=[];render([]);input.focus();
+      input.value='';
+      filtered=fuzzyFilter('');
+      active=0;renderFuzzy(filtered);
+      input.focus();
       if(MODE==='build'&&!searchIndex){
         fetch('/search-index.json')
           .then(function(r){return r.json();})
@@ -507,10 +568,8 @@
     };
 
     /* ── Input / keyboard ──────────────────────────────────────── */
-    input.addEventListener('keyup',function(e){
-      if(e.key==='ArrowDown'||e.key==='ArrowUp'||e.key==='Enter'||e.key==='Escape')return;
-      clearTimeout(debounceTimer);
-      debounceTimer=setTimeout(runSearch,150);
+    input.addEventListener('input',function(){
+      active=0;runSearch();
     });
 
     document.addEventListener('keydown',function(e){
@@ -534,7 +593,9 @@
         e.preventDefault();
         if(active>=0&&active<filtered.length){
           var s=filtered[active];
-          window.location.href='/'+s.slug+(s.line?'#line-'+s.line:'');
+          var href=s.slug||s.s;
+          var line=s.line;
+          window.location.href='/'+href+(line?'#line-'+line:'');
         }
       }
     });
