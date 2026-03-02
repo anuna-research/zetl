@@ -237,7 +237,7 @@ impl TemplateEngine {
                     }
                 }
                 if bundled_template(theme, name).is_some() {
-                    eprintln!("  theme: {name} <- bundled:{theme}/{name}");
+                    eprintln!("  theme: {name} <- bundled:{theme}/{name} (bundled)");
                 } else {
                     eprintln!("  theme: {name} <- bundled:default/{name} (fallback)");
                 }

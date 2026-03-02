@@ -2744,6 +2744,14 @@ fn cmd_theme_install(
     ));
 
     // 3. Clone.
+    if cli.verbose > 0 {
+        eprintln!("theme: url={}", install_source.url);
+        match &install_source.git_ref {
+            Some(r) => eprintln!("theme: ref={r}"),
+            None => eprintln!("theme: ref=(default branch)"),
+        }
+    }
+    let clone_start = std::time::Instant::now();
     let clone_result = clone_theme(
         &zetl::web::theme::ThemeInstallSource {
             url: install_source.url.clone(),
@@ -2753,6 +2761,13 @@ fn cmd_theme_install(
         &tmp_dir,
     )
     .with_context(|| format!("failed to clone {:?}", source))?;
+    let clone_ms = clone_start.elapsed().as_millis();
+    if cli.verbose > 0 {
+        eprintln!("theme: commit={}", clone_result.commit_sha);
+        eprintln!("theme: clone={}ms", clone_ms);
+        eprintln!("theme: files={}", clone_result.files_copied);
+        eprintln!("theme: size={} bytes", clone_result.total_bytes);
+    }
 
     // 4. Read theme.toml from cloned files if present.
     let manifest = zetl::web::theme::load_theme_manifest(&tmp_dir).unwrap_or_else(|e| {
