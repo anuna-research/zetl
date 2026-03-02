@@ -1,12 +1,12 @@
 {
-  "task_id": "courier-prime-fonts",
+  "task_id": "fountain-base-template",
   "token_budget": 8000,
-  "tokens_used": 295,
+  "tokens_used": 393,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Download and bundle Courier Prime WOFF2 font files for the fountain theme. Create themes/fountain/static/ with Regular, Italic, Bold, BoldItalic WOFF2 files and OFL.txt license. Fonts are approximately 30-50 KB each and will be embedded via include_dir at compile time. NFR-015-001.",
-      "token_cost": 70,
+      "content": "Create themes/fountain/base.html and theme.toml. Base template: no CDN dependencies, self-contained. Loads Courier Prime via font-face from bundled WOFF2 files. Screenplay CSS: content area approx 6 inches wide, left margin wider than right, single-spaced, 12pt Courier Prime with fallback. Element CSS: scene headings uppercase bold, action left-aligned full width, character names centered approx 3.7 inches from left, dialogue centered approx 2.5 inches wide, parenthetical narrower than dialogue, transitions right-aligned uppercase. White page on grey background with dark mode support. Collapsible sidebar collapsed by default. REQ-015-001, REQ-015-002, ADR-015-001, ADR-015-003.",
+      "token_cost": 171,
       "priority": "PlanMeta"
     },
     {
@@ -50,10 +50,15 @@
       "content": "Modified 2 files (+461, -5): .hence/context-manifest.json, tests/integration.rs",
       "token_cost": 19,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-courier-prime-fonts-changes",
+      "content": "Modified 7 files (+115, -5): .hence/context-manifest.json, themes/fountain/static/CourierPrime-Bold.woff2, themes/fountain/static/CourierPrime-BoldItalic.woff2, themes/fountain/static/CourierPrime-Italic.woff2, themes/fountain/static/CourierPrime-Regular.woff2 and 2 more",
+      "token_cost": 67,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T10:34:01Z",
-  "task_completed_at": "2026-03-02T21:37:00Z",
-  "task_outcome": "Created themes/fountain/static/ with CourierPrime-Regular.woff2 (27 KB), CourierPrime-Italic.woff2 (30 KB), CourierPrime-Bold.woff2 (28 KB), CourierPrime-BoldItalic.woff2 (31 KB), and OFL.txt license. Added themes/fountain/theme.toml. Fonts converted from source TTF via fonttools woff2. Build verified with cargo check."
+  "constructed_at": "2026-03-02T10:39:04Z",
+  "task_changes": "Modified 2 files (+390, -1): themes/fountain/base.html (created), themes/fountain/theme.toml (overrides updated)"
 }
