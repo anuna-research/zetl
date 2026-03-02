@@ -1,12 +1,12 @@
 {
-  "task_id": "chain-integration-tests",
+  "task_id": "verify-phase1",
   "token_budget": 8000,
-  "tokens_used": 229,
+  "tokens_used": 225,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add integration tests for scene chaining to tests/integration.rs. Test: basic 3-scene chain navigation with correct prev/next links and position in built HTML; chain head has no prev and shows 1 of 3; chain tail has no next; non-chain pages have no nav; wikilink syntax in frontmatter resolves correctly; zetl check reports broken chain errors; zetl check reports cycle errors; multi-chain vault works independently. TEST-015-003 through TEST-015-007.",
-      "token_cost": 112,
+      "content": "End-to-end verification of Phase 1. Create 5-scene chain vault. Verify: serve shows prev/next nav with position indicators; build HTML contains correct links; zetl check passes on valid chain; broken chain reported; cycle reported; fan-in reported; non-chain pages have no nav; multi-chain vault works. cargo test passes. TEST-015-003 through TEST-015-007.",
+      "token_cost": 89,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 2 files (+61, -5): .hence/context-manifest.json, themes/default/page.html",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-chain-integration-tests-changes",
+      "content": "Modified 2 files (+461, -5): .hence/context-manifest.json, tests/integration.rs",
+      "token_cost": 19,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T10:11:47Z"
+  "constructed_at": "2026-03-02T10:29:39Z"
 }
