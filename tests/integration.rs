@@ -5538,3 +5538,294 @@ fn test_015_007_valid_5scene_chain() {
         "Scene 5 must not have any nav to Scene 1"
     );
 }
+
+// ===========================================================================
+// TEST-015-001: fountain theme — Courier Prime font-face, no CDN URLs
+// ===========================================================================
+
+/// TEST-015-001: `zetl build --theme fountain` produces HTML that declares
+/// Courier Prime via @font-face with local WOFF2 paths and contains no
+/// external CDN URLs for fonts or stylesheets.
+#[test]
+fn test_015_001_fountain_font_face_no_cdn() {
+    let dir = TempDir::new().expect("create temp dir");
+    write_file(dir.path(), "Intro.md", "# Intro\n\nOpening scene.\n");
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("--theme")
+        .arg("fountain")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build --theme fountain");
+    assert!(
+        output.status.success(),
+        "zetl build --theme fountain failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("intro/index.html"))
+        .expect("intro/index.html should be built");
+
+    // Must declare Courier Prime via @font-face.
+    assert!(
+        html.contains("Courier Prime"),
+        "fountain HTML should declare 'Courier Prime' font"
+    );
+    assert!(
+        html.contains("@font-face"),
+        "fountain HTML should include @font-face declarations"
+    );
+    assert!(
+        html.contains("CourierPrime-Regular.woff2"),
+        "fountain HTML should reference CourierPrime-Regular.woff2"
+    );
+    assert!(
+        html.contains("CourierPrime-Bold.woff2"),
+        "fountain HTML should reference CourierPrime-Bold.woff2"
+    );
+
+    // Must not reference any CDN (no external font hosting).
+    assert!(
+        !html.contains("fonts.googleapis.com"),
+        "fountain HTML must not use Google Fonts CDN"
+    );
+    assert!(
+        !html.contains("fonts.gstatic.com"),
+        "fountain HTML must not reference Google's static CDN"
+    );
+    assert!(
+        !html.contains("cdnjs.cloudflare.com"),
+        "fountain HTML must not use cdnjs CDN"
+    );
+    assert!(
+        !html.contains("unpkg.com"),
+        "fountain HTML must not use unpkg CDN"
+    );
+    assert!(
+        !html.contains("jsdelivr.net"),
+        "fountain HTML must not use jsDelivr CDN"
+    );
+}
+
+// ===========================================================================
+// TEST-015-002: fountain theme — WOFF2 fonts copied to _static/
+// ===========================================================================
+
+/// TEST-015-002: After `zetl build --theme fountain`, all four Courier Prime
+/// WOFF2 font files are present in the `_static/` directory of the build
+/// output.
+#[test]
+fn test_015_002_fountain_woff2_fonts_in_static() {
+    let dir = TempDir::new().expect("create temp dir");
+    write_file(dir.path(), "Scene.md", "# Scene\n\nContent.\n");
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("--theme")
+        .arg("fountain")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build --theme fountain");
+    assert!(
+        output.status.success(),
+        "zetl build --theme fountain failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let static_dir = out_dir.join("_static");
+
+    for font in &[
+        "CourierPrime-Regular.woff2",
+        "CourierPrime-Bold.woff2",
+        "CourierPrime-Italic.woff2",
+        "CourierPrime-BoldItalic.woff2",
+    ] {
+        let path = static_dir.join(font);
+        assert!(
+            path.exists(),
+            "_static/{font} must exist in build output after `zetl build --theme fountain`"
+        );
+        let size = fs::metadata(&path)
+            .unwrap_or_else(|e| panic!("failed to stat {font}: {e}"))
+            .len();
+        assert!(
+            size > 0,
+            "_static/{font} must not be empty"
+        );
+    }
+}
+
+// ===========================================================================
+// TEST-015-003: fountain theme — 3-scene chain prev/next nav and position
+// ===========================================================================
+
+/// TEST-015-003a: With `--theme fountain`, the middle page of a 3-page chain
+/// renders both scene-nav buttons with the correct neighbour titles and the
+/// "Scene 2 of 3" position indicator.
+#[test]
+fn test_015_003_fountain_chain_scene_nav() {
+    let dir = TempDir::new().expect("create temp dir");
+    write_file(
+        dir.path(),
+        "Act 1.md",
+        "---\nnext: Act 2\n---\n# Act 1\n\nOpening.\n",
+    );
+    write_file(
+        dir.path(),
+        "Act 2.md",
+        "---\nprev: Act 1\nnext: Act 3\n---\n# Act 2\n\nMiddle.\n",
+    );
+    write_file(
+        dir.path(),
+        "Act 3.md",
+        "---\nprev: Act 2\n---\n# Act 3\n\nClosing.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("--theme")
+        .arg("fountain")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build --theme fountain");
+    assert!(
+        output.status.success(),
+        "zetl build --theme fountain failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // ── Act 1 (head): next = Act 2, no prev ──────────────────────────────
+    let act1 = fs::read_to_string(out_dir.join("act-1/index.html"))
+        .expect("act-1/index.html");
+    assert!(
+        act1.contains("Scene 1 of 3"),
+        "Act 1 should show 'Scene 1 of 3'; html snippet: {}",
+        &act1[..act1.len().min(500)]
+    );
+    assert!(
+        act1.contains(r#"<span class="fn-scene-title">Act 2</span>"#),
+        "Act 1 should have a next scene-nav button labelled 'Act 2'"
+    );
+    assert!(
+        !act1.contains(r#"<span class="fn-scene-title">Act 3</span>"#),
+        "Act 1 must not have a scene-nav link to Act 3"
+    );
+
+    // ── Act 2 (middle): prev = Act 1, next = Act 3 ───────────────────────
+    let act2 = fs::read_to_string(out_dir.join("act-2/index.html"))
+        .expect("act-2/index.html");
+    assert!(
+        act2.contains("Scene 2 of 3"),
+        "Act 2 should show 'Scene 2 of 3'"
+    );
+    assert!(
+        act2.contains(r#"<span class="fn-scene-title">Act 1</span>"#),
+        "Act 2 should have a prev scene-nav button labelled 'Act 1'"
+    );
+    assert!(
+        act2.contains(r#"<span class="fn-scene-title">Act 3</span>"#),
+        "Act 2 should have a next scene-nav button labelled 'Act 3'"
+    );
+
+    // ── Act 3 (tail): prev = Act 2, no next ──────────────────────────────
+    let act3 = fs::read_to_string(out_dir.join("act-3/index.html"))
+        .expect("act-3/index.html");
+    assert!(
+        act3.contains("Scene 3 of 3"),
+        "Act 3 should show 'Scene 3 of 3'"
+    );
+    assert!(
+        act3.contains(r#"<span class="fn-scene-title">Act 2</span>"#),
+        "Act 3 should have a prev scene-nav button labelled 'Act 2'"
+    );
+    assert!(
+        !act3.contains(r#"<span class="fn-scene-title">Act 4</span>"#),
+        "Act 3 must not have a next button for a non-existent Act 4"
+    );
+}
+
+/// TEST-015-003b: A standalone page (no chain frontmatter) built with
+/// `--theme fountain` must not include any scene-navigation elements.
+#[test]
+fn test_015_003_fountain_nonchain_no_scene_nav() {
+    let dir = TempDir::new().expect("create temp dir");
+    write_file(
+        dir.path(),
+        "Notes.md",
+        "# Notes\n\nA standalone page with no chain fields.\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("--theme")
+        .arg("fountain")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build --theme fountain");
+    assert!(
+        output.status.success(),
+        "zetl build --theme fountain failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("notes/index.html"))
+        .expect("notes/index.html");
+
+    // The CSS block always contains class definitions (e.g. `.fn-scene-nav {`),
+    // so we check for the actual HTML elements, not the bare class name strings.
+    assert!(
+        !html.contains(r#"<nav class="fn-scene-nav"#),
+        "standalone page must not contain a fn-scene-nav element"
+    );
+    assert!(
+        !html.contains(r#"class="fn-scene-btn"#),
+        "standalone page must not contain fn-scene-btn links"
+    );
+    assert!(
+        !html.contains(r#"class="fn-scene-title"#),
+        "standalone page must not contain fn-scene-title spans"
+    );
+    assert!(
+        !html.contains("Scene 1 of"),
+        "standalone page must not contain a scene position indicator"
+    );
+}
+
+/// TEST-015-003c: `zetl theme list` includes "fountain" with `source =
+/// "bundled"`.
+#[test]
+fn test_015_003_fountain_theme_list_bundled() {
+    let dir = TempDir::new().expect("create temp dir");
+    write_file(dir.path(), "Note.md", "# Note\n\nHello.\n");
+
+    let json = run_json(&mut {
+        let mut cmd = zetl_cmd(dir.path());
+        cmd.arg("theme").arg("list");
+        cmd
+    });
+
+    let themes = json["themes"].as_array().expect("themes must be an array");
+    let fountain = themes
+        .iter()
+        .find(|t| t["name"].as_str() == Some("fountain"))
+        .unwrap_or_else(|| {
+            panic!(
+                "fountain must appear in `zetl theme list`; got: {json}"
+            )
+        });
+
+    assert_eq!(
+        fountain["source"].as_str().unwrap_or(""),
+        "bundled",
+        "fountain theme source must be 'bundled'"
+    );
+}
