@@ -1,12 +1,12 @@
 {
-  "task_id": "git-clone",
+  "task_id": "provenance",
   "token_budget": 8000,
-  "tokens_used": 601,
+  "tokens_used": 429,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement the git clone and file copy logic for theme installation per REQ-014-006, ADR-014-003.\n\nPublic API in src/theme.rs:\n  - clone_theme(source: &ThemeInstallSource, target_dir: &Path) -> Result<CloneResult>\n\nProcess:\n1. Create a temporary directory (tempfile::tempdir).\n2. Run `git clone --depth 1 [--branch <ref>] <url> <tmpdir>`.\n   - If ref is present and looks like a branch/tag name, use --branch.\n   - If ref looks like a commit SHA (40 hex chars or 7+ hex prefix), do a full clone then `git checkout <sha>`.\n   - If git is not on PATH, return a clear error: 'git is required for theme installation but was not found on PATH'.\n3. If --path is specified, verify <tmpdir>/<path> exists and is a directory.\n   - On failure, scan <tmpdir> for directories containing theme.toml and list them as hints.\n4. Copy theme files from the source directory (tmpdir root or tmpdir/path) to target_dir:\n   - Copy all files except .git/, .github/, .gitignore, .gitattributes.\n   - Preserve directory structure.\n5. Return CloneResult { commit_sha: String, files_copied: usize, total_bytes: u64 }.\n\nCloneResult:\n```rust\npub struct CloneResult {\n    pub commit_sha: String,\n    pub files_copied: usize,\n    pub total_bytes: u64,\n}\n```\n\nGet the commit SHA via `git -C <tmpdir> rev-parse HEAD` before cleanup.\n\nUse std::process::Command for git operations. Do NOT use libgit2 — keep the dependency light (ADR-014-003).\n\nREQ-014-006, REQ-014-008, REQ-014-015, ADR-014-003.",
-      "token_cost": 365,
+      "content": "Implement .zetl-source.toml provenance writing per REQ-014-011.\n\nAfter clone_theme() succeeds and files are copied to .zetl/themes/<name>/, write .zetl-source.toml:\n\n```toml\n[source]\nurl = \"https://github.com/user/repo.git\"\nref = \"v2.0.0\"\ncommit = \"abc1234def5678...\"\npath = \"themes/garden\"\ninstalled_at = \"2026-03-02T14:30:00Z\"\nzetl_version = \"0.9.0\"\n```\n\nPublic API:\n  - write_provenance(theme_dir: &Path, source: &ThemeInstallSource, clone_result: &CloneResult) -> Result<()>\n  - read_provenance(theme_dir: &Path) -> Option<ThemeSource>\n    (Uses the ThemeSource struct from task-theme-toml-parsing.)\n\nThe installed_at timestamp uses UTC ISO 8601. zetl_version is read from env!(\"CARGO_PKG_VERSION\").\n\nREQ-014-011.",
+      "token_cost": 179,
       "priority": "PlanMeta"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 1 files (+308, -0): src/web/theme.rs",
       "token_cost": 11,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-git-clone-changes",
+      "content": "Modified 2 files (+351, -0): Cargo.toml, src/web/theme.rs",
+      "token_cost": 14,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T06:54:48Z"
+  "constructed_at": "2026-03-02T07:00:06Z"
 }
