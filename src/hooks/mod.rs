@@ -79,17 +79,43 @@ pub fn discover_hooks(
     vault_root: &Path,
     theme_hooks_dir: Option<&Path>,
 ) -> HookManifest {
+    discover_hooks_verbose(vault_root, theme_hooks_dir, false)
+}
+
+/// Like [`discover_hooks`], but with verbose logging to stderr when `verbose` is true.
+///
+/// Logs which directories are checked, hooks found, and hooks skipped with reasons.
+pub fn discover_hooks_verbose(
+    vault_root: &Path,
+    theme_hooks_dir: Option<&Path>,
+    verbose: bool,
+) -> HookManifest {
     let mut hooks = Vec::new();
     let mut warnings = Vec::new();
 
     // 1. Theme hooks
     if let Some(dir) = theme_hooks_dir {
-        scan_hooks_dir(dir, HookSource::Theme, &mut hooks, &mut warnings);
+        if verbose {
+            eprintln!("[hooks] checking theme hooks dir: {}", dir.display());
+        }
+        scan_hooks_dir(dir, HookSource::Theme, &mut hooks, &mut warnings, verbose);
+    } else if verbose {
+        eprintln!("[hooks] no theme hooks dir configured");
     }
 
     // 2. Vault hooks
     let vault_hooks_dir = vault_root.join(".zetl").join("hooks");
-    scan_hooks_dir(&vault_hooks_dir, HookSource::Vault, &mut hooks, &mut warnings);
+    if verbose {
+        eprintln!("[hooks] checking vault hooks dir: {}", vault_hooks_dir.display());
+    }
+    scan_hooks_dir(&vault_hooks_dir, HookSource::Vault, &mut hooks, &mut warnings, verbose);
+
+    if verbose {
+        let executable_count = hooks.iter().filter(|h| h.executable).count();
+        let skipped_count = hooks.iter().filter(|h| !h.executable).count();
+        eprintln!("[hooks] discovery complete: {} hook(s) found, {} executable, {} skipped (not executable)",
+            hooks.len(), executable_count, skipped_count);
+    }
 
     HookManifest { hooks, warnings }
 }
@@ -186,6 +212,23 @@ pub fn execute_hook(
     context_json: &[u8],
     env: &HookEnv,
 ) -> Result<HookOutput, std::io::Error> {
+    execute_hook_verbose(hook, context_json, env, false)
+}
+
+/// Like [`execute_hook`], but with verbose logging to stderr when `verbose` is true.
+///
+/// Logs hook name, source, path, duration, exit code, and captured stdout/stderr.
+pub fn execute_hook_verbose(
+    hook: &DiscoveredHook,
+    context_json: &[u8],
+    env: &HookEnv,
+    verbose: bool,
+) -> Result<HookOutput, std::io::Error> {
+    if verbose {
+        eprintln!("[hooks] executing '{}' (source: {}, path: {})",
+            hook.name, hook.source, hook.path.display());
+    }
+
     let start = Instant::now();
 
     let mut cmd = Command::new(&hook.path);
@@ -213,7 +256,7 @@ pub fn execute_hook(
     let output = child.wait_with_output()?;
     let duration = start.elapsed();
 
-    Ok(HookOutput {
+    let result = HookOutput {
         hook_name: hook.name.clone(),
         source: hook.source.clone(),
         path: hook.path.clone(),
@@ -221,7 +264,24 @@ pub fn execute_hook(
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         duration,
-    })
+    };
+
+    if verbose {
+        let code_str = match result.exit_code {
+            Some(c) => c.to_string(),
+            None => "killed".to_string(),
+        };
+        eprintln!("[hooks] '{}' finished: exit_code={}, duration={:.1}ms",
+            result.hook_name, code_str, result.duration.as_secs_f64() * 1000.0);
+        if !result.stdout.is_empty() {
+            eprintln!("[hooks] '{}' stdout: {}", result.hook_name, result.stdout.trim_end());
+        }
+        if !result.stderr.is_empty() {
+            eprintln!("[hooks] '{}' stderr: {}", result.hook_name, result.stderr.trim_end());
+        }
+    }
+
+    Ok(result)
 }
 
 /// Execute all hooks for a lifecycle point sequentially (REQ-016-003).
@@ -234,9 +294,25 @@ pub fn run_hooks(
     context_json: &[u8],
     env: &HookEnv,
 ) -> Vec<Result<HookOutput, std::io::Error>> {
-    hooks_for(manifest, hook_name)
+    run_hooks_verbose(manifest, hook_name, context_json, env, false)
+}
+
+/// Like [`run_hooks`], but with verbose logging to stderr when `verbose` is true.
+pub fn run_hooks_verbose(
+    manifest: &HookManifest,
+    hook_name: &str,
+    context_json: &[u8],
+    env: &HookEnv,
+    verbose: bool,
+) -> Vec<Result<HookOutput, std::io::Error>> {
+    let matching = hooks_for(manifest, hook_name);
+    if verbose {
+        eprintln!("[hooks] running lifecycle point '{}': {} hook(s) matched",
+            hook_name, matching.len());
+    }
+    matching
         .into_iter()
-        .map(|hook| execute_hook(hook, context_json, env))
+        .map(|hook| execute_hook_verbose(hook, context_json, env, verbose))
         .collect()
 }
 
@@ -248,14 +324,23 @@ fn scan_hooks_dir(
     source: HookSource,
     hooks: &mut Vec<DiscoveredHook>,
     warnings: &mut Vec<String>,
+    verbose: bool,
 ) {
     if !dir.is_dir() {
+        if verbose {
+            eprintln!("[hooks] directory does not exist: {}", dir.display());
+        }
         return;
     }
 
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(_) => return,
+        Err(e) => {
+            if verbose {
+                eprintln!("[hooks] cannot read directory {}: {}", dir.display(), e);
+            }
+            return;
+        }
     };
 
     for entry in entries.flatten() {
@@ -273,18 +358,28 @@ fn scan_hooks_dir(
 
         // Only recognised hook names (REQ-016-002)
         if !HOOK_NAMES.contains(&file_name.as_str()) {
+            if verbose {
+                eprintln!("[hooks] skipping '{}': not a recognised hook name", file_name);
+            }
             continue;
         }
 
         let executable = is_executable(&path);
 
         if !executable {
+            if verbose {
+                eprintln!("[hooks] found '{}' ({}) but not executable — skipping",
+                    file_name, source);
+            }
             warnings.push(format!(
                 "hook '{}' is not executable: {}\nhint: chmod +x {}",
                 file_name,
                 path.display(),
                 path.display(),
             ));
+        } else if verbose {
+            eprintln!("[hooks] found '{}' (source: {}, path: {})",
+                file_name, source, path.display());
         }
 
         hooks.push(DiscoveredHook {
@@ -789,5 +884,77 @@ mod tests {
         assert_eq!(second.source, HookSource::Vault);
         assert!(first.stdout.contains("theme"));
         assert!(second.stdout.contains("vault"));
+    }
+
+    // ── Verbose variant tests ──────────────────────────────────────────────
+
+    #[test]
+    fn discover_hooks_verbose_returns_same_results() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_hook(&hooks_dir, "post-build", true);
+        create_hook(&hooks_dir, "on-save", true);
+        create_hook(&hooks_dir, "pre-build", false); // not executable
+
+        let quiet = discover_hooks(tmp.path(), None);
+        let verbose = discover_hooks_verbose(tmp.path(), None, true);
+
+        assert_eq!(quiet.hooks.len(), verbose.hooks.len());
+        assert_eq!(quiet.warnings.len(), verbose.warnings.len());
+        for (q, v) in quiet.hooks.iter().zip(verbose.hooks.iter()) {
+            assert_eq!(q.name, v.name);
+            assert_eq!(q.source, v.source);
+            assert_eq!(q.executable, v.executable);
+        }
+    }
+
+    #[test]
+    fn discover_hooks_verbose_no_dir() {
+        let tmp = TempDir::new().unwrap();
+        // Should not panic with verbose=true when directories don't exist
+        let manifest = discover_hooks_verbose(tmp.path(), None, true);
+        assert!(manifest.hooks.is_empty());
+    }
+
+    #[test]
+    fn execute_hook_verbose_returns_same_results() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(
+            &hooks_dir,
+            "post-build",
+            "#!/bin/sh\necho 'hello'\necho 'err' >&2\nexit 0\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        let result = execute_hook_verbose(hook, b"{}", &test_env(tmp.path()), true).unwrap();
+        assert!(result.success());
+        assert!(result.stdout.contains("hello"));
+        assert!(result.stderr.contains("err"));
+    }
+
+    #[test]
+    fn run_hooks_verbose_returns_same_results() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(
+            &hooks_dir,
+            "post-build",
+            "#!/bin/sh\necho 'ran'\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let results = run_hooks_verbose(&manifest, "post-build", b"{}", &test_env(tmp.path()), true);
+        assert_eq!(results.len(), 1);
+        let output = results[0].as_ref().unwrap();
+        assert!(output.stdout.contains("ran"));
     }
 }
