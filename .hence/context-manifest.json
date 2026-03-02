@@ -1,12 +1,12 @@
 {
-  "task_id": "chain-validation",
+  "task_id": "prevnext-default-theme",
   "token_budget": 8000,
-  "tokens_used": 201,
+  "tokens_used": 184,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add scene chain validation diagnostics to cmd_check in src/main.rs per REQ-015-006. Scan all files for prev/next frontmatter. Build forward and backward maps. Emit five diagnostic types: broken forward link as error, asymmetric chain as warning, cycle detection as error with path, fan-in / multiple predecessors as error, orphaned chain nodes as warning. Integrate with existing check output format. When --verbose, log chain summary per OBS-015-001: number of chains found and chain lengths. REQ-015-006, OBS-015-001.",
-      "token_cost": 129,
+      "content": "Add conditional prev/next navigation to themes/default/page.html. Show a nav bar with left arrow link to prev_page, position indicator showing N of M, and right arrow link to next_page. Render at top and bottom of content area. Only show when page.prev_page or page.next_page exists. Use DaisyUI classes consistent with existing theme. REQ-015-003.",
+      "token_cost": 87,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 6 files (+310, -10): .hence/context-manifest.json, src/main.rs, src/web/chain.rs, src/web/context.rs, src/web/mod.rs and 1 more",
       "token_cost": 34,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-chain-validation-changes",
+      "content": "Modified 4 files (+412, -9): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/chain.rs",
+      "token_cost": 25,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T10:01:37Z"
+  "constructed_at": "2026-03-02T10:09:20Z"
 }
