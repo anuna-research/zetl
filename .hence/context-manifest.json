@@ -1,75 +1,15 @@
 {
-  "task_id": "integration-test",
+  "task_id": "extract-default-theme",
   "token_budget": 8000,
-  "tokens_used": 389,
+  "tokens_used": 180,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Comprehensive integration test covering the full SPEC-012 feature set. Create a test vault with: multiple pages (some with frontmatter, some without), dead links, backlinks, subfolders, a custom theme that overrides page.html with frontmatter-conditional rendering, shared and per-theme static assets. Verify: (1) zetl serve with default theme works, (2) zetl serve --theme custom works with overrides and fallback, (3) zetl build with default theme produces correct output, (4) zetl build --theme custom produces correct output with static assets, (5) edit mode works only in serve, (6) frontmatter accessible in custom theme, (7) static assets served with correct MIME types, (8) template errors produce readable messages. All REQ-012-* and TEST-012-*.",
-      "token_cost": 188,
+      "content": "Create the themes/ directory at the repository root. Move the current built-in templates from src/web/templates/ (base.html, index.html, page.html, folder.html) into themes/default/. Add a theme.toml manifest:\n\n```toml\n[theme]\nname = \"default\"\nversion = \"0.9.0\"\ndescription = \"The default zetl theme\"\nauthor = \"zetl contributors\"\nlicense = \"AGPL-3.0\"\n\n[theme.templates]\noverrides = [\"base.html\", \"index.html\", \"page.html\", \"folder.html\"]\n```\n\nKeep src/web/templates/ intact for now — the include_str!() calls still reference them. The next task (compile-time embedding) will switch the source of truth. The templates in themes/default/ must be byte-for-byte identical to src/web/templates/ at this point.\n\nREQ-014-003.",
+      "token_cost": 180,
       "priority": "PlanMeta"
-    },
-    {
-      "source": "memory/episodic/task-add-serde-yaml-changes",
-      "content": "Modified 3 files (+26, -47): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
-      "token_cost": 20,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-add-minijinja-changes",
-      "content": "Modified 3 files (+36, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
-      "token_cost": 20,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-context-structs-changes",
-      "content": "Modified 3 files (+502, -5): .hence/context-manifest.json, src/web/context.rs, src/web/mod.rs",
-      "token_cost": 23,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-extract-base-changes",
-      "content": "Modified 1 files (+499, -0): src/web/templates/base.html",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-extract-index-changes",
-      "content": "Modified 1 files (+38, -0): src/web/templates/index.html",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-extract-page-changes",
-      "content": "Modified 1 files (+261, -0): src/web/templates/page.html",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-extract-folder-changes",
-      "content": "Modified 1 files (+45, -0): src/web/templates/folder.html",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-engine-changes",
-      "content": "Modified 5 files (+214, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/web/engine.rs, src/web/mod.rs",
-      "token_cost": 29,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-refactor-routes-changes",
-      "content": "Modified 4 files (+79, -485): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs",
-      "token_cost": 26,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-refactor-build-changes",
-      "content": "Modified 4 files (+68, -456): .hence/context-manifest.json, src/web/build.rs, src/web/mod.rs, src/web/routes.rs",
-      "token_cost": 27,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-01T14:35:27Z"
+  "constructed_at": "2026-03-02T06:13:06Z"
 }
