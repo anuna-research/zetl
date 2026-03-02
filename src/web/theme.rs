@@ -181,10 +181,10 @@ pub struct ThemeSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeSourceInfo {
     pub url: String,
-    #[serde(default)]
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
     pub ref_name: Option<String>,
     pub commit: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     pub installed_at: String,
     pub zetl_version: String,
@@ -264,7 +264,92 @@ pub fn parse_theme_source(content: &str) -> Result<ThemeSource> {
     toml::from_str(content).context("failed to parse .zetl-source.toml")
 }
 
+/// Write a `.zetl-source.toml` provenance file into `theme_dir`.
+///
+/// Records the git URL, optional ref, resolved commit SHA, optional subdirectory
+/// path, installation timestamp (UTC ISO 8601), and the current zetl version
+/// from `CARGO_PKG_VERSION`.
+pub fn write_provenance(
+    theme_dir: &Path,
+    source: &ThemeInstallSource,
+    clone_result: &CloneResult,
+) -> Result<()> {
+    let record = ThemeSource {
+        source: ThemeSourceInfo {
+            url: source.url.clone(),
+            ref_name: source.git_ref.clone(),
+            commit: clone_result.commit_sha.clone(),
+            path: source.path.clone(),
+            installed_at: current_utc_iso8601(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+    };
+
+    let content = toml::to_string_pretty(&record)
+        .context("failed to serialize provenance record")?;
+
+    let dest = theme_dir.join(".zetl-source.toml");
+    std::fs::write(&dest, content)
+        .with_context(|| format!("failed to write {}", dest.display()))?;
+
+    Ok(())
+}
+
+/// Read and parse `.zetl-source.toml` from `theme_dir`.
+///
+/// Returns `None` if the file does not exist or cannot be parsed.
+pub fn read_provenance(theme_dir: &Path) -> Option<ThemeSource> {
+    let path = theme_dir.join(".zetl-source.toml");
+    let content = std::fs::read_to_string(&path).ok()?;
+    parse_theme_source(&content).ok()
+}
+
 // ── Internal helpers ─────────────────────────────────────────────────────────
+
+/// Return the current UTC time as an ISO 8601 string (e.g. `"2024-01-15T10:30:00Z"`).
+fn current_utc_iso8601() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    unix_secs_to_iso8601(secs)
+}
+
+/// Convert a Unix timestamp (seconds since 1970-01-01T00:00:00Z) to ISO 8601 UTC.
+fn unix_secs_to_iso8601(secs: u64) -> String {
+    let tod = secs % 86400;
+    let (h, m, s) = (tod / 3600, (tod % 3600) / 60, tod % 60);
+    let (year, month, day) = days_to_ymd((secs / 86400) as i64);
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", year, month, day, h, m, s)
+}
+
+/// Convert a count of days since the Unix epoch to `(year, month, day)`.
+fn days_to_ymd(mut days: i64) -> (i32, u32, u32) {
+    let mut year = 1970i32;
+    loop {
+        let dy = if is_leap_year(year) { 366i64 } else { 365i64 };
+        if days < dy {
+            break;
+        }
+        days -= dy;
+        year += 1;
+    }
+    let month_days: [u32; 12] =
+        [31, if is_leap_year(year) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 1u32;
+    for &md in &month_days {
+        if days < md as i64 {
+            break;
+        }
+        days -= md as i64;
+        month += 1;
+    }
+    (year, month, days as u32 + 1)
+}
+
+fn is_leap_year(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+}
 
 /// Split a source string on the first `#`, returning `(base, Some(ref))` or
 /// `(source, None)` if no `#` is present.
@@ -887,7 +972,7 @@ zetl_version = "0.1.0"
         let toml = r#"
 [source]
 url = "https://example.com/theme.git"
-ref_name = "main"
+ref = "main"
 commit = "abc123"
 path = "themes/dark"
 installed_at = "2024-06-15T12:00:00Z"
@@ -1027,5 +1112,128 @@ zetl_version = "0.2.0"
         let (count, _) = copy_theme_files(src.path(), dst.path()).unwrap();
         assert_eq!(count, 1);
         assert!(dst.path().join("assets").join("css").join("style.css").exists());
+    }
+
+    // ── unix_secs_to_iso8601 ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_unix_epoch() {
+        assert_eq!(unix_secs_to_iso8601(0), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn test_known_timestamp() {
+        // 2026-03-02T14:30:00Z = 1772228200 (pre-computed)
+        // 2026-03-02 00:00:00 UTC:
+        //   Days from epoch = 20514
+        //   Hours: 14, Minutes: 30, Seconds: 0
+        //   20514 * 86400 + 14*3600 + 30*60 = 1772409600 + 52200 = 1772461800
+        assert_eq!(unix_secs_to_iso8601(1772461800), "2026-03-02T14:30:00Z");
+    }
+
+    #[test]
+    fn test_leap_year_day() {
+        // 2024-02-29T00:00:00Z
+        // Days from epoch to 2024-01-01: 19723 days
+        // Jan 2024: 31 days, Feb 1..28: 28 days, so Feb 29 = day 31+29-1 = 59 from year start
+        // 2024-02-29 = day 19723 + 59 = 19782
+        // secs = 19782 * 86400 = 1709164800
+        assert_eq!(unix_secs_to_iso8601(1709164800), "2024-02-29T00:00:00Z");
+    }
+
+    #[test]
+    fn test_current_utc_iso8601_format() {
+        let ts = current_utc_iso8601();
+        // Must match YYYY-MM-DDTHH:MM:SSZ
+        assert_eq!(ts.len(), 20);
+        assert!(ts.ends_with('Z'));
+        assert_eq!(&ts[4..5], "-");
+        assert_eq!(&ts[7..8], "-");
+        assert_eq!(&ts[10..11], "T");
+        assert_eq!(&ts[13..14], ":");
+        assert_eq!(&ts[16..17], ":");
+    }
+
+    // ── write_provenance / read_provenance ───────────────────────────────────
+
+    fn make_clone_result(sha: &str) -> CloneResult {
+        CloneResult { commit_sha: sha.to_string(), files_copied: 5, total_bytes: 1024 }
+    }
+
+    #[test]
+    fn test_write_provenance_creates_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = ThemeInstallSource {
+            url: "https://github.com/user/repo.git".to_string(),
+            git_ref: Some("v2.0.0".to_string()),
+            path: Some("themes/garden".to_string()),
+        };
+        let clone = make_clone_result("abc1234def5678abcdef1234def56789abc12345");
+
+        write_provenance(tmp.path(), &source, &clone).unwrap();
+
+        let dest = tmp.path().join(".zetl-source.toml");
+        assert!(dest.exists());
+        let content = std::fs::read_to_string(&dest).unwrap();
+        assert!(content.contains("url = \"https://github.com/user/repo.git\""));
+        assert!(content.contains("ref = \"v2.0.0\""));
+        assert!(content.contains("commit = \"abc1234def5678abcdef1234def56789abc12345\""));
+        assert!(content.contains("path = \"themes/garden\""));
+        assert!(content.contains("installed_at ="));
+        assert!(content.contains("zetl_version ="));
+    }
+
+    #[test]
+    fn test_write_provenance_no_ref_no_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = ThemeInstallSource {
+            url: "https://github.com/user/repo.git".to_string(),
+            git_ref: None,
+            path: None,
+        };
+        let clone = make_clone_result("deadbeef1234567890ab");
+
+        write_provenance(tmp.path(), &source, &clone).unwrap();
+
+        let content =
+            std::fs::read_to_string(tmp.path().join(".zetl-source.toml")).unwrap();
+        // Optional fields must be absent when None
+        assert!(!content.contains("ref ="));
+        assert!(!content.contains("path ="));
+    }
+
+    #[test]
+    fn test_write_then_read_provenance() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = ThemeInstallSource {
+            url: "https://github.com/user/repo.git".to_string(),
+            git_ref: Some("main".to_string()),
+            path: None,
+        };
+        let commit = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b";
+        let clone = make_clone_result(commit);
+
+        write_provenance(tmp.path(), &source, &clone).unwrap();
+
+        let record = read_provenance(tmp.path()).expect("should parse provenance");
+        assert_eq!(record.source.url, "https://github.com/user/repo.git");
+        assert_eq!(record.source.ref_name.as_deref(), Some("main"));
+        assert_eq!(record.source.commit, commit);
+        assert!(record.source.path.is_none());
+        assert!(!record.source.installed_at.is_empty());
+        assert!(!record.source.zetl_version.is_empty());
+    }
+
+    #[test]
+    fn test_read_provenance_missing_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(read_provenance(tmp.path()).is_none());
+    }
+
+    #[test]
+    fn test_read_provenance_malformed_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".zetl-source.toml"), "not valid toml ][").unwrap();
+        assert!(read_provenance(tmp.path()).is_none());
     }
 }
