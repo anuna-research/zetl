@@ -35,7 +35,10 @@ pub struct ThemeInstallSource {
 ///
 /// Rejects anything that doesn't match one of these patterns.
 pub fn parse_install_source(source: &str) -> Result<ThemeInstallSource> {
-    if source.starts_with("https://") || source.starts_with("http://") {
+    if source.starts_with("https://")
+        || source.starts_with("http://")
+        || source.starts_with("file://")
+    {
         let (url, git_ref) = split_ref(source);
         return Ok(ThemeInstallSource {
             url: url.to_string(),
@@ -69,8 +72,8 @@ pub fn parse_install_source(source: &str) -> Result<ThemeInstallSource> {
     }
 
     bail!(
-        "unrecognized source {:?}: expected 'user/repo', 'https://...', or 'git@...' \
-         (optionally with '#ref')",
+        "unrecognized source {:?}: expected 'user/repo', 'https://...', 'file://...', \
+         or 'git@...' (optionally with '#ref')",
         source
     )
 }
