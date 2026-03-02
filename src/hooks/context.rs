@@ -42,6 +42,20 @@ pub struct HookContext {
     /// Diagnostics collected during check (only present for post-check).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostics: Option<HookDiagnostics>,
+    /// Saved file info (only present for on-save).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saved: Option<HookSaved>,
+}
+
+/// Payload describing the file that was just saved (on-save hooks).
+#[derive(Debug, Serialize)]
+pub struct HookSaved {
+    /// Relative path from vault root (e.g. `"notes/My Page.md"`).
+    pub file: String,
+    /// Page name (filename stem without extension).
+    pub page: String,
+    /// Length of the saved content in bytes.
+    pub content_length: usize,
 }
 
 /// Diagnostics payload for post-check hooks.
@@ -158,6 +172,7 @@ pub fn build_hook_context(
         pages_rendered: None,
         port: None,
         diagnostics: None,
+        saved: None,
     }
 }
 
