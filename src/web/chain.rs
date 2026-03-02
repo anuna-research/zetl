@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::Serialize;
+
 /// Maximum number of steps when walking a chain in either direction.
 const CHAIN_WALK_LIMIT: usize = 1000;
 
@@ -142,6 +144,326 @@ pub fn resolve_page_name(page_name: &str, page_slug_map: &HashMap<String, String
         .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case(page_name))
         .map(|(_, v)| v.clone())
+}
+
+// ── Chain validation diagnostics ─────────────────────────────────────────────
+
+/// A single chain integrity diagnostic produced by `validate_chain_links`.
+///
+/// REQ-015-006.
+#[derive(Debug, Clone, Serialize)]
+pub struct ChainDiagnostic {
+    /// Severity: `"error"` or `"warning"`.
+    pub level: String,
+    /// Machine-readable kind:
+    /// `"broken_forward_link"`, `"asymmetric"`, `"cycle"`, `"fan_in"`, `"orphaned"`.
+    pub kind: String,
+    /// Human-readable description of the problem.
+    pub message: String,
+}
+
+/// Validate chain integrity across all markdown files in the vault.
+///
+/// Reads `prev`/`next` frontmatter from every `.md` file, builds forward and
+/// backward adjacency maps, and returns diagnostics for:
+///
+/// - **broken_forward_link** (error): declared prev/next target does not exist.
+/// - **asymmetric** (warning): A → next → B but B.prev ≠ A.
+/// - **cycle** (error): cycle in chain, message includes full cycle path.
+/// - **fan_in** (error): multiple pages declare the same page as their `next`.
+/// - **orphaned** (warning): page is in a chain but unreachable from every head.
+///
+/// REQ-015-006.
+pub fn validate_chain_links(
+    vault_root: &std::path::Path,
+    files: &[crate::types::ParsedFile],
+    page_slug_map: &HashMap<String, String>,
+) -> Vec<ChainDiagnostic> {
+    use super::markdown::parse_frontmatter;
+
+    let mut diags: Vec<ChainDiagnostic> = Vec::new();
+
+    // ── Phase 1: read raw frontmatter ────────────────────────────────────────
+    // raw_decls: page_name → (Option<raw_prev_target>, Option<raw_next_target>)
+    let mut raw_decls: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
+    for file in files {
+        if !file.path.extension().map_or(false, |e| e == "md") {
+            continue;
+        }
+        let full = vault_root.join(&file.path);
+        let content = match std::fs::read_to_string(&full) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let fm = parse_frontmatter(&content);
+        let prev_raw = extract_chain_target(&fm, "prev");
+        let next_raw = extract_chain_target(&fm, "next");
+        if prev_raw.is_some() || next_raw.is_some() {
+            raw_decls.insert(file.page_name.clone(), (prev_raw, next_raw));
+        }
+    }
+
+    // ── Phase 2: resolve targets; emit broken_forward_link errors ────────────
+    // resolved_map: page_name → (Option<canonical_prev>, Option<canonical_next>)
+    let mut resolved_map: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
+    for (page, (prev_raw, next_raw)) in &raw_decls {
+        let canon_prev = prev_raw.as_ref().and_then(|t| {
+            let r = canonical_page_name_check(t, page_slug_map);
+            if r.is_none() {
+                diags.push(ChainDiagnostic {
+                    level: "error".to_string(),
+                    kind: "broken_forward_link".to_string(),
+                    message: format!(
+                        "chain: broken forward link: '{}' declares prev='{}' (page does not exist)",
+                        page, t
+                    ),
+                });
+            }
+            r
+        });
+        let canon_next = next_raw.as_ref().and_then(|t| {
+            let r = canonical_page_name_check(t, page_slug_map);
+            if r.is_none() {
+                diags.push(ChainDiagnostic {
+                    level: "error".to_string(),
+                    kind: "broken_forward_link".to_string(),
+                    message: format!(
+                        "chain: broken forward link: '{}' declares next='{}' (page does not exist)",
+                        page, t
+                    ),
+                });
+            }
+            r
+        });
+        resolved_map.insert(page.clone(), (canon_prev, canon_next));
+    }
+
+    // ── Phase 3: build backward_map (who points to each page via `next`) ─────
+    let mut backward_map: HashMap<String, Vec<String>> = HashMap::new();
+    for (page, (_, next)) in &resolved_map {
+        if let Some(n) = next {
+            backward_map.entry(n.clone()).or_default().push(page.clone());
+        }
+    }
+
+    // ── Phase 4: fan-in (multiple predecessors) ───────────────────────────────
+    for (target, preds) in &backward_map {
+        if preds.len() > 1 {
+            let mut sorted = preds.clone();
+            sorted.sort();
+            diags.push(ChainDiagnostic {
+                level: "error".to_string(),
+                kind: "fan_in".to_string(),
+                message: format!(
+                    "chain: fan-in: '{}' is pointed to (as next) by multiple pages: {}",
+                    target,
+                    sorted
+                        .iter()
+                        .map(|p| format!("'{p}'"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            });
+        }
+    }
+
+    // ── Phase 5: asymmetry ───────────────────────────────────────────────────
+    for (a, (_, next)) in &resolved_map {
+        if let Some(b) = next {
+            let b_prev = resolved_map.get(b).and_then(|(p, _)| p.as_ref());
+            if b_prev.map_or(true, |p| p != a) {
+                let b_prev_str = b_prev
+                    .map(|p| format!("'{p}'"))
+                    .unwrap_or_else(|| "(none)".to_string());
+                diags.push(ChainDiagnostic {
+                    level: "warning".to_string(),
+                    kind: "asymmetric".to_string(),
+                    message: format!(
+                        "chain: asymmetric: '{a}' → next → '{b}' but '{b}'.prev = {b_prev_str}"
+                    ),
+                });
+            }
+        }
+    }
+
+    // ── Phase 6: cycle detection ─────────────────────────────────────────────
+    // Since each node has at most one outgoing next edge, the graph is a
+    // collection of simple paths (possibly with a cycle at one end).
+    let mut globally_visited: HashSet<String> = HashSet::new();
+    let mut in_cycle: HashSet<String> = HashSet::new();
+
+    let mut all_pages: Vec<String> = resolved_map.keys().cloned().collect();
+    all_pages.sort();
+
+    for start in &all_pages {
+        if globally_visited.contains(start) {
+            continue;
+        }
+
+        let mut walk_path: Vec<String> = Vec::new();
+        let mut walk_set: HashSet<String> = HashSet::new();
+        let mut current = start.clone();
+
+        loop {
+            if globally_visited.contains(&current) {
+                // Already processed in a previous walk; stop.
+                break;
+            }
+            if walk_set.contains(&current) {
+                // Re-encountered a node in the current walk → cycle detected.
+                if let Some(idx) = walk_path.iter().position(|p| *p == current) {
+                    let cycle_pages = &walk_path[idx..];
+                    let min_page = cycle_pages.iter().min().cloned().unwrap_or_default();
+                    // Report cycle once (keyed on the lexicographic minimum member).
+                    if !in_cycle.contains(&min_page) {
+                        for p in cycle_pages {
+                            in_cycle.insert(p.clone());
+                        }
+                        let path_str = cycle_pages
+                            .iter()
+                            .map(|p| format!("'{p}'"))
+                            .collect::<Vec<_>>()
+                            .join(" → ");
+                        diags.push(ChainDiagnostic {
+                            level: "error".to_string(),
+                            kind: "cycle".to_string(),
+                            message: format!(
+                                "chain: cycle detected: {path_str} → '{current}'"
+                            ),
+                        });
+                    }
+                }
+                break;
+            }
+
+            walk_path.push(current.clone());
+            walk_set.insert(current.clone());
+
+            let next = resolved_map
+                .get(&current)
+                .and_then(|(_, n)| n.clone());
+            match next {
+                Some(n) => current = n,
+                None => break,
+            }
+        }
+
+        for p in &walk_path {
+            globally_visited.insert(p.clone());
+        }
+    }
+
+    // ── Phase 7: orphaned nodes ──────────────────────────────────────────────
+    // Orphaned: in resolved_map but unreachable from any chain head (page with
+    // resolved_prev = None), and not already reported as part of a cycle.
+    let mut reachable: HashSet<String> = HashSet::new();
+    let heads: Vec<String> = resolved_map
+        .iter()
+        .filter(|(_, (prev, _))| prev.is_none())
+        .map(|(name, _)| name.clone())
+        .collect();
+
+    for head in &heads {
+        let mut cur = head.clone();
+        let mut seen: HashSet<String> = HashSet::new();
+        loop {
+            if reachable.contains(&cur) || seen.contains(&cur) {
+                break;
+            }
+            seen.insert(cur.clone());
+            reachable.insert(cur.clone());
+            let next = resolved_map.get(&cur).and_then(|(_, n)| n.clone());
+            match next {
+                Some(n) => cur = n,
+                None => break,
+            }
+        }
+    }
+
+    let mut orphan_names: Vec<String> = resolved_map
+        .keys()
+        .filter(|p| !reachable.contains(*p) && !in_cycle.contains(*p))
+        .cloned()
+        .collect();
+    orphan_names.sort();
+
+    for name in orphan_names {
+        diags.push(ChainDiagnostic {
+            level: "warning".to_string(),
+            kind: "orphaned".to_string(),
+            message: format!(
+                "chain: orphaned node: '{name}' is in a chain but unreachable from any chain head"
+            ),
+        });
+    }
+
+    diags
+}
+
+/// Case-insensitive lookup of the canonical page name in `page_slug_map`.
+///
+/// Returns `Some(canonical_name)` if found, `None` if not present.
+fn canonical_page_name_check(
+    target: &str,
+    page_slug_map: &HashMap<String, String>,
+) -> Option<String> {
+    page_slug_map
+        .keys()
+        .find(|k| k.eq_ignore_ascii_case(target))
+        .cloned()
+}
+
+/// Collect a verbose chain summary: number of chains and their lengths.
+///
+/// A chain is a maximal run of pages reachable from a chain head (prev=None,
+/// next=Some) by following `next` pointers.  Stops at a dead end or cycle.
+///
+/// Returns `(chain_count, lengths)` where `lengths` is sorted ascending.
+///
+/// OBS-015-001.
+pub fn chain_summary(
+    chain_prev_next: &HashMap<String, (Option<String>, Option<String>)>,
+) -> (usize, Vec<usize>) {
+    let heads: Vec<String> = chain_prev_next
+        .iter()
+        .filter(|(_, (prev, next))| prev.is_none() && next.is_some())
+        .map(|(name, _)| name.clone())
+        .collect();
+
+    let mut lengths: Vec<usize> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    for head in heads {
+        if seen.contains(&head) {
+            continue;
+        }
+        let mut length = 0usize;
+        let mut cur = head.clone();
+        let mut walk_seen: HashSet<String> = HashSet::new();
+        loop {
+            if walk_seen.contains(&cur) {
+                break; // cycle guard
+            }
+            walk_seen.insert(cur.clone());
+            seen.insert(cur.clone());
+            length += 1;
+            let next = chain_prev_next
+                .get(&cur)
+                .and_then(|(_, n)| n.as_ref())
+                .cloned();
+            match next {
+                Some(n) => cur = n,
+                None => break,
+            }
+        }
+        if length > 0 {
+            lengths.push(length);
+        }
+    }
+
+    lengths.sort_unstable();
+    let chain_count = lengths.len();
+    (chain_count, lengths)
 }
 
 #[cfg(test)]

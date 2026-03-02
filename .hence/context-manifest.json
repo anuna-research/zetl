@@ -1,12 +1,12 @@
 {
-  "task_id": "chain-walking",
+  "task_id": "chain-validation",
   "token_budget": 8000,
-  "tokens_used": 172,
+  "tokens_used": 201,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement chain walking in src/web/chain.rs to compute chain_position, chain_length, and chain_head_slug. Add compute_chain_position that walks backward via prev pointers to find chain head, then forward to count total length. Returns position/length/head_slug tuple or None if not in a chain. Detect cycles by tracking visited pages. Cap at 1000 steps. Also add find_chain_heads to detect all pages with next but no prev. Update build_page_context to call compute_chain_position and populate the chain fields. REQ-015-005, REQ-015-007.",
-      "token_cost": 134,
+      "content": "Add scene chain validation diagnostics to cmd_check in src/main.rs per REQ-015-006. Scan all files for prev/next frontmatter. Build forward and backward maps. Emit five diagnostic types: broken forward link as error, asymmetric chain as warning, cycle detection as error with path, fan-in / multiple predecessors as error, orphaned chain nodes as warning. Integrate with existing check output format. When --verbose, log chain summary per OBS-015-001: number of chains found and chain lengths. REQ-015-006, OBS-015-001.",
+      "token_cost": 129,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 3 files (+89, -5): .hence/context-manifest.json, src/web/context.rs, src/web/engine.rs",
       "token_cost": 23,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-chain-walking-changes",
+      "content": "Modified 6 files (+310, -10): .hence/context-manifest.json, src/main.rs, src/web/chain.rs, src/web/context.rs, src/web/mod.rs and 1 more",
+      "token_cost": 34,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T09:53:02Z"
+  "constructed_at": "2026-03-02T10:01:37Z"
 }
