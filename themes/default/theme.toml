@@ -1,0 +1,9 @@
+[theme]
+name = "default"
+version = "0.9.0"
+description = "The default zetl theme"
+author = "zetl contributors"
+license = "AGPL-3.0"
+
+[theme.templates]
+overrides = ["base.html", "index.html", "page.html", "folder.html"]
