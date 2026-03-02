@@ -3,27 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 59,
-    "deletions": 46,
+    "files_changed": 2,
+    "insertions": 213,
+    "deletions": 0,
     "file_list": [
-      ".hence/context-manifest.json",
-      "themes/default/base.html",
-      "themes/docs/base.html",
-      "themes/minimal/base.html"
+      "src/web/chain.rs",
+      "src/web/mod.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-verify-phase3-changes",
-      "content": "Modified 4 files (+59, -46): .hence/context-manifest.json, themes/default/base.html, themes/docs/base.html, themes/minimal/base.html",
+      "key": "task-parse-chain-frontmatter-changes",
+      "content": "Modified 2 files (+213, -0): src/web/chain.rs, src/web/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/verify-phase3-v1",
-  "evaluated_at": "2026-03-02T07:41:58Z",
+  "branch_name": "hence/parse-chain-frontmatter-v1",
+  "evaluated_at": "2026-03-02T09:50:15Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
