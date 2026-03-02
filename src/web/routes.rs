@@ -29,7 +29,7 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
         .unwrap_or_else(|| "vault".to_string());
 
     let vault_ctx = build_vault_context(&data, &vault_name);
-    match state.engine.render_index(&vault_ctx, "serve") {
+    match state.engine.render_index(&vault_ctx, "serve", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
     }
@@ -65,7 +65,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
             let folder_name = slug.rsplit('/').next().unwrap_or(slug);
             let vault_ctx = build_vault_context(&data, &vault_name);
             let folder_ctx = build_folder_context(&data, slug, folder_name);
-            return match state.engine.render_folder(&vault_ctx, &folder_ctx, "serve") {
+            return match state.engine.render_folder(&vault_ctx, &folder_ctx, "serve", "") {
                 Ok(html) => Html(html).into_response(),
                 Err(e) => render_error_response(e),
             };
@@ -77,7 +77,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
         let file_slug = page_slug_from_path(&file.path);
         match std::fs::read_to_string(&full_path) {
             Ok(content) => {
-                let html = markdown::render_to_html(&content, &data.page_slug_map);
+                let html = markdown::render_to_html(&content, &data.page_slug_map, "/", "");
                 (html, file.page_name.clone(), file_slug, Some(content))
             }
             Err(_) => (
@@ -127,7 +127,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
                 let full_path = state.vault_root.join(&file.path);
                 std::fs::read_to_string(&full_path).ok()
             })
-            .map(|content| markdown::render_preview_html(&content, &data.page_slug_map))
+            .map(|content| markdown::render_preview_html(&content, &data.page_slug_map, "/", ""))
             .unwrap_or_else(|| format!("<p><em>{}</em></p>", html_escape("(page does not exist)")));
 
         transclusion_cards.push_str(&format!(
@@ -149,7 +149,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
     page_ctx.raw_escaped = raw_content.map(|c| html_escape(&c));
 
     let vault_ctx = build_vault_context(&data, &vault_name);
-    match state.engine.render_page(&vault_ctx, &page_ctx, "serve") {
+    match state.engine.render_page(&vault_ctx, &page_ctx, "serve", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
     }

@@ -3917,11 +3917,11 @@ fn test_013_015_html_has_search_modal() {
 }
 
 // ---------------------------------------------------------------------------
-// TEST-013-015: generated HTML fetches search-index.json on open
+// TEST-013-015: generated HTML embeds BM25 search index inline
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_013_015_html_fetches_search_index_json() {
+fn test_013_015_html_embeds_bm25_index() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Page.md", "# Page\n\nsome content\n");
 
@@ -3931,8 +3931,12 @@ fn test_013_015_html_fetches_search_index_json() {
     let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
 
     assert!(
-        html.contains("fetch('/search-index.json')"),
-        "index.html must fetch /search-index.json to load BM25 index"
+        html.contains("id=\"zetl-bm25-index\""),
+        "index.html must embed the BM25 search index inline for file:// support"
+    );
+    assert!(
+        html.contains("\"avgDl\""),
+        "embedded BM25 index must contain corpus statistics"
     );
 }
 
