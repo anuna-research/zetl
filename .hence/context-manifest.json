@@ -1,12 +1,12 @@
 {
-  "task_id": "fountain-page-template",
+  "task_id": "fountain-index-folder",
   "token_budget": 8000,
-  "tokens_used": 8000,
+  "tokens_used": 1200,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create themes/fountain/page.html extending base.html. Enhanced prev/next scene navigation at top and bottom: prev arrow with title, position indicator showing Scene N of M, next arrow with title. Styled to match screenplay aesthetics. Sidebar shows scenes in chain order when page is part of a chain, falls back to alphabetical. Content area renders page.content_html within screenplay-formatted page. REQ-015-003.",
-      "token_cost": 103,
+      "content": "Create themes/fountain/index.html and folder.html extending base.html. Index page: vault landing with screenplay aesthetics, lists detected chain heads as Screenplays section, lists non-chain pages as Reference Pages, includes search functionality. Folder page: folder listing with screenplay aesthetic, shows which pages are part of chains. REQ-015-001.",
+      "token_cost": 88,
       "priority": "PlanMeta"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 3 files (+825, -8): .hence/context-manifest.json, themes/fountain/base.html, themes/fountain/theme.toml",
       "token_cost": 28,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-fountain-page-template-changes",
+      "content": "Modified 3 files (+216, -6): .hence/context-manifest.json, themes/fountain/base.html, themes/fountain/page.html",
+      "token_cost": 27,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T10:48:05Z"
+  "constructed_at": "2026-03-02T10:52:24Z"
 }
