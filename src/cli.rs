@@ -279,6 +279,17 @@ pub enum HookCommand {
         #[arg(long, default_value = "default")]
         theme: String,
     },
+    /// Run a named hook with real vault context
+    Run {
+        /// Hook lifecycle name (e.g. post-build, pre-build)
+        name: String,
+        /// Theme name (looks in .zetl/themes/<name>/hooks/)
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Extra JSON fields merged into the context (after --)
+        #[arg(last = true)]
+        extra: Vec<String>,
+    },
 }
 
 #[cfg(feature = "reason")]
