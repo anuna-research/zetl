@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::scanner::page_slug_from_path;
-use crate::web::chain::{extract_chain_target, resolve_page_name};
+use crate::web::chain::{compute_chain_position, extract_chain_target, resolve_page_name};
 use crate::web::markdown::parse_frontmatter;
 use crate::web::VaultData;
 
@@ -235,6 +235,11 @@ pub fn build_page_context(
         resolve_page_name(&name, &data.page_slug_map).map(|s| ChainLink { title: name, slug: s })
     });
 
+    let (chain_position, chain_length, chain_head_slug) =
+        compute_chain_position(page_name, &data.chain_prev_next, &data.page_slug_map)
+            .map(|(pos, len, head)| (Some(pos), Some(len), Some(head)))
+            .unwrap_or((None, None, None));
+
     PageContext {
         title: page_name.to_string(),
         slug: slug.to_string(),
@@ -249,9 +254,9 @@ pub fn build_page_context(
         raw_escaped: None,
         prev_page,
         next_page,
-        chain_position: None,
-        chain_length: None,
-        chain_head_slug: None,
+        chain_position,
+        chain_length,
+        chain_head_slug,
     }
 }
 
@@ -400,6 +405,7 @@ mod tests {
             resolved,
             page_slug_map,
             collision_names: HashSet::new(),
+            chain_prev_next: HashMap::new(),
         }
     }
 

@@ -1,12 +1,12 @@
 {
-  "task_id": "chain-page-context",
+  "task_id": "chain-walking",
   "token_budget": 8000,
-  "tokens_used": 133,
+  "tokens_used": 172,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add ChainLink struct and chain fields to PageContext in src/web/context.rs per CON-015-002. ChainLink has title and slug fields. PageContext gets five new fields: prev_page, next_page, chain_position, chain_length, chain_head_slug. Update build_page_context to call extract_chain_target for prev and next, resolve targets via page_slug_map, and build ChainLink values. Set chain_position and chain_length to None initially -- next task adds walking. REQ-015-007, CON-015-002.",
-      "token_cost": 118,
+      "content": "Implement chain walking in src/web/chain.rs to compute chain_position, chain_length, and chain_head_slug. Add compute_chain_position that walks backward via prev pointers to find chain head, then forward to count total length. Returns position/length/head_slug tuple or None if not in a chain. Detect cycles by tracking visited pages. Cap at 1000 steps. Also add find_chain_heads to detect all pages with next but no prev. Update build_page_context to call compute_chain_position and populate the chain fields. REQ-015-005, REQ-015-007.",
+      "token_cost": 134,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 2 files (+213, -0): src/web/chain.rs, src/web/mod.rs",
       "token_cost": 15,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-chain-page-context-changes",
+      "content": "Modified 3 files (+89, -5): .hence/context-manifest.json, src/web/context.rs, src/web/engine.rs",
+      "token_cost": 23,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T09:50:21Z"
+  "constructed_at": "2026-03-02T09:53:02Z"
 }

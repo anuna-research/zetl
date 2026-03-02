@@ -3053,6 +3053,8 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     page_names.sort_by_key(|a| a.to_lowercase());
 
     let (page_slug_map, collision_names) = zetl::web::build_slug_map(&pipeline.files);
+    let chain_prev_next =
+        zetl::web::build_chain_prev_next(&pipeline.vault_root, &pipeline.files, &page_slug_map);
 
     let data = zetl::web::VaultData {
         files: pipeline.files,
@@ -3061,6 +3063,7 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         resolved: pipeline.graph_resolved,
         page_slug_map,
         collision_names,
+        chain_prev_next,
     };
 
     // Build the Tantivy search index for serve mode (REQ-013-012).
@@ -3095,6 +3098,8 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
     page_names.sort_by_key(|a| a.to_lowercase());
 
     let (page_slug_map, collision_names) = zetl::web::build_slug_map(&pipeline.files);
+    let chain_prev_next =
+        zetl::web::build_chain_prev_next(&pipeline.vault_root, &pipeline.files, &page_slug_map);
 
     let data = zetl::web::VaultData {
         files: pipeline.files,
@@ -3103,6 +3108,7 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
         resolved: pipeline.graph_resolved,
         page_slug_map,
         collision_names,
+        chain_prev_next,
     };
 
     zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme, cli.verbose > 0)?;

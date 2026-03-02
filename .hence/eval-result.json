@@ -3,26 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 89,
-    "deletions": 5,
+    "files_changed": 6,
+    "insertions": 310,
+    "deletions": 10,
     "file_list": [
       ".hence/context-manifest.json",
+      "src/main.rs",
+      "src/web/chain.rs",
       "src/web/context.rs",
-      "src/web/engine.rs"
+      "src/web/mod.rs",
+      "src/web/routes.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-chain-page-context-changes",
-      "content": "Modified 3 files (+89, -5): .hence/context-manifest.json, src/web/context.rs, src/web/engine.rs",
+      "key": "task-chain-walking-changes",
+      "content": "Modified 6 files (+310, -10): .hence/context-manifest.json, src/main.rs, src/web/chain.rs, src/web/context.rs, src/web/mod.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/chain-page-context-v1",
-  "evaluated_at": "2026-03-02T09:52:56Z",
+  "branch_name": "hence/chain-walking-v1",
+  "evaluated_at": "2026-03-02T10:01:31Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
