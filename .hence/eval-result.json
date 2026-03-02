@@ -3,24 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 174,
-    "deletions": 7,
+    "files_changed": 3,
+    "insertions": 398,
+    "deletions": 5,
     "file_list": [
+      ".hence/context-manifest.json",
+      "src/hooks/context.rs",
       "src/hooks/mod.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-verbose-logging-changes",
-      "content": "Modified 1 files (+174, -7): src/hooks/mod.rs",
+      "key": "task-context-builder-changes",
+      "content": "Modified 3 files (+398, -5): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/verbose-logging-v1",
-  "evaluated_at": "2026-03-02T11:36:36Z",
+  "branch_name": "hence/context-builder-v1",
+  "evaluated_at": "2026-03-02T11:41:12Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
