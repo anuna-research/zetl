@@ -3318,6 +3318,70 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     let search_index = SearchIndex::build(&pipeline.vault_root, &data.files)
         .context("building search index for serve")?;
 
+    // ── pre-serve hooks (abort on failure) ────────────────────────────
+    let verbose = cli.verbose > 0;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        verbose,
+    );
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    if !zetl::hooks::hooks_for(&manifest, "pre-serve").is_empty() {
+        let mut ctx = zetl::hooks::context::build_hook_context(
+            "pre-serve",
+            &pipeline.vault_root,
+            theme,
+            env!("CARGO_PKG_VERSION"),
+            &data.files,
+            &data.graph,
+        );
+        ctx.port = Some(port);
+
+        let context_json = serde_json::to_vec(&ctx)?;
+
+        let hook_env = zetl::hooks::HookEnv {
+            vault_root: pipeline.vault_root.clone(),
+            theme: theme.to_string(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![("ZETL_PORT".into(), port.to_string())],
+        };
+
+        let results = zetl::hooks::run_hooks_verbose(
+            &manifest,
+            "pre-serve",
+            &context_json,
+            &hook_env,
+            verbose,
+        );
+
+        for result in results {
+            match result {
+                Ok(output) if !output.success() => {
+                    if !output.stderr.is_empty() {
+                        eprintln!("error: pre-serve hook '{}' failed:\n{}", output.hook_name, output.stderr.trim_end());
+                    } else {
+                        eprintln!(
+                            "error: pre-serve hook '{}' ({}) exited with code {}",
+                            output.path.display(),
+                            output.source,
+                            output.exit_code.unwrap_or(-1),
+                        );
+                    }
+                    anyhow::bail!("pre-serve hook failed, aborting serve");
+                }
+                Err(e) => {
+                    anyhow::bail!("pre-serve hook failed to execute: {e}");
+                }
+                _ => {}
+            }
+        }
+    }
+
     let engine = zetl::web::engine::TemplateEngine::new(
         &pipeline.vault_root,
         theme,
@@ -3356,9 +3420,7 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
         collision_names,
     };
 
-    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme, cli.verbose > 0)?;
-
-    // ── post-build hooks (REQ-016-004: non-fatal) ──────────────────────
+    // ── hook discovery (shared by pre-build and post-build) ────────────
     let verbose = cli.verbose > 0;
     let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
     let manifest = zetl::hooks::discover_hooks_verbose(
@@ -3370,6 +3432,60 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
     }
+
+    // ── pre-build hooks (abort on failure) ─────────────────────────────
+    if !zetl::hooks::hooks_for(&manifest, "pre-build").is_empty() {
+        let mut ctx = zetl::hooks::context::build_hook_context(
+            "pre-build",
+            &pipeline.vault_root,
+            theme,
+            env!("CARGO_PKG_VERSION"),
+            &data.files,
+            &data.graph,
+        );
+        ctx.out_dir = Some(out_dir.to_string());
+
+        let context_json = serde_json::to_vec(&ctx)?;
+
+        let hook_env = zetl::hooks::HookEnv {
+            vault_root: pipeline.vault_root.clone(),
+            theme: theme.to_string(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![("ZETL_OUT_DIR".into(), out_dir.to_string())],
+        };
+
+        let results = zetl::hooks::run_hooks_verbose(
+            &manifest,
+            "pre-build",
+            &context_json,
+            &hook_env,
+            verbose,
+        );
+
+        for result in results {
+            match result {
+                Ok(output) if !output.success() => {
+                    if !output.stderr.is_empty() {
+                        eprintln!("error: pre-build hook '{}' failed:\n{}", output.hook_name, output.stderr.trim_end());
+                    } else {
+                        eprintln!(
+                            "error: pre-build hook '{}' ({}) exited with code {}",
+                            output.path.display(),
+                            output.source,
+                            output.exit_code.unwrap_or(-1),
+                        );
+                    }
+                    anyhow::bail!("pre-build hook failed, aborting build");
+                }
+                Err(e) => {
+                    anyhow::bail!("pre-build hook failed to execute: {e}");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme, cli.verbose > 0)?;
 
     if !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(

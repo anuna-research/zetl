@@ -1,12 +1,12 @@
 {
-  "task_id": "post-check-hook",
+  "task_id": "pre-hooks",
   "token_budget": 8000,
-  "tokens_used": 227,
+  "tokens_used": 251,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement post-check hook after diagnostics collection: invoke with context including diagnostics.dead_links, diagnostics.orphans, diagnostics.syntax_errors arrays",
-      "token_cost": 40,
+      "content": "Implement pre-build and pre-serve hooks with abort-on-failure semantics: non-zero exit aborts the parent operation and prints hook stderr as error message",
+      "token_cost": 38,
       "priority": "PlanMeta"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 4 files (+299, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/integration.rs",
       "token_cost": 26,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-post-check-hook-changes",
+      "content": "Modified 4 files (+193, -8): .hence/context-manifest.json, src/cli.rs, src/hooks/context.rs, src/main.rs",
+      "token_cost": 26,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T12:08:58Z"
+  "constructed_at": "2026-03-02T12:16:12Z"
 }
