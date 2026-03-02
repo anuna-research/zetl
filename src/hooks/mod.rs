@@ -348,11 +348,18 @@ fn execute_hook_with_timeout(
 
     let mut child = cmd.spawn()?;
 
-    // Write context JSON to stdin, then close the pipe.
-    if let Some(mut stdin) = child.stdin.take() {
-        // Ignore write errors — the hook may have exited early.
-        let _ = stdin.write_all(context_json);
-    }
+    // Write context JSON to stdin on a background thread so the timeout
+    // polling loop below is not blocked when the hook does not consume stdin
+    // (e.g. a large context written to a long-running/sleeping process).
+    let stdin_handle = child.stdin.take();
+    let context_owned = context_json.to_vec();
+    let stdin_thread = std::thread::spawn(move || {
+        if let Some(mut stdin) = stdin_handle {
+            // Ignore write errors — the hook may have exited early.
+            let _ = stdin.write_all(&context_owned);
+        }
+        // stdin is dropped here, closing the pipe.
+    });
 
     // Take stdout/stderr handles so reader threads can drain them in parallel
     // (prevents pipe-buffer deadlock if the hook produces large output).
@@ -391,6 +398,10 @@ fn execute_hook_with_timeout(
             }
         }
     };
+
+    // Join the stdin writer — it will unblock once the child is killed/exited
+    // because the pipe's read end is closed.
+    let _ = stdin_thread.join();
 
     let stdout_bytes = stdout_thread.join().unwrap_or_default();
     let stderr_bytes = stderr_thread.join().unwrap_or_default();
@@ -462,10 +473,21 @@ pub fn run_hooks_verbose(
         eprintln!("[hooks] running lifecycle point '{}': {} hook(s) matched",
             hook_name, matching.len());
     }
-    matching
-        .into_iter()
-        .map(|hook| execute_hook_verbose(hook, context_json, env, verbose))
-        .collect()
+    let mut results = Vec::with_capacity(matching.len());
+    for hook in &matching {
+        let result = execute_hook_verbose(hook, context_json, env, verbose);
+        let failed = match &result {
+            Ok(output) => !output.success(),
+            Err(_) => true,
+        };
+        results.push(result);
+        // Short-circuit on first failure so pre-hooks can abort before
+        // later hooks execute and mutate state.
+        if failed {
+            break;
+        }
+    }
+    results
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────

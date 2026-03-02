@@ -3362,7 +3362,7 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
         verbose,
     );
 
-    let mut last_exit_code: i32 = 0;
+    let mut worst_exit_code: i32 = 0;
 
     for result in results {
         match result {
@@ -3375,22 +3375,27 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
                 if !output.stderr.is_empty() {
                     eprint!("{}", output.stderr);
                 }
-                if output.timed_out {
+                let code = if output.timed_out {
                     eprintln!("error: hook '{}' timed out", output.path.display());
-                    last_exit_code = 124; // conventional timeout exit code
+                    124 // conventional timeout exit code
                 } else {
-                    last_exit_code = output.exit_code.unwrap_or(1);
+                    output.exit_code.unwrap_or(1)
+                };
+                if code != 0 && worst_exit_code == 0 {
+                    worst_exit_code = code;
                 }
             }
             Err(e) => {
                 eprintln!("error: hook failed to execute: {e}");
-                last_exit_code = 1;
+                if worst_exit_code == 0 {
+                    worst_exit_code = 1;
+                }
             }
         }
     }
 
-    if last_exit_code != 0 {
-        std::process::exit(last_exit_code);
+    if worst_exit_code != 0 {
+        std::process::exit(worst_exit_code);
     }
 
     Ok(())
