@@ -4,6 +4,7 @@ pub mod engine;
 pub mod html;
 pub mod markdown;
 pub mod routes;
+pub mod theme;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
