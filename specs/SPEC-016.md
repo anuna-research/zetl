@@ -1,7 +1,7 @@
 ---
 title: "SPEC-016: zetl hooks — Git-Style Lifecycle Hooks for Vault Operations"
 version: 0.1.0
-status: draft
+status: implemented
 audience: agent, human
 date: 2026-03-02
 ---
@@ -15,7 +15,7 @@ date: 2026-03-02
 | Document ID    | SPEC-016                                                       |
 | Title          | zetl hooks — Git-Style Lifecycle Hooks for Vault Operations    |
 | Version        | 0.1.0                                                          |
-| Status         | Draft                                                          |
+| Status         | Implemented                                                    |
 | Author         | Agent (USDD Protocol v1.3.0)                                   |
 | Date           | 2026-03-02                                                     |
 | Audience       | Agent, Human                                                   |
