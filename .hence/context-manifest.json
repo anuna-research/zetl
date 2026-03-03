@@ -1,75 +1,75 @@
 {
-  "task_id": "verify-phase2",
+  "task_id": "bundled-hook-extraction",
   "token_budget": 8000,
-  "tokens_used": 440,
+  "tokens_used": 263,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Final end-to-end verification. Verify: zetl serve --theme fountain renders screenplay pages with Courier Prime and grey background; scene headings uppercase bold, character names centered, dialogue narrower; prev/next nav with Scene N of M; sidebar collapsed by default, shows chain order when opened; dark mode works; zetl build --theme fountain produces self-contained static site with fonts in _static/ and no CDN refs; zetl theme list shows fountain; chaining works with both default and fountain themes; zetl check validates chains; non-chain pages normal; multi-chain vault works; cargo test passes. TEST-015-001 through TEST-015-007, NFR-015-001.",
-      "token_cost": 163,
+      "content": "For bundled (compile-time embedded) themes: extract hook files to .zetl/cache/hooks/<theme>/ before execution; refresh extracted hooks when zetl binary version changes; make extracted hooks executable",
+      "token_cost": 50,
       "priority": "PlanMeta"
     },
     {
-      "source": "memory/episodic/task-verify-phase1-changes",
-      "content": "Modified 2 files (+168, -5): .hence/context-manifest.json, tests/integration.rs",
+      "source": "memory/episodic/task-hook-discovery-changes",
+      "content": "Modified 3 files (+375, -78): .hence/context-manifest.json, src/hooks/mod.rs, src/lib.rs",
+      "token_cost": 22,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-hook-executor-changes",
+      "content": "Modified 1 files (+430, -6): src/hooks/mod.rs",
+      "token_cost": 11,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-verbose-logging-changes",
+      "content": "Modified 1 files (+174, -7): src/hooks/mod.rs",
+      "token_cost": 11,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-context-builder-changes",
+      "content": "Modified 3 files (+398, -5): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs",
+      "token_cost": 24,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-wire-post-build-changes",
+      "content": "Modified 3 files (+83, -5): .hence/context-manifest.json, src/hooks/context.rs, src/main.rs",
+      "token_cost": 22,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theme-hook-discovery-changes",
+      "content": "Modified 4 files (+231, -8): .hence/context-manifest.json, src/hooks/mod.rs, src/main.rs, src/web/engine.rs",
+      "token_cost": 26,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-hook-list-cmd-changes",
+      "content": "Modified 4 files (+202, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/integration.rs",
+      "token_cost": 26,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-hook-timeout-changes",
+      "content": "Modified 2 files (+147, -15): .hence/context-manifest.json, src/hooks/mod.rs",
       "token_cost": 19,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-parse-chain-frontmatter-changes",
-      "content": "Modified 2 files (+213, -0): src/web/chain.rs, src/web/mod.rs",
-      "token_cost": 15,
+      "source": "memory/episodic/task-hook-run-cmd-changes",
+      "content": "Modified 4 files (+299, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/integration.rs",
+      "token_cost": 26,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-chain-page-context-changes",
-      "content": "Modified 3 files (+89, -5): .hence/context-manifest.json, src/web/context.rs, src/web/engine.rs",
-      "token_cost": 23,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-chain-walking-changes",
-      "content": "Modified 6 files (+310, -10): .hence/context-manifest.json, src/main.rs, src/web/chain.rs, src/web/context.rs, src/web/mod.rs and 1 more",
-      "token_cost": 34,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-chain-validation-changes",
-      "content": "Modified 4 files (+412, -9): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/chain.rs",
-      "token_cost": 25,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-prevnext-default-theme-changes",
-      "content": "Modified 2 files (+61, -5): .hence/context-manifest.json, themes/default/page.html",
-      "token_cost": 20,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-chain-integration-tests-changes",
-      "content": "Modified 2 files (+461, -5): .hence/context-manifest.json, tests/integration.rs",
-      "token_cost": 19,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-courier-prime-fonts-changes",
-      "content": "Modified 7 files (+115, -5): .hence/context-manifest.json, themes/fountain/static/CourierPrime-Bold.woff2, themes/fountain/static/CourierPrime-BoldItalic.woff2, themes/fountain/static/CourierPrime-Italic.woff2, themes/fountain/static/CourierPrime-Regular.woff2 and 2 more",
-      "token_cost": 67,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-fountain-base-template-changes",
-      "content": "Modified 3 files (+825, -8): .hence/context-manifest.json, themes/fountain/base.html, themes/fountain/theme.toml",
-      "token_cost": 28,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-fountain-page-template-changes",
-      "content": "Modified 3 files (+216, -6): .hence/context-manifest.json, themes/fountain/base.html, themes/fountain/page.html",
-      "token_cost": 27,
+      "source": "memory/episodic/task-post-check-hook-changes",
+      "content": "Modified 4 files (+193, -8): .hence/context-manifest.json, src/cli.rs, src/hooks/context.rs, src/main.rs",
+      "token_cost": 26,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T11:09:43Z"
+  "constructed_at": "2026-03-02T12:37:00Z"
 }

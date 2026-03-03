@@ -1,0 +1,547 @@
+;; ════════════════════════════════════════════════════════════════════════════
+;; IMPL-015: zetl fountain — Screenplay Theme and Scene Chaining
+;; Implementation plan for SPEC-015 v0.3.0
+;; ════════════════════════════════════════════════════════════════════════════
+
+(meta plan
+  (id "IMPL-015")
+  (title "zetl fountain — Screenplay Theme and Scene Chaining")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-03-02")
+  (author "agent:claude")
+  (spec "SPEC-015")
+  (description "Implement scene chaining via prev/next frontmatter fields and a bundled fountain theme for screenwriters. Phase 1: parse prev/next frontmatter, add ChainLink and chain metadata to PageContext, implement chain walking and head detection, add chain validation to zetl check, add conditional prev/next navigation to the default theme. Phase 2: create the bundled fountain theme with Courier Prime fonts, screenplay CSS, and enhanced scene navigation. Covers REQ-015-001 through REQ-015-007, NFR-015-001."))
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Agents
+;; ════════════════════════════════════════════════════════════════════════════
+
+(given agent-claude-available)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 1 — Scene Chaining and Page Context
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Parse prev/next from frontmatter ────────────────────────────────
+
+(given task-parse-chain-frontmatter)
+(given no-deps-parse-chain-frontmatter)
+
+(meta task-parse-chain-frontmatter
+  (description "Create src/web/chain.rs with helper functions to extract prev/next chain targets from frontmatter. extract_chain_target reads fm[field] as string, strips [[ ]] delimiters if present, strips alias text after pipe, strips heading refs after #, trims whitespace. Handles plain strings, wikilink syntax, aliased links, and heading refs. Also add resolve_page_name for case-insensitive slug lookup against page_slug_map. REQ-015-004, CON-015-001.")
+  (acceptance "extract_chain_target handles plain, wikilink, aliased, and heading-ref formats. Returns None for missing or non-string fields. resolve_page_name does case-insensitive lookup. Unit tests cover all variants. cargo check passes."))
+
+(normally r-ready-parse-chain-frontmatter
+  (and task-parse-chain-frontmatter no-deps-parse-chain-frontmatter)
+  ready-parse-chain-frontmatter)
+
+(normally r-assign-parse-chain-frontmatter
+  (and ready-parse-chain-frontmatter agent-claude-available)
+  assign-to-parse-chain-frontmatter-claude)
+
+;; ── Task: Add ChainLink and chain fields to PageContext ───────────────────
+
+(given task-chain-page-context)
+
+(meta task-chain-page-context
+  (description "Add ChainLink struct and chain fields to PageContext in src/web/context.rs per CON-015-002. ChainLink has title and slug fields. PageContext gets five new fields: prev_page, next_page, chain_position, chain_length, chain_head_slug. Update build_page_context to call extract_chain_target for prev and next, resolve targets via page_slug_map, and build ChainLink values. Set chain_position and chain_length to None initially -- next task adds walking. REQ-015-007, CON-015-002.")
+  (acceptance "ChainLink struct derives Serialize. PageContext has all five new fields. build_page_context populates prev_page and next_page when frontmatter contains prev/next. Fields are None when no chain data. Templates can access page.prev_page.title etc. cargo check passes. Existing tests pass."))
+
+(normally r-ready-chain-page-context
+  (and task-chain-page-context completed-parse-chain-frontmatter)
+  ready-chain-page-context)
+
+(normally r-assign-chain-page-context
+  (and ready-chain-page-context agent-claude-available)
+  assign-to-chain-page-context-claude)
+
+;; ── Task: Chain walking and position calculation ──────────────────────────
+
+(given task-chain-walking)
+
+(meta task-chain-walking
+  (description "Implement chain walking in src/web/chain.rs to compute chain_position, chain_length, and chain_head_slug. Add compute_chain_position that walks backward via prev pointers to find chain head, then forward to count total length. Returns position/length/head_slug tuple or None if not in a chain. Detect cycles by tracking visited pages. Cap at 1000 steps. Also add find_chain_heads to detect all pages with next but no prev. Update build_page_context to call compute_chain_position and populate the chain fields. REQ-015-005, REQ-015-007.")
+  (acceptance "compute_chain_position returns correct position/length/head_slug for interior nodes, heads, and tails. Returns None for non-chain pages. Handles cycles gracefully. find_chain_heads correctly identifies pages with next but no prev. PageContext chain fields populated. Unit tests for 3-node chain, single node, cycle, broken chain."))
+
+(normally r-ready-chain-walking
+  (and task-chain-walking completed-chain-page-context)
+  ready-chain-walking)
+
+(normally r-assign-chain-walking
+  (and ready-chain-walking agent-claude-available)
+  assign-to-chain-walking-claude)
+
+;; ── Task: Chain validation in zetl check ──────────────────────────────────
+
+(given task-chain-validation)
+
+(meta task-chain-validation
+  (description "Add scene chain validation diagnostics to cmd_check in src/main.rs per REQ-015-006. Scan all files for prev/next frontmatter. Build forward and backward maps. Emit five diagnostic types: broken forward link as error, asymmetric chain as warning, cycle detection as error with path, fan-in / multiple predecessors as error, orphaned chain nodes as warning. Integrate with existing check output format. When --verbose, log chain summary per OBS-015-001: number of chains found and chain lengths. REQ-015-006, OBS-015-001.")
+  (acceptance "zetl check reports all five diagnostic types correctly. Diagnostics integrate with existing output format. --verbose shows chain summary. cargo test passes."))
+
+(normally r-ready-chain-validation
+  (and task-chain-validation completed-chain-walking)
+  ready-chain-validation)
+
+(normally r-assign-chain-validation
+  (and ready-chain-walking agent-claude-available)
+  assign-to-chain-validation-claude)
+
+;; ── Task: Prev/next navigation in default theme ───────────────────────────
+
+(given task-prevnext-default-theme)
+
+(meta task-prevnext-default-theme
+  (description "Add conditional prev/next navigation to themes/default/page.html. Show a nav bar with left arrow link to prev_page, position indicator showing N of M, and right arrow link to next_page. Render at top and bottom of content area. Only show when page.prev_page or page.next_page exists. Use DaisyUI classes consistent with existing theme. REQ-015-003.")
+  (acceptance "Prev/next navigation renders on pages with chain data. Does not render on non-chain pages. Arrows link to correct pages. Position indicator shows correctly. Works in serve and build modes. Existing theme appearance not broken."))
+
+(normally r-ready-prevnext-default-theme
+  (and task-prevnext-default-theme completed-chain-walking)
+  ready-prevnext-default-theme)
+
+(normally r-assign-prevnext-default-theme
+  (and ready-prevnext-default-theme agent-claude-available)
+  assign-to-prevnext-default-theme-claude)
+
+;; ── Task: Integration tests for scene chaining ────────────────────────────
+
+(given task-chain-integration-tests)
+
+(meta task-chain-integration-tests
+  (description "Add integration tests for scene chaining to tests/integration.rs. Test: basic 3-scene chain navigation with correct prev/next links and position in built HTML; chain head has no prev and shows 1 of 3; chain tail has no next; non-chain pages have no nav; wikilink syntax in frontmatter resolves correctly; zetl check reports broken chain errors; zetl check reports cycle errors; multi-chain vault works independently. TEST-015-003 through TEST-015-007.")
+  (acceptance "All seven test scenarios pass. Tests cover happy path and error cases. Tests work with zetl build and zetl check. No regressions in existing integration tests."))
+
+(normally r-ready-chain-integration-tests
+  (and task-chain-integration-tests completed-chain-validation completed-prevnext-default-theme)
+  ready-chain-integration-tests)
+
+(normally r-assign-chain-integration-tests
+  (and ready-chain-integration-tests agent-claude-available)
+  assign-to-chain-integration-tests-claude)
+
+;; ── Task: Verify Phase 1 ────────────────────────────────────────────────
+
+(given task-verify-phase1)
+
+(meta task-verify-phase1
+  (description "End-to-end verification of Phase 1. Create 5-scene chain vault. Verify: serve shows prev/next nav with position indicators; build HTML contains correct links; zetl check passes on valid chain; broken chain reported; cycle reported; fan-in reported; non-chain pages have no nav; multi-chain vault works. cargo test passes. TEST-015-003 through TEST-015-007.")
+  (acceptance "All scenarios pass. Chain navigation works in serve and build. Check diagnostics correct. No regressions."))
+
+(normally r-ready-verify-phase1
+  (and task-verify-phase1 completed-chain-integration-tests)
+  ready-verify-phase1)
+
+(normally r-assign-verify-phase1
+  (and ready-verify-phase1 agent-claude-available)
+  assign-to-verify-phase1-claude)
+
+;; ════════════════════════════════════════════════════════════════════════════
+;; Phase 2 — Fountain Theme
+;; ════════════════════════════════════════════════════════════════════════════
+
+;; ── Task: Courier Prime font files ───────────────────────────────────────
+
+(given task-courier-prime-fonts)
+
+(meta task-courier-prime-fonts
+  (description "Download and bundle Courier Prime WOFF2 font files for the fountain theme. Create themes/fountain/static/ with Regular, Italic, Bold, BoldItalic WOFF2 files and OFL.txt license. Fonts are approximately 30-50 KB each and will be embedded via include_dir at compile time. NFR-015-001.")
+  (acceptance "Four WOFF2 files present in themes/fountain/static/. OFL.txt license included. Total font size under 200 KB. Files are valid WOFF2 format."))
+
+(normally r-ready-courier-prime-fonts
+  (and task-courier-prime-fonts completed-verify-phase1)
+  ready-courier-prime-fonts)
+
+(normally r-assign-courier-prime-fonts
+  (and ready-courier-prime-fonts agent-claude-available)
+  assign-to-courier-prime-fonts-claude)
+
+;; ── Task: Fountain theme base template and CSS ───────────────────────────
+
+(given task-fountain-base-template)
+
+(meta task-fountain-base-template
+  (description "Create themes/fountain/base.html and theme.toml. Base template: no CDN dependencies, self-contained. Loads Courier Prime via font-face from bundled WOFF2 files. Screenplay CSS: content area approx 6 inches wide, left margin wider than right, single-spaced, 12pt Courier Prime with fallback. Element CSS: scene headings uppercase bold, action left-aligned full width, character names centered approx 3.7 inches from left, dialogue centered approx 2.5 inches wide, parenthetical narrower than dialogue, transitions right-aligned uppercase. White page on grey background with dark mode support. Collapsible sidebar collapsed by default. REQ-015-001, REQ-015-002, ADR-015-001, ADR-015-003.")
+  (acceptance "themes/fountain/base.html exists with all CSS. No external CDN requests. Courier Prime loaded via font-face. Screenplay elements approximately formatted. Dark mode works. Sidebar collapsible and collapsed by default. theme.toml is valid."))
+
+(normally r-ready-fountain-base-template
+  (and task-fountain-base-template completed-courier-prime-fonts)
+  ready-fountain-base-template)
+
+(normally r-assign-fountain-base-template
+  (and ready-fountain-base-template agent-claude-available)
+  assign-to-fountain-base-template-claude)
+
+;; ── Task: Fountain page template with scene navigation ───────────────────
+
+(given task-fountain-page-template)
+
+(meta task-fountain-page-template
+  (description "Create themes/fountain/page.html extending base.html. Enhanced prev/next scene navigation at top and bottom: prev arrow with title, position indicator showing Scene N of M, next arrow with title. Styled to match screenplay aesthetics. Sidebar shows scenes in chain order when page is part of a chain, falls back to alphabetical. Content area renders page.content_html within screenplay-formatted page. REQ-015-003.")
+  (acceptance "Page renders with screenplay formatting. Prev/next navigation appears at top and bottom when chain data exists. Position indicator correct. Navigation hidden on non-chain pages. Sidebar lists scenes in chain order. Works in serve and build modes."))
+
+(normally r-ready-fountain-page-template
+  (and task-fountain-page-template completed-fountain-base-template)
+  ready-fountain-page-template)
+
+(normally r-assign-fountain-page-template
+  (and ready-fountain-page-template agent-claude-available)
+  assign-to-fountain-page-template-claude)
+
+;; ── Task: Fountain index and folder templates ────────────────────────────
+
+(given task-fountain-index-folder)
+
+(meta task-fountain-index-folder
+  (description "Create themes/fountain/index.html and folder.html extending base.html. Index page: vault landing with screenplay aesthetics, lists detected chain heads as Screenplays section, lists non-chain pages as Reference Pages, includes search functionality. Folder page: folder listing with screenplay aesthetic, shows which pages are part of chains. REQ-015-001.")
+  (acceptance "index.html renders vault landing with screenplay theme. Chain heads listed as Screenplays. folder.html lists folder contents. Both work in serve and build modes. Search functionality works."))
+
+(normally r-ready-fountain-index-folder
+  (and task-fountain-index-folder completed-fountain-base-template)
+  ready-fountain-index-folder)
+
+(normally r-assign-fountain-index-folder
+  (and ready-fountain-index-folder agent-claude-available)
+  assign-to-fountain-index-folder-claude)
+
+;; ── Task: Fountain theme integration tests ───────────────────────────────
+
+(given task-fountain-integration-tests)
+
+(meta task-fountain-integration-tests
+  (description "Add integration tests for the fountain theme. Verify: zetl build --theme fountain produces HTML with Courier Prime font-face and no CDN URLs; WOFF2 fonts copied to _static/ in build output; 3-scene chain vault has prev/next navigation with correct links and positions; non-chain pages have no scene nav; zetl theme list shows fountain as bundled. TEST-015-001, TEST-015-002, TEST-015-003.")
+  (acceptance "All five test scenarios pass. Fountain theme produces valid self-contained HTML. Fonts bundled correctly. Scene navigation present for chained pages."))
+
+(normally r-ready-fountain-integration-tests
+  (and task-fountain-integration-tests completed-fountain-page-template completed-fountain-index-folder)
+  ready-fountain-integration-tests)
+
+(normally r-assign-fountain-integration-tests
+  (and ready-fountain-integration-tests agent-claude-available)
+  assign-to-fountain-integration-tests-claude)
+
+;; ── Task: Verify Phase 2 ────────────────────────────────────────────────
+
+(given task-verify-phase2)
+
+(meta task-verify-phase2
+  (description "Final end-to-end verification. Verify: zetl serve --theme fountain renders screenplay pages with Courier Prime and grey background; scene headings uppercase bold, character names centered, dialogue narrower; prev/next nav with Scene N of M; sidebar collapsed by default, shows chain order when opened; dark mode works; zetl build --theme fountain produces self-contained static site with fonts in _static/ and no CDN refs; zetl theme list shows fountain; chaining works with both default and fountain themes; zetl check validates chains; non-chain pages normal; multi-chain vault works; cargo test passes. TEST-015-001 through TEST-015-007, NFR-015-001.")
+  (acceptance "All 12 scenarios pass. Full SPEC-015 Phase 1 and Phase 2 compliance verified. No regressions."))
+
+(normally r-ready-verify-phase2
+  (and task-verify-phase2 completed-fountain-integration-tests)
+  ready-verify-phase2)
+
+(normally r-assign-verify-phase2
+  (and ready-verify-phase2 agent-claude-available)
+  assign-to-verify-phase2-claude)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T09:47:30Z"
+  (given delegated-v1-parse-chain-frontmatter-to-agent:claude)
+  (given (during (leased-v1-parse-chain-frontmatter) (moment "2026-03-02T09:47:30Z") (moment "2026-03-02T10:17:30Z")))
+  (given claim-v1-parse-chain-frontmatter-by-claude)
+  (normally r-cl-state-v1-parse-chain-frontmatter-by-claude claim-v1-parse-chain-frontmatter-by-claude state-claimed-v1-parse-chain-frontmatter-by-claude)
+  (normally r-cl-chain-v1-parse-chain-frontmatter-by-claude state-claimed-v1-parse-chain-frontmatter-by-claude claimed-parse-chain-frontmatter)
+)
+
+;; Propagation rules: failures in 'parse-chain-frontmatter' block downstream tasks
+(normally r-propagate-chain-page-context-from-parse-chain-frontmatter-failed failed-parse-chain-frontmatter upstream-blocked-chain-page-context)
+(normally r-propagate-chain-page-context-from-parse-chain-frontmatter-permanently-failed permanently-failed-parse-chain-frontmatter upstream-blocked-chain-page-context)
+(normally r-propagate-chain-page-context-from-parse-chain-frontmatter-stale-v1 stale-v1-parse-chain-frontmatter upstream-blocked-chain-page-context)
+(normally r-propagate-chain-page-context-from-parse-chain-frontmatter-timeout-v1 timeout-v1-parse-chain-frontmatter upstream-blocked-chain-page-context)
+(normally r-propagate-chain-page-context-from-parse-chain-frontmatter-blocked upstream-blocked-parse-chain-frontmatter upstream-blocked-chain-page-context)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-chain-walking-from-chain-page-context-blocked upstream-blocked-chain-page-context upstream-blocked-chain-walking)
+(normally r-propagate-chain-validation-from-chain-walking-blocked upstream-blocked-chain-walking upstream-blocked-chain-validation)
+(normally r-propagate-prevnext-default-theme-from-chain-walking-blocked upstream-blocked-chain-walking upstream-blocked-prevnext-default-theme)
+(normally r-propagate-chain-integration-tests-from-chain-validation-blocked upstream-blocked-chain-validation upstream-blocked-chain-integration-tests)
+(normally r-propagate-chain-integration-tests-from-prevnext-default-theme-blocked upstream-blocked-prevnext-default-theme upstream-blocked-chain-integration-tests)
+(normally r-propagate-verify-phase1-from-chain-integration-tests-blocked upstream-blocked-chain-integration-tests upstream-blocked-verify-phase1)
+(normally r-propagate-courier-prime-fonts-from-verify-phase1-blocked upstream-blocked-verify-phase1 upstream-blocked-courier-prime-fonts)
+(normally r-propagate-fountain-base-template-from-courier-prime-fonts-blocked upstream-blocked-courier-prime-fonts upstream-blocked-fountain-base-template)
+(normally r-propagate-fountain-index-folder-from-fountain-base-template-blocked upstream-blocked-fountain-base-template upstream-blocked-fountain-index-folder)
+(normally r-propagate-fountain-page-template-from-fountain-base-template-blocked upstream-blocked-fountain-base-template upstream-blocked-fountain-page-template)
+(normally r-propagate-fountain-integration-tests-from-fountain-index-folder-blocked upstream-blocked-fountain-index-folder upstream-blocked-fountain-integration-tests)
+(normally r-propagate-fountain-integration-tests-from-fountain-page-template-blocked upstream-blocked-fountain-page-template upstream-blocked-fountain-integration-tests)
+(normally r-propagate-verify-phase2-from-fountain-integration-tests-blocked upstream-blocked-fountain-integration-tests upstream-blocked-verify-phase2)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T09:50:16Z"
+  (given completed-parse-chain-frontmatter)
+  (given eval-result-v1-parse-chain-frontmatter-by-claude)
+  (given eval-confidence-v1-parse-chain-frontmatter-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T09:50:21Z"
+  (given delegated-v1-chain-page-context-to-agent:claude)
+  (given (during (leased-v1-chain-page-context) (moment "2026-03-02T09:50:21Z") (moment "2026-03-02T10:20:21Z")))
+  (given claim-v1-chain-page-context-by-claude)
+  (normally r-cl-state-v1-chain-page-context-by-claude claim-v1-chain-page-context-by-claude state-claimed-v1-chain-page-context-by-claude)
+  (normally r-cl-chain-v1-chain-page-context-by-claude state-claimed-v1-chain-page-context-by-claude claimed-chain-page-context)
+)
+
+;; Propagation rules: failures in 'chain-page-context' block downstream tasks
+(normally r-propagate-chain-walking-from-chain-page-context-failed failed-chain-page-context upstream-blocked-chain-walking)
+(normally r-propagate-chain-walking-from-chain-page-context-permanently-failed permanently-failed-chain-page-context upstream-blocked-chain-walking)
+(normally r-propagate-chain-walking-from-chain-page-context-stale-v1 stale-v1-chain-page-context upstream-blocked-chain-walking)
+(normally r-propagate-chain-walking-from-chain-page-context-timeout-v1 timeout-v1-chain-page-context upstream-blocked-chain-walking)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T09:52:56Z"
+  (given completed-chain-page-context)
+  (given eval-result-v1-chain-page-context-by-claude)
+  (given eval-confidence-v1-chain-page-context-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T09:53:02Z"
+  (given delegated-v1-chain-walking-to-agent:claude)
+  (given (during (leased-v1-chain-walking) (moment "2026-03-02T09:53:02Z") (moment "2026-03-02T10:23:02Z")))
+  (given claim-v1-chain-walking-by-claude)
+  (normally r-cl-state-v1-chain-walking-by-claude claim-v1-chain-walking-by-claude state-claimed-v1-chain-walking-by-claude)
+  (normally r-cl-chain-v1-chain-walking-by-claude state-claimed-v1-chain-walking-by-claude claimed-chain-walking)
+)
+
+;; Propagation rules: failures in 'chain-walking' block downstream tasks
+(normally r-propagate-chain-validation-from-chain-walking-failed failed-chain-walking upstream-blocked-chain-validation)
+(normally r-propagate-chain-validation-from-chain-walking-permanently-failed permanently-failed-chain-walking upstream-blocked-chain-validation)
+(normally r-propagate-chain-validation-from-chain-walking-stale-v1 stale-v1-chain-walking upstream-blocked-chain-validation)
+(normally r-propagate-chain-validation-from-chain-walking-timeout-v1 timeout-v1-chain-walking upstream-blocked-chain-validation)
+(normally r-propagate-prevnext-default-theme-from-chain-walking-failed failed-chain-walking upstream-blocked-prevnext-default-theme)
+(normally r-propagate-prevnext-default-theme-from-chain-walking-permanently-failed permanently-failed-chain-walking upstream-blocked-prevnext-default-theme)
+(normally r-propagate-prevnext-default-theme-from-chain-walking-stale-v1 stale-v1-chain-walking upstream-blocked-prevnext-default-theme)
+(normally r-propagate-prevnext-default-theme-from-chain-walking-timeout-v1 timeout-v1-chain-walking upstream-blocked-prevnext-default-theme)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T10:01:32Z"
+  (given completed-chain-walking)
+  (given eval-result-v1-chain-walking-by-claude)
+  (given eval-confidence-v1-chain-walking-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T10:01:37Z"
+  (given delegated-v1-chain-validation-to-agent:claude)
+  (given (during (leased-v1-chain-validation) (moment "2026-03-02T10:01:37Z") (moment "2026-03-02T10:31:37Z")))
+  (given claim-v1-chain-validation-by-claude)
+  (normally r-cl-state-v1-chain-validation-by-claude claim-v1-chain-validation-by-claude state-claimed-v1-chain-validation-by-claude)
+  (normally r-cl-chain-v1-chain-validation-by-claude state-claimed-v1-chain-validation-by-claude claimed-chain-validation)
+)
+
+;; Propagation rules: failures in 'chain-validation' block downstream tasks
+(normally r-propagate-chain-integration-tests-from-chain-validation-failed failed-chain-validation upstream-blocked-chain-integration-tests)
+(normally r-propagate-chain-integration-tests-from-chain-validation-permanently-failed permanently-failed-chain-validation upstream-blocked-chain-integration-tests)
+(normally r-propagate-chain-integration-tests-from-chain-validation-stale-v1 stale-v1-chain-validation upstream-blocked-chain-integration-tests)
+(normally r-propagate-chain-integration-tests-from-chain-validation-timeout-v1 timeout-v1-chain-validation upstream-blocked-chain-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T10:09:15Z"
+  (given completed-chain-validation)
+  (given eval-result-v1-chain-validation-by-claude)
+  (given eval-confidence-v1-chain-validation-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T10:09:20Z"
+  (given delegated-v1-prevnext-default-theme-to-agent:claude)
+  (given (during (leased-v1-prevnext-default-theme) (moment "2026-03-02T10:09:20Z") (moment "2026-03-02T10:39:20Z")))
+  (given claim-v1-prevnext-default-theme-by-claude)
+  (normally r-cl-state-v1-prevnext-default-theme-by-claude claim-v1-prevnext-default-theme-by-claude state-claimed-v1-prevnext-default-theme-by-claude)
+  (normally r-cl-chain-v1-prevnext-default-theme-by-claude state-claimed-v1-prevnext-default-theme-by-claude claimed-prevnext-default-theme)
+)
+
+;; Propagation rules: failures in 'prevnext-default-theme' block downstream tasks
+(normally r-propagate-chain-integration-tests-from-prevnext-default-theme-failed failed-prevnext-default-theme upstream-blocked-chain-integration-tests)
+(normally r-propagate-chain-integration-tests-from-prevnext-default-theme-permanently-failed permanently-failed-prevnext-default-theme upstream-blocked-chain-integration-tests)
+(normally r-propagate-chain-integration-tests-from-prevnext-default-theme-stale-v1 stale-v1-prevnext-default-theme upstream-blocked-chain-integration-tests)
+(normally r-propagate-chain-integration-tests-from-prevnext-default-theme-timeout-v1 timeout-v1-prevnext-default-theme upstream-blocked-chain-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T10:11:41Z"
+  (given completed-prevnext-default-theme)
+  (given eval-result-v1-prevnext-default-theme-by-claude)
+  (given eval-confidence-v1-prevnext-default-theme-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T10:11:47Z"
+  (given delegated-v1-chain-integration-tests-to-agent:claude)
+  (given (during (leased-v1-chain-integration-tests) (moment "2026-03-02T10:11:47Z") (moment "2026-03-02T10:41:47Z")))
+  (given claim-v1-chain-integration-tests-by-claude)
+  (normally r-cl-state-v1-chain-integration-tests-by-claude claim-v1-chain-integration-tests-by-claude state-claimed-v1-chain-integration-tests-by-claude)
+  (normally r-cl-chain-v1-chain-integration-tests-by-claude state-claimed-v1-chain-integration-tests-by-claude claimed-chain-integration-tests)
+)
+
+;; Propagation rules: failures in 'chain-integration-tests' block downstream tasks
+(normally r-propagate-verify-phase1-from-chain-integration-tests-failed failed-chain-integration-tests upstream-blocked-verify-phase1)
+(normally r-propagate-verify-phase1-from-chain-integration-tests-permanently-failed permanently-failed-chain-integration-tests upstream-blocked-verify-phase1)
+(normally r-propagate-verify-phase1-from-chain-integration-tests-stale-v1 stale-v1-chain-integration-tests upstream-blocked-verify-phase1)
+(normally r-propagate-verify-phase1-from-chain-integration-tests-timeout-v1 timeout-v1-chain-integration-tests upstream-blocked-verify-phase1)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T10:26:47Z"
+  (given (during (leased-v1-chain-integration-tests) (moment "2026-03-02T10:26:47Z") (moment "2026-03-02T10:56:47Z")))
+  (given lease-renewal-v1-chain-integration-tests-by-claude-r1)
+)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T10:29:34Z"
+  (given completed-chain-integration-tests)
+  (given eval-result-v1-chain-integration-tests-by-claude)
+  (given eval-confidence-v1-chain-integration-tests-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T10:29:39Z"
+  (given delegated-v1-verify-phase1-to-agent:claude)
+  (given (during (leased-v1-verify-phase1) (moment "2026-03-02T10:29:39Z") (moment "2026-03-02T10:59:39Z")))
+  (given claim-v1-verify-phase1-by-claude)
+  (normally r-cl-state-v1-verify-phase1-by-claude claim-v1-verify-phase1-by-claude state-claimed-v1-verify-phase1-by-claude)
+  (normally r-cl-chain-v1-verify-phase1-by-claude state-claimed-v1-verify-phase1-by-claude claimed-verify-phase1)
+)
+
+;; Propagation rules: failures in 'verify-phase1' block downstream tasks
+(normally r-propagate-courier-prime-fonts-from-verify-phase1-failed failed-verify-phase1 upstream-blocked-courier-prime-fonts)
+(normally r-propagate-courier-prime-fonts-from-verify-phase1-permanently-failed permanently-failed-verify-phase1 upstream-blocked-courier-prime-fonts)
+(normally r-propagate-courier-prime-fonts-from-verify-phase1-stale-v1 stale-v1-verify-phase1 upstream-blocked-courier-prime-fonts)
+(normally r-propagate-courier-prime-fonts-from-verify-phase1-timeout-v1 timeout-v1-verify-phase1 upstream-blocked-courier-prime-fonts)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T10:33:56Z"
+  (given completed-verify-phase1)
+  (given eval-result-v1-verify-phase1-by-claude)
+  (given eval-confidence-v1-verify-phase1-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T10:34:01Z"
+  (given delegated-v1-courier-prime-fonts-to-agent:claude)
+  (given (during (leased-v1-courier-prime-fonts) (moment "2026-03-02T10:34:01Z") (moment "2026-03-02T11:04:01Z")))
+  (given claim-v1-courier-prime-fonts-by-claude)
+  (normally r-cl-state-v1-courier-prime-fonts-by-claude claim-v1-courier-prime-fonts-by-claude state-claimed-v1-courier-prime-fonts-by-claude)
+  (normally r-cl-chain-v1-courier-prime-fonts-by-claude state-claimed-v1-courier-prime-fonts-by-claude claimed-courier-prime-fonts)
+)
+
+;; Propagation rules: failures in 'courier-prime-fonts' block downstream tasks
+(normally r-propagate-fountain-base-template-from-courier-prime-fonts-failed failed-courier-prime-fonts upstream-blocked-fountain-base-template)
+(normally r-propagate-fountain-base-template-from-courier-prime-fonts-permanently-failed permanently-failed-courier-prime-fonts upstream-blocked-fountain-base-template)
+(normally r-propagate-fountain-base-template-from-courier-prime-fonts-stale-v1 stale-v1-courier-prime-fonts upstream-blocked-fountain-base-template)
+(normally r-propagate-fountain-base-template-from-courier-prime-fonts-timeout-v1 timeout-v1-courier-prime-fonts upstream-blocked-fountain-base-template)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T10:38:59Z"
+  (given completed-courier-prime-fonts)
+  (given eval-result-v1-courier-prime-fonts-by-claude)
+  (given eval-confidence-v1-courier-prime-fonts-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T10:39:04Z"
+  (given delegated-v1-fountain-base-template-to-agent:claude)
+  (given (during (leased-v1-fountain-base-template) (moment "2026-03-02T10:39:04Z") (moment "2026-03-02T11:09:04Z")))
+  (given claim-v1-fountain-base-template-by-claude)
+  (normally r-cl-state-v1-fountain-base-template-by-claude claim-v1-fountain-base-template-by-claude state-claimed-v1-fountain-base-template-by-claude)
+  (normally r-cl-chain-v1-fountain-base-template-by-claude state-claimed-v1-fountain-base-template-by-claude claimed-fountain-base-template)
+)
+
+;; Propagation rules: failures in 'fountain-base-template' block downstream tasks
+(normally r-propagate-fountain-index-folder-from-fountain-base-template-failed failed-fountain-base-template upstream-blocked-fountain-index-folder)
+(normally r-propagate-fountain-index-folder-from-fountain-base-template-permanently-failed permanently-failed-fountain-base-template upstream-blocked-fountain-index-folder)
+(normally r-propagate-fountain-index-folder-from-fountain-base-template-stale-v1 stale-v1-fountain-base-template upstream-blocked-fountain-index-folder)
+(normally r-propagate-fountain-index-folder-from-fountain-base-template-timeout-v1 timeout-v1-fountain-base-template upstream-blocked-fountain-index-folder)
+(normally r-propagate-fountain-page-template-from-fountain-base-template-failed failed-fountain-base-template upstream-blocked-fountain-page-template)
+(normally r-propagate-fountain-page-template-from-fountain-base-template-permanently-failed permanently-failed-fountain-base-template upstream-blocked-fountain-page-template)
+(normally r-propagate-fountain-page-template-from-fountain-base-template-stale-v1 stale-v1-fountain-base-template upstream-blocked-fountain-page-template)
+(normally r-propagate-fountain-page-template-from-fountain-base-template-timeout-v1 timeout-v1-fountain-base-template upstream-blocked-fountain-page-template)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T10:48:00Z"
+  (given completed-fountain-base-template)
+  (given eval-result-v1-fountain-base-template-by-claude)
+  (given eval-confidence-v1-fountain-base-template-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T10:48:05Z"
+  (given delegated-v1-fountain-page-template-to-agent:claude)
+  (given (during (leased-v1-fountain-page-template) (moment "2026-03-02T10:48:05Z") (moment "2026-03-02T11:18:05Z")))
+  (given claim-v1-fountain-page-template-by-claude)
+  (normally r-cl-state-v1-fountain-page-template-by-claude claim-v1-fountain-page-template-by-claude state-claimed-v1-fountain-page-template-by-claude)
+  (normally r-cl-chain-v1-fountain-page-template-by-claude state-claimed-v1-fountain-page-template-by-claude claimed-fountain-page-template)
+)
+
+;; Propagation rules: failures in 'fountain-page-template' block downstream tasks
+(normally r-propagate-fountain-integration-tests-from-fountain-page-template-failed failed-fountain-page-template upstream-blocked-fountain-integration-tests)
+(normally r-propagate-fountain-integration-tests-from-fountain-page-template-permanently-failed permanently-failed-fountain-page-template upstream-blocked-fountain-integration-tests)
+(normally r-propagate-fountain-integration-tests-from-fountain-page-template-stale-v1 stale-v1-fountain-page-template upstream-blocked-fountain-integration-tests)
+(normally r-propagate-fountain-integration-tests-from-fountain-page-template-timeout-v1 timeout-v1-fountain-page-template upstream-blocked-fountain-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T10:52:19Z"
+  (given completed-fountain-page-template)
+  (given eval-result-v1-fountain-page-template-by-claude)
+  (given eval-confidence-v1-fountain-page-template-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T10:52:24Z"
+  (given delegated-v1-fountain-index-folder-to-agent:claude)
+  (given (during (leased-v1-fountain-index-folder) (moment "2026-03-02T10:52:24Z") (moment "2026-03-02T11:22:24Z")))
+  (given claim-v1-fountain-index-folder-by-claude)
+  (normally r-cl-state-v1-fountain-index-folder-by-claude claim-v1-fountain-index-folder-by-claude state-claimed-v1-fountain-index-folder-by-claude)
+  (normally r-cl-chain-v1-fountain-index-folder-by-claude state-claimed-v1-fountain-index-folder-by-claude claimed-fountain-index-folder)
+)
+
+;; Propagation rules: failures in 'fountain-index-folder' block downstream tasks
+(normally r-propagate-fountain-integration-tests-from-fountain-index-folder-failed failed-fountain-index-folder upstream-blocked-fountain-integration-tests)
+(normally r-propagate-fountain-integration-tests-from-fountain-index-folder-permanently-failed permanently-failed-fountain-index-folder upstream-blocked-fountain-integration-tests)
+(normally r-propagate-fountain-integration-tests-from-fountain-index-folder-stale-v1 stale-v1-fountain-index-folder upstream-blocked-fountain-integration-tests)
+(normally r-propagate-fountain-integration-tests-from-fountain-index-folder-timeout-v1 timeout-v1-fountain-index-folder upstream-blocked-fountain-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T11:02:47Z"
+  (given completed-fountain-index-folder)
+  (given eval-result-v1-fountain-index-folder-by-claude)
+  (given eval-confidence-v1-fountain-index-folder-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T11:02:53Z"
+  (given delegated-v1-fountain-integration-tests-to-agent:claude)
+  (given (during (leased-v1-fountain-integration-tests) (moment "2026-03-02T11:02:53Z") (moment "2026-03-02T11:32:53Z")))
+  (given claim-v1-fountain-integration-tests-by-claude)
+  (normally r-cl-state-v1-fountain-integration-tests-by-claude claim-v1-fountain-integration-tests-by-claude state-claimed-v1-fountain-integration-tests-by-claude)
+  (normally r-cl-chain-v1-fountain-integration-tests-by-claude state-claimed-v1-fountain-integration-tests-by-claude claimed-fountain-integration-tests)
+)
+
+;; Propagation rules: failures in 'fountain-integration-tests' block downstream tasks
+(normally r-propagate-verify-phase2-from-fountain-integration-tests-failed failed-fountain-integration-tests upstream-blocked-verify-phase2)
+(normally r-propagate-verify-phase2-from-fountain-integration-tests-permanently-failed permanently-failed-fountain-integration-tests upstream-blocked-verify-phase2)
+(normally r-propagate-verify-phase2-from-fountain-integration-tests-stale-v1 stale-v1-fountain-integration-tests upstream-blocked-verify-phase2)
+(normally r-propagate-verify-phase2-from-fountain-integration-tests-timeout-v1 timeout-v1-fountain-integration-tests upstream-blocked-verify-phase2)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T11:09:37Z"
+  (given completed-fountain-integration-tests)
+  (given eval-result-v1-fountain-integration-tests-by-claude)
+  (given eval-confidence-v1-fountain-integration-tests-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-02T11:09:43Z"
+  (given delegated-v1-verify-phase2-to-agent:claude)
+  (given (during (leased-v1-verify-phase2) (moment "2026-03-02T11:09:43Z") (moment "2026-03-02T11:39:43Z")))
+  (given claim-v1-verify-phase2-by-claude)
+  (normally r-cl-state-v1-verify-phase2-by-claude claim-v1-verify-phase2-by-claude state-claimed-v1-verify-phase2-by-claude)
+  (normally r-cl-chain-v1-verify-phase2-by-claude state-claimed-v1-verify-phase2-by-claude claimed-verify-phase2)
+)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-02T11:12:55Z"
+  (given completed-verify-phase2)
+  (given eval-result-v1-verify-phase2-by-claude)
+  (given eval-confidence-v1-verify-phase2-1.00)
+)
