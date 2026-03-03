@@ -447,6 +447,7 @@ mod tests {
                 slug: "hello".to_string(),
                 outlink_count: 1,
                 backlink_count: 0,
+                extension: "md".to_string(),
             }],
             stats: StatsContext {
                 total_pages: 1,
@@ -522,6 +523,7 @@ mod tests {
                 slug: "test".to_string(),
                 outlink_count: 0,
                 backlink_count: 0,
+                extension: "md".to_string(),
             }],
             stats: StatsContext {
                 total_pages: 1,

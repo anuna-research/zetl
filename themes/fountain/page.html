@@ -9,7 +9,8 @@
       {%- for p in vault.pages %}
       <li>
         <a href="{{ root_path }}{{ p.slug | safe }}/{{ index_file }}"
-           class="{% if active_slug == p.slug %}active{% endif %}">
+           class="{% if active_slug == p.slug %}active{% endif %}"
+           data-ext="{{ p.extension }}">
           {{ p.title }}
         </a>
       </li>
@@ -18,7 +19,51 @@
   </nav>
 {% endblock %}
 
-{# ── Screenplay content ── #}
+{# ── Screenplay content (inside white page) ── #}
 {% block content %}
-  {{ page.content_html | safe }}
+  {% if mode == "serve" %}<div id="view-mode"{% if page.is_new %} style="display:none"{% endif %}>
+    {% if page.raw_escaped %}
+    <div class="sp-edit-bar">
+      <button onclick="toggleEdit()" class="sp-edit-btn">Edit</button>
+    </div>
+    {% endif %}
+  {% endif %}
+    {{ page.content_html | safe }}
+    <nav class="sp-scene-nav" id="sp-scene-nav"></nav>
+  {% if mode == "serve" %}</div>{% endif %}
+
+  {% if mode == "serve" and page.raw_escaped %}
+  <div id="edit-mode"{% if not page.is_new %} style="display:none"{% endif %}>
+    <div class="sp-edit-bar">
+      <button onclick="saveEdit()" class="sp-edit-btn sp-edit-save">Save</button>
+      <button onclick="toggleEdit()" class="sp-edit-btn">Cancel</button>
+    </div>
+    <textarea id="editor" class="sp-editor">{{ page.raw_escaped | safe }}</textarea>
+  </div>
+  {% endif %}
+{% endblock %}
+
+{# ── Transclusion panel + backlinks (outside white page) ── #}
+{% block after_page %}
+{% if page.transclusion_cards %}
+  <aside class="sp-tc-panel" id="sp-tc-panel">
+    <h3 class="sp-tc-header">Linked Pages</h3>
+    {{ page.transclusion_cards | safe }}
+
+    {% if page.backlinks %}
+    <div class="sp-tc-divider"></div>
+    <h3 class="sp-tc-header">Backlinks</h3>
+    {%- for bl in page.backlinks %}
+    <a href="{{ root_path }}{{ bl.slug | safe }}/{{ index_file }}" class="sp-backlink">{{ bl.title }}</a>
+    {%- endfor %}
+    {% endif %}
+  </aside>
+{% elif page.backlinks %}
+  <aside class="sp-tc-panel" id="sp-tc-panel">
+    <h3 class="sp-tc-header">Backlinks</h3>
+    {%- for bl in page.backlinks %}
+    <a href="{{ root_path }}{{ bl.slug | safe }}/{{ index_file }}" class="sp-backlink">{{ bl.title }}</a>
+    {%- endfor %}
+  </aside>
+{% endif %}
 {% endblock %}

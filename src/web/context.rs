@@ -20,6 +20,8 @@ pub struct PageEntry {
     pub slug: String,
     pub outlink_count: usize,
     pub backlink_count: usize,
+    /// File extension without the dot (e.g. "md", "fountain", "spl").
+    pub extension: String,
 }
 
 #[derive(Serialize)]
@@ -105,11 +107,13 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
             let slug = page_slug_from_path(&file.path);
             let outlink_count = data.graph.forward_links(&file.page_name).len();
             let backlink_count = data.graph.backlinks(&file.page_name).len();
+            let extension = file.path.extension().and_then(|e| e.to_str()).unwrap_or("md").to_string();
             PageEntry {
                 title: file.page_name.clone(),
                 slug,
                 outlink_count,
                 backlink_count,
+                extension,
             }
         })
         .collect();
@@ -276,11 +280,19 @@ pub fn build_folder_context(
             // Direct child page
             let outlink_count = data.graph.forward_links(page_name).len();
             let backlink_count = data.graph.backlinks(page_name).len();
+            let extension = data
+                .files
+                .iter()
+                .find(|f| &f.page_name == page_name)
+                .and_then(|f| f.path.extension().and_then(|e| e.to_str()))
+                .unwrap_or("md")
+                .to_string();
             pages.push(PageEntry {
                 title: page_name.clone(),
                 slug: slug.clone(),
                 outlink_count,
                 backlink_count,
+                extension,
             });
         }
     }

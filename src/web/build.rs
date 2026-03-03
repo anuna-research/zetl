@@ -10,6 +10,22 @@ use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::VaultData;
 
+/// Strip YAML frontmatter (--- ... ---) from fountain file content.
+pub fn strip_fountain_frontmatter(content: &str) -> String {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return content.to_string();
+    }
+    let after_first = &trimmed[3..];
+    if let Some(end_pos) = after_first.find("\n---") {
+        let skip = 3 + end_pos + 4;
+        let rest = &trimmed[skip..];
+        rest.strip_prefix('\n').unwrap_or(rest).to_string()
+    } else {
+        content.to_string()
+    }
+}
+
 /// Tokenize body text and count term occurrences.
 ///
 /// Mirrors Tantivy's default tokenizer: lowercase, split on non-alphanumeric characters.
@@ -257,8 +273,17 @@ pub fn build_static(
             .with_context(|| format!("Cannot read {}", full_path.display()))?;
 
         let root_path = compute_root_path(&slug);
-        let rendered =
-            markdown::render_to_html(&content, &data.page_slug_map, &root_path, "index.html");
+        let is_fountain = file.path.extension().map_or(false, |e| e == "fountain");
+        let rendered = if is_fountain {
+            // Pass raw fountain text to the template; the theme's JS parser handles it.
+            let body = strip_fountain_frontmatter(&content);
+            format!(
+                "<script type=\"text/fountain\" id=\"fountain-source\">{}</script>\n<div id=\"fountain-render\"></div>",
+                html_escape(&body)
+            )
+        } else {
+            markdown::render_to_html(&content, &data.page_slug_map, &root_path, "index.html")
+        };
         let mut page_ctx = build_page_context(data, &file.page_name, &slug, &rendered, &content);
         page_ctx.transclusion_cards =
             build_transclusion_cards(data, vault_root, &file.page_name, &root_path);

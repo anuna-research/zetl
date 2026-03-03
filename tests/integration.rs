@@ -5086,7 +5086,82 @@ fn test_015_003_fountain_theme_list_bundled() {
         "bundled",
         "fountain theme source must be 'bundled'"
     );
-=======
+}
+
+// ===========================================================================
+// TEST-015-004: fountain file embeds source + JS parser
+// ===========================================================================
+
+/// TEST-015-004: A `.fountain` file is built with the fountain theme, embedding
+/// the raw source in a `<script type="text/fountain">` tag alongside the
+/// client-side JS parser that converts it to McQueen-compatible HTML at runtime.
+#[test]
+fn test_015_004_fountain_file_renders_screenplay_html() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    write_file(
+        dir.path(),
+        "Scene.fountain",
+        "---\ntitle: Scene\n---\n\nFADE IN:\n\nEXT. PARK — DAY\n\nA quiet morning.\n\nJANE\n(whispering)\nHello world.\n\nCUT TO:\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("--theme")
+        .arg("fountain")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build --theme fountain");
+    assert!(
+        output.status.success(),
+        "zetl build --theme fountain failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("scene/index.html"))
+        .expect("scene/index.html should be built");
+
+    // Fountain source is embedded (frontmatter stripped)
+    assert!(
+        html.contains("id=\"fountain-source\""),
+        "should embed fountain source in a script tag"
+    );
+    assert!(
+        html.contains("EXT. PARK"),
+        "should contain scene heading text in fountain source"
+    );
+    assert!(
+        html.contains("JANE"),
+        "should contain character name in fountain source"
+    );
+    assert!(
+        html.contains("Hello world."),
+        "should contain dialogue text in fountain source"
+    );
+    assert!(
+        !html.contains("title: Scene"),
+        "frontmatter should be stripped from fountain source"
+    );
+
+    // Render target div exists
+    assert!(
+        html.contains("id=\"fountain-render\""),
+        "should have a fountain-render div for the JS parser output"
+    );
+
+    // JS fountain parser is present in the theme
+    assert!(
+        html.contains("fountain-source"),
+        "theme should include the fountain parser JS"
+    );
+    assert!(
+        html.contains("scene-heading"),
+        "theme JS parser should reference scene-heading class"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // zetl hook list
 // ---------------------------------------------------------------------------

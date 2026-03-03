@@ -77,6 +77,16 @@ pub fn scan_vault(root: &Path, ignore_patterns: &[String]) -> Result<Vec<ParsedF
                 parsed.mtime = mtime;
                 parsed_files.push(parsed);
             }
+            Some("fountain") => {
+                let rel_path = path.strip_prefix(root).unwrap_or(path).to_path_buf();
+                let page_name = page_name_from_path(&rel_path);
+                let content = std::fs::read_to_string(path)?;
+                let mtime = std::fs::metadata(path)?.modified()?;
+
+                let mut parsed = parse_file(&rel_path, &content, &page_name);
+                parsed.mtime = mtime;
+                parsed_files.push(parsed);
+            }
             Some("spl") => {
                 let rel_path = path.strip_prefix(root).unwrap_or(path).to_path_buf();
                 let page_name = page_name_from_path(&rel_path);
@@ -616,6 +626,8 @@ pub fn page_slug_from_path(path: &Path) -> String {
     let stripped = if let Some(s) = s.strip_suffix(".md") {
         s
     } else if let Some(s) = s.strip_suffix(".spl") {
+        s
+    } else if let Some(s) = s.strip_suffix(".fountain") {
         s
     } else {
         &s
