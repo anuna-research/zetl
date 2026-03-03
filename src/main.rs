@@ -10,7 +10,7 @@ use serde::Serialize;
 use zetl::cache::{
     files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache,
 };
-use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, OutputFormat, ThemeCommand};
+use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, HookCommand, OutputFormat, ThemeCommand};
 use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::graph::LinkGraph;
 use zetl::merkle::{
@@ -468,6 +468,67 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         }
     }
 
+    // ── post-index hooks (non-fatal) ────────────────────────────────
+    let verbose = cli.verbose > 0;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, "");
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        verbose,
+    );
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    if !zetl::hooks::hooks_for(&manifest, "post-index").is_empty() {
+        let ctx = zetl::hooks::context::build_hook_context(
+            "post-index",
+            &pipeline.vault_root,
+            "",
+            env!("CARGO_PKG_VERSION"),
+            &pipeline.files,
+            &pipeline.graph,
+        );
+
+        let context_json = serde_json::to_vec(&ctx)?;
+
+        let hook_env = zetl::hooks::HookEnv {
+            vault_root: pipeline.vault_root.clone(),
+            theme: String::new(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![],
+        };
+
+        let results = zetl::hooks::run_hooks_verbose(
+            &manifest,
+            "post-index",
+            &context_json,
+            &hook_env,
+            verbose,
+        );
+
+        for result in results {
+            match result {
+                Ok(output) if !output.success() => {
+                    eprintln!(
+                        "warning: post-index hook '{}' ({}) exited with code {}",
+                        output.path.display(),
+                        output.source,
+                        output.exit_code.unwrap_or(-1),
+                    );
+                    if !output.stderr.is_empty() {
+                        eprintln!("  stderr: {}", output.stderr.trim_end());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("warning: post-index hook failed to execute: {e}");
+                }
+                _ => {}
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -820,6 +881,7 @@ fn cmd_check(
     show_spl: bool,
     show_drift: bool,
     fail_on: &FailLevel,
+    theme: &str,
 ) -> Result<()> {
     #[cfg(not(feature = "reason"))]
     if show_spl {
@@ -1120,6 +1182,81 @@ fn cmd_check(
                 && output.drift_diagnostics.is_empty()
             {
                 println!("No issues found.");
+            }
+        }
+    }
+
+    // ── post-check hooks (REQ-016-004: non-fatal) ──────────────────────
+    let verbose = cli.verbose > 0;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        verbose,
+    );
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    if !zetl::hooks::hooks_for(&manifest, "post-check").is_empty() {
+        // Collect full diagnostics for hook context (unfiltered by display flags).
+        let hook_dead_links = pipeline.graph.dead_links();
+        let hook_orphans = pipeline.graph.orphans();
+        let hook_syntax_errors: Vec<zetl::types::Diagnostic> = pipeline
+            .files
+            .iter()
+            .flat_map(|f| f.diagnostics.clone())
+            .collect();
+
+        let mut ctx = zetl::hooks::context::build_hook_context(
+            "post-check",
+            &pipeline.vault_root,
+            theme,
+            env!("CARGO_PKG_VERSION"),
+            &pipeline.files,
+            &pipeline.graph,
+        );
+        ctx.diagnostics = Some(zetl::hooks::context::HookDiagnostics {
+            dead_links: hook_dead_links,
+            orphans: hook_orphans,
+            syntax_errors: hook_syntax_errors,
+        });
+
+        let context_json = serde_json::to_vec(&ctx)?;
+
+        let hook_env = zetl::hooks::HookEnv {
+            vault_root: pipeline.vault_root.clone(),
+            theme: theme.to_string(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![],
+        };
+
+        let results = zetl::hooks::run_hooks_verbose(
+            &manifest,
+            "post-check",
+            &context_json,
+            &hook_env,
+            verbose,
+        );
+
+        for result in results {
+            match result {
+                Ok(hook_output) if !hook_output.success() => {
+                    eprintln!(
+                        "warning: post-check hook '{}' ({}) exited with code {}",
+                        hook_output.path.display(),
+                        hook_output.source,
+                        hook_output.exit_code.unwrap_or(-1),
+                    );
+                    if !hook_output.stderr.is_empty() {
+                        eprintln!("  stderr: {}", hook_output.stderr.trim_end());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("warning: post-check hook failed to execute: {e}");
+                }
+                _ => {}
             }
         }
     }
@@ -2820,7 +2957,41 @@ fn cmd_theme_install(
     write_provenance(&target_dir, &prov_source, &clone_result)
         .with_context(|| "failed to write provenance")?;
 
-    // 10. Output JSON.
+    // 10. Make hook files executable and collect their names.
+    let mut installed_hooks = Vec::<String>::new();
+    let hooks_dir = target_dir.join("hooks");
+    if hooks_dir.is_dir() {
+        use std::os::unix::fs::PermissionsExt;
+        for entry in std::fs::read_dir(&hooks_dir)
+            .with_context(|| format!("failed to read {}", hooks_dir.display()))?
+            .flatten()
+        {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            if !zetl::hooks::HOOK_NAMES.contains(&name.as_str()) {
+                continue;
+            }
+            let mut perms = std::fs::metadata(&path)
+                .with_context(|| format!("failed to read metadata for {}", path.display()))?
+                .permissions();
+            let mode = perms.mode();
+            if mode & 0o111 == 0 {
+                perms.set_mode(mode | 0o755);
+                std::fs::set_permissions(&path, perms)
+                    .with_context(|| format!("failed to chmod +x {}", path.display()))?;
+            }
+            installed_hooks.push(name);
+        }
+        installed_hooks.sort();
+    }
+
+    // 11. Output.
     let version = manifest.as_ref().map(|m| m.theme.version.clone());
 
     #[derive(Serialize)]
@@ -2833,6 +3004,8 @@ fn cmd_theme_install(
         git_ref: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        hooks: Vec<String>,
     }
     #[derive(Serialize)]
     struct ThemeInstallOutput {
@@ -2846,6 +3019,7 @@ fn cmd_theme_install(
             source: install_source.url.clone(),
             git_ref: install_source.git_ref.clone(),
             path: path_flag.map(str::to_string),
+            hooks: installed_hooks.clone(),
         },
     };
 
@@ -2853,6 +3027,9 @@ fn cmd_theme_install(
         OutputFormat::Json => print_json(&output)?,
         OutputFormat::Table => {
             println!("Installed theme {resolved_name:?}");
+            if !installed_hooks.is_empty() {
+                println!("Hooks: {}", installed_hooks.join(", "));
+            }
         }
     }
 
@@ -3044,6 +3221,186 @@ fn cmd_theme_export(cli: &Cli, name: &str, force: bool) -> Result<()> {
     Ok(())
 }
 
+fn cmd_hook_list(cli: &Cli, theme: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // Resolve theme hooks directory (disk-installed or bundled).
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &vault_root,
+        theme_hooks.path(),
+        cli.verbose > 0,
+    );
+
+    #[derive(Serialize)]
+    struct HookEntry {
+        name: String,
+        source: String,
+        path: String,
+        executable: bool,
+    }
+
+    #[derive(Serialize)]
+    struct HookListOutput {
+        hooks: Vec<HookEntry>,
+        total: usize,
+    }
+
+    let entries: Vec<HookEntry> = manifest
+        .hooks
+        .iter()
+        .map(|h| HookEntry {
+            name: h.name.clone(),
+            source: h.source.to_string(),
+            path: h.path.display().to_string(),
+            executable: h.executable,
+        })
+        .collect();
+
+    let output = HookListOutput {
+        total: entries.len(),
+        hooks: entries,
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Table => {
+            if output.hooks.is_empty() {
+                println!("No hooks found.");
+            } else {
+                let mut table = Table::new();
+                table.set_header(vec!["Name", "Source", "Path", "Executable"]);
+                for h in &output.hooks {
+                    table.add_row(vec![
+                        Cell::new(&h.name),
+                        Cell::new(&h.source),
+                        Cell::new(&h.path),
+                        Cell::new(if h.executable { "yes" } else { "no" }),
+                    ]);
+                }
+                println!("{table}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<()> {
+    // Validate hook name.
+    if !zetl::hooks::HOOK_NAMES.contains(&name) {
+        anyhow::bail!(
+            "unknown hook name '{}'. Valid names: {}",
+            name,
+            zetl::hooks::HOOK_NAMES.join(", "),
+        );
+    }
+
+    let verbose = cli.verbose > 0;
+
+    // Run the vault pipeline to build full context.
+    let pipeline = run_pipeline(cli)?;
+
+    // Discover hooks.
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        verbose,
+    );
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    let matching = zetl::hooks::hooks_for(&manifest, name);
+    if matching.is_empty() {
+        anyhow::bail!("no executable hook found for '{name}'");
+    }
+
+    // Build context JSON.
+    let ctx = zetl::hooks::context::build_hook_context(
+        name,
+        &pipeline.vault_root,
+        theme,
+        env!("CARGO_PKG_VERSION"),
+        &pipeline.files,
+        &pipeline.graph,
+    );
+    let mut context_value = serde_json::to_value(&ctx)?;
+
+    // Merge extra JSON fields from -- arguments.
+    if !extra.is_empty() {
+        let extra_str = extra.join(" ");
+        let extra_value: serde_json::Value = serde_json::from_str(&extra_str)
+            .with_context(|| format!("invalid JSON after --: {extra_str}"))?;
+        if let (Some(base), Some(overlay)) = (context_value.as_object_mut(), extra_value.as_object()) {
+            for (k, v) in overlay {
+                base.insert(k.clone(), v.clone());
+            }
+        } else {
+            anyhow::bail!("extra JSON after -- must be an object, got: {extra_str}");
+        }
+    }
+
+    let context_json = serde_json::to_vec(&context_value)?;
+
+    let hook_env = zetl::hooks::HookEnv {
+        vault_root: pipeline.vault_root.clone(),
+        theme: theme.to_string(),
+        zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+        extra_vars: vec![],
+    };
+
+    // Run all matching hooks sequentially, streaming output.
+    let results = zetl::hooks::run_hooks_verbose(
+        &manifest,
+        name,
+        &context_json,
+        &hook_env,
+        verbose,
+    );
+
+    let mut worst_exit_code: i32 = 0;
+
+    for result in results {
+        match result {
+            Ok(output) => {
+                // Print stdout to stdout.
+                if !output.stdout.is_empty() {
+                    print!("{}", output.stdout);
+                }
+                // Print stderr to stderr.
+                if !output.stderr.is_empty() {
+                    eprint!("{}", output.stderr);
+                }
+                let code = if output.timed_out {
+                    eprintln!("error: hook '{}' timed out", output.path.display());
+                    124 // conventional timeout exit code
+                } else {
+                    output.exit_code.unwrap_or(1)
+                };
+                if code != 0 && worst_exit_code == 0 {
+                    worst_exit_code = code;
+                }
+            }
+            Err(e) => {
+                eprintln!("error: hook failed to execute: {e}");
+                if worst_exit_code == 0 {
+                    worst_exit_code = 1;
+                }
+            }
+        }
+    }
+
+    if worst_exit_code != 0 {
+        std::process::exit(worst_exit_code);
+    }
+
+    Ok(())
+}
+
 fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -3066,6 +3423,70 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     // Build the Tantivy search index for serve mode (REQ-013-012).
     let search_index = SearchIndex::build(&pipeline.vault_root, &data.files)
         .context("building search index for serve")?;
+
+    // ── pre-serve hooks (abort on failure) ────────────────────────────
+    let verbose = cli.verbose > 0;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        verbose,
+    );
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    if !zetl::hooks::hooks_for(&manifest, "pre-serve").is_empty() {
+        let mut ctx = zetl::hooks::context::build_hook_context(
+            "pre-serve",
+            &pipeline.vault_root,
+            theme,
+            env!("CARGO_PKG_VERSION"),
+            &data.files,
+            &data.graph,
+        );
+        ctx.port = Some(port);
+
+        let context_json = serde_json::to_vec(&ctx)?;
+
+        let hook_env = zetl::hooks::HookEnv {
+            vault_root: pipeline.vault_root.clone(),
+            theme: theme.to_string(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![("ZETL_PORT".into(), port.to_string())],
+        };
+
+        let results = zetl::hooks::run_hooks_verbose(
+            &manifest,
+            "pre-serve",
+            &context_json,
+            &hook_env,
+            verbose,
+        );
+
+        for result in results {
+            match result {
+                Ok(output) if !output.success() => {
+                    if !output.stderr.is_empty() {
+                        eprintln!("error: pre-serve hook '{}' failed:\n{}", output.hook_name, output.stderr.trim_end());
+                    } else {
+                        eprintln!(
+                            "error: pre-serve hook '{}' ({}) exited with code {}",
+                            output.path.display(),
+                            output.source,
+                            output.exit_code.unwrap_or(-1),
+                        );
+                    }
+                    anyhow::bail!("pre-serve hook failed, aborting serve");
+                }
+                Err(e) => {
+                    anyhow::bail!("pre-serve hook failed to execute: {e}");
+                }
+                _ => {}
+            }
+        }
+    }
 
     let engine = zetl::web::engine::TemplateEngine::new(
         &pipeline.vault_root,
@@ -3105,7 +3526,123 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
         collision_names,
     };
 
+    // ── hook discovery (shared by pre-build and post-build) ────────────
+    let verbose = cli.verbose > 0;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let manifest = zetl::hooks::discover_hooks_verbose(
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        verbose,
+    );
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    // ── pre-build hooks (abort on failure) ─────────────────────────────
+    if !zetl::hooks::hooks_for(&manifest, "pre-build").is_empty() {
+        let mut ctx = zetl::hooks::context::build_hook_context(
+            "pre-build",
+            &pipeline.vault_root,
+            theme,
+            env!("CARGO_PKG_VERSION"),
+            &data.files,
+            &data.graph,
+        );
+        ctx.out_dir = Some(out_dir.to_string());
+
+        let context_json = serde_json::to_vec(&ctx)?;
+
+        let hook_env = zetl::hooks::HookEnv {
+            vault_root: pipeline.vault_root.clone(),
+            theme: theme.to_string(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![("ZETL_OUT_DIR".into(), out_dir.to_string())],
+        };
+
+        let results = zetl::hooks::run_hooks_verbose(
+            &manifest,
+            "pre-build",
+            &context_json,
+            &hook_env,
+            verbose,
+        );
+
+        for result in results {
+            match result {
+                Ok(output) if !output.success() => {
+                    if !output.stderr.is_empty() {
+                        eprintln!("error: pre-build hook '{}' failed:\n{}", output.hook_name, output.stderr.trim_end());
+                    } else {
+                        eprintln!(
+                            "error: pre-build hook '{}' ({}) exited with code {}",
+                            output.path.display(),
+                            output.source,
+                            output.exit_code.unwrap_or(-1),
+                        );
+                    }
+                    anyhow::bail!("pre-build hook failed, aborting build");
+                }
+                Err(e) => {
+                    anyhow::bail!("pre-build hook failed to execute: {e}");
+                }
+                _ => {}
+            }
+        }
+    }
+
     zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme, cli.verbose > 0)?;
+
+    if !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
+        let mut ctx = zetl::hooks::context::build_hook_context(
+            "post-build",
+            &pipeline.vault_root,
+            theme,
+            env!("CARGO_PKG_VERSION"),
+            &data.files,
+            &data.graph,
+        );
+        ctx.out_dir = Some(out_dir.to_string());
+        ctx.pages_rendered = Some(data.files.len());
+
+        let context_json = serde_json::to_vec(&ctx)?;
+
+        let hook_env = zetl::hooks::HookEnv {
+            vault_root: pipeline.vault_root.clone(),
+            theme: theme.to_string(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![("ZETL_OUT_DIR".into(), out_dir.to_string())],
+        };
+
+        let results = zetl::hooks::run_hooks_verbose(
+            &manifest,
+            "post-build",
+            &context_json,
+            &hook_env,
+            verbose,
+        );
+
+        for result in results {
+            match result {
+                Ok(output) if !output.success() => {
+                    eprintln!(
+                        "warning: post-build hook '{}' ({}) exited with code {}",
+                        output.path.display(),
+                        output.source,
+                        output.exit_code.unwrap_or(-1),
+                    );
+                    if !output.stderr.is_empty() {
+                        eprintln!("  stderr: {}", output.stderr.trim_end());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("warning: post-build hook failed to execute: {e}");
+                }
+                _ => {}
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -6717,7 +7254,8 @@ fn main() -> anyhow::Result<()> {
             spl,
             drift,
             fail_on,
-        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, *drift, fail_on),
+            theme,
+        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, *drift, fail_on, theme),
         Command::Similar {
             query,
             threshold,
@@ -6770,6 +7308,10 @@ fn main() -> anyhow::Result<()> {
             } => cmd_theme_install(&cli, source, path.as_deref(), name.as_deref(), *force),
             ThemeCommand::Remove { name } => cmd_theme_remove(&cli, name),
             ThemeCommand::Export { name, force } => cmd_theme_export(&cli, name, *force),
+        },
+        Command::Hook { command } => match command {
+            HookCommand::List { theme } => cmd_hook_list(&cli, theme),
+            HookCommand::Run { name, theme, extra } => cmd_hook_run(&cli, name, theme, extra),
         },
         Command::Serve { port, theme } => cmd_serve(&cli, *port, theme),
         Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),

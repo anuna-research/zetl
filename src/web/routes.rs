@@ -7,6 +7,8 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
 
+use crate::hooks;
+use crate::hooks::context::{build_hook_context, HookSaved};
 use crate::scanner::{body_text_ranges, page_slug_from_path};
 use crate::search::{
     byte_offset_to_line_col, detect_headings, extract_search_context, find_heading_for_offset,
@@ -208,6 +210,112 @@ pub async fn save_handler(
             eprintln!("reindex error: {e}");
             // File was saved; index is stale but not fatal
         }
+    }
+
+    // Fire on-save hooks asynchronously so the response returns immediately.
+    {
+        let vault_root = state.vault_root.clone();
+        let theme = state.theme.clone();
+        let content_length = body.len();
+        let rel_path = full_path
+            .strip_prefix(vault_root.as_ref())
+            .unwrap_or(&full_path)
+            .to_string_lossy()
+            .into_owned();
+        let page_name = full_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+
+        tokio::task::spawn_blocking(move || {
+            let theme_hooks = hooks::resolve_theme_hooks(&vault_root, &theme);
+            let manifest =
+                hooks::discover_hooks(&vault_root, theme_hooks.path());
+
+            if hooks::hooks_for(&manifest, "on-save").is_empty() {
+                return;
+            }
+
+            // Re-scan vault for fresh graph data used by hook context.
+            let files = match crate::scanner::scan_vault(&vault_root, &[]) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("on-save hook: scan error: {e}");
+                    return;
+                }
+            };
+            let file_index: Vec<(String, std::path::PathBuf)> = files
+                .iter()
+                .map(|f| (f.page_name.clone(), f.path.clone()))
+                .collect();
+            let mut resolved = std::collections::HashMap::new();
+            for file in &files {
+                for link in &file.links {
+                    let key = link.raw_target.clone();
+                    if !resolved.contains_key(&key) {
+                        if let Some(r) =
+                            crate::scanner::resolve_page_name(&link.target_page, &file_index)
+                        {
+                            resolved.insert(key, r);
+                        }
+                    }
+                }
+            }
+            let graph = crate::graph::LinkGraph::build(&files, &resolved);
+
+            let mut ctx = build_hook_context(
+                "on-save",
+                &vault_root,
+                &theme,
+                env!("CARGO_PKG_VERSION"),
+                &files,
+                &graph,
+            );
+            ctx.saved = Some(HookSaved {
+                file: rel_path.clone(),
+                page: page_name.clone(),
+                content_length,
+            });
+
+            let context_json = match serde_json::to_vec(&ctx) {
+                Ok(j) => j,
+                Err(e) => {
+                    eprintln!("on-save hook: json error: {e}");
+                    return;
+                }
+            };
+
+            let hook_env = hooks::HookEnv {
+                vault_root: vault_root.to_path_buf(),
+                theme: theme.clone(),
+                zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+                extra_vars: vec![
+                    ("ZETL_SAVED_FILE".into(), rel_path),
+                    ("ZETL_SAVED_PAGE".into(), page_name),
+                ],
+            };
+
+            let results = hooks::run_hooks(&manifest, "on-save", &context_json, &hook_env);
+            for result in results {
+                match result {
+                    Ok(output) if !output.success() => {
+                        eprintln!(
+                            "warning: on-save hook '{}' ({}) exited with code {}",
+                            output.path.display(),
+                            output.source,
+                            output.exit_code.unwrap_or(-1),
+                        );
+                        if !output.stderr.is_empty() {
+                            eprintln!("  stderr: {}", output.stderr.trim_end());
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("warning: on-save hook failed to execute: {e}");
+                    }
+                    _ => {}
+                }
+            }
+        });
     }
 
     StatusCode::OK.into_response()

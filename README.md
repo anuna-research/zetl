@@ -15,7 +15,8 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Page viewer** — Xanadu-inspired two-pane reader with context cards, bridge connectors, and wikilink navigation
 - **Web UI** — local web server with rendered pages, transclusion panels, backlink navigation, and inline editing
 - **Static site export** — generate a deployable HTML site from your vault (same look, no server required)
-- **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context
+- **Lifecycle hooks** — git-style executable hooks at `pre-build`, `post-build`, `post-index`, `post-check`, `pre-serve`, and `on-save` lifecycle points; receive vault context as JSON on stdin
+- **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context; themes can bundle hooks
 - **Content-addressable blocks** — BLAKE3 Merkle leaves for headings, paragraphs, code blocks, and SPL
 - **Incremental caching** — two-tier (mtime + hash) index for both wikilinks and reasoning theories
 - **Agent-friendly** — JSON by default, structured errors, non-zero exit codes
@@ -373,6 +374,65 @@ A theme that only changes the color scheme (override just `base.html`):
 ```
 
 The child templates (`index.html`, `page.html`, `folder.html`) automatically fall back to the built-ins and extend your custom `base.html`.
+
+### Hooks
+
+zetl supports git-style lifecycle hooks — executable scripts in `.zetl/hooks/` that run at defined points during vault operations. Hooks receive structured JSON context on stdin and environment variables, enabling custom automation without modifying the binary.
+
+```bash
+# List all active hooks for the current vault and theme
+zetl -d ./my-vault hook list
+zetl -d ./my-vault hook list --theme paper
+
+# Manually run a hook with real vault context (useful for testing)
+zetl -d ./my-vault hook run post-build
+zetl -d ./my-vault hook run on-save -- '{"saved":{"file":"test.md","page":"Test","content_length":100}}'
+```
+
+#### Lifecycle points
+
+| Hook | Trigger | Can Abort? |
+|------|---------|------------|
+| `pre-build` | Before `zetl build` renders pages | Yes |
+| `post-build` | After `zetl build` completes | No (warn only) |
+| `post-index` | After `zetl index` completes | No |
+| `post-check` | After `zetl check` collects diagnostics | No |
+| `pre-serve` | Before `zetl serve` starts the server | Yes |
+| `on-save` | After a page is saved in `zetl serve` | No |
+
+#### Writing a hook
+
+Create an executable file in `.zetl/hooks/` named after the lifecycle point:
+
+```bash
+# .zetl/hooks/post-build
+#!/bin/bash
+# Generate an RSS feed from pages with "date" frontmatter
+jq -r '.pages[] | select(.frontmatter.date) | ...' < /dev/stdin > "$ZETL_OUT_DIR/feed.xml"
+```
+
+```bash
+chmod +x .zetl/hooks/post-build
+```
+
+Every hook receives:
+- **stdin**: JSON context with vault metadata, page list, link graph, and hook-specific fields
+- **Environment**: `ZETL_HOOK`, `ZETL_VAULT_ROOT`, `ZETL_THEME`, `ZETL_VERSION`, plus hook-specific vars like `ZETL_OUT_DIR` and `ZETL_PORT`
+- **Working directory**: vault root
+
+Hooks have a 30-second timeout. Pre-hooks (`pre-build`, `pre-serve`) abort the parent operation on non-zero exit; all other hooks warn and continue.
+
+#### Theme-bundled hooks
+
+Themes can ship hooks in their `hooks/` subdirectory. When a theme is active (`--theme <name>`), its hooks run before vault hooks at each lifecycle point. Both theme and vault hooks run if both exist.
+
+```
+.zetl/themes/fountain/
+  hooks/
+    post-build    # runs automatically with --theme fountain
+  base.html
+  page.html
+```
 
 ## Compatibility
 

@@ -4931,3 +4931,275 @@ fn test_014_path_traversal_rejected() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// zetl hook list
+// ---------------------------------------------------------------------------
+
+/// Helper: create a hook file in the vault's .zetl/hooks/ directory.
+fn create_vault_hook(vault: &Path, name: &str, executable: bool) {
+    let hooks_dir = vault.join(".zetl/hooks");
+    fs::create_dir_all(&hooks_dir).unwrap();
+    let path = hooks_dir.join(name);
+    fs::write(&path, "#!/bin/sh\necho hook").unwrap();
+    if executable {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&path, perms).unwrap();
+        }
+    }
+}
+
+#[test]
+fn hook_list_empty_vault_json() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "list"]);
+    let json = run_json(&mut cmd);
+
+    assert_eq!(json["total"], 0);
+    assert!(json["hooks"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn hook_list_empty_vault_table() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["-f", "table", "hook", "list"]);
+    let output = cmd.output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("No hooks found."));
+}
+
+#[test]
+fn hook_list_vault_hooks_json() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+    create_vault_hook(tmp.path(), "post-build", true);
+    create_vault_hook(tmp.path(), "pre-build", false);
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "list"]);
+    let json = run_json(&mut cmd);
+
+    assert_eq!(json["total"], 2);
+    let hooks = json["hooks"].as_array().unwrap();
+
+    // Find the post-build hook
+    let post_build = hooks.iter().find(|h| h["name"] == "post-build").unwrap();
+    assert_eq!(post_build["source"], "vault");
+    assert_eq!(post_build["executable"], true);
+
+    // Find the pre-build hook (not executable)
+    let pre_build = hooks.iter().find(|h| h["name"] == "pre-build").unwrap();
+    assert_eq!(pre_build["source"], "vault");
+    assert_eq!(pre_build["executable"], false);
+}
+
+#[test]
+fn hook_list_vault_hooks_table() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+    create_vault_hook(tmp.path(), "post-build", true);
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["-f", "table", "hook", "list"]);
+    let output = cmd.output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("post-build"));
+    assert!(stdout.contains("vault"));
+    assert!(stdout.contains("yes"));
+}
+
+#[test]
+fn hook_list_ignores_unrecognized_hooks() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+    create_vault_hook(tmp.path(), "post-build", true);
+    // Create an unrecognized hook name — should be ignored
+    create_vault_hook(tmp.path(), "not-a-hook", true);
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "list"]);
+    let json = run_json(&mut cmd);
+
+    assert_eq!(json["total"], 1);
+    let hooks = json["hooks"].as_array().unwrap();
+    assert_eq!(hooks[0]["name"], "post-build");
+}
+
+// ---------------------------------------------------------------------------
+// hook run
+// ---------------------------------------------------------------------------
+
+/// Helper: create a vault hook with custom script body.
+fn create_vault_hook_with_script(vault: &Path, name: &str, script: &str) {
+    let hooks_dir = vault.join(".zetl/hooks");
+    fs::create_dir_all(&hooks_dir).unwrap();
+    let path = hooks_dir.join(name);
+    fs::write(&path, script).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&path, perms).unwrap();
+    }
+}
+
+#[test]
+fn hook_run_executes_and_prints_stdout() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello\n\nSome content.");
+    create_vault_hook_with_script(
+        tmp.path(),
+        "post-build",
+        "#!/bin/sh\necho \"hook executed\"",
+    );
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "run", "post-build"]);
+    let output = cmd.output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("hook executed"), "stdout: {stdout}");
+}
+
+#[test]
+fn hook_run_prints_stderr_to_stderr() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+    create_vault_hook_with_script(
+        tmp.path(),
+        "post-build",
+        "#!/bin/sh\necho \"stderr msg\" >&2\necho ok",
+    );
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "run", "post-build"]);
+    let output = cmd.output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stdout.contains("ok"), "stdout: {stdout}");
+    assert!(stderr.contains("stderr msg"), "stderr: {stderr}");
+}
+
+#[test]
+fn hook_run_exits_with_hook_exit_code() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+    create_vault_hook_with_script(
+        tmp.path(),
+        "post-build",
+        "#!/bin/sh\nexit 42",
+    );
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "run", "post-build"]);
+    let output = cmd.output().unwrap();
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(42));
+}
+
+#[test]
+fn hook_run_unknown_name_errors() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "run", "nonexistent"]);
+    let output = cmd.output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unknown hook name"), "stderr: {stderr}");
+}
+
+#[test]
+fn hook_run_no_executable_hook_errors() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+    // Hook exists but is not executable.
+    create_vault_hook(tmp.path(), "post-build", false);
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "run", "post-build"]);
+    let output = cmd.output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("no executable hook found"), "stderr: {stderr}");
+}
+
+#[test]
+fn hook_run_receives_vault_context_on_stdin() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "Alpha.md", "Link to [[Beta]]");
+    write_file(tmp.path(), "Beta.md", "Just a page.");
+
+    // Hook that reads stdin JSON and prints the hook name and page count.
+    create_vault_hook_with_script(
+        tmp.path(),
+        "post-build",
+        "#!/bin/sh\ncat",
+    );
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "run", "post-build"]);
+    let output = cmd.output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("not valid JSON: {e}\nraw: {stdout}"));
+    assert_eq!(json["hook"], "post-build");
+    assert_eq!(json["pages"].as_array().unwrap().len(), 2);
+    assert!(json["stats"]["total_pages"].as_u64().unwrap() >= 2);
+}
+
+#[test]
+fn hook_run_extra_json_merged_into_context() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+    create_vault_hook_with_script(
+        tmp.path(),
+        "post-build",
+        "#!/bin/sh\ncat",
+    );
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "run", "post-build", "--", "{\"custom_key\":\"custom_value\",\"number\":42}"]);
+    let output = cmd.output().unwrap();
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("not valid JSON: {e}\nraw: {stdout}"));
+    assert_eq!(json["hook"], "post-build");
+    assert_eq!(json["custom_key"], "custom_value");
+    assert_eq!(json["number"], 42);
+}
+
+#[test]
+fn hook_run_invalid_extra_json_errors() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello");
+    create_vault_hook_with_script(
+        tmp.path(),
+        "post-build",
+        "#!/bin/sh\ncat",
+    );
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["hook", "run", "post-build", "--", "not-valid-json"]);
+    let output = cmd.output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid JSON"), "stderr: {stderr}");
+}
