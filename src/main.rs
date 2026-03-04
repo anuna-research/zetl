@@ -74,7 +74,7 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
     if let Some(ref at_expr) = cli.at {
         let vault_root = std::fs::canonicalize(&cli.dir)
             .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-        return run_historical_pipeline(vault_root, at_expr);
+        return run_historical_pipeline(vault_root, at_expr, cli.verbose);
     }
 
     let vault_root = std::fs::canonicalize(&cli.dir)
@@ -249,7 +249,7 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
 /// 5. Reconstruct `file_index`, resolved_pages, and `LinkGraph` from the
 ///    cached files and return a fully-formed `Pipeline` with `snapshot` set.
 #[cfg(feature = "history")]
-fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str) -> Result<Pipeline> {
+fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> Result<Pipeline> {
     use zetl::history::cache::HistoricalIndexCache;
     use zetl::history::core::resolve_snapshot;
     use zetl::history::jj_backend::VcsBackend as _;
@@ -259,14 +259,35 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str) -> Result<Pipelin
     let backend = zetl::history::open_history(&vault_root)
         .context("opening jj workspace for --at query")?;
 
-    // list_changes with a large limit to get all history.
+    // list_changes with a large limit to get all history (OBS-011).
+    let history_load_start = Instant::now();
     let snapshots = backend
         .list_changes(10_000)
         .context("listing jj snapshots")?;
+    let history_load_ms = history_load_start.elapsed().as_millis();
+    if verbose > 0 {
+        eprintln!(
+            "[zetl] history: loaded {} snapshots duration_ms={}",
+            snapshots.len(),
+            history_load_ms
+        );
+    }
 
     let now = chrono::Local::now().fixed_offset();
+    // OBS-011: time --at expression resolution.
+    let at_resolve_start = Instant::now();
     let snapshot_info = resolve_snapshot(at_expr, now, &snapshots)
         .with_context(|| format!("resolving --at expression {at_expr:?}"))?;
+    let at_resolve_ms = at_resolve_start.elapsed().as_millis();
+    if verbose > 0 {
+        eprintln!(
+            "[zetl] at: resolved {:?} → {} (change={}) duration_ms={}",
+            at_expr,
+            snapshot_info.timestamp.to_rfc3339(),
+            snapshot_info.change_id,
+            at_resolve_ms
+        );
+    }
 
     let vault_root_hash =
         zetl::history::core::extract_vault_root_hash_from_description(
@@ -280,11 +301,27 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str) -> Result<Pipelin
                 )
             })?;
 
+    // OBS-011: time historical cache load and report hit/miss.
     let cache = HistoricalIndexCache::with_default_capacity();
-    let file_map = cache
+    let cache_load_start = Instant::now();
+    let file_map_opt = cache
         .load(&vault_root, &vault_root_hash)
-        .context("reading historical index cache")?
-        .ok_or_else(|| {
+        .context("reading historical index cache")?;
+    let cache_load_ms = cache_load_start.elapsed().as_millis();
+    if verbose > 0 {
+        if file_map_opt.is_some() {
+            eprintln!(
+                "[zetl] at: cache hit vault_root_hash={} duration_ms={}",
+                vault_root_hash, cache_load_ms
+            );
+        } else {
+            eprintln!(
+                "[zetl] at: cache miss vault_root_hash={} duration_ms={}",
+                vault_root_hash, cache_load_ms
+            );
+        }
+    }
+    let file_map = file_map_opt.ok_or_else(|| {
             anyhow::anyhow!(
                 "No cached index for snapshot {} (vault_root_hash={}). \
                  Run `zetl index` at that point in time to populate the cache.",
@@ -500,13 +537,21 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     #[cfg(feature = "history")]
     {
         let vault_root_hash = load_vault_root_hex(&pipeline.vault_root).unwrap_or(None);
+        // OBS-011: time snapshot creation.
+        let snap_start = Instant::now();
         match zetl::history::auto_snapshot(
             &pipeline.vault_root,
             vault_root_hash.as_deref(),
         ) {
             Ok(Some(change_id)) => {
+                let snap_ms = snap_start.elapsed().as_millis();
                 if cli.verbose > 0 {
-                    eprintln!("[zetl] snapshot: {change_id}");
+                    eprintln!(
+                        "[zetl] snapshot: created change {} (vault_root_hash={}) duration_ms={}",
+                        change_id,
+                        vault_root_hash.as_deref().unwrap_or("unknown"),
+                        snap_ms
+                    );
                 }
             }
             Ok(None) => {} // deduplicated — vault state unchanged
@@ -1100,10 +1145,18 @@ fn cmd_watch(cli: &Cli, debounce_ms: u64, exec: Option<&str>) -> Result<()> {
             let hash = load_vault_root_hex(&vault_root).ok().flatten();
             let verbose = cli.verbose;
             std::thread::spawn(move || {
+                // OBS-011: time async snapshot creation.
+                let snap_start = std::time::Instant::now();
                 match zetl::history::auto_snapshot(&vr, hash.as_deref()) {
                     Ok(Some(change_id)) => {
+                        let snap_ms = snap_start.elapsed().as_millis();
                         if verbose > 0 {
-                            eprintln!("[zetl watch] snapshot: {change_id}");
+                            eprintln!(
+                                "[zetl watch] snapshot: created change {} (vault_root_hash={}) duration_ms={}",
+                                change_id,
+                                hash.as_deref().unwrap_or("unknown"),
+                                snap_ms
+                            );
                         }
                     }
                     Ok(None) => {} // deduplicated — graph unchanged
@@ -2002,6 +2055,58 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
             .sum()
     });
 
+    // OBS-012: collect history storage stats when the feature is available.
+    #[cfg(feature = "history")]
+    let history_stats: Option<serde_json::Value> = {
+        use zetl::history::jj_backend::VcsBackend as _;
+        (|| -> Option<serde_json::Value> {
+            let backend = zetl::history::open_history(&pipeline.vault_root).ok()?;
+            let snapshots = backend.list_changes(10_000).ok()?;
+            if snapshots.is_empty() {
+                return None;
+            }
+            let snapshot_count = snapshots.len();
+            let oldest = snapshots.last().map(|s| s.timestamp.to_rfc3339());
+            let newest = snapshots.first().map(|s| s.timestamp.to_rfc3339());
+
+            // Count distinct vault_root_hash values (deduplicated states).
+            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for snap in &snapshots {
+                if let Some(h) = zetl::history::core::extract_vault_root_hash_from_description(&snap.description) {
+                    seen.insert(h);
+                }
+            }
+            let unique_states = seen.len();
+
+            // Scan cache directory for entry count and total size.
+            let history_dir = pipeline.vault_root.join(".zetl").join("history");
+            let mut cache_entries = 0usize;
+            let mut total_bytes = 0u64;
+            if let Ok(rd) = std::fs::read_dir(&history_dir) {
+                for entry in rd.flatten() {
+                    if entry.path().extension().map(|e| e == "json").unwrap_or(false) {
+                        cache_entries += 1;
+                        if let Ok(meta) = entry.metadata() {
+                            total_bytes += meta.len();
+                        }
+                    }
+                }
+            }
+            let cache_size_mb = total_bytes as f64 / (1024.0 * 1024.0);
+
+            Some(serde_json::json!({
+                "snapshot_count": snapshot_count,
+                "unique_states": unique_states,
+                "oldest": oldest,
+                "newest": newest,
+                "cache_entries": cache_entries,
+                "cache_size_mb": (cache_size_mb * 10.0).round() / 10.0,
+            }))
+        })()
+    };
+    #[cfg(not(feature = "history"))]
+    let history_stats: Option<serde_json::Value> = None;
+
     #[derive(Serialize)]
     struct StatsOutput {
         #[serde(flatten)]
@@ -2010,6 +2115,8 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
         spl_blocks: usize,
         grounded_spl_blocks: usize,
         explicitly_grounded_facts: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        history: Option<serde_json::Value>,
     }
 
     let output = StatsOutput {
@@ -2018,6 +2125,7 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
         spl_blocks,
         grounded_spl_blocks,
         explicitly_grounded_facts,
+        history: history_stats,
     };
 
     match cli.format {
@@ -2068,6 +2176,36 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
                 }
                 println!("Most linked pages:");
                 println!("{ml_table}");
+            }
+
+            // OBS-012: print history storage section when available.
+            if let Some(ref hs) = output.history {
+                println!();
+                println!("History:");
+                println!(
+                    "  Snapshots:      {}",
+                    hs["snapshot_count"].as_u64().unwrap_or(0)
+                );
+                println!(
+                    "  Unique states:  {}  (vault_root_hash deduplication)",
+                    hs["unique_states"].as_u64().unwrap_or(0)
+                );
+                println!(
+                    "  Oldest:         {}",
+                    hs["oldest"].as_str().unwrap_or("N/A")
+                );
+                println!(
+                    "  Newest:         {}",
+                    hs["newest"].as_str().unwrap_or("N/A")
+                );
+                println!(
+                    "  Cache entries:  {}",
+                    hs["cache_entries"].as_u64().unwrap_or(0)
+                );
+                println!(
+                    "  Cache size:     {:.1} MB",
+                    hs["cache_size_mb"].as_f64().unwrap_or(0.0)
+                );
             }
         }
     }
@@ -4243,6 +4381,7 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         search_index: std::sync::Arc::new(search_index),
         engine: std::sync::Arc::new(engine),
         theme: theme.to_string(),
+        verbose: cli.verbose > 0,
     };
 
     let rt = tokio::runtime::Runtime::new()?;

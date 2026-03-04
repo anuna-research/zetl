@@ -32,8 +32,21 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
 
     let mut vault_ctx = build_vault_context(&data, &vault_name);
     #[cfg(feature = "history")]
-    if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
-        vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+    {
+        // OBS-013: time vault history context build.
+        let hist_start = std::time::Instant::now();
+        if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+            let hist_ms = hist_start.elapsed().as_millis();
+            if state.verbose {
+                eprintln!(
+                    "[zetl] history-context: vault trend={} points recent={} changes duration_ms={}",
+                    hist.trend.len(),
+                    hist.recent_changes.len(),
+                    hist_ms
+                );
+            }
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
     }
     match state.engine.render_index(&vault_ctx, "serve", "", "") {
         Ok(html) => Html(html).into_response(),
@@ -71,8 +84,21 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
             let folder_name = slug.rsplit('/').next().unwrap_or(slug);
             let mut vault_ctx = build_vault_context(&data, &vault_name);
             #[cfg(feature = "history")]
-            if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
-                vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+            {
+                // OBS-013: time vault history context build.
+                let hist_start = std::time::Instant::now();
+                if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+                    let hist_ms = hist_start.elapsed().as_millis();
+                    if state.verbose {
+                        eprintln!(
+                            "[zetl] history-context: vault trend={} points recent={} changes duration_ms={}",
+                            hist.trend.len(),
+                            hist.recent_changes.len(),
+                            hist_ms
+                        );
+                    }
+                    vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+                }
             }
             let folder_ctx = build_folder_context(&data, slug, folder_name);
             return match state
@@ -170,8 +196,22 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
     page_ctx.transclusion_cards = transclusion_cards;
     page_ctx.raw_escaped = raw_content.map(|c| html_escape(&c));
     #[cfg(feature = "history")]
-    if let Some(hist) = crate::history::build_template_page_history_context(&page_name, &state.vault_root) {
-        page_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+    {
+        // OBS-013: time per-page history context build.
+        let hist_start = std::time::Instant::now();
+        if let Some(hist) = crate::history::build_template_page_history_context(&page_name, &state.vault_root) {
+            let hist_ms = hist_start.elapsed().as_millis();
+            if state.verbose {
+                eprintln!(
+                    "[zetl] history-context: page {:?} trend={} points created={} duration_ms={}",
+                    page_name,
+                    hist.link_trend.len(),
+                    hist.created_at,
+                    hist_ms
+                );
+            }
+            page_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
     }
     #[cfg(feature = "history")]
     {
@@ -186,8 +226,21 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
 
     let mut vault_ctx = build_vault_context(&data, &vault_name);
     #[cfg(feature = "history")]
-    if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
-        vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+    {
+        // OBS-013: time vault history context build.
+        let hist_start = std::time::Instant::now();
+        if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+            let hist_ms = hist_start.elapsed().as_millis();
+            if state.verbose {
+                eprintln!(
+                    "[zetl] history-context: vault trend={} points recent={} changes duration_ms={}",
+                    hist.trend.len(),
+                    hist.recent_changes.len(),
+                    hist_ms
+                );
+            }
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
     }
     match state.engine.render_page(&vault_ctx, &page_ctx, "serve", "", "") {
         Ok(html) => Html(html).into_response(),
@@ -1179,6 +1232,7 @@ mod tests {
             search_index: Arc::new(search_index),
             engine: Arc::new(TemplateEngine::new(vault_root, theme, false, false)),
             theme: theme.to_string(),
+            verbose: false,
         }
     }
 

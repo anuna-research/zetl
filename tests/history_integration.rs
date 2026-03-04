@@ -1321,6 +1321,7 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
         search_index: Arc::new(search_index),
         engine: Arc::new(TemplateEngine::new(vault_root, "default", true, false)),
         theme: "default".to_string(),
+        verbose: false,
     }
 }
 
