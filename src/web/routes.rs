@@ -30,7 +30,11 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
 
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
+    #[cfg(feature = "history")]
+    if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+        vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+    }
     match state.engine.render_index(&vault_ctx, "serve", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
@@ -65,7 +69,11 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
 
         if has_pages {
             let folder_name = slug.rsplit('/').next().unwrap_or(slug);
-            let vault_ctx = build_vault_context(&data, &vault_name);
+            let mut vault_ctx = build_vault_context(&data, &vault_name);
+            #[cfg(feature = "history")]
+            if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+                vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+            }
             let folder_ctx = build_folder_context(&data, slug, folder_name);
             return match state
                 .engine
@@ -162,7 +170,11 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
     page_ctx.transclusion_cards = transclusion_cards;
     page_ctx.raw_escaped = raw_content.map(|c| html_escape(&c));
 
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
+    #[cfg(feature = "history")]
+    if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+        vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+    }
     match state.engine.render_page(&vault_ctx, &page_ctx, "serve", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
