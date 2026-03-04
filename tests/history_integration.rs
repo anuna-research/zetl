@@ -7,7 +7,8 @@
 //! TEST-080–089 are covered here (task-jj-backend).
 //! TEST-090–091 are covered here (task-time-expression-parser).
 //! TEST-092–094 are covered here (task-auto-snapshot).
-//! Remaining tests will be added incrementally as IMPL-017 tasks complete.
+//! TEST-095–099 are covered here (task-historical-index-cache).
+//! TEST-100–103 are covered here (task-point-in-time-query).
 
 use std::fs;
 use std::path::Path;
@@ -485,5 +486,161 @@ fn test_094_auto_snapshot_new_commit_on_hash_change() {
         changes[1].description.contains(&hash1),
         "oldest commit must embed hash1; got {:?}",
         changes[1].description
+    );
+}
+
+// ── Point-in-time query tests (REQ-077, REQ-078, CON-024) ─────────────────────
+// TEST-100 through TEST-104 cover task-point-in-time-query-v1.
+
+// TEST-100: extract_vault_root_hash_from_description parses a valid description.
+#[test]
+fn test_100_extract_hash_from_description_valid() {
+    use zetl::history::core::extract_vault_root_hash_from_description;
+
+    let hash = "a".repeat(64);
+    let desc = format!("zetl-snapshot vault_root_hash={hash}");
+    let result = extract_vault_root_hash_from_description(&desc);
+    assert_eq!(result, Some(hash), "must parse 64-char hex hash from description");
+}
+
+// TEST-101: extract_vault_root_hash_from_description returns None for missing hash.
+#[test]
+fn test_101_extract_hash_from_description_missing() {
+    use zetl::history::core::extract_vault_root_hash_from_description;
+
+    assert!(
+        extract_vault_root_hash_from_description("zetl-snapshot").is_none(),
+        "plain snapshot description without hash must return None"
+    );
+    assert!(
+        extract_vault_root_hash_from_description("").is_none(),
+        "empty string must return None"
+    );
+    // Too short
+    assert!(
+        extract_vault_root_hash_from_description("vault_root_hash=abc123").is_none(),
+        "short hash must return None"
+    );
+}
+
+// TEST-102: resolve_snapshot + HistoricalIndexCache round-trip (REQ-077, REQ-078).
+//
+// Simulates what run_historical_pipeline does:
+// 1. Create two snapshots with distinct vault_root_hash values.
+// 2. Store the corresponding file sets in HistoricalIndexCache.
+// 3. Resolve a time expression that targets the first snapshot.
+// 4. Load from cache and verify the correct files are returned.
+#[test]
+fn test_102_pit_resolve_and_cache_roundtrip() {
+    use chrono::{FixedOffset, TimeZone as _};
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::core::{extract_vault_root_hash_from_description, resolve_snapshot};
+    use zetl::history::jj_backend::ChangeInfo;
+
+    let hash1 = "1".repeat(64);
+    let hash2 = "2".repeat(64);
+
+    let utc = FixedOffset::east_opt(0).unwrap();
+    let ts1 = utc.with_ymd_and_hms(2026, 1, 1, 10, 0, 0).unwrap();
+    let ts2 = utc.with_ymd_and_hms(2026, 2, 1, 10, 0, 0).unwrap();
+
+    // Two synthetic snapshots (newest-first order required by resolve_snapshot).
+    let snapshots = vec![
+        ChangeInfo {
+            change_id: "bbbbbbbbbbbb".to_owned(),
+            commit_id: "deadbeef0002".to_owned(),
+            timestamp: ts2,
+            description: format!("zetl-snapshot vault_root_hash={hash2}"),
+        },
+        ChangeInfo {
+            change_id: "aaaaaaaaaaaa".to_owned(),
+            commit_id: "deadbeef0001".to_owned(),
+            timestamp: ts1,
+            description: format!("zetl-snapshot vault_root_hash={hash1}"),
+        },
+    ];
+
+    // Resolve to the first snapshot via an ISO date before ts2.
+    let now = utc.with_ymd_and_hms(2026, 3, 1, 0, 0, 0).unwrap();
+    let snap = resolve_snapshot("2026-01-15", now, &snapshots).unwrap();
+    assert_eq!(snap.change_id, "aaaaaaaaaaaa", "must resolve to the first snapshot");
+
+    // Extract vault_root_hash from the resolved snapshot's description.
+    let resolved_hash =
+        extract_vault_root_hash_from_description(&snap.description).unwrap();
+    assert_eq!(resolved_hash, hash1);
+
+    // Store/load from HistoricalIndexCache.
+    let dir = tempfile::TempDir::new().unwrap();
+    let cache = HistoricalIndexCache::with_default_capacity();
+
+    // Use dummy ParsedFile (reuse helper from the cache tests in the same file).
+    use std::time::SystemTime;
+    let dummy = zetl::types::ParsedFile {
+        path: std::path::PathBuf::from("v1-note.md"),
+        page_name: "v1-note".to_owned(),
+        links: vec![],
+        spl_blocks: vec![],
+        diagnostics: vec![],
+        mtime: SystemTime::UNIX_EPOCH,
+        merkle_leaves: vec![],
+        file_merkle: None,
+    };
+
+    cache.store(dir.path(), &hash1, &[dummy]).unwrap();
+
+    let loaded = cache.load(dir.path(), &resolved_hash).unwrap()
+        .expect("must load the stored entry");
+    assert!(
+        loaded.contains_key(std::path::Path::new("v1-note.md")),
+        "loaded files must contain the stored file"
+    );
+}
+
+// TEST-103: cmd_index stores the current index in HistoricalIndexCache (REQ-079).
+//
+// Simulates the `zetl index` auto_snapshot + cache-store flow:
+// auto_snapshot produces a commit with vault_root_hash in the description;
+// the historical cache is then populated so future --at queries can load it.
+#[test]
+fn test_103_auto_snapshot_and_cache_are_linked() {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::core::extract_vault_root_hash_from_description;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+    write(vault_root, "note.md", "# Hello");
+
+    let hash = "e".repeat(64);
+
+    // Simulate what cmd_index does: auto_snapshot then store in cache.
+    zetl::history::auto_snapshot(vault_root, Some(&hash))
+        .expect("auto_snapshot must succeed");
+
+    let cache = HistoricalIndexCache::with_default_capacity();
+    let files = vec![zetl::types::ParsedFile {
+        path: vault_root.join("note.md"),
+        page_name: "note".to_owned(),
+        links: vec![],
+        spl_blocks: vec![],
+        diagnostics: vec![],
+        mtime: std::time::SystemTime::UNIX_EPOCH,
+        merkle_leaves: vec![],
+        file_merkle: None,
+    }];
+    cache.store(vault_root, &hash, &files).unwrap();
+
+    // Verify the snapshot description embeds the hash.
+    let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let changes = backend.list_changes(1).unwrap();
+    let embedded = extract_vault_root_hash_from_description(&changes[0].description);
+    assert_eq!(embedded.as_deref(), Some(hash.as_str()));
+
+    // Verify the cache entry is loadable.
+    let loaded = cache.load(vault_root, &hash).unwrap();
+    assert!(loaded.is_some(), "cache entry must be present after store");
+    assert!(
+        loaded.unwrap().contains_key(&vault_root.join("note.md")),
+        "loaded entry must contain note.md"
     );
 }

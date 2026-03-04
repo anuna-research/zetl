@@ -31,6 +31,12 @@ pub struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
+    /// Query vault state at a historical point in time (requires --features history).
+    /// Accepts ISO 8601 dates ("2024-01-15"), relative expressions ("3 days ago",
+    /// "last monday"), or VCS refs ("HEAD~1", change-ID prefix).
+    #[arg(long, value_name = "TIME-EXPR")]
+    pub at: Option<String>,
+
     #[command(subcommand)]
     pub command: Command,
 }
