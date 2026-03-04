@@ -1,12 +1,12 @@
 {
-  "task_id": "vcs-init",
-  "token_budget": 6000,
-  "tokens_used": 109,
+  "task_id": "time-expression-parser",
+  "token_budget": 5000,
+  "tokens_used": 139,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement silent VCS initialisation: detect .git/, create .zetl/jj/, configure jj workspace with vault root as working copy; idempotent; no user-visible output (REQ-075, ADR-044, ADR-045)",
-      "token_cost": 46,
+      "content": "Implement pure parse_time_expr() supporting ISO 8601, relative natural-language ('yesterday', '3 days ago', 'last monday'), and git refs (HEAD~N, branch names) (REQ-077, CON-024)",
+      "token_cost": 44,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 6 files (+749, -11): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/history/jj_backend.rs, src/history/mod.rs and 1 more",
       "token_cost": 35,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-vcs-init-changes",
+      "content": "Modified 4 files (+139, -13): .hence/context-manifest.json, src/history/jj_backend.rs, src/main.rs, tests/history_integration.rs",
+      "token_cost": 32,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T06:50:52Z"
+  "constructed_at": "2026-03-04T07:03:42Z"
 }
