@@ -19,3 +19,45 @@
 
 pub mod core;
 pub mod jj_backend;
+
+use std::path::Path;
+
+use jj_backend::VcsBackend as _;
+
+/// Create a jj snapshot after index completion (REQ-076, ADR-048).
+///
+/// - Opens or initialises the jj workspace at `.zetl/jj/`.
+/// - Embeds `vault_root_hash` in the commit description for traceability.
+/// - Skips the snapshot when the most recent commit already records the same
+///   `vault_root_hash` (fast content-hash deduplication).
+/// - The jj backend also deduplicates independently by tree hash, so this
+///   function is safe to call even when the caller skips the hash check.
+///
+/// Returns `Ok(Some(change_id))` when a new snapshot was committed,
+/// `Ok(None)` when deduplicated (vault state unchanged), or an error if the
+/// jj workspace could not be opened or initialised.
+pub fn auto_snapshot(vault_root: &Path, vault_root_hash: Option<&str>) -> anyhow::Result<Option<String>> {
+    let mut backend = jj_backend::JjBackend::open_or_init_at_vault_root(vault_root)?;
+
+    let description = match vault_root_hash {
+        Some(hash) => format!("zetl-snapshot vault_root_hash={hash}"),
+        None => "zetl-snapshot".to_owned(),
+    };
+
+    // Fast deduplication: skip if the most recent commit already carries this
+    // vault_root_hash (REQ-076, ADR-048).
+    if let Some(hash) = vault_root_hash {
+        let already_current = backend
+            .list_changes(1)
+            .ok()
+            .and_then(|changes| changes.into_iter().next())
+            .map(|c| c.description.contains(hash))
+            .unwrap_or(false);
+
+        if already_current {
+            return Ok(None);
+        }
+    }
+
+    backend.snapshot(&description)
+}
