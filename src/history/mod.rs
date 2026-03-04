@@ -161,6 +161,105 @@ pub fn build_backlink_since_map(
     result
 }
 
+/// Build the `history` object for hook context stdin (REQ-090, CON-016-001).
+///
+/// Returns a JSON object with:
+/// - `snapshot_count` — total number of raw snapshots
+/// - `oldest` — RFC 3339 timestamp of the oldest snapshot (null if none)
+/// - `newest` — RFC 3339 timestamp of the newest snapshot (null if none)
+/// - `vault_root_hash` — hash embedded in the most recent snapshot (null if absent)
+/// - `previous_vault_root_hash` — hash from the second-most-recent distinct state (null if absent)
+/// - `delta` — [`core::GraphDelta`] between the previous and current state (null if unavailable)
+///
+/// Returns [`serde_json::Value::Null`] when history is unavailable (no workspace,
+/// no snapshots, or any error). Errors are swallowed so hooks always receive either
+/// a populated object or `null`.
+pub fn build_hook_history_context(vault_root: &Path) -> serde_json::Value {
+    use cache::HistoricalIndexCache;
+    use core::{compute_graph_delta, extract_vault_root_hash_from_description};
+    use jj_backend::VcsBackend as _;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    let backend = match open_history(vault_root) {
+        Ok(b) => b,
+        Err(_) => return serde_json::Value::Null,
+    };
+
+    let snapshots = match backend.list_changes(10_000) {
+        Ok(s) if !s.is_empty() => s,
+        _ => return serde_json::Value::Null,
+    };
+
+    let snapshot_count = snapshots.len();
+    let oldest: serde_json::Value = snapshots
+        .last()
+        .map(|s| serde_json::Value::String(s.timestamp.to_rfc3339()))
+        .unwrap_or(serde_json::Value::Null);
+    let newest: serde_json::Value = snapshots
+        .first()
+        .map(|s| serde_json::Value::String(s.timestamp.to_rfc3339()))
+        .unwrap_or(serde_json::Value::Null);
+
+    // Walk snapshots newest-first to find the two most recent distinct
+    // vault_root_hash values (skipping duplicates).
+    let mut distinct: Vec<(String, usize)> = Vec::new(); // (hash, index in snapshots)
+    for (i, snap) in snapshots.iter().enumerate() {
+        if let Some(hash) = extract_vault_root_hash_from_description(&snap.description) {
+            // Include only when this hash differs from the most recently added one.
+            let is_new = distinct.last().map(|(h, _)| h != &hash).unwrap_or(true);
+            if is_new {
+                distinct.push((hash, i));
+            }
+        }
+        if distinct.len() >= 2 {
+            break;
+        }
+    }
+
+    let vault_root_hash: serde_json::Value = distinct
+        .first()
+        .map(|(h, _)| serde_json::Value::String(h.clone()))
+        .unwrap_or(serde_json::Value::Null);
+    let previous_vault_root_hash: serde_json::Value = distinct
+        .get(1)
+        .map(|(h, _)| serde_json::Value::String(h.clone()))
+        .unwrap_or(serde_json::Value::Null);
+
+    // Compute delta between the two most recent distinct states.
+    let delta: serde_json::Value = if distinct.len() >= 2 {
+        let cache = HistoricalIndexCache::with_default_capacity();
+
+        let load_files = |hash: &str| -> Option<Vec<crate::types::ParsedFile>> {
+            let file_map: HashMap<PathBuf, crate::types::ParsedFile> =
+                cache.load(vault_root, hash).ok().flatten()?;
+            Some(file_map.into_values().collect())
+        };
+
+        let curr_files = load_files(&distinct[0].0);
+        let prev_files = load_files(&distinct[1].0);
+
+        match (prev_files, curr_files) {
+            (Some(prev), Some(curr)) => {
+                let d = compute_graph_delta(&prev, &curr);
+                serde_json::to_value(d).unwrap_or(serde_json::Value::Null)
+            }
+            _ => serde_json::Value::Null,
+        }
+    } else {
+        serde_json::Value::Null
+    };
+
+    serde_json::json!({
+        "snapshot_count": snapshot_count,
+        "oldest": oldest,
+        "newest": newest,
+        "vault_root_hash": vault_root_hash,
+        "previous_vault_root_hash": previous_vault_root_hash,
+        "delta": delta,
+    })
+}
+
 /// Create a jj snapshot after index completion (REQ-076, ADR-048).
 ///
 /// - Opens or initialises the jj workspace at `.zetl/jj/`.
