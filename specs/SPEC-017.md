@@ -548,24 +548,29 @@ The implementation SHALL use jj-lib instead of git subprocesses. When `--from` i
 
 **Default baseline (no arguments).** SPEC-007's CON-021 defines the no-arg default as `HEAD~1`, which requires git. When the `history` feature is enabled, the default baseline SHALL be the **previous snapshot** — the most recent jj snapshot whose `vault_root_hash` differs from the current one. This generalises `HEAD~1` to non-git vaults: in a git-tracked vault the previous snapshot typically corresponds to `HEAD~1` or a state between commits; in a non-git vault it is the last distinct graph state captured by `zetl index`. If no previous snapshot exists (only one snapshot in history), the system SHALL error with code `NO_PREVIOUS_SNAPSHOT` and a message: `"Only one snapshot exists. Run zetl index after making changes to create a diff baseline."`.
 
-The `from` field in diff output SHALL reflect the resolved baseline:
+The `from` field in diff output SHALL preserve CON-021's existing fields (`ref`, `commit`, `timestamp`) and MAY add optional extension fields. Existing consumers that parse only CON-021 fields SHALL NOT break.
 
 ```json
 {
   "from": {
     "ref": "@-",
-    "snapshot": "2026-03-03T16:45:00Z",
+    "commit": null,
+    "timestamp": "2026-03-03T16:45:00Z",
     "vault_root_hash": "b7e2f4a0..."
   }
 }
 ```
 
-When a git ref was used: `"ref"` contains the original ref string. When the default (previous snapshot) was used: `"ref"` is `"@-"` (jj notation for previous change, used internally — not exposed to the user as syntax they need to learn).
+Field semantics:
+- `ref`: the original ref string when `--from` was used; `"@-"` when the default (previous snapshot) baseline was used
+- `commit`: the git commit SHA if the baseline resolves to a git commit; `null` when the baseline is a jj-only snapshot with no corresponding git commit (non-git vaults, or edits between git commits)
+- `timestamp`: ISO 8601 timestamp of the baseline (always present; preserves CON-021 contract)
+- `vault_root_hash`: BLAKE3 vault root hash at the baseline (new optional field; absent in SPEC-007 fallback mode)
 
 When the `history` feature is not compiled in, `zetl diff` SHALL fall back to the SPEC-007 git-subprocess implementation with its `HEAD~1` default.
 
 Trace:
-- TEST-091, TEST-092, TEST-112
+- TEST-091, TEST-092, TEST-112, TEST-113
 - CON-021 (output schema preserved; default baseline extended)
 
 ### REQ-084: Graceful Degradation
@@ -1382,14 +1387,14 @@ Returns a `GraphDelta` between two time points:
 { "error": { "code": "NO_HISTORY", "message": "No history available." } }
 { "error": { "code": "SNAPSHOT_NOT_FOUND", "message": "No snapshot found at or before 2025-01-01. Earliest snapshot: 2026-02-20T09:00:00Z." } }
 { "error": { "code": "PAGE_NOT_FOUND", "message": "Page 'Nonexistent' not found in any snapshot." } }
-{ "error": { "code": "NO_PREVIOUS_SNAPSHOT", "message": "Only one snapshot exists. Run zetl index after making changes to create a diff baseline." } }
 ```
 
 - HTTP 404 with `NO_HISTORY` when no snapshots exist
 - HTTP 404 with `SNAPSHOT_NOT_FOUND` when the requested time is before the earliest snapshot (mirrors CLI `--at` semantics from CON-024)
 - HTTP 404 with `PAGE_NOT_FOUND` when the requested page does not exist (`/api/history/page/{name}` only)
-- HTTP 409 with `NO_PREVIOUS_SNAPSHOT` when `/api/history/diff` is called without explicit bounds and only one snapshot exists
-- HTTP 400 for malformed parameters (invalid ISO 8601, missing required params)
+- HTTP 400 for malformed parameters (invalid ISO 8601, missing required params). For `/api/history/diff`, both `from` and `to` are required; omitting either is a 400 error.
+
+Note: `NO_PREVIOUS_SNAPSHOT` applies only to the CLI `zetl diff` command (REQ-083) when invoked without arguments. The `/api/history/diff` endpoint always requires explicit `from` and `to` parameters and does not support a default baseline.
 
 **Implements:** REQ-087
 
