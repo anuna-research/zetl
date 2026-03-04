@@ -134,6 +134,37 @@ pub fn resolve_snapshot<'a>(
     }
 }
 
+// ─── Snapshot description helpers ────────────────────────────────────────────
+
+/// Extract the `vault_root_hash` value embedded in a jj snapshot description
+/// of the form `"zetl-snapshot vault_root_hash=<64-hex-char-hash>"`.
+///
+/// Returns `None` when the description does not contain a 64-character
+/// lowercase hex hash.
+///
+/// # Examples
+///
+/// ```
+/// use zetl::history::core::extract_vault_root_hash_from_description;
+///
+/// // Exactly 64 hex digits after the key.
+/// let hash = "a".repeat(64);
+/// let desc = format!("zetl-snapshot vault_root_hash={hash}");
+/// assert!(extract_vault_root_hash_from_description(&desc).is_some());
+///
+/// assert!(extract_vault_root_hash_from_description("zetl-snapshot").is_none());
+/// ```
+pub fn extract_vault_root_hash_from_description(description: &str) -> Option<String> {
+    for part in description.split_whitespace() {
+        if let Some(hash) = part.strip_prefix("vault_root_hash=") {
+            if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Some(hash.to_owned());
+            }
+        }
+    }
+    None
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /// Parse `HEAD` → `Some(0)` and `HEAD~N` → `Some(N)`.

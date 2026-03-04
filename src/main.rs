@@ -24,6 +24,15 @@ use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, 
 
 // ── Common pipeline ────────────────────────────────────────────────────────
 
+/// Snapshot metadata included in JSON output when --at is used (REQ-077, CON-024).
+#[derive(Clone, Serialize)]
+struct SnapshotInfo {
+    change_id: String,
+    commit_id: String,
+    timestamp: String,
+    description: String,
+}
+
 /// Scan and cache efficiency counters collected during run_pipeline (OBS-007, OBS-009).
 struct ScanStats {
     /// Files that passed the Tier-1 mtime check (no re-read needed).
@@ -54,9 +63,29 @@ struct Pipeline {
     scan_stats: ScanStats,
     /// Page names backed by real files (for dead-link detection in web view).
     graph_resolved: std::collections::HashSet<String>,
+    /// Set to Some when --at resolved a historical snapshot (REQ-077, CON-024).
+    snapshot: Option<SnapshotInfo>,
 }
 
 fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
+    // Handle --at for historical point-in-time queries (REQ-077, REQ-078, CON-024).
+    if let Some(ref at_expr) = cli.at {
+        #[cfg(feature = "history")]
+        {
+            let vault_root = std::fs::canonicalize(&cli.dir)
+                .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+            return run_historical_pipeline(vault_root, at_expr);
+        }
+        #[cfg(not(feature = "history"))]
+        {
+            let _ = at_expr;
+            anyhow::bail!(
+                "--at requires the 'history' Cargo feature; \
+                 recompile with `--features history`"
+            );
+        }
+    }
+
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
@@ -211,6 +240,123 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
         vault_root,
         scan_stats,
         graph_resolved,
+        snapshot: None,
+    })
+}
+
+// ── Historical pipeline (--at) ─────────────────────────────────────────────
+
+/// Build a Pipeline from a historical jj snapshot identified by `at_expr`
+/// (REQ-077, REQ-078, CON-024).
+///
+/// Resolution order:
+/// 1. Open JjBackend at `vault_root`.
+/// 2. List all snapshots (newest-first) and resolve `at_expr` with the time
+///    parser.
+/// 3. Extract `vault_root_hash` from the snapshot description.
+/// 4. Load the historical index from `HistoricalIndexCache`.
+/// 5. Reconstruct `file_index`, resolved_pages, and `LinkGraph` from the
+///    cached files and return a fully-formed `Pipeline` with `snapshot` set.
+#[cfg(feature = "history")]
+fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str) -> Result<Pipeline> {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::core::resolve_snapshot;
+    use zetl::history::jj_backend::{JjBackend, VcsBackend as _};
+
+    let backend = JjBackend::open_or_init_at_vault_root(&vault_root)
+        .context("opening jj workspace for --at query")?;
+
+    // list_changes with a large limit to get all history.
+    let snapshots = backend
+        .list_changes(10_000)
+        .context("listing jj snapshots")?;
+
+    let now = chrono::Local::now().fixed_offset();
+    let snapshot_info = resolve_snapshot(at_expr, now, &snapshots)
+        .with_context(|| format!("resolving --at expression {at_expr:?}"))?;
+
+    let vault_root_hash =
+        zetl::history::core::extract_vault_root_hash_from_description(
+            &snapshot_info.description,
+        )
+        .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Snapshot {} has no vault_root_hash in its description. \
+                     Run `zetl index` to rebuild the historical cache.",
+                    snapshot_info.change_id
+                )
+            })?;
+
+    let cache = HistoricalIndexCache::with_default_capacity();
+    let file_map = cache
+        .load(&vault_root, &vault_root_hash)
+        .context("reading historical index cache")?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "No cached index for snapshot {} (vault_root_hash={}). \
+                 Run `zetl index` at that point in time to populate the cache.",
+                snapshot_info.change_id,
+                vault_root_hash
+            )
+        })?;
+
+    let files: Vec<ParsedFile> = file_map.into_values().collect();
+
+    let file_index: Vec<(String, PathBuf)> = files
+        .iter()
+        .map(|f| (f.page_name.clone(), f.path.clone()))
+        .collect();
+
+    let mut resolved_pages: HashMap<String, String> = HashMap::new();
+    for file in &files {
+        for link in &file.links {
+            let key = link.raw_target.clone();
+            if resolved_pages.contains_key(&key) {
+                continue;
+            }
+            if let Some(resolved) =
+                resolve_page_name(&link.target_page, &file_index)
+            {
+                resolved_pages.insert(key, resolved);
+            }
+        }
+    }
+
+    let graph = LinkGraph::build(&files, &resolved_pages);
+    let graph_resolved = graph.resolved.clone();
+
+    let total_leaf_nodes: usize = files.iter().map(|f| f.merkle_leaves.len()).sum();
+    let spl_leaves_dual_hash: usize = files
+        .iter()
+        .flat_map(|f| &f.merkle_leaves)
+        .filter(|l| l.spl_hashes.is_some())
+        .count();
+
+    let snapshot = SnapshotInfo {
+        change_id: snapshot_info.change_id.clone(),
+        commit_id: snapshot_info.commit_id.clone(),
+        timestamp: snapshot_info.timestamp.to_rfc3339(),
+        description: snapshot_info.description.clone(),
+    };
+
+    Ok(Pipeline {
+        files,
+        file_index,
+        graph,
+        vault_root,
+        scan_stats: ScanStats {
+            tier1_hits: 0,
+            tier1_misses: 0,
+            tier2_hits: 0,
+            tier2_misses: 0,
+            files_hashed: 0,
+            total_leaf_nodes,
+            spl_leaves_dual_hash,
+            blake3_hashing_ms: 0,
+            section_detection_ms: 0,
+        },
+        graph_resolved,
+        snapshot: Some(snapshot),
     })
 }
 
@@ -374,6 +520,18 @@ fn cmd_index(cli: &Cli) -> Result<()> {
             Err(e) => {
                 if cli.verbose > 0 {
                     eprintln!("[zetl] warning: auto-snapshot failed: {e}");
+                }
+            }
+        }
+
+        // Store the current index in HistoricalIndexCache so that future
+        // --at queries can load it (REQ-079, ADR-047).
+        if let Some(ref hash) = vault_root_hash {
+            let hist_cache =
+                zetl::history::cache::HistoricalIndexCache::with_default_capacity();
+            if let Err(e) = hist_cache.store(&pipeline.vault_root, hash, &pipeline.files) {
+                if cli.verbose > 0 {
+                    eprintln!("[zetl] warning: failed to store historical index: {e}");
                 }
             }
         }
@@ -673,12 +831,15 @@ fn cmd_links(
         page: String,
         depth: usize,
         links: Vec<LinkEntry>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        snapshot: Option<SnapshotInfo>,
     }
 
     let output = LinksOutput {
         page: resolved_page,
         depth,
         links: entries,
+        snapshot: pipeline.snapshot.clone(),
     };
 
     match cli.format {
@@ -846,12 +1007,15 @@ fn cmd_backlinks(
         page: String,
         depth: usize,
         backlinks: Vec<BacklinkEntry>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        snapshot: Option<SnapshotInfo>,
     }
 
     let output = BacklinksOutput {
         page: resolved_page,
         depth,
         backlinks: entries,
+        snapshot: pipeline.snapshot.clone(),
     };
 
     match cli.format {
@@ -1052,6 +1216,8 @@ fn cmd_check(
         spl_diagnostics: Vec<zetl::types::Diagnostic>,
         drift_diagnostics: Vec<DriftDiagnostic>,
         summary: CheckSummary,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        snapshot: Option<SnapshotInfo>,
     }
 
     let drifted_blocks_warning = drift_diagnostics
@@ -1087,6 +1253,7 @@ fn cmd_check(
         spl_diagnostics,
         drift_diagnostics,
         summary,
+        snapshot: pipeline.snapshot.clone(),
     };
 
     match cli.format {
@@ -1584,11 +1751,15 @@ fn cmd_search(
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
-    // REQ-013-006: When --near is given, compute the neighbourhood and use it to
-    // filter results. REQ-013-008: suggest similar names if the page is unresolvable.
-    let mut near_resolved: Option<String> = None;
-    let mut near_neighbourhood_size: Option<usize> = None;
-    let neighbourhood_set: Option<HashSet<String>> = if let Some(near_page) = near {
+    // REQ-077: Load the pipeline when --at is set (for snapshot metadata and
+    // historical neighbourhood) or when --near is given (REQ-013-006, REQ-013-008).
+    //
+    // For --at without --near we still load the pipeline to capture snapshot info.
+    // For --near without --at we first verify that the live index exists.
+    let pipeline_opt: Option<Pipeline> = if cli.at.is_some() {
+        // Historical query: run_pipeline will route to run_historical_pipeline.
+        Some(run_pipeline(cli)?)
+    } else if near.is_some() {
         // REQ-013-006: graph requires zetl index — the lazy search-index build does
         // not build the link graph. Check the cache before proceeding.
         let cache_path = vault_root.join(".zetl").join("index.json");
@@ -1602,8 +1773,17 @@ fn cmd_search(
                 }
             }
         }
+        Some(run_pipeline(cli)?)
+    } else {
+        None
+    };
 
-        let pipeline = run_pipeline(cli)?;
+    // REQ-013-006: When --near is given, compute the neighbourhood and use it to
+    // filter results. REQ-013-008: suggest similar names if the page is unresolvable.
+    let mut near_resolved: Option<String> = None;
+    let mut near_neighbourhood_size: Option<usize> = None;
+    let neighbourhood_set: Option<HashSet<String>> = if let Some(near_page) = near {
+        let pipeline = pipeline_opt.as_ref().unwrap(); // safe: loaded above when near.is_some()
 
         let resolved = match resolve_page_name(near_page, &pipeline.file_index) {
             Some(r) => r,
@@ -1696,9 +1876,24 @@ fn cmd_search(
         output.neighbourhood_size = near_neighbourhood_size;
     }
 
+    // CON-024: snapshot field in JSON output when --at was used.
+    let search_snapshot = pipeline_opt.as_ref().and_then(|p| p.snapshot.clone());
+
     if output.total_matches == 0 {
         match cli.format {
-            OutputFormat::Json => print_json(&output)?,
+            OutputFormat::Json => {
+                #[derive(Serialize)]
+                struct SearchOutputWithSnapshot<'a> {
+                    #[serde(flatten)]
+                    inner: &'a zetl::search::SearchOutput,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    snapshot: Option<SnapshotInfo>,
+                }
+                print_json(&SearchOutputWithSnapshot {
+                    inner: &output,
+                    snapshot: search_snapshot.clone(),
+                })?
+            }
             OutputFormat::Table => {
                 println!("No matches found for '{query}'.");
             }
@@ -1707,7 +1902,16 @@ fn cmd_search(
     }
 
     match cli.format {
-        OutputFormat::Json => print_json(&output)?,
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            struct SearchOutputWithSnapshot<'a> {
+                #[serde(flatten)]
+                inner: &'a zetl::search::SearchOutput,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                snapshot: Option<SnapshotInfo>,
+            }
+            print_json(&SearchOutputWithSnapshot { inner: &output, snapshot: search_snapshot })?
+        }
         OutputFormat::Table => {
             let mut table = Table::new();
             table.set_header(vec!["Page", "Score", "Line", "Heading", "Context"]);
@@ -1977,6 +2181,8 @@ fn cmd_blocks(
             file_hash: Option<String>,
             block_count: usize,
             blocks: Vec<BlockEntry>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            snapshot: Option<SnapshotInfo>,
         }
 
         let output = BlocksOutput {
@@ -1984,6 +2190,7 @@ fn cmd_blocks(
             file_hash,
             block_count,
             blocks,
+            snapshot: pipeline.snapshot.clone(),
         };
 
         match cli.format {
@@ -2374,6 +2581,8 @@ fn cmd_export(cli: &Cli) -> Result<()> {
         edges: Vec<EdgeEntry>,
         node_count: usize,
         edge_count: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        snapshot: Option<SnapshotInfo>,
     }
 
     let output = ExportOutput {
@@ -2381,6 +2590,7 @@ fn cmd_export(cli: &Cli) -> Result<()> {
         edge_count: edges.len(),
         nodes,
         edges,
+        snapshot: pipeline.snapshot.clone(),
     };
 
     match cli.format {
@@ -4039,6 +4249,8 @@ fn cmd_reason_status(
                 conclusions: Vec<zetl::reason::types::ProvenancedConclusion>,
                 summary: ConclusionCounts,
                 diagnostics: Vec<zetl::types::Diagnostic>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                snapshot: Option<SnapshotInfo>,
             }
 
             #[derive(Serialize)]
@@ -4085,6 +4297,7 @@ fn cmd_reason_status(
                     diagnostic_warnings: warning_count,
                 },
                 diagnostics: result.diagnostics,
+                snapshot: pipeline.snapshot.clone(),
             };
             print_json(&output)?;
         }
@@ -4304,7 +4517,7 @@ fn cmd_reason_explain(
     let explanation = explanation.unwrap();
 
     // Build our enriched proof tree with provenance
-    let enriched = enrich_proof_tree(&explanation, &result, literal_input, max_depth);
+    let enriched = enrich_proof_tree(&explanation, &result, literal_input, max_depth, pipeline.snapshot.clone());
 
     // Output in the requested format
     match explain_format {
@@ -4595,6 +4808,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
                 rule_label: None,
             })
             .collect(),
+        snapshot: pipeline.snapshot.clone(),
     };
 
     match cli.format {
@@ -4700,6 +4914,8 @@ struct WhyNotOutput {
     candidate_rules: Vec<WhyNotRuleAnalysis>,
     is_fact: bool,
     fact_sources: Vec<WhyNotSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot: Option<SnapshotInfo>,
 }
 
 #[cfg(feature = "reason")]
@@ -4814,6 +5030,7 @@ fn cmd_reason_require(
             )),
             solutions: vec![],
             assumed: assumed_literals.iter().cloned().collect(),
+            snapshot: pipeline.snapshot.clone(),
         };
         match cli.format {
             OutputFormat::Json => print_json(&output)?,
@@ -5012,6 +5229,7 @@ fn cmd_reason_require(
         message: None,
         solutions,
         assumed: assumed_literals.iter().cloned().collect(),
+        snapshot: pipeline.snapshot.clone(),
     };
 
     match cli.format {
@@ -5071,6 +5289,8 @@ struct RequireOutput {
     message: Option<String>,
     solutions: Vec<RequireSolution>,
     assumed: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot: Option<SnapshotInfo>,
 }
 
 #[cfg(feature = "reason")]
@@ -5311,6 +5531,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
         conflicts: conflicts.clone(),
         conflict_count: conflicts.len(),
         diagnostics: result.diagnostics,
+        snapshot: pipeline.snapshot.clone(),
     };
 
     match cli.format {
@@ -5529,6 +5750,8 @@ struct ConflictsOutput {
     conflicts: Vec<ConflictEntry>,
     conflict_count: usize,
     diagnostics: Vec<zetl::types::Diagnostic>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot: Option<SnapshotInfo>,
 }
 
 #[cfg(feature = "reason")]
@@ -5573,6 +5796,8 @@ struct WhatIfOutput {
     removed_conclusions: Vec<WhatIfConclusion>,
     unchanged_count: usize,
     diagnostics: Vec<zetl::types::Diagnostic>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot: Option<SnapshotInfo>,
 }
 
 #[cfg(feature = "reason")]
@@ -5804,6 +6029,7 @@ fn cmd_reason_what_if(
         removed_conclusions: removed_conclusions.clone(),
         unchanged_count,
         diagnostics: result.diagnostics,
+        snapshot: pipeline.snapshot.clone(),
     };
 
     match cli.format {
@@ -5997,6 +6223,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
         conclusions: conclusion_entries,
         source_pages: source_pages.clone(),
         cross_references: cross_refs.clone(),
+        snapshot: pipeline.snapshot.clone(),
     };
 
     match cli.format {
@@ -6069,6 +6296,8 @@ struct ProvenanceOutput {
     conclusions: Vec<ProvenanceConclusionEntry>,
     source_pages: Vec<String>,
     cross_references: Vec<ProvenanceCrossRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot: Option<SnapshotInfo>,
 }
 
 #[cfg(feature = "reason")]
@@ -6340,6 +6569,8 @@ struct ExplainOutput {
     proof_tree: Option<ExplainNode>,
     conflicts_resolved: Vec<ExplainConflict>,
     blocked_alternatives: Vec<ExplainBlocked>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot: Option<SnapshotInfo>,
 }
 
 #[cfg(feature = "reason")]
@@ -6394,6 +6625,7 @@ fn enrich_proof_tree(
     theory_result: &zetl::reason::types::TheoryResult,
     literal_input: &str,
     max_depth: usize,
+    snapshot: Option<SnapshotInfo>,
 ) -> ExplainOutput {
     let conclusion_type_str = match explanation.conclusion_type {
         spindle_core::prelude::ConclusionType::DefinitelyProvable => "+D",
@@ -6435,6 +6667,7 @@ fn enrich_proof_tree(
         proof_tree,
         conflicts_resolved,
         blocked_alternatives,
+        snapshot,
     }
 }
 
@@ -7119,6 +7352,8 @@ fn cmd_reason_export(
                 conclusions: Option<Vec<ExportConclusion>>,
                 diagnostics: Vec<zetl::types::Diagnostic>,
                 summary: zetl::reason::types::TheorySummary,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                snapshot: Option<SnapshotInfo>,
             }
 
             #[derive(Serialize)]
@@ -7211,6 +7446,7 @@ fn cmd_reason_export(
                 conclusions,
                 diagnostics: result.diagnostics.clone(),
                 summary: result.summary.clone(),
+                snapshot: pipeline.snapshot.clone(),
             };
 
             print_json(&output)?;
