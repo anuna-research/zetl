@@ -24,10 +24,12 @@ use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::matchers::EverythingMatcher;
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::{HexPrefix, ObjectId as _, PrefixResolution};
-use jj_lib::repo::{ReadonlyRepo, Repo as _, StoreFactories};
+use jj_lib::local_working_copy::LocalWorkingCopyFactory;
+use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader, StoreFactories};
 use jj_lib::repo_path::RepoPath;
 use jj_lib::revset::RevsetExpression;
 use jj_lib::settings::UserSettings;
+use jj_lib::working_copy::WorkingCopyFactory as _;
 use jj_lib::workspace::{Workspace, default_working_copy_factories};
 use jj_lib::working_copy::SnapshotOptions;
 use pollster::FutureExt as _;
@@ -142,6 +144,96 @@ impl JjBackend {
                 )
             })?
         };
+
+        Ok(Self { workspace, repo })
+    }
+
+    /// Open or initialise a jj workspace rooted at `.zetl/jj/` inside `vault_root`.
+    ///
+    /// Layout (REQ-075, ADR-045):
+    /// - `.zetl/jj/.jj/` — jj metadata and object store
+    /// - `vault_root/` — jj working copy (files scanned by snapshot)
+    ///
+    /// On first call `.zetl/jj/` is created and a jj workspace is initialised
+    /// there (internal git backend). On subsequent calls the existing workspace
+    /// is loaded. Both paths are idempotent and produce no user-visible output.
+    pub fn open_or_init_at_vault_root(vault_root: &Path) -> anyhow::Result<Self> {
+        if !vault_root.exists() {
+            bail!(
+                "vault root does not exist: {}",
+                vault_root.display()
+            );
+        }
+
+        let zetl_jj = vault_root.join(".zetl").join("jj");
+        let settings = minimal_user_settings()?;
+        let store_factories = StoreFactories::default();
+
+        // If already initialised, just open it.
+        if zetl_jj.join(".jj").is_dir() {
+            return Self::load_at_vault_root(&zetl_jj, vault_root, &settings, &store_factories);
+        }
+
+        // Create .zetl/jj/ directory and initialise a new jj workspace there.
+        // The `.jj/` metadata dir will live at `.zetl/jj/.jj/` (never at vault root).
+        std::fs::create_dir_all(&zetl_jj).with_context(|| {
+            format!("failed to create jj workspace dir: {}", zetl_jj.display())
+        })?;
+
+        Workspace::init_internal_git(&settings, &zetl_jj).with_context(|| {
+            format!(
+                "failed to init jj workspace at {}",
+                zetl_jj.display()
+            )
+        })?;
+
+        // Reload with vault_root as the working-copy path so snapshots capture
+        // all vault files rather than just the (empty) .zetl/jj/ directory.
+        Self::load_at_vault_root(&zetl_jj, vault_root, &settings, &store_factories)
+    }
+
+    /// Load a jj workspace whose metadata lives in `zetl_jj/.jj/` but whose
+    /// working copy (files to snapshot) is at `vault_root`.
+    fn load_at_vault_root(
+        zetl_jj: &Path,
+        vault_root: &Path,
+        settings: &UserSettings,
+        store_factories: &StoreFactories,
+    ) -> anyhow::Result<Self> {
+        let jj_dir = zetl_jj.join(".jj");
+        let repo_path = jj_dir.join("repo");
+        let wc_state_path = jj_dir.join("working_copy");
+
+        // Reconstruct the repo loader from the on-disk store.
+        let repo_loader =
+            RepoLoader::init_from_file_system(settings, &repo_path, store_factories)
+                .with_context(|| {
+                    format!("failed to load jj repo from {}", repo_path.display())
+                })?;
+
+        // Load the working copy with vault_root as the file-scanning base.
+        // LocalWorkingCopy stores file states by relative path, so changing the
+        // base directory here is safe and idempotent across calls.
+        let working_copy = LocalWorkingCopyFactory {}
+            .load_working_copy(
+                repo_loader.store().clone(),
+                vault_root.to_path_buf(),
+                wc_state_path,
+                settings,
+            )
+            .with_context(|| "failed to load jj working copy")?;
+
+        // Build the Workspace value. workspace_root = vault_root makes
+        // workspace.workspace_root() return the vault path (used by callers).
+        let workspace =
+            Workspace::new(vault_root, repo_path, working_copy, repo_loader).with_context(
+                || format!("failed to construct jj workspace at {}", vault_root.display()),
+            )?;
+
+        let repo = workspace
+            .repo_loader()
+            .load_at_head()
+            .with_context(|| "failed to load jj repo at head")?;
 
         Ok(Self { workspace, repo })
     }

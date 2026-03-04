@@ -354,6 +354,17 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
     let elapsed = start.elapsed();
 
+    // Silently initialise (or re-open) the jj VCS workspace inside .zetl/jj/
+    // (REQ-075, ADR-044, ADR-045).  Errors are non-fatal — temporal commands
+    // will report NO_HISTORY if the workspace is unavailable (graceful
+    // degradation handled by task-graceful-degradation).
+    #[cfg(feature = "history")]
+    {
+        let _ = zetl::history::jj_backend::JjBackend::open_or_init_at_vault_root(
+            &pipeline.vault_root,
+        );
+    }
+
     // OBS-007 + OBS-009: emit scan and cache-efficiency stats to stderr when --verbose.
     if cli.verbose > 0 {
         let s = &pipeline.scan_stats;
