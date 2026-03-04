@@ -2738,6 +2738,9 @@ fn cmd_tui(cli: &Cli) -> Result<()> {
         }
     }
 
+    #[cfg(feature = "history")]
+    let vault_root = pipeline.vault_root.clone();
+
     let mut app = zetl::tui::App::new(
         pipeline.files,
         pipeline.file_index,
@@ -2746,8 +2749,96 @@ fn cmd_tui(cli: &Cli) -> Result<()> {
         &resolved_pages,
     );
 
+    // Wire up temporal navigation when the history feature is compiled in (REQ-091).
+    #[cfg(feature = "history")]
+    setup_tui_timeline(&vault_root, &mut app);
+
     zetl::tui::run(&mut app)?;
     Ok(())
+}
+
+/// Populate `app` with snapshot labels and a historical-data loader.
+///
+/// Opens the jj workspace at `vault_root`, lists all zetl snapshots, and
+/// installs a loader closure that the TUI can call to swap in historical data.
+/// Silently returns on any error (e.g. no jj workspace initialised yet).
+#[cfg(feature = "history")]
+fn setup_tui_timeline(vault_root: &Path, app: &mut zetl::tui::App) {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::core::extract_vault_root_hash_from_description;
+    use zetl::history::jj_backend::{JjBackend, VcsBackend as _};
+
+    let backend = match JjBackend::open_or_init_at_vault_root(vault_root) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+
+    let snapshots = match backend.list_changes(10_000) {
+        Ok(s) if !s.is_empty() => s,
+        _ => return,
+    };
+
+    // Build lightweight labels for the TUI (no jj types exposed there).
+    let labels: Vec<zetl::tui::SnapshotLabel> = snapshots
+        .iter()
+        .map(|s| zetl::tui::SnapshotLabel {
+            change_id: s.change_id.clone(),
+            timestamp_display: s.timestamp.format("%Y-%m-%d %H:%M").to_string(),
+            timestamp_unix: s.timestamp.timestamp(),
+            has_cached_index: extract_vault_root_hash_from_description(&s.description).is_some(),
+        })
+        .collect();
+
+    let vault_root = vault_root.to_path_buf();
+
+    let loader: zetl::tui::HistoricalLoader = Box::new(move |idx| {
+        let snap = snapshots
+            .get(idx)
+            .ok_or_else(|| anyhow::anyhow!("snapshot index {idx} out of range"))?;
+
+        let hash = extract_vault_root_hash_from_description(&snap.description)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Snapshot {} has no vault_root_hash — run `zetl index` to populate cache",
+                    snap.change_id
+                )
+            })?;
+
+        let cache = HistoricalIndexCache::with_default_capacity();
+        let file_map = cache
+            .load(&vault_root, &hash)?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No cached index for snapshot {} (hash={}) — run `zetl index` at that point",
+                    snap.change_id,
+                    hash
+                )
+            })?;
+
+        let files: Vec<ParsedFile> = file_map.into_values().collect();
+        let file_index: Vec<(String, PathBuf)> = files
+            .iter()
+            .map(|f| (f.page_name.clone(), f.path.clone()))
+            .collect();
+
+        let mut resolved_pages: HashMap<String, String> = HashMap::new();
+        for file in &files {
+            for link in &file.links {
+                let key = link.raw_target.clone();
+                if resolved_pages.contains_key(&key) {
+                    continue;
+                }
+                if let Some(resolved) = resolve_page_name(&link.target_page, &file_index) {
+                    resolved_pages.insert(key, resolved);
+                }
+            }
+        }
+
+        let graph = LinkGraph::build(&files, &resolved_pages);
+        Ok((files, graph))
+    });
+
+    app.set_timeline(labels, loader);
 }
 
 fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) -> Result<()> {

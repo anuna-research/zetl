@@ -20,6 +20,25 @@ use tui_input::Input;
 use crate::graph::{DeadLink, LinkGraph, Orphan};
 use crate::types::{Diagnostic, ParsedFile};
 
+// ── Timeline navigation types ─────────────────────────────────────────────
+
+/// Metadata for a single historical snapshot shown in the timeline.
+#[derive(Debug, Clone)]
+pub struct SnapshotLabel {
+    /// Short change-ID string (12 chars).
+    pub change_id: String,
+    /// Human-readable timestamp, e.g. "2026-03-04 14:30".
+    pub timestamp_display: String,
+    /// Unix timestamp in seconds (for day-boundary arithmetic).
+    pub timestamp_unix: i64,
+    /// Whether a cached index exists for this snapshot.
+    pub has_cached_index: bool,
+}
+
+/// Loader function: given snapshot index → files + graph for that snapshot.
+pub type HistoricalLoader =
+    Box<dyn Fn(usize) -> anyhow::Result<(Vec<ParsedFile>, LinkGraph)>>;
+
 // ── Tab enum ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,6 +158,17 @@ pub struct App {
 
     // Breadcrumb navigation history
     pub history: Vec<String>,
+
+    // Timeline navigation (REQ-091)
+    /// All known snapshots (newest-first). Empty when history is unavailable.
+    pub timeline_snapshots: Vec<SnapshotLabel>,
+    /// Index into `timeline_snapshots` for the currently viewed snapshot.
+    /// `None` = live view.
+    pub timeline_idx: Option<usize>,
+    /// Loader function that produces files + graph for a given snapshot index.
+    historical_loader: Option<HistoricalLoader>,
+    /// Saved live data (files + graph) for restoring when leaving historical mode.
+    live_snapshot: Option<(Vec<ParsedFile>, LinkGraph)>,
 }
 
 #[derive(Debug, Clone)]
@@ -292,7 +322,157 @@ impl App {
             switcher_selected: 0,
 
             history: Vec::new(),
+
+            timeline_snapshots: Vec::new(),
+            timeline_idx: None,
+            historical_loader: None,
+            live_snapshot: None,
         }
+    }
+
+    /// Install a timeline loader and snapshot list (called from cmd_tui after
+    /// the history backend is opened; a no-op when the history feature is off).
+    pub fn set_timeline(
+        &mut self,
+        snapshots: Vec<SnapshotLabel>,
+        loader: HistoricalLoader,
+    ) {
+        self.timeline_snapshots = snapshots;
+        self.historical_loader = Some(loader);
+    }
+
+    // ── Timeline helpers ──────────────────────────────────────────────────
+
+    /// Load the snapshot at `idx`, storing live data on first entry.
+    /// Returns `true` on success (loader returned data), `false` if unavailable.
+    fn enter_snapshot(&mut self, idx: usize) -> bool {
+        if idx >= self.timeline_snapshots.len() {
+            return false;
+        }
+        let result = match self.historical_loader.as_ref() {
+            Some(loader) => loader(idx),
+            None => return false,
+        };
+        match result {
+            Ok((new_files, new_graph)) => {
+                let already_historical = self.timeline_idx.is_some();
+                let old_files = std::mem::replace(&mut self.files, new_files);
+                let old_graph = std::mem::replace(&mut self.graph, new_graph);
+                if !already_historical {
+                    self.live_snapshot = Some((old_files, old_graph));
+                }
+                self.timeline_idx = Some(idx);
+                self.reload_derived_data();
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Return to live view, restoring the data saved on first history entry.
+    pub fn return_to_live(&mut self) {
+        if let Some((files, graph)) = self.live_snapshot.take() {
+            self.files = files;
+            self.graph = graph;
+            self.reload_derived_data();
+        }
+        self.timeline_idx = None;
+    }
+
+    /// Move one snapshot older (higher index = further back in time).
+    pub fn go_prev_snapshot(&mut self) {
+        if self.timeline_snapshots.is_empty() {
+            return;
+        }
+        let new_idx = match self.timeline_idx {
+            None => 0, // live → most recent snapshot
+            Some(i) if i + 1 < self.timeline_snapshots.len() => i + 1,
+            Some(i) => i, // already at oldest, stay
+        };
+        if self.timeline_idx != Some(new_idx) {
+            self.enter_snapshot(new_idx);
+        }
+    }
+
+    /// Move one snapshot newer (lower index = closer to now); live when at index 0.
+    pub fn go_next_snapshot(&mut self) {
+        match self.timeline_idx {
+            None => {} // already live
+            Some(0) => self.return_to_live(),
+            Some(i) => {
+                self.enter_snapshot(i - 1);
+            }
+        }
+    }
+
+    /// Jump to the most recent snapshot whose calendar day is one day before
+    /// the current snapshot (or before today when viewing live).
+    pub fn go_prev_day(&mut self) {
+        if self.timeline_snapshots.is_empty() {
+            return;
+        }
+        let current_day = match self.timeline_idx {
+            Some(i) => self.timeline_snapshots[i].timestamp_unix / 86400,
+            None => {
+                // Use system wall-clock for "today"
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64 / 86400)
+                    .unwrap_or(0)
+            }
+        };
+        let target_day = current_day - 1;
+        // Snapshots are newest-first; the first one with day ≤ target is the
+        // most recent snapshot on target_day (or earlier).
+        if let Some(i) = self
+            .timeline_snapshots
+            .iter()
+            .position(|s| s.timestamp_unix / 86400 <= target_day)
+        {
+            self.enter_snapshot(i);
+        }
+    }
+
+    /// Jump to the most recent snapshot whose calendar day is one day after
+    /// the current snapshot; returns to live when no newer day exists.
+    pub fn go_next_day(&mut self) {
+        let Some(current_idx) = self.timeline_idx else {
+            return; // already live
+        };
+        let current_day = self.timeline_snapshots[current_idx].timestamp_unix / 86400;
+        let target_day = current_day + 1;
+        // Find the most recent snapshot (lowest index) with day ≥ target_day.
+        match self
+            .timeline_snapshots
+            .iter()
+            .position(|s| s.timestamp_unix / 86400 >= target_day)
+        {
+            Some(i) => {
+                self.enter_snapshot(i);
+            }
+            None => self.return_to_live(),
+        }
+    }
+
+    /// Recompute page_names, dead_links, orphans, diagnostics after a data swap.
+    fn reload_derived_data(&mut self) {
+        let mut page_names: Vec<String> =
+            self.files.iter().map(|f| f.page_name.clone()).collect();
+        page_names.sort_by_key(|a| a.to_lowercase());
+        self.page_names = page_names;
+        self.dead_links = self.graph.dead_links();
+        self.orphans = self.graph.orphans();
+        self.diagnostics = self
+            .files
+            .iter()
+            .flat_map(|f| f.diagnostics.clone())
+            .collect();
+        // Reset list selections so stale indices don't panic
+        self.page_selected = 0;
+        self.page_scroll_offset = 0;
+        self.diag_selected = 0;
+        self.search_results.clear();
+        self.search_selected = 0;
     }
 
     pub fn filtered_pages(&self) -> Vec<&str> {
@@ -752,6 +932,33 @@ fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
                     idx - 1
                 };
                 app.active_tab = Tab::ALL[prev];
+                return;
+            }
+            // ── Timeline navigation (REQ-091) ────────────────────────────
+            // [ / ] → prev/next snapshot; { / } → jump by day; n → live
+            KeyCode::Char('[') if !app.timeline_snapshots.is_empty() => {
+                app.go_prev_snapshot();
+                return;
+            }
+            KeyCode::Char(']') if !app.timeline_snapshots.is_empty() => {
+                app.go_next_snapshot();
+                return;
+            }
+            KeyCode::Char('{') if !app.timeline_snapshots.is_empty() => {
+                app.go_prev_day();
+                return;
+            }
+            KeyCode::Char('}') if !app.timeline_snapshots.is_empty() => {
+                app.go_next_day();
+                return;
+            }
+            KeyCode::Char('n') if app.timeline_idx.is_some() => {
+                app.return_to_live();
+                return;
+            }
+            // Esc returns to live when in historical mode
+            KeyCode::Esc if app.timeline_idx.is_some() => {
+                app.return_to_live();
                 return;
             }
             _ => {}

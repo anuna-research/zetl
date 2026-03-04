@@ -1,12 +1,12 @@
 {
-  "task_id": "point-in-time-query",
-  "token_budget": 10000,
-  "tokens_used": 247,
+  "task_id": "tui-timeline-navigation",
+  "token_budget": 8000,
+  "tokens_used": 283,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Wire --at <time-expr> flag into all read-only subcommands (links, backlinks, check, graph, search, blocks, reason); resolve snapshot via JjBackend + time parser; load or build historical index via cache; add snapshot field to JSON output (REQ-077, REQ-078, CON-024)",
-      "token_cost": 66,
+      "content": "Add temporal navigation to TUI dashboard: history range indicator in status bar; [ / ] keys for prev/next snapshot; Shift+[ / Shift+] to jump by day; n/Escape returns to live state; all panels reflect historical state; visual differentiation for historical vs live view (REQ-091)",
+      "token_cost": 69,
       "priority": "PlanMeta"
     },
     {
@@ -47,11 +47,11 @@
     },
     {
       "source": "memory/episodic/task-point-in-time-query-changes",
-      "content": "Modified 5 files: .hence/context-manifest.json, src/cli.rs, src/history/core.rs, src/main.rs, tests/history_integration.rs. Added --at flag, run_historical_pipeline, SnapshotInfo in JSON outputs for links/backlinks/check/export/search/blocks/all reason commands.",
-      "token_cost": 50,
+      "content": "Modified 5 files (+459, -17): .hence/context-manifest.json, src/cli.rs, src/history/core.rs, src/main.rs, tests/history_integration.rs",
+      "token_cost": 33,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T07:21:14Z"
+  "constructed_at": "2026-03-04T07:43:38Z"
 }
