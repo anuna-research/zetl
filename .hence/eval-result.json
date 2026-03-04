@@ -3,24 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 230,
-    "deletions": 10,
+    "files_changed": 5,
+    "insertions": 1887,
+    "deletions": 91,
     "file_list": [
-      "src/hooks/mod.rs"
+      "Cargo.lock",
+      "Cargo.toml",
+      "src/history/mod.rs",
+      "src/lib.rs",
+      "tests/history_integration.rs"
     ],
     "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-bundled-hook-extraction-changes",
-      "content": "Modified 1 files (+230, -10): src/hooks/mod.rs",
+      "key": "task-cargo-feature-flag-changes",
+      "content": "Modified 5 files (+1887, -91): Cargo.lock, Cargo.toml, src/history/mod.rs, src/lib.rs, tests/history_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/bundled-hook-extraction-v1",
-  "evaluated_at": "2026-03-02T12:42:34Z",
+  "branch_name": "hence/cargo-feature-flag-v1",
+  "evaluated_at": "2026-03-04T06:32:06Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
