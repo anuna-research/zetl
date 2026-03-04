@@ -254,6 +254,154 @@ fn test_091_resolve_snapshot_against_real_jj() {
 
 // ─── TEST-092..TEST-094: auto-snapshot integration (REQ-076, ADR-048) ─────────
 
+// ─── TEST-095..TEST-099: HistoricalIndexCache (REQ-079, ADR-047) ─────────────
+
+use std::path::PathBuf;
+use std::time::SystemTime;
+use zetl::history::cache::HistoricalIndexCache;
+use zetl::types::ParsedFile;
+
+fn dummy_parsed_file(name: &str) -> ParsedFile {
+    ParsedFile {
+        path: PathBuf::from(name),
+        page_name: name.trim_end_matches(".md").to_owned(),
+        links: vec![],
+        spl_blocks: vec![],
+        diagnostics: vec![],
+        mtime: SystemTime::UNIX_EPOCH,
+        merkle_leaves: vec![],
+        file_merkle: None,
+    }
+}
+
+fn hex64(c: char) -> String {
+    c.to_string().repeat(64)
+}
+
+// TEST-095: store and load roundtrip returns the stored files (REQ-079).
+#[test]
+fn test_095_historical_cache_store_load_roundtrip() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let cache = HistoricalIndexCache::with_default_capacity();
+    let hash = hex64('1');
+    let files = vec![dummy_parsed_file("alpha.md"), dummy_parsed_file("beta.md")];
+
+    cache.store(dir.path(), &hash, &files).unwrap();
+
+    let loaded = cache
+        .load(dir.path(), &hash)
+        .unwrap()
+        .expect("entry must be present after store");
+
+    assert!(loaded.contains_key(Path::new("alpha.md")));
+    assert!(loaded.contains_key(Path::new("beta.md")));
+    assert_eq!(loaded.len(), 2);
+}
+
+// TEST-096: load on a missing entry returns None (REQ-079).
+#[test]
+fn test_096_historical_cache_load_missing_returns_none() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let cache = HistoricalIndexCache::with_default_capacity();
+    let result = cache.load(dir.path(), &hex64('2')).unwrap();
+    assert!(result.is_none(), "missing entry must return None");
+}
+
+// TEST-097: file format is identical to index.json (version=2, files, vault_root_hash) (ADR-047).
+#[test]
+fn test_097_historical_cache_format_matches_index_json() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let cache = HistoricalIndexCache::with_default_capacity();
+    let hash = hex64('3');
+
+    cache
+        .store(dir.path(), &hash, &[dummy_parsed_file("z.md")])
+        .unwrap();
+
+    let path = dir.path().join(".zetl/history").join(format!("{hash}.json"));
+    let content = std::fs::read_to_string(&path).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    assert_eq!(v["version"], 2, "version must be 2 (ADR-047)");
+    assert!(v["files"].is_object(), "files must be an object");
+    assert_eq!(
+        v["vault_root_hash"].as_str().unwrap(),
+        hash,
+        "vault_root_hash must round-trip"
+    );
+}
+
+// TEST-098: LRU eviction removes oldest entries when capacity is exceeded (REQ-079).
+#[test]
+fn test_098_historical_cache_lru_eviction() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let capacity = 3usize;
+    let cache = HistoricalIndexCache::new(capacity);
+
+    // Write 5 entries with a small delay so mtime ordering is deterministic.
+    let hashes: Vec<String> = (0u8..5).map(|i| format!("{:064x}", i)).collect();
+    for hash in &hashes {
+        cache
+            .store(dir.path(), hash, &[dummy_parsed_file("p.md")])
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    // Count surviving files.
+    let history_dir = dir.path().join(".zetl/history");
+    let count = std::fs::read_dir(&history_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map_or(false, |x| x == "json"))
+        .count();
+
+    assert_eq!(
+        count, capacity,
+        "must retain exactly {capacity} entries after eviction"
+    );
+
+    // The 2 oldest entries (hashes[0], hashes[1]) must have been evicted.
+    for evicted in &hashes[..2] {
+        assert!(
+            cache.load(dir.path(), evicted).unwrap().is_none(),
+            "evicted entry {evicted} must not be loadable"
+        );
+    }
+
+    // The 3 newest entries must still be present.
+    for kept in &hashes[2..] {
+        assert!(
+            cache.load(dir.path(), kept).unwrap().is_some(),
+            "kept entry {kept} must still be loadable"
+        );
+    }
+}
+
+// TEST-099: store overwrites an existing entry (upsert semantics) (REQ-079).
+#[test]
+fn test_099_historical_cache_store_overwrites() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let cache = HistoricalIndexCache::with_default_capacity();
+    let hash = hex64('4');
+
+    cache
+        .store(dir.path(), &hash, &[dummy_parsed_file("v1.md")])
+        .unwrap();
+    cache
+        .store(dir.path(), &hash, &[dummy_parsed_file("v2.md")])
+        .unwrap();
+
+    let loaded = cache.load(dir.path(), &hash).unwrap().expect("must be Some");
+    assert!(
+        loaded.contains_key(Path::new("v2.md")),
+        "second write must overwrite the first"
+    );
+    assert!(
+        !loaded.contains_key(Path::new("v1.md")),
+        "first write's data must be gone"
+    );
+}
+
 // TEST-092: auto_snapshot creates a jj commit whose description contains
 // the vault_root_hash (REQ-076).
 #[test]

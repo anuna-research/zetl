@@ -1,12 +1,12 @@
 {
-  "task_id": "auto-snapshot",
-  "token_budget": 5000,
-  "tokens_used": 160,
+  "task_id": "historical-index-cache",
+  "token_budget": 6000,
+  "tokens_used": 194,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Hook into zetl index completion to create a jj snapshot; include vault_root_hash in commit description; deduplicate when vault_root_hash unchanged (REQ-076, ADR-048)",
-      "token_cost": 41,
+      "content": "Implement HistoricalIndexCache: read/write .zetl/history/<vault_root_hash>.json; bounded LRU eviction (default 100 entries); same serialisation format as index.json (REQ-079, ADR-047)",
+      "token_cost": 45,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 3 files (+644, -0): src/history/core.rs, src/history/mod.rs, tests/history_integration.rs",
       "token_cost": 24,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-auto-snapshot-changes",
+      "content": "Modified 4 files (+163, -11): .hence/context-manifest.json, src/history/mod.rs, src/main.rs, tests/history_integration.rs",
+      "token_cost": 30,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T07:10:07Z"
+  "constructed_at": "2026-03-04T07:16:33Z"
 }
