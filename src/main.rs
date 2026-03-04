@@ -8587,11 +8587,14 @@ fn cmd_history_timeline(cli: &Cli, limit: usize) -> Result<()> {
     Ok(())
 }
 
-/// `zetl history page <name>` — show page evolution across snapshots (REQ-081).
+/// `zetl history page <name>` — per-page evolution timeline (REQ-081, CON-025).
+///
+/// Only snapshots where the page's neighbourhood (forward links, backlinks, or
+/// existence) changed are included in the output.
 #[cfg(feature = "history")]
 fn cmd_history_page(cli: &Cli, page_name: &str, limit: usize) -> Result<()> {
     use zetl::history::cache::HistoricalIndexCache;
-    use zetl::history::core::extract_vault_root_hash_from_description;
+    use zetl::history::core::{extract_page_history, extract_vault_root_hash_from_description};
     use zetl::history::jj_backend::VcsBackend as _;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
@@ -8606,67 +8609,17 @@ fn cmd_history_page(cli: &Cli, page_name: &str, limit: usize) -> Result<()> {
 
     let cache = HistoricalIndexCache::with_default_capacity();
 
-    #[derive(Serialize)]
-    struct PageSnapshot {
-        change_id: String,
-        timestamp: String,
-        link_count: usize,
-        backlink_count: usize,
-        is_orphan: bool,
-    }
+    // Pre-load the cached file index for every snapshot.
+    let files_per_snapshot: Vec<Option<Vec<ParsedFile>>> = snapshots
+        .iter()
+        .map(|snap| {
+            let hash = extract_vault_root_hash_from_description(&snap.description)?;
+            let file_map = cache.load(&vault_root, &hash).ok().flatten()?;
+            Some(file_map.into_values().collect())
+        })
+        .collect();
 
-    let page_lc = page_name.to_lowercase();
-    let mut entries: Vec<PageSnapshot> = Vec::new();
-
-    for snap in snapshots.iter().take(limit * 3) {
-        let Some(hash) = extract_vault_root_hash_from_description(&snap.description) else {
-            continue;
-        };
-        let Ok(Some(file_map)) = cache.load(&vault_root, &hash) else {
-            continue;
-        };
-
-        let files: Vec<ParsedFile> = file_map.into_values().collect();
-        let file_index: Vec<(String, PathBuf)> = files
-            .iter()
-            .map(|f| (f.page_name.clone(), f.path.clone()))
-            .collect();
-
-        let Some(matched) =
-            zetl::scanner::resolve_page_name(&page_lc, &file_index)
-        else {
-            continue;
-        };
-
-        let mut resolved: HashMap<String, String> = HashMap::new();
-        for f in &files {
-            for link in &f.links {
-                let key = link.raw_target.clone();
-                if !resolved.contains_key(&key) {
-                    if let Some(r) =
-                        zetl::scanner::resolve_page_name(&link.target_page, &file_index)
-                    {
-                        resolved.insert(key, r);
-                    }
-                }
-            }
-        }
-        let graph = zetl::graph::LinkGraph::build(&files, &resolved);
-        let fwd = graph.forward_links(&matched);
-        let bwd = graph.backlinks(&matched);
-
-        entries.push(PageSnapshot {
-            change_id: snap.change_id.clone(),
-            timestamp: snap.timestamp.to_rfc3339(),
-            link_count: fwd.len(),
-            backlink_count: bwd.len(),
-            is_orphan: fwd.is_empty() && bwd.is_empty(),
-        });
-
-        if entries.len() >= limit {
-            break;
-        }
-    }
+    let entries = extract_page_history(page_name, &snapshots, &files_per_snapshot, limit);
 
     if entries.is_empty() {
         anyhow::bail!("PAGE_NOT_FOUND: page '{page_name}' not found in any snapshot");
@@ -8679,13 +8632,19 @@ fn cmd_history_page(cli: &Cli, page_name: &str, limit: usize) -> Result<()> {
         }))?,
         OutputFormat::Table => {
             let mut table = Table::new();
-            table.set_header(vec!["Timestamp", "Links", "Backlinks", "Orphan"]);
+            table.set_header(vec!["Timestamp", "Links", "Backlinks", "Orphan", "Changes"]);
             for e in &entries {
+                let changes = if let Some(ref d) = e.delta {
+                    format_page_delta(d)
+                } else {
+                    "-".to_owned()
+                };
                 table.add_row(vec![
                     Cell::new(&e.timestamp),
                     Cell::new(e.link_count),
                     Cell::new(e.backlink_count),
                     Cell::new(if e.is_orphan { "yes" } else { "no" }),
+                    Cell::new(&changes),
                 ]);
             }
             println!("{table}");
@@ -8693,6 +8652,31 @@ fn cmd_history_page(cli: &Cli, page_name: &str, limit: usize) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Format a page neighbourhood delta into a compact human-readable string.
+#[cfg(feature = "history")]
+fn format_page_delta(d: &zetl::history::core::PageNeighborhoodDelta) -> String {
+    if d.appeared {
+        return "appeared".to_owned();
+    }
+    if d.disappeared {
+        return "disappeared".to_owned();
+    }
+    let mut parts: Vec<String> = Vec::new();
+    if !d.links_added.is_empty() {
+        parts.push(format!("+{}L", d.links_added.len()));
+    }
+    if !d.links_removed.is_empty() {
+        parts.push(format!("-{}L", d.links_removed.len()));
+    }
+    if !d.backlinks_added.is_empty() {
+        parts.push(format!("+{}B", d.backlinks_added.len()));
+    }
+    if !d.backlinks_removed.is_empty() {
+        parts.push(format!("-{}B", d.backlinks_removed.len()));
+    }
+    if parts.is_empty() { "-".to_owned() } else { parts.join(" ") }
 }
 
 /// `zetl history log` — reverse-chronological delta timeline (REQ-080, CON-025).

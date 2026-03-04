@@ -11,6 +11,7 @@
 //! TEST-100–103 are covered here (task-point-in-time-query).
 //! TEST-104      is covered here (task-watch-mode-snapshot).
 //! TEST-105–108 are covered here (task-history-cli).
+//! TEST-109–112 are covered here (task-history-page-cli).
 
 use std::fs;
 use std::path::Path;
@@ -961,4 +962,286 @@ fn test_108_build_vault_history_with_cache() {
 
     // Oldest entry has no delta (nothing to diff against).
     assert!(entries[1].delta.is_none(), "oldest entry must have no delta");
+}
+
+// ── Page history tests (REQ-081, CON-025) ─────────────────────────────────────
+// TEST-109–112 cover task-history-page-cli.
+
+use zetl::history::core::extract_page_history;
+
+// TEST-109: extract_page_history returns only snapshots where page neighbourhood
+// changed (forward links added/removed) — identical snapshots are collapsed.
+#[test]
+fn test_109_extract_page_history_link_changes() {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::jj_backend::VcsBackend as _;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    // Snapshot 1: page exists, 0 links.
+    write(vault_root, "target.md", "# Target");
+    let hash1 = "a".repeat(64);
+    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    let cache = HistoricalIndexCache::with_default_capacity();
+    cache
+        .store(vault_root, &hash1, &[make_parsed_file("target", &[])])
+        .unwrap();
+
+    // Snapshot 2: same content (same hash should produce no commit via
+    // dedup; use a different hash to force a second snapshot).
+    let hash1b = "b".repeat(64);
+    write(vault_root, "target.md", "# Target (unchanged neighbourhood)");
+    zetl::history::auto_snapshot(vault_root, Some(&hash1b)).unwrap();
+    // Intentionally store the same neighbourhood to simulate "no change".
+    cache
+        .store(vault_root, &hash1b, &[make_parsed_file("target", &[])])
+        .unwrap();
+
+    // Snapshot 3: target now links to alpha.
+    write(vault_root, "alpha.md", "# Alpha");
+    let hash2 = "c".repeat(64);
+    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    cache
+        .store(
+            vault_root,
+            &hash2,
+            &[
+                make_parsed_file("target", &["alpha"]),
+                make_parsed_file("alpha", &[]),
+            ],
+        )
+        .unwrap();
+
+    let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let snapshots = backend.list_changes(100).unwrap();
+
+    let files_per_snapshot: Vec<Option<Vec<zetl::types::ParsedFile>>> = snapshots
+        .iter()
+        .map(|snap| {
+            use zetl::history::core::extract_vault_root_hash_from_description;
+            let hash = extract_vault_root_hash_from_description(&snap.description)?;
+            let file_map = cache.load(vault_root, &hash).ok().flatten()?;
+            Some(file_map.into_values().collect())
+        })
+        .collect();
+
+    let entries = extract_page_history("target", &snapshots, &files_per_snapshot, 20);
+
+    // Snapshot with unchanged neighbourhood (hash1b) must be collapsed.
+    // Expected: snapshot1 (appeared), snapshot3 (link added) → 2 entries.
+    assert_eq!(
+        entries.len(),
+        2,
+        "duplicate neighbourhood must be collapsed; got {entries:#?}"
+    );
+
+    // Newest first: snapshot 3 (link added).
+    let newest = &entries[0];
+    assert_eq!(newest.link_count, 1, "newest must show 1 forward link");
+    let d = newest.delta.as_ref().expect("newest must have a delta");
+    assert!(!d.appeared);
+    assert_eq!(d.links_added, vec!["alpha"], "alpha must appear as added link");
+    assert!(d.links_removed.is_empty());
+
+    // Oldest included: snapshot 1 (appeared).
+    let oldest = &entries[1];
+    assert_eq!(oldest.link_count, 0);
+    let d2 = oldest.delta.as_ref().expect("oldest must have a delta");
+    assert!(d2.appeared, "oldest entry must be marked as appeared");
+}
+
+// TEST-110: extract_page_history records page disappearance when the page is
+// removed from the vault between two snapshots.
+#[test]
+fn test_110_extract_page_history_disappearance() {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::jj_backend::VcsBackend as _;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    // Snapshot 1: target exists with a forward link.
+    write(vault_root, "target.md", "# Target\n[[linked]]");
+    write(vault_root, "linked.md", "# Linked");
+    let hash1 = "1".repeat(64);
+    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    let cache = HistoricalIndexCache::with_default_capacity();
+    cache
+        .store(
+            vault_root,
+            &hash1,
+            &[
+                make_parsed_file("target", &["linked"]),
+                make_parsed_file("linked", &[]),
+            ],
+        )
+        .unwrap();
+
+    // Snapshot 2: target removed from vault.
+    std::fs::remove_file(vault_root.join("target.md")).unwrap();
+    let hash2 = "2".repeat(64);
+    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    cache
+        .store(vault_root, &hash2, &[make_parsed_file("linked", &[])])
+        .unwrap();
+
+    let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let snapshots = backend.list_changes(100).unwrap();
+
+    let files_per_snapshot: Vec<Option<Vec<zetl::types::ParsedFile>>> = snapshots
+        .iter()
+        .map(|snap| {
+            use zetl::history::core::extract_vault_root_hash_from_description;
+            let hash = extract_vault_root_hash_from_description(&snap.description)?;
+            let file_map = cache.load(vault_root, &hash).ok().flatten()?;
+            Some(file_map.into_values().collect())
+        })
+        .collect();
+
+    let entries = extract_page_history("target", &snapshots, &files_per_snapshot, 20);
+
+    // Expected: snapshot1 (appeared), snapshot2 (disappeared) → 2 entries.
+    assert_eq!(entries.len(), 2, "got {entries:#?}");
+
+    // Newest: disappeared.
+    let newest = &entries[0];
+    let d = newest.delta.as_ref().unwrap();
+    assert!(d.disappeared, "newest entry must be marked as disappeared");
+    assert_eq!(d.links_removed, vec!["linked"], "former link must appear in links_removed");
+    assert!(d.links_added.is_empty());
+
+    // Oldest: appeared.
+    let oldest = &entries[1];
+    let d2 = oldest.delta.as_ref().unwrap();
+    assert!(d2.appeared);
+    assert_eq!(d2.links_added, vec!["linked"]);
+}
+
+// TEST-111: extract_page_history detects backlink changes independently of
+// forward-link changes (another page starts/stops linking to the target).
+#[test]
+fn test_111_extract_page_history_backlink_change() {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::jj_backend::VcsBackend as _;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    // Snapshot 1: target exists, no backlinks.
+    write(vault_root, "target.md", "# Target");
+    write(vault_root, "source.md", "# Source");
+    let hash1 = "d".repeat(64);
+    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    let cache = HistoricalIndexCache::with_default_capacity();
+    cache
+        .store(
+            vault_root,
+            &hash1,
+            &[
+                make_parsed_file("target", &[]),
+                make_parsed_file("source", &[]),
+            ],
+        )
+        .unwrap();
+
+    // Snapshot 2: source now links to target (backlink added).
+    write(vault_root, "source.md", "# Source\n[[target]]");
+    let hash2 = "e".repeat(64);
+    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    cache
+        .store(
+            vault_root,
+            &hash2,
+            &[
+                make_parsed_file("target", &[]),
+                make_parsed_file("source", &["target"]),
+            ],
+        )
+        .unwrap();
+
+    let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let snapshots = backend.list_changes(100).unwrap();
+
+    let files_per_snapshot: Vec<Option<Vec<zetl::types::ParsedFile>>> = snapshots
+        .iter()
+        .map(|snap| {
+            use zetl::history::core::extract_vault_root_hash_from_description;
+            let hash = extract_vault_root_hash_from_description(&snap.description)?;
+            let file_map = cache.load(vault_root, &hash).ok().flatten()?;
+            Some(file_map.into_values().collect())
+        })
+        .collect();
+
+    let entries = extract_page_history("target", &snapshots, &files_per_snapshot, 20);
+
+    // Expected: snapshot1 (appeared, 0 backlinks), snapshot2 (backlink added).
+    assert_eq!(entries.len(), 2, "got {entries:#?}");
+
+    let newest = &entries[0];
+    assert_eq!(newest.backlink_count, 1, "snapshot2 must show 1 backlink");
+    let d = newest.delta.as_ref().unwrap();
+    assert_eq!(d.backlinks_added, vec!["source"], "source must appear as added backlink");
+    assert!(d.backlinks_removed.is_empty());
+    assert!(!d.appeared);
+
+    let oldest = &entries[1];
+    assert_eq!(oldest.backlink_count, 0);
+    let d2 = oldest.delta.as_ref().unwrap();
+    assert!(d2.appeared);
+    assert!(d2.backlinks_added.is_empty());
+}
+
+// TEST-112: extract_page_history respects the limit parameter, returning only
+// the newest N changed snapshots.
+#[test]
+fn test_112_extract_page_history_limit() {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::jj_backend::VcsBackend as _;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    write(vault_root, "p.md", "# P");
+    let cache = HistoricalIndexCache::with_default_capacity();
+
+    // Create 5 snapshots, each with a different neighbourhood.
+    let hashes: Vec<String> = (0..5u8).map(|i| format!("{:064x}", i)).collect();
+    let link_sets: Vec<&[&str]> = vec![&[], &["a"], &["a", "b"], &["b"], &[]];
+
+    for (i, (hash, links)) in hashes.iter().zip(link_sets.iter()).enumerate() {
+        write(vault_root, "p.md", format!("# P v{i}").as_str());
+        zetl::history::auto_snapshot(vault_root, Some(hash)).unwrap();
+        let mut files = vec![make_parsed_file("p", links)];
+        for t in *links {
+            files.push(make_parsed_file(t, &[]));
+        }
+        cache.store(vault_root, hash, &files).unwrap();
+    }
+
+    let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let snapshots = backend.list_changes(100).unwrap();
+
+    let files_per_snapshot: Vec<Option<Vec<zetl::types::ParsedFile>>> = snapshots
+        .iter()
+        .map(|snap| {
+            use zetl::history::core::extract_vault_root_hash_from_description;
+            let hash = extract_vault_root_hash_from_description(&snap.description)?;
+            let file_map = cache.load(vault_root, &hash).ok().flatten()?;
+            Some(file_map.into_values().collect())
+        })
+        .collect();
+
+    // Without limit: all 5 snapshots have different neighbourhoods → 5 entries.
+    let all = extract_page_history("p", &snapshots, &files_per_snapshot, 100);
+    assert_eq!(all.len(), 5, "all 5 neighbourhood changes must be present; got {all:#?}");
+
+    // With limit=2: only the 2 newest changed snapshots.
+    let limited = extract_page_history("p", &snapshots, &files_per_snapshot, 2);
+    assert_eq!(limited.len(), 2, "limit must be respected; got {limited:#?}");
+    // Must be newest-first.
+    assert!(
+        limited[0].timestamp >= limited[1].timestamp,
+        "entries must be newest-first"
+    );
 }
