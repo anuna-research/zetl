@@ -115,11 +115,7 @@ pub fn build_hook_context(
     let graph_stats = graph.stats(0);
 
     // Pre-compute orphan set for O(1) lookup.
-    let orphan_set: HashSet<String> = graph
-        .orphans()
-        .into_iter()
-        .map(|o| o.page)
-        .collect();
+    let orphan_set: HashSet<String> = graph.orphans().into_iter().map(|o| o.page).collect();
 
     let pages: Vec<HookPageEntry> = files
         .iter()

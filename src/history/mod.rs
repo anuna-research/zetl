@@ -94,10 +94,8 @@ pub fn build_template_page_history_context(
         .iter()
         .map(|snap| {
             let hash = core::extract_vault_root_hash_from_description(&snap.description)?;
-            let file_map: HashMap<PathBuf, crate::types::ParsedFile> = index_cache
-                .load(vault_root, &hash)
-                .ok()
-                .flatten()?;
+            let file_map: HashMap<PathBuf, crate::types::ParsedFile> =
+                index_cache.load(vault_root, &hash).ok().flatten()?;
             Some(file_map.into_values().collect())
         })
         .collect();
@@ -142,10 +140,8 @@ pub fn build_backlink_since_map(
         .iter()
         .map(|snap| {
             let hash = core::extract_vault_root_hash_from_description(&snap.description)?;
-            let file_map: HashMap<PathBuf, crate::types::ParsedFile> = index_cache
-                .load(vault_root, &hash)
-                .ok()
-                .flatten()?;
+            let file_map: HashMap<PathBuf, crate::types::ParsedFile> =
+                index_cache.load(vault_root, &hash).ok().flatten()?;
             Some(file_map.into_values().collect())
         })
         .collect();
@@ -293,10 +289,8 @@ pub fn build_history_index_json(vault_root: &Path, page_names: &[&str]) -> Optio
         .iter()
         .map(|snap| {
             let hash = core::extract_vault_root_hash_from_description(&snap.description)?;
-            let file_map: HashMap<PathBuf, crate::types::ParsedFile> = index_cache
-                .load(vault_root, &hash)
-                .ok()
-                .flatten()?;
+            let file_map: HashMap<PathBuf, crate::types::ParsedFile> =
+                index_cache.load(vault_root, &hash).ok().flatten()?;
             Some(file_map.into_values().collect())
         })
         .collect();
@@ -304,12 +298,7 @@ pub fn build_history_index_json(vault_root: &Path, page_names: &[&str]) -> Optio
     let page_contexts: Vec<(&str, core::PageHistoryContext)> = page_names
         .iter()
         .filter_map(|&name| {
-            let ctx = core::build_page_history_context(
-                name,
-                &snapshots,
-                &files_per_snapshot,
-                now,
-            )?;
+            let ctx = core::build_page_history_context(name, &snapshots, &files_per_snapshot, now)?;
             Some((name, ctx))
         })
         .collect();
@@ -333,7 +322,10 @@ pub fn build_history_index_json(vault_root: &Path, page_names: &[&str]) -> Optio
 /// Returns `Ok(Some(change_id))` when a new snapshot was committed,
 /// `Ok(None)` when deduplicated (vault state unchanged), or an error if the
 /// jj workspace could not be opened or initialised.
-pub fn auto_snapshot(vault_root: &Path, vault_root_hash: Option<&str>) -> anyhow::Result<Option<String>> {
+pub fn auto_snapshot(
+    vault_root: &Path,
+    vault_root_hash: Option<&str>,
+) -> anyhow::Result<Option<String>> {
     let mut backend = jj_backend::JjBackend::open_or_init_at_vault_root(vault_root)?;
 
     let description = match vault_root_hash {

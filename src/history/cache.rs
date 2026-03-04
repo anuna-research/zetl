@@ -112,19 +112,14 @@ impl HistoricalIndexCache {
     /// Remove the oldest `.json` entries from `history_dir` until at most
     /// `self.capacity` entries remain.
     fn evict_lru(&self, history_dir: &Path) -> Result<()> {
-        let mut entries: Vec<(PathBuf, std::time::SystemTime)> =
-            std::fs::read_dir(history_dir)?
-                .filter_map(|e| e.ok())
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .map_or(false, |ext| ext == "json")
-                })
-                .filter_map(|e| {
-                    let mtime = e.metadata().ok()?.modified().ok()?;
-                    Some((e.path(), mtime))
-                })
-                .collect();
+        let mut entries: Vec<(PathBuf, std::time::SystemTime)> = std::fs::read_dir(history_dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map_or(false, |ext| ext == "json"))
+            .filter_map(|e| {
+                let mtime = e.metadata().ok()?.modified().ok()?;
+                Some((e.path(), mtime))
+            })
+            .collect();
 
         if entries.len() <= self.capacity {
             return Ok(());
@@ -172,7 +167,10 @@ mod tests {
         let files = vec![dummy_file("note.md")];
 
         cache.store(dir.path(), &hash, &files).unwrap();
-        let loaded = cache.load(dir.path(), &hash).unwrap().expect("must be Some");
+        let loaded = cache
+            .load(dir.path(), &hash)
+            .unwrap()
+            .expect("must be Some");
         assert!(loaded.contains_key(Path::new("note.md")));
     }
 
@@ -205,7 +203,10 @@ mod tests {
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().map_or(false, |x| x == "json"))
             .count();
-        assert_eq!(count, capacity, "eviction must keep exactly {capacity} entries");
+        assert_eq!(
+            count, capacity,
+            "eviction must keep exactly {capacity} entries"
+        );
     }
 
     #[test]
@@ -214,11 +215,21 @@ mod tests {
         let cache = HistoricalIndexCache::with_default_capacity();
         let hash = make_hash('c');
 
-        cache.store(dir.path(), &hash, &[dummy_file("v1.md")]).unwrap();
-        cache.store(dir.path(), &hash, &[dummy_file("v2.md")]).unwrap();
+        cache
+            .store(dir.path(), &hash, &[dummy_file("v1.md")])
+            .unwrap();
+        cache
+            .store(dir.path(), &hash, &[dummy_file("v2.md")])
+            .unwrap();
 
-        let loaded = cache.load(dir.path(), &hash).unwrap().expect("must be Some");
-        assert!(loaded.contains_key(Path::new("v2.md")), "second write must win");
+        let loaded = cache
+            .load(dir.path(), &hash)
+            .unwrap()
+            .expect("must be Some");
+        assert!(
+            loaded.contains_key(Path::new("v2.md")),
+            "second write must win"
+        );
         assert!(!loaded.contains_key(Path::new("v1.md")));
     }
 }

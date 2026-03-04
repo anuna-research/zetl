@@ -121,7 +121,11 @@ fn test_086_list_changes_after_two_snapshots() {
     write(dir.path(), "a.md", "v2");
     b.snapshot("snap2").unwrap().unwrap();
     let changes = b.list_changes(100).unwrap();
-    assert_eq!(changes.len(), 2, "must have exactly 2 commits; got {changes:?}");
+    assert_eq!(
+        changes.len(),
+        2,
+        "must have exactly 2 commits; got {changes:?}"
+    );
     // Newest-first ordering.
     assert_eq!(changes[0].description, "snap2");
     assert_eq!(changes[1].description, "snap1");
@@ -172,7 +176,7 @@ fn test_089_read_file_at_missing_path_errors() {
 // snapshots (REQ-077, CON-024).
 
 use chrono::{FixedOffset, TimeZone as _};
-use zetl::history::core::{resolve_snapshot, TimeExpr, parse_time_expr};
+use zetl::history::core::{parse_time_expr, resolve_snapshot, TimeExpr};
 
 // TEST-090: parse_time_expr resolves ISO 8601 and relative forms correctly.
 #[test]
@@ -205,8 +209,14 @@ fn test_090_time_expression_parser_forms() {
     ));
 
     // HEAD refs
-    assert_eq!(parse_time_expr("HEAD", now).unwrap(), TimeExpr::HeadOffset(0));
-    assert_eq!(parse_time_expr("HEAD~2", now).unwrap(), TimeExpr::HeadOffset(2));
+    assert_eq!(
+        parse_time_expr("HEAD", now).unwrap(),
+        TimeExpr::HeadOffset(0)
+    );
+    assert_eq!(
+        parse_time_expr("HEAD~2", now).unwrap(),
+        TimeExpr::HeadOffset(2)
+    );
 
     // VCS ref passthrough
     assert_eq!(
@@ -326,7 +336,10 @@ fn test_097_historical_cache_format_matches_index_json() {
         .store(dir.path(), &hash, &[dummy_parsed_file("z.md")])
         .unwrap();
 
-    let path = dir.path().join(".zetl/history").join(format!("{hash}.json"));
+    let path = dir
+        .path()
+        .join(".zetl/history")
+        .join(format!("{hash}.json"));
     let content = std::fs::read_to_string(&path).unwrap();
     let v: serde_json::Value = serde_json::from_str(&content).unwrap();
 
@@ -399,7 +412,10 @@ fn test_099_historical_cache_store_overwrites() {
         .store(dir.path(), &hash, &[dummy_parsed_file("v2.md")])
         .unwrap();
 
-    let loaded = cache.load(dir.path(), &hash).unwrap().expect("must be Some");
+    let loaded = cache
+        .load(dir.path(), &hash)
+        .unwrap()
+        .expect("must be Some");
     assert!(
         loaded.contains_key(Path::new("v2.md")),
         "second write must overwrite the first"
@@ -418,9 +434,12 @@ fn test_092_auto_snapshot_description_contains_hash() {
     write(dir.path(), "note.md", "# Hello");
 
     let hash = "a".repeat(64);
-    let result = zetl::history::auto_snapshot(dir.path(), Some(&hash))
-        .expect("auto_snapshot must not fail");
-    assert!(result.is_some(), "auto_snapshot must create a commit for new content");
+    let result =
+        zetl::history::auto_snapshot(dir.path(), Some(&hash)).expect("auto_snapshot must not fail");
+    assert!(
+        result.is_some(),
+        "auto_snapshot must create a commit for new content"
+    );
 
     let b = JjBackend::open_or_init_at_vault_root(dir.path()).unwrap();
     let changes = b.list_changes(1).unwrap();
@@ -458,7 +477,11 @@ fn test_093_auto_snapshot_deduplicates_same_hash() {
     // Only one commit should exist.
     let b = JjBackend::open_or_init_at_vault_root(dir.path()).unwrap();
     let changes = b.list_changes(10).unwrap();
-    assert_eq!(changes.len(), 1, "deduplication must prevent a second commit");
+    assert_eq!(
+        changes.len(),
+        1,
+        "deduplication must prevent a second commit"
+    );
 }
 
 // TEST-094: auto_snapshot creates a new commit when vault_root_hash changes,
@@ -478,7 +501,10 @@ fn test_094_auto_snapshot_new_commit_on_hash_change() {
     write(dir.path(), "note.md", "# Version two");
     let second = zetl::history::auto_snapshot(dir.path(), Some(&hash2))
         .expect("second auto_snapshot must not fail");
-    assert!(second.is_some(), "different vault_root_hash must produce a new commit");
+    assert!(
+        second.is_some(),
+        "different vault_root_hash must produce a new commit"
+    );
 
     let b = JjBackend::open_or_init_at_vault_root(dir.path()).unwrap();
     let changes = b.list_changes(10).unwrap();
@@ -507,7 +533,11 @@ fn test_100_extract_hash_from_description_valid() {
     let hash = "a".repeat(64);
     let desc = format!("zetl-snapshot vault_root_hash={hash}");
     let result = extract_vault_root_hash_from_description(&desc);
-    assert_eq!(result, Some(hash), "must parse 64-char hex hash from description");
+    assert_eq!(
+        result,
+        Some(hash),
+        "must parse 64-char hex hash from description"
+    );
 }
 
 // TEST-101: extract_vault_root_hash_from_description returns None for missing hash.
@@ -570,11 +600,13 @@ fn test_102_pit_resolve_and_cache_roundtrip() {
     // Resolve to the first snapshot via an ISO date before ts2.
     let now = utc.with_ymd_and_hms(2026, 3, 1, 0, 0, 0).unwrap();
     let snap = resolve_snapshot("2026-01-15", now, &snapshots).unwrap();
-    assert_eq!(snap.change_id, "aaaaaaaaaaaa", "must resolve to the first snapshot");
+    assert_eq!(
+        snap.change_id, "aaaaaaaaaaaa",
+        "must resolve to the first snapshot"
+    );
 
     // Extract vault_root_hash from the resolved snapshot's description.
-    let resolved_hash =
-        extract_vault_root_hash_from_description(&snap.description).unwrap();
+    let resolved_hash = extract_vault_root_hash_from_description(&snap.description).unwrap();
     assert_eq!(resolved_hash, hash1);
 
     // Store/load from HistoricalIndexCache.
@@ -596,7 +628,9 @@ fn test_102_pit_resolve_and_cache_roundtrip() {
 
     cache.store(dir.path(), &hash1, &[dummy]).unwrap();
 
-    let loaded = cache.load(dir.path(), &resolved_hash).unwrap()
+    let loaded = cache
+        .load(dir.path(), &resolved_hash)
+        .unwrap()
         .expect("must load the stored entry");
     assert!(
         loaded.contains_key(std::path::Path::new("v1-note.md")),
@@ -621,8 +655,7 @@ fn test_103_auto_snapshot_and_cache_are_linked() {
     let hash = "e".repeat(64);
 
     // Simulate what cmd_index does: auto_snapshot then store in cache.
-    zetl::history::auto_snapshot(vault_root, Some(&hash))
-        .expect("auto_snapshot must succeed");
+    zetl::history::auto_snapshot(vault_root, Some(&hash)).expect("auto_snapshot must succeed");
 
     let cache = HistoricalIndexCache::with_default_capacity();
     let files = vec![zetl::types::ParsedFile {
@@ -766,7 +799,10 @@ fn test_104_watch_mode_snapshot_deduplication() {
         zetl_snapshots.len(),
         2,
         "must have exactly 2 zetl snapshots: got {:?}",
-        zetl_snapshots.iter().map(|c| &c.description).collect::<Vec<_>>()
+        zetl_snapshots
+            .iter()
+            .map(|c| &c.description)
+            .collect::<Vec<_>>()
     );
     assert!(
         zetl_snapshots[0].description.contains(&hash_v2),
@@ -782,7 +818,7 @@ fn test_104_watch_mode_snapshot_deduplication() {
 // TEST-105–108 cover task-history-cli.
 
 fn make_parsed_file(page_name: &str, link_targets: &[&str]) -> zetl::types::ParsedFile {
-    use zetl::types::{WikiLink};
+    use zetl::types::WikiLink;
     zetl::types::ParsedFile {
         path: format!("{page_name}.md").into(),
         page_name: page_name.to_owned(),
@@ -907,10 +943,10 @@ fn test_107_collapse_timeline_deduplicates() {
 // TEST-108: build_vault_history returns a delta timeline with cached indexes.
 #[test]
 fn test_108_build_vault_history_with_cache() {
+    use chrono::{FixedOffset, TimeZone as _};
     use zetl::history::cache::HistoricalIndexCache;
     use zetl::history::core::build_vault_history;
     use zetl::history::jj_backend::VcsBackend as _;
-    use chrono::{FixedOffset, TimeZone as _};
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -959,13 +995,19 @@ fn test_108_build_vault_history_with_cache() {
     // Newest first: entries[0] is snapshot 2 (beta added).
     let newest = &entries[0];
     assert_eq!(newest.total_pages, 2);
-    let delta = newest.delta.as_ref().expect("newest entry must have a delta");
+    let delta = newest
+        .delta
+        .as_ref()
+        .expect("newest entry must have a delta");
     assert_eq!(delta.pages_added, vec!["beta"]);
     assert!(delta.pages_removed.is_empty());
     assert_eq!(delta.links_added, 1, "alpha→beta link added");
 
     // Oldest entry has no delta (nothing to diff against).
-    assert!(entries[1].delta.is_none(), "oldest entry must have no delta");
+    assert!(
+        entries[1].delta.is_none(),
+        "oldest entry must have no delta"
+    );
 }
 
 // ── Page history tests (REQ-081, CON-025) ─────────────────────────────────────
@@ -995,7 +1037,11 @@ fn test_109_extract_page_history_link_changes() {
     // Snapshot 2: same content (same hash should produce no commit via
     // dedup; use a different hash to force a second snapshot).
     let hash1b = "b".repeat(64);
-    write(vault_root, "target.md", "# Target (unchanged neighbourhood)");
+    write(
+        vault_root,
+        "target.md",
+        "# Target (unchanged neighbourhood)",
+    );
     zetl::history::auto_snapshot(vault_root, Some(&hash1b)).unwrap();
     // Intentionally store the same neighbourhood to simulate "no change".
     cache
@@ -1045,7 +1091,11 @@ fn test_109_extract_page_history_link_changes() {
     assert_eq!(newest.link_count, 1, "newest must show 1 forward link");
     let d = newest.delta.as_ref().expect("newest must have a delta");
     assert!(!d.appeared);
-    assert_eq!(d.links_added, vec!["alpha"], "alpha must appear as added link");
+    assert_eq!(
+        d.links_added,
+        vec!["alpha"],
+        "alpha must appear as added link"
+    );
     assert!(d.links_removed.is_empty());
 
     // Oldest included: snapshot 1 (appeared).
@@ -1112,7 +1162,11 @@ fn test_110_extract_page_history_disappearance() {
     let newest = &entries[0];
     let d = newest.delta.as_ref().unwrap();
     assert!(d.disappeared, "newest entry must be marked as disappeared");
-    assert_eq!(d.links_removed, vec!["linked"], "former link must appear in links_removed");
+    assert_eq!(
+        d.links_removed,
+        vec!["linked"],
+        "former link must appear in links_removed"
+    );
     assert!(d.links_added.is_empty());
 
     // Oldest: appeared.
@@ -1185,7 +1239,11 @@ fn test_111_extract_page_history_backlink_change() {
     let newest = &entries[0];
     assert_eq!(newest.backlink_count, 1, "snapshot2 must show 1 backlink");
     let d = newest.delta.as_ref().unwrap();
-    assert_eq!(d.backlinks_added, vec!["source"], "source must appear as added backlink");
+    assert_eq!(
+        d.backlinks_added,
+        vec!["source"],
+        "source must appear as added backlink"
+    );
     assert!(d.backlinks_removed.is_empty());
     assert!(!d.appeared);
 
@@ -1238,11 +1296,19 @@ fn test_112_extract_page_history_limit() {
 
     // Without limit: all 5 snapshots have different neighbourhoods → 5 entries.
     let all = extract_page_history("p", &snapshots, &files_per_snapshot, 100);
-    assert_eq!(all.len(), 5, "all 5 neighbourhood changes must be present; got {all:#?}");
+    assert_eq!(
+        all.len(),
+        5,
+        "all 5 neighbourhood changes must be present; got {all:#?}"
+    );
 
     // With limit=2: only the 2 newest changed snapshots.
     let limited = extract_page_history("p", &snapshots, &files_per_snapshot, 2);
-    assert_eq!(limited.len(), 2, "limit must be respected; got {limited:#?}");
+    assert_eq!(
+        limited.len(),
+        2,
+        "limit must be respected; got {limited:#?}"
+    );
     // Must be newest-first.
     assert!(
         limited[0].timestamp >= limited[1].timestamp,
@@ -1313,8 +1379,7 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
     use zetl::web::engine::TemplateEngine;
 
     let data = zetl::web::reindex(&vault_root.to_path_buf()).expect("reindex");
-    let search_index =
-        SearchIndex::build(vault_root, &data.files).expect("build search index");
+    let search_index = SearchIndex::build(vault_root, &data.files).expect("build search index");
     zetl::web::WebState {
         data: Arc::new(RwLock::new(data)),
         vault_root: Arc::new(vault_root.to_path_buf()),
@@ -1327,9 +1392,7 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
 
 /// Build a Router with only the four history API routes.
 #[cfg(test)]
-fn history_api_router(
-    state: zetl::web::WebState,
-) -> axum::Router {
+fn history_api_router(state: zetl::web::WebState) -> axum::Router {
     use axum::routing::get;
     use zetl::web::routes::{
         api_history_at_handler, api_history_diff_handler, api_history_log_handler,
@@ -1337,10 +1400,7 @@ fn history_api_router(
     };
     axum::Router::new()
         .route("/api/history", get(api_history_log_handler))
-        .route(
-            "/api/history/page/{name}",
-            get(api_history_page_handler),
-        )
+        .route("/api/history/page/{name}", get(api_history_page_handler))
         .route("/api/history/at", get(api_history_at_handler))
         .route("/api/history/diff", get(api_history_diff_handler))
         .with_state(state)
@@ -1348,10 +1408,7 @@ fn history_api_router(
 
 /// Send a GET request through a Router and return (status, content-type, body).
 #[cfg(test)]
-async fn api_get(
-    app: &axum::Router,
-    uri: &str,
-) -> (axum::http::StatusCode, String, String) {
+async fn api_get(app: &axum::Router, uri: &str) -> (axum::http::StatusCode, String, String) {
     use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt as _;
@@ -1489,8 +1546,7 @@ async fn test_118_api_history_diff_missing_params_returns_400() {
     );
 
     // Missing `to` only.
-    let (status2, _, body2) =
-        api_get(&app, "/api/history/diff?from=HEAD").await;
+    let (status2, _, body2) = api_get(&app, "/api/history/diff?from=HEAD").await;
     assert_eq!(
         status2,
         axum::http::StatusCode::BAD_REQUEST,
@@ -1575,11 +1631,14 @@ fn test_121_sample_trend_empty_input() {
 // TEST-122: build_vault_history_context returns None when snapshots is empty (REQ-085).
 #[test]
 fn test_122_build_vault_history_context_empty_snapshots() {
-    use zetl::history::core::build_vault_history_context;
     use chrono::{FixedOffset, TimeZone as _};
+    use zetl::history::core::build_vault_history_context;
 
     let dir = tempfile::TempDir::new().unwrap();
-    let now = FixedOffset::east_opt(0).unwrap().with_ymd_and_hms(2026, 3, 4, 12, 0, 0).unwrap();
+    let now = FixedOffset::east_opt(0)
+        .unwrap()
+        .with_ymd_and_hms(2026, 3, 4, 12, 0, 0)
+        .unwrap();
     let result = build_vault_history_context(&[], dir.path(), now).unwrap();
     assert!(result.is_none(), "empty snapshots must yield None");
 }
@@ -1587,10 +1646,10 @@ fn test_122_build_vault_history_context_empty_snapshots() {
 // TEST-123: build_vault_history_context returns populated struct with correct fields (REQ-085).
 #[test]
 fn test_123_build_vault_history_context_populated() {
+    use chrono::{FixedOffset, TimeZone as _};
     use zetl::history::cache::HistoricalIndexCache;
     use zetl::history::core::build_vault_history_context;
     use zetl::history::jj_backend::VcsBackend as _;
-    use chrono::{FixedOffset, TimeZone as _};
 
     let dir = tempfile::TempDir::new().unwrap();
     let vault_root = dir.path();
@@ -1605,18 +1664,37 @@ fn test_123_build_vault_history_context_populated() {
     zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
     let cache = HistoricalIndexCache::with_default_capacity();
     cache
-        .store(vault_root, &hash1, &[make_parsed_file("alpha", &["beta"]), make_parsed_file("beta", &[])])
+        .store(
+            vault_root,
+            &hash1,
+            &[
+                make_parsed_file("alpha", &["beta"]),
+                make_parsed_file("beta", &[]),
+            ],
+        )
         .unwrap();
 
     zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
     cache
-        .store(vault_root, &hash2, &[make_parsed_file("alpha", &["beta"]), make_parsed_file("beta", &[]), make_parsed_file("gamma", &[])])
+        .store(
+            vault_root,
+            &hash2,
+            &[
+                make_parsed_file("alpha", &["beta"]),
+                make_parsed_file("beta", &[]),
+                make_parsed_file("gamma", &[]),
+            ],
+        )
         .unwrap();
 
-    let mut backend = zetl::history::jj_backend::JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let mut backend =
+        zetl::history::jj_backend::JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
 
-    let now = FixedOffset::east_opt(0).unwrap().with_ymd_and_hms(2026, 3, 4, 12, 0, 0).unwrap();
+    let now = FixedOffset::east_opt(0)
+        .unwrap()
+        .with_ymd_and_hms(2026, 3, 4, 12, 0, 0)
+        .unwrap();
     let ctx = build_vault_history_context(&snapshots, vault_root, now)
         .unwrap()
         .expect("must return Some when snapshots exist");
@@ -1629,7 +1707,10 @@ fn test_123_build_vault_history_context_populated() {
     assert!(!ctx.trend.is_empty(), "trend must have at least one point");
     assert!(ctx.trend.len() <= 30, "trend must not exceed 30 points");
     assert!(!ctx.recent_changes.is_empty(), "recent_changes must be set");
-    assert!(ctx.recent_changes.len() <= 10, "recent_changes must not exceed 10");
+    assert!(
+        ctx.recent_changes.len() <= 10,
+        "recent_changes must not exceed 10"
+    );
 }
 
 // TEST-124: build_template_history_context returns None when no jj workspace (REQ-085).
@@ -1638,14 +1719,17 @@ fn test_124_build_template_history_context_no_workspace() {
     let dir = tempfile::TempDir::new().unwrap();
     // No jj workspace initialised.
     let result = zetl::history::build_template_history_context(dir.path());
-    assert!(result.is_none(), "must return None when no workspace exists");
+    assert!(
+        result.is_none(),
+        "must return None when no workspace exists"
+    );
 }
 
 // TEST-125: vault.history is null in template context when history unavailable (REQ-085).
 #[test]
 fn test_125_vault_history_null_when_no_history() {
+    use zetl::web::context::{build_vault_context, PageEntry, StatsContext, VaultContext};
     use zetl::web::engine::TemplateEngine;
-    use zetl::web::context::{build_vault_context, VaultContext, StatsContext, PageEntry};
 
     let tmp = tempfile::TempDir::new().unwrap();
     // Custom template that outputs vault.history as JSON.
@@ -1660,21 +1744,29 @@ fn test_125_vault_history_null_when_no_history() {
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
-        stats: StatsContext { total_pages: 0, total_links: 0, dead_links: 0, orphans: 0 },
+        stats: StatsContext {
+            total_pages: 0,
+            total_links: 0,
+            dead_links: 0,
+            orphans: 0,
+        },
         history: serde_json::Value::Null,
     };
 
     let engine = TemplateEngine::new(tmp.path(), "hist-test", false, false);
     let html = engine.render_index(&vault_ctx, "serve", "", "").unwrap();
-    assert!(html.contains("HISTORY_NULL"), "vault.history must be null/none when unavailable");
+    assert!(
+        html.contains("HISTORY_NULL"),
+        "vault.history must be null/none when unavailable"
+    );
 }
 
 // TEST-126: vault.history fields are accessible in template context when history exists (REQ-085).
 #[test]
 fn test_126_vault_history_populated_in_template() {
+    use zetl::history::core::{HistoryEntry, TrendPoint, VaultHistoryContext};
+    use zetl::web::context::{build_vault_context, StatsContext, VaultContext};
     use zetl::web::engine::TemplateEngine;
-    use zetl::web::context::{build_vault_context, VaultContext, StatsContext};
-    use zetl::history::core::{VaultHistoryContext, TrendPoint, HistoryEntry};
 
     let tmp = tempfile::TempDir::new().unwrap();
     let theme_dir = tmp.path().join(".zetl/themes/hist-test2");
@@ -1685,7 +1777,11 @@ fn test_126_vault_history_populated_in_template() {
     ).unwrap();
 
     let hist = VaultHistoryContext {
-        trend: vec![TrendPoint { timestamp: "2026-03-01T00:00:00Z".to_owned(), total_pages: 2, total_links: 1 }],
+        trend: vec![TrendPoint {
+            timestamp: "2026-03-01T00:00:00Z".to_owned(),
+            total_pages: 2,
+            total_links: 1,
+        }],
         recent_changes: vec![],
         oldest: Some("2026-03-01T00:00:00Z".to_owned()),
         newest: Some("2026-03-04T00:00:00Z".to_owned()),
@@ -1698,15 +1794,26 @@ fn test_126_vault_history_populated_in_template() {
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
-        stats: StatsContext { total_pages: 0, total_links: 0, dead_links: 0, orphans: 0 },
+        stats: StatsContext {
+            total_pages: 0,
+            total_links: 0,
+            dead_links: 0,
+            orphans: 0,
+        },
         history: serde_json::Value::Null,
     };
     vault_ctx.history = serde_json::to_value(hist).unwrap();
 
     let engine = TemplateEngine::new(tmp.path(), "hist-test2", false, false);
     let html = engine.render_index(&vault_ctx, "serve", "", "").unwrap();
-    assert!(html.contains("SC:5"), "snapshot_count must be accessible in template");
-    assert!(html.contains("US:3"), "unique_states must be accessible in template");
+    assert!(
+        html.contains("SC:5"),
+        "snapshot_count must be accessible in template"
+    );
+    assert!(
+        html.contains("US:3"),
+        "unique_states must be accessible in template"
+    );
 }
 
 // ── Page history template context tests (REQ-086) ───────────────────────────
@@ -1732,11 +1839,11 @@ fn test_127_build_page_history_context_none_when_no_history() {
 #[test]
 fn test_128_build_page_history_context_summary_fields() {
     use chrono::{FixedOffset, TimeZone as _};
+    use std::path::PathBuf;
+    use std::time::SystemTime;
     use zetl::history::core::build_page_history_context;
     use zetl::history::jj_backend::ChangeInfo;
     use zetl::types::{ParsedFile, WikiLink};
-    use std::path::PathBuf;
-    use std::time::SystemTime;
 
     fn ts(y: i32, m: u32, d: u32) -> chrono::DateTime<FixedOffset> {
         FixedOffset::east_opt(0)
@@ -1790,8 +1897,8 @@ fn test_128_build_page_history_context_summary_fields() {
     // snap1: page created with 1 link; snap2: link added; snap3: no change (new link dropped)
     let files_per_snapshot: Vec<Option<Vec<ParsedFile>>> = vec![
         Some(make_files("MyPage", &["A", "B"])), // snap3: 2 links (change from snap2)
-        Some(make_files("MyPage", &["A"])),       // snap2: 1 link (change from snap1)
-        Some(make_files("MyPage", &[])),          // snap1: 0 links (creation)
+        Some(make_files("MyPage", &["A"])),      // snap2: 1 link (change from snap1)
+        Some(make_files("MyPage", &[])),         // snap1: 0 links (creation)
     ];
 
     let now = ts(2026, 3, 4);
@@ -1823,11 +1930,11 @@ fn test_128_build_page_history_context_summary_fields() {
 #[test]
 fn test_129_sample_page_trend_oldest_first() {
     use chrono::{FixedOffset, TimeZone as _};
+    use std::path::PathBuf;
+    use std::time::SystemTime;
     use zetl::history::core::{build_page_history_context, sample_page_trend};
     use zetl::history::jj_backend::ChangeInfo;
     use zetl::types::{ParsedFile, WikiLink};
-    use std::path::PathBuf;
-    use std::time::SystemTime;
 
     fn ts(d: u32) -> chrono::DateTime<FixedOffset> {
         FixedOffset::east_opt(0)
@@ -1902,8 +2009,8 @@ fn test_129_sample_page_trend_oldest_first() {
 // TEST-130: page.history is null in template when history field is Null (REQ-086).
 #[test]
 fn test_130_page_history_null_in_template() {
+    use zetl::web::context::{PageContext, StatsContext, VaultContext};
     use zetl::web::engine::TemplateEngine;
-    use zetl::web::context::{PageContext, VaultContext, StatsContext};
 
     let tmp = tempfile::TempDir::new().unwrap();
     let theme_dir = tmp.path().join(".zetl/themes/phist-null");
@@ -1917,7 +2024,12 @@ fn test_130_page_history_null_in_template() {
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
-        stats: StatsContext { total_pages: 0, total_links: 0, dead_links: 0, orphans: 0 },
+        stats: StatsContext {
+            total_pages: 0,
+            total_links: 0,
+            dead_links: 0,
+            orphans: 0,
+        },
         history: serde_json::Value::Null,
     };
 
@@ -1937,7 +2049,9 @@ fn test_130_page_history_null_in_template() {
     };
 
     let engine = TemplateEngine::new(tmp.path(), "phist-null", false, false);
-    let html = engine.render_page(&vault_ctx, &page_ctx, "serve", "", "").unwrap();
+    let html = engine
+        .render_page(&vault_ctx, &page_ctx, "serve", "", "")
+        .unwrap();
     assert!(
         html.contains("PAGE_HIST_NULL"),
         "page.history must be null/none when unavailable"
@@ -1947,9 +2061,9 @@ fn test_130_page_history_null_in_template() {
 // TEST-131: page.history fields are accessible in template when populated (REQ-086).
 #[test]
 fn test_131_page_history_populated_in_template() {
-    use zetl::web::engine::TemplateEngine;
-    use zetl::web::context::{PageContext, VaultContext, StatsContext};
     use zetl::history::core::{PageHistoryContext, PageTrendPoint};
+    use zetl::web::context::{PageContext, StatsContext, VaultContext};
+    use zetl::web::engine::TemplateEngine;
 
     let tmp = tempfile::TempDir::new().unwrap();
     let theme_dir = tmp.path().join(".zetl/themes/phist-set");
@@ -1964,13 +2078,11 @@ fn test_131_page_history_populated_in_template() {
         last_changed: "2026-03-01T00:00:00Z".to_owned(),
         age_days: 62,
         stable_days: 3,
-        link_trend: vec![
-            PageTrendPoint {
-                timestamp: "2026-01-01T00:00:00Z".to_owned(),
-                link_count: 0,
-                backlink_count: 0,
-            },
-        ],
+        link_trend: vec![PageTrendPoint {
+            timestamp: "2026-01-01T00:00:00Z".to_owned(),
+            link_count: 0,
+            backlink_count: 0,
+        }],
         recent_changes: vec![],
     };
 
@@ -1978,7 +2090,12 @@ fn test_131_page_history_populated_in_template() {
         name: "test".to_owned(),
         pages: vec![],
         sidebar_tree: vec![],
-        stats: StatsContext { total_pages: 0, total_links: 0, dead_links: 0, orphans: 0 },
+        stats: StatsContext {
+            total_pages: 0,
+            total_links: 0,
+            dead_links: 0,
+            orphans: 0,
+        },
         history: serde_json::Value::Null,
     };
 
@@ -1999,8 +2116,13 @@ fn test_131_page_history_populated_in_template() {
     page_ctx.history = serde_json::to_value(hist).unwrap();
 
     let engine = TemplateEngine::new(tmp.path(), "phist-set", false, false);
-    let html = engine.render_page(&vault_ctx, &page_ctx, "serve", "", "").unwrap();
-    assert!(html.contains("CA:2026-01-01T00:00:00Z"), "created_at must be in template");
+    let html = engine
+        .render_page(&vault_ctx, &page_ctx, "serve", "", "")
+        .unwrap();
+    assert!(
+        html.contains("CA:2026-01-01T00:00:00Z"),
+        "created_at must be in template"
+    );
     assert!(html.contains("AD:62"), "age_days must be in template");
     assert!(html.contains("SD:3"), "stable_days must be in template");
 }
@@ -2012,9 +2134,9 @@ fn test_131_page_history_populated_in_template() {
 // where the source linked to the target (REQ-089).
 #[test]
 fn test_132_resolve_backlink_since_earliest_timestamp() {
+    use chrono::{FixedOffset, TimeZone as _};
     use zetl::history::core::resolve_backlink_since;
     use zetl::history::jj_backend::ChangeInfo;
-    use chrono::{FixedOffset, TimeZone as _};
 
     let utc = FixedOffset::east_opt(0).unwrap();
     let ts1 = utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
@@ -2023,9 +2145,24 @@ fn test_132_resolve_backlink_since_earliest_timestamp() {
 
     // Snapshots are newest-first.
     let snapshots = vec![
-        ChangeInfo { change_id: "s3".to_owned(), commit_id: "c3".to_owned(), timestamp: ts3, description: "snap3".to_owned() },
-        ChangeInfo { change_id: "s2".to_owned(), commit_id: "c2".to_owned(), timestamp: ts2, description: "snap2".to_owned() },
-        ChangeInfo { change_id: "s1".to_owned(), commit_id: "c1".to_owned(), timestamp: ts1, description: "snap1".to_owned() },
+        ChangeInfo {
+            change_id: "s3".to_owned(),
+            commit_id: "c3".to_owned(),
+            timestamp: ts3,
+            description: "snap3".to_owned(),
+        },
+        ChangeInfo {
+            change_id: "s2".to_owned(),
+            commit_id: "c2".to_owned(),
+            timestamp: ts2,
+            description: "snap2".to_owned(),
+        },
+        ChangeInfo {
+            change_id: "s1".to_owned(),
+            commit_id: "c1".to_owned(),
+            timestamp: ts1,
+            description: "snap1".to_owned(),
+        },
     ];
 
     // snap1 (oldest): source has no link to target yet.
@@ -2034,7 +2171,7 @@ fn test_132_resolve_backlink_since_earliest_timestamp() {
     let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> = vec![
         Some(vec![make_parsed_file("source", &["target"])]), // snap3
         Some(vec![make_parsed_file("source", &["target"])]), // snap2 — earliest
-        Some(vec![make_parsed_file("source", &[])]),          // snap1 — no link
+        Some(vec![make_parsed_file("source", &[])]),         // snap1 — no link
     ];
 
     let result = resolve_backlink_since("source", "target", &snapshots, &fps);
@@ -2049,43 +2186,54 @@ fn test_132_resolve_backlink_since_earliest_timestamp() {
 // TEST-133: resolve_backlink_since returns None when the link never existed (REQ-089).
 #[test]
 fn test_133_resolve_backlink_since_none_when_no_link() {
+    use chrono::{FixedOffset, TimeZone as _};
     use zetl::history::core::resolve_backlink_since;
     use zetl::history::jj_backend::ChangeInfo;
-    use chrono::{FixedOffset, TimeZone as _};
 
     let utc = FixedOffset::east_opt(0).unwrap();
     let ts1 = utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
 
-    let snapshots = vec![
-        ChangeInfo { change_id: "s1".to_owned(), commit_id: "c1".to_owned(), timestamp: ts1, description: "snap1".to_owned() },
-    ];
+    let snapshots = vec![ChangeInfo {
+        change_id: "s1".to_owned(),
+        commit_id: "c1".to_owned(),
+        timestamp: ts1,
+        description: "snap1".to_owned(),
+    }];
     // source links to a different page, never to target.
-    let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> = vec![
-        Some(vec![make_parsed_file("source", &["other-page"])]),
-    ];
+    let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> =
+        vec![Some(vec![make_parsed_file("source", &["other-page"])])];
 
     let result = resolve_backlink_since("source", "target", &snapshots, &fps);
-    assert!(result.is_none(), "must return None when the link never existed");
+    assert!(
+        result.is_none(),
+        "must return None when the link never existed"
+    );
 }
 
 // TEST-134: resolve_backlink_since returns None when all snapshot indexes are missing (REQ-089).
 #[test]
 fn test_134_resolve_backlink_since_none_for_missing_cache() {
+    use chrono::{FixedOffset, TimeZone as _};
     use zetl::history::core::resolve_backlink_since;
     use zetl::history::jj_backend::ChangeInfo;
-    use chrono::{FixedOffset, TimeZone as _};
 
     let utc = FixedOffset::east_opt(0).unwrap();
     let ts1 = utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
 
-    let snapshots = vec![
-        ChangeInfo { change_id: "s1".to_owned(), commit_id: "c1".to_owned(), timestamp: ts1, description: "snap1".to_owned() },
-    ];
+    let snapshots = vec![ChangeInfo {
+        change_id: "s1".to_owned(),
+        commit_id: "c1".to_owned(),
+        timestamp: ts1,
+        description: "snap1".to_owned(),
+    }];
     // No cached index for any snapshot.
     let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> = vec![None];
 
     let result = resolve_backlink_since("source", "target", &snapshots, &fps);
-    assert!(result.is_none(), "must return None when no cached indexes are available");
+    assert!(
+        result.is_none(),
+        "must return None when no cached indexes are available"
+    );
 }
 
 // ── Hook context history tests (REQ-090) ─────────────────────────────────────
@@ -2097,7 +2245,10 @@ fn test_135_hook_history_null_when_no_history() {
     let dir = tempfile::TempDir::new().unwrap();
     // No .zetl/jj/ directory → open_history fails → must return Null.
     let result = zetl::history::build_hook_history_context(dir.path());
-    assert!(result.is_null(), "must be null when no history is available; got {result:?}");
+    assert!(
+        result.is_null(),
+        "must be null when no history is available; got {result:?}"
+    );
 }
 
 // TEST-136: build_hook_history_context returns correct snapshot_count, oldest,
@@ -2123,17 +2274,39 @@ fn test_136_hook_history_basic_fields() {
         .store(vault_root, &hash1, &[make_parsed_file("alpha", &[])])
         .unwrap();
     cache
-        .store(vault_root, &hash2, &[make_parsed_file("alpha", &[]), make_parsed_file("beta", &[])])
+        .store(
+            vault_root,
+            &hash2,
+            &[
+                make_parsed_file("alpha", &[]),
+                make_parsed_file("beta", &[]),
+            ],
+        )
         .unwrap();
 
     let result = zetl::history::build_hook_history_context(vault_root);
-    assert!(!result.is_null(), "must not be null when history is available");
+    assert!(
+        !result.is_null(),
+        "must not be null when history is available"
+    );
 
     assert_eq!(result["snapshot_count"], 2, "snapshot_count must be 2");
-    assert!(result["oldest"].is_string(), "oldest must be a string timestamp");
-    assert!(result["newest"].is_string(), "newest must be a string timestamp");
-    assert_eq!(result["vault_root_hash"], hash2, "vault_root_hash must be the most recent");
-    assert_eq!(result["previous_vault_root_hash"], hash1, "previous_vault_root_hash must be the earlier one");
+    assert!(
+        result["oldest"].is_string(),
+        "oldest must be a string timestamp"
+    );
+    assert!(
+        result["newest"].is_string(),
+        "newest must be a string timestamp"
+    );
+    assert_eq!(
+        result["vault_root_hash"], hash2,
+        "vault_root_hash must be the most recent"
+    );
+    assert_eq!(
+        result["previous_vault_root_hash"], hash1,
+        "previous_vault_root_hash must be the earlier one"
+    );
     // Verify newest >= oldest lexicographically (both are RFC 3339).
     assert!(
         result["newest"].as_str().unwrap() >= result["oldest"].as_str().unwrap(),
@@ -2176,10 +2349,16 @@ fn test_137_hook_history_delta_reflects_changes() {
         .unwrap();
 
     let result = zetl::history::build_hook_history_context(vault_root);
-    assert!(!result.is_null(), "must not be null when history is available");
+    assert!(
+        !result.is_null(),
+        "must not be null when history is available"
+    );
 
     let delta = &result["delta"];
-    assert!(delta.is_object(), "delta must be an object when two distinct states exist");
+    assert!(
+        delta.is_object(),
+        "delta must be an object when two distinct states exist"
+    );
 
     let pages_added = delta["pages_added"].as_array().unwrap();
     assert_eq!(pages_added.len(), 1, "one page added: page_b");
@@ -2199,8 +2378,8 @@ fn test_137_hook_history_delta_reflects_changes() {
 #[test]
 fn test_138_serialize_history_index_structure() {
     use zetl::history::core::{
-        PageHistoryContext, PageHistoryEntry, PageTrendPoint, TrendPoint, VaultHistoryContext,
-        serialize_history_index,
+        serialize_history_index, PageHistoryContext, PageHistoryEntry, PageTrendPoint, TrendPoint,
+        VaultHistoryContext,
     };
 
     let vault_ctx = VaultHistoryContext {
@@ -2275,7 +2454,11 @@ fn test_138_serialize_history_index_structure() {
     assert_eq!(alpha["created_at"], "2026-01-01T00:00:00+00:00");
     assert_eq!(alpha["last_changed"], "2026-02-01T00:00:00+00:00");
     let link_trend = alpha["link_trend"].as_array().unwrap();
-    assert_eq!(link_trend.len(), 2, "page link_trend must have 2 points (≤10)");
+    assert_eq!(
+        link_trend.len(),
+        2,
+        "page link_trend must have 2 points (≤10)"
+    );
     assert_eq!(link_trend[0]["link_count"], 1);
     assert_eq!(link_trend[1]["link_count"], 2);
 }
@@ -2284,8 +2467,8 @@ fn test_138_serialize_history_index_structure() {
 #[test]
 fn test_139_serialize_history_index_resamples_link_trend() {
     use zetl::history::core::{
-        PageHistoryContext, PageTrendPoint, TrendPoint, VaultHistoryContext,
-        serialize_history_index,
+        serialize_history_index, PageHistoryContext, PageTrendPoint, TrendPoint,
+        VaultHistoryContext,
     };
 
     // Build a page context with 25 trend points (>10).
@@ -2329,10 +2512,20 @@ fn test_139_serialize_history_index_resamples_link_trend() {
         "link_trend must be ≤10 points; got {}",
         link_trend.len()
     );
-    assert_eq!(link_trend.len(), 10, "link_trend must be exactly 10 when source has 25 points");
+    assert_eq!(
+        link_trend.len(),
+        10,
+        "link_trend must be exactly 10 when source has 25 points"
+    );
     // First point should correspond to oldest (index 0), last to newest (index 24).
-    assert_eq!(link_trend[0]["link_count"], 0, "first point is oldest (link_count=0)");
-    assert_eq!(link_trend[9]["link_count"], 24, "last point is newest (link_count=24)");
+    assert_eq!(
+        link_trend[0]["link_count"], 0,
+        "first point is oldest (link_count=0)"
+    );
+    assert_eq!(
+        link_trend[9]["link_count"], 24,
+        "last point is newest (link_count=24)"
+    );
 }
 
 // ─── NFR performance verification tests ──────────────────────────────────────
@@ -2393,7 +2586,11 @@ fn test_nfr_028_cache_hit_latency() {
     let elapsed_ms = start.elapsed().as_millis();
 
     assert!(loaded.is_some(), "cache hit must return Some");
-    assert_eq!(loaded.unwrap().len(), 200, "loaded map must have 200 entries");
+    assert_eq!(
+        loaded.unwrap().len(),
+        200,
+        "loaded map must have 200 entries"
+    );
     assert!(
         elapsed_ms <= 500,
         "cache hit must complete in ≤ 500ms (NFR-028 bound: ≤ 100ms); got {}ms",
@@ -2428,7 +2625,11 @@ fn test_nfr_029_cache_miss_latency() {
 
     // 2. Full history context build on a small vault with no cached indexes.
     for i in 0..50_u32 {
-        write(vault_root, &format!("page{i:02}.md"), &format!("# Page {i}"));
+        write(
+            vault_root,
+            &format!("page{i:02}.md"),
+            &format!("# Page {i}"),
+        );
     }
     let h1 = "a".repeat(64);
     let h2 = "b".repeat(64);
@@ -2588,7 +2789,11 @@ fn test_nfr_033_template_context_build_latency() {
     let h2 = "2".repeat(64);
     let h3 = "3".repeat(64);
     zetl::history::auto_snapshot(vault_root, Some(&h1)).unwrap();
-    write(vault_root, "page00.md", "# Page 0 updated\n[[page01]]\n[[page02]]");
+    write(
+        vault_root,
+        "page00.md",
+        "# Page 0 updated\n[[page01]]\n[[page02]]",
+    );
     zetl::history::auto_snapshot(vault_root, Some(&h2)).unwrap();
     write(vault_root, "page01.md", "# Page 1 updated\n[[page03]]");
     zetl::history::auto_snapshot(vault_root, Some(&h3)).unwrap();
@@ -2616,9 +2821,8 @@ fn test_nfr_033_template_context_build_latency() {
     let files_per_snapshot: Vec<Option<Vec<zetl::types::ParsedFile>>> = snapshots
         .iter()
         .map(|snap| {
-            let hash = zetl::history::core::extract_vault_root_hash_from_description(
-                &snap.description,
-            );
+            let hash =
+                zetl::history::core::extract_vault_root_hash_from_description(&snap.description);
             hash.and_then(|h| cache.load(vault_root, &h).ok().flatten())
                 .map(|m| m.into_values().collect())
         })
@@ -2655,7 +2859,10 @@ fn test_140_build_history_index_json_no_history() {
     let dir = tempfile::TempDir::new().unwrap();
     // No jj workspace initialised → history unavailable.
     let result = zetl::history::build_history_index_json(dir.path(), &[]);
-    assert!(result.is_none(), "must return None when history is unavailable");
+    assert!(
+        result.is_none(),
+        "must return None when history is unavailable"
+    );
 }
 
 // TEST-141: build_history_index_json produces valid JSON with vault and pages (REQ-088).
@@ -2691,7 +2898,10 @@ fn test_141_build_history_index_json_with_history() {
         .unwrap();
 
     let result = zetl::history::build_history_index_json(vault_root, &["alpha", "beta"]);
-    assert!(result.is_some(), "must produce JSON when history and cached indexes exist");
+    assert!(
+        result.is_some(),
+        "must produce JSON when history and cached indexes exist"
+    );
 
     let json_str = result.unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("must be valid JSON");

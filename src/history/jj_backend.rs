@@ -16,22 +16,22 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context as _, anyhow, bail};
+use anyhow::{anyhow, bail, Context as _};
 use jj_lib::backend::{ChangeId, CommitId, Signature, Timestamp};
 use jj_lib::commit::Commit;
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::gitignore::GitIgnoreFile;
+use jj_lib::local_working_copy::LocalWorkingCopyFactory;
 use jj_lib::matchers::EverythingMatcher;
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::{HexPrefix, ObjectId as _, PrefixResolution};
-use jj_lib::local_working_copy::LocalWorkingCopyFactory;
 use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader, StoreFactories};
 use jj_lib::repo_path::RepoPath;
 use jj_lib::revset::RevsetExpression;
 use jj_lib::settings::UserSettings;
-use jj_lib::working_copy::WorkingCopyFactory as _;
-use jj_lib::workspace::{Workspace, default_working_copy_factories};
 use jj_lib::working_copy::SnapshotOptions;
+use jj_lib::working_copy::WorkingCopyFactory as _;
+use jj_lib::workspace::{default_working_copy_factories, Workspace};
 use pollster::FutureExt as _;
 use tokio::io::AsyncReadExt as _;
 
@@ -159,10 +159,7 @@ impl JjBackend {
     /// is loaded. Both paths are idempotent and produce no user-visible output.
     pub fn open_or_init_at_vault_root(vault_root: &Path) -> anyhow::Result<Self> {
         if !vault_root.exists() {
-            bail!(
-                "vault root does not exist: {}",
-                vault_root.display()
-            );
+            bail!("vault root does not exist: {}", vault_root.display());
         }
 
         let zetl_jj = vault_root.join(".zetl").join("jj");
@@ -176,16 +173,11 @@ impl JjBackend {
 
         // Create .zetl/jj/ directory and initialise a new jj workspace there.
         // The `.jj/` metadata dir will live at `.zetl/jj/.jj/` (never at vault root).
-        std::fs::create_dir_all(&zetl_jj).with_context(|| {
-            format!("failed to create jj workspace dir: {}", zetl_jj.display())
-        })?;
+        std::fs::create_dir_all(&zetl_jj)
+            .with_context(|| format!("failed to create jj workspace dir: {}", zetl_jj.display()))?;
 
-        Workspace::init_internal_git(&settings, &zetl_jj).with_context(|| {
-            format!(
-                "failed to init jj workspace at {}",
-                zetl_jj.display()
-            )
-        })?;
+        Workspace::init_internal_git(&settings, &zetl_jj)
+            .with_context(|| format!("failed to init jj workspace at {}", zetl_jj.display()))?;
 
         // Reload with vault_root as the working-copy path so snapshots capture
         // all vault files rather than just the (empty) .zetl/jj/ directory.
@@ -205,11 +197,8 @@ impl JjBackend {
         let wc_state_path = jj_dir.join("working_copy");
 
         // Reconstruct the repo loader from the on-disk store.
-        let repo_loader =
-            RepoLoader::init_from_file_system(settings, &repo_path, store_factories)
-                .with_context(|| {
-                    format!("failed to load jj repo from {}", repo_path.display())
-                })?;
+        let repo_loader = RepoLoader::init_from_file_system(settings, &repo_path, store_factories)
+            .with_context(|| format!("failed to load jj repo from {}", repo_path.display()))?;
 
         // Load the working copy with vault_root as the file-scanning base.
         // LocalWorkingCopy stores file states by relative path, so changing the
@@ -225,10 +214,13 @@ impl JjBackend {
 
         // Build the Workspace value. workspace_root = vault_root makes
         // workspace.workspace_root() return the vault path (used by callers).
-        let workspace =
-            Workspace::new(vault_root, repo_path, working_copy, repo_loader).with_context(
-                || format!("failed to construct jj workspace at {}", vault_root.display()),
-            )?;
+        let workspace = Workspace::new(vault_root, repo_path, working_copy, repo_loader)
+            .with_context(|| {
+                format!(
+                    "failed to construct jj workspace at {}",
+                    vault_root.display()
+                )
+            })?;
 
         let repo = workspace
             .repo_loader()
@@ -557,7 +549,10 @@ mod tests {
 
         let mut backend = JjBackend::open_or_init(root).unwrap();
         let result = backend.snapshot("test: first snapshot").unwrap();
-        assert!(result.is_some(), "first snapshot should produce a change ID");
+        assert!(
+            result.is_some(),
+            "first snapshot should produce a change ID"
+        );
         let change_id = result.unwrap();
         assert!(!change_id.is_empty(), "change ID should be non-empty");
     }
@@ -663,10 +658,7 @@ mod tests {
             .read_file_at(&change_id, "note.md")
             .expect("read_file_at should succeed");
 
-        assert_eq!(
-            String::from_utf8(content).unwrap(),
-            "# Note\nContent here."
-        );
+        assert_eq!(String::from_utf8(content).unwrap(), "# Note\nContent here.");
     }
 
     #[test]

@@ -153,7 +153,10 @@ pub fn build_sidebar_tree(pages: &[PageEntry]) -> Vec<SidebarNode> {
                 // This entry is deeper — group all entries sharing this folder component
                 let folder_name = parts[depth];
                 let mut j = i + 1;
-                while j < entries.len() && entries[j].0.len() > depth && entries[j].0[depth] == folder_name {
+                while j < entries.len()
+                    && entries[j].0.len() > depth
+                    && entries[j].0[depth] == folder_name
+                {
                     j += 1;
                 }
                 let folder_slug = if prefix.is_empty() {
@@ -193,7 +196,12 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
             let slug = page_slug_from_path(&file.path);
             let outlink_count = data.graph.forward_links(&file.page_name).len();
             let backlink_count = data.graph.backlinks(&file.page_name).len();
-            let extension = file.path.extension().and_then(|e| e.to_str()).unwrap_or("md").to_string();
+            let extension = file
+                .path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("md")
+                .to_string();
             PageEntry {
                 title: file.page_name.clone(),
                 slug,
@@ -667,9 +675,7 @@ mod tests {
 
     #[test]
     fn test_build_sidebar_tree_deeply_nested() {
-        let pages = vec![
-            make_page_entry("Leaf", "a/b/c/Leaf"),
-        ];
+        let pages = vec![make_page_entry("Leaf", "a/b/c/Leaf")];
         let tree = build_sidebar_tree(&pages);
         // a/ -> b/ -> c/ -> Leaf
         assert_eq!(tree.len(), 1);
@@ -695,5 +701,4 @@ mod tests {
         assert_eq!(leaf[0].name, "Leaf");
         assert_eq!(leaf[0].slug, "a/b/c/Leaf");
     }
-
 }

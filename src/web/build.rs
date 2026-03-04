@@ -348,7 +348,9 @@ pub fn build_static(
         {
             // OBS-013: time per-page history context build.
             let hist_start = std::time::Instant::now();
-            if let Some(hist) = crate::history::build_template_page_history_context(&file.page_name, vault_root) {
+            if let Some(hist) =
+                crate::history::build_template_page_history_context(&file.page_name, vault_root)
+            {
                 let hist_ms = hist_start.elapsed().as_millis();
                 if verbose {
                     eprintln!(
@@ -365,7 +367,8 @@ pub fn build_static(
         #[cfg(feature = "history")]
         {
             let sources: Vec<String> = page_ctx.backlinks.iter().map(|b| b.title.clone()).collect();
-            let since_map = crate::history::build_backlink_since_map(&file.page_name, &sources, vault_root);
+            let since_map =
+                crate::history::build_backlink_since_map(&file.page_name, &sources, vault_root);
             if !since_map.is_empty() {
                 for bl in &mut page_ctx.backlinks {
                     bl.since = since_map.get(&bl.title.to_lowercase()).cloned();
@@ -472,9 +475,8 @@ fn copy_static_assets(vault_root: &Path, out: &Path, theme: &str) -> Result<bool
                 .unwrap_or(rel_path.as_path());
             let target = dest.join(file_rel);
             if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).with_context(|| {
-                    format!("Cannot create directory: {}", parent.display())
-                })?;
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("Cannot create directory: {}", parent.display()))?;
             }
             std::fs::write(&target, bytes)
                 .with_context(|| format!("Cannot write {}", target.display()))?;

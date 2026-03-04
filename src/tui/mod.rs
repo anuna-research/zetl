@@ -36,8 +36,7 @@ pub struct SnapshotLabel {
 }
 
 /// Loader function: given snapshot index → files + graph for that snapshot.
-pub type HistoricalLoader =
-    Box<dyn Fn(usize) -> anyhow::Result<(Vec<ParsedFile>, LinkGraph)>>;
+pub type HistoricalLoader = Box<dyn Fn(usize) -> anyhow::Result<(Vec<ParsedFile>, LinkGraph)>>;
 
 // ── Tab enum ──────────────────────────────────────────────────────────────
 
@@ -332,11 +331,7 @@ impl App {
 
     /// Install a timeline loader and snapshot list (called from cmd_tui after
     /// the history backend is opened; a no-op when the history feature is off).
-    pub fn set_timeline(
-        &mut self,
-        snapshots: Vec<SnapshotLabel>,
-        loader: HistoricalLoader,
-    ) {
+    pub fn set_timeline(&mut self, snapshots: Vec<SnapshotLabel>, loader: HistoricalLoader) {
         self.timeline_snapshots = snapshots;
         self.historical_loader = Some(loader);
     }
@@ -456,8 +451,7 @@ impl App {
 
     /// Recompute page_names, dead_links, orphans, diagnostics after a data swap.
     fn reload_derived_data(&mut self) {
-        let mut page_names: Vec<String> =
-            self.files.iter().map(|f| f.page_name.clone()).collect();
+        let mut page_names: Vec<String> = self.files.iter().map(|f| f.page_name.clone()).collect();
         page_names.sort_by_key(|a| a.to_lowercase());
         self.page_names = page_names;
         self.dead_links = self.graph.dead_links();

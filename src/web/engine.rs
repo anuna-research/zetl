@@ -518,7 +518,9 @@ mod tests {
             pages: vec![],
             total_pages: 0,
         };
-        let html = engine.render_folder(&vault, &folder, "serve", "", "").unwrap();
+        let html = engine
+            .render_folder(&vault, &folder, "serve", "", "")
+            .unwrap();
         assert!(html.contains("docs"));
         assert!(html.contains("0 pages in this folder"));
     }

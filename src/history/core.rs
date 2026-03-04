@@ -124,9 +124,7 @@ pub fn resolve_snapshot<'a>(
         TimeExpr::Absolute(target) => snapshots
             .iter()
             .find(|c| c.timestamp <= target)
-            .ok_or_else(|| {
-                anyhow!("SNAPSHOT_NOT_FOUND: no snapshot at or before {target}")
-            }),
+            .ok_or_else(|| anyhow!("SNAPSHOT_NOT_FOUND: no snapshot at or before {target}")),
 
         TimeExpr::HeadOffset(n) => snapshots.get(n).ok_or_else(|| {
             anyhow!(
@@ -142,9 +140,7 @@ pub fn resolve_snapshot<'a>(
                     || c.commit_id.starts_with(ref_str.as_str())
                     || c.description == *ref_str
             })
-            .ok_or_else(|| {
-                anyhow!("SNAPSHOT_NOT_FOUND: no snapshot matching ref {ref_str:?}")
-            }),
+            .ok_or_else(|| anyhow!("SNAPSHOT_NOT_FOUND: no snapshot matching ref {ref_str:?}")),
     }
 }
 
@@ -332,10 +328,8 @@ pub fn build_vault_history(
         .iter()
         .map(|snap| {
             let hash = extract_vault_root_hash_from_description(&snap.description)?;
-            let file_map: HashMap<PathBuf, ParsedFile> = cache
-                .load(vault_root, &hash)
-                .ok()
-                .flatten()?;
+            let file_map: HashMap<PathBuf, ParsedFile> =
+                cache.load(vault_root, &hash).ok().flatten()?;
             Some(file_map.into_values().collect())
         })
         .collect();
@@ -604,13 +598,22 @@ pub fn extract_page_history(
         let exists = this_page.is_some();
 
         let forward: BTreeSet<String> = this_page
-            .map(|f| f.links.iter().map(|l| l.target_page.to_lowercase()).collect())
+            .map(|f| {
+                f.links
+                    .iter()
+                    .map(|l| l.target_page.to_lowercase())
+                    .collect()
+            })
             .unwrap_or_default();
 
         let backlinks: BTreeSet<String> = files
             .iter()
             .filter(|f| f.page_name.to_lowercase() != page_lc)
-            .filter(|f| f.links.iter().any(|l| l.target_page.to_lowercase() == page_lc))
+            .filter(|f| {
+                f.links
+                    .iter()
+                    .any(|l| l.target_page.to_lowercase() == page_lc)
+            })
             .map(|f| f.page_name.to_lowercase())
             .collect();
 
@@ -746,8 +749,7 @@ pub fn build_page_history_context(
     files_per_snapshot: &[Option<Vec<ParsedFile>>],
     now: DateTime<FixedOffset>,
 ) -> Option<PageHistoryContext> {
-    let all_entries =
-        extract_page_history(page_name, snapshots, files_per_snapshot, usize::MAX);
+    let all_entries = extract_page_history(page_name, snapshots, files_per_snapshot, usize::MAX);
     if all_entries.is_empty() {
         return None;
     }
@@ -804,7 +806,9 @@ pub fn resolve_backlink_since(
         };
         let has_link = files.iter().any(|f| {
             f.page_name.to_lowercase() == source_lc
-                && f.links.iter().any(|l| l.target_page.to_lowercase() == target_lc)
+                && f.links
+                    .iter()
+                    .any(|l| l.target_page.to_lowercase() == target_lc)
         });
         if has_link {
             return Some(snapshots[raw_idx].timestamp.to_rfc3339());
@@ -819,7 +823,10 @@ pub fn resolve_backlink_since(
 /// `PageTrendPoint` slice.
 ///
 /// Returns oldest-first. This is a **pure function**: no I/O, no VCS calls.
-pub fn sample_page_trend_points(points: &[PageTrendPoint], max_points: usize) -> Vec<PageTrendPoint> {
+pub fn sample_page_trend_points(
+    points: &[PageTrendPoint],
+    max_points: usize,
+) -> Vec<PageTrendPoint> {
     if max_points == 0 || points.is_empty() {
         return Vec::new();
     }
@@ -898,7 +905,9 @@ fn parse_head_offset(s: &str) -> Option<usize> {
     if s.eq_ignore_ascii_case("head") {
         return Some(0);
     }
-    let rest = s.strip_prefix("HEAD~").or_else(|| s.strip_prefix("head~"))?;
+    let rest = s
+        .strip_prefix("HEAD~")
+        .or_else(|| s.strip_prefix("head~"))?;
     rest.parse::<usize>().ok()
 }
 
@@ -1445,9 +1454,9 @@ mod page_history_tests {
             make_snap("snap0", 0), // oldest: before page existed
         ];
         let files: Vec<Option<Vec<ParsedFile>>> = vec![
-            Some(vec![make_file("other", &[])]),       // snap2: no target
-            Some(vec![make_file("target", &["x"])]),   // snap1: target with link
-            Some(vec![make_file("unrelated", &[])]),   // snap0: target absent
+            Some(vec![make_file("other", &[])]),     // snap2: no target
+            Some(vec![make_file("target", &["x"])]), // snap1: target with link
+            Some(vec![make_file("unrelated", &[])]), // snap0: target absent
         ];
 
         let entries = extract_page_history("target", &snaps, &files, 20);
@@ -1532,10 +1541,7 @@ mod page_history_tests {
     /// Snapshots with no cached data are silently skipped.
     #[test]
     fn skips_uncached_snapshots() {
-        let snaps = vec![
-            make_snap("snap1", 1),
-            make_snap("snap0", 0),
-        ];
+        let snaps = vec![make_snap("snap1", 1), make_snap("snap0", 0)];
         let files: Vec<Option<Vec<ParsedFile>>> = vec![
             Some(vec![make_file("target", &["x"])]),
             None, // no cached data

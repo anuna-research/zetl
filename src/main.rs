@@ -10,7 +10,9 @@ use serde::Serialize;
 use zetl::cache::{
     files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache,
 };
-use zetl::cli::{BlockTypeFilter, Cli, Command, FailLevel, HookCommand, OutputFormat, ThemeCommand};
+use zetl::cli::{
+    BlockTypeFilter, Cli, Command, FailLevel, HookCommand, OutputFormat, ThemeCommand,
+};
 use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::graph::LinkGraph;
 use zetl::merkle::{
@@ -256,8 +258,8 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
 
     // Use open_history (not open_or_init) so that a missing .zetl/jj/ directory
     // yields NO_HISTORY rather than silently initialising an empty workspace (REQ-084).
-    let backend = zetl::history::open_history(&vault_root)
-        .context("opening jj workspace for --at query")?;
+    let backend =
+        zetl::history::open_history(&vault_root).context("opening jj workspace for --at query")?;
 
     // list_changes with a large limit to get all history (OBS-011).
     let history_load_start = Instant::now();
@@ -290,16 +292,14 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
     }
 
     let vault_root_hash =
-        zetl::history::core::extract_vault_root_hash_from_description(
-            &snapshot_info.description,
-        )
-        .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Snapshot {} has no vault_root_hash in its description. \
+        zetl::history::core::extract_vault_root_hash_from_description(&snapshot_info.description)
+            .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Snapshot {} has no vault_root_hash in its description. \
                      Run `zetl index` to rebuild the historical cache.",
-                    snapshot_info.change_id
-                )
-            })?;
+                snapshot_info.change_id
+            )
+        })?;
 
     // OBS-011: time historical cache load and report hit/miss.
     let cache = HistoricalIndexCache::with_default_capacity();
@@ -322,13 +322,13 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
         }
     }
     let file_map = file_map_opt.ok_or_else(|| {
-            anyhow::anyhow!(
-                "No cached index for snapshot {} (vault_root_hash={}). \
+        anyhow::anyhow!(
+            "No cached index for snapshot {} (vault_root_hash={}). \
                  Run `zetl index` at that point in time to populate the cache.",
-                snapshot_info.change_id,
-                vault_root_hash
-            )
-        })?;
+            snapshot_info.change_id,
+            vault_root_hash
+        )
+    })?;
 
     let files: Vec<ParsedFile> = file_map.into_values().collect();
 
@@ -344,9 +344,7 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
             if resolved_pages.contains_key(&key) {
                 continue;
             }
-            if let Some(resolved) =
-                resolve_page_name(&link.target_page, &file_index)
-            {
+            if let Some(resolved) = resolve_page_name(&link.target_page, &file_index) {
                 resolved_pages.insert(key, resolved);
             }
         }
@@ -539,10 +537,7 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         let vault_root_hash = load_vault_root_hex(&pipeline.vault_root).unwrap_or(None);
         // OBS-011: time snapshot creation.
         let snap_start = Instant::now();
-        match zetl::history::auto_snapshot(
-            &pipeline.vault_root,
-            vault_root_hash.as_deref(),
-        ) {
+        match zetl::history::auto_snapshot(&pipeline.vault_root, vault_root_hash.as_deref()) {
             Ok(Some(change_id)) => {
                 let snap_ms = snap_start.elapsed().as_millis();
                 if cli.verbose > 0 {
@@ -565,8 +560,7 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         // Store the current index in HistoricalIndexCache so that future
         // --at queries can load it (REQ-079, ADR-047).
         if let Some(ref hash) = vault_root_hash {
-            let hist_cache =
-                zetl::history::cache::HistoricalIndexCache::with_default_capacity();
+            let hist_cache = zetl::history::cache::HistoricalIndexCache::with_default_capacity();
             if let Err(e) = hist_cache.store(&pipeline.vault_root, hash, &pipeline.files) {
                 if cli.verbose > 0 {
                     eprintln!("[zetl] warning: failed to store historical index: {e}");
@@ -692,11 +686,8 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     // ── post-index hooks (non-fatal) ────────────────────────────────
     let verbose = cli.verbose > 0;
     let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, "");
-    let manifest = zetl::hooks::discover_hooks_verbose(
-        &pipeline.vault_root,
-        theme_hooks.path(),
-        verbose,
-    );
+    let manifest =
+        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
@@ -791,7 +782,11 @@ fn emit_watch_event(event: &serde_json::Value, exec: Option<&str>, verbose: u8) 
     if let Some(cmd) = exec {
         let line_clone = line.clone();
         let cmd_clone = cmd.to_string();
-        let event_type = event.get("event").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+        let event_type = event
+            .get("event")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?")
+            .to_string();
         std::thread::spawn(move || {
             use std::io::Write;
             use std::process::{Command, Stdio};
@@ -1000,10 +995,12 @@ fn cmd_watch(cli: &Cli, debounce_ms: u64, exec: Option<&str>) -> Result<()> {
         // Diff graphs and emit per-change events (REQ-057, REQ-058).
 
         // Pages added / removed.
-        let old_pages: HashSet<&str> =
-            current.files.iter().map(|f| f.page_name.as_str()).collect();
-        let new_pages: HashSet<&str> =
-            new_pipeline.files.iter().map(|f| f.page_name.as_str()).collect();
+        let old_pages: HashSet<&str> = current.files.iter().map(|f| f.page_name.as_str()).collect();
+        let new_pages: HashSet<&str> = new_pipeline
+            .files
+            .iter()
+            .map(|f| f.page_name.as_str())
+            .collect();
 
         for page in new_pages.difference(&old_pages) {
             emit_watch_event(
@@ -1060,10 +1057,18 @@ fn cmd_watch(cli: &Cli, debounce_ms: u64, exec: Option<&str>) -> Result<()> {
         }
 
         // Orphans gained / resolved.
-        let old_orphans: HashSet<String> =
-            current.graph.orphans().into_iter().map(|o| o.page).collect();
-        let new_orphans: HashSet<String> =
-            new_pipeline.graph.orphans().into_iter().map(|o| o.page).collect();
+        let old_orphans: HashSet<String> = current
+            .graph
+            .orphans()
+            .into_iter()
+            .map(|o| o.page)
+            .collect();
+        let new_orphans: HashSet<String> = new_pipeline
+            .graph
+            .orphans()
+            .into_iter()
+            .map(|o| o.page)
+            .collect();
 
         for page in new_orphans.difference(&old_orphans) {
             emit_watch_event(
@@ -1543,8 +1548,7 @@ fn cmd_check(
     let pipeline = run_pipeline(cli)?;
 
     // If none of the flags are set, show all
-    let show_all =
-        !show_dead_links && !show_orphans && !show_syntax && !show_spl && !show_drift;
+    let show_all = !show_dead_links && !show_orphans && !show_syntax && !show_spl && !show_drift;
 
     let dead = if show_all || show_dead_links {
         pipeline.graph.dead_links()
@@ -1845,11 +1849,8 @@ fn cmd_check(
     // ── post-check hooks (REQ-016-004: non-fatal) ──────────────────────
     let verbose = cli.verbose > 0;
     let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
-    let manifest = zetl::hooks::discover_hooks_verbose(
-        &pipeline.vault_root,
-        theme_hooks.path(),
-        verbose,
-    );
+    let manifest =
+        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
@@ -2072,7 +2073,9 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
             // Count distinct vault_root_hash values (deduplicated states).
             let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
             for snap in &snapshots {
-                if let Some(h) = zetl::history::core::extract_vault_root_hash_from_description(&snap.description) {
+                if let Some(h) =
+                    zetl::history::core::extract_vault_root_hash_from_description(&snap.description)
+                {
                     seen.insert(h);
                 }
             }
@@ -2084,7 +2087,12 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
             let mut total_bytes = 0u64;
             if let Ok(rd) = std::fs::read_dir(&history_dir) {
                 for entry in rd.flatten() {
-                    if entry.path().extension().map(|e| e == "json").unwrap_or(false) {
+                    if entry
+                        .path()
+                        .extension()
+                        .map(|e| e == "json")
+                        .unwrap_or(false)
+                    {
                         cache_entries += 1;
                         if let Ok(meta) = entry.metadata() {
                             total_bytes += meta.len();
@@ -2464,7 +2472,10 @@ fn cmd_search(
                 #[serde(skip_serializing_if = "Option::is_none")]
                 snapshot: Option<SnapshotInfo>,
             }
-            print_json(&SearchOutputWithSnapshot { inner: &output, snapshot: search_snapshot })?
+            print_json(&SearchOutputWithSnapshot {
+                inner: &output,
+                snapshot: search_snapshot,
+            })?
         }
         OutputFormat::Table => {
             let mut table = Table::new();
@@ -3350,8 +3361,8 @@ fn setup_tui_timeline(vault_root: &Path, app: &mut zetl::tui::App) {
             .get(idx)
             .ok_or_else(|| anyhow::anyhow!("snapshot index {idx} out of range"))?;
 
-        let hash = extract_vault_root_hash_from_description(&snap.description)
-            .ok_or_else(|| {
+        let hash =
+            extract_vault_root_hash_from_description(&snap.description).ok_or_else(|| {
                 anyhow::anyhow!(
                     "Snapshot {} has no vault_root_hash — run `zetl index` to populate cache",
                     snap.change_id
@@ -3359,15 +3370,13 @@ fn setup_tui_timeline(vault_root: &Path, app: &mut zetl::tui::App) {
             })?;
 
         let cache = HistoricalIndexCache::with_default_capacity();
-        let file_map = cache
-            .load(&vault_root, &hash)?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "No cached index for snapshot {} (hash={}) — run `zetl index` at that point",
-                    snap.change_id,
-                    hash
-                )
-            })?;
+        let file_map = cache.load(&vault_root, &hash)?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "No cached index for snapshot {} (hash={}) — run `zetl index` at that point",
+                snap.change_id,
+                hash
+            )
+        })?;
 
         let files: Vec<ParsedFile> = file_map.into_values().collect();
         let file_index: Vec<(String, PathBuf)> = files
@@ -4108,11 +4117,8 @@ fn cmd_hook_list(cli: &Cli, theme: &str) -> Result<()> {
 
     // Resolve theme hooks directory (disk-installed or bundled).
     let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
-    let manifest = zetl::hooks::discover_hooks_verbose(
-        &vault_root,
-        theme_hooks.path(),
-        cli.verbose > 0,
-    );
+    let manifest =
+        zetl::hooks::discover_hooks_verbose(&vault_root, theme_hooks.path(), cli.verbose > 0);
 
     #[derive(Serialize)]
     struct HookEntry {
@@ -4185,11 +4191,8 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
 
     // Discover hooks.
     let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
-    let manifest = zetl::hooks::discover_hooks_verbose(
-        &pipeline.vault_root,
-        theme_hooks.path(),
-        verbose,
-    );
+    let manifest =
+        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
@@ -4216,7 +4219,9 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
         let extra_str = extra.join(" ");
         let extra_value: serde_json::Value = serde_json::from_str(&extra_str)
             .with_context(|| format!("invalid JSON after --: {extra_str}"))?;
-        if let (Some(base), Some(overlay)) = (context_value.as_object_mut(), extra_value.as_object()) {
+        if let (Some(base), Some(overlay)) =
+            (context_value.as_object_mut(), extra_value.as_object())
+        {
             for (k, v) in overlay {
                 base.insert(k.clone(), v.clone());
             }
@@ -4235,13 +4240,8 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
     };
 
     // Run all matching hooks sequentially, streaming output.
-    let results = zetl::hooks::run_hooks_verbose(
-        &manifest,
-        name,
-        &context_json,
-        &hook_env,
-        verbose,
-    );
+    let results =
+        zetl::hooks::run_hooks_verbose(&manifest, name, &context_json, &hook_env, verbose);
 
     let mut worst_exit_code: i32 = 0;
 
@@ -4308,11 +4308,8 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     // ── pre-serve hooks (abort on failure) ────────────────────────────
     let verbose = cli.verbose > 0;
     let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
-    let manifest = zetl::hooks::discover_hooks_verbose(
-        &pipeline.vault_root,
-        theme_hooks.path(),
-        verbose,
-    );
+    let manifest =
+        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
@@ -4350,7 +4347,11 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
             match result {
                 Ok(output) if !output.success() => {
                     if !output.stderr.is_empty() {
-                        eprintln!("error: pre-serve hook '{}' failed:\n{}", output.hook_name, output.stderr.trim_end());
+                        eprintln!(
+                            "error: pre-serve hook '{}' failed:\n{}",
+                            output.hook_name,
+                            output.stderr.trim_end()
+                        );
                     } else {
                         eprintln!(
                             "error: pre-serve hook '{}' ({}) exited with code {}",
@@ -4411,11 +4412,8 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
     // ── hook discovery (shared by pre-build and post-build) ────────────
     let verbose = cli.verbose > 0;
     let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
-    let manifest = zetl::hooks::discover_hooks_verbose(
-        &pipeline.vault_root,
-        theme_hooks.path(),
-        verbose,
-    );
+    let manifest =
+        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
 
     for w in &manifest.warnings {
         eprintln!("warning: {w}");
@@ -4454,7 +4452,11 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
             match result {
                 Ok(output) if !output.success() => {
                     if !output.stderr.is_empty() {
-                        eprintln!("error: pre-build hook '{}' failed:\n{}", output.hook_name, output.stderr.trim_end());
+                        eprintln!(
+                            "error: pre-build hook '{}' failed:\n{}",
+                            output.hook_name,
+                            output.stderr.trim_end()
+                        );
                     } else {
                         eprintln!(
                             "error: pre-build hook '{}' ({}) exited with code {}",
@@ -5163,7 +5165,13 @@ fn cmd_reason_explain(
     let explanation = explanation.unwrap();
 
     // Build our enriched proof tree with provenance
-    let enriched = enrich_proof_tree(&explanation, &result, literal_input, max_depth, pipeline.snapshot.clone());
+    let enriched = enrich_proof_tree(
+        &explanation,
+        &result,
+        literal_input,
+        max_depth,
+        pipeline.snapshot.clone(),
+    );
 
     // Output in the requested format
     match explain_format {
@@ -8246,12 +8254,12 @@ fn cmd_diff_history(
     let vault_root_hash =
         zetl::history::core::extract_vault_root_hash_from_description(&baseline_snap.description)
             .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Baseline snapshot {} has no vault_root_hash. \
+            anyhow::anyhow!(
+                "Baseline snapshot {} has no vault_root_hash. \
                      Run `zetl index` to populate the historical index.",
-                    baseline_snap.change_id
-                )
-            })?;
+                baseline_snap.change_id
+            )
+        })?;
 
     let cache = HistoricalIndexCache::with_default_capacity();
     let baseline_files: Vec<ParsedFile> = cache
@@ -8278,7 +8286,9 @@ fn cmd_diff_history(
         for link in &f.links {
             let key = link.raw_target.clone();
             if !baseline_resolved.contains_key(&key) {
-                if let Some(r) = zetl::scanner::resolve_page_name(&link.target_page, &baseline_file_index) {
+                if let Some(r) =
+                    zetl::scanner::resolve_page_name(&link.target_page, &baseline_file_index)
+                {
                     baseline_resolved.insert(key, r);
                 }
             }
@@ -8328,10 +8338,7 @@ fn cmd_diff_git(
 
     // Start from the current files for *unchanged* pages.
     for f in &pipeline.files {
-        let rel = f
-            .path
-            .strip_prefix(&pipeline.vault_root)
-            .unwrap_or(&f.path);
+        let rel = f.path.strip_prefix(&pipeline.vault_root).unwrap_or(&f.path);
         let rel_str = rel.to_string_lossy();
         if !changed_files.iter().any(|s| s == rel_str.as_ref()) {
             baseline_files.push(f.clone());
@@ -8431,9 +8438,7 @@ fn resolve_git_ref(vault_root: &Path, baseline_expr: Option<&str>) -> Result<Str
 
         let sha = String::from_utf8_lossy(&output.stdout).trim().to_owned();
         if sha.is_empty() {
-            anyhow::bail!(
-                "NO_COMMIT_BEFORE: no commit found at or before '{expr}'"
-            );
+            anyhow::bail!("NO_COMMIT_BEFORE: no commit found at or before '{expr}'");
         }
         return Ok(sha);
     }
@@ -8571,10 +8576,8 @@ fn diff_graphs_and_output(
     let links_removed: Vec<DiffLink> = old_links.difference(&new_links).cloned().collect();
 
     // Orphans: pages with no incoming links (uses the graph's own orphans() method).
-    let old_orphans: HashSet<String> =
-        old_graph.orphans().into_iter().map(|o| o.page).collect();
-    let new_orphans: HashSet<String> =
-        new_graph.orphans().into_iter().map(|o| o.page).collect();
+    let old_orphans: HashSet<String> = old_graph.orphans().into_iter().map(|o| o.page).collect();
+    let new_orphans: HashSet<String> = new_graph.orphans().into_iter().map(|o| o.page).collect();
 
     let orphans_gained: Vec<String> = new_orphans.difference(&old_orphans).cloned().collect();
     let orphans_resolved: Vec<String> = old_orphans.difference(&new_orphans).cloned().collect();
@@ -8680,12 +8683,10 @@ fn cmd_history_timeline(cli: &Cli, limit: usize) -> Result<()> {
 
     if snapshots.is_empty() {
         match cli.format {
-            OutputFormat::Json => {
-                print_json(&serde_json::json!({
-                    "snapshots": [],
-                    "message": "No snapshots yet. Run `zetl index` to create the first snapshot."
-                }))?
-            }
+            OutputFormat::Json => print_json(&serde_json::json!({
+                "snapshots": [],
+                "message": "No snapshots yet. Run `zetl index` to create the first snapshot."
+            }))?,
             OutputFormat::Table => {
                 println!("No snapshots yet. Run `zetl index` to create the first snapshot.");
             }
@@ -8825,7 +8826,11 @@ fn format_page_delta(d: &zetl::history::core::PageNeighborhoodDelta) -> String {
     if !d.backlinks_removed.is_empty() {
         parts.push(format!("-{}B", d.backlinks_removed.len()));
     }
-    if parts.is_empty() { "-".to_owned() } else { parts.join(" ") }
+    if parts.is_empty() {
+        "-".to_owned()
+    } else {
+        parts.join(" ")
+    }
 }
 
 /// `zetl history log` — reverse-chronological delta timeline (REQ-080, CON-025).
@@ -8837,8 +8842,8 @@ fn cmd_history_log(cli: &Cli, since: Option<&str>, limit: usize) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
-    let backend = zetl::history::open_history(&vault_root)
-        .context("opening jj workspace for history log")?;
+    let backend =
+        zetl::history::open_history(&vault_root).context("opening jj workspace for history log")?;
 
     // Load all snapshots (we may need them for --since ref resolution and
     // delta computation beyond the final `limit`).
@@ -8857,9 +8862,7 @@ fn cmd_history_log(cli: &Cli, since: Option<&str>, limit: usize) -> Result<()> {
                 "message": "No snapshots found. Run `zetl index` to create the first snapshot."
             }))?,
             OutputFormat::Table => {
-                println!(
-                    "No snapshots found. Run `zetl index` to create the first snapshot."
-                );
+                println!("No snapshots found. Run `zetl index` to create the first snapshot.");
             }
         }
         return Ok(());
@@ -8914,16 +8917,20 @@ fn cmd_history_log(cli: &Cli, since: Option<&str>, limit: usize) -> Result<()> {
                 "-Links",
             ]);
             for e in &entries {
-                let (pages_added, pages_removed, links_added, links_removed) =
-                    match &e.delta {
-                        Some(d) => (
-                            d.pages_added.len().to_string(),
-                            d.pages_removed.len().to_string(),
-                            d.links_added.to_string(),
-                            d.links_removed.to_string(),
-                        ),
-                        None => ("—".to_string(), "—".to_string(), "—".to_string(), "—".to_string()),
-                    };
+                let (pages_added, pages_removed, links_added, links_removed) = match &e.delta {
+                    Some(d) => (
+                        d.pages_added.len().to_string(),
+                        d.pages_removed.len().to_string(),
+                        d.links_added.to_string(),
+                        d.links_removed.to_string(),
+                    ),
+                    None => (
+                        "—".to_string(),
+                        "—".to_string(),
+                        "—".to_string(),
+                        "—".to_string(),
+                    ),
+                };
                 table.add_row(vec![
                     Cell::new(&e.change_id[..e.change_id.len().min(12)]),
                     Cell::new(&e.timestamp),
@@ -8971,7 +8978,16 @@ fn main() -> anyhow::Result<()> {
             drift,
             fail_on,
             theme,
-        } => cmd_check(&cli, *dead_links, *orphans, *syntax, *spl, *drift, fail_on, theme),
+        } => cmd_check(
+            &cli,
+            *dead_links,
+            *orphans,
+            *syntax,
+            *spl,
+            *drift,
+            fail_on,
+            theme,
+        ),
         Command::Similar {
             query,
             threshold,
@@ -9076,12 +9092,12 @@ fn main() -> anyhow::Result<()> {
         }
         #[cfg(not(feature = "reason"))]
         Command::Reason { .. } => reason_not_available(),
-        Command::Watch { debounce, exec } => {
-            cmd_watch(&cli, *debounce, exec.as_deref())
-        }
-        Command::Diff { from, since, filter } => {
-            cmd_diff(&cli, from.as_deref(), since.as_deref(), filter.as_ref())
-        }
+        Command::Watch { debounce, exec } => cmd_watch(&cli, *debounce, exec.as_deref()),
+        Command::Diff {
+            from,
+            since,
+            filter,
+        } => cmd_diff(&cli, from.as_deref(), since.as_deref(), filter.as_ref()),
         #[cfg(feature = "history")]
         Command::History { command } => {
             use zetl::cli::HistoryCommand;

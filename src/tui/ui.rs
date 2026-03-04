@@ -51,7 +51,11 @@ fn draw_tabs(frame: &mut Frame, app: &App, area: Rect) {
         .collect();
 
     let is_hist = app.timeline_idx.is_some();
-    let block_title = if is_hist { " zetl [HISTORICAL] " } else { " zetl " };
+    let block_title = if is_hist {
+        " zetl [HISTORICAL] "
+    } else {
+        " zetl "
+    };
     let block = if is_hist {
         Block::default()
             .borders(Borders::ALL)
@@ -94,7 +98,13 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
                 Style::default().fg(Color::DarkGray),
             ),
             Span::raw("| "),
-            Span::styled(label, Style::default().fg(Color::Black).bg(HIST_COLOR).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                label,
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(HIST_COLOR)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]))
         .style(Style::default().bg(Color::Black));
         frame.render_widget(bar, area);

@@ -87,7 +87,9 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
             {
                 // OBS-013: time vault history context build.
                 let hist_start = std::time::Instant::now();
-                if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+                if let Some(hist) =
+                    crate::history::build_template_history_context(&state.vault_root)
+                {
                     let hist_ms = hist_start.elapsed().as_millis();
                     if state.verbose {
                         eprintln!(
@@ -97,7 +99,8 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
                             hist_ms
                         );
                     }
-                    vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+                    vault_ctx.history =
+                        serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
                 }
             }
             let folder_ctx = build_folder_context(&data, slug, folder_name);
@@ -199,7 +202,9 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
     {
         // OBS-013: time per-page history context build.
         let hist_start = std::time::Instant::now();
-        if let Some(hist) = crate::history::build_template_page_history_context(&page_name, &state.vault_root) {
+        if let Some(hist) =
+            crate::history::build_template_page_history_context(&page_name, &state.vault_root)
+        {
             let hist_ms = hist_start.elapsed().as_millis();
             if state.verbose {
                 eprintln!(
@@ -216,7 +221,8 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
     #[cfg(feature = "history")]
     {
         let sources: Vec<String> = page_ctx.backlinks.iter().map(|b| b.title.clone()).collect();
-        let since_map = crate::history::build_backlink_since_map(&page_name, &sources, &state.vault_root);
+        let since_map =
+            crate::history::build_backlink_since_map(&page_name, &sources, &state.vault_root);
         if !since_map.is_empty() {
             for bl in &mut page_ctx.backlinks {
                 bl.since = since_map.get(&bl.title.to_lowercase()).cloned();
@@ -242,7 +248,10 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
             vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
         }
     }
-    match state.engine.render_page(&vault_ctx, &page_ctx, "serve", "", "") {
+    match state
+        .engine
+        .render_page(&vault_ctx, &page_ctx, "serve", "", "")
+    {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
     }
@@ -318,8 +327,7 @@ pub async fn save_handler(
 
         tokio::task::spawn_blocking(move || {
             let theme_hooks = hooks::resolve_theme_hooks(&vault_root, &theme);
-            let manifest =
-                hooks::discover_hooks(&vault_root, theme_hooks.path());
+            let manifest = hooks::discover_hooks(&vault_root, theme_hooks.path());
 
             if hooks::hooks_for(&manifest, "on-save").is_empty() {
                 return;
@@ -975,8 +983,7 @@ pub async fn api_history_page_handler(
             })
             .collect();
 
-        let entries =
-            extract_page_history(&page_name, &snapshots, &files_per_snapshot, limit);
+        let entries = extract_page_history(&page_name, &snapshots, &files_per_snapshot, limit);
 
         if entries.is_empty() {
             anyhow::bail!("PAGE_NOT_FOUND: page '{page_name}' not found in any snapshot");
@@ -1020,9 +1027,7 @@ pub async fn api_history_at_handler(
 
     let result = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         use crate::history::cache::HistoricalIndexCache;
-        use crate::history::core::{
-            extract_vault_root_hash_from_description, resolve_snapshot,
-        };
+        use crate::history::core::{extract_vault_root_hash_from_description, resolve_snapshot};
         use crate::history::jj_backend::VcsBackend as _;
         use chrono::Local;
 
@@ -1063,18 +1068,16 @@ pub async fn api_history_at_handler(
     .await;
 
     match result {
-        Ok(Ok((change_id, timestamp, vault_root_hash, Some(pages)))) => {
-            Json(serde_json::json!({
-                "snapshot": {
-                    "change_id": change_id,
-                    "timestamp": timestamp,
-                    "vault_root_hash": vault_root_hash,
-                },
-                "status": "ok",
-                "pages": pages,
-            }))
-            .into_response()
-        }
+        Ok(Ok((change_id, timestamp, vault_root_hash, Some(pages)))) => Json(serde_json::json!({
+            "snapshot": {
+                "change_id": change_id,
+                "timestamp": timestamp,
+                "vault_root_hash": vault_root_hash,
+            },
+            "status": "ok",
+            "pages": pages,
+        }))
+        .into_response(),
         Ok(Ok((change_id, timestamp, vault_root_hash, None))) => {
             // Non-blocking cache miss: index not yet cached for this snapshot.
             (
@@ -1174,14 +1177,12 @@ pub async fn api_history_diff_handler(
     .await;
 
     match result {
-        Ok(Ok((from_id, from_ts, to_id, to_ts, Some(delta)))) => {
-            Json(serde_json::json!({
-                "from": { "change_id": from_id, "timestamp": from_ts },
-                "to":   { "change_id": to_id,   "timestamp": to_ts },
-                "delta": delta,
-            }))
-            .into_response()
-        }
+        Ok(Ok((from_id, from_ts, to_id, to_ts, Some(delta)))) => Json(serde_json::json!({
+            "from": { "change_id": from_id, "timestamp": from_ts },
+            "to":   { "change_id": to_id,   "timestamp": to_ts },
+            "delta": delta,
+        }))
+        .into_response(),
         Ok(Ok((from_id, from_ts, to_id, to_ts, None))) => {
             // Non-blocking cache miss.
             (
