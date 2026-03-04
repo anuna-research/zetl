@@ -163,6 +163,34 @@
     .sp-nav a:hover  { background: var(--border); color: var(--sidebar-text); }
     .sp-nav a.active { background: var(--border); color: var(--sidebar-active); font-weight: 700; }
 
+    /* ── Sidebar tree */
+    .sp-folder > details > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 0.2rem 0.4rem;
+      font-weight: 700;
+      font-size: 0.8rem;
+      color: var(--sidebar-link);
+      opacity: 0.7;
+      border-radius: 3px;
+    }
+    .sp-folder > details > summary::-webkit-details-marker { display: none; }
+    .sp-folder > details > summary::before {
+      content: '▶';
+      display: inline-block;
+      font-size: 0.55em;
+      margin-right: 0.35em;
+      transition: transform 0.15s ease;
+    }
+    .sp-folder > details[open] > summary::before {
+      transform: rotate(90deg);
+    }
+    .sp-folder > details > ul {
+      border-left: 1px solid var(--border);
+      margin-left: 0.6rem;
+      padding-left: 0;
+    }
+
     /* ── Main content ── */
     .sp-main {
       flex: 1;
@@ -891,16 +919,28 @@
       </button>
       {% block sidebar %}
       <nav>
+        {% macro render_tree(nodes) %}
         <ul class="sp-nav">
-          {%- for page in vault.pages %}
+          {%- for node in nodes %}
+          {%- if node.is_folder %}
+          <li class="sp-folder">
+            <details{% if active_slug is startingwith(node.slug ~ "/") %} open{% endif %}>
+              <summary>{{ node.name }}</summary>
+              {{ render_tree(node.children) }}
+            </details>
+          </li>
+          {%- else %}
           <li>
-            <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}"
-               class="{% if active_slug == page.slug %}active{% endif %}">
-              {{ page.title }}
+            <a href="{{ root_path }}{{ node.slug | safe }}/{{ index_file }}"
+               class="{% if active_slug == node.slug %}active{% endif %}">
+              {{ node.name }}
             </a>
           </li>
+          {%- endif %}
           {%- endfor %}
         </ul>
+        {% endmacro %}
+        {{ render_tree(vault.sidebar_tree) }}
       </nav>
       {% endblock %}
     </aside>

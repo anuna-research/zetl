@@ -449,6 +449,7 @@ mod tests {
                 backlink_count: 0,
                 extension: "md".to_string(),
             }],
+            sidebar_tree: vec![],
             stats: StatsContext {
                 total_pages: 1,
                 total_links: 1,
@@ -525,6 +526,7 @@ mod tests {
                 backlink_count: 0,
                 extension: "md".to_string(),
             }],
+            sidebar_tree: vec![],
             stats: StatsContext {
                 total_pages: 1,
                 total_links: 0,

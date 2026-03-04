@@ -7,10 +7,20 @@ use crate::web::VaultData;
 
 // ── Shared structs ──────────────────────────────────────────────────
 
+#[derive(Serialize, Clone)]
+pub struct SidebarNode {
+    pub name: String,
+    pub is_folder: bool,
+    pub slug: String,
+    pub extension: String,
+    pub children: Vec<SidebarNode>,
+}
+
 #[derive(Serialize)]
 pub struct VaultContext {
     pub name: String,
     pub pages: Vec<PageEntry>,
+    pub sidebar_tree: Vec<SidebarNode>,
     pub stats: StatsContext,
 }
 
@@ -96,6 +106,73 @@ pub struct FolderContext {
 
 // ── Builder functions ───────────────────────────────────────────────
 
+/// Build a sidebar tree from a flat list of pages, grouping by slug path components.
+///
+/// Each level is sorted folders-first (alphabetically), then pages (alphabetically).
+pub fn build_sidebar_tree(pages: &[PageEntry]) -> Vec<SidebarNode> {
+    // Collect all entries as (path_parts, page_entry) tuples
+    let mut entries: Vec<(Vec<&str>, &PageEntry)> = pages
+        .iter()
+        .map(|p| (p.slug.split('/').collect::<Vec<_>>(), p))
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    fn build_level<'a>(
+        entries: &[(Vec<&'a str>, &PageEntry)],
+        depth: usize,
+        prefix: &str,
+    ) -> Vec<SidebarNode> {
+        let mut folders: Vec<SidebarNode> = Vec::new();
+        let mut leaves: Vec<SidebarNode> = Vec::new();
+
+        // Group entries by their component at `depth`
+        let mut i = 0;
+        while i < entries.len() {
+            let parts = &entries[i].0;
+            if parts.len() == depth + 1 {
+                // This is a leaf page at this level
+                let page = entries[i].1;
+                leaves.push(SidebarNode {
+                    name: page.title.clone(),
+                    is_folder: false,
+                    slug: page.slug.clone(),
+                    extension: page.extension.clone(),
+                    children: vec![],
+                });
+                i += 1;
+            } else {
+                // This entry is deeper — group all entries sharing this folder component
+                let folder_name = parts[depth];
+                let mut j = i + 1;
+                while j < entries.len() && entries[j].0.len() > depth && entries[j].0[depth] == folder_name {
+                    j += 1;
+                }
+                let folder_slug = if prefix.is_empty() {
+                    folder_name.to_string()
+                } else {
+                    format!("{prefix}/{folder_name}")
+                };
+                let children = build_level(&entries[i..j], depth + 1, &folder_slug);
+                folders.push(SidebarNode {
+                    name: folder_name.to_string(),
+                    is_folder: true,
+                    slug: folder_slug,
+                    extension: String::new(),
+                    children,
+                });
+                i = j;
+            }
+        }
+
+        folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        leaves.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        folders.extend(leaves);
+        folders
+    }
+
+    build_level(&entries, 0, "")
+}
+
 /// Build a `VaultContext` from `VaultData` and a vault name.
 pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
     let graph_stats = data.graph.stats(0);
@@ -119,6 +196,8 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         .collect();
     pages.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
 
+    let sidebar_tree = build_sidebar_tree(&pages);
+
     let stats = StatsContext {
         total_pages: graph_stats.pages,
         total_links: graph_stats.links,
@@ -129,6 +208,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
     VaultContext {
         name: vault_name.to_string(),
         pages,
+        sidebar_tree,
         stats,
     }
 }
@@ -401,6 +481,8 @@ mod tests {
 
         assert_eq!(ctx.name, "my-vault");
         assert_eq!(ctx.pages.len(), 2);
+        assert_eq!(ctx.sidebar_tree.len(), 2); // two root-level pages
+        assert!(!ctx.sidebar_tree[0].is_folder);
         assert_eq!(ctx.stats.total_pages, 2);
         assert_eq!(ctx.stats.total_links, 1);
         assert_eq!(ctx.stats.dead_links, 0);
@@ -512,6 +594,94 @@ mod tests {
         let raw = "# Just a heading\nSome content.";
         let ctx = build_page_context(&data, "A", "A", "<h1>Just a heading</h1>", raw);
         assert_eq!(ctx.frontmatter, serde_json::json!({}));
+    }
+
+    // ── Sidebar tree tests ──────────────────────────────────────────────
+
+    fn make_page_entry(title: &str, slug: &str) -> PageEntry {
+        PageEntry {
+            title: title.to_string(),
+            slug: slug.to_string(),
+            outlink_count: 0,
+            backlink_count: 0,
+            extension: "md".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_build_sidebar_tree_flat() {
+        let pages = vec![
+            make_page_entry("Cache", "Cache"),
+            make_page_entry("Scanner", "Scanner"),
+            make_page_entry("Alpha", "Alpha"),
+        ];
+        let tree = build_sidebar_tree(&pages);
+        // All root pages, sorted alphabetically
+        assert_eq!(tree.len(), 3);
+        assert_eq!(tree[0].name, "Alpha");
+        assert_eq!(tree[1].name, "Cache");
+        assert_eq!(tree[2].name, "Scanner");
+        assert!(!tree[0].is_folder);
+        assert!(tree[0].children.is_empty());
+    }
+
+    #[test]
+    fn test_build_sidebar_tree_nested() {
+        let pages = vec![
+            make_page_entry("Cache", "Cache"),
+            make_page_entry("Scanner", "architecture/Scanner"),
+            make_page_entry("Overview", "architecture/Overview"),
+            make_page_entry("Wikilinks", "concepts/Wikilinks"),
+        ];
+        let tree = build_sidebar_tree(&pages);
+        // Folders first (alpha), then pages (alpha)
+        assert_eq!(tree.len(), 3); // architecture/, concepts/, Cache
+        assert!(tree[0].is_folder);
+        assert_eq!(tree[0].name, "architecture");
+        assert_eq!(tree[0].slug, "architecture");
+        assert_eq!(tree[0].children.len(), 2);
+        // Children sorted: Overview, Scanner
+        assert_eq!(tree[0].children[0].name, "Overview");
+        assert_eq!(tree[0].children[1].name, "Scanner");
+
+        assert!(tree[1].is_folder);
+        assert_eq!(tree[1].name, "concepts");
+        assert_eq!(tree[1].children.len(), 1);
+        assert_eq!(tree[1].children[0].name, "Wikilinks");
+
+        assert!(!tree[2].is_folder);
+        assert_eq!(tree[2].name, "Cache");
+    }
+
+    #[test]
+    fn test_build_sidebar_tree_deeply_nested() {
+        let pages = vec![
+            make_page_entry("Leaf", "a/b/c/Leaf"),
+        ];
+        let tree = build_sidebar_tree(&pages);
+        // a/ -> b/ -> c/ -> Leaf
+        assert_eq!(tree.len(), 1);
+        assert!(tree[0].is_folder);
+        assert_eq!(tree[0].name, "a");
+        assert_eq!(tree[0].slug, "a");
+
+        let b = &tree[0].children;
+        assert_eq!(b.len(), 1);
+        assert!(b[0].is_folder);
+        assert_eq!(b[0].name, "b");
+        assert_eq!(b[0].slug, "a/b");
+
+        let c = &b[0].children;
+        assert_eq!(c.len(), 1);
+        assert!(c[0].is_folder);
+        assert_eq!(c[0].name, "c");
+        assert_eq!(c[0].slug, "a/b/c");
+
+        let leaf = &c[0].children;
+        assert_eq!(leaf.len(), 1);
+        assert!(!leaf[0].is_folder);
+        assert_eq!(leaf[0].name, "Leaf");
+        assert_eq!(leaf[0].slug, "a/b/c/Leaf");
     }
 
 }
