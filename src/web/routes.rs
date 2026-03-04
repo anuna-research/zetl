@@ -769,6 +769,357 @@ fn hex_nibble(b: u8) -> u8 {
     }
 }
 
+// ─── History API handlers (REQ-087, CON-027, ADR-050) ─────────────────────────
+//
+// All four handlers are compiled only with `--features history`.
+
+/// Query parameters for GET /api/history.
+#[cfg(feature = "history")]
+#[derive(Deserialize)]
+pub struct HistoryLogParams {
+    pub since: Option<String>,
+    pub limit: Option<usize>,
+}
+
+/// Query parameters for GET /api/history/page/{name}.
+#[cfg(feature = "history")]
+#[derive(Deserialize)]
+pub struct HistoryPageParams {
+    pub limit: Option<usize>,
+}
+
+/// Query parameters for GET /api/history/at.
+#[cfg(feature = "history")]
+#[derive(Deserialize)]
+pub struct HistoryAtParams {
+    pub t: Option<String>,
+}
+
+/// Query parameters for GET /api/history/diff.
+#[cfg(feature = "history")]
+#[derive(Deserialize)]
+pub struct HistoryDiffParams {
+    pub from: Option<String>,
+    pub to: Option<String>,
+}
+
+/// Map a history error message to the appropriate HTTP status code.
+///
+/// `NO_HISTORY`, `SNAPSHOT_NOT_FOUND`, and `PAGE_NOT_FOUND` error codes
+/// map to 404; everything else maps to 500.
+#[cfg(feature = "history")]
+fn history_status_code(msg: &str) -> StatusCode {
+    if msg.contains("NO_HISTORY")
+        || msg.contains("SNAPSHOT_NOT_FOUND")
+        || msg.contains("PAGE_NOT_FOUND")
+    {
+        StatusCode::NOT_FOUND
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+/// Build a JSON error response for a history error.
+#[cfg(feature = "history")]
+fn history_err_response(err: anyhow::Error) -> Response {
+    let msg = err.to_string();
+    let status = history_status_code(&msg);
+    (status, Json(serde_json::json!({ "error": msg }))).into_response()
+}
+
+/// GET /api/history — vault timeline (REQ-087, CON-027).
+///
+/// Query params: `since` (optional time expression), `limit` (optional, default 50).
+/// Returns `Vec<HistoryEntry>` as JSON.
+/// Returns 404 when history has never been initialised (NO_HISTORY).
+#[cfg(feature = "history")]
+pub async fn api_history_log_handler(
+    State(state): State<WebState>,
+    Query(params): Query<HistoryLogParams>,
+) -> Response {
+    let vault_root = state.vault_root.clone();
+    let since = params.since.clone();
+    let limit = params.limit.unwrap_or(50).max(1);
+
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        use crate::history::core::build_vault_history;
+        use crate::history::jj_backend::VcsBackend as _;
+        use chrono::Local;
+
+        let backend = crate::history::open_history(&vault_root)?;
+        let snapshots = backend.list_changes(10_000)?;
+        let now = Local::now().fixed_offset();
+        build_vault_history(&snapshots, &vault_root, since.as_deref(), limit, now)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(entries)) => Json(entries).into_response(),
+        Ok(Err(e)) => history_err_response(e),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// GET /api/history/page/{name} — per-page evolution timeline (REQ-087, CON-027).
+///
+/// Path param: `name` (URL-decoded page name).
+/// Query params: `limit` (optional, default 50).
+/// Returns `Vec<PageHistoryEntry>` as JSON.
+/// Returns 404 when NO_HISTORY or when the page is not found in any snapshot.
+#[cfg(feature = "history")]
+pub async fn api_history_page_handler(
+    State(state): State<WebState>,
+    Path(name): Path<String>,
+    Query(params): Query<HistoryPageParams>,
+) -> Response {
+    let vault_root = state.vault_root.clone();
+    let page_name = urldecode(&name);
+    let limit = params.limit.unwrap_or(50).max(1);
+
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        use crate::history::cache::HistoricalIndexCache;
+        use crate::history::core::{
+            extract_page_history, extract_vault_root_hash_from_description,
+        };
+        use crate::history::jj_backend::VcsBackend as _;
+
+        let backend = crate::history::open_history(&vault_root)?;
+        let snapshots = backend.list_changes(10_000)?;
+
+        let cache = HistoricalIndexCache::with_default_capacity();
+        let files_per_snapshot: Vec<Option<Vec<_>>> = snapshots
+            .iter()
+            .map(|snap| {
+                let hash = extract_vault_root_hash_from_description(&snap.description)?;
+                let file_map = cache.load(&vault_root, &hash).ok().flatten()?;
+                Some(file_map.into_values().collect())
+            })
+            .collect();
+
+        let entries =
+            extract_page_history(&page_name, &snapshots, &files_per_snapshot, limit);
+
+        if entries.is_empty() {
+            anyhow::bail!("PAGE_NOT_FOUND: page '{page_name}' not found in any snapshot");
+        }
+
+        Ok(entries)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(entries)) => Json(entries).into_response(),
+        Ok(Err(e)) => history_err_response(e),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// GET /api/history/at — vault state at a point in time (REQ-087, CON-027).
+///
+/// Query params: `t` (required time expression).
+/// Returns 400 when `t` is absent or blank.
+/// Returns 404 when NO_HISTORY or SNAPSHOT_NOT_FOUND.
+/// Returns 202 Accepted (non-blocking) when the historical index is not yet
+/// cached for the resolved snapshot (ADR-050).
+#[cfg(feature = "history")]
+pub async fn api_history_at_handler(
+    State(state): State<WebState>,
+    Query(params): Query<HistoryAtParams>,
+) -> Response {
+    let t = match params.t.as_deref() {
+        Some(s) if !s.trim().is_empty() => s.to_owned(),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "missing required parameter 't'" })),
+            )
+                .into_response();
+        }
+    };
+
+    let vault_root = state.vault_root.clone();
+
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        use crate::history::cache::HistoricalIndexCache;
+        use crate::history::core::{
+            extract_vault_root_hash_from_description, resolve_snapshot,
+        };
+        use crate::history::jj_backend::VcsBackend as _;
+        use chrono::Local;
+
+        let backend = crate::history::open_history(&vault_root)?;
+        let snapshots = backend.list_changes(10_000)?;
+        let now = Local::now().fixed_offset();
+        let snap = resolve_snapshot(&t, now, &snapshots)?;
+
+        let vault_root_hash = extract_vault_root_hash_from_description(&snap.description);
+        let cache = HistoricalIndexCache::with_default_capacity();
+        let pages = vault_root_hash.as_deref().and_then(|hash| {
+            let file_map = cache.load(&vault_root, hash).ok().flatten()?;
+            let mut pages: Vec<_> = file_map
+                .into_values()
+                .map(|f| {
+                    serde_json::json!({
+                        "page_name": f.page_name,
+                        "link_count": f.links.len(),
+                    })
+                })
+                .collect();
+            pages.sort_by(|a, b| {
+                a["page_name"]
+                    .as_str()
+                    .unwrap_or("")
+                    .cmp(b["page_name"].as_str().unwrap_or(""))
+            });
+            Some(pages)
+        });
+
+        Ok((
+            snap.change_id.clone(),
+            snap.timestamp.to_rfc3339(),
+            vault_root_hash,
+            pages,
+        ))
+    })
+    .await;
+
+    match result {
+        Ok(Ok((change_id, timestamp, vault_root_hash, Some(pages)))) => {
+            Json(serde_json::json!({
+                "snapshot": {
+                    "change_id": change_id,
+                    "timestamp": timestamp,
+                    "vault_root_hash": vault_root_hash,
+                },
+                "status": "ok",
+                "pages": pages,
+            }))
+            .into_response()
+        }
+        Ok(Ok((change_id, timestamp, vault_root_hash, None))) => {
+            // Non-blocking cache miss: index not yet cached for this snapshot.
+            (
+                StatusCode::ACCEPTED,
+                Json(serde_json::json!({
+                    "snapshot": {
+                        "change_id": change_id,
+                        "timestamp": timestamp,
+                        "vault_root_hash": vault_root_hash,
+                    },
+                    "status": "pending",
+                    "pages": [],
+                })),
+            )
+                .into_response()
+        }
+        Ok(Err(e)) => history_err_response(e),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// GET /api/history/diff — graph delta between two points in time (REQ-087, CON-027).
+///
+/// Query params: `from` (required), `to` (required time expressions).
+/// Returns 400 when either param is absent.
+/// Returns 404 when NO_HISTORY or SNAPSHOT_NOT_FOUND.
+/// Returns 202 Accepted when cached index is unavailable for either endpoint.
+#[cfg(feature = "history")]
+pub async fn api_history_diff_handler(
+    State(state): State<WebState>,
+    Query(params): Query<HistoryDiffParams>,
+) -> Response {
+    let from_expr = match params.from.as_deref() {
+        Some(s) if !s.trim().is_empty() => s.to_owned(),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "missing required parameter 'from'" })),
+            )
+                .into_response();
+        }
+    };
+    let to_expr = match params.to.as_deref() {
+        Some(s) if !s.trim().is_empty() => s.to_owned(),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "missing required parameter 'to'" })),
+            )
+                .into_response();
+        }
+    };
+
+    let vault_root = state.vault_root.clone();
+
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        use crate::history::cache::HistoricalIndexCache;
+        use crate::history::core::{
+            compute_graph_delta, extract_vault_root_hash_from_description, resolve_snapshot,
+        };
+        use crate::history::jj_backend::VcsBackend as _;
+        use chrono::Local;
+
+        let backend = crate::history::open_history(&vault_root)?;
+        let snapshots = backend.list_changes(10_000)?;
+        let now = Local::now().fixed_offset();
+
+        let from_snap = resolve_snapshot(&from_expr, now, &snapshots)?;
+        let to_snap = resolve_snapshot(&to_expr, now, &snapshots)?;
+
+        let cache = HistoricalIndexCache::with_default_capacity();
+        let from_hash = extract_vault_root_hash_from_description(&from_snap.description);
+        let to_hash = extract_vault_root_hash_from_description(&to_snap.description);
+
+        let from_files = from_hash
+            .as_deref()
+            .and_then(|h| cache.load(&vault_root, h).ok().flatten())
+            .map(|m| m.into_values().collect::<Vec<_>>());
+        let to_files = to_hash
+            .as_deref()
+            .and_then(|h| cache.load(&vault_root, h).ok().flatten())
+            .map(|m| m.into_values().collect::<Vec<_>>());
+
+        let delta = match (&from_files, &to_files) {
+            (Some(from), Some(to)) => Some(compute_graph_delta(from, to)),
+            _ => None,
+        };
+
+        Ok((
+            from_snap.change_id.clone(),
+            from_snap.timestamp.to_rfc3339(),
+            to_snap.change_id.clone(),
+            to_snap.timestamp.to_rfc3339(),
+            delta,
+        ))
+    })
+    .await;
+
+    match result {
+        Ok(Ok((from_id, from_ts, to_id, to_ts, Some(delta)))) => {
+            Json(serde_json::json!({
+                "from": { "change_id": from_id, "timestamp": from_ts },
+                "to":   { "change_id": to_id,   "timestamp": to_ts },
+                "delta": delta,
+            }))
+            .into_response()
+        }
+        Ok(Ok((from_id, from_ts, to_id, to_ts, None))) => {
+            // Non-blocking cache miss.
+            (
+                StatusCode::ACCEPTED,
+                Json(serde_json::json!({
+                    "from": { "change_id": from_id, "timestamp": from_ts },
+                    "to":   { "change_id": to_id,   "timestamp": to_ts },
+                    "status": "pending",
+                })),
+            )
+                .into_response()
+        }
+        Ok(Err(e)) => history_err_response(e),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
