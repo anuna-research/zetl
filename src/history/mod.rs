@@ -25,6 +25,25 @@ use std::path::Path;
 
 use jj_backend::VcsBackend as _;
 
+/// Open the jj workspace for temporal queries (REQ-084).
+///
+/// Unlike [`jj_backend::JjBackend::open_or_init_at_vault_root`], this function
+/// **does not initialise** a new workspace. If `.zetl/jj/` is absent it returns
+/// an error with code `NO_HISTORY` so the caller can surface a structured
+/// diagnostic: "history will be available after the next `zetl index`".
+///
+/// Use [`auto_snapshot`] / `cmd_index` when you want the init-or-open behaviour.
+pub fn open_history(vault_root: &Path) -> anyhow::Result<jj_backend::JjBackend> {
+    let jj_dir = vault_root.join(".zetl").join("jj");
+    if !jj_dir.exists() {
+        anyhow::bail!(
+            "NO_HISTORY: No history available. \
+             Run `zetl index` to create the first snapshot."
+        );
+    }
+    jj_backend::JjBackend::open_or_init_at_vault_root(vault_root)
+}
+
 /// Create a jj snapshot after index completion (REQ-076, ADR-048).
 ///
 /// - Opens or initialises the jj workspace at `.zetl/jj/`.

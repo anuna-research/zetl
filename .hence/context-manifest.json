@@ -1,12 +1,12 @@
 {
-  "task_id": "tui-timeline-navigation",
-  "token_budget": 8000,
-  "tokens_used": 283,
+  "task_id": "graceful-degradation",
+  "token_budget": 5000,
+  "tokens_used": 301,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add temporal navigation to TUI dashboard: history range indicator in status bar; [ / ] keys for prev/next snapshot; Shift+[ / Shift+] to jump by day; n/Escape returns to live state; all panels reflect historical state; visual differentiation for historical vs live view (REQ-091)",
-      "token_cost": 69,
+      "content": "Implement graceful degradation: non-temporal commands unaffected when .zetl/jj/ missing; NO_HISTORY error for temporal commands; silent re-init on next zetl index; --at and zetl history absent from CLI when feature not compiled; zetl diff falls back to SPEC-007 (REQ-084, NFR-031)",
+      "token_cost": 70,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,20 @@
       "content": "Modified 5 files (+459, -17): .hence/context-manifest.json, src/cli.rs, src/history/core.rs, src/main.rs, tests/history_integration.rs",
       "token_cost": 33,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-tui-timeline-navigation-changes",
+      "content": "Modified 3 files (+356, -1): src/main.rs, src/tui/mod.rs, src/tui/ui.rs",
+      "token_cost": 17,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-graceful-degradation-changes",
+      "content": "Modified 4 files: src/cli.rs (Diff/History subcommands, DiffFilter, HistoryCommand, #[cfg] on --at field), src/history/mod.rs (open_history()), src/main.rs (cmd_diff, cmd_history, NO_HISTORY handling in run_historical_pipeline, fix at_is_some guard), tests/history_integration.rs (TEST-093)",
+      "token_cost": 55,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T07:43:38Z"
+  "constructed_at": "2026-03-04T08:45:00Z"
 }

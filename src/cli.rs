@@ -34,6 +34,7 @@ pub struct Cli {
     /// Query vault state at a historical point in time (requires --features history).
     /// Accepts ISO 8601 dates ("2024-01-15"), relative expressions ("3 days ago",
     /// "last monday"), or VCS refs ("HEAD~1", change-ID prefix).
+    #[cfg(feature = "history")]
     #[arg(long, value_name = "TIME-EXPR")]
     pub at: Option<String>,
 
@@ -245,6 +246,30 @@ pub enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
         _args: Vec<String>,
     },
+
+    /// Compute graph-level diff against a git ref or historical snapshot (REQ-046, REQ-083)
+    Diff {
+        /// Git ref or jj change-ID / time expression to use as the diff baseline
+        #[arg(long, value_name = "REF")]
+        from: Option<String>,
+
+        /// Baseline date expression (ISO 8601 or natural language; alias for --from)
+        #[arg(long, value_name = "DATE")]
+        since: Option<String>,
+
+        /// Filter output to one change category
+        #[arg(long, value_name = "CATEGORY")]
+        filter: Option<DiffFilter>,
+    },
+
+    /// Browse vault history timeline (requires --features history)
+    ///
+    /// Shows the list of temporal snapshots and allows querying graph evolution.
+    #[cfg(feature = "history")]
+    History {
+        #[command(subcommand)]
+        command: HistoryCommand,
+    },
 }
 
 #[derive(Subcommand)]
@@ -419,4 +444,34 @@ pub enum BlockTypeFilter {
     Blockquote,
     Frontmatter,
     All,
+}
+
+/// Category filter for `zetl diff`.
+#[derive(Clone, ValueEnum)]
+pub enum DiffFilter {
+    Pages,
+    Links,
+    Orphans,
+    #[value(name = "dead-links")]
+    DeadLinks,
+}
+
+/// Subcommands for `zetl history` (requires --features history).
+#[cfg(feature = "history")]
+#[derive(Subcommand)]
+pub enum HistoryCommand {
+    /// List recent snapshots with timestamps and brief graph stats
+    Timeline {
+        /// Maximum number of snapshots to show (most recent first)
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
+    /// Show the evolution of a specific page across snapshots
+    Page {
+        /// Page name (case-insensitive)
+        name: String,
+        /// Maximum number of snapshots to show
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
 }

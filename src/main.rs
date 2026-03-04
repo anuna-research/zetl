@@ -69,21 +69,12 @@ struct Pipeline {
 
 fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
     // Handle --at for historical point-in-time queries (REQ-077, REQ-078, CON-024).
+    // The `at` field only exists when the `history` feature is compiled in (REQ-084).
+    #[cfg(feature = "history")]
     if let Some(ref at_expr) = cli.at {
-        #[cfg(feature = "history")]
-        {
-            let vault_root = std::fs::canonicalize(&cli.dir)
-                .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-            return run_historical_pipeline(vault_root, at_expr);
-        }
-        #[cfg(not(feature = "history"))]
-        {
-            let _ = at_expr;
-            anyhow::bail!(
-                "--at requires the 'history' Cargo feature; \
-                 recompile with `--features history`"
-            );
-        }
+        let vault_root = std::fs::canonicalize(&cli.dir)
+            .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+        return run_historical_pipeline(vault_root, at_expr);
     }
 
     let vault_root = std::fs::canonicalize(&cli.dir)
@@ -261,9 +252,11 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
 fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str) -> Result<Pipeline> {
     use zetl::history::cache::HistoricalIndexCache;
     use zetl::history::core::resolve_snapshot;
-    use zetl::history::jj_backend::{JjBackend, VcsBackend as _};
+    use zetl::history::jj_backend::VcsBackend as _;
 
-    let backend = JjBackend::open_or_init_at_vault_root(&vault_root)
+    // Use open_history (not open_or_init) so that a missing .zetl/jj/ directory
+    // yields NO_HISTORY rather than silently initialising an empty workspace (REQ-084).
+    let backend = zetl::history::open_history(&vault_root)
         .context("opening jj workspace for --at query")?;
 
     // list_changes with a large limit to get all history.
@@ -1756,7 +1749,13 @@ fn cmd_search(
     //
     // For --at without --near we still load the pipeline to capture snapshot info.
     // For --near without --at we first verify that the live index exists.
-    let pipeline_opt: Option<Pipeline> = if cli.at.is_some() {
+    // Note: `cli.at` only exists when the `history` feature is compiled in (REQ-084).
+    #[cfg(feature = "history")]
+    let at_is_some = cli.at.is_some();
+    #[cfg(not(feature = "history"))]
+    let at_is_some = false;
+
+    let pipeline_opt: Option<Pipeline> = if at_is_some {
         // Historical query: run_pipeline will route to run_historical_pipeline.
         Some(run_pipeline(cli)?)
     } else if near.is_some() {
@@ -7579,6 +7578,706 @@ fn reason_not_available() -> ! {
     std::process::exit(2);
 }
 
+// ── zetl diff ─────────────────────────────────────────────────────────────
+
+/// Structured output for `zetl diff` (CON-021, REQ-049, REQ-083).
+#[derive(Serialize)]
+struct GraphDiff {
+    from: DiffRef,
+    to: DiffRef,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pages_added: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pages_removed: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    links_added: Option<Vec<DiffLink>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    links_removed: Option<Vec<DiffLink>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    orphans_gained: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    orphans_resolved: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dead_links_added: Option<Vec<DiffLink>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dead_links_resolved: Option<Vec<DiffLink>>,
+}
+
+#[derive(Serialize)]
+struct DiffRef {
+    #[serde(rename = "ref")]
+    ref_str: String,
+    commit: Option<String>,
+    timestamp: Option<String>,
+}
+
+#[derive(Serialize, Clone, PartialEq, Eq, Hash)]
+struct DiffLink {
+    source: String,
+    target: String,
+}
+
+/// `zetl diff` — compute graph-level diff against a baseline (REQ-046 – REQ-051, REQ-083).
+///
+/// When the `history` feature is compiled in: uses the jj-backend for finer-grained
+/// history (SPEC-017).  Falls back to SPEC-007 git-subprocess mode when the feature
+/// is absent or when `--from`/`--since` is a git ref (CON-021 schema preserved).
+fn cmd_diff(
+    cli: &Cli,
+    from: Option<&str>,
+    since: Option<&str>,
+    filter: Option<&zetl::cli::DiffFilter>,
+) -> Result<()> {
+    // Resolve the baseline expression (--from takes precedence over --since).
+    let baseline_expr = from.or(since);
+
+    #[cfg(feature = "history")]
+    {
+        cmd_diff_history(cli, baseline_expr, filter)
+    }
+    #[cfg(not(feature = "history"))]
+    {
+        cmd_diff_git(cli, baseline_expr, filter)
+    }
+}
+
+/// jj-backed diff implementation (SPEC-017, REQ-083).
+///
+/// Uses `open_history` so that a missing `.zetl/jj/` yields `NO_HISTORY` (REQ-084).
+#[cfg(feature = "history")]
+fn cmd_diff_history(
+    cli: &Cli,
+    baseline_expr: Option<&str>,
+    filter: Option<&zetl::cli::DiffFilter>,
+) -> Result<()> {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::core::resolve_snapshot;
+    use zetl::history::jj_backend::VcsBackend as _;
+
+    let pipeline = run_pipeline(cli)?;
+
+    // Open jj workspace — errors with NO_HISTORY if .zetl/jj/ is absent (REQ-084).
+    let backend = zetl::history::open_history(&pipeline.vault_root)
+        .context("opening jj workspace for diff")?;
+
+    let snapshots = backend
+        .list_changes(10_000)
+        .context("listing jj snapshots")?;
+
+    if snapshots.is_empty() {
+        anyhow::bail!(
+            "NO_HISTORY: No snapshots found. Run `zetl index` to create the first snapshot."
+        );
+    }
+
+    // Resolve the baseline to a snapshot.
+    let expr = baseline_expr.unwrap_or("HEAD~1");
+    let now = chrono::Local::now().fixed_offset();
+    let baseline_snap = resolve_snapshot(expr, now, &snapshots)
+        .with_context(|| format!("resolving diff baseline {expr:?}"))?;
+
+    // Load the historical index for the baseline snapshot.
+    let vault_root_hash =
+        zetl::history::core::extract_vault_root_hash_from_description(&baseline_snap.description)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Baseline snapshot {} has no vault_root_hash. \
+                     Run `zetl index` to populate the historical index.",
+                    baseline_snap.change_id
+                )
+            })?;
+
+    let cache = HistoricalIndexCache::with_default_capacity();
+    let baseline_files: Vec<ParsedFile> = cache
+        .load(&pipeline.vault_root, &vault_root_hash)
+        .context("reading historical index cache")?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "No cached index for baseline snapshot {} (vault_root_hash={}). \
+                 Run `zetl index` at that point in time to populate the cache.",
+                baseline_snap.change_id,
+                vault_root_hash
+            )
+        })?
+        .into_values()
+        .collect();
+
+    // Build the baseline graph.
+    let baseline_file_index: Vec<(String, PathBuf)> = baseline_files
+        .iter()
+        .map(|f| (f.page_name.clone(), f.path.clone()))
+        .collect();
+    let mut baseline_resolved: HashMap<String, String> = HashMap::new();
+    for f in &baseline_files {
+        for link in &f.links {
+            let key = link.raw_target.clone();
+            if !baseline_resolved.contains_key(&key) {
+                if let Some(r) = zetl::scanner::resolve_page_name(&link.target_page, &baseline_file_index) {
+                    baseline_resolved.insert(key, r);
+                }
+            }
+        }
+    }
+    let baseline_graph = zetl::graph::LinkGraph::build(&baseline_files, &baseline_resolved);
+
+    diff_graphs_and_output(
+        cli,
+        filter,
+        &baseline_graph,
+        &baseline_files,
+        &pipeline.graph,
+        &pipeline.files,
+        DiffRef {
+            ref_str: baseline_snap.change_id.clone(),
+            commit: Some(baseline_snap.commit_id.clone()),
+            timestamp: Some(baseline_snap.timestamp.to_rfc3339()),
+        },
+        DiffRef {
+            ref_str: "HEAD".to_owned(),
+            commit: None,
+            timestamp: None,
+        },
+    )
+}
+
+/// Git-subprocess diff fallback implementing SPEC-007 (REQ-046 – REQ-051).
+///
+/// Used when the `history` feature is not compiled in.
+#[cfg(not(feature = "history"))]
+fn cmd_diff_git(
+    cli: &Cli,
+    baseline_expr: Option<&str>,
+    filter: Option<&zetl::cli::DiffFilter>,
+) -> Result<()> {
+    let pipeline = run_pipeline(cli)?;
+
+    // Resolve baseline git ref (REQ-046, REQ-047, REQ-048).
+    let baseline_ref = resolve_git_ref(&pipeline.vault_root, baseline_expr)?;
+
+    // Identify changed .md files between baseline and working tree.
+    let changed_files = git_diff_name_only(&pipeline.vault_root, &baseline_ref)?;
+
+    // For each changed file, read the old content and parse links.
+    let mut baseline_files: Vec<ParsedFile> = Vec::new();
+
+    // Start from the current files for *unchanged* pages.
+    for f in &pipeline.files {
+        let rel = f
+            .path
+            .strip_prefix(&pipeline.vault_root)
+            .unwrap_or(&f.path);
+        let rel_str = rel.to_string_lossy();
+        if !changed_files.iter().any(|s| s == rel_str.as_ref()) {
+            baseline_files.push(f.clone());
+        }
+    }
+
+    // Re-parse changed (and possibly deleted) files from git history.
+    for changed in &changed_files {
+        if let Some(old_content) = git_show(&pipeline.vault_root, &baseline_ref, changed)? {
+            // Parse the old content using the same scanner logic (link extraction only).
+            let path = pipeline.vault_root.join(changed);
+            let page_name = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| changed.to_owned());
+            // extract_wikilinks gives us the links without running the full SPEC-006 pipeline.
+            let links = zetl::scanner::extract_wikilinks(&old_content);
+            baseline_files.push(ParsedFile {
+                path,
+                page_name,
+                links,
+                spl_blocks: vec![],
+                diagnostics: vec![],
+                mtime: std::time::SystemTime::UNIX_EPOCH,
+                merkle_leaves: vec![],
+                file_merkle: None,
+            });
+        }
+        // Files deleted since baseline simply don't appear in current graph.
+    }
+
+    // Build the baseline graph.
+    let baseline_file_index: Vec<(String, PathBuf)> = baseline_files
+        .iter()
+        .map(|f| (f.page_name.clone(), f.path.clone()))
+        .collect();
+    let mut baseline_resolved: HashMap<String, String> = HashMap::new();
+    for f in &baseline_files {
+        for link in &f.links {
+            let key = link.raw_target.clone();
+            if !baseline_resolved.contains_key(&key) {
+                if let Some(r) =
+                    zetl::scanner::resolve_page_name(&link.target_page, &baseline_file_index)
+                {
+                    baseline_resolved.insert(key, r);
+                }
+            }
+        }
+    }
+    let baseline_graph = zetl::graph::LinkGraph::build(&baseline_files, &baseline_resolved);
+
+    // Get current HEAD commit info for the "to" ref.
+    let (git_commit, _) = zetl::vcs::get_git_metadata(&pipeline.vault_root);
+
+    diff_graphs_and_output(
+        cli,
+        filter,
+        &baseline_graph,
+        &baseline_files,
+        &pipeline.graph,
+        &pipeline.files,
+        DiffRef {
+            ref_str: baseline_ref.clone(),
+            commit: Some(baseline_ref.clone()),
+            timestamp: None,
+        },
+        DiffRef {
+            ref_str: "HEAD".to_owned(),
+            commit: git_commit,
+            timestamp: None,
+        },
+    )
+}
+
+/// Resolve a git baseline expression to a commit SHA (SPEC-007 §REQ-046/REQ-047/REQ-048).
+#[cfg(not(feature = "history"))]
+fn resolve_git_ref(vault_root: &Path, baseline_expr: Option<&str>) -> Result<String> {
+    let expr = baseline_expr.unwrap_or("HEAD~1");
+
+    // Try --since date format: resolve to nearest commit at or before that date.
+    if looks_like_date(expr) {
+        let output = std::process::Command::new("git")
+            .args([
+                "-C",
+                vault_root.to_str().unwrap_or("."),
+                "rev-list",
+                &format!("--before={expr}"),
+                "-1",
+                "HEAD",
+            ])
+            .output()
+            .context("running git rev-list --before")?;
+
+        if !output.status.success() {
+            anyhow::bail!("NOT_A_GIT_REPO: vault is not a git repository");
+        }
+
+        let sha = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        if sha.is_empty() {
+            anyhow::bail!(
+                "NO_COMMIT_BEFORE: no commit found at or before '{expr}'"
+            );
+        }
+        return Ok(sha);
+    }
+
+    // Plain git ref: resolve via git rev-parse.
+    let output = std::process::Command::new("git")
+        .args([
+            "-C",
+            vault_root.to_str().unwrap_or("."),
+            "rev-parse",
+            "--verify",
+            expr,
+        ])
+        .output()
+        .context("running git rev-parse")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("REF_NOT_FOUND: cannot resolve git ref '{expr}': {stderr}");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// Return true if `s` looks like an ISO 8601 date or datetime (heuristic).
+#[cfg(not(feature = "history"))]
+fn looks_like_date(s: &str) -> bool {
+    // YYYY-MM-DD or starts with 4-digit year followed by '-'
+    let b = s.as_bytes();
+    b.len() >= 10
+        && b[0].is_ascii_digit()
+        && b[1].is_ascii_digit()
+        && b[2].is_ascii_digit()
+        && b[3].is_ascii_digit()
+        && b[4] == b'-'
+}
+
+/// `git diff --name-only <ref>` — returns relative paths of changed `.md` files.
+#[cfg(not(feature = "history"))]
+fn git_diff_name_only(vault_root: &Path, git_ref: &str) -> Result<Vec<String>> {
+    let output = std::process::Command::new("git")
+        .args([
+            "-C",
+            vault_root.to_str().unwrap_or("."),
+            "diff",
+            "--name-only",
+            git_ref,
+        ])
+        .output()
+        .context("running git diff --name-only")?;
+
+    if !output.status.success() {
+        anyhow::bail!("NOT_A_GIT_REPO: git diff failed");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter(|l| l.ends_with(".md"))
+        .map(|l| l.to_owned())
+        .collect())
+}
+
+/// `git show <ref>:<path>` — read file content at a git ref. Returns `None` if
+/// the file did not exist at that ref (newly added since baseline).
+#[cfg(not(feature = "history"))]
+fn git_show(vault_root: &Path, git_ref: &str, rel_path: &str) -> Result<Option<String>> {
+    let object = format!("{git_ref}:{rel_path}");
+    let output = std::process::Command::new("git")
+        .args(["-C", vault_root.to_str().unwrap_or("."), "show", &object])
+        .output()
+        .context("running git show")?;
+
+    if !output.status.success() {
+        // File did not exist at that ref (deleted or renamed since baseline).
+        return Ok(None);
+    }
+
+    Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()))
+}
+
+/// Compare two graph snapshots and emit the diff output (shared by both backends).
+fn diff_graphs_and_output(
+    cli: &Cli,
+    filter: Option<&zetl::cli::DiffFilter>,
+    old_graph: &zetl::graph::LinkGraph,
+    old_files: &[ParsedFile],
+    new_graph: &zetl::graph::LinkGraph,
+    new_files: &[ParsedFile],
+    from_ref: DiffRef,
+    to_ref: DiffRef,
+) -> Result<()> {
+    use zetl::cli::DiffFilter;
+
+    let old_pages: HashSet<&str> = old_files.iter().map(|f| f.page_name.as_str()).collect();
+    let new_pages: HashSet<&str> = new_files.iter().map(|f| f.page_name.as_str()).collect();
+
+    let pages_added: Vec<String> = new_pages
+        .difference(&old_pages)
+        .map(|s| s.to_string())
+        .collect();
+    let pages_removed: Vec<String> = old_pages
+        .difference(&new_pages)
+        .map(|s| s.to_string())
+        .collect();
+
+    // Collect all (source, target) link pairs for each graph.
+    let old_links: HashSet<DiffLink> = old_files
+        .iter()
+        .flat_map(|f| {
+            old_graph
+                .forward_links(&f.page_name)
+                .into_iter()
+                .map(|l| DiffLink {
+                    source: f.page_name.clone(),
+                    target: l.target.clone(),
+                })
+        })
+        .collect();
+
+    let new_links: HashSet<DiffLink> = new_files
+        .iter()
+        .flat_map(|f| {
+            new_graph
+                .forward_links(&f.page_name)
+                .into_iter()
+                .map(|l| DiffLink {
+                    source: f.page_name.clone(),
+                    target: l.target.clone(),
+                })
+        })
+        .collect();
+
+    let links_added: Vec<DiffLink> = new_links.difference(&old_links).cloned().collect();
+    let links_removed: Vec<DiffLink> = old_links.difference(&new_links).cloned().collect();
+
+    // Orphans: pages with no incoming links (uses the graph's own orphans() method).
+    let old_orphans: HashSet<String> =
+        old_graph.orphans().into_iter().map(|o| o.page).collect();
+    let new_orphans: HashSet<String> =
+        new_graph.orphans().into_iter().map(|o| o.page).collect();
+
+    let orphans_gained: Vec<String> = new_orphans.difference(&old_orphans).cloned().collect();
+    let orphans_resolved: Vec<String> = old_orphans.difference(&new_orphans).cloned().collect();
+
+    // Dead links: links whose target page doesn't exist in the resolved set.
+    let old_dead: HashSet<DiffLink> = old_graph
+        .dead_links()
+        .iter()
+        .map(|dl| DiffLink {
+            source: dl.source.clone(),
+            target: dl.target.clone(),
+        })
+        .collect();
+
+    let new_dead: HashSet<DiffLink> = new_graph
+        .dead_links()
+        .iter()
+        .map(|dl| DiffLink {
+            source: dl.source.clone(),
+            target: dl.target.clone(),
+        })
+        .collect();
+
+    let dead_links_added: Vec<DiffLink> = new_dead.difference(&old_dead).cloned().collect();
+    let dead_links_resolved: Vec<DiffLink> = old_dead.difference(&new_dead).cloned().collect();
+
+    // Apply filter (REQ-050).
+    let include_pages = matches!(filter, None | Some(DiffFilter::Pages));
+    let include_links = matches!(filter, None | Some(DiffFilter::Links));
+    let include_orphans = matches!(filter, None | Some(DiffFilter::Orphans));
+    let include_dead_links = matches!(filter, None | Some(DiffFilter::DeadLinks));
+
+    let diff = GraphDiff {
+        from: from_ref,
+        to: to_ref,
+        pages_added: include_pages.then(|| pages_added.clone()),
+        pages_removed: include_pages.then(|| pages_removed.clone()),
+        links_added: include_links.then(|| links_added.clone()),
+        links_removed: include_links.then(|| links_removed.clone()),
+        orphans_gained: include_orphans.then(|| orphans_gained.clone()),
+        orphans_resolved: include_orphans.then(|| orphans_resolved.clone()),
+        dead_links_added: include_dead_links.then(|| dead_links_added.clone()),
+        dead_links_resolved: include_dead_links.then(|| dead_links_resolved.clone()),
+    };
+
+    match cli.format {
+        OutputFormat::Json => print_json(&diff)?,
+        OutputFormat::Table => {
+            let mut table = Table::new();
+            table.set_header(vec!["Category", "Added / Gained", "Removed / Resolved"]);
+            if include_pages {
+                table.add_row(vec![
+                    Cell::new("Pages"),
+                    Cell::new(pages_added.len()),
+                    Cell::new(pages_removed.len()),
+                ]);
+            }
+            if include_links {
+                table.add_row(vec![
+                    Cell::new("Links"),
+                    Cell::new(links_added.len()),
+                    Cell::new(links_removed.len()),
+                ]);
+            }
+            if include_orphans {
+                table.add_row(vec![
+                    Cell::new("Orphans"),
+                    Cell::new(orphans_gained.len()),
+                    Cell::new(orphans_resolved.len()),
+                ]);
+            }
+            if include_dead_links {
+                table.add_row(vec![
+                    Cell::new("Dead links"),
+                    Cell::new(dead_links_added.len()),
+                    Cell::new(dead_links_resolved.len()),
+                ]);
+            }
+            println!("{table}");
+        }
+    }
+
+    Ok(())
+}
+
+// ── zetl history ───────────────────────────────────────────────────────────
+
+/// `zetl history timeline` — list recent snapshots (REQ-080, REQ-081).
+#[cfg(feature = "history")]
+fn cmd_history_timeline(cli: &Cli, limit: usize) -> Result<()> {
+    use zetl::history::jj_backend::VcsBackend as _;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // open_history errors with NO_HISTORY if .zetl/jj/ is absent (REQ-084).
+    let backend = zetl::history::open_history(&vault_root)
+        .context("opening jj workspace for history timeline")?;
+
+    let snapshots = backend
+        .list_changes(limit)
+        .context("listing jj snapshots")?;
+
+    if snapshots.is_empty() {
+        match cli.format {
+            OutputFormat::Json => {
+                print_json(&serde_json::json!({
+                    "snapshots": [],
+                    "message": "No snapshots yet. Run `zetl index` to create the first snapshot."
+                }))?
+            }
+            OutputFormat::Table => {
+                println!("No snapshots yet. Run `zetl index` to create the first snapshot.");
+            }
+        }
+        return Ok(());
+    }
+
+    #[derive(Serialize)]
+    struct SnapshotEntry {
+        change_id: String,
+        commit_id: String,
+        timestamp: String,
+        description: String,
+        has_cached_index: bool,
+    }
+
+    let entries: Vec<SnapshotEntry> = snapshots
+        .iter()
+        .take(limit)
+        .map(|s| SnapshotEntry {
+            change_id: s.change_id.clone(),
+            commit_id: s.commit_id.clone(),
+            timestamp: s.timestamp.to_rfc3339(),
+            description: s.description.clone(),
+            has_cached_index: zetl::history::core::extract_vault_root_hash_from_description(
+                &s.description,
+            )
+            .is_some(),
+        })
+        .collect();
+
+    match cli.format {
+        OutputFormat::Json => print_json(&serde_json::json!({ "snapshots": entries }))?,
+        OutputFormat::Table => {
+            let mut table = Table::new();
+            table.set_header(vec!["Change ID", "Timestamp", "Indexed"]);
+            for e in &entries {
+                table.add_row(vec![
+                    Cell::new(&e.change_id[..e.change_id.len().min(12)]),
+                    Cell::new(&e.timestamp),
+                    Cell::new(if e.has_cached_index { "yes" } else { "no" }),
+                ]);
+            }
+            println!("{table}");
+        }
+    }
+
+    Ok(())
+}
+
+/// `zetl history page <name>` — show page evolution across snapshots (REQ-081).
+#[cfg(feature = "history")]
+fn cmd_history_page(cli: &Cli, page_name: &str, limit: usize) -> Result<()> {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::core::extract_vault_root_hash_from_description;
+    use zetl::history::jj_backend::VcsBackend as _;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    let backend = zetl::history::open_history(&vault_root)
+        .context("opening jj workspace for history page")?;
+
+    let snapshots = backend
+        .list_changes(10_000)
+        .context("listing jj snapshots")?;
+
+    let cache = HistoricalIndexCache::with_default_capacity();
+
+    #[derive(Serialize)]
+    struct PageSnapshot {
+        change_id: String,
+        timestamp: String,
+        link_count: usize,
+        backlink_count: usize,
+        is_orphan: bool,
+    }
+
+    let page_lc = page_name.to_lowercase();
+    let mut entries: Vec<PageSnapshot> = Vec::new();
+
+    for snap in snapshots.iter().take(limit * 3) {
+        let Some(hash) = extract_vault_root_hash_from_description(&snap.description) else {
+            continue;
+        };
+        let Ok(Some(file_map)) = cache.load(&vault_root, &hash) else {
+            continue;
+        };
+
+        let files: Vec<ParsedFile> = file_map.into_values().collect();
+        let file_index: Vec<(String, PathBuf)> = files
+            .iter()
+            .map(|f| (f.page_name.clone(), f.path.clone()))
+            .collect();
+
+        let Some(matched) =
+            zetl::scanner::resolve_page_name(&page_lc, &file_index)
+        else {
+            continue;
+        };
+
+        let mut resolved: HashMap<String, String> = HashMap::new();
+        for f in &files {
+            for link in &f.links {
+                let key = link.raw_target.clone();
+                if !resolved.contains_key(&key) {
+                    if let Some(r) =
+                        zetl::scanner::resolve_page_name(&link.target_page, &file_index)
+                    {
+                        resolved.insert(key, r);
+                    }
+                }
+            }
+        }
+        let graph = zetl::graph::LinkGraph::build(&files, &resolved);
+        let fwd = graph.forward_links(&matched);
+        let bwd = graph.backlinks(&matched);
+
+        entries.push(PageSnapshot {
+            change_id: snap.change_id.clone(),
+            timestamp: snap.timestamp.to_rfc3339(),
+            link_count: fwd.len(),
+            backlink_count: bwd.len(),
+            is_orphan: fwd.is_empty() && bwd.is_empty(),
+        });
+
+        if entries.len() >= limit {
+            break;
+        }
+    }
+
+    if entries.is_empty() {
+        anyhow::bail!("PAGE_NOT_FOUND: page '{page_name}' not found in any snapshot");
+    }
+
+    match cli.format {
+        OutputFormat::Json => print_json(&serde_json::json!({
+            "page": page_name,
+            "snapshots": entries,
+        }))?,
+        OutputFormat::Table => {
+            let mut table = Table::new();
+            table.set_header(vec!["Timestamp", "Links", "Backlinks", "Orphan"]);
+            for e in &entries {
+                table.add_row(vec![
+                    Cell::new(&e.timestamp),
+                    Cell::new(e.link_count),
+                    Cell::new(e.backlink_count),
+                    Cell::new(if e.is_orphan { "yes" } else { "no" }),
+                ]);
+            }
+            println!("{table}");
+        }
+    }
+
+    Ok(())
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 fn main() -> anyhow::Result<()> {
@@ -7713,5 +8412,16 @@ fn main() -> anyhow::Result<()> {
         }
         #[cfg(not(feature = "reason"))]
         Command::Reason { .. } => reason_not_available(),
+        Command::Diff { from, since, filter } => {
+            cmd_diff(&cli, from.as_deref(), since.as_deref(), filter.as_ref())
+        }
+        #[cfg(feature = "history")]
+        Command::History { command } => {
+            use zetl::cli::HistoryCommand;
+            match command {
+                HistoryCommand::Timeline { limit } => cmd_history_timeline(&cli, *limit),
+                HistoryCommand::Page { name, limit } => cmd_history_page(&cli, name, *limit),
+            }
+        }
     }
 }
