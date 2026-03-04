@@ -3,30 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 385,
-    "deletions": 28,
+    "files_changed": 6,
+    "insertions": 264,
+    "deletions": 25,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/history/core.rs",
-      "src/history/mod.rs",
+      "src/main.rs",
       "src/web/build.rs",
-      "src/web/engine.rs",
+      "src/web/mod.rs",
       "src/web/routes.rs",
-      "tests/history_integration.rs"
+      "tests/history_integration.rs",
+      "tests/web_integration.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-build-history-export-changes",
-      "content": "Modified 7 files (+385, -28): .hence/context-manifest.json, src/history/core.rs, src/history/mod.rs, src/web/build.rs, src/web/engine.rs and 2 more",
+      "key": "task-observability-changes",
+      "content": "Modified 6 files (+264, -25): src/main.rs, src/web/build.rs, src/web/mod.rs, src/web/routes.rs, tests/history_integration.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/build-history-export-v1",
-  "evaluated_at": "2026-03-04T09:43:44Z",
+  "branch_name": "hence/observability-v1",
+  "evaluated_at": "2026-03-04T09:55:41Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
