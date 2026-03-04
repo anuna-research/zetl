@@ -54,6 +54,8 @@ pub struct WebState {
     pub search_index: Arc<SearchIndex>,
     pub engine: Arc<TemplateEngine>,
     pub theme: String,
+    /// Whether --verbose was set; controls history-context timing output (OBS-013).
+    pub verbose: bool,
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.

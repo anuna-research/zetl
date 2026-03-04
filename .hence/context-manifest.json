@@ -1,12 +1,12 @@
 {
-  "task_id": "build-history-export",
-  "token_budget": 6000,
-  "tokens_used": 356,
+  "task_id": "observability",
+  "token_budget": 4000,
+  "tokens_used": 4000,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Write history-index.json to output directory during zetl build; vault trend (≤30), page link_trend (≤10 per page); history_index template variable; skip when history unavailable; pure core: serialize_history_index (REQ-088, CON-026, ADR-049, ADR-050)",
-      "token_cost": 63,
+      "content": "Add OBS-011/OBS-012/OBS-013 verbose timing output: snapshot creation, --at resolution, cache hit/miss, history load; zetl graph stats history section; serve/build context timing lines",
+      "token_cost": 45,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T09:31:36Z"
+  "constructed_at": "2026-03-04T09:43:51Z"
 }

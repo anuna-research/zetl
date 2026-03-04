@@ -58,6 +58,7 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         search_index: Arc::new(search_index),
         engine: Arc::new(TemplateEngine::new(vault_root, theme, true, false)),
         theme: theme.to_string(),
+        verbose: false,
     }
 }
 
