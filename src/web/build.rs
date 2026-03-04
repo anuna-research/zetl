@@ -230,6 +230,40 @@ fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) 
     Ok(json_str)
 }
 
+/// Write history-index.json to `{out_dir}/history-index.json` and return the
+/// JSON string so it can be embedded as a template variable.
+///
+/// Returns an empty string when history is unavailable; the file is not
+/// written in that case.
+#[cfg(feature = "history")]
+fn write_history_index_json(
+    data: &VaultData,
+    vault_root: &Path,
+    out_dir: &Path,
+    verbose: bool,
+) -> String {
+    let page_names: Vec<&str> = data.files.iter().map(|f| f.page_name.as_str()).collect();
+    // OBS-013: time history-index export.
+    let export_start = std::time::Instant::now();
+    let Some(json_str) = crate::history::build_history_index_json(vault_root, &page_names) else {
+        return String::new();
+    };
+    if let Err(e) = std::fs::write(out_dir.join("history-index.json"), &json_str) {
+        eprintln!("warning: could not write history-index.json: {e}");
+    }
+    let export_ms = export_start.elapsed().as_millis();
+    if verbose {
+        let size_kb = json_str.len() / 1024;
+        eprintln!(
+            "[zetl] history-export: wrote history-index.json ({} KB, {} pages) duration_ms={}",
+            size_kb,
+            page_names.len(),
+            export_ms
+        );
+    }
+    json_str
+}
+
 /// Generate a complete static HTML site from the vault data.
 pub fn build_static(
     data: &VaultData,
@@ -247,14 +281,37 @@ pub fn build_static(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
-    let vault_ctx = build_vault_context(data, &vault_name);
+    let mut vault_ctx = build_vault_context(data, &vault_name);
+    #[cfg(feature = "history")]
+    {
+        // OBS-013: time vault history context build.
+        let hist_start = std::time::Instant::now();
+        if let Some(hist) = crate::history::build_template_history_context(vault_root) {
+            let hist_ms = hist_start.elapsed().as_millis();
+            if verbose {
+                eprintln!(
+                    "[zetl] history-context: vault trend={} points recent={} changes duration_ms={}",
+                    hist.trend.len(),
+                    hist.recent_changes.len(),
+                    hist_ms
+                );
+            }
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
+    }
 
     // ── search-index.json ────────────────────────────────────────────────
     let bm25_json = write_search_index_json(data, vault_root, out)?;
 
+    // ── history-index.json ───────────────────────────────────────────────
+    #[cfg(feature = "history")]
+    let history_json = write_history_index_json(data, vault_root, out, verbose);
+    #[cfg(not(feature = "history"))]
+    let history_json = String::new();
+
     // ── index.html ──────────────────────────────────────────────────────
     let index_html = engine
-        .render_index(&vault_ctx, "build", &bm25_json)
+        .render_index(&vault_ctx, "build", &bm25_json, &history_json)
         .map_err(|e| {
             eprintln!("{}", e.stderr_line("index"));
             anyhow::anyhow!("{e}")
@@ -287,9 +344,40 @@ pub fn build_static(
         let mut page_ctx = build_page_context(data, &file.page_name, &slug, &rendered, &content);
         page_ctx.transclusion_cards =
             build_transclusion_cards(data, vault_root, &file.page_name, &root_path);
+        #[cfg(feature = "history")]
+        {
+            // OBS-013: time per-page history context build.
+            let hist_start = std::time::Instant::now();
+            if let Some(hist) =
+                crate::history::build_template_page_history_context(&file.page_name, vault_root)
+            {
+                let hist_ms = hist_start.elapsed().as_millis();
+                if verbose {
+                    eprintln!(
+                        "[zetl] history-context: page {:?} trend={} points created={} duration_ms={}",
+                        file.page_name,
+                        hist.link_trend.len(),
+                        hist.created_at,
+                        hist_ms
+                    );
+                }
+                page_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+            }
+        }
+        #[cfg(feature = "history")]
+        {
+            let sources: Vec<String> = page_ctx.backlinks.iter().map(|b| b.title.clone()).collect();
+            let since_map =
+                crate::history::build_backlink_since_map(&file.page_name, &sources, vault_root);
+            if !since_map.is_empty() {
+                for bl in &mut page_ctx.backlinks {
+                    bl.since = since_map.get(&bl.title.to_lowercase()).cloned();
+                }
+            }
+        }
 
         let page_html = engine
-            .render_page(&vault_ctx, &page_ctx, "build", &bm25_json)
+            .render_page(&vault_ctx, &page_ctx, "build", &bm25_json, &history_json)
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(&slug));
                 anyhow::anyhow!("{e}")
@@ -328,7 +416,7 @@ pub fn build_static(
         let folder_name = folder.rsplit('/').next().unwrap_or(folder);
         let folder_ctx = build_folder_context(data, folder, folder_name);
         let folder_html = engine
-            .render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json)
+            .render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json, &history_json)
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(folder));
                 anyhow::anyhow!("{e}")
@@ -387,9 +475,8 @@ fn copy_static_assets(vault_root: &Path, out: &Path, theme: &str) -> Result<bool
                 .unwrap_or(rel_path.as_path());
             let target = dest.join(file_rel);
             if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).with_context(|| {
-                    format!("Cannot create directory: {}", parent.display())
-                })?;
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("Cannot create directory: {}", parent.display()))?;
             }
             std::fs::write(&target, bytes)
                 .with_context(|| format!("Cannot write {}", target.display()))?;

@@ -5049,10 +5049,7 @@ fn test_015_002_fountain_woff2_fonts_in_static() {
         let size = fs::metadata(&path)
             .unwrap_or_else(|e| panic!("failed to stat {font}: {e}"))
             .len();
-        assert!(
-            size > 0,
-            "_static/{font} must not be empty"
-        );
+        assert!(size > 0, "_static/{font} must not be empty");
     }
 }
 
@@ -5075,11 +5072,7 @@ fn test_015_003_fountain_theme_list_bundled() {
     let fountain = themes
         .iter()
         .find(|t| t["name"].as_str() == Some("fountain"))
-        .unwrap_or_else(|| {
-            panic!(
-                "fountain must appear in `zetl theme list`; got: {json}"
-            )
-        });
+        .unwrap_or_else(|| panic!("fountain must appear in `zetl theme list`; got: {json}"));
 
     assert_eq!(
         fountain["source"].as_str().unwrap_or(""),
@@ -5328,11 +5321,7 @@ fn hook_run_prints_stderr_to_stderr() {
 fn hook_run_exits_with_hook_exit_code() {
     let tmp = TempDir::new().unwrap();
     write_file(tmp.path(), "note.md", "# Hello");
-    create_vault_hook_with_script(
-        tmp.path(),
-        "post-build",
-        "#!/bin/sh\nexit 42",
-    );
+    create_vault_hook_with_script(tmp.path(), "post-build", "#!/bin/sh\nexit 42");
 
     let mut cmd = zetl_cmd(tmp.path());
     cmd.args(["hook", "run", "post-build"]);
@@ -5366,7 +5355,10 @@ fn hook_run_no_executable_hook_errors() {
     let output = cmd.output().unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("no executable hook found"), "stderr: {stderr}");
+    assert!(
+        stderr.contains("no executable hook found"),
+        "stderr: {stderr}"
+    );
 }
 
 #[test]
@@ -5376,11 +5368,7 @@ fn hook_run_receives_vault_context_on_stdin() {
     write_file(tmp.path(), "Beta.md", "Just a page.");
 
     // Hook that reads stdin JSON and prints the hook name and page count.
-    create_vault_hook_with_script(
-        tmp.path(),
-        "post-build",
-        "#!/bin/sh\ncat",
-    );
+    create_vault_hook_with_script(tmp.path(), "post-build", "#!/bin/sh\ncat");
 
     let mut cmd = zetl_cmd(tmp.path());
     cmd.args(["hook", "run", "post-build"]);
@@ -5398,16 +5386,22 @@ fn hook_run_receives_vault_context_on_stdin() {
 fn hook_run_extra_json_merged_into_context() {
     let tmp = TempDir::new().unwrap();
     write_file(tmp.path(), "note.md", "# Hello");
-    create_vault_hook_with_script(
-        tmp.path(),
-        "post-build",
-        "#!/bin/sh\ncat",
-    );
+    create_vault_hook_with_script(tmp.path(), "post-build", "#!/bin/sh\ncat");
 
     let mut cmd = zetl_cmd(tmp.path());
-    cmd.args(["hook", "run", "post-build", "--", "{\"custom_key\":\"custom_value\",\"number\":42}"]);
+    cmd.args([
+        "hook",
+        "run",
+        "post-build",
+        "--",
+        "{\"custom_key\":\"custom_value\",\"number\":42}",
+    ]);
     let output = cmd.output().unwrap();
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("not valid JSON: {e}\nraw: {stdout}"));
@@ -5420,11 +5414,7 @@ fn hook_run_extra_json_merged_into_context() {
 fn hook_run_invalid_extra_json_errors() {
     let tmp = TempDir::new().unwrap();
     write_file(tmp.path(), "note.md", "# Hello");
-    create_vault_hook_with_script(
-        tmp.path(),
-        "post-build",
-        "#!/bin/sh\ncat",
-    );
+    create_vault_hook_with_script(tmp.path(), "post-build", "#!/bin/sh\ncat");
 
     let mut cmd = zetl_cmd(tmp.path());
     cmd.args(["hook", "run", "post-build", "--", "not-valid-json"]);

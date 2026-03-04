@@ -2,6 +2,8 @@ pub mod cache;
 pub mod cli;
 pub mod drift;
 pub mod graph;
+#[cfg(feature = "history")]
+pub mod history;
 pub mod hooks;
 pub mod merkle;
 #[cfg(feature = "reason")]

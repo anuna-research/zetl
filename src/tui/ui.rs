@@ -4,6 +4,9 @@ use regex::Regex;
 
 use super::{App, DetailPane, DiagCategory, LinkPane, Tab};
 
+/// Amber colour used for all historical-mode chrome (REQ-091).
+const HIST_COLOR: Color = Color::Yellow;
+
 // ── Main draw ─────────────────────────────────────────────────────────────
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -47,8 +50,24 @@ fn draw_tabs(frame: &mut Frame, app: &App, area: Rect) {
         .map(|tab| Line::from(format!(" {} ", tab.label())))
         .collect();
 
+    let is_hist = app.timeline_idx.is_some();
+    let block_title = if is_hist {
+        " zetl [HISTORICAL] "
+    } else {
+        " zetl "
+    };
+    let block = if is_hist {
+        Block::default()
+            .borders(Borders::ALL)
+            .title(block_title)
+            .border_style(Style::default().fg(HIST_COLOR))
+            .title_style(Style::default().fg(HIST_COLOR).add_modifier(Modifier::BOLD))
+    } else {
+        Block::default().borders(Borders::ALL).title(block_title)
+    };
+
     let tabs = Tabs::new(titles)
-        .block(Block::default().borders(Borders::ALL).title(" zetl "))
+        .block(block)
         .highlight_style(
             Style::default()
                 .fg(Color::Yellow)
@@ -62,6 +81,37 @@ fn draw_tabs(frame: &mut Frame, app: &App, area: Rect) {
 // ── Status bar ────────────────────────────────────────────────────────────
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
+    // ── Timeline indicator (REQ-091) ──────────────────────────────────────
+    if let Some(idx) = app.timeline_idx {
+        let snap = &app.timeline_snapshots[idx];
+        let total = app.timeline_snapshots.len();
+        // snapshot index is newest-first; display as "position from oldest"
+        let display_pos = total - idx;
+        let nav_hint = "[/]: prev/next | {/}: by day | n/Esc: live";
+        let label = format!(
+            " HIST  {}  [{}/{}]  {}",
+            snap.timestamp_display, display_pos, total, nav_hint
+        );
+        let bar = Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!(" {} ", app.vault_root.display()),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::raw("| "),
+            Span::styled(
+                label,
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(HIST_COLOR)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]))
+        .style(Style::default().bg(Color::Black));
+        frame.render_widget(bar, area);
+        return;
+    }
+
+    // ── Live view ─────────────────────────────────────────────────────────
     let hint = match app.active_tab {
         Tab::Dashboard => "? help | q quit | Tab/Shift+Tab cycle | Ctrl+K switcher",
         Tab::Pages => "type to filter | Enter view page | Esc clear",
@@ -103,6 +153,13 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         String::new()
     };
 
+    // Show timeline availability hint in live mode when snapshots are loaded
+    let timeline_hint = if !app.timeline_snapshots.is_empty() {
+        format!(" | [/]: timeline ({} snaps)", app.timeline_snapshots.len())
+    } else {
+        String::new()
+    };
+
     let bar = Paragraph::new(Line::from(vec![
         Span::styled(
             format!(" {} ", app.vault_root.display()),
@@ -111,6 +168,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(breadcrumb, Style::default().fg(Color::DarkGray)),
         Span::raw("| "),
         Span::styled(hint, Style::default().fg(Color::Cyan)),
+        Span::styled(timeline_hint, Style::default().fg(Color::DarkGray)),
     ]))
     .style(Style::default().bg(Color::Black));
 
@@ -1139,6 +1197,15 @@ fn draw_help_overlay(frame: &mut Frame) {
         Line::styled("  Search", Style::default().add_modifier(Modifier::BOLD)),
         Line::raw("  /             Focus search input"),
         Line::raw("  Enter         Execute search / view selected page"),
+        Line::raw(""),
+        Line::styled(
+            "  Timeline (when history is available)",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Line::raw("  [             Previous snapshot (older)"),
+        Line::raw("  ]             Next snapshot (newer)"),
+        Line::raw("  { / }         Jump by day (prev/next)"),
+        Line::raw("  n / Esc       Return to live view"),
         Line::raw(""),
         Line::styled(
             "  Press any key to close",

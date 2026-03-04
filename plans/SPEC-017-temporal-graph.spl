@@ -1,0 +1,472 @@
+;; Plan metadata
+(meta plan
+  (id "IMPL-017")
+  (title "zetl history — Invisible Temporal Graph Navigation via jj-lib")
+  (version "0.2.0")
+  (status "active")
+  (created "2026-03-04")
+  (author "agent:architect")
+  (spec "SPEC-017")
+  (description "Embed jj-lib as zetl's temporal engine; automatic snapshotting; point-in-time queries; history CLI; TUI timeline; theme context; serve API; build export"))
+
+;; Agents
+(given agent-coder-available)
+(given agent-reviewer-available)
+(given agent-tester-available)
+
+;; ─── Tasks ───────────────────────────────────────────────────────────────────
+
+(given task-cargo-feature-flag)
+(given task-jj-backend)
+(given task-vcs-init)
+(given task-auto-snapshot)
+(given task-historical-index-cache)
+(given task-time-expression-parser)
+(given task-point-in-time-query)
+(given task-history-cli)
+(given task-history-page-cli)
+(given task-diff-jj-backend)
+(given task-watch-mode-snapshot)
+(given task-graceful-degradation)
+(given task-vault-history-template-context)
+(given task-page-history-template-context)
+(given task-backlink-timestamps)
+(given task-serve-history-api)
+(given task-build-history-export)
+(given task-hook-context-history)
+(given task-tui-timeline-navigation)
+(given task-observability)
+(given task-integration-tests)
+
+;; ─── Dependency facts (no blockers) ──────────────────────────────────────────
+
+(given no-deps-cargo-feature-flag)
+(given no-deps-time-expression-parser)
+
+;; ─── Task metadata ────────────────────────────────────────────────────────────
+
+(meta task-cargo-feature-flag
+  (description "Add optional 'history' Cargo feature flag; gate all jj-lib imports behind it; ensure builds without the feature are unaffected")
+  (acceptance "cargo build succeeds with and without --features history; binary size delta without feature is zero; CI verifies both build configurations")
+  (context-files "Cargo.toml" "src/lib.rs" "src/main.rs")
+  (token-budget "3000")
+  (evaluate-checks "test:cargo build" "test:cargo build --features history" "lint:cargo clippy"))
+
+(meta task-jj-backend
+  (description "Implement JjBackend wrapper around jj-lib; open/init jj repo at .zetl/jj/; snapshot creation; MergedTree file reading; change-id resolution; revset traversal")
+  (acceptance "JjBackend can init a new repo, create snapshots, list changes, read file contents at a given change; unit tests pass; VcsBackend trait implemented")
+  (context-files "src/history/jj_backend.rs" "src/history/mod.rs")
+  (token-budget "12000")
+  (evaluate-checks "test:cargo test --features history -p zetl history::jj_backend" "lint:cargo clippy --features history"))
+
+(meta task-vcs-init
+  (description "Implement silent VCS initialisation: detect .git/, create .zetl/jj/, configure jj workspace with vault root as working copy; idempotent; no user-visible output (REQ-075, ADR-044, ADR-045)")
+  (acceptance "First zetl index creates .zetl/jj/; no .jj/ at vault root; stdout unchanged; idempotent on subsequent runs; TEST-080 passes")
+  (context-files "src/history/jj_backend.rs" "src/index.rs")
+  (token-budget "6000")
+  (evaluate-checks "test:cargo test --features history vcs_init" "lint:cargo clippy --features history"))
+
+(meta task-auto-snapshot
+  (description "Hook into zetl index completion to create a jj snapshot; include vault_root_hash in commit description; deduplicate when vault_root_hash unchanged (REQ-076, ADR-048)")
+  (acceptance "Each distinct vault state produces exactly one snapshot; re-running index with no changes creates no new snapshot; --verbose emits snapshot line; TEST-081 passes; snapshot overhead ≤ 50ms p95 (NFR-026)")
+  (context-files "src/index.rs" "src/history/jj_backend.rs")
+  (token-budget "5000")
+  (evaluate-checks "test:cargo test --features history auto_snapshot" "lint:cargo clippy --features history"))
+
+(meta task-historical-index-cache
+  (description "Implement HistoricalIndexCache: read/write .zetl/history/<vault_root_hash>.json; bounded LRU eviction (default 100 entries); same serialisation format as index.json (REQ-079, ADR-047)")
+  (acceptance "Cache hit returns identical data to fresh scan; eviction removes oldest-accessed entry; LRU limit configurable; cache entries ≤ 1.5× index.json size; TEST-086 passes")
+  (context-files "src/history/cache.rs" "src/history/mod.rs")
+  (token-budget "6000")
+  (evaluate-checks "test:cargo test --features history historical_index_cache" "lint:cargo clippy --features history"))
+
+(meta task-time-expression-parser
+  (description "Implement pure parse_time_expr() supporting ISO 8601, relative natural-language ('yesterday', '3 days ago', 'last monday'), and git refs (HEAD~N, branch names) (REQ-077, CON-024)")
+  (acceptance "All time expression forms parse correctly; returns most recent snapshot at or before resolved time; SNAPSHOT_NOT_FOUND error when no match; TEST-082 and TEST-083 pass")
+  (context-files "src/history/core.rs")
+  (token-budget "5000")
+  (evaluate-checks "test:cargo test --features history time_expression_parser" "lint:cargo clippy --features history"))
+
+(meta task-point-in-time-query
+  (description "Wire --at <time-expr> flag into all read-only subcommands (links, backlinks, check, graph, search, blocks, reason); resolve snapshot via JjBackend + time parser; load or build historical index via cache; add snapshot field to JSON output (REQ-077, REQ-078, CON-024)")
+  (acceptance "--at flag present in --help for all applicable subcommands; JSON output includes snapshot metadata; table output shows [snapshot: ...] header; cache hit latency ≤ 100ms p95 (NFR-028); cache miss latency ≤ 3s p95 (NFR-029); TEST-084 and TEST-085 pass")
+  (context-files "src/cli.rs" "src/commands/links.rs" "src/commands/check.rs" "src/commands/graph.rs" "src/commands/search.rs" "src/history/mod.rs")
+  (token-budget "10000")
+  (evaluate-checks "test:cargo test --features history point_in_time" "lint:cargo clippy --features history"))
+
+(meta task-history-cli
+  (description "Implement 'zetl history' subcommand with --since, --limit, --format json|table; reverse-chronological timeline of graph-level deltas; collapse identical vault_root_hash entries; pure core functions: compute_graph_delta, collapse_timeline, build_vault_history (REQ-080, CON-025)")
+  (acceptance "JSON output matches CON-025 timeline schema; table output correctly formatted; delta fields accurate; collapsed entries show time ranges; --since and --limit filter correctly; TEST-087 and TEST-088 pass")
+  (context-files "src/commands/history.rs" "src/history/core.rs" "src/cli.rs")
+  (token-budget "8000")
+  (evaluate-checks "test:cargo test --features history history_cli" "lint:cargo clippy --features history"))
+
+(meta task-history-page-cli
+  (description "Implement 'zetl history page <name>' subcommand; per-page evolution timeline; only snapshots where page neighborhood changed; pure core: extract_page_history (REQ-081, CON-025)")
+  (acceptance "JSON output matches CON-025 page timeline schema; only changed-neighborhood snapshots shown; delta fields accurate; PAGE_NOT_FOUND error for unknown pages; TEST-089 passes")
+  (context-files "src/commands/history.rs" "src/history/core.rs")
+  (token-budget "6000")
+  (evaluate-checks "test:cargo test --features history history_page_cli" "lint:cargo clippy --features history"))
+
+(meta task-diff-jj-backend
+  (description "Replace SPEC-007 git-subprocess VCS backend in 'zetl diff' with jj-lib; preserve CON-021 output schema; support --from git-ref resolution via jj git backend; default baseline = previous distinct snapshot (@-); NO_PREVIOUS_SNAPSHOT error when only one snapshot (REQ-083, ADR-046)")
+  (acceptance "zetl diff output is schema-identical to CON-021; git refs resolve correctly; default ref field is '@-' for non-git vaults; TEST-091, TEST-092, TEST-112, TEST-113 pass; SPEC-007 fallback retained when history feature disabled")
+  (context-files "src/commands/diff.rs" "src/history/jj_backend.rs")
+  (token-budget "8000")
+  (evaluate-checks "test:cargo test --features history diff_backend" "lint:cargo clippy --features history"))
+
+(meta task-watch-mode-snapshot
+  (description "Integrate snapshotting into zetl watch (SPEC-008) post-re-index cycle; asynchronous snapshot creation (non-blocking); same deduplication as auto-snapshot (REQ-082, ADR-048)")
+  (acceptance "File change triggers re-index then async snapshot; duplicate file state produces no new snapshot; watch event stream not blocked; TEST-090 passes")
+  (context-files "src/commands/watch.rs" "src/history/jj_backend.rs")
+  (token-budget "4000")
+  (evaluate-checks "test:cargo test --features history watch_snapshot" "lint:cargo clippy --features history"))
+
+(meta task-graceful-degradation
+  (description "Implement graceful degradation: non-temporal commands unaffected when .zetl/jj/ missing; NO_HISTORY error for temporal commands; silent re-init on next zetl index; --at and zetl history absent from CLI when feature not compiled; zetl diff falls back to SPEC-007 (REQ-084, NFR-031)")
+  (acceptance "All non-temporal commands work normally without history; --at returns NO_HISTORY when repo missing; zetl index silently re-creates .zetl/jj/; feature-absent build has no temporal CLI flags; TEST-093 passes")
+  (context-files "src/cli.rs" "src/history/mod.rs" "src/commands/diff.rs")
+  (token-budget "5000")
+  (evaluate-checks "test:cargo test graceful_degradation" "test:cargo test --features history graceful_degradation" "lint:cargo clippy"))
+
+(meta task-vault-history-template-context
+  (description "Inject vault.history object into Minijinja template context for all templates; trend (≤30 sampled points), recent_changes (≤10), oldest/newest/epoch/snapshot_count/unique_states; null when history unavailable; identical in serve and build modes; pure core: build_vault_history, sample_trend (REQ-085, CON-026, ADR-049)")
+  (acceptance "vault.history fields match CON-026 schema; trend ≤ 30 points; recent_changes ≤ 10; null when feature absent or no snapshots; templates with {% if vault.history %} guards render cleanly; TEST-099 and TEST-100 pass")
+  (context-files "src/render/context.rs" "src/history/core.rs" "src/commands/serve.rs" "src/commands/build.rs")
+  (token-budget "8000")
+  (evaluate-checks "test:cargo test --features history vault_history_context" "lint:cargo clippy --features history"))
+
+(meta task-page-history-template-context
+  (description "Inject page.history object into PageContext per page render; created_at, last_changed, age_days, stable_days, link_trend (only changed snapshots), recent_changes (≤5); null for new pages with no history; pure core: build_page_history (REQ-086, CON-026, ADR-049)")
+  (acceptance "page.history fields match CON-026 schema; link_trend contains only snapshots where page neighborhood changed; null for pages with no snapshots; TEST-101 and TEST-102 pass")
+  (context-files "src/render/context.rs" "src/history/core.rs")
+  (token-budget "6000")
+  (evaluate-checks "test:cargo test --features history page_history_context" "lint:cargo clippy --features history"))
+
+(meta task-backlink-timestamps
+  (description "Extend page.backlinks[] with optional 'since' field: earliest snapshot where each backlink existed; null when history unavailable; pure core: resolve_backlink_since (REQ-089, CON-026)")
+  (acceptance "backlinks[].since is correct ISO 8601 for each backlink; null when history unavailable; template {{ bl.since }} without guard renders empty string not error; TEST-107 passes")
+  (context-files "src/render/context.rs" "src/history/core.rs")
+  (token-budget "4000")
+  (evaluate-checks "test:cargo test --features history backlink_timestamps" "lint:cargo clippy --features history"))
+
+(meta task-serve-history-api
+  (description "Implement Axum route handlers for /api/history, /api/history/page/{name}, /api/history/at, /api/history/diff; JSON responses matching CON-027; HTTP 404/400 error model; cache-backed; non-blocking on cache miss (REQ-087, CON-027, ADR-050)")
+  (acceptance "All four endpoints return correct JSON; Content-Type: application/json; NO_HISTORY returns 404; SNAPSHOT_NOT_FOUND returns 404; PAGE_NOT_FOUND returns 404; malformed params return 400; /api/history/diff requires both from and to; TEST-103, TEST-104, TEST-110, TEST-111 pass")
+  (context-files "src/serve/routes.rs" "src/serve/handlers/history.rs" "src/history/mod.rs")
+  (token-budget "10000")
+  (evaluate-checks "test:cargo test --features history serve_history_api" "lint:cargo clippy --features history"))
+
+(meta task-build-history-export
+  (description "Write history-index.json to output directory during zetl build; vault trend (≤30), page link_trend (≤10 per page); history_index template variable; skip when history unavailable; pure core: serialize_history_index (REQ-088, CON-026, ADR-049, ADR-050)")
+  (acceptance "history-index.json written with correct schema; ≤ 500 KB for 2000-page vault (NFR-032); history_index template var contains serialised content; empty string when history unavailable; TEST-105 and TEST-106 pass")
+  (context-files "src/commands/build.rs" "src/history/core.rs")
+  (token-budget "6000")
+  (evaluate-checks "test:cargo test --features history build_history_export" "lint:cargo clippy --features history"))
+
+(meta task-hook-context-history
+  (description "Extend hook context (SPEC-016) with history object: snapshot_count, oldest, newest, vault_root_hash, previous_vault_root_hash, delta (graph diff from previous snapshot); null when history unavailable (REQ-090)")
+  (acceptance "Post-index hook receives history object with correct delta; delta matches changes from previous snapshot; null when history unavailable; TEST-108 passes")
+  (context-files "src/hooks.rs" "src/history/core.rs")
+  (token-budget "4000")
+  (evaluate-checks "test:cargo test --features history hook_history_context" "lint:cargo clippy --features history"))
+
+(meta task-tui-timeline-navigation
+  (description "Add temporal navigation to TUI dashboard: history range indicator in status bar; [ / ] keys for prev/next snapshot; Shift+[ / Shift+] to jump by day; n/Escape returns to live state; all panels reflect historical state; visual differentiation for historical vs live view (REQ-091)")
+  (acceptance "Status bar shows history range and current position; [ and ] navigate snapshots correctly; Shift+[ jumps by day; n/Escape returns to live; panels update correctly; visual indicator differs in historical mode; no-history mode hides indicator and makes keys no-ops; TEST-094 passes")
+  (context-files "src/tui/dashboard.rs" "src/tui/mod.rs" "src/history/mod.rs")
+  (token-budget "8000")
+  (evaluate-checks "test:cargo test --features history tui_timeline" "lint:cargo clippy --features history"))
+
+(meta task-observability
+  (description "Add OBS-011/OBS-012/OBS-013 verbose timing output: snapshot creation, --at resolution, cache hit/miss, history load; zetl graph stats history section; serve/build context timing lines")
+  (acceptance "--verbose emits correct timing lines for all temporal operations; zetl graph stats shows history section with snapshot_count, unique_states, cache size; build verbose shows history-index.json write stats")
+  (context-files "src/history/jj_backend.rs" "src/history/cache.rs" "src/commands/graph.rs" "src/commands/build.rs" "src/commands/serve.rs")
+  (token-budget "4000")
+  (evaluate-checks "test:cargo test --features history observability" "lint:cargo clippy --features history"))
+
+(meta task-integration-tests
+  (description "Implement and verify all TEST-080 through TEST-113 integration tests; verify NFR-026 (≤50ms snapshot overhead), NFR-028 (≤100ms cache hit), NFR-029 (≤3s cache miss), NFR-030 (≤15MB binary delta), NFR-032 (≤500KB history-index.json), NFR-033 (≤2s build overhead)")
+  (acceptance "All TEST-080 through TEST-113 pass; all NFR latency and size bounds verified; CI green on both feature configurations")
+  (context-files "tests/")
+  (token-budget "12000")
+  (evaluate-checks "test:cargo test --features history" "test:cargo test"))
+
+;; ─── Readiness rules ─────────────────────────────────────────────────────────
+
+;; No-dependency tasks are immediately ready
+(normally r-ready-cargo-feature-flag
+  (and task-cargo-feature-flag no-deps-cargo-feature-flag)
+  ready-cargo-feature-flag)
+
+(normally r-ready-time-expression-parser
+  (and task-time-expression-parser no-deps-time-expression-parser)
+  ready-time-expression-parser)
+
+;; jj-backend requires cargo feature flag
+(normally r-ready-jj-backend
+  (and task-jj-backend completed-cargo-feature-flag)
+  ready-jj-backend)
+
+;; vcs-init requires jj-backend
+(normally r-ready-vcs-init
+  (and task-vcs-init completed-jj-backend)
+  ready-vcs-init)
+
+;; auto-snapshot requires vcs-init
+(normally r-ready-auto-snapshot
+  (and task-auto-snapshot completed-vcs-init)
+  ready-auto-snapshot)
+
+;; historical-index-cache requires cargo feature flag
+(normally r-ready-historical-index-cache
+  (and task-historical-index-cache completed-cargo-feature-flag)
+  ready-historical-index-cache)
+
+;; point-in-time-query requires jj-backend, time-expression-parser, historical-index-cache
+(normally r-ready-point-in-time-query
+  (and task-point-in-time-query
+       completed-jj-backend
+       completed-time-expression-parser
+       completed-historical-index-cache)
+  ready-point-in-time-query)
+
+;; history-cli requires point-in-time-query (needs core delta/timeline functions + cache)
+(normally r-ready-history-cli
+  (and task-history-cli completed-point-in-time-query)
+  ready-history-cli)
+
+;; history-page-cli requires history-cli (shares commands/history.rs and core)
+(normally r-ready-history-page-cli
+  (and task-history-page-cli completed-history-cli)
+  ready-history-page-cli)
+
+;; diff-jj-backend requires jj-backend, time-expression-parser, historical-index-cache
+(normally r-ready-diff-jj-backend
+  (and task-diff-jj-backend
+       completed-jj-backend
+       completed-time-expression-parser
+       completed-historical-index-cache)
+  ready-diff-jj-backend)
+
+;; watch-mode-snapshot requires auto-snapshot
+(normally r-ready-watch-mode-snapshot
+  (and task-watch-mode-snapshot completed-auto-snapshot)
+  ready-watch-mode-snapshot)
+
+;; graceful-degradation requires vcs-init (needs error paths from init + snapshot)
+(normally r-ready-graceful-degradation
+  (and task-graceful-degradation completed-vcs-init)
+  ready-graceful-degradation)
+
+;; vault-history-template-context requires history-cli (vault history core functions ready)
+(normally r-ready-vault-history-template-context
+  (and task-vault-history-template-context completed-history-cli)
+  ready-vault-history-template-context)
+
+;; page-history-template-context requires vault-history-template-context
+(normally r-ready-page-history-template-context
+  (and task-page-history-template-context completed-vault-history-template-context)
+  ready-page-history-template-context)
+
+;; backlink-timestamps requires page-history-template-context
+(normally r-ready-backlink-timestamps
+  (and task-backlink-timestamps completed-page-history-template-context)
+  ready-backlink-timestamps)
+
+;; serve-history-api requires point-in-time-query, history-cli, history-page-cli
+(normally r-ready-serve-history-api
+  (and task-serve-history-api
+       completed-point-in-time-query
+       completed-history-cli
+       completed-history-page-cli)
+  ready-serve-history-api)
+
+;; build-history-export requires vault-history-template-context, page-history-template-context
+(normally r-ready-build-history-export
+  (and task-build-history-export
+       completed-vault-history-template-context
+       completed-page-history-template-context)
+  ready-build-history-export)
+
+;; hook-context-history requires auto-snapshot, diff-jj-backend (needs delta computation)
+(normally r-ready-hook-context-history
+  (and task-hook-context-history
+       completed-auto-snapshot
+       completed-diff-jj-backend)
+  ready-hook-context-history)
+
+;; tui-timeline-navigation requires point-in-time-query
+(normally r-ready-tui-timeline-navigation
+  (and task-tui-timeline-navigation completed-point-in-time-query)
+  ready-tui-timeline-navigation)
+
+;; observability requires auto-snapshot, historical-index-cache, history-cli, build-history-export
+(normally r-ready-observability
+  (and task-observability
+       completed-auto-snapshot
+       completed-historical-index-cache
+       completed-history-cli
+       completed-build-history-export)
+  ready-observability)
+
+;; integration-tests requires all feature tasks complete
+(normally r-ready-integration-tests
+  (and task-integration-tests
+       completed-vcs-init
+       completed-auto-snapshot
+       completed-historical-index-cache
+       completed-time-expression-parser
+       completed-point-in-time-query
+       completed-history-cli
+       completed-history-page-cli
+       completed-diff-jj-backend
+       completed-watch-mode-snapshot
+       completed-graceful-degradation
+       completed-vault-history-template-context
+       completed-page-history-template-context
+       completed-backlink-timestamps
+       completed-serve-history-api
+       completed-build-history-export
+       completed-hook-context-history
+       completed-tui-timeline-navigation
+       completed-observability)
+  ready-integration-tests)
+
+;; ─── Assignment rules ────────────────────────────────────────────────────────
+
+(normally r-assign-cargo-feature-flag
+  (and ready-cargo-feature-flag agent-coder-available)
+  assign-to-cargo-feature-flag-coder)
+
+(normally r-assign-time-expression-parser
+  (and ready-time-expression-parser agent-coder-available)
+  assign-to-time-expression-parser-coder)
+
+(normally r-assign-jj-backend
+  (and ready-jj-backend agent-coder-available)
+  assign-to-jj-backend-coder)
+
+(normally r-assign-vcs-init
+  (and ready-vcs-init agent-coder-available)
+  assign-to-vcs-init-coder)
+
+(normally r-assign-auto-snapshot
+  (and ready-auto-snapshot agent-coder-available)
+  assign-to-auto-snapshot-coder)
+
+(normally r-assign-historical-index-cache
+  (and ready-historical-index-cache agent-coder-available)
+  assign-to-historical-index-cache-coder)
+
+(normally r-assign-point-in-time-query
+  (and ready-point-in-time-query agent-coder-available)
+  assign-to-point-in-time-query-coder)
+
+(normally r-assign-history-cli
+  (and ready-history-cli agent-coder-available)
+  assign-to-history-cli-coder)
+
+(normally r-assign-history-page-cli
+  (and ready-history-page-cli agent-coder-available)
+  assign-to-history-page-cli-coder)
+
+(normally r-assign-diff-jj-backend
+  (and ready-diff-jj-backend agent-coder-available)
+  assign-to-diff-jj-backend-coder)
+
+(normally r-assign-watch-mode-snapshot
+  (and ready-watch-mode-snapshot agent-coder-available)
+  assign-to-watch-mode-snapshot-coder)
+
+(normally r-assign-graceful-degradation
+  (and ready-graceful-degradation agent-coder-available)
+  assign-to-graceful-degradation-coder)
+
+(normally r-assign-vault-history-template-context
+  (and ready-vault-history-template-context agent-coder-available)
+  assign-to-vault-history-template-context-coder)
+
+(normally r-assign-page-history-template-context
+  (and ready-page-history-template-context agent-coder-available)
+  assign-to-page-history-template-context-coder)
+
+(normally r-assign-backlink-timestamps
+  (and ready-backlink-timestamps agent-coder-available)
+  assign-to-backlink-timestamps-coder)
+
+(normally r-assign-serve-history-api
+  (and ready-serve-history-api agent-coder-available)
+  assign-to-serve-history-api-coder)
+
+(normally r-assign-build-history-export
+  (and ready-build-history-export agent-coder-available)
+  assign-to-build-history-export-coder)
+
+(normally r-assign-hook-context-history
+  (and ready-hook-context-history agent-coder-available)
+  assign-to-hook-context-history-coder)
+
+(normally r-assign-tui-timeline-navigation
+  (and ready-tui-timeline-navigation agent-coder-available)
+  assign-to-tui-timeline-navigation-coder)
+
+(normally r-assign-observability
+  (and ready-observability agent-coder-available)
+  assign-to-observability-coder)
+
+(normally r-assign-integration-tests
+  (and ready-integration-tests agent-tester-available)
+  assign-to-integration-tests-tester)
+
+;; Reviewer handles integration tests when tester unavailable
+(normally r-assign-integration-tests-reviewer
+  (and ready-integration-tests agent-reviewer-available)
+  assign-to-integration-tests-reviewer)
+
+(prefer r-assign-integration-tests r-assign-integration-tests-reviewer)
+
+;; ─── Safety defeaters ────────────────────────────────────────────────────────
+
+;; Block any temporal command task if jj-backend is not complete
+(except d-block-temporal-without-jj
+  (not completed-jj-backend)
+  (not ready-point-in-time-query))
+
+;; Block integration tests if any feature task has failed
+(except d-block-integration-if-failed
+  (or failed-vcs-init
+      failed-auto-snapshot
+      failed-historical-index-cache
+      failed-time-expression-parser
+      failed-point-in-time-query
+      failed-history-cli
+      failed-history-page-cli
+      failed-diff-jj-backend
+      failed-watch-mode-snapshot
+      failed-graceful-degradation
+      failed-vault-history-template-context
+      failed-page-history-template-context
+      failed-backlink-timestamps
+      failed-serve-history-api
+      failed-build-history-export
+      failed-hook-context-history
+      failed-tui-timeline-navigation
+      failed-observability)
+  (not ready-integration-tests))
+
+(prefer d-block-integration-if-failed r-ready-integration-tests)
+
+;; ─── Rule metadata ───────────────────────────────────────────────────────────
+
+(meta d-block-temporal-without-jj
+  (description "Point-in-time query infrastructure cannot be built before the jj-lib backend is complete")
+  (justification "REQ-078 requires JjBackend for MergedTree access; all temporal commands depend on it"))
+
+(meta d-block-integration-if-failed
+  (description "Integration tests must not run if any feature task has failed")
+  (justification "Failed prerequisite tasks produce incomplete or incorrect implementations; running integration tests against them wastes resources and produces misleading results"))
+
+(meta r-assign-integration-tests
+  (description "Integration tests assigned to tester agent by default")
+  (justification "Dedicated tester agent verifies NFR latency bounds and full TEST-080 through TEST-113 suite"))

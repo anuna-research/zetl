@@ -22,6 +22,9 @@ pub struct VaultContext {
     pub pages: Vec<PageEntry>,
     pub sidebar_tree: Vec<SidebarNode>,
     pub stats: StatsContext,
+    /// Vault snapshot history summary available as `vault.history` in templates.
+    /// `null` (JSON) when history is unavailable.
+    pub history: serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -60,6 +63,9 @@ pub struct BacklinkEntry {
     pub title: String,
     pub slug: String,
     pub line: usize,
+    /// RFC 3339 timestamp of the earliest snapshot where this backlink existed.
+    /// `null` (JSON) when history is unavailable.
+    pub since: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -83,6 +89,9 @@ pub struct PageContext {
     pub transclusion_cards: String,
     pub is_new: bool,
     pub raw_escaped: Option<String>,
+    /// Page snapshot history summary available as `page.history` in templates.
+    /// `null` (JSON) when history is unavailable.
+    pub history: serde_json::Value,
 }
 
 // ── Folder-specific structs ─────────────────────────────────────────
@@ -144,7 +153,10 @@ pub fn build_sidebar_tree(pages: &[PageEntry]) -> Vec<SidebarNode> {
                 // This entry is deeper — group all entries sharing this folder component
                 let folder_name = parts[depth];
                 let mut j = i + 1;
-                while j < entries.len() && entries[j].0.len() > depth && entries[j].0[depth] == folder_name {
+                while j < entries.len()
+                    && entries[j].0.len() > depth
+                    && entries[j].0[depth] == folder_name
+                {
                     j += 1;
                 }
                 let folder_slug = if prefix.is_empty() {
@@ -184,7 +196,12 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
             let slug = page_slug_from_path(&file.path);
             let outlink_count = data.graph.forward_links(&file.page_name).len();
             let backlink_count = data.graph.backlinks(&file.page_name).len();
-            let extension = file.path.extension().and_then(|e| e.to_str()).unwrap_or("md").to_string();
+            let extension = file
+                .path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("md")
+                .to_string();
             PageEntry {
                 title: file.page_name.clone(),
                 slug,
@@ -210,6 +227,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         pages,
         sidebar_tree,
         stats,
+        history: serde_json::Value::Null,
     }
 }
 
@@ -267,6 +285,7 @@ pub fn build_page_context(
                 title: bl.source,
                 slug: bl_slug,
                 line: bl.line as usize,
+                since: None,
             }
         })
         .collect();
@@ -312,6 +331,7 @@ pub fn build_page_context(
         transclusion_cards: String::new(),
         is_new,
         raw_escaped: None,
+        history: serde_json::Value::Null,
     }
 }
 
@@ -655,9 +675,7 @@ mod tests {
 
     #[test]
     fn test_build_sidebar_tree_deeply_nested() {
-        let pages = vec![
-            make_page_entry("Leaf", "a/b/c/Leaf"),
-        ];
+        let pages = vec![make_page_entry("Leaf", "a/b/c/Leaf")];
         let tree = build_sidebar_tree(&pages);
         // a/ -> b/ -> c/ -> Leaf
         assert_eq!(tree.len(), 1);
@@ -683,5 +701,4 @@ mod tests {
         assert_eq!(leaf[0].name, "Leaf");
         assert_eq!(leaf[0].slug, "a/b/c/Leaf");
     }
-
 }

@@ -82,10 +82,7 @@ pub struct HookManifest {
 /// `theme_hooks_dir` is `None` when no theme is active or the theme has no
 /// `hooks/` directory on disk. Callers resolve the theme hooks path before
 /// calling this function (accounting for bundled vs. disk-installed themes).
-pub fn discover_hooks(
-    vault_root: &Path,
-    theme_hooks_dir: Option<&Path>,
-) -> HookManifest {
+pub fn discover_hooks(vault_root: &Path, theme_hooks_dir: Option<&Path>) -> HookManifest {
     discover_hooks_verbose(vault_root, theme_hooks_dir, false)
 }
 
@@ -113,9 +110,18 @@ pub fn discover_hooks_verbose(
     // 2. Vault hooks
     let vault_hooks_dir = vault_root.join(".zetl").join("hooks");
     if verbose {
-        eprintln!("[hooks] checking vault hooks dir: {}", vault_hooks_dir.display());
+        eprintln!(
+            "[hooks] checking vault hooks dir: {}",
+            vault_hooks_dir.display()
+        );
     }
-    scan_hooks_dir(&vault_hooks_dir, HookSource::Vault, &mut hooks, &mut warnings, verbose);
+    scan_hooks_dir(
+        &vault_hooks_dir,
+        HookSource::Vault,
+        &mut hooks,
+        &mut warnings,
+        verbose,
+    );
 
     if verbose {
         let executable_count = hooks.iter().filter(|h| h.executable).count();
@@ -166,7 +172,11 @@ pub fn resolve_theme_hooks(vault_root: &Path, theme: &str) -> ThemeHooksDir {
 
 /// Internal version of [`resolve_theme_hooks`] that accepts an explicit version
 /// string (for testability).
-fn resolve_theme_hooks_versioned(vault_root: &Path, theme: &str, zetl_version: &str) -> ThemeHooksDir {
+fn resolve_theme_hooks_versioned(
+    vault_root: &Path,
+    theme: &str,
+    zetl_version: &str,
+) -> ThemeHooksDir {
     // 1. Disk-installed theme hooks
     if let Some(dir) = resolve_theme_hooks_dir(vault_root, theme) {
         return ThemeHooksDir {
@@ -313,7 +323,13 @@ pub fn execute_hook_verbose(
     env: &HookEnv,
     verbose: bool,
 ) -> Result<HookOutput, std::io::Error> {
-    execute_hook_with_timeout(hook, context_json, env, verbose, Duration::from_secs(HOOK_TIMEOUT_SECS))
+    execute_hook_with_timeout(
+        hook,
+        context_json,
+        env,
+        verbose,
+        Duration::from_secs(HOOK_TIMEOUT_SECS),
+    )
 }
 
 /// Core hook executor with configurable timeout.
@@ -325,8 +341,12 @@ fn execute_hook_with_timeout(
     timeout: Duration,
 ) -> Result<HookOutput, std::io::Error> {
     if verbose {
-        eprintln!("[hooks] executing '{}' (source: {}, path: {})",
-            hook.name, hook.source, hook.path.display());
+        eprintln!(
+            "[hooks] executing '{}' (source: {}, path: {})",
+            hook.name,
+            hook.source,
+            hook.path.display()
+        );
     }
 
     let start = Instant::now();
@@ -410,7 +430,10 @@ fn execute_hook_with_timeout(
     if timed_out {
         eprintln!(
             "warning: hook '{}' exceeded {}s timeout and was killed (source: {}, path: {})",
-            hook.name, timeout_secs, hook.source, hook.path.display()
+            hook.name,
+            timeout_secs,
+            hook.source,
+            hook.path.display()
         );
     }
 
@@ -434,13 +457,25 @@ fn execute_hook_with_timeout(
                 None => "killed".to_string(),
             }
         };
-        eprintln!("[hooks] '{}' finished: exit_code={}, duration={:.1}ms",
-            result.hook_name, code_str, result.duration.as_secs_f64() * 1000.0);
+        eprintln!(
+            "[hooks] '{}' finished: exit_code={}, duration={:.1}ms",
+            result.hook_name,
+            code_str,
+            result.duration.as_secs_f64() * 1000.0
+        );
         if !result.stdout.is_empty() {
-            eprintln!("[hooks] '{}' stdout: {}", result.hook_name, result.stdout.trim_end());
+            eprintln!(
+                "[hooks] '{}' stdout: {}",
+                result.hook_name,
+                result.stdout.trim_end()
+            );
         }
         if !result.stderr.is_empty() {
-            eprintln!("[hooks] '{}' stderr: {}", result.hook_name, result.stderr.trim_end());
+            eprintln!(
+                "[hooks] '{}' stderr: {}",
+                result.hook_name,
+                result.stderr.trim_end()
+            );
         }
     }
 
@@ -470,8 +505,11 @@ pub fn run_hooks_verbose(
 ) -> Vec<Result<HookOutput, std::io::Error>> {
     let matching = hooks_for(manifest, hook_name);
     if verbose {
-        eprintln!("[hooks] running lifecycle point '{}': {} hook(s) matched",
-            hook_name, matching.len());
+        eprintln!(
+            "[hooks] running lifecycle point '{}': {} hook(s) matched",
+            hook_name,
+            matching.len()
+        );
     }
     // Pre-hooks are abort-capable: stop after the first failure so later
     // hooks don't execute and mutate state.  Post/on-* hooks are non-fatal
@@ -609,7 +647,10 @@ fn scan_hooks_dir(
         // Only recognised hook names (REQ-016-002)
         if !HOOK_NAMES.contains(&file_name.as_str()) {
             if verbose {
-                eprintln!("[hooks] skipping '{}': not a recognised hook name", file_name);
+                eprintln!(
+                    "[hooks] skipping '{}': not a recognised hook name",
+                    file_name
+                );
             }
             continue;
         }
@@ -618,8 +659,10 @@ fn scan_hooks_dir(
 
         if !executable {
             if verbose {
-                eprintln!("[hooks] found '{}' ({}) but not executable — skipping",
-                    file_name, source);
+                eprintln!(
+                    "[hooks] found '{}' ({}) but not executable — skipping",
+                    file_name, source
+                );
             }
             warnings.push(format!(
                 "hook '{}' is not executable: {}\nhint: chmod +x {}",
@@ -628,8 +671,12 @@ fn scan_hooks_dir(
                 path.display(),
             ));
         } else if verbose {
-            eprintln!("[hooks] found '{}' (source: {}, path: {})",
-                file_name, source, path.display());
+            eprintln!(
+                "[hooks] found '{}' (source: {}, path: {})",
+                file_name,
+                source,
+                path.display()
+            );
         }
 
         hooks.push(DiscoveredHook {
@@ -747,7 +794,12 @@ mod tests {
         create_hook(&vault_hooks, "post-build", true);
 
         // Set up theme hooks
-        let theme_hooks = tmp.path().join(".zetl").join("themes").join("fountain").join("hooks");
+        let theme_hooks = tmp
+            .path()
+            .join(".zetl")
+            .join("themes")
+            .join("fountain")
+            .join("hooks");
         fs::create_dir_all(&theme_hooks).unwrap();
         create_hook(&theme_hooks, "post-build", true);
 
@@ -781,7 +833,12 @@ mod tests {
     #[test]
     fn resolve_theme_hooks_dir_exists() {
         let tmp = TempDir::new().unwrap();
-        let theme_hooks = tmp.path().join(".zetl").join("themes").join("fountain").join("hooks");
+        let theme_hooks = tmp
+            .path()
+            .join(".zetl")
+            .join("themes")
+            .join("fountain")
+            .join("hooks");
         fs::create_dir_all(&theme_hooks).unwrap();
 
         let result = resolve_theme_hooks_dir(tmp.path(), "fountain");
@@ -863,10 +920,7 @@ mod tests {
         create_script(
             &hooks_dir,
             "post-build",
-            &format!(
-                "#!/bin/sh\ncat > '{}'\n",
-                out_file.display()
-            ),
+            &format!("#!/bin/sh\ncat > '{}'\n", out_file.display()),
         );
 
         let manifest = discover_hooks(tmp.path(), None);
@@ -1074,11 +1128,7 @@ mod tests {
             "post-build",
             "#!/bin/sh\necho 'post-build ran'\n",
         );
-        create_script(
-            &hooks_dir,
-            "on-save",
-            "#!/bin/sh\necho 'on-save ran'\n",
-        );
+        create_script(&hooks_dir, "on-save", "#!/bin/sh\necho 'on-save ran'\n");
 
         let manifest = discover_hooks(tmp.path(), None);
         let results = run_hooks(&manifest, "post-build", b"{}", &test_env(tmp.path()));
@@ -1109,20 +1159,12 @@ mod tests {
         // Vault hook
         let vault_hooks = tmp.path().join(".zetl").join("hooks");
         fs::create_dir_all(&vault_hooks).unwrap();
-        create_script(
-            &vault_hooks,
-            "post-build",
-            "#!/bin/sh\necho 'vault'\n",
-        );
+        create_script(&vault_hooks, "post-build", "#!/bin/sh\necho 'vault'\n");
 
         // Theme hook
         let theme_hooks = tmp.path().join("theme-hooks");
         fs::create_dir_all(&theme_hooks).unwrap();
-        create_script(
-            &theme_hooks,
-            "post-build",
-            "#!/bin/sh\necho 'theme'\n",
-        );
+        create_script(&theme_hooks, "post-build", "#!/bin/sh\necho 'theme'\n");
 
         let manifest = discover_hooks(tmp.path(), Some(&theme_hooks));
         let results = run_hooks(&manifest, "post-build", b"{}", &test_env(tmp.path()));
@@ -1195,14 +1237,11 @@ mod tests {
         let hooks_dir = tmp.path().join(".zetl").join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
 
-        create_script(
-            &hooks_dir,
-            "post-build",
-            "#!/bin/sh\necho 'ran'\n",
-        );
+        create_script(&hooks_dir, "post-build", "#!/bin/sh\necho 'ran'\n");
 
         let manifest = discover_hooks(tmp.path(), None);
-        let results = run_hooks_verbose(&manifest, "post-build", b"{}", &test_env(tmp.path()), true);
+        let results =
+            run_hooks_verbose(&manifest, "post-build", b"{}", &test_env(tmp.path()), true);
         assert_eq!(results.len(), 1);
         let output = results[0].as_ref().unwrap();
         assert!(output.stdout.contains("ran"));
@@ -1213,7 +1252,12 @@ mod tests {
     #[test]
     fn resolve_theme_hooks_disk_installed() {
         let tmp = TempDir::new().unwrap();
-        let theme_hooks = tmp.path().join(".zetl").join("themes").join("my-theme").join("hooks");
+        let theme_hooks = tmp
+            .path()
+            .join(".zetl")
+            .join("themes")
+            .join("my-theme")
+            .join("hooks");
         fs::create_dir_all(&theme_hooks).unwrap();
         create_hook(&theme_hooks, "post-build", true);
 
@@ -1233,7 +1277,12 @@ mod tests {
     fn resolve_theme_hooks_disk_priority_over_bundled() {
         // When a disk-installed theme has hooks/, it should be preferred.
         let tmp = TempDir::new().unwrap();
-        let theme_hooks = tmp.path().join(".zetl").join("themes").join("default").join("hooks");
+        let theme_hooks = tmp
+            .path()
+            .join(".zetl")
+            .join("themes")
+            .join("default")
+            .join("hooks");
         fs::create_dir_all(&theme_hooks).unwrap();
         create_hook(&theme_hooks, "post-build", true);
 
@@ -1274,9 +1323,7 @@ mod tests {
 
     #[test]
     fn extracted_bundled_hooks_are_discoverable() {
-        let hook_files = vec![
-            ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
-        ];
+        let hook_files = vec![("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec())];
 
         let (dir, _temp) = extract_bundled_hooks(&hook_files).unwrap();
 
@@ -1292,9 +1339,7 @@ mod tests {
     #[test]
     fn theme_hooks_dir_path_lifetime() {
         // Ensure the TempDir stays alive as long as ThemeHooksDir
-        let hook_files = vec![
-            ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
-        ];
+        let hook_files = vec![("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec())];
 
         let (dir, temp) = extract_bundled_hooks(&hook_files).unwrap();
         let theme_hooks = ThemeHooksDir {
@@ -1319,16 +1364,11 @@ mod tests {
             ("on-save".to_string(), b"#!/bin/sh\necho saved\n".to_vec()),
         ];
 
-        let result = extract_bundled_hooks_cached(
-            tmp.path(), "my-theme", &hook_files, "1.0.0",
-        );
+        let result = extract_bundled_hooks_cached(tmp.path(), "my-theme", &hook_files, "1.0.0");
         assert!(result.is_ok());
 
         let cache_dir = result.unwrap();
-        assert_eq!(
-            cache_dir,
-            tmp.path().join(".zetl/cache/hooks/my-theme")
-        );
+        assert_eq!(cache_dir, tmp.path().join(".zetl/cache/hooks/my-theme"));
         assert!(cache_dir.join("post-build").is_file());
         assert!(cache_dir.join("on-save").is_file());
         assert!(cache_dir.join(".zetl_version").is_file());
@@ -1345,16 +1385,16 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
 
-        let hook_files = vec![
-            ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
-        ];
+        let hook_files = vec![("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec())];
 
-        let cache_dir = extract_bundled_hooks_cached(
-            tmp.path(), "test", &hook_files, "1.0.0",
-        ).unwrap();
+        let cache_dir =
+            extract_bundled_hooks_cached(tmp.path(), "test", &hook_files, "1.0.0").unwrap();
 
         assert!(is_executable(&cache_dir.join("post-build")));
-        let mode = fs::metadata(cache_dir.join("post-build")).unwrap().permissions().mode();
+        let mode = fs::metadata(cache_dir.join("post-build"))
+            .unwrap()
+            .permissions()
+            .mode();
         assert_eq!(mode & 0o755, 0o755);
     }
 
@@ -1363,23 +1403,17 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
 
-        let hook_files = vec![
-            ("post-build".to_string(), b"#!/bin/sh\necho v1\n".to_vec()),
-        ];
+        let hook_files = vec![("post-build".to_string(), b"#!/bin/sh\necho v1\n".to_vec())];
 
         // First extraction
-        let dir1 = extract_bundled_hooks_cached(
-            tmp.path(), "t", &hook_files, "1.0.0",
-        ).unwrap();
+        let dir1 = extract_bundled_hooks_cached(tmp.path(), "t", &hook_files, "1.0.0").unwrap();
 
         // Modify the cached file to detect if it gets overwritten
         let marker_path = dir1.join("post-build");
         fs::write(&marker_path, "#!/bin/sh\necho modified\n").unwrap();
 
         // Second extraction with same version — should reuse cache
-        let dir2 = extract_bundled_hooks_cached(
-            tmp.path(), "t", &hook_files, "1.0.0",
-        ).unwrap();
+        let dir2 = extract_bundled_hooks_cached(tmp.path(), "t", &hook_files, "1.0.0").unwrap();
 
         assert_eq!(dir1, dir2);
         // File should still have the modified content (cache was reused)
@@ -1392,25 +1426,17 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
 
-        let hook_files = vec![
-            ("post-build".to_string(), b"#!/bin/sh\necho v1\n".to_vec()),
-        ];
+        let hook_files = vec![("post-build".to_string(), b"#!/bin/sh\necho v1\n".to_vec())];
 
         // First extraction at version 1.0.0
-        let dir1 = extract_bundled_hooks_cached(
-            tmp.path(), "t", &hook_files, "1.0.0",
-        ).unwrap();
+        let dir1 = extract_bundled_hooks_cached(tmp.path(), "t", &hook_files, "1.0.0").unwrap();
 
         // Modify the file to prove refresh overwrites it
         fs::write(dir1.join("post-build"), "#!/bin/sh\necho stale\n").unwrap();
 
         // Second extraction at version 2.0.0 — should refresh
-        let hook_files_v2 = vec![
-            ("post-build".to_string(), b"#!/bin/sh\necho v2\n".to_vec()),
-        ];
-        let dir2 = extract_bundled_hooks_cached(
-            tmp.path(), "t", &hook_files_v2, "2.0.0",
-        ).unwrap();
+        let hook_files_v2 = vec![("post-build".to_string(), b"#!/bin/sh\necho v2\n".to_vec())];
+        let dir2 = extract_bundled_hooks_cached(tmp.path(), "t", &hook_files_v2, "2.0.0").unwrap();
 
         assert_eq!(dir1, dir2);
         let content = fs::read_to_string(dir2.join("post-build")).unwrap();
@@ -1425,13 +1451,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::create_dir_all(tmp.path().join(".zetl")).unwrap();
 
-        let hook_files = vec![
-            ("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec()),
-        ];
+        let hook_files = vec![("post-build".to_string(), b"#!/bin/sh\necho ok\n".to_vec())];
 
-        let cache_dir = extract_bundled_hooks_cached(
-            tmp.path(), "mytheme", &hook_files, "1.0.0",
-        ).unwrap();
+        let cache_dir =
+            extract_bundled_hooks_cached(tmp.path(), "mytheme", &hook_files, "1.0.0").unwrap();
 
         let manifest = discover_hooks(tmp.path(), Some(&cache_dir));
         assert_eq!(manifest.hooks.len(), 1);
@@ -1450,7 +1473,12 @@ mod tests {
         // extract_bundled_hooks_cached directly.
         // This test verifies that resolve_theme_hooks_versioned prefers
         // disk-installed hooks.
-        let theme_hooks = tmp.path().join(".zetl").join("themes").join("test-theme").join("hooks");
+        let theme_hooks = tmp
+            .path()
+            .join(".zetl")
+            .join("themes")
+            .join("test-theme")
+            .join("hooks");
         fs::create_dir_all(&theme_hooks).unwrap();
         create_hook(&theme_hooks, "post-build", true);
 
@@ -1468,19 +1496,20 @@ mod tests {
         fs::create_dir_all(&hooks_dir).unwrap();
 
         // Hook that sleeps forever
-        create_script(
-            &hooks_dir,
-            "post-build",
-            "#!/bin/sh\nsleep 300\n",
-        );
+        create_script(&hooks_dir, "post-build", "#!/bin/sh\nsleep 300\n");
 
         let manifest = discover_hooks(tmp.path(), None);
         let hook = &manifest.hooks[0];
 
         // Use a 1-second timeout for fast testing
         let result = execute_hook_with_timeout(
-            hook, b"{}", &test_env(tmp.path()), false, Duration::from_secs(1),
-        ).unwrap();
+            hook,
+            b"{}",
+            &test_env(tmp.path()),
+            false,
+            Duration::from_secs(1),
+        )
+        .unwrap();
 
         assert!(result.timed_out);
         assert!(!result.success());
@@ -1500,8 +1529,13 @@ mod tests {
         let hook = &manifest.hooks[0];
 
         let result = execute_hook_with_timeout(
-            hook, b"{}", &test_env(tmp.path()), false, Duration::from_secs(5),
-        ).unwrap();
+            hook,
+            b"{}",
+            &test_env(tmp.path()),
+            false,
+            Duration::from_secs(5),
+        )
+        .unwrap();
 
         assert!(!result.timed_out);
         assert!(result.success());

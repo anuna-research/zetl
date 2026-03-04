@@ -3,24 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 230,
-    "deletions": 10,
+    "files_changed": 2,
+    "insertions": 320,
+    "deletions": 6,
     "file_list": [
-      "src/hooks/mod.rs"
+      ".hence/context-manifest.json",
+      "tests/history_integration.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-bundled-hook-extraction-changes",
-      "content": "Modified 1 files (+230, -10): src/hooks/mod.rs",
+      "key": "task-integration-tests-changes",
+      "content": "Modified 2 files (+320, -6): .hence/context-manifest.json, tests/history_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/bundled-hook-extraction-v1",
-  "evaluated_at": "2026-03-02T12:42:34Z",
+  "branch_name": "hence/integration-tests-v1",
+  "evaluated_at": "2026-03-04T10:10:35Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

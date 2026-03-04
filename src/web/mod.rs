@@ -54,6 +54,8 @@ pub struct WebState {
     pub search_index: Arc<SearchIndex>,
     pub engine: Arc<TemplateEngine>,
     pub theme: String,
+    /// Whether --verbose was set; controls history-context timing output (OBS-013).
+    pub verbose: bool,
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.
@@ -149,8 +151,20 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
         .route(
             "/{*path}",
             get(routes::page_handler).put(routes::save_handler),
+        );
+
+    // History API routes — only available with `--features history` (REQ-087, CON-027, ADR-050).
+    #[cfg(feature = "history")]
+    let app = app
+        .route("/api/history", get(routes::api_history_log_handler))
+        .route(
+            "/api/history/page/{name}",
+            get(routes::api_history_page_handler),
         )
-        .with_state(state);
+        .route("/api/history/at", get(routes::api_history_at_handler))
+        .route("/api/history/diff", get(routes::api_history_diff_handler));
+
+    let app = app.with_state(state);
 
     let addr = format!("0.0.0.0:{port}");
     eprintln!("zetl serve  →  http://localhost:{port}");
