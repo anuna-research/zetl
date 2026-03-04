@@ -1,6 +1,7 @@
 //! Pure temporal functions for SPEC-017.
 //!
-//! This module provides [`parse_time_expr`] and [`resolve_snapshot`]:
+//! This module provides [`parse_time_expr`], [`resolve_snapshot`], and the
+//! history-timeline helpers:
 //!
 //! - **[`parse_time_expr`]** — pure parser; no I/O, no VCS calls.
 //!   Recognises ISO 8601 dates/datetimes, relative natural-language
@@ -8,11 +9,20 @@
 //!
 //! - **[`resolve_snapshot`]** — walk a snapshot list (newest-first) and
 //!   return the most recent entry at or before the resolved time.
+//!
+//! - **[`compute_graph_delta`]** — pure diff between two vault indexes (REQ-080).
+//!
+//! - **[`collapse_timeline`]** — collapse identical `vault_root_hash` entries (CON-025).
+//!
+//! - **[`build_vault_history`]** — load cached indexes and build a delta timeline.
 
 use anyhow::{anyhow, bail};
 use chrono::{DateTime, Datelike as _, Duration, FixedOffset, NaiveDate, TimeZone as _, Weekday};
+use serde::Serialize;
+use std::collections::HashSet;
 
 use crate::history::jj_backend::ChangeInfo;
+use crate::types::ParsedFile;
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -163,6 +173,220 @@ pub fn extract_vault_root_hash_from_description(description: &str) -> Option<Str
         }
     }
     None
+}
+
+// ─── Graph delta types ────────────────────────────────────────────────────────
+
+/// Graph-level difference between two consecutive vault snapshots (REQ-080).
+///
+/// Computed by [`compute_graph_delta`] and embedded in each [`HistoryEntry`].
+#[derive(Debug, Clone, Serialize)]
+pub struct GraphDelta {
+    /// Pages that exist in the newer snapshot but not in the older.
+    pub pages_added: Vec<String>,
+    /// Pages that existed in the older snapshot but are absent in the newer.
+    pub pages_removed: Vec<String>,
+    /// Net increase in total link count (`max(0, after − before)`).
+    pub links_added: usize,
+    /// Net decrease in total link count (`max(0, before − after)`).
+    pub links_removed: usize,
+}
+
+/// A single entry in the reverse-chronological vault history timeline.
+///
+/// Returned by [`build_vault_history`].
+#[derive(Debug, Clone, Serialize)]
+pub struct HistoryEntry {
+    /// jj change ID (12-char prefix).
+    pub change_id: String,
+    /// Snapshot timestamp as an RFC 3339 string.
+    pub timestamp: String,
+    /// `vault_root_hash` embedded in the snapshot description, if present.
+    pub vault_root_hash: Option<String>,
+    /// Number of pages in the snapshot (0 when no cached index is available).
+    pub total_pages: usize,
+    /// Total link count in the snapshot (0 when no cached index is available).
+    pub total_links: usize,
+    /// Graph-level delta vs. the next-older snapshot. `None` for the oldest
+    /// entry or when the adjacent snapshot has no cached index.
+    pub delta: Option<GraphDelta>,
+}
+
+// ─── Public API: graph delta & timeline ──────────────────────────────────────
+
+/// Compute the graph-level diff between two vault index snapshots.
+///
+/// `before` is the older state; `after` is the newer state. Both are slices of
+/// [`ParsedFile`] as loaded from the [`HistoricalIndexCache`].
+///
+/// This is a **pure function**: no I/O, no VCS calls.
+///
+/// [`HistoricalIndexCache`]: crate::history::cache::HistoricalIndexCache
+pub fn compute_graph_delta(before: &[ParsedFile], after: &[ParsedFile]) -> GraphDelta {
+    let before_pages: HashSet<&str> = before.iter().map(|f| f.page_name.as_str()).collect();
+    let after_pages: HashSet<&str> = after.iter().map(|f| f.page_name.as_str()).collect();
+
+    let mut pages_added: Vec<String> = after_pages
+        .difference(&before_pages)
+        .map(|s| s.to_string())
+        .collect();
+    pages_added.sort();
+
+    let mut pages_removed: Vec<String> = before_pages
+        .difference(&after_pages)
+        .map(|s| s.to_string())
+        .collect();
+    pages_removed.sort();
+
+    let before_links: usize = before.iter().map(|f| f.links.len()).sum();
+    let after_links: usize = after.iter().map(|f| f.links.len()).sum();
+
+    GraphDelta {
+        pages_added,
+        pages_removed,
+        links_added: after_links.saturating_sub(before_links),
+        links_removed: before_links.saturating_sub(after_links),
+    }
+}
+
+/// Collapse consecutive [`HistoryEntry`] items that share the same
+/// `vault_root_hash`, keeping only the newest of each duplicated run.
+///
+/// Entries with `vault_root_hash = None` are never collapsed.
+/// Both the input and output are **newest-first**.
+///
+/// This is a **pure function**: no I/O, no VCS calls.
+pub fn collapse_timeline(entries: Vec<HistoryEntry>) -> Vec<HistoryEntry> {
+    let mut result: Vec<HistoryEntry> = Vec::with_capacity(entries.len());
+    let mut seen: HashSet<String> = HashSet::new();
+    for entry in entries {
+        match &entry.vault_root_hash {
+            Some(hash) => {
+                if seen.insert(hash.clone()) {
+                    result.push(entry);
+                }
+                // duplicate hash: skip
+            }
+            None => result.push(entry),
+        }
+    }
+    result
+}
+
+/// Build the vault history timeline.
+///
+/// Walks `snapshots` (newest-first), applies the optional `since_expr` filter,
+/// loads cached indexes from disk, collapses identical `vault_root_hash`
+/// entries, computes graph-level deltas between consecutive snapshots, and
+/// returns up to `limit` entries.
+///
+/// Snapshots whose description carries no `vault_root_hash` (or whose cached
+/// index cannot be loaded) are still included in the timeline with
+/// `total_pages = 0`, `total_links = 0`, and `delta = None`.
+pub fn build_vault_history(
+    snapshots: &[ChangeInfo],
+    vault_root: &std::path::Path,
+    since_expr: Option<&str>,
+    limit: usize,
+    now: DateTime<FixedOffset>,
+) -> anyhow::Result<Vec<HistoryEntry>> {
+    use crate::history::cache::HistoricalIndexCache;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    // Filter by --since if provided.
+    let filtered: &[ChangeInfo] = if let Some(expr) = since_expr {
+        let te = parse_time_expr(expr, now)?;
+        match te {
+            // Keep snapshots whose timestamp is at or after the cutoff.
+            // Snapshots are newest-first so the in-range entries form a prefix.
+            TimeExpr::Absolute(cutoff) => {
+                let end = snapshots.partition_point(|s| s.timestamp >= cutoff);
+                &snapshots[..end]
+            }
+            // HEAD~n → keep the n+1 most recent snapshots.
+            TimeExpr::HeadOffset(n) => &snapshots[..snapshots.len().min(n + 1)],
+            // Ref → find the matching snapshot; keep everything newer (inclusive).
+            TimeExpr::Ref(ref ref_str) => {
+                match snapshots.iter().position(|s| {
+                    s.change_id.starts_with(ref_str.as_str()) || s.description == *ref_str
+                }) {
+                    Some(idx) => &snapshots[..=idx],
+                    None => bail!("SNAPSHOT_NOT_FOUND: no snapshot matching ref {ref_str:?}"),
+                }
+            }
+        }
+    } else {
+        snapshots
+    };
+
+    let cache = HistoricalIndexCache::with_default_capacity();
+
+    // Load the index for each snapshot (if available).
+    // files_per_snapshot[i] corresponds to filtered[i].
+    let files_per_snapshot: Vec<Option<Vec<ParsedFile>>> = filtered
+        .iter()
+        .map(|snap| {
+            let hash = extract_vault_root_hash_from_description(&snap.description)?;
+            let file_map: HashMap<PathBuf, ParsedFile> = cache
+                .load(vault_root, &hash)
+                .ok()
+                .flatten()?;
+            Some(file_map.into_values().collect())
+        })
+        .collect();
+
+    // Build HistoryEntry list (newest-first, without deltas yet).
+    let mut entries: Vec<HistoryEntry> = filtered
+        .iter()
+        .zip(&files_per_snapshot)
+        .map(|(snap, files_opt)| {
+            let (total_pages, total_links) = match files_opt {
+                Some(files) => (files.len(), files.iter().map(|f| f.links.len()).sum()),
+                None => (0, 0),
+            };
+            HistoryEntry {
+                change_id: snap.change_id.clone(),
+                timestamp: snap.timestamp.to_rfc3339(),
+                vault_root_hash: extract_vault_root_hash_from_description(&snap.description),
+                total_pages,
+                total_links,
+                delta: None,
+            }
+        })
+        .collect();
+
+    // Collapse identical vault_root_hash entries.
+    entries = collapse_timeline(entries);
+
+    // Recompute files_per_snapshot to match the collapsed list.
+    // We need the files for delta computation; rebuild by matching change_id.
+    let change_id_to_files: HashMap<&str, &Option<Vec<ParsedFile>>> = filtered
+        .iter()
+        .zip(&files_per_snapshot)
+        .map(|(s, f)| (s.change_id.as_str(), f))
+        .collect();
+
+    // Assign deltas: entry[i].delta = diff(entry[i+1], entry[i]).
+    for i in 0..entries.len() {
+        if i + 1 >= entries.len() {
+            break; // oldest entry: no previous to diff against
+        }
+        let newer_files = change_id_to_files
+            .get(entries[i].change_id.as_str())
+            .and_then(|o| o.as_ref());
+        let older_files = change_id_to_files
+            .get(entries[i + 1].change_id.as_str())
+            .and_then(|o| o.as_ref());
+        if let (Some(newer), Some(older)) = (newer_files, older_files) {
+            entries[i].delta = Some(compute_graph_delta(older, newer));
+        }
+    }
+
+    // Apply limit.
+    entries.truncate(limit);
+
+    Ok(entries)
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────

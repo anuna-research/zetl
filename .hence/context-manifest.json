@@ -1,12 +1,12 @@
 {
-  "task_id": "watch-mode-snapshot",
-  "token_budget": 4000,
-  "tokens_used": 307,
+  "task_id": "history-cli",
+  "token_budget": 8000,
+  "tokens_used": 362,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Integrate snapshotting into zetl watch (SPEC-008) post-re-index cycle; asynchronous snapshot creation (non-blocking); same deduplication as auto-snapshot (REQ-082, ADR-048)",
-      "token_cost": 43,
+      "content": "Implement 'zetl history' subcommand with --since, --limit, --format json|table; reverse-chronological timeline of graph-level deltas; collapse identical vault_root_hash entries; pure core functions: compute_graph_delta, collapse_timeline, build_vault_history (REQ-080, CON-025)",
+      "token_cost": 69,
       "priority": "PlanMeta"
     },
     {
@@ -62,9 +62,14 @@
       "content": "Modified 5 files (+879, -23): .hence/context-manifest.json, src/cli.rs, src/history/mod.rs, src/main.rs, tests/history_integration.rs",
       "token_cost": 33,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-watch-mode-snapshot-changes",
+      "content": "Modified 6 files (+614, -29): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cli.rs, src/main.rs and 1 more",
+      "token_cost": 29,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T08:06:28Z",
-  "task_completed": "2026-03-04"
+  "constructed_at": "2026-03-04T08:18:54Z"
 }

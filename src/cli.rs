@@ -484,4 +484,19 @@ pub enum HistoryCommand {
         #[arg(long, default_value = "20")]
         limit: usize,
     },
+    /// Reverse-chronological timeline of graph-level deltas (REQ-080, CON-025).
+    ///
+    /// Each row shows what changed between consecutive snapshots: pages added or
+    /// removed, and net link-count deltas. Identical vault states (same
+    /// vault_root_hash) are collapsed into a single entry.
+    Log {
+        /// Show only snapshots since this time expression (ISO 8601, relative
+        /// natural language, or VCS ref). E.g. "2024-01-15", "3 days ago",
+        /// "last monday", "HEAD~5".
+        #[arg(long, value_name = "TIME-EXPR")]
+        since: Option<String>,
+        /// Maximum number of entries to show (most recent first)
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
 }
