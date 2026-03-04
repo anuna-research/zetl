@@ -3,16 +3,15 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 468,
-    "deletions": 6,
+    "files_changed": 7,
+    "insertions": 209,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
       "src/history/core.rs",
       "src/history/mod.rs",
       "src/web/build.rs",
       "src/web/context.rs",
-      "src/web/engine.rs",
       "src/web/routes.rs",
       "tests/history_integration.rs"
     ],
@@ -20,14 +19,14 @@
   },
   "learnings": [
     {
-      "key": "task-page-history-template-context-changes",
-      "content": "Modified 8 files (+468, -6): .hence/context-manifest.json, src/history/core.rs, src/history/mod.rs, src/web/build.rs, src/web/context.rs and 3 more",
+      "key": "task-backlink-timestamps-changes",
+      "content": "Modified 7 files (+209, -7): .hence/context-manifest.json, src/history/core.rs, src/history/mod.rs, src/web/build.rs, src/web/context.rs and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/page-history-template-context-v1",
-  "evaluated_at": "2026-03-04T09:14:47Z",
+  "branch_name": "hence/backlink-timestamps-v1",
+  "evaluated_at": "2026-03-04T09:24:25Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
