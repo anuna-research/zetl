@@ -1,12 +1,12 @@
 {
-  "task_id": "diff-jj-backend",
-  "token_budget": 8000,
-  "tokens_used": 362,
+  "task_id": "serve-history-api",
+  "token_budget": 10000,
+  "tokens_used": 352,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Replace SPEC-007 git-subprocess VCS backend in 'zetl diff' with jj-lib; preserve CON-021 output schema; support --from git-ref resolution via jj git backend; default baseline = previous distinct snapshot (@-); NO_PREVIOUS_SNAPSHOT error when only one snapshot (REQ-083, ADR-046)",
-      "token_cost": 69,
+      "content": "Implement Axum route handlers for /api/history, /api/history/page/{name}, /api/history/at, /api/history/diff; JSON responses matching CON-027; HTTP 404/400 error model; cache-backed; non-blocking on cache miss (REQ-087, CON-027, ADR-050)",
+      "token_cost": 59,
       "priority": "PlanMeta"
     },
     {
@@ -68,8 +68,14 @@
       "content": "Modified 6 files (+614, -29): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cli.rs, src/main.rs and 1 more",
       "token_cost": 29,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-serve-history-api-changes",
+      "content": "Modified 3 files (+566, -2): src/web/mod.rs, src/web/routes.rs, tests/history_integration.rs",
+      "token_cost": 25,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T08:37:14Z"
+  "constructed_at": "2026-03-04T08:43:51Z"
 }

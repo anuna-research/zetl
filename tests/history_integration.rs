@@ -3,7 +3,7 @@
 //!
 //! Tests in this file require `--features history` to compile.
 //!
-//! Test ranges: TEST-080 through TEST-113.
+//! Test ranges: TEST-080 through TEST-118.
 //! TEST-080–089 are covered here (task-jj-backend).
 //! TEST-090–091 are covered here (task-time-expression-parser).
 //! TEST-092–094 are covered here (task-auto-snapshot).
@@ -12,6 +12,8 @@
 //! TEST-104      is covered here (task-watch-mode-snapshot).
 //! TEST-105–108 are covered here (task-history-cli).
 //! TEST-109–112 are covered here (task-history-page-cli).
+//! TEST-113–114 are covered here (task-diff-jj-backend).
+//! TEST-115–118 are covered here (task-serve-history-api).
 
 use std::fs;
 use std::path::Path;
@@ -1295,5 +1297,204 @@ fn test_114_single_snapshot_has_no_previous() {
     assert!(
         snapshots.get(1).is_none(),
         "snapshots[1] must be None when only one snapshot exists (NO_PREVIOUS_SNAPSHOT)"
+    );
+}
+
+// ── Serve-mode history API tests (REQ-087, CON-027, ADR-050) ──────────────────
+// TEST-115–118 cover task-serve-history-api.
+
+/// Build a minimal WebState for a vault directory.
+#[cfg(test)]
+fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState {
+    use std::sync::{Arc, RwLock};
+    use zetl::search_index::SearchIndex;
+    use zetl::web::engine::TemplateEngine;
+
+    let data = zetl::web::reindex(&vault_root.to_path_buf()).expect("reindex");
+    let search_index =
+        SearchIndex::build(vault_root, &data.files).expect("build search index");
+    zetl::web::WebState {
+        data: Arc::new(RwLock::new(data)),
+        vault_root: Arc::new(vault_root.to_path_buf()),
+        search_index: Arc::new(search_index),
+        engine: Arc::new(TemplateEngine::new(vault_root, "default", true, false)),
+        theme: "default".to_string(),
+    }
+}
+
+/// Build a Router with only the four history API routes.
+#[cfg(test)]
+fn history_api_router(
+    state: zetl::web::WebState,
+) -> axum::Router {
+    use axum::routing::get;
+    use zetl::web::routes::{
+        api_history_at_handler, api_history_diff_handler, api_history_log_handler,
+        api_history_page_handler,
+    };
+    axum::Router::new()
+        .route("/api/history", get(api_history_log_handler))
+        .route(
+            "/api/history/page/{name}",
+            get(api_history_page_handler),
+        )
+        .route("/api/history/at", get(api_history_at_handler))
+        .route("/api/history/diff", get(api_history_diff_handler))
+        .with_state(state)
+}
+
+/// Send a GET request through a Router and return (status, content-type, body).
+#[cfg(test)]
+async fn api_get(
+    app: &axum::Router,
+    uri: &str,
+) -> (axum::http::StatusCode, String, String) {
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt as _;
+
+    let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let status = resp.status();
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .map(|v| v.to_str().unwrap_or("").to_owned())
+        .unwrap_or_default();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8_lossy(&bytes).into_owned();
+    (status, ct, body)
+}
+
+// TEST-115: GET /api/history returns 404 with NO_HISTORY when the jj workspace
+// has never been initialised (REQ-087, CON-027).
+#[tokio::test]
+async fn test_115_api_history_no_history_returns_404() {
+    let dir = tempfile::TempDir::new().unwrap();
+    write(dir.path(), "page.md", "# Hello");
+    let state = build_history_web_state(dir.path());
+    let app = history_api_router(state);
+
+    let (status, ct, body) = api_get(&app, "/api/history").await;
+
+    assert_eq!(status, axum::http::StatusCode::NOT_FOUND, "body: {body}");
+    assert!(
+        ct.contains("application/json"),
+        "Content-Type must be application/json, got {ct:?}"
+    );
+    assert!(
+        body.contains("NO_HISTORY"),
+        "error body must contain 'NO_HISTORY', got: {body}"
+    );
+}
+
+// TEST-116: GET /api/history returns 200 JSON when snapshots exist (REQ-087).
+#[tokio::test]
+async fn test_116_api_history_returns_timeline() {
+    use zetl::history::cache::HistoricalIndexCache;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    write(vault_root, "alpha.md", "# Alpha\n[[beta]]");
+    write(vault_root, "beta.md", "# Beta");
+
+    let hash1 = "a".repeat(64);
+    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    let cache = HistoricalIndexCache::with_default_capacity();
+    cache
+        .store(
+            vault_root,
+            &hash1,
+            &[
+                make_parsed_file("alpha", &["beta"]),
+                make_parsed_file("beta", &[]),
+            ],
+        )
+        .unwrap();
+
+    let state = build_history_web_state(vault_root);
+    let app = history_api_router(state);
+
+    let (status, ct, body) = api_get(&app, "/api/history").await;
+
+    assert_eq!(status, axum::http::StatusCode::OK, "body: {body}");
+    assert!(
+        ct.contains("application/json"),
+        "Content-Type must be application/json, got {ct:?}"
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&body).expect("body must be valid JSON");
+    assert!(
+        parsed.is_array(),
+        "response must be a JSON array, got: {body}"
+    );
+    let arr = parsed.as_array().unwrap();
+    assert!(!arr.is_empty(), "timeline must contain at least one entry");
+    assert!(
+        arr[0]["change_id"].is_string(),
+        "entry must have change_id string"
+    );
+    assert!(
+        arr[0]["timestamp"].is_string(),
+        "entry must have timestamp string"
+    );
+}
+
+// TEST-117: GET /api/history/at returns 400 when the required `t` parameter is
+// absent (CON-027).
+#[tokio::test]
+async fn test_117_api_history_at_missing_t_returns_400() {
+    let dir = tempfile::TempDir::new().unwrap();
+    write(dir.path(), "note.md", "# Note");
+    let state = build_history_web_state(dir.path());
+    let app = history_api_router(state);
+
+    let (status, ct, body) = api_get(&app, "/api/history/at").await;
+
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "body: {body}");
+    assert!(
+        ct.contains("application/json"),
+        "Content-Type must be application/json, got {ct:?}"
+    );
+    assert!(
+        body.contains("'t'"),
+        "error body must mention parameter 't', got: {body}"
+    );
+}
+
+// TEST-118: GET /api/history/diff returns 400 when `from` and/or `to` are
+// absent (CON-027).
+#[tokio::test]
+async fn test_118_api_history_diff_missing_params_returns_400() {
+    let dir = tempfile::TempDir::new().unwrap();
+    write(dir.path(), "note.md", "# Note");
+    let state = build_history_web_state(dir.path());
+    let app = history_api_router(state);
+
+    // Missing both params.
+    let (status, ct, body) = api_get(&app, "/api/history/diff").await;
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "body: {body}");
+    assert!(
+        ct.contains("application/json"),
+        "Content-Type must be application/json, got {ct:?}"
+    );
+    assert!(
+        body.contains("'from'"),
+        "error body must mention parameter 'from', got: {body}"
+    );
+
+    // Missing `to` only.
+    let (status2, _, body2) =
+        api_get(&app, "/api/history/diff?from=HEAD").await;
+    assert_eq!(
+        status2,
+        axum::http::StatusCode::BAD_REQUEST,
+        "missing 'to' must also return 400; body: {body2}"
+    );
+    assert!(
+        body2.contains("'to'"),
+        "error body must mention parameter 'to', got: {body2}"
     );
 }
