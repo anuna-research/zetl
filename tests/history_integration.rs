@@ -16,18 +16,35 @@ fn write(root: &Path, name: &str, content: &str) {
     fs::write(root.join(name), content).unwrap();
 }
 
-// TEST-080: JjBackend initialises a new workspace.
+// TEST-080: VCS initialisation stores jj metadata in .zetl/jj/ (REQ-075, ADR-045).
+// Verifies: .zetl/jj/.jj/ created; no .jj/ at vault root; idempotent.
 #[test]
-fn test_080_init_creates_jj_dir() {
+fn test_080_vcs_init_creates_zetl_jj_dir() {
     let dir = tempfile::TempDir::new().unwrap();
-    JjBackend::open_or_init(dir.path()).expect("open_or_init must succeed");
+    let vault_root = dir.path();
+
+    // First call: must initialise.
+    JjBackend::open_or_init_at_vault_root(vault_root)
+        .expect("open_or_init_at_vault_root must succeed on first call");
+
+    // .zetl/jj/.jj/ must exist (jj metadata is inside .zetl/).
     assert!(
-        dir.path().join(".jj").is_dir(),
-        "jj metadata directory must exist after init"
+        vault_root.join(".zetl/jj/.jj").is_dir(),
+        ".zetl/jj/.jj/ must exist after init"
     );
+
+    // .jj/ must NOT exist at the vault root (ADR-045: invisible to users).
+    assert!(
+        !vault_root.join(".jj").exists(),
+        ".jj/ must not exist at vault root"
+    );
+
+    // Second call: must be idempotent.
+    JjBackend::open_or_init_at_vault_root(vault_root)
+        .expect("open_or_init_at_vault_root must succeed on subsequent calls");
 }
 
-// TEST-081: Opening an already-initialised workspace succeeds.
+// TEST-081: Opening an already-initialised workspace succeeds (original open_or_init).
 #[test]
 fn test_081_open_existing_workspace() {
     let dir = tempfile::TempDir::new().unwrap();
