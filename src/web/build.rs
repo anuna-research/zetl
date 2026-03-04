@@ -295,6 +295,16 @@ pub fn build_static(
         if let Some(hist) = crate::history::build_template_page_history_context(&file.page_name, vault_root) {
             page_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
         }
+        #[cfg(feature = "history")]
+        {
+            let sources: Vec<String> = page_ctx.backlinks.iter().map(|b| b.title.clone()).collect();
+            let since_map = crate::history::build_backlink_since_map(&file.page_name, &sources, vault_root);
+            if !since_map.is_empty() {
+                for bl in &mut page_ctx.backlinks {
+                    bl.since = since_map.get(&bl.title.to_lowercase()).cloned();
+                }
+            }
+        }
 
         let page_html = engine
             .render_page(&vault_ctx, &page_ctx, "build", &bm25_json)

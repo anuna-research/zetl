@@ -774,6 +774,45 @@ pub fn build_page_history_context(
     })
 }
 
+/// Find the RFC 3339 timestamp of the earliest snapshot in which `source`
+/// linked to `target` (REQ-089, CON-026).
+///
+/// Walks `snapshots` (newest-first) paired with `files_per_snapshot`, scanning
+/// from **oldest to newest** to find the first occurrence of the link.
+/// Comparisons are case-insensitive.
+///
+/// Returns `None` when:
+/// - no snapshot has a cached index, or
+/// - `source` never links to `target` in any cached snapshot.
+///
+/// This is a **pure function**: no I/O, no VCS calls.
+pub fn resolve_backlink_since(
+    source: &str,
+    target: &str,
+    snapshots: &[ChangeInfo],
+    files_per_snapshot: &[Option<Vec<ParsedFile>>],
+) -> Option<String> {
+    let source_lc = source.to_lowercase();
+    let target_lc = target.to_lowercase();
+    let n = snapshots.len().min(files_per_snapshot.len());
+
+    // Walk oldest-to-newest (snapshots are newest-first, so reverse-iterate).
+    for raw_idx in (0..n).rev() {
+        let files = match &files_per_snapshot[raw_idx] {
+            Some(f) => f,
+            None => continue, // no cache for this snapshot; skip
+        };
+        let has_link = files.iter().any(|f| {
+            f.page_name.to_lowercase() == source_lc
+                && f.links.iter().any(|l| l.target_page.to_lowercase() == target_lc)
+        });
+        if has_link {
+            return Some(snapshots[raw_idx].timestamp.to_rfc3339());
+        }
+    }
+    None
+}
+
 fn pgh_sorted_vec(set: &std::collections::BTreeSet<String>) -> Vec<String> {
     set.iter().cloned().collect()
 }

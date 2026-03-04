@@ -106,6 +106,61 @@ pub fn build_template_page_history_context(
     core::build_page_history_context(page_name, &snapshots, &files_per_snapshot, now)
 }
 
+/// Build a map from backlink source page name (lowercase) → earliest snapshot
+/// timestamp where it linked to `target_page` (REQ-089, CON-026).
+///
+/// Loads the jj snapshot list and per-snapshot cached indexes once, then
+/// calls [`core::resolve_backlink_since`] for each source in `backlink_sources`.
+///
+/// Returns an empty map when history is unavailable, `backlink_sources` is
+/// empty, or no cached indexes exist. Errors are swallowed so callers always
+/// receive a usable (possibly empty) map.
+pub fn build_backlink_since_map(
+    target_page: &str,
+    backlink_sources: &[String],
+    vault_root: &Path,
+) -> std::collections::HashMap<String, String> {
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    if backlink_sources.is_empty() {
+        return HashMap::new();
+    }
+
+    let backend = match open_history(vault_root) {
+        Ok(b) => b,
+        Err(_) => return HashMap::new(),
+    };
+
+    let snapshots = match backend.list_changes(10_000) {
+        Ok(s) if !s.is_empty() => s,
+        _ => return HashMap::new(),
+    };
+
+    let index_cache = cache::HistoricalIndexCache::with_default_capacity();
+    let files_per_snapshot: Vec<Option<Vec<crate::types::ParsedFile>>> = snapshots
+        .iter()
+        .map(|snap| {
+            let hash = core::extract_vault_root_hash_from_description(&snap.description)?;
+            let file_map: HashMap<PathBuf, crate::types::ParsedFile> = index_cache
+                .load(vault_root, &hash)
+                .ok()
+                .flatten()?;
+            Some(file_map.into_values().collect())
+        })
+        .collect();
+
+    let mut result = HashMap::new();
+    for source in backlink_sources {
+        if let Some(ts) =
+            core::resolve_backlink_since(source, target_page, &snapshots, &files_per_snapshot)
+        {
+            result.insert(source.to_lowercase(), ts);
+        }
+    }
+    result
+}
+
 /// Create a jj snapshot after index completion (REQ-076, ADR-048).
 ///
 /// - Opens or initialises the jj workspace at `.zetl/jj/`.

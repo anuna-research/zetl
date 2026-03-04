@@ -173,6 +173,16 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
     if let Some(hist) = crate::history::build_template_page_history_context(&page_name, &state.vault_root) {
         page_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
     }
+    #[cfg(feature = "history")]
+    {
+        let sources: Vec<String> = page_ctx.backlinks.iter().map(|b| b.title.clone()).collect();
+        let since_map = crate::history::build_backlink_since_map(&page_name, &sources, &state.vault_root);
+        if !since_map.is_empty() {
+            for bl in &mut page_ctx.backlinks {
+                bl.since = since_map.get(&bl.title.to_lowercase()).cloned();
+            }
+        }
+    }
 
     let mut vault_ctx = build_vault_context(&data, &vault_name);
     #[cfg(feature = "history")]
