@@ -3,27 +3,30 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 221,
-    "deletions": 6,
+    "files_changed": 7,
+    "insertions": 385,
+    "deletions": 28,
     "file_list": [
       ".hence/context-manifest.json",
+      "src/history/core.rs",
       "src/history/mod.rs",
-      "src/hooks/context.rs",
+      "src/web/build.rs",
+      "src/web/engine.rs",
+      "src/web/routes.rs",
       "tests/history_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-hook-context-history-changes",
-      "content": "Modified 4 files (+221, -6): .hence/context-manifest.json, src/history/mod.rs, src/hooks/context.rs, tests/history_integration.rs",
+      "key": "task-build-history-export-changes",
+      "content": "Modified 7 files (+385, -28): .hence/context-manifest.json, src/history/core.rs, src/history/mod.rs, src/web/build.rs, src/web/engine.rs and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/hook-context-history-v1",
-  "evaluated_at": "2026-03-04T09:31:29Z",
+  "branch_name": "hence/build-history-export-v1",
+  "evaluated_at": "2026-03-04T09:43:44Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
