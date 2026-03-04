@@ -473,6 +473,7 @@ mod tests {
             transclusion_cards: String::new(),
             is_new: false,
             raw_escaped: None,
+            history: serde_json::Value::Null,
         }
     }
 

@@ -86,6 +86,9 @@ pub struct PageContext {
     pub transclusion_cards: String,
     pub is_new: bool,
     pub raw_escaped: Option<String>,
+    /// Page snapshot history summary available as `page.history` in templates.
+    /// `null` (JSON) when history is unavailable.
+    pub history: serde_json::Value,
 }
 
 // ── Folder-specific structs ─────────────────────────────────────────
@@ -316,6 +319,7 @@ pub fn build_page_context(
         transclusion_cards: String::new(),
         is_new,
         raw_escaped: None,
+        history: serde_json::Value::Null,
     }
 }
 

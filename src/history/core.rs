@@ -660,6 +660,120 @@ pub fn extract_page_history(
     included
 }
 
+// ─── Per-page history template context (REQ-086, CON-026, ADR-049) ──────────
+
+/// A single trend point in the per-page link-count timeline.
+#[derive(Debug, Clone, Serialize)]
+pub struct PageTrendPoint {
+    /// RFC 3339 timestamp of the sampled snapshot.
+    pub timestamp: String,
+    /// Number of forward links from the page at this point in time.
+    pub link_count: usize,
+    /// Number of pages linking to this page at this point in time.
+    pub backlink_count: usize,
+}
+
+/// The `page.history` object injected into Minijinja template context (REQ-086, CON-026, ADR-049).
+///
+/// Available as `page.history` in page templates; `null` when the page is new or has no history.
+#[derive(Debug, Clone, Serialize)]
+pub struct PageHistoryContext {
+    /// RFC 3339 timestamp of the snapshot when the page first appeared.
+    pub created_at: String,
+    /// RFC 3339 timestamp of the most recent snapshot where the page's neighbourhood changed.
+    pub last_changed: String,
+    /// Days between `created_at` and `now`.
+    pub age_days: i64,
+    /// Days between `last_changed` and `now`.
+    pub stable_days: i64,
+    /// Up to 30 uniformly sampled trend points (only changed snapshots), oldest-first.
+    pub link_trend: Vec<PageTrendPoint>,
+    /// Up to 5 most recent changed snapshots.
+    pub recent_changes: Vec<PageHistoryEntry>,
+}
+
+/// Sample up to `max_points` uniformly spaced entries from a newest-first page history list.
+///
+/// Returns trend points in **oldest-first** order.
+/// Always includes both the newest and oldest entries when `max_points >= 2`.
+///
+/// This is a **pure function**: no I/O, no VCS calls.
+pub fn sample_page_trend(entries: &[PageHistoryEntry], max_points: usize) -> Vec<PageTrendPoint> {
+    if max_points == 0 || entries.is_empty() {
+        return Vec::new();
+    }
+
+    // entries is newest-first; reverse to oldest-first for the trend.
+    let reversed: Vec<&PageHistoryEntry> = entries.iter().rev().collect();
+    let n = reversed.len();
+
+    let selected: Vec<&PageHistoryEntry> = if n <= max_points {
+        reversed.iter().copied().collect()
+    } else {
+        (0..max_points)
+            .map(|i| {
+                let idx = if max_points == 1 {
+                    0
+                } else {
+                    i * (n - 1) / (max_points - 1)
+                };
+                reversed[idx]
+            })
+            .collect()
+    };
+
+    selected
+        .into_iter()
+        .map(|e| PageTrendPoint {
+            timestamp: e.timestamp.clone(),
+            link_count: e.link_count,
+            backlink_count: e.backlink_count,
+        })
+        .collect()
+}
+
+/// Build the `page.history` template context object (REQ-086, CON-026, ADR-049).
+///
+/// Calls [`extract_page_history`] with no limit to get the full page timeline,
+/// derives summary fields, and samples up to 30 trend points from changed-only snapshots.
+///
+/// Returns `None` when the page has no recorded history (new page or no cached indexes).
+///
+/// This is a **pure function**: no I/O, no VCS calls.
+pub fn build_page_history_context(
+    page_name: &str,
+    snapshots: &[ChangeInfo],
+    files_per_snapshot: &[Option<Vec<ParsedFile>>],
+    now: DateTime<FixedOffset>,
+) -> Option<PageHistoryContext> {
+    let all_entries =
+        extract_page_history(page_name, snapshots, files_per_snapshot, usize::MAX);
+    if all_entries.is_empty() {
+        return None;
+    }
+
+    // all_entries is newest-first: most recent = [0], oldest = [last].
+    let last_changed = all_entries.first()?.timestamp.clone();
+    let created_at = all_entries.last()?.timestamp.clone();
+
+    let created_dt = DateTime::parse_from_rfc3339(&created_at).ok()?;
+    let last_changed_dt = DateTime::parse_from_rfc3339(&last_changed).ok()?;
+    let age_days = (now - created_dt).num_days().max(0);
+    let stable_days = (now - last_changed_dt).num_days().max(0);
+
+    let link_trend = sample_page_trend(&all_entries, 30);
+    let recent_changes = all_entries.into_iter().take(5).collect();
+
+    Some(PageHistoryContext {
+        created_at,
+        last_changed,
+        age_days,
+        stable_days,
+        link_trend,
+        recent_changes,
+    })
+}
+
 fn pgh_sorted_vec(set: &std::collections::BTreeSet<String>) -> Vec<String> {
     set.iter().cloned().collect()
 }

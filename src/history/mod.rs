@@ -67,6 +67,45 @@ pub fn build_template_history_context(vault_root: &Path) -> Option<core::VaultHi
         .flatten()
 }
 
+/// Build the `page.history` template context object (REQ-086, CON-026, ADR-049).
+///
+/// Opens the jj workspace, loads the snapshot list and cached indexes, and calls
+/// [`core::build_page_history_context`] to produce a populated
+/// [`core::PageHistoryContext`].
+///
+/// Returns `None` when history is unavailable or the page has no recorded history.
+/// Errors are swallowed so templates always receive either a populated object or `null`.
+pub fn build_template_page_history_context(
+    page_name: &str,
+    vault_root: &Path,
+) -> Option<core::PageHistoryContext> {
+    use chrono::Local;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    let backend = open_history(vault_root).ok()?;
+    let snapshots = backend.list_changes(10_000).ok()?;
+    if snapshots.is_empty() {
+        return None;
+    }
+
+    let index_cache = cache::HistoricalIndexCache::with_default_capacity();
+    let files_per_snapshot: Vec<Option<Vec<crate::types::ParsedFile>>> = snapshots
+        .iter()
+        .map(|snap| {
+            let hash = core::extract_vault_root_hash_from_description(&snap.description)?;
+            let file_map: HashMap<PathBuf, crate::types::ParsedFile> = index_cache
+                .load(vault_root, &hash)
+                .ok()
+                .flatten()?;
+            Some(file_map.into_values().collect())
+        })
+        .collect();
+
+    let now = Local::now().fixed_offset();
+    core::build_page_history_context(page_name, &snapshots, &files_per_snapshot, now)
+}
+
 /// Create a jj snapshot after index completion (REQ-076, ADR-048).
 ///
 /// - Opens or initialises the jj workspace at `.zetl/jj/`.
