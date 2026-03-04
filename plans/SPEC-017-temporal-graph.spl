@@ -470,3 +470,627 @@
 (meta r-assign-integration-tests
   (description "Integration tests assigned to tester agent by default")
   (justification "Dedicated tester agent verifies NFR latency bounds and full TEST-080 through TEST-113 suite"))
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T06:27:43Z"
+  (given delegated-v1-cargo-feature-flag-to-agent:claude)
+  (given (during (leased-v1-cargo-feature-flag) (moment "2026-03-04T06:27:43Z") (moment "2026-03-04T06:57:43Z")))
+  (given claim-v1-cargo-feature-flag-by-claude)
+  (normally r-cl-state-v1-cargo-feature-flag-by-claude claim-v1-cargo-feature-flag-by-claude state-claimed-v1-cargo-feature-flag-by-claude)
+  (normally r-cl-chain-v1-cargo-feature-flag-by-claude state-claimed-v1-cargo-feature-flag-by-claude claimed-cargo-feature-flag)
+)
+
+;; Propagation rules: failures in 'cargo-feature-flag' block downstream tasks
+(normally r-propagate-historical-index-cache-from-cargo-feature-flag-failed failed-cargo-feature-flag upstream-blocked-historical-index-cache)
+(normally r-propagate-historical-index-cache-from-cargo-feature-flag-permanently-failed permanently-failed-cargo-feature-flag upstream-blocked-historical-index-cache)
+(normally r-propagate-historical-index-cache-from-cargo-feature-flag-stale-v1 stale-v1-cargo-feature-flag upstream-blocked-historical-index-cache)
+(normally r-propagate-historical-index-cache-from-cargo-feature-flag-timeout-v1 timeout-v1-cargo-feature-flag upstream-blocked-historical-index-cache)
+(normally r-propagate-historical-index-cache-from-cargo-feature-flag-blocked upstream-blocked-cargo-feature-flag upstream-blocked-historical-index-cache)
+(normally r-propagate-jj-backend-from-cargo-feature-flag-failed failed-cargo-feature-flag upstream-blocked-jj-backend)
+(normally r-propagate-jj-backend-from-cargo-feature-flag-permanently-failed permanently-failed-cargo-feature-flag upstream-blocked-jj-backend)
+(normally r-propagate-jj-backend-from-cargo-feature-flag-stale-v1 stale-v1-cargo-feature-flag upstream-blocked-jj-backend)
+(normally r-propagate-jj-backend-from-cargo-feature-flag-timeout-v1 timeout-v1-cargo-feature-flag upstream-blocked-jj-backend)
+(normally r-propagate-jj-backend-from-cargo-feature-flag-blocked upstream-blocked-cargo-feature-flag upstream-blocked-jj-backend)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-diff-jj-backend-from-historical-index-cache-blocked upstream-blocked-historical-index-cache upstream-blocked-diff-jj-backend)
+(normally r-propagate-integration-tests-from-historical-index-cache-blocked upstream-blocked-historical-index-cache upstream-blocked-integration-tests)
+(normally r-propagate-observability-from-historical-index-cache-blocked upstream-blocked-historical-index-cache upstream-blocked-observability)
+(normally r-propagate-point-in-time-query-from-historical-index-cache-blocked upstream-blocked-historical-index-cache upstream-blocked-point-in-time-query)
+(normally r-propagate-diff-jj-backend-from-jj-backend-blocked upstream-blocked-jj-backend upstream-blocked-diff-jj-backend)
+(normally r-propagate-point-in-time-query-from-jj-backend-blocked upstream-blocked-jj-backend upstream-blocked-point-in-time-query)
+(normally r-propagate-vcs-init-from-jj-backend-blocked upstream-blocked-jj-backend upstream-blocked-vcs-init)
+(normally r-propagate-hook-context-history-from-diff-jj-backend-blocked upstream-blocked-diff-jj-backend upstream-blocked-hook-context-history)
+(normally r-propagate-integration-tests-from-diff-jj-backend-blocked upstream-blocked-diff-jj-backend upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-observability-blocked upstream-blocked-observability upstream-blocked-integration-tests)
+(normally r-propagate-history-cli-from-point-in-time-query-blocked upstream-blocked-point-in-time-query upstream-blocked-history-cli)
+(normally r-propagate-integration-tests-from-point-in-time-query-blocked upstream-blocked-point-in-time-query upstream-blocked-integration-tests)
+(normally r-propagate-serve-history-api-from-point-in-time-query-blocked upstream-blocked-point-in-time-query upstream-blocked-serve-history-api)
+(normally r-propagate-tui-timeline-navigation-from-point-in-time-query-blocked upstream-blocked-point-in-time-query upstream-blocked-tui-timeline-navigation)
+(normally r-propagate-auto-snapshot-from-vcs-init-blocked upstream-blocked-vcs-init upstream-blocked-auto-snapshot)
+(normally r-propagate-graceful-degradation-from-vcs-init-blocked upstream-blocked-vcs-init upstream-blocked-graceful-degradation)
+(normally r-propagate-integration-tests-from-vcs-init-blocked upstream-blocked-vcs-init upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-hook-context-history-blocked upstream-blocked-hook-context-history upstream-blocked-integration-tests)
+(normally r-propagate-history-page-cli-from-history-cli-blocked upstream-blocked-history-cli upstream-blocked-history-page-cli)
+(normally r-propagate-integration-tests-from-history-cli-blocked upstream-blocked-history-cli upstream-blocked-integration-tests)
+(normally r-propagate-observability-from-history-cli-blocked upstream-blocked-history-cli upstream-blocked-observability)
+(normally r-propagate-serve-history-api-from-history-cli-blocked upstream-blocked-history-cli upstream-blocked-serve-history-api)
+(normally r-propagate-vault-history-template-context-from-history-cli-blocked upstream-blocked-history-cli upstream-blocked-vault-history-template-context)
+(normally r-propagate-integration-tests-from-serve-history-api-blocked upstream-blocked-serve-history-api upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-tui-timeline-navigation-blocked upstream-blocked-tui-timeline-navigation upstream-blocked-integration-tests)
+(normally r-propagate-hook-context-history-from-auto-snapshot-blocked upstream-blocked-auto-snapshot upstream-blocked-hook-context-history)
+(normally r-propagate-integration-tests-from-auto-snapshot-blocked upstream-blocked-auto-snapshot upstream-blocked-integration-tests)
+(normally r-propagate-observability-from-auto-snapshot-blocked upstream-blocked-auto-snapshot upstream-blocked-observability)
+(normally r-propagate-watch-mode-snapshot-from-auto-snapshot-blocked upstream-blocked-auto-snapshot upstream-blocked-watch-mode-snapshot)
+(normally r-propagate-integration-tests-from-graceful-degradation-blocked upstream-blocked-graceful-degradation upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-history-page-cli-blocked upstream-blocked-history-page-cli upstream-blocked-integration-tests)
+(normally r-propagate-serve-history-api-from-history-page-cli-blocked upstream-blocked-history-page-cli upstream-blocked-serve-history-api)
+(normally r-propagate-build-history-export-from-vault-history-template-context-blocked upstream-blocked-vault-history-template-context upstream-blocked-build-history-export)
+(normally r-propagate-integration-tests-from-vault-history-template-context-blocked upstream-blocked-vault-history-template-context upstream-blocked-integration-tests)
+(normally r-propagate-page-history-template-context-from-vault-history-template-context-blocked upstream-blocked-vault-history-template-context upstream-blocked-page-history-template-context)
+(normally r-propagate-integration-tests-from-watch-mode-snapshot-blocked upstream-blocked-watch-mode-snapshot upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-build-history-export-blocked upstream-blocked-build-history-export upstream-blocked-integration-tests)
+(normally r-propagate-observability-from-build-history-export-blocked upstream-blocked-build-history-export upstream-blocked-observability)
+(normally r-propagate-backlink-timestamps-from-page-history-template-context-blocked upstream-blocked-page-history-template-context upstream-blocked-backlink-timestamps)
+(normally r-propagate-build-history-export-from-page-history-template-context-blocked upstream-blocked-page-history-template-context upstream-blocked-build-history-export)
+(normally r-propagate-integration-tests-from-page-history-template-context-blocked upstream-blocked-page-history-template-context upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-backlink-timestamps-blocked upstream-blocked-backlink-timestamps upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T06:32:06Z"
+  (given completed-cargo-feature-flag)
+  (given eval-result-v1-cargo-feature-flag-by-claude)
+  (given eval-confidence-v1-cargo-feature-flag-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T06:32:13Z"
+  (given delegated-v1-jj-backend-to-agent:claude)
+  (given (during (leased-v1-jj-backend) (moment "2026-03-04T06:32:13Z") (moment "2026-03-04T07:02:13Z")))
+  (given claim-v1-jj-backend-by-claude)
+  (normally r-cl-state-v1-jj-backend-by-claude claim-v1-jj-backend-by-claude state-claimed-v1-jj-backend-by-claude)
+  (normally r-cl-chain-v1-jj-backend-by-claude state-claimed-v1-jj-backend-by-claude claimed-jj-backend)
+)
+
+;; Propagation rules: failures in 'jj-backend' block downstream tasks
+(normally r-propagate-diff-jj-backend-from-jj-backend-failed failed-jj-backend upstream-blocked-diff-jj-backend)
+(normally r-propagate-diff-jj-backend-from-jj-backend-permanently-failed permanently-failed-jj-backend upstream-blocked-diff-jj-backend)
+(normally r-propagate-diff-jj-backend-from-jj-backend-stale-v1 stale-v1-jj-backend upstream-blocked-diff-jj-backend)
+(normally r-propagate-diff-jj-backend-from-jj-backend-timeout-v1 timeout-v1-jj-backend upstream-blocked-diff-jj-backend)
+(normally r-propagate-point-in-time-query-from-jj-backend-failed failed-jj-backend upstream-blocked-point-in-time-query)
+(normally r-propagate-point-in-time-query-from-jj-backend-permanently-failed permanently-failed-jj-backend upstream-blocked-point-in-time-query)
+(normally r-propagate-point-in-time-query-from-jj-backend-stale-v1 stale-v1-jj-backend upstream-blocked-point-in-time-query)
+(normally r-propagate-point-in-time-query-from-jj-backend-timeout-v1 timeout-v1-jj-backend upstream-blocked-point-in-time-query)
+(normally r-propagate-vcs-init-from-jj-backend-failed failed-jj-backend upstream-blocked-vcs-init)
+(normally r-propagate-vcs-init-from-jj-backend-permanently-failed permanently-failed-jj-backend upstream-blocked-vcs-init)
+(normally r-propagate-vcs-init-from-jj-backend-stale-v1 stale-v1-jj-backend upstream-blocked-vcs-init)
+(normally r-propagate-vcs-init-from-jj-backend-timeout-v1 timeout-v1-jj-backend upstream-blocked-vcs-init)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T06:47:14Z"
+  (given (during (leased-v1-jj-backend) (moment "2026-03-04T06:47:14Z") (moment "2026-03-04T07:17:14Z")))
+  (given lease-renewal-v1-jj-backend-by-claude-r1)
+)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T06:50:45Z"
+  (given completed-jj-backend)
+  (given eval-result-v1-jj-backend-by-claude)
+  (given eval-confidence-v1-jj-backend-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T06:50:52Z"
+  (given delegated-v1-vcs-init-to-agent:claude)
+  (given (during (leased-v1-vcs-init) (moment "2026-03-04T06:50:52Z") (moment "2026-03-04T07:20:52Z")))
+  (given claim-v1-vcs-init-by-claude)
+  (normally r-cl-state-v1-vcs-init-by-claude claim-v1-vcs-init-by-claude state-claimed-v1-vcs-init-by-claude)
+  (normally r-cl-chain-v1-vcs-init-by-claude state-claimed-v1-vcs-init-by-claude claimed-vcs-init)
+)
+
+;; Propagation rules: failures in 'vcs-init' block downstream tasks
+(normally r-propagate-auto-snapshot-from-vcs-init-failed failed-vcs-init upstream-blocked-auto-snapshot)
+(normally r-propagate-auto-snapshot-from-vcs-init-permanently-failed permanently-failed-vcs-init upstream-blocked-auto-snapshot)
+(normally r-propagate-auto-snapshot-from-vcs-init-stale-v1 stale-v1-vcs-init upstream-blocked-auto-snapshot)
+(normally r-propagate-auto-snapshot-from-vcs-init-timeout-v1 timeout-v1-vcs-init upstream-blocked-auto-snapshot)
+(normally r-propagate-graceful-degradation-from-vcs-init-failed failed-vcs-init upstream-blocked-graceful-degradation)
+(normally r-propagate-graceful-degradation-from-vcs-init-permanently-failed permanently-failed-vcs-init upstream-blocked-graceful-degradation)
+(normally r-propagate-graceful-degradation-from-vcs-init-stale-v1 stale-v1-vcs-init upstream-blocked-graceful-degradation)
+(normally r-propagate-graceful-degradation-from-vcs-init-timeout-v1 timeout-v1-vcs-init upstream-blocked-graceful-degradation)
+(normally r-propagate-integration-tests-from-vcs-init-failed failed-vcs-init upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-vcs-init-permanently-failed permanently-failed-vcs-init upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-vcs-init-stale-v1 stale-v1-vcs-init upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-vcs-init-timeout-v1 timeout-v1-vcs-init upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T07:03:35Z"
+  (given completed-vcs-init)
+  (given eval-result-v1-vcs-init-by-claude)
+  (given eval-confidence-v1-vcs-init-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T07:03:42Z"
+  (given delegated-v1-time-expression-parser-to-agent:claude)
+  (given (during (leased-v1-time-expression-parser) (moment "2026-03-04T07:03:42Z") (moment "2026-03-04T07:33:42Z")))
+  (given claim-v1-time-expression-parser-by-claude)
+  (normally r-cl-state-v1-time-expression-parser-by-claude claim-v1-time-expression-parser-by-claude state-claimed-v1-time-expression-parser-by-claude)
+  (normally r-cl-chain-v1-time-expression-parser-by-claude state-claimed-v1-time-expression-parser-by-claude claimed-time-expression-parser)
+)
+
+;; Propagation rules: failures in 'time-expression-parser' block downstream tasks
+(normally r-propagate-diff-jj-backend-from-time-expression-parser-failed failed-time-expression-parser upstream-blocked-diff-jj-backend)
+(normally r-propagate-diff-jj-backend-from-time-expression-parser-permanently-failed permanently-failed-time-expression-parser upstream-blocked-diff-jj-backend)
+(normally r-propagate-diff-jj-backend-from-time-expression-parser-stale-v1 stale-v1-time-expression-parser upstream-blocked-diff-jj-backend)
+(normally r-propagate-diff-jj-backend-from-time-expression-parser-timeout-v1 timeout-v1-time-expression-parser upstream-blocked-diff-jj-backend)
+(normally r-propagate-diff-jj-backend-from-time-expression-parser-blocked upstream-blocked-time-expression-parser upstream-blocked-diff-jj-backend)
+(normally r-propagate-integration-tests-from-time-expression-parser-failed failed-time-expression-parser upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-time-expression-parser-permanently-failed permanently-failed-time-expression-parser upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-time-expression-parser-stale-v1 stale-v1-time-expression-parser upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-time-expression-parser-timeout-v1 timeout-v1-time-expression-parser upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-time-expression-parser-blocked upstream-blocked-time-expression-parser upstream-blocked-integration-tests)
+(normally r-propagate-point-in-time-query-from-time-expression-parser-failed failed-time-expression-parser upstream-blocked-point-in-time-query)
+(normally r-propagate-point-in-time-query-from-time-expression-parser-permanently-failed permanently-failed-time-expression-parser upstream-blocked-point-in-time-query)
+(normally r-propagate-point-in-time-query-from-time-expression-parser-stale-v1 stale-v1-time-expression-parser upstream-blocked-point-in-time-query)
+(normally r-propagate-point-in-time-query-from-time-expression-parser-timeout-v1 timeout-v1-time-expression-parser upstream-blocked-point-in-time-query)
+(normally r-propagate-point-in-time-query-from-time-expression-parser-blocked upstream-blocked-time-expression-parser upstream-blocked-point-in-time-query)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T07:10:00Z"
+  (given completed-time-expression-parser)
+  (given eval-result-v1-time-expression-parser-by-claude)
+  (given eval-confidence-v1-time-expression-parser-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T07:10:07Z"
+  (given delegated-v1-auto-snapshot-to-agent:claude)
+  (given (during (leased-v1-auto-snapshot) (moment "2026-03-04T07:10:07Z") (moment "2026-03-04T07:40:07Z")))
+  (given claim-v1-auto-snapshot-by-claude)
+  (normally r-cl-state-v1-auto-snapshot-by-claude claim-v1-auto-snapshot-by-claude state-claimed-v1-auto-snapshot-by-claude)
+  (normally r-cl-chain-v1-auto-snapshot-by-claude state-claimed-v1-auto-snapshot-by-claude claimed-auto-snapshot)
+)
+
+;; Propagation rules: failures in 'auto-snapshot' block downstream tasks
+(normally r-propagate-hook-context-history-from-auto-snapshot-failed failed-auto-snapshot upstream-blocked-hook-context-history)
+(normally r-propagate-hook-context-history-from-auto-snapshot-permanently-failed permanently-failed-auto-snapshot upstream-blocked-hook-context-history)
+(normally r-propagate-hook-context-history-from-auto-snapshot-stale-v1 stale-v1-auto-snapshot upstream-blocked-hook-context-history)
+(normally r-propagate-hook-context-history-from-auto-snapshot-timeout-v1 timeout-v1-auto-snapshot upstream-blocked-hook-context-history)
+(normally r-propagate-integration-tests-from-auto-snapshot-failed failed-auto-snapshot upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-auto-snapshot-permanently-failed permanently-failed-auto-snapshot upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-auto-snapshot-stale-v1 stale-v1-auto-snapshot upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-auto-snapshot-timeout-v1 timeout-v1-auto-snapshot upstream-blocked-integration-tests)
+(normally r-propagate-observability-from-auto-snapshot-failed failed-auto-snapshot upstream-blocked-observability)
+(normally r-propagate-observability-from-auto-snapshot-permanently-failed permanently-failed-auto-snapshot upstream-blocked-observability)
+(normally r-propagate-observability-from-auto-snapshot-stale-v1 stale-v1-auto-snapshot upstream-blocked-observability)
+(normally r-propagate-observability-from-auto-snapshot-timeout-v1 timeout-v1-auto-snapshot upstream-blocked-observability)
+(normally r-propagate-watch-mode-snapshot-from-auto-snapshot-failed failed-auto-snapshot upstream-blocked-watch-mode-snapshot)
+(normally r-propagate-watch-mode-snapshot-from-auto-snapshot-permanently-failed permanently-failed-auto-snapshot upstream-blocked-watch-mode-snapshot)
+(normally r-propagate-watch-mode-snapshot-from-auto-snapshot-stale-v1 stale-v1-auto-snapshot upstream-blocked-watch-mode-snapshot)
+(normally r-propagate-watch-mode-snapshot-from-auto-snapshot-timeout-v1 timeout-v1-auto-snapshot upstream-blocked-watch-mode-snapshot)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T07:16:27Z"
+  (given completed-auto-snapshot)
+  (given eval-result-v1-auto-snapshot-by-claude)
+  (given eval-confidence-v1-auto-snapshot-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T07:16:33Z"
+  (given delegated-v1-historical-index-cache-to-agent:claude)
+  (given (during (leased-v1-historical-index-cache) (moment "2026-03-04T07:16:33Z") (moment "2026-03-04T07:46:33Z")))
+  (given claim-v1-historical-index-cache-by-claude)
+  (normally r-cl-state-v1-historical-index-cache-by-claude claim-v1-historical-index-cache-by-claude state-claimed-v1-historical-index-cache-by-claude)
+  (normally r-cl-chain-v1-historical-index-cache-by-claude state-claimed-v1-historical-index-cache-by-claude claimed-historical-index-cache)
+)
+
+;; Propagation rules: failures in 'historical-index-cache' block downstream tasks
+(normally r-propagate-diff-jj-backend-from-historical-index-cache-failed failed-historical-index-cache upstream-blocked-diff-jj-backend)
+(normally r-propagate-diff-jj-backend-from-historical-index-cache-permanently-failed permanently-failed-historical-index-cache upstream-blocked-diff-jj-backend)
+(normally r-propagate-diff-jj-backend-from-historical-index-cache-stale-v1 stale-v1-historical-index-cache upstream-blocked-diff-jj-backend)
+(normally r-propagate-diff-jj-backend-from-historical-index-cache-timeout-v1 timeout-v1-historical-index-cache upstream-blocked-diff-jj-backend)
+(normally r-propagate-integration-tests-from-historical-index-cache-failed failed-historical-index-cache upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-historical-index-cache-permanently-failed permanently-failed-historical-index-cache upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-historical-index-cache-stale-v1 stale-v1-historical-index-cache upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-historical-index-cache-timeout-v1 timeout-v1-historical-index-cache upstream-blocked-integration-tests)
+(normally r-propagate-observability-from-historical-index-cache-failed failed-historical-index-cache upstream-blocked-observability)
+(normally r-propagate-observability-from-historical-index-cache-permanently-failed permanently-failed-historical-index-cache upstream-blocked-observability)
+(normally r-propagate-observability-from-historical-index-cache-stale-v1 stale-v1-historical-index-cache upstream-blocked-observability)
+(normally r-propagate-observability-from-historical-index-cache-timeout-v1 timeout-v1-historical-index-cache upstream-blocked-observability)
+(normally r-propagate-point-in-time-query-from-historical-index-cache-failed failed-historical-index-cache upstream-blocked-point-in-time-query)
+(normally r-propagate-point-in-time-query-from-historical-index-cache-permanently-failed permanently-failed-historical-index-cache upstream-blocked-point-in-time-query)
+(normally r-propagate-point-in-time-query-from-historical-index-cache-stale-v1 stale-v1-historical-index-cache upstream-blocked-point-in-time-query)
+(normally r-propagate-point-in-time-query-from-historical-index-cache-timeout-v1 timeout-v1-historical-index-cache upstream-blocked-point-in-time-query)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T07:21:08Z"
+  (given completed-historical-index-cache)
+  (given eval-result-v1-historical-index-cache-by-claude)
+  (given eval-confidence-v1-historical-index-cache-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T07:21:14Z"
+  (given delegated-v1-point-in-time-query-to-agent:claude)
+  (given (during (leased-v1-point-in-time-query) (moment "2026-03-04T07:21:14Z") (moment "2026-03-04T07:51:14Z")))
+  (given claim-v1-point-in-time-query-by-claude)
+  (normally r-cl-state-v1-point-in-time-query-by-claude claim-v1-point-in-time-query-by-claude state-claimed-v1-point-in-time-query-by-claude)
+  (normally r-cl-chain-v1-point-in-time-query-by-claude state-claimed-v1-point-in-time-query-by-claude claimed-point-in-time-query)
+)
+
+;; Propagation rules: failures in 'point-in-time-query' block downstream tasks
+(normally r-propagate-history-cli-from-point-in-time-query-failed failed-point-in-time-query upstream-blocked-history-cli)
+(normally r-propagate-history-cli-from-point-in-time-query-permanently-failed permanently-failed-point-in-time-query upstream-blocked-history-cli)
+(normally r-propagate-history-cli-from-point-in-time-query-stale-v1 stale-v1-point-in-time-query upstream-blocked-history-cli)
+(normally r-propagate-history-cli-from-point-in-time-query-timeout-v1 timeout-v1-point-in-time-query upstream-blocked-history-cli)
+(normally r-propagate-integration-tests-from-point-in-time-query-failed failed-point-in-time-query upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-point-in-time-query-permanently-failed permanently-failed-point-in-time-query upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-point-in-time-query-stale-v1 stale-v1-point-in-time-query upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-point-in-time-query-timeout-v1 timeout-v1-point-in-time-query upstream-blocked-integration-tests)
+(normally r-propagate-serve-history-api-from-point-in-time-query-failed failed-point-in-time-query upstream-blocked-serve-history-api)
+(normally r-propagate-serve-history-api-from-point-in-time-query-permanently-failed permanently-failed-point-in-time-query upstream-blocked-serve-history-api)
+(normally r-propagate-serve-history-api-from-point-in-time-query-stale-v1 stale-v1-point-in-time-query upstream-blocked-serve-history-api)
+(normally r-propagate-serve-history-api-from-point-in-time-query-timeout-v1 timeout-v1-point-in-time-query upstream-blocked-serve-history-api)
+(normally r-propagate-tui-timeline-navigation-from-point-in-time-query-failed failed-point-in-time-query upstream-blocked-tui-timeline-navigation)
+(normally r-propagate-tui-timeline-navigation-from-point-in-time-query-permanently-failed permanently-failed-point-in-time-query upstream-blocked-tui-timeline-navigation)
+(normally r-propagate-tui-timeline-navigation-from-point-in-time-query-stale-v1 stale-v1-point-in-time-query upstream-blocked-tui-timeline-navigation)
+(normally r-propagate-tui-timeline-navigation-from-point-in-time-query-timeout-v1 timeout-v1-point-in-time-query upstream-blocked-tui-timeline-navigation)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T07:36:14Z"
+  (given (during (leased-v1-point-in-time-query) (moment "2026-03-04T07:36:14Z") (moment "2026-03-04T08:06:14Z")))
+  (given lease-renewal-v1-point-in-time-query-by-claude-r1)
+)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T07:43:31Z"
+  (given completed-point-in-time-query)
+  (given eval-result-v1-point-in-time-query-by-claude)
+  (given eval-confidence-v1-point-in-time-query-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T07:43:38Z"
+  (given delegated-v1-tui-timeline-navigation-to-agent:claude)
+  (given (during (leased-v1-tui-timeline-navigation) (moment "2026-03-04T07:43:38Z") (moment "2026-03-04T08:13:38Z")))
+  (given claim-v1-tui-timeline-navigation-by-claude)
+  (normally r-cl-state-v1-tui-timeline-navigation-by-claude claim-v1-tui-timeline-navigation-by-claude state-claimed-v1-tui-timeline-navigation-by-claude)
+  (normally r-cl-chain-v1-tui-timeline-navigation-by-claude state-claimed-v1-tui-timeline-navigation-by-claude claimed-tui-timeline-navigation)
+)
+
+;; Propagation rules: failures in 'tui-timeline-navigation' block downstream tasks
+(normally r-propagate-integration-tests-from-tui-timeline-navigation-failed failed-tui-timeline-navigation upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-tui-timeline-navigation-permanently-failed permanently-failed-tui-timeline-navigation upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-tui-timeline-navigation-stale-v1 stale-v1-tui-timeline-navigation upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-tui-timeline-navigation-timeout-v1 timeout-v1-tui-timeline-navigation upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T07:53:27Z"
+  (given completed-tui-timeline-navigation)
+  (given eval-result-v1-tui-timeline-navigation-by-claude)
+  (given eval-confidence-v1-tui-timeline-navigation-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T07:53:34Z"
+  (given delegated-v1-graceful-degradation-to-agent:claude)
+  (given (during (leased-v1-graceful-degradation) (moment "2026-03-04T07:53:34Z") (moment "2026-03-04T08:23:34Z")))
+  (given claim-v1-graceful-degradation-by-claude)
+  (normally r-cl-state-v1-graceful-degradation-by-claude claim-v1-graceful-degradation-by-claude state-claimed-v1-graceful-degradation-by-claude)
+  (normally r-cl-chain-v1-graceful-degradation-by-claude state-claimed-v1-graceful-degradation-by-claude claimed-graceful-degradation)
+)
+
+;; Propagation rules: failures in 'graceful-degradation' block downstream tasks
+(normally r-propagate-integration-tests-from-graceful-degradation-failed failed-graceful-degradation upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-graceful-degradation-permanently-failed permanently-failed-graceful-degradation upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-graceful-degradation-stale-v1 stale-v1-graceful-degradation upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-graceful-degradation-timeout-v1 timeout-v1-graceful-degradation upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T08:06:21Z"
+  (given completed-graceful-degradation)
+  (given eval-result-v1-graceful-degradation-by-claude)
+  (given eval-confidence-v1-graceful-degradation-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T08:06:28Z"
+  (given delegated-v1-watch-mode-snapshot-to-agent:claude)
+  (given (during (leased-v1-watch-mode-snapshot) (moment "2026-03-04T08:06:28Z") (moment "2026-03-04T08:36:28Z")))
+  (given claim-v1-watch-mode-snapshot-by-claude)
+  (normally r-cl-state-v1-watch-mode-snapshot-by-claude claim-v1-watch-mode-snapshot-by-claude state-claimed-v1-watch-mode-snapshot-by-claude)
+  (normally r-cl-chain-v1-watch-mode-snapshot-by-claude state-claimed-v1-watch-mode-snapshot-by-claude claimed-watch-mode-snapshot)
+)
+
+;; Propagation rules: failures in 'watch-mode-snapshot' block downstream tasks
+(normally r-propagate-integration-tests-from-watch-mode-snapshot-failed failed-watch-mode-snapshot upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-watch-mode-snapshot-permanently-failed permanently-failed-watch-mode-snapshot upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-watch-mode-snapshot-stale-v1 stale-v1-watch-mode-snapshot upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-watch-mode-snapshot-timeout-v1 timeout-v1-watch-mode-snapshot upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T08:18:48Z"
+  (given completed-watch-mode-snapshot)
+  (given eval-result-v1-watch-mode-snapshot-by-claude)
+  (given eval-confidence-v1-watch-mode-snapshot-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T08:18:54Z"
+  (given delegated-v1-history-cli-to-agent:claude)
+  (given (during (leased-v1-history-cli) (moment "2026-03-04T08:18:54Z") (moment "2026-03-04T08:48:54Z")))
+  (given claim-v1-history-cli-by-claude)
+  (normally r-cl-state-v1-history-cli-by-claude claim-v1-history-cli-by-claude state-claimed-v1-history-cli-by-claude)
+  (normally r-cl-chain-v1-history-cli-by-claude state-claimed-v1-history-cli-by-claude claimed-history-cli)
+)
+
+;; Propagation rules: failures in 'history-cli' block downstream tasks
+(normally r-propagate-history-page-cli-from-history-cli-failed failed-history-cli upstream-blocked-history-page-cli)
+(normally r-propagate-history-page-cli-from-history-cli-permanently-failed permanently-failed-history-cli upstream-blocked-history-page-cli)
+(normally r-propagate-history-page-cli-from-history-cli-stale-v1 stale-v1-history-cli upstream-blocked-history-page-cli)
+(normally r-propagate-history-page-cli-from-history-cli-timeout-v1 timeout-v1-history-cli upstream-blocked-history-page-cli)
+(normally r-propagate-integration-tests-from-history-cli-failed failed-history-cli upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-history-cli-permanently-failed permanently-failed-history-cli upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-history-cli-stale-v1 stale-v1-history-cli upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-history-cli-timeout-v1 timeout-v1-history-cli upstream-blocked-integration-tests)
+(normally r-propagate-observability-from-history-cli-failed failed-history-cli upstream-blocked-observability)
+(normally r-propagate-observability-from-history-cli-permanently-failed permanently-failed-history-cli upstream-blocked-observability)
+(normally r-propagate-observability-from-history-cli-stale-v1 stale-v1-history-cli upstream-blocked-observability)
+(normally r-propagate-observability-from-history-cli-timeout-v1 timeout-v1-history-cli upstream-blocked-observability)
+(normally r-propagate-serve-history-api-from-history-cli-failed failed-history-cli upstream-blocked-serve-history-api)
+(normally r-propagate-serve-history-api-from-history-cli-permanently-failed permanently-failed-history-cli upstream-blocked-serve-history-api)
+(normally r-propagate-serve-history-api-from-history-cli-stale-v1 stale-v1-history-cli upstream-blocked-serve-history-api)
+(normally r-propagate-serve-history-api-from-history-cli-timeout-v1 timeout-v1-history-cli upstream-blocked-serve-history-api)
+(normally r-propagate-vault-history-template-context-from-history-cli-failed failed-history-cli upstream-blocked-vault-history-template-context)
+(normally r-propagate-vault-history-template-context-from-history-cli-permanently-failed permanently-failed-history-cli upstream-blocked-vault-history-template-context)
+(normally r-propagate-vault-history-template-context-from-history-cli-stale-v1 stale-v1-history-cli upstream-blocked-vault-history-template-context)
+(normally r-propagate-vault-history-template-context-from-history-cli-timeout-v1 timeout-v1-history-cli upstream-blocked-vault-history-template-context)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T08:26:45Z"
+  (given completed-history-cli)
+  (given eval-result-v1-history-cli-by-claude)
+  (given eval-confidence-v1-history-cli-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T08:26:51Z"
+  (given delegated-v1-history-page-cli-to-agent:claude)
+  (given (during (leased-v1-history-page-cli) (moment "2026-03-04T08:26:51Z") (moment "2026-03-04T08:56:51Z")))
+  (given claim-v1-history-page-cli-by-claude)
+  (normally r-cl-state-v1-history-page-cli-by-claude claim-v1-history-page-cli-by-claude state-claimed-v1-history-page-cli-by-claude)
+  (normally r-cl-chain-v1-history-page-cli-by-claude state-claimed-v1-history-page-cli-by-claude claimed-history-page-cli)
+)
+
+;; Propagation rules: failures in 'history-page-cli' block downstream tasks
+(normally r-propagate-integration-tests-from-history-page-cli-failed failed-history-page-cli upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-history-page-cli-permanently-failed permanently-failed-history-page-cli upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-history-page-cli-stale-v1 stale-v1-history-page-cli upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-history-page-cli-timeout-v1 timeout-v1-history-page-cli upstream-blocked-integration-tests)
+(normally r-propagate-serve-history-api-from-history-page-cli-failed failed-history-page-cli upstream-blocked-serve-history-api)
+(normally r-propagate-serve-history-api-from-history-page-cli-permanently-failed permanently-failed-history-page-cli upstream-blocked-serve-history-api)
+(normally r-propagate-serve-history-api-from-history-page-cli-stale-v1 stale-v1-history-page-cli upstream-blocked-serve-history-api)
+(normally r-propagate-serve-history-api-from-history-page-cli-timeout-v1 timeout-v1-history-page-cli upstream-blocked-serve-history-api)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T08:37:08Z"
+  (given completed-history-page-cli)
+  (given eval-result-v1-history-page-cli-by-claude)
+  (given eval-confidence-v1-history-page-cli-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T08:37:14Z"
+  (given delegated-v1-diff-jj-backend-to-agent:claude)
+  (given (during (leased-v1-diff-jj-backend) (moment "2026-03-04T08:37:14Z") (moment "2026-03-04T09:07:14Z")))
+  (given claim-v1-diff-jj-backend-by-claude)
+  (normally r-cl-state-v1-diff-jj-backend-by-claude claim-v1-diff-jj-backend-by-claude state-claimed-v1-diff-jj-backend-by-claude)
+  (normally r-cl-chain-v1-diff-jj-backend-by-claude state-claimed-v1-diff-jj-backend-by-claude claimed-diff-jj-backend)
+)
+
+;; Propagation rules: failures in 'diff-jj-backend' block downstream tasks
+(normally r-propagate-hook-context-history-from-diff-jj-backend-failed failed-diff-jj-backend upstream-blocked-hook-context-history)
+(normally r-propagate-hook-context-history-from-diff-jj-backend-permanently-failed permanently-failed-diff-jj-backend upstream-blocked-hook-context-history)
+(normally r-propagate-hook-context-history-from-diff-jj-backend-stale-v1 stale-v1-diff-jj-backend upstream-blocked-hook-context-history)
+(normally r-propagate-hook-context-history-from-diff-jj-backend-timeout-v1 timeout-v1-diff-jj-backend upstream-blocked-hook-context-history)
+(normally r-propagate-integration-tests-from-diff-jj-backend-failed failed-diff-jj-backend upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-diff-jj-backend-permanently-failed permanently-failed-diff-jj-backend upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-diff-jj-backend-stale-v1 stale-v1-diff-jj-backend upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-diff-jj-backend-timeout-v1 timeout-v1-diff-jj-backend upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T08:43:45Z"
+  (given completed-diff-jj-backend)
+  (given eval-result-v1-diff-jj-backend-by-claude)
+  (given eval-confidence-v1-diff-jj-backend-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T08:43:51Z"
+  (given delegated-v1-serve-history-api-to-agent:claude)
+  (given (during (leased-v1-serve-history-api) (moment "2026-03-04T08:43:51Z") (moment "2026-03-04T09:13:51Z")))
+  (given claim-v1-serve-history-api-by-claude)
+  (normally r-cl-state-v1-serve-history-api-by-claude claim-v1-serve-history-api-by-claude state-claimed-v1-serve-history-api-by-claude)
+  (normally r-cl-chain-v1-serve-history-api-by-claude state-claimed-v1-serve-history-api-by-claude claimed-serve-history-api)
+)
+
+;; Propagation rules: failures in 'serve-history-api' block downstream tasks
+(normally r-propagate-integration-tests-from-serve-history-api-failed failed-serve-history-api upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-serve-history-api-permanently-failed permanently-failed-serve-history-api upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-serve-history-api-stale-v1 stale-v1-serve-history-api upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-serve-history-api-timeout-v1 timeout-v1-serve-history-api upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T08:54:45Z"
+  (given completed-serve-history-api)
+  (given eval-result-v1-serve-history-api-by-claude)
+  (given eval-confidence-v1-serve-history-api-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T08:54:51Z"
+  (given delegated-v1-vault-history-template-context-to-agent:claude)
+  (given (during (leased-v1-vault-history-template-context) (moment "2026-03-04T08:54:51Z") (moment "2026-03-04T09:24:51Z")))
+  (given claim-v1-vault-history-template-context-by-claude)
+  (normally r-cl-state-v1-vault-history-template-context-by-claude claim-v1-vault-history-template-context-by-claude state-claimed-v1-vault-history-template-context-by-claude)
+  (normally r-cl-chain-v1-vault-history-template-context-by-claude state-claimed-v1-vault-history-template-context-by-claude claimed-vault-history-template-context)
+)
+
+;; Propagation rules: failures in 'vault-history-template-context' block downstream tasks
+(normally r-propagate-build-history-export-from-vault-history-template-context-failed failed-vault-history-template-context upstream-blocked-build-history-export)
+(normally r-propagate-build-history-export-from-vault-history-template-context-permanently-failed permanently-failed-vault-history-template-context upstream-blocked-build-history-export)
+(normally r-propagate-build-history-export-from-vault-history-template-context-stale-v1 stale-v1-vault-history-template-context upstream-blocked-build-history-export)
+(normally r-propagate-build-history-export-from-vault-history-template-context-timeout-v1 timeout-v1-vault-history-template-context upstream-blocked-build-history-export)
+(normally r-propagate-integration-tests-from-vault-history-template-context-failed failed-vault-history-template-context upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-vault-history-template-context-permanently-failed permanently-failed-vault-history-template-context upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-vault-history-template-context-stale-v1 stale-v1-vault-history-template-context upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-vault-history-template-context-timeout-v1 timeout-v1-vault-history-template-context upstream-blocked-integration-tests)
+(normally r-propagate-page-history-template-context-from-vault-history-template-context-failed failed-vault-history-template-context upstream-blocked-page-history-template-context)
+(normally r-propagate-page-history-template-context-from-vault-history-template-context-permanently-failed permanently-failed-vault-history-template-context upstream-blocked-page-history-template-context)
+(normally r-propagate-page-history-template-context-from-vault-history-template-context-stale-v1 stale-v1-vault-history-template-context upstream-blocked-page-history-template-context)
+(normally r-propagate-page-history-template-context-from-vault-history-template-context-timeout-v1 timeout-v1-vault-history-template-context upstream-blocked-page-history-template-context)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T09:06:45Z"
+  (given completed-vault-history-template-context)
+  (given eval-result-v1-vault-history-template-context-by-claude)
+  (given eval-confidence-v1-vault-history-template-context-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T09:06:52Z"
+  (given delegated-v1-page-history-template-context-to-agent:claude)
+  (given (during (leased-v1-page-history-template-context) (moment "2026-03-04T09:06:52Z") (moment "2026-03-04T09:36:52Z")))
+  (given claim-v1-page-history-template-context-by-claude)
+  (normally r-cl-state-v1-page-history-template-context-by-claude claim-v1-page-history-template-context-by-claude state-claimed-v1-page-history-template-context-by-claude)
+  (normally r-cl-chain-v1-page-history-template-context-by-claude state-claimed-v1-page-history-template-context-by-claude claimed-page-history-template-context)
+)
+
+;; Propagation rules: failures in 'page-history-template-context' block downstream tasks
+(normally r-propagate-backlink-timestamps-from-page-history-template-context-failed failed-page-history-template-context upstream-blocked-backlink-timestamps)
+(normally r-propagate-backlink-timestamps-from-page-history-template-context-permanently-failed permanently-failed-page-history-template-context upstream-blocked-backlink-timestamps)
+(normally r-propagate-backlink-timestamps-from-page-history-template-context-stale-v1 stale-v1-page-history-template-context upstream-blocked-backlink-timestamps)
+(normally r-propagate-backlink-timestamps-from-page-history-template-context-timeout-v1 timeout-v1-page-history-template-context upstream-blocked-backlink-timestamps)
+(normally r-propagate-build-history-export-from-page-history-template-context-failed failed-page-history-template-context upstream-blocked-build-history-export)
+(normally r-propagate-build-history-export-from-page-history-template-context-permanently-failed permanently-failed-page-history-template-context upstream-blocked-build-history-export)
+(normally r-propagate-build-history-export-from-page-history-template-context-stale-v1 stale-v1-page-history-template-context upstream-blocked-build-history-export)
+(normally r-propagate-build-history-export-from-page-history-template-context-timeout-v1 timeout-v1-page-history-template-context upstream-blocked-build-history-export)
+(normally r-propagate-integration-tests-from-page-history-template-context-failed failed-page-history-template-context upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-page-history-template-context-permanently-failed permanently-failed-page-history-template-context upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-page-history-template-context-stale-v1 stale-v1-page-history-template-context upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-page-history-template-context-timeout-v1 timeout-v1-page-history-template-context upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T09:14:47Z"
+  (given completed-page-history-template-context)
+  (given eval-result-v1-page-history-template-context-by-claude)
+  (given eval-confidence-v1-page-history-template-context-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T09:14:54Z"
+  (given delegated-v1-backlink-timestamps-to-agent:claude)
+  (given (during (leased-v1-backlink-timestamps) (moment "2026-03-04T09:14:54Z") (moment "2026-03-04T09:44:54Z")))
+  (given claim-v1-backlink-timestamps-by-claude)
+  (normally r-cl-state-v1-backlink-timestamps-by-claude claim-v1-backlink-timestamps-by-claude state-claimed-v1-backlink-timestamps-by-claude)
+  (normally r-cl-chain-v1-backlink-timestamps-by-claude state-claimed-v1-backlink-timestamps-by-claude claimed-backlink-timestamps)
+)
+
+;; Propagation rules: failures in 'backlink-timestamps' block downstream tasks
+(normally r-propagate-integration-tests-from-backlink-timestamps-failed failed-backlink-timestamps upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-backlink-timestamps-permanently-failed permanently-failed-backlink-timestamps upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-backlink-timestamps-stale-v1 stale-v1-backlink-timestamps upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-backlink-timestamps-timeout-v1 timeout-v1-backlink-timestamps upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T09:24:25Z"
+  (given completed-backlink-timestamps)
+  (given eval-result-v1-backlink-timestamps-by-claude)
+  (given eval-confidence-v1-backlink-timestamps-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T09:24:33Z"
+  (given delegated-v1-hook-context-history-to-agent:claude)
+  (given (during (leased-v1-hook-context-history) (moment "2026-03-04T09:24:33Z") (moment "2026-03-04T09:54:33Z")))
+  (given claim-v1-hook-context-history-by-claude)
+  (normally r-cl-state-v1-hook-context-history-by-claude claim-v1-hook-context-history-by-claude state-claimed-v1-hook-context-history-by-claude)
+  (normally r-cl-chain-v1-hook-context-history-by-claude state-claimed-v1-hook-context-history-by-claude claimed-hook-context-history)
+)
+
+;; Propagation rules: failures in 'hook-context-history' block downstream tasks
+(normally r-propagate-integration-tests-from-hook-context-history-failed failed-hook-context-history upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-hook-context-history-permanently-failed permanently-failed-hook-context-history upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-hook-context-history-stale-v1 stale-v1-hook-context-history upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-hook-context-history-timeout-v1 timeout-v1-hook-context-history upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T09:31:29Z"
+  (given completed-hook-context-history)
+  (given eval-result-v1-hook-context-history-by-claude)
+  (given eval-confidence-v1-hook-context-history-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T09:31:36Z"
+  (given delegated-v1-build-history-export-to-agent:claude)
+  (given (during (leased-v1-build-history-export) (moment "2026-03-04T09:31:36Z") (moment "2026-03-04T10:01:36Z")))
+  (given claim-v1-build-history-export-by-claude)
+  (normally r-cl-state-v1-build-history-export-by-claude claim-v1-build-history-export-by-claude state-claimed-v1-build-history-export-by-claude)
+  (normally r-cl-chain-v1-build-history-export-by-claude state-claimed-v1-build-history-export-by-claude claimed-build-history-export)
+)
+
+;; Propagation rules: failures in 'build-history-export' block downstream tasks
+(normally r-propagate-integration-tests-from-build-history-export-failed failed-build-history-export upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-build-history-export-permanently-failed permanently-failed-build-history-export upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-build-history-export-stale-v1 stale-v1-build-history-export upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-build-history-export-timeout-v1 timeout-v1-build-history-export upstream-blocked-integration-tests)
+(normally r-propagate-observability-from-build-history-export-failed failed-build-history-export upstream-blocked-observability)
+(normally r-propagate-observability-from-build-history-export-permanently-failed permanently-failed-build-history-export upstream-blocked-observability)
+(normally r-propagate-observability-from-build-history-export-stale-v1 stale-v1-build-history-export upstream-blocked-observability)
+(normally r-propagate-observability-from-build-history-export-timeout-v1 timeout-v1-build-history-export upstream-blocked-observability)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T09:43:44Z"
+  (given completed-build-history-export)
+  (given eval-result-v1-build-history-export-by-claude)
+  (given eval-confidence-v1-build-history-export-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T09:43:51Z"
+  (given delegated-v1-observability-to-agent:claude)
+  (given (during (leased-v1-observability) (moment "2026-03-04T09:43:51Z") (moment "2026-03-04T10:13:51Z")))
+  (given claim-v1-observability-by-claude)
+  (normally r-cl-state-v1-observability-by-claude claim-v1-observability-by-claude state-claimed-v1-observability-by-claude)
+  (normally r-cl-chain-v1-observability-by-claude state-claimed-v1-observability-by-claude claimed-observability)
+)
+
+;; Propagation rules: failures in 'observability' block downstream tasks
+(normally r-propagate-integration-tests-from-observability-failed failed-observability upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-observability-permanently-failed permanently-failed-observability upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-observability-stale-v1 stale-v1-observability upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-observability-timeout-v1 timeout-v1-observability upstream-blocked-integration-tests)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T09:55:41Z"
+  (given completed-observability)
+  (given eval-result-v1-observability-by-claude)
+  (given eval-confidence-v1-observability-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-04T09:55:48Z"
+  (given delegated-v1-integration-tests-to-agent:claude)
+  (given (during (leased-v1-integration-tests) (moment "2026-03-04T09:55:48Z") (moment "2026-03-04T10:25:48Z")))
+  (given claim-v1-integration-tests-by-claude)
+  (normally r-cl-state-v1-integration-tests-by-claude claim-v1-integration-tests-by-claude state-claimed-v1-integration-tests-by-claude)
+  (normally r-cl-chain-v1-integration-tests-by-claude state-claimed-v1-integration-tests-by-claude claimed-integration-tests)
+)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-04T10:10:35Z"
+  (given completed-integration-tests)
+  (given eval-result-v1-integration-tests-by-claude)
+  (given eval-confidence-v1-integration-tests-1.00)
+)
