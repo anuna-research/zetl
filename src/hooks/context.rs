@@ -30,6 +30,9 @@ pub struct HookContext {
     pub pages: Vec<HookPageEntry>,
     /// Aggregate vault statistics.
     pub stats: HookStats,
+    /// Vault snapshot history summary (REQ-090).
+    /// `null` (JSON) when history is unavailable.
+    pub history: serde_json::Value,
     /// Output directory for build hooks (only present for post-build).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub out_dir: Option<String>,
@@ -161,6 +164,11 @@ pub fn build_hook_context(
         orphans: graph_stats.orphans,
     };
 
+    #[cfg(feature = "history")]
+    let history = crate::history::build_hook_history_context(vault_root);
+    #[cfg(not(feature = "history"))]
+    let history = serde_json::Value::Null;
+
     HookContext {
         hook: hook_name.to_string(),
         vault_root: vault_root.to_string_lossy().into_owned(),
@@ -168,6 +176,7 @@ pub fn build_hook_context(
         zetl_version: zetl_version.to_string(),
         pages,
         stats,
+        history,
         out_dir: None,
         pages_rendered: None,
         port: None,
@@ -373,6 +382,8 @@ mod tests {
         assert!(val["zetl_version"].is_string());
         assert!(val["pages"].is_array());
         assert!(val["stats"].is_object());
+        // history is always present: null when history feature is absent.
+        assert!(val.get("history").is_some());
 
         // Verify page fields.
         let page = &val["pages"][0];

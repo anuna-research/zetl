@@ -3,7 +3,7 @@
 //!
 //! Tests in this file require `--features history` to compile.
 //!
-//! Test ranges: TEST-080 through TEST-134.
+//! Test ranges: TEST-080 through TEST-137.
 //! TEST-080–089 are covered here (task-jj-backend).
 //! TEST-090–091 are covered here (task-time-expression-parser).
 //! TEST-092–094 are covered here (task-auto-snapshot).
@@ -15,6 +15,7 @@
 //! TEST-113–114 are covered here (task-diff-jj-backend).
 //! TEST-115–118 are covered here (task-serve-history-api).
 //! TEST-132–134 are covered here (task-backlink-timestamps).
+//! TEST-135–137 are covered here (task-hook-context-history).
 
 use std::fs;
 use std::path::Path;
@@ -2084,4 +2085,108 @@ fn test_134_resolve_backlink_since_none_for_missing_cache() {
 
     let result = resolve_backlink_since("source", "target", &snapshots, &fps);
     assert!(result.is_none(), "must return None when no cached indexes are available");
+}
+
+// ── Hook context history tests (REQ-090) ─────────────────────────────────────
+// TEST-135–137 cover task-hook-context-history.
+
+// TEST-135: build_hook_history_context returns Null when no history exists (REQ-090).
+#[test]
+fn test_135_hook_history_null_when_no_history() {
+    let dir = tempfile::TempDir::new().unwrap();
+    // No .zetl/jj/ directory → open_history fails → must return Null.
+    let result = zetl::history::build_hook_history_context(dir.path());
+    assert!(result.is_null(), "must be null when no history is available; got {result:?}");
+}
+
+// TEST-136: build_hook_history_context returns correct snapshot_count, oldest,
+// newest, and vault_root_hash after two distinct snapshots (REQ-090).
+#[test]
+fn test_136_hook_history_basic_fields() {
+    use zetl::history::cache::HistoricalIndexCache;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    let hash1 = "1".repeat(64);
+    let hash2 = "2".repeat(64);
+
+    write(vault_root, "alpha.md", "# Alpha");
+    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+
+    write(vault_root, "beta.md", "# Beta");
+    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+
+    let cache = HistoricalIndexCache::with_default_capacity();
+    cache
+        .store(vault_root, &hash1, &[make_parsed_file("alpha", &[])])
+        .unwrap();
+    cache
+        .store(vault_root, &hash2, &[make_parsed_file("alpha", &[]), make_parsed_file("beta", &[])])
+        .unwrap();
+
+    let result = zetl::history::build_hook_history_context(vault_root);
+    assert!(!result.is_null(), "must not be null when history is available");
+
+    assert_eq!(result["snapshot_count"], 2, "snapshot_count must be 2");
+    assert!(result["oldest"].is_string(), "oldest must be a string timestamp");
+    assert!(result["newest"].is_string(), "newest must be a string timestamp");
+    assert_eq!(result["vault_root_hash"], hash2, "vault_root_hash must be the most recent");
+    assert_eq!(result["previous_vault_root_hash"], hash1, "previous_vault_root_hash must be the earlier one");
+    // Verify newest >= oldest lexicographically (both are RFC 3339).
+    assert!(
+        result["newest"].as_str().unwrap() >= result["oldest"].as_str().unwrap(),
+        "newest must be at or after oldest"
+    );
+}
+
+// TEST-137: build_hook_history_context delta reflects changes between two snapshots (REQ-090).
+#[test]
+fn test_137_hook_history_delta_reflects_changes() {
+    use zetl::history::cache::HistoricalIndexCache;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    let hash1 = "a".repeat(64);
+    let hash2 = "b".repeat(64);
+
+    // Snapshot 1: one page, no links.
+    write(vault_root, "page_a.md", "# A");
+    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+
+    // Snapshot 2: page_a gains a link to page_b; page_b added.
+    write(vault_root, "page_b.md", "# B");
+    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+
+    let cache = HistoricalIndexCache::with_default_capacity();
+    cache
+        .store(vault_root, &hash1, &[make_parsed_file("page_a", &[])])
+        .unwrap();
+    cache
+        .store(
+            vault_root,
+            &hash2,
+            &[
+                make_parsed_file("page_a", &["page_b"]),
+                make_parsed_file("page_b", &[]),
+            ],
+        )
+        .unwrap();
+
+    let result = zetl::history::build_hook_history_context(vault_root);
+    assert!(!result.is_null(), "must not be null when history is available");
+
+    let delta = &result["delta"];
+    assert!(delta.is_object(), "delta must be an object when two distinct states exist");
+
+    let pages_added = delta["pages_added"].as_array().unwrap();
+    assert_eq!(pages_added.len(), 1, "one page added: page_b");
+    assert_eq!(pages_added[0], "page_b");
+
+    let pages_removed = delta["pages_removed"].as_array().unwrap();
+    assert!(pages_removed.is_empty(), "no pages removed");
+
+    assert_eq!(delta["links_added"], 1, "one link added (page_a→page_b)");
+    assert_eq!(delta["links_removed"], 0, "no links removed");
 }
