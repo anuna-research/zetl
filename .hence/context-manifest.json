@@ -1,12 +1,12 @@
 {
-  "task_id": "observability",
-  "token_budget": 4000,
-  "tokens_used": 4000,
+  "task_id": "integration-tests",
+  "token_budget": 12000,
+  "tokens_used": 361,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add OBS-011/OBS-012/OBS-013 verbose timing output: snapshot creation, --at resolution, cache hit/miss, history load; zetl graph stats history section; serve/build context timing lines",
-      "token_cost": 45,
+      "content": "Implement and verify all TEST-080 through TEST-113 integration tests; verify NFR-026 (≤50ms snapshot overhead), NFR-028 (≤100ms cache hit), NFR-029 (≤3s cache miss), NFR-030 (≤15MB binary delta), NFR-032 (≤500KB history-index.json), NFR-033 (≤2s build overhead)",
+      "token_cost": 68,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T09:43:51Z"
+  "constructed_at": "2026-03-04T09:55:48Z"
 }
