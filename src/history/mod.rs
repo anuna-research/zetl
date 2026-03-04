@@ -10,8 +10,11 @@
 //! compiled, keeping the default binary identical in size to the pre-SPEC-017
 //! build.
 //!
-//! # Planned submodules
+//! # Submodules
 //!
 //! - `jj_backend`  — JjBackend wrapper around jj-lib (task-jj-backend)
 //! - `cache`       — HistoricalIndexCache keyed by vault_root_hash (task-historical-index-cache)
-//! - `core`        — Pure temporal functions: time-expr parser, delta, timeline (task-time-expression-parser, task-history-cli)
+//! - `core`        — Pure temporal functions: time-expr parser, delta, timeline
+//!                   (task-time-expression-parser, task-history-cli)
+
+pub mod jj_backend;
