@@ -17,4 +17,5 @@
 //! - `core`        — Pure temporal functions: time-expr parser, delta, timeline
 //!                   (task-time-expression-parser, task-history-cli)
 
+pub mod core;
 pub mod jj_backend;

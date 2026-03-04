@@ -155,3 +155,97 @@ fn test_089_read_file_at_missing_path_errors() {
         "missing path must return Err"
     );
 }
+
+// ─── TEST-090 / TEST-091: time-expression-parser integration ──────────────────
+//
+// These tests exercise parse_time_expr and resolve_snapshot against real jj
+// snapshots (REQ-077, CON-024).
+
+use chrono::{FixedOffset, TimeZone as _};
+use zetl::history::core::{resolve_snapshot, TimeExpr, parse_time_expr};
+
+// TEST-090: parse_time_expr resolves ISO 8601 and relative forms correctly.
+#[test]
+fn test_090_time_expression_parser_forms() {
+    let now = FixedOffset::east_opt(0)
+        .unwrap()
+        .with_ymd_and_hms(2026, 3, 4, 12, 0, 0)
+        .unwrap();
+
+    // ISO 8601 date
+    assert!(matches!(
+        parse_time_expr("2026-01-01", now).unwrap(),
+        TimeExpr::Absolute(_)
+    ));
+
+    // ISO 8601 datetime
+    assert!(matches!(
+        parse_time_expr("2026-01-01T00:00:00Z", now).unwrap(),
+        TimeExpr::Absolute(_)
+    ));
+
+    // Relative
+    assert!(matches!(
+        parse_time_expr("yesterday", now).unwrap(),
+        TimeExpr::Absolute(_)
+    ));
+    assert!(matches!(
+        parse_time_expr("7 days ago", now).unwrap(),
+        TimeExpr::Absolute(_)
+    ));
+
+    // HEAD refs
+    assert_eq!(parse_time_expr("HEAD", now).unwrap(), TimeExpr::HeadOffset(0));
+    assert_eq!(parse_time_expr("HEAD~2", now).unwrap(), TimeExpr::HeadOffset(2));
+
+    // VCS ref passthrough
+    assert_eq!(
+        parse_time_expr("my-branch", now).unwrap(),
+        TimeExpr::Ref("my-branch".to_owned())
+    );
+}
+
+// TEST-091: resolve_snapshot returns most recent snapshot at or before the
+// resolved time; SNAPSHOT_NOT_FOUND when no match.
+#[test]
+fn test_091_resolve_snapshot_against_real_jj() {
+    let dir = tempfile::TempDir::new().unwrap();
+    write(dir.path(), "v1.md", "version one");
+
+    let mut b = JjBackend::open_or_init(dir.path()).unwrap();
+    b.snapshot("snap-v1").unwrap().unwrap();
+
+    write(dir.path(), "v2.md", "version two");
+    b.snapshot("snap-v2").unwrap().unwrap();
+
+    let snapshots = b.list_changes(100).unwrap();
+    assert_eq!(snapshots.len(), 2);
+
+    let now = chrono::Utc::now().fixed_offset();
+
+    // HEAD~0 → most recent snapshot (snap-v2).
+    let result = resolve_snapshot("HEAD~0", now, &snapshots).unwrap();
+    assert_eq!(result.description, "snap-v2");
+
+    // HEAD~1 → second snapshot (snap-v1).
+    let result = resolve_snapshot("HEAD~1", now, &snapshots).unwrap();
+    assert_eq!(result.description, "snap-v1");
+
+    // HEAD~2 → out of range.
+    let err = resolve_snapshot("HEAD~2", now, &snapshots).unwrap_err();
+    assert!(
+        err.to_string().contains("SNAPSHOT_NOT_FOUND"),
+        "expected SNAPSHOT_NOT_FOUND, got {err}"
+    );
+
+    // ISO date far in the future → most recent snapshot (both qualify).
+    let result = resolve_snapshot("2099-12-31", now, &snapshots).unwrap();
+    assert_eq!(result.description, "snap-v2");
+
+    // ISO date far in the past → SNAPSHOT_NOT_FOUND.
+    let err = resolve_snapshot("2000-01-01", now, &snapshots).unwrap_err();
+    assert!(
+        err.to_string().contains("SNAPSHOT_NOT_FOUND"),
+        "expected SNAPSHOT_NOT_FOUND, got {err}"
+    );
+}
