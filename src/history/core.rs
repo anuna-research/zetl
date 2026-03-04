@@ -393,6 +393,132 @@ pub fn build_vault_history(
     Ok(entries)
 }
 
+// ─── Vault history template context (REQ-085, CON-026, ADR-049) ─────────────
+
+/// A single trend point for the `vault.history.trend` array.
+#[derive(Debug, Clone, Serialize)]
+pub struct TrendPoint {
+    /// RFC 3339 timestamp of the sampled snapshot.
+    pub timestamp: String,
+    /// Number of pages in the vault at this point in time.
+    pub total_pages: usize,
+    /// Total link count in the vault at this point in time.
+    pub total_links: usize,
+}
+
+/// The `vault.history` object injected into Minijinja template context (REQ-085, CON-026, ADR-049).
+///
+/// Summarises the vault's snapshot history for use in templates.
+/// Available as `vault.history` in all templates; `null` when no history exists.
+#[derive(Debug, Clone, Serialize)]
+pub struct VaultHistoryContext {
+    /// Up to 30 uniformly sampled trend points, oldest-first.
+    pub trend: Vec<TrendPoint>,
+    /// Up to 10 most recent history entries with full delta info.
+    pub recent_changes: Vec<HistoryEntry>,
+    /// RFC 3339 timestamp of the oldest snapshot, if any.
+    pub oldest: Option<String>,
+    /// RFC 3339 timestamp of the newest snapshot, if any.
+    pub newest: Option<String>,
+    /// RFC 3339 timestamp of the first snapshot ever made (epoch), if any.
+    pub epoch: Option<String>,
+    /// Total number of raw snapshots (before deduplication).
+    pub snapshot_count: usize,
+    /// Number of unique vault states (distinct `vault_root_hash` values after collapsing).
+    pub unique_states: usize,
+}
+
+/// Sample up to `max_points` uniformly spaced entries from a newest-first history list.
+///
+/// Returns trend points in **oldest-first** order suitable for chart rendering.
+/// Always includes both the newest and oldest entries when `max_points >= 2`.
+///
+/// This is a **pure function**: no I/O, no VCS calls.
+pub fn sample_trend(entries: &[HistoryEntry], max_points: usize) -> Vec<TrendPoint> {
+    if max_points == 0 || entries.is_empty() {
+        return Vec::new();
+    }
+
+    // Convert to oldest-first view.
+    let reversed: Vec<&HistoryEntry> = entries.iter().rev().collect();
+    let n = reversed.len();
+
+    let selected: Vec<&HistoryEntry> = if n <= max_points {
+        reversed.iter().copied().collect()
+    } else {
+        // Uniformly sample max_points indices spanning the full range.
+        (0..max_points)
+            .map(|i| {
+                let idx = if max_points == 1 {
+                    0
+                } else {
+                    i * (n - 1) / (max_points - 1)
+                };
+                reversed[idx]
+            })
+            .collect()
+    };
+
+    selected
+        .into_iter()
+        .map(|e| TrendPoint {
+            timestamp: e.timestamp.clone(),
+            total_pages: e.total_pages,
+            total_links: e.total_links,
+        })
+        .collect()
+}
+
+/// Build the `vault.history` template context object (REQ-085, CON-026, ADR-049).
+///
+/// Calls [`build_vault_history`] with no filter to get the full collapsed
+/// timeline, then derives summary fields. Returns `None` when `snapshots` is
+/// empty or the resulting timeline is empty.
+///
+/// This is a **pure function** aside from the cache reads performed by
+/// [`build_vault_history`] internally.
+pub fn build_vault_history_context(
+    snapshots: &[ChangeInfo],
+    vault_root: &std::path::Path,
+    now: DateTime<FixedOffset>,
+) -> anyhow::Result<Option<VaultHistoryContext>> {
+    if snapshots.is_empty() {
+        return Ok(None);
+    }
+
+    let snapshot_count = snapshots.len();
+
+    // Build the full collapsed timeline (no since filter, no limit).
+    let all_entries = build_vault_history(snapshots, vault_root, None, usize::MAX, now)?;
+
+    if all_entries.is_empty() {
+        return Ok(None);
+    }
+
+    // Count unique states: entries that carry a vault_root_hash (after collapse each hash appears once).
+    let unique_states = all_entries
+        .iter()
+        .filter(|e| e.vault_root_hash.is_some())
+        .count();
+
+    let newest = all_entries.first().map(|e| e.timestamp.clone());
+    let oldest = all_entries.last().map(|e| e.timestamp.clone());
+    let epoch = oldest.clone();
+
+    let trend = sample_trend(&all_entries, 30);
+    let recent_changes = all_entries.into_iter().take(10).collect();
+
+    Ok(Some(VaultHistoryContext {
+        trend,
+        recent_changes,
+        oldest,
+        newest,
+        epoch,
+        snapshot_count,
+        unique_states,
+    }))
+}
+
 // ─── Per-page history ─────────────────────────────────────────────────────────
 
 /// Neighbourhood delta between two consecutive snapshots for a single page (REQ-081).

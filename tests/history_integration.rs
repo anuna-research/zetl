@@ -1498,3 +1498,210 @@ async fn test_118_api_history_diff_missing_params_returns_400() {
         "error body must mention parameter 'to', got: {body2}"
     );
 }
+
+// TEST-119: sample_trend with fewer entries than max returns all in oldest-first order.
+#[test]
+fn test_119_sample_trend_fewer_than_max() {
+    use zetl::history::core::{sample_trend, HistoryEntry};
+
+    let entries = vec![
+        HistoryEntry {
+            change_id: "newest".to_owned(),
+            timestamp: "2026-03-04T12:00:00Z".to_owned(),
+            vault_root_hash: Some("h2".to_owned()),
+            total_pages: 5,
+            total_links: 8,
+            delta: None,
+        },
+        HistoryEntry {
+            change_id: "oldest".to_owned(),
+            timestamp: "2026-03-01T08:00:00Z".to_owned(),
+            vault_root_hash: Some("h1".to_owned()),
+            total_pages: 2,
+            total_links: 1,
+            delta: None,
+        },
+    ];
+
+    // Request more points than we have — should return all, oldest-first.
+    let trend = sample_trend(&entries, 30);
+    assert_eq!(trend.len(), 2);
+    assert_eq!(trend[0].timestamp, "2026-03-01T08:00:00Z", "oldest first");
+    assert_eq!(trend[0].total_pages, 2);
+    assert_eq!(trend[1].timestamp, "2026-03-04T12:00:00Z", "newest last");
+    assert_eq!(trend[1].total_pages, 5);
+}
+
+// TEST-120: sample_trend with more entries than max samples uniformly oldest-first.
+#[test]
+fn test_120_sample_trend_uniform_sampling() {
+    use zetl::history::core::{sample_trend, HistoryEntry};
+
+    // Build 10 entries newest-first with pages = index+1.
+    let entries: Vec<HistoryEntry> = (0..10)
+        .map(|i| HistoryEntry {
+            change_id: format!("c{i}"),
+            timestamp: format!("2026-03-{:02}T00:00:00Z", 10 - i),
+            vault_root_hash: Some(format!("h{i}")),
+            total_pages: 10 - i,
+            total_links: 0,
+            delta: None,
+        })
+        .collect();
+
+    let trend = sample_trend(&entries, 3);
+    assert_eq!(trend.len(), 3, "must return exactly 3 points");
+    // With 10 entries and 3 points: indices 0, 4, 9 in oldest-first (reversed) order.
+    // reversed[0] = entries[9] (oldest, total_pages=1)
+    // reversed[4] = entries[5] (total_pages=5)
+    // reversed[9] = entries[0] (newest, total_pages=10)
+    assert_eq!(trend[0].total_pages, 1, "first point must be oldest");
+    assert_eq!(trend[2].total_pages, 10, "last point must be newest");
+    // Middle point: index 4 in reversed → entries[5] → total_pages=5
+    assert_eq!(trend[1].total_pages, 5, "middle point must be at midpoint");
+}
+
+// TEST-121: sample_trend on empty input returns empty vec.
+#[test]
+fn test_121_sample_trend_empty_input() {
+    use zetl::history::core::sample_trend;
+    assert!(sample_trend(&[], 30).is_empty());
+    assert!(sample_trend(&[], 0).is_empty());
+}
+
+// TEST-122: build_vault_history_context returns None when snapshots is empty (REQ-085).
+#[test]
+fn test_122_build_vault_history_context_empty_snapshots() {
+    use zetl::history::core::build_vault_history_context;
+    use chrono::{FixedOffset, TimeZone as _};
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let now = FixedOffset::east_opt(0).unwrap().with_ymd_and_hms(2026, 3, 4, 12, 0, 0).unwrap();
+    let result = build_vault_history_context(&[], dir.path(), now).unwrap();
+    assert!(result.is_none(), "empty snapshots must yield None");
+}
+
+// TEST-123: build_vault_history_context returns populated struct with correct fields (REQ-085).
+#[test]
+fn test_123_build_vault_history_context_populated() {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::core::build_vault_history_context;
+    use zetl::history::jj_backend::VcsBackend as _;
+    use chrono::{FixedOffset, TimeZone as _};
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    write(vault_root, "alpha.md", "# Alpha\n[[beta]]");
+    write(vault_root, "beta.md", "# Beta");
+
+    // Create two snapshots with different hashes.
+    let hash1 = "a".repeat(64);
+    let hash2 = "b".repeat(64);
+
+    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    let cache = HistoricalIndexCache::with_default_capacity();
+    cache
+        .store(vault_root, &hash1, &[make_parsed_file("alpha", &["beta"]), make_parsed_file("beta", &[])])
+        .unwrap();
+
+    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+    cache
+        .store(vault_root, &hash2, &[make_parsed_file("alpha", &["beta"]), make_parsed_file("beta", &[]), make_parsed_file("gamma", &[])])
+        .unwrap();
+
+    let mut backend = zetl::history::jj_backend::JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let snapshots = backend.list_changes(100).unwrap();
+
+    let now = FixedOffset::east_opt(0).unwrap().with_ymd_and_hms(2026, 3, 4, 12, 0, 0).unwrap();
+    let ctx = build_vault_history_context(&snapshots, vault_root, now)
+        .unwrap()
+        .expect("must return Some when snapshots exist");
+
+    assert_eq!(ctx.snapshot_count, 2, "must count raw snapshots");
+    assert_eq!(ctx.unique_states, 2, "two distinct vault_root_hash values");
+    assert!(ctx.newest.is_some(), "newest must be set");
+    assert!(ctx.oldest.is_some(), "oldest must be set");
+    assert_eq!(ctx.epoch, ctx.oldest, "epoch == oldest");
+    assert!(!ctx.trend.is_empty(), "trend must have at least one point");
+    assert!(ctx.trend.len() <= 30, "trend must not exceed 30 points");
+    assert!(!ctx.recent_changes.is_empty(), "recent_changes must be set");
+    assert!(ctx.recent_changes.len() <= 10, "recent_changes must not exceed 10");
+}
+
+// TEST-124: build_template_history_context returns None when no jj workspace (REQ-085).
+#[test]
+fn test_124_build_template_history_context_no_workspace() {
+    let dir = tempfile::TempDir::new().unwrap();
+    // No jj workspace initialised.
+    let result = zetl::history::build_template_history_context(dir.path());
+    assert!(result.is_none(), "must return None when no workspace exists");
+}
+
+// TEST-125: vault.history is null in template context when history unavailable (REQ-085).
+#[test]
+fn test_125_vault_history_null_when_no_history() {
+    use zetl::web::engine::TemplateEngine;
+    use zetl::web::context::{build_vault_context, VaultContext, StatsContext, PageEntry};
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    // Custom template that outputs vault.history as JSON.
+    let theme_dir = tmp.path().join(".zetl/themes/hist-test");
+    std::fs::create_dir_all(&theme_dir).unwrap();
+    std::fs::write(
+        theme_dir.join("index.html"),
+        r#"{% extends "base.html" %}{% block content %}{% if vault.history is none %}HISTORY_NULL{% else %}HISTORY_SET{% endif %}{% endblock %}"#,
+    ).unwrap();
+
+    let vault_ctx = VaultContext {
+        name: "test".to_owned(),
+        pages: vec![],
+        sidebar_tree: vec![],
+        stats: StatsContext { total_pages: 0, total_links: 0, dead_links: 0, orphans: 0 },
+        history: serde_json::Value::Null,
+    };
+
+    let engine = TemplateEngine::new(tmp.path(), "hist-test", false, false);
+    let html = engine.render_index(&vault_ctx, "serve", "").unwrap();
+    assert!(html.contains("HISTORY_NULL"), "vault.history must be null/none when unavailable");
+}
+
+// TEST-126: vault.history fields are accessible in template context when history exists (REQ-085).
+#[test]
+fn test_126_vault_history_populated_in_template() {
+    use zetl::web::engine::TemplateEngine;
+    use zetl::web::context::{build_vault_context, VaultContext, StatsContext};
+    use zetl::history::core::{VaultHistoryContext, TrendPoint, HistoryEntry};
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let theme_dir = tmp.path().join(".zetl/themes/hist-test2");
+    std::fs::create_dir_all(&theme_dir).unwrap();
+    std::fs::write(
+        theme_dir.join("index.html"),
+        r#"{% extends "base.html" %}{% block content %}SC:{{ vault.history.snapshot_count }} US:{{ vault.history.unique_states }}{% endblock %}"#,
+    ).unwrap();
+
+    let hist = VaultHistoryContext {
+        trend: vec![TrendPoint { timestamp: "2026-03-01T00:00:00Z".to_owned(), total_pages: 2, total_links: 1 }],
+        recent_changes: vec![],
+        oldest: Some("2026-03-01T00:00:00Z".to_owned()),
+        newest: Some("2026-03-04T00:00:00Z".to_owned()),
+        epoch: Some("2026-03-01T00:00:00Z".to_owned()),
+        snapshot_count: 5,
+        unique_states: 3,
+    };
+
+    let mut vault_ctx = VaultContext {
+        name: "test".to_owned(),
+        pages: vec![],
+        sidebar_tree: vec![],
+        stats: StatsContext { total_pages: 0, total_links: 0, dead_links: 0, orphans: 0 },
+        history: serde_json::Value::Null,
+    };
+    vault_ctx.history = serde_json::to_value(hist).unwrap();
+
+    let engine = TemplateEngine::new(tmp.path(), "hist-test2", false, false);
+    let html = engine.render_index(&vault_ctx, "serve", "").unwrap();
+    assert!(html.contains("SC:5"), "snapshot_count must be accessible in template");
+    assert!(html.contains("US:3"), "unique_states must be accessible in template");
+}

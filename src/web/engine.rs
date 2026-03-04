@@ -456,6 +456,7 @@ mod tests {
                 dead_links: 0,
                 orphans: 0,
             },
+            history: serde_json::Value::Null,
         }
     }
 
@@ -533,6 +534,7 @@ mod tests {
                 dead_links: 0,
                 orphans: 0,
             },
+            history: serde_json::Value::Null,
         };
         let idx = build_search_index(&vault);
         assert!(idx.contains(r#"\"hello\""#));

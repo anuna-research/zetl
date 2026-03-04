@@ -247,7 +247,11 @@ pub fn build_static(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
-    let vault_ctx = build_vault_context(data, &vault_name);
+    let mut vault_ctx = build_vault_context(data, &vault_name);
+    #[cfg(feature = "history")]
+    if let Some(hist) = crate::history::build_template_history_context(vault_root) {
+        vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+    }
 
     // ── search-index.json ────────────────────────────────────────────────
     let bm25_json = write_search_index_json(data, vault_root, out)?;

@@ -44,6 +44,29 @@ pub fn open_history(vault_root: &Path) -> anyhow::Result<jj_backend::JjBackend> 
     jj_backend::JjBackend::open_or_init_at_vault_root(vault_root)
 }
 
+/// Build the `vault.history` template context object (REQ-085, CON-026, ADR-049).
+///
+/// Opens the jj workspace, loads the snapshot list, and calls
+/// [`core::build_vault_history_context`] to produce a populated
+/// [`core::VaultHistoryContext`].
+///
+/// Returns `None` when history is unavailable (no workspace, no snapshots,
+/// or any error encountered). Errors are swallowed so templates always
+/// receive either a populated object or `null`.
+pub fn build_template_history_context(vault_root: &Path) -> Option<core::VaultHistoryContext> {
+    use chrono::Local;
+
+    let backend = open_history(vault_root).ok()?;
+    let snapshots = backend.list_changes(10_000).ok()?;
+    if snapshots.is_empty() {
+        return None;
+    }
+    let now = Local::now().fixed_offset();
+    core::build_vault_history_context(&snapshots, vault_root, now)
+        .ok()
+        .flatten()
+}
+
 /// Create a jj snapshot after index completion (REQ-076, ADR-048).
 ///
 /// - Opens or initialises the jj workspace at `.zetl/jj/`.

@@ -22,6 +22,9 @@ pub struct VaultContext {
     pub pages: Vec<PageEntry>,
     pub sidebar_tree: Vec<SidebarNode>,
     pub stats: StatsContext,
+    /// Vault snapshot history summary available as `vault.history` in templates.
+    /// `null` (JSON) when history is unavailable.
+    pub history: serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -210,6 +213,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         pages,
         sidebar_tree,
         stats,
+        history: serde_json::Value::Null,
     }
 }
 
