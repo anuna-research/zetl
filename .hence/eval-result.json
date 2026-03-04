@@ -3,28 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 561,
-    "deletions": 8,
+    "files_changed": 3,
+    "insertions": 710,
+    "deletions": 63,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/cli.rs",
       "src/history/core.rs",
       "src/main.rs",
       "tests/history_integration.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-history-cli-changes",
-      "content": "Modified 5 files (+561, -8): .hence/context-manifest.json, src/cli.rs, src/history/core.rs, src/main.rs, tests/history_integration.rs",
+      "key": "task-history-page-cli-changes",
+      "content": "Modified 3 files (+710, -63): src/history/core.rs, src/main.rs, tests/history_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/history-cli-v1",
-  "evaluated_at": "2026-03-04T08:26:45Z",
+  "branch_name": "hence/history-page-cli-v1",
+  "evaluated_at": "2026-03-04T08:37:08Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
