@@ -1,12 +1,12 @@
 {
-  "task_id": "graceful-degradation",
-  "token_budget": 5000,
-  "tokens_used": 301,
+  "task_id": "watch-mode-snapshot",
+  "token_budget": 4000,
+  "tokens_used": 307,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement graceful degradation: non-temporal commands unaffected when .zetl/jj/ missing; NO_HISTORY error for temporal commands; silent re-init on next zetl index; --at and zetl history absent from CLI when feature not compiled; zetl diff falls back to SPEC-007 (REQ-084, NFR-031)",
-      "token_cost": 70,
+      "content": "Integrate snapshotting into zetl watch (SPEC-008) post-re-index cycle; asynchronous snapshot creation (non-blocking); same deduplication as auto-snapshot (REQ-082, ADR-048)",
+      "token_cost": 43,
       "priority": "PlanMeta"
     },
     {
@@ -59,11 +59,12 @@
     },
     {
       "source": "memory/episodic/task-graceful-degradation-changes",
-      "content": "Modified 4 files: src/cli.rs (Diff/History subcommands, DiffFilter, HistoryCommand, #[cfg] on --at field), src/history/mod.rs (open_history()), src/main.rs (cmd_diff, cmd_history, NO_HISTORY handling in run_historical_pipeline, fix at_is_some guard), tests/history_integration.rs (TEST-093)",
-      "token_cost": 55,
+      "content": "Modified 5 files (+879, -23): .hence/context-manifest.json, src/cli.rs, src/history/mod.rs, src/main.rs, tests/history_integration.rs",
+      "token_cost": 33,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T08:45:00Z"
+  "constructed_at": "2026-03-04T08:06:28Z",
+  "task_completed": "2026-03-04"
 }

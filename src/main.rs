@@ -708,6 +708,423 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
+// ── zetl watch ─────────────────────────────────────────────────────────────
+
+/// ISO 8601 UTC timestamp using pure std (no external date library needed).
+///
+/// Uses Hinnant's algorithm for Gregorian calendar conversion.
+fn iso8601_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Days since Unix epoch → Gregorian date (Hinnant's algorithm).
+    let z = (secs / 86_400) as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - (doe / 146_096).min(1)) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = y + if m <= 2 { 1 } else { 0 };
+    let h = (secs % 86_400) / 3600;
+    let min = (secs % 3600) / 60;
+    let s = secs % 60;
+    format!("{y:04}-{m:02}-{d:02}T{h:02}:{min:02}:{s:02}Z")
+}
+
+/// Emit a single watch event as a compact JSON line on stdout.
+///
+/// When `exec` is Some, also spawns a detached thread that pipes the event
+/// JSON to stdin of `sh -c <exec>` (REQ-059: non-blocking, per-event).
+fn emit_watch_event(event: &serde_json::Value, exec: Option<&str>, verbose: u8) {
+    let line = serde_json::to_string(event).unwrap_or_default();
+    println!("{line}");
+
+    if let Some(cmd) = exec {
+        let line_clone = line.clone();
+        let cmd_clone = cmd.to_string();
+        let event_type = event.get("event").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+        std::thread::spawn(move || {
+            use std::io::Write;
+            use std::process::{Command, Stdio};
+            let mut child = match Command::new("sh")
+                .args(["-c", &cmd_clone])
+                .stdin(Stdio::piped())
+                .spawn()
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("[zetl watch] --exec spawn failed: {e}");
+                    return;
+                }
+            };
+            if let Some(stdin) = child.stdin.as_mut() {
+                let _ = stdin.write_all(line_clone.as_bytes());
+                let _ = stdin.write_all(b"\n");
+            }
+            drop(child.stdin.take());
+            if let Ok(status) = child.wait() {
+                if !status.success() {
+                    let code = status.code().unwrap_or(-1);
+                    eprintln!("[zetl watch] --exec exited {code} for event {event_type}");
+                }
+            }
+        });
+        let _ = verbose;
+    }
+}
+
+/// Collect `.md` paths from a notify event into `changed`, excluding `.zetl/`.
+fn collect_md_paths(
+    evt: notify::Result<notify::Event>,
+    vault_root: &Path,
+    changed: &mut HashSet<PathBuf>,
+) {
+    let Ok(event) = evt else { return };
+    for path in event.paths {
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        // Ignore changes inside the .zetl/ metadata directory.
+        let rel = path.strip_prefix(vault_root).unwrap_or(&path);
+        if rel.components().any(|c| c.as_os_str() == ".zetl") {
+            continue;
+        }
+        changed.insert(path);
+    }
+}
+
+/// `zetl watch` — watch vault for file changes and emit NDJSON graph events (SPEC-008).
+///
+/// After each incremental re-index cycle, creates a jj snapshot asynchronously
+/// using the same deduplication as `auto_snapshot` (REQ-082, ADR-048).
+fn cmd_watch(cli: &Cli, debounce_ms: u64, exec: Option<&str>) -> Result<()> {
+    use notify::{Config as NotifyConfig, RecommendedWatcher, RecursiveMode, Watcher};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    // Validate vault path (REQ-061).
+    let vault_path = Path::new(&cli.dir);
+    if !vault_path.is_dir() {
+        let err = serde_json::json!({
+            "error": {
+                "code": "VAULT_NOT_FOUND",
+                "message": format!("Path '{}' does not exist or is not a directory.", cli.dir),
+            }
+        });
+        println!("{}", serde_json::to_string(&err)?);
+        std::process::exit(1);
+    }
+
+    // Initial index pass.
+    let mut current = run_pipeline(cli)?;
+    let vault_root = current.vault_root.clone();
+
+    let total_links: usize = current.files.iter().map(|f| f.links.len()).sum();
+    let orphan_count = current.graph.orphans().len();
+    let dead_link_count = current.graph.dead_links().len();
+
+    // Emit index_ready (REQ-057, REQ-058).
+    emit_watch_event(
+        &serde_json::json!({
+            "event": "index_ready",
+            "timestamp": iso8601_now(),
+            "pages": current.files.len(),
+            "links": total_links,
+            "orphans": orphan_count,
+            "dead_links": dead_link_count,
+        }),
+        exec,
+        cli.verbose,
+    );
+
+    if cli.verbose > 0 {
+        eprintln!(
+            "[zetl watch] started  vault={}  debounce={}ms  pages={}",
+            vault_root.display(),
+            debounce_ms,
+            current.files.len()
+        );
+    }
+
+    // Set up FS watcher (REQ-054, ADR-013).
+    let (fs_tx, fs_rx) = mpsc::channel::<notify::Result<notify::Event>>();
+    let mut watcher = RecommendedWatcher::new(
+        move |res| {
+            let _ = fs_tx.send(res);
+        },
+        NotifyConfig::default(),
+    )
+    .context("initialising file-system watcher")?;
+    watcher
+        .watch(&vault_root, RecursiveMode::Recursive)
+        .context("starting file-system watch")?;
+
+    // Graceful shutdown via Ctrl+C / SIGTERM (REQ-060).
+    let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
+    {
+        let tx = shutdown_tx.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("tokio rt for ctrl-c");
+            rt.block_on(async {
+                tokio::signal::ctrl_c().await.ok();
+            });
+            let _ = tx.send(());
+        });
+    }
+    #[cfg(unix)]
+    {
+        let tx = shutdown_tx.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("tokio rt for SIGTERM");
+            rt.block_on(async {
+                use tokio::signal::unix::{signal, SignalKind};
+                if let Ok(mut sig) = signal(SignalKind::terminate()) {
+                    sig.recv().await;
+                }
+            });
+            let _ = tx.send(());
+        });
+    }
+    drop(shutdown_tx); // keep alive only via clones above
+
+    let debounce = Duration::from_millis(debounce_ms);
+    let poll_interval = Duration::from_millis(50);
+
+    // Main watch loop (REQ-055).
+    'watch: loop {
+        // Wait for the first FS event, checking for shutdown every 50ms.
+        let mut changed: HashSet<PathBuf> = HashSet::new();
+
+        loop {
+            if shutdown_rx.try_recv().is_ok() {
+                break 'watch;
+            }
+            match fs_rx.recv_timeout(poll_interval) {
+                Ok(evt) => {
+                    collect_md_paths(evt, &vault_root, &mut changed);
+                    break;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break 'watch,
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            }
+        }
+
+        // Collect remaining events within the debounce window (REQ-055).
+        let deadline = Instant::now() + debounce;
+        loop {
+            let now = Instant::now();
+            if now >= deadline {
+                break;
+            }
+            let remaining = deadline - now;
+            match fs_rx.recv_timeout(remaining) {
+                Ok(evt) => collect_md_paths(evt, &vault_root, &mut changed),
+                _ => break,
+            }
+        }
+
+        if changed.is_empty() {
+            continue;
+        }
+        if shutdown_rx.try_recv().is_ok() {
+            break;
+        }
+
+        // Incremental re-index (REQ-055, REQ-056).
+        let batch_start = Instant::now();
+        let new_pipeline = match run_pipeline(cli) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[zetl watch] re-index error: {e:#}");
+                continue;
+            }
+        };
+
+        let now = iso8601_now();
+
+        // Diff graphs and emit per-change events (REQ-057, REQ-058).
+
+        // Pages added / removed.
+        let old_pages: HashSet<&str> =
+            current.files.iter().map(|f| f.page_name.as_str()).collect();
+        let new_pages: HashSet<&str> =
+            new_pipeline.files.iter().map(|f| f.page_name.as_str()).collect();
+
+        for page in new_pages.difference(&old_pages) {
+            emit_watch_event(
+                &serde_json::json!({"event":"page_added","timestamp":&now,"page":page}),
+                exec,
+                cli.verbose,
+            );
+        }
+        for page in old_pages.difference(&new_pages) {
+            emit_watch_event(
+                &serde_json::json!({"event":"page_removed","timestamp":&now,"page":page}),
+                exec,
+                cli.verbose,
+            );
+        }
+
+        // Links added / removed.
+        let old_links: HashSet<(String, String)> = current
+            .files
+            .iter()
+            .flat_map(|f| {
+                current
+                    .graph
+                    .forward_links(&f.page_name)
+                    .into_iter()
+                    .map(|l| (f.page_name.clone(), l.target.clone()))
+            })
+            .collect();
+        let new_links: HashSet<(String, String)> = new_pipeline
+            .files
+            .iter()
+            .flat_map(|f| {
+                new_pipeline
+                    .graph
+                    .forward_links(&f.page_name)
+                    .into_iter()
+                    .map(|l| (f.page_name.clone(), l.target.clone()))
+            })
+            .collect();
+
+        for (from, to) in new_links.difference(&old_links) {
+            emit_watch_event(
+                &serde_json::json!({"event":"link_added","timestamp":&now,"from":from,"to":to}),
+                exec,
+                cli.verbose,
+            );
+        }
+        for (from, to) in old_links.difference(&new_links) {
+            emit_watch_event(
+                &serde_json::json!({"event":"link_removed","timestamp":&now,"from":from,"to":to}),
+                exec,
+                cli.verbose,
+            );
+        }
+
+        // Orphans gained / resolved.
+        let old_orphans: HashSet<String> =
+            current.graph.orphans().into_iter().map(|o| o.page).collect();
+        let new_orphans: HashSet<String> =
+            new_pipeline.graph.orphans().into_iter().map(|o| o.page).collect();
+
+        for page in new_orphans.difference(&old_orphans) {
+            emit_watch_event(
+                &serde_json::json!({"event":"orphan_gained","timestamp":&now,"page":page}),
+                exec,
+                cli.verbose,
+            );
+        }
+        for page in old_orphans.difference(&new_orphans) {
+            emit_watch_event(
+                &serde_json::json!({"event":"orphan_resolved","timestamp":&now,"page":page}),
+                exec,
+                cli.verbose,
+            );
+        }
+
+        // Dead links added / resolved.
+        let old_dead: HashSet<(String, String)> = current
+            .graph
+            .dead_links()
+            .into_iter()
+            .map(|dl| (dl.source, dl.target))
+            .collect();
+        let new_dead: HashSet<(String, String)> = new_pipeline
+            .graph
+            .dead_links()
+            .into_iter()
+            .map(|dl| (dl.source, dl.target))
+            .collect();
+
+        for (from, to) in new_dead.difference(&old_dead) {
+            emit_watch_event(
+                &serde_json::json!({"event":"dead_link_added","timestamp":&now,"from":from,"to":to}),
+                exec,
+                cli.verbose,
+            );
+        }
+        for (from, to) in old_dead.difference(&new_dead) {
+            emit_watch_event(
+                &serde_json::json!({"event":"dead_link_resolved","timestamp":&now,"from":from,"to":to}),
+                exec,
+                cli.verbose,
+            );
+        }
+
+        // index_updated batch summary event.
+        let changed_page_names: Vec<String> = changed
+            .iter()
+            .filter_map(|p| p.file_stem()?.to_str().map(String::from))
+            .collect();
+        let duration_ms = batch_start.elapsed().as_millis();
+        emit_watch_event(
+            &serde_json::json!({
+                "event": "index_updated",
+                "timestamp": &now,
+                "changed_pages": changed_page_names,
+                "duration_ms": duration_ms,
+            }),
+            exec,
+            cli.verbose,
+        );
+
+        if cli.verbose > 0 {
+            eprintln!(
+                "[zetl watch] batch  changed={}  total_ms={}",
+                changed.len(),
+                duration_ms
+            );
+        }
+
+        // Asynchronous snapshot post-re-index (REQ-082, ADR-048).
+        //
+        // Spawns a detached thread so the watch loop is never blocked.
+        // Uses the same vault_root_hash deduplication as cmd_index (no snapshot
+        // when the graph content is unchanged).
+        #[cfg(feature = "history")]
+        {
+            let vr = vault_root.clone();
+            let hash = load_vault_root_hex(&vault_root).ok().flatten();
+            let verbose = cli.verbose;
+            std::thread::spawn(move || {
+                match zetl::history::auto_snapshot(&vr, hash.as_deref()) {
+                    Ok(Some(change_id)) => {
+                        if verbose > 0 {
+                            eprintln!("[zetl watch] snapshot: {change_id}");
+                        }
+                    }
+                    Ok(None) => {} // deduplicated — graph unchanged
+                    Err(e) => {
+                        if verbose > 0 {
+                            eprintln!("[zetl watch] warning: snapshot failed: {e:#}");
+                        }
+                    }
+                }
+            });
+        }
+
+        current = new_pipeline;
+    }
+
+    if cli.verbose > 0 {
+        eprintln!("[zetl watch] shutdown");
+    }
+    Ok(())
+}
+
 fn cmd_links(
     cli: &Cli,
     page: &str,
@@ -8412,6 +8829,9 @@ fn main() -> anyhow::Result<()> {
         }
         #[cfg(not(feature = "reason"))]
         Command::Reason { .. } => reason_not_available(),
+        Command::Watch { debounce, exec } => {
+            cmd_watch(&cli, *debounce, exec.as_deref())
+        }
         Command::Diff { from, since, filter } => {
             cmd_diff(&cli, from.as_deref(), since.as_deref(), filter.as_ref())
         }

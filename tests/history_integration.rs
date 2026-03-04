@@ -704,3 +704,69 @@ fn test_graceful_degradation_no_history() {
     JjBackend::open_or_init_at_vault_root(dir2.path())
         .expect("open_or_init_at_vault_root must always succeed for non-temporal path");
 }
+
+// TEST-104: Watch-mode snapshot integration (REQ-082, ADR-048).
+//
+// Simulates what cmd_watch does after each re-index cycle: calls auto_snapshot
+// with the current vault_root_hash. Verifies:
+//   1. A new snapshot is created when the graph changes.
+//   2. Deduplication: no second snapshot when vault_root_hash is unchanged.
+//   3. A new snapshot IS created when content changes again (new hash).
+#[test]
+fn test_104_watch_mode_snapshot_deduplication() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    // Step 1: Initial file content → first snapshot.
+    write(vault_root, "page.md", "# Hello\n[[OtherPage]]");
+    let hash_v1 = "a".repeat(64);
+    let result = zetl::history::auto_snapshot(vault_root, Some(&hash_v1))
+        .expect("first watch-cycle snapshot must succeed");
+    assert!(
+        result.is_some(),
+        "first snapshot must return Some(change_id)"
+    );
+
+    // Step 2: File unchanged (same vault_root_hash) → deduplication fires.
+    // This mirrors what cmd_watch does: auto_snapshot is called but vault content
+    // is semantically identical (Merkle root unchanged), so no new commit is made.
+    let result2 = zetl::history::auto_snapshot(vault_root, Some(&hash_v1))
+        .expect("second call with same hash must not error");
+    assert!(
+        result2.is_none(),
+        "same hash must be deduplicated (Ok(None))"
+    );
+
+    // Step 3: File modified → new hash → new snapshot.
+    write(vault_root, "page.md", "# Hello\n[[OtherPage]]\n[[NewLink]]");
+    let hash_v2 = "b".repeat(64);
+    let result3 = zetl::history::auto_snapshot(vault_root, Some(&hash_v2))
+        .expect("third snapshot with new hash must succeed");
+    assert!(
+        result3.is_some(),
+        "changed hash must produce a new snapshot"
+    );
+
+    // Step 4: Verify the jj history shows exactly the two real snapshots.
+    let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let changes = backend.list_changes(10).unwrap();
+    // We expect 2 committed snapshots (hash_v1 and hash_v2).
+    let zetl_snapshots: Vec<_> = changes
+        .iter()
+        .filter(|c| c.description.starts_with("zetl-snapshot"))
+        .collect();
+    assert_eq!(
+        zetl_snapshots.len(),
+        2,
+        "must have exactly 2 zetl snapshots: got {:?}",
+        zetl_snapshots.iter().map(|c| &c.description).collect::<Vec<_>>()
+    );
+    assert!(
+        zetl_snapshots[0].description.contains(&hash_v2),
+        "most recent snapshot must embed hash_v2"
+    );
+    assert!(
+        zetl_snapshots[1].description.contains(&hash_v1),
+        "older snapshot must embed hash_v1"
+    );
+}
