@@ -1245,3 +1245,55 @@ fn test_112_extract_page_history_limit() {
         "entries must be newest-first"
     );
 }
+
+// TEST-113: ChangeInfo.commit_id is a non-empty lowercase hex string, enabling
+// --from git-ref resolution via the jj git backend (REQ-083, ADR-046).
+#[test]
+fn test_113_change_info_commit_id_is_hex() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    write(vault_root, "a.md", "# A");
+    zetl::history::auto_snapshot(vault_root, Some("hash_a")).unwrap();
+    write(vault_root, "b.md", "# B");
+    zetl::history::auto_snapshot(vault_root, Some("hash_b")).unwrap();
+
+    let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let snapshots = backend.list_changes(100).unwrap();
+
+    assert!(snapshots.len() >= 2, "need at least 2 snapshots");
+
+    for snap in &snapshots {
+        assert!(
+            !snap.commit_id.is_empty(),
+            "commit_id must not be empty (snapshot {:?})",
+            snap.change_id
+        );
+        assert!(
+            snap.commit_id.chars().all(|c| c.is_ascii_hexdigit()),
+            "commit_id must be lowercase hex, got {:?}",
+            snap.commit_id
+        );
+    }
+}
+
+// TEST-114: When only one snapshot exists (no @- available), snapshots.get(1)
+// returns None — the condition that triggers NO_PREVIOUS_SNAPSHOT (REQ-083).
+#[test]
+fn test_114_single_snapshot_has_no_previous() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    write(vault_root, "only.md", "# Only page");
+    zetl::history::auto_snapshot(vault_root, Some("only_hash")).unwrap();
+
+    let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let snapshots = backend.list_changes(100).unwrap();
+
+    assert_eq!(snapshots.len(), 1, "exactly one snapshot must be present");
+    // @- (previous distinct snapshot) does not exist.
+    assert!(
+        snapshots.get(1).is_none(),
+        "snapshots[1] must be None when only one snapshot exists (NO_PREVIOUS_SNAPSHOT)"
+    );
+}
