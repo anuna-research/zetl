@@ -813,6 +813,73 @@ pub fn resolve_backlink_since(
     None
 }
 
+// ─── History export (REQ-088, CON-026, ADR-049, ADR-050) ────────────────────
+
+/// Uniformly sample up to `max_points` entries from an **oldest-first**
+/// `PageTrendPoint` slice.
+///
+/// Returns oldest-first. This is a **pure function**: no I/O, no VCS calls.
+pub fn sample_page_trend_points(points: &[PageTrendPoint], max_points: usize) -> Vec<PageTrendPoint> {
+    if max_points == 0 || points.is_empty() {
+        return Vec::new();
+    }
+    let n = points.len();
+    if n <= max_points {
+        return points.to_vec();
+    }
+    (0..max_points)
+        .map(|i| {
+            let idx = if max_points == 1 {
+                0
+            } else {
+                i * (n - 1) / (max_points - 1)
+            };
+            points[idx].clone()
+        })
+        .collect()
+}
+
+/// Produce the `history-index.json` payload (REQ-088, CON-026, ADR-049, ADR-050).
+///
+/// Takes the already-built vault history context and an ordered slice of
+/// `(page_name, &PageHistoryContext)` pairs, and serialises them into a JSON
+/// value with:
+/// - `vault.trend`: ≤30 [`TrendPoint`] items from `vault.trend`
+/// - `pages.<name>.link_trend`: ≤10 [`PageTrendPoint`] items, re-sampled from
+///   the page's ≤30-point trend
+///
+/// This is a **pure function**: no I/O, no VCS calls.
+pub fn serialize_history_index(
+    vault: &VaultHistoryContext,
+    pages: &[(&str, &PageHistoryContext)],
+) -> serde_json::Value {
+    let vault_obj = serde_json::json!({
+        "trend": vault.trend,
+        "snapshot_count": vault.snapshot_count,
+        "unique_states": vault.unique_states,
+        "oldest": vault.oldest,
+        "newest": vault.newest,
+    });
+
+    let mut pages_map = serde_json::Map::new();
+    for (name, ctx) in pages {
+        let trend_10 = sample_page_trend_points(&ctx.link_trend, 10);
+        pages_map.insert(
+            name.to_string(),
+            serde_json::json!({
+                "link_trend": trend_10,
+                "created_at": ctx.created_at,
+                "last_changed": ctx.last_changed,
+            }),
+        );
+    }
+
+    serde_json::json!({
+        "vault": vault_obj,
+        "pages": serde_json::Value::Object(pages_map),
+    })
+}
+
 fn pgh_sorted_vec(set: &std::collections::BTreeSet<String>) -> Vec<String> {
     set.iter().cloned().collect()
 }

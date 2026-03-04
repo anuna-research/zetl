@@ -230,6 +230,25 @@ fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) 
     Ok(json_str)
 }
 
+/// Write history-index.json to `{out_dir}/history-index.json` and return the
+/// JSON string so it can be embedded as a template variable.
+///
+/// Returns an empty string when history is unavailable; the file is not
+/// written in that case.
+#[cfg(feature = "history")]
+fn write_history_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) -> String {
+    let page_names: Vec<&str> = data.files.iter().map(|f| f.page_name.as_str()).collect();
+    let Some(json_str) = crate::history::build_history_index_json(vault_root, &page_names) else {
+        return String::new();
+    };
+    if let Err(e) =
+        std::fs::write(out_dir.join("history-index.json"), &json_str)
+    {
+        eprintln!("warning: could not write history-index.json: {e}");
+    }
+    json_str
+}
+
 /// Generate a complete static HTML site from the vault data.
 pub fn build_static(
     data: &VaultData,
@@ -256,9 +275,15 @@ pub fn build_static(
     // ── search-index.json ────────────────────────────────────────────────
     let bm25_json = write_search_index_json(data, vault_root, out)?;
 
+    // ── history-index.json ───────────────────────────────────────────────
+    #[cfg(feature = "history")]
+    let history_json = write_history_index_json(data, vault_root, out);
+    #[cfg(not(feature = "history"))]
+    let history_json = String::new();
+
     // ── index.html ──────────────────────────────────────────────────────
     let index_html = engine
-        .render_index(&vault_ctx, "build", &bm25_json)
+        .render_index(&vault_ctx, "build", &bm25_json, &history_json)
         .map_err(|e| {
             eprintln!("{}", e.stderr_line("index"));
             anyhow::anyhow!("{e}")
@@ -307,7 +332,7 @@ pub fn build_static(
         }
 
         let page_html = engine
-            .render_page(&vault_ctx, &page_ctx, "build", &bm25_json)
+            .render_page(&vault_ctx, &page_ctx, "build", &bm25_json, &history_json)
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(&slug));
                 anyhow::anyhow!("{e}")
@@ -346,7 +371,7 @@ pub fn build_static(
         let folder_name = folder.rsplit('/').next().unwrap_or(folder);
         let folder_ctx = build_folder_context(data, folder, folder_name);
         let folder_html = engine
-            .render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json)
+            .render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json, &history_json)
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(folder));
                 anyhow::anyhow!("{e}")

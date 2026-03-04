@@ -289,6 +289,7 @@ impl TemplateEngine {
         vault_ctx: &VaultContext,
         mode: &str,
         bm25_index: &str,
+        history_index: &str,
     ) -> Result<String, TemplateError> {
         let search_index = build_search_index(vault_ctx);
         let root_path = compute_root_path(mode, "");
@@ -302,6 +303,7 @@ impl TemplateEngine {
             root_path => root_path,
             index_file => idx_file,
             bm25_index => bm25_index,
+            history_index => history_index,
         };
         let env = self.env();
         let tmpl = env
@@ -321,6 +323,7 @@ impl TemplateEngine {
         page_ctx: &PageContext,
         mode: &str,
         bm25_index: &str,
+        history_index: &str,
     ) -> Result<String, TemplateError> {
         let search_index = build_search_index(vault_ctx);
         let root_path = compute_root_path(mode, &page_ctx.slug);
@@ -335,6 +338,7 @@ impl TemplateEngine {
             root_path => root_path,
             index_file => idx_file,
             bm25_index => bm25_index,
+            history_index => history_index,
         };
         let env = self.env();
         let tmpl = env
@@ -354,6 +358,7 @@ impl TemplateEngine {
         folder_ctx: &FolderContext,
         mode: &str,
         bm25_index: &str,
+        history_index: &str,
     ) -> Result<String, TemplateError> {
         let search_index = build_search_index(vault_ctx);
         let root_path = compute_root_path(mode, &folder_ctx.slug);
@@ -368,6 +373,7 @@ impl TemplateEngine {
             root_path => root_path,
             index_file => idx_file,
             bm25_index => bm25_index,
+            history_index => history_index,
         };
         let env = self.env();
         let tmpl = env
@@ -485,7 +491,7 @@ mod tests {
     fn test_render_index() {
         let engine = default_engine();
         let vault = sample_vault();
-        let html = engine.render_index(&vault, "serve", "").unwrap();
+        let html = engine.render_index(&vault, "serve", "", "").unwrap();
         assert!(html.contains("Vault"));
         assert!(html.contains("Hello"));
     }
@@ -495,7 +501,7 @@ mod tests {
         let engine = default_engine();
         let vault = sample_vault();
         let page = sample_page();
-        let html = engine.render_page(&vault, &page, "static", "").unwrap();
+        let html = engine.render_page(&vault, &page, "static", "", "").unwrap();
         assert!(html.contains("Hello"));
         assert!(html.contains("<p>world</p>"));
     }
@@ -512,7 +518,7 @@ mod tests {
             pages: vec![],
             total_pages: 0,
         };
-        let html = engine.render_folder(&vault, &folder, "serve", "").unwrap();
+        let html = engine.render_folder(&vault, &folder, "serve", "", "").unwrap();
         assert!(html.contains("docs"));
         assert!(html.contains("0 pages in this folder"));
     }
@@ -545,7 +551,7 @@ mod tests {
     fn test_theme_variable_in_context() {
         let engine = TemplateEngine::new(Path::new("."), "fountain", false, false);
         let vault = sample_vault();
-        let html = engine.render_index(&vault, "serve", "").unwrap();
+        let html = engine.render_index(&vault, "serve", "", "").unwrap();
         assert!(html.contains(r#"data-theme="fountain""#));
     }
 
@@ -554,7 +560,7 @@ mod tests {
         // "default" theme should work without any .zetl/themes directory
         let engine = TemplateEngine::new(Path::new("/nonexistent"), "default", false, false);
         let vault = sample_vault();
-        let html = engine.render_index(&vault, "serve", "").unwrap();
+        let html = engine.render_index(&vault, "serve", "", "").unwrap();
         assert!(html.contains("Vault"));
     }
 
@@ -573,7 +579,7 @@ mod tests {
         let engine = TemplateEngine::new(tmp.path(), "custom", false, false);
         let vault = sample_vault();
         let page = sample_page();
-        let html = engine.render_page(&vault, &page, "static", "").unwrap();
+        let html = engine.render_page(&vault, &page, "static", "", "").unwrap();
         // Custom template wraps content in <div class="custom">
         assert!(html.contains(r#"<div class="custom">"#));
         // base.html is still the built-in (cross-tier inheritance)
@@ -596,7 +602,7 @@ mod tests {
         let engine = TemplateEngine::new(tmp.path(), "live", true, false);
         let vault = sample_vault();
 
-        let html1 = engine.render_index(&vault, "serve", "").unwrap();
+        let html1 = engine.render_index(&vault, "serve", "", "").unwrap();
         assert!(html1.contains("VERSION1"));
 
         // Update template on disk
@@ -607,7 +613,7 @@ mod tests {
         .unwrap();
 
         // Reload mode should pick up the change
-        let html2 = engine.render_index(&vault, "serve", "").unwrap();
+        let html2 = engine.render_index(&vault, "serve", "", "").unwrap();
         assert!(html2.contains("VERSION2"));
     }
 
@@ -626,7 +632,7 @@ mod tests {
         let engine = TemplateEngine::new(tmp.path(), "cached", false, false);
         let vault = sample_vault();
 
-        let html1 = engine.render_index(&vault, "serve", "").unwrap();
+        let html1 = engine.render_index(&vault, "serve", "", "").unwrap();
         assert!(html1.contains("CACHED_V1"));
 
         // Update template on disk
@@ -637,7 +643,7 @@ mod tests {
         .unwrap();
 
         // Cached mode should still return the old version
-        let html2 = engine.render_index(&vault, "serve", "").unwrap();
+        let html2 = engine.render_index(&vault, "serve", "", "").unwrap();
         assert!(html2.contains("CACHED_V1"));
     }
 
@@ -656,7 +662,7 @@ mod tests {
 
         let engine = TemplateEngine::new(tmp.path(), "broken", false, false);
         let vault = sample_vault();
-        let err = engine.render_index(&vault, "serve", "").unwrap_err();
+        let err = engine.render_index(&vault, "serve", "", "").unwrap_err();
         assert!(err.template_name.is_some());
         assert!(err.message.len() > 0);
     }
@@ -728,7 +734,7 @@ mod tests {
 
         let engine = TemplateEngine::new(tmp.path(), "empty", false, false);
         let vault = sample_vault();
-        let err = engine.render_index(&vault, "serve", "").unwrap_err();
+        let err = engine.render_index(&vault, "serve", "", "").unwrap_err();
         assert_eq!(err.kind, "EmptyOutput");
         assert!(err.message.contains("empty output"));
     }

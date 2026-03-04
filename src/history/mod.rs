@@ -260,6 +260,67 @@ pub fn build_hook_history_context(vault_root: &Path) -> serde_json::Value {
     })
 }
 
+/// Build the `history-index.json` payload (REQ-088, CON-026, ADR-049, ADR-050).
+///
+/// Opens the jj workspace once, loads all snapshots and per-snapshot cached
+/// indexes, builds a [`core::VaultHistoryContext`] and per-page
+/// [`core::PageHistoryContext`] for each name in `page_names`, then calls
+/// [`core::serialize_history_index`] to produce the JSON.
+///
+/// Returns `None` when history is unavailable (no workspace, no snapshots, or
+/// any error). Errors are swallowed so the build pipeline skips the export
+/// gracefully.
+pub fn build_history_index_json(vault_root: &Path, page_names: &[&str]) -> Option<String> {
+    use chrono::Local;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    let backend = open_history(vault_root).ok()?;
+    let snapshots = backend.list_changes(10_000).ok()?;
+    if snapshots.is_empty() {
+        return None;
+    }
+
+    let now = Local::now().fixed_offset();
+
+    let vault_ctx = core::build_vault_history_context(&snapshots, vault_root, now)
+        .ok()
+        .flatten()?;
+
+    // Load files per snapshot once, shared across all page context builds.
+    let index_cache = cache::HistoricalIndexCache::with_default_capacity();
+    let files_per_snapshot: Vec<Option<Vec<crate::types::ParsedFile>>> = snapshots
+        .iter()
+        .map(|snap| {
+            let hash = core::extract_vault_root_hash_from_description(&snap.description)?;
+            let file_map: HashMap<PathBuf, crate::types::ParsedFile> = index_cache
+                .load(vault_root, &hash)
+                .ok()
+                .flatten()?;
+            Some(file_map.into_values().collect())
+        })
+        .collect();
+
+    let page_contexts: Vec<(&str, core::PageHistoryContext)> = page_names
+        .iter()
+        .filter_map(|&name| {
+            let ctx = core::build_page_history_context(
+                name,
+                &snapshots,
+                &files_per_snapshot,
+                now,
+            )?;
+            Some((name, ctx))
+        })
+        .collect();
+
+    let page_refs: Vec<(&str, &core::PageHistoryContext)> =
+        page_contexts.iter().map(|(n, c)| (*n, c)).collect();
+
+    let json_value = core::serialize_history_index(&vault_ctx, &page_refs);
+    serde_json::to_string(&json_value).ok()
+}
+
 /// Create a jj snapshot after index completion (REQ-076, ADR-048).
 ///
 /// - Opens or initialises the jj workspace at `.zetl/jj/`.
