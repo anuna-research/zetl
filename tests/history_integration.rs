@@ -9,6 +9,8 @@
 //! TEST-092–094 are covered here (task-auto-snapshot).
 //! TEST-095–099 are covered here (task-historical-index-cache).
 //! TEST-100–103 are covered here (task-point-in-time-query).
+//! TEST-104      is covered here (task-watch-mode-snapshot).
+//! TEST-105–108 are covered here (task-history-cli).
 
 use std::fs;
 use std::path::Path;
@@ -769,4 +771,194 @@ fn test_104_watch_mode_snapshot_deduplication() {
         zetl_snapshots[1].description.contains(&hash_v1),
         "older snapshot must embed hash_v1"
     );
+}
+
+// ── History CLI tests (REQ-080, CON-025) ──────────────────────────────────────
+// TEST-105–108 cover task-history-cli.
+
+fn make_parsed_file(page_name: &str, link_targets: &[&str]) -> zetl::types::ParsedFile {
+    use zetl::types::{WikiLink};
+    zetl::types::ParsedFile {
+        path: format!("{page_name}.md").into(),
+        page_name: page_name.to_owned(),
+        links: link_targets
+            .iter()
+            .map(|t| WikiLink {
+                target_page: t.to_string(),
+                raw_target: t.to_string(),
+                heading: None,
+                block_ref: None,
+                alias: None,
+                is_embed: false,
+                line: 1,
+                column: 1,
+            })
+            .collect(),
+        spl_blocks: vec![],
+        diagnostics: vec![],
+        mtime: std::time::SystemTime::UNIX_EPOCH,
+        merkle_leaves: vec![],
+        file_merkle: None,
+    }
+}
+
+// TEST-105: compute_graph_delta detects added and removed pages and link counts.
+#[test]
+fn test_105_compute_graph_delta_basic() {
+    use zetl::history::core::compute_graph_delta;
+
+    let before = vec![
+        make_parsed_file("alpha", &["beta"]),
+        make_parsed_file("beta", &[]),
+    ];
+    let after = vec![
+        make_parsed_file("alpha", &["beta", "gamma"]),
+        make_parsed_file("beta", &[]),
+        make_parsed_file("gamma", &[]),
+    ];
+
+    let delta = compute_graph_delta(&before, &after);
+
+    assert_eq!(delta.pages_added, vec!["gamma"]);
+    assert!(delta.pages_removed.is_empty());
+    assert_eq!(delta.links_added, 1, "one extra link (alpha→gamma)");
+    assert_eq!(delta.links_removed, 0);
+}
+
+// TEST-106: compute_graph_delta handles page removals and link decreases.
+#[test]
+fn test_106_compute_graph_delta_removals() {
+    use zetl::history::core::compute_graph_delta;
+
+    let before = vec![
+        make_parsed_file("a", &["b", "c"]),
+        make_parsed_file("b", &[]),
+        make_parsed_file("c", &[]),
+    ];
+    let after = vec![
+        make_parsed_file("a", &["b"]),
+        make_parsed_file("b", &[]),
+        // "c" removed
+    ];
+
+    let delta = compute_graph_delta(&before, &after);
+
+    assert!(delta.pages_added.is_empty());
+    assert_eq!(delta.pages_removed, vec!["c"]);
+    assert_eq!(delta.links_added, 0);
+    assert_eq!(delta.links_removed, 1, "link a→c removed");
+}
+
+// TEST-107: collapse_timeline deduplicates identical vault_root_hash entries.
+#[test]
+fn test_107_collapse_timeline_deduplicates() {
+    use zetl::history::core::{collapse_timeline, HistoryEntry};
+
+    let entries = vec![
+        HistoryEntry {
+            change_id: "aaa".to_owned(),
+            timestamp: "2026-03-04T12:00:00Z".to_owned(),
+            vault_root_hash: Some("hash_v2".to_owned()),
+            total_pages: 3,
+            total_links: 4,
+            delta: None,
+        },
+        // Duplicate of the above hash — should be dropped.
+        HistoryEntry {
+            change_id: "bbb".to_owned(),
+            timestamp: "2026-03-04T10:00:00Z".to_owned(),
+            vault_root_hash: Some("hash_v2".to_owned()),
+            total_pages: 3,
+            total_links: 4,
+            delta: None,
+        },
+        HistoryEntry {
+            change_id: "ccc".to_owned(),
+            timestamp: "2026-03-03T08:00:00Z".to_owned(),
+            vault_root_hash: Some("hash_v1".to_owned()),
+            total_pages: 2,
+            total_links: 1,
+            delta: None,
+        },
+        // Entry without a hash — must never be collapsed.
+        HistoryEntry {
+            change_id: "ddd".to_owned(),
+            timestamp: "2026-03-02T00:00:00Z".to_owned(),
+            vault_root_hash: None,
+            total_pages: 0,
+            total_links: 0,
+            delta: None,
+        },
+    ];
+
+    let collapsed = collapse_timeline(entries);
+
+    assert_eq!(collapsed.len(), 3, "duplicate hash_v2 must be removed");
+    assert_eq!(collapsed[0].change_id, "aaa", "newest hash_v2 is kept");
+    assert_eq!(collapsed[1].change_id, "ccc");
+    assert_eq!(collapsed[2].change_id, "ddd", "no-hash entry always kept");
+}
+
+// TEST-108: build_vault_history returns a delta timeline with cached indexes.
+#[test]
+fn test_108_build_vault_history_with_cache() {
+    use zetl::history::cache::HistoricalIndexCache;
+    use zetl::history::core::build_vault_history;
+    use zetl::history::jj_backend::VcsBackend as _;
+    use chrono::{FixedOffset, TimeZone as _};
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+
+    // Snapshot 1: one page, no links.
+    write(vault_root, "alpha.md", "# Alpha");
+    let hash1 = "1".repeat(64);
+    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+
+    let cache = HistoricalIndexCache::with_default_capacity();
+    cache
+        .store(vault_root, &hash1, &[make_parsed_file("alpha", &[])])
+        .unwrap();
+
+    // Snapshot 2: two pages, alpha links to beta.
+    write(vault_root, "beta.md", "# Beta");
+    let hash2 = "2".repeat(64);
+    let _desc2 = format!("zetl-snapshot vault_root_hash={hash2}");
+    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+
+    cache
+        .store(
+            vault_root,
+            &hash2,
+            &[
+                make_parsed_file("alpha", &["beta"]),
+                make_parsed_file("beta", &[]),
+            ],
+        )
+        .unwrap();
+
+    let backend = JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
+    let snapshots = backend.list_changes(100).unwrap();
+
+    let now = FixedOffset::east_opt(0)
+        .unwrap()
+        .with_ymd_and_hms(2030, 1, 1, 0, 0, 0)
+        .unwrap();
+
+    let entries = build_vault_history(&snapshots, vault_root, None, 20, now)
+        .expect("build_vault_history must succeed");
+
+    // Both snapshots have cached indexes, so we should get two entries.
+    assert_eq!(entries.len(), 2, "must return 2 entries; got {entries:#?}");
+
+    // Newest first: entries[0] is snapshot 2 (beta added).
+    let newest = &entries[0];
+    assert_eq!(newest.total_pages, 2);
+    let delta = newest.delta.as_ref().expect("newest entry must have a delta");
+    assert_eq!(delta.pages_added, vec!["beta"]);
+    assert!(delta.pages_removed.is_empty());
+    assert_eq!(delta.links_added, 1, "alpha→beta link added");
+
+    // Oldest entry has no delta (nothing to diff against).
+    assert!(entries[1].delta.is_none(), "oldest entry must have no delta");
 }

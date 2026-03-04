@@ -8695,6 +8695,120 @@ fn cmd_history_page(cli: &Cli, page_name: &str, limit: usize) -> Result<()> {
     Ok(())
 }
 
+/// `zetl history log` — reverse-chronological delta timeline (REQ-080, CON-025).
+#[cfg(feature = "history")]
+fn cmd_history_log(cli: &Cli, since: Option<&str>, limit: usize) -> Result<()> {
+    use zetl::history::core::build_vault_history;
+    use zetl::history::jj_backend::VcsBackend as _;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    let backend = zetl::history::open_history(&vault_root)
+        .context("opening jj workspace for history log")?;
+
+    // Load all snapshots (we may need them for --since ref resolution and
+    // delta computation beyond the final `limit`).
+    let snapshots = backend
+        .list_changes(10_000)
+        .context("listing jj snapshots")?;
+
+    let now = chrono::Local::now().fixed_offset();
+    let entries = build_vault_history(&snapshots, &vault_root, since, limit, now)
+        .context("building vault history")?;
+
+    if entries.is_empty() {
+        match cli.format {
+            OutputFormat::Json => print_json(&serde_json::json!({
+                "entries": [],
+                "message": "No snapshots found. Run `zetl index` to create the first snapshot."
+            }))?,
+            OutputFormat::Table => {
+                println!(
+                    "No snapshots found. Run `zetl index` to create the first snapshot."
+                );
+            }
+        }
+        return Ok(());
+    }
+
+    match cli.format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            struct DeltaJson {
+                pages_added: Vec<String>,
+                pages_removed: Vec<String>,
+                links_added: usize,
+                links_removed: usize,
+            }
+            #[derive(Serialize)]
+            struct EntryJson {
+                change_id: String,
+                timestamp: String,
+                vault_root_hash: Option<String>,
+                total_pages: usize,
+                total_links: usize,
+                delta: Option<DeltaJson>,
+            }
+            let json_entries: Vec<EntryJson> = entries
+                .iter()
+                .map(|e| EntryJson {
+                    change_id: e.change_id.clone(),
+                    timestamp: e.timestamp.clone(),
+                    vault_root_hash: e.vault_root_hash.clone(),
+                    total_pages: e.total_pages,
+                    total_links: e.total_links,
+                    delta: e.delta.as_ref().map(|d| DeltaJson {
+                        pages_added: d.pages_added.clone(),
+                        pages_removed: d.pages_removed.clone(),
+                        links_added: d.links_added,
+                        links_removed: d.links_removed,
+                    }),
+                })
+                .collect();
+            print_json(&serde_json::json!({ "entries": json_entries }))?;
+        }
+        OutputFormat::Table => {
+            let mut table = Table::new();
+            table.set_header(vec![
+                "Change ID",
+                "Timestamp",
+                "Pages",
+                "Links",
+                "+Pages",
+                "-Pages",
+                "+Links",
+                "-Links",
+            ]);
+            for e in &entries {
+                let (pages_added, pages_removed, links_added, links_removed) =
+                    match &e.delta {
+                        Some(d) => (
+                            d.pages_added.len().to_string(),
+                            d.pages_removed.len().to_string(),
+                            d.links_added.to_string(),
+                            d.links_removed.to_string(),
+                        ),
+                        None => ("—".to_string(), "—".to_string(), "—".to_string(), "—".to_string()),
+                    };
+                table.add_row(vec![
+                    Cell::new(&e.change_id[..e.change_id.len().min(12)]),
+                    Cell::new(&e.timestamp),
+                    Cell::new(e.total_pages),
+                    Cell::new(e.total_links),
+                    Cell::new(&pages_added),
+                    Cell::new(&pages_removed),
+                    Cell::new(&links_added),
+                    Cell::new(&links_removed),
+                ]);
+            }
+            println!("{table}");
+        }
+    }
+
+    Ok(())
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 fn main() -> anyhow::Result<()> {
@@ -8841,6 +8955,9 @@ fn main() -> anyhow::Result<()> {
             match command {
                 HistoryCommand::Timeline { limit } => cmd_history_timeline(&cli, *limit),
                 HistoryCommand::Page { name, limit } => cmd_history_page(&cli, name, *limit),
+                HistoryCommand::Log { since, limit } => {
+                    cmd_history_log(&cli, since.as_deref(), *limit)
+                }
             }
         }
     }
