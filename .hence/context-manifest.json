@@ -1,12 +1,12 @@
 {
-  "task_id": "history-cli",
-  "token_budget": 8000,
-  "tokens_used": 362,
+  "task_id": "history-page-cli",
+  "token_budget": 6000,
+  "tokens_used": 337,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement 'zetl history' subcommand with --since, --limit, --format json|table; reverse-chronological timeline of graph-level deltas; collapse identical vault_root_hash entries; pure core functions: compute_graph_delta, collapse_timeline, build_vault_history (REQ-080, CON-025)",
-      "token_cost": 69,
+      "content": "Implement 'zetl history page <name>' subcommand; per-page evolution timeline; only snapshots where page neighborhood changed; pure core: extract_page_history (REQ-081, CON-025)",
+      "token_cost": 44,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T08:18:54Z"
+  "constructed_at": "2026-03-04T08:26:51Z"
 }
