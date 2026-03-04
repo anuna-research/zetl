@@ -1,0 +1,301 @@
+(meta plan
+  (id "IMPL-018")
+  (title "Semantic Search — Tantivy-Native Vector Embeddings with Hybrid BM25 Retrieval")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-03-05")
+  (author "agent:architect")
+  (spec "SPEC-018")
+  (description "Add semantic vector search to zetl using ONNX embeddings and hybrid BM25+cosine RRF retrieval, gated behind --features semantic"))
+
+;; Agents
+(given agent-coder-available)
+(given agent-reviewer-available)
+
+;; Tasks
+(given task-pure-core)
+(given task-onnx-embedding-shell)
+(given task-vector-index-storage)
+(given task-chunking)
+(given task-incremental-rebuild)
+(given task-semantic-cli)
+(given task-hybrid-cli)
+(given task-rrf-fusion)
+(given task-feature-gating)
+(given task-web-integration)
+(given task-observability)
+(given task-model-acquisition)
+(given task-tests-unit)
+(given task-tests-integration)
+(given task-build-mode-integration)
+
+;; Dependencies — tasks with no blockers
+(given no-deps-pure-core)
+(given no-deps-feature-gating)
+(given no-deps-model-acquisition)
+
+;; Task metadata
+(meta task-pure-core
+  (description "Implement pure core functions: chunk_page, reciprocal_rank_fusion, cosine_similarity, detect_stale_chunks in src/semantic/core.rs")
+  (acceptance "All pure functions are free of I/O; chunk_page splits at h2 boundaries; RRF produces correct ordering; cosine_similarity returns f32 in [0.0,1.0]; all unit tests pass")
+  (context-files "src/semantic/core.rs")
+  (evaluate-checks "test:cargo test --features semantic" "lint:cargo clippy --features semantic"))
+
+(meta task-onnx-embedding-shell
+  (description "Implement effectful embedding shell in src/semantic/mod.rs: embed_chunks via ort ONNX session, VectorIndex::build, VectorIndex::open, VectorIndex::query, VectorIndex::embed_query")
+  (acceptance "VectorIndex::build creates vectors/ directory; open reads it back; round-trip produces identical results; embed_chunks returns 384-dim normalised vectors; TEST-118 and TEST-119 pass")
+  (context-files "src/semantic/mod.rs" "Cargo.toml")
+  (evaluate-checks "test:cargo test --features semantic" "lint:cargo clippy --features semantic"))
+
+(meta task-vector-index-storage
+  (description "Implement storage layout at .zetl/search/vectors/: index.bin (flat mmap-friendly vector file), chunks.json (chunk metadata with page, heading, content_hash), model.json (model name + dimension)")
+  (acceptance "Storage layout matches spec; index.bin is mmap-readable; chunks.json round-trips correctly; model.json validates on open; REQ-093 satisfied")
+  (context-files "src/semantic/mod.rs")
+  (evaluate-checks "test:cargo test --features semantic"))
+
+(meta task-chunking
+  (description "Implement heading-level chunking strategy: split pages at ## boundaries, embed short pages (< 512 tokens) whole, each chunk carries page_name, path, heading, content_hash, embedding")
+  (acceptance "chunk_page splits at h2 boundaries; join(chunks) == original body; pages under 512 tokens remain whole; TEST-120 passes with property-based tests; REQ-100 satisfied")
+  (context-files "src/semantic/core.rs")
+  (evaluate-checks "test:cargo test --features semantic"))
+
+(meta task-incremental-rebuild
+  (description "Implement incremental embedding rebuild in zetl index: BLAKE3-hash each chunk, compare against chunks.json, re-embed only stale chunks, write updated vectors and metadata")
+  (acceptance "Changing one page re-embeds only that page's chunks; unchanged pages are skipped; TEST-123 passes; REQ-097 satisfied")
+  (context-files "src/semantic/mod.rs" "src/cli.rs")
+  (evaluate-checks "test:cargo test --features semantic"))
+
+(meta task-semantic-cli
+  (description "Implement zetl search --semantic <QUERY> CLI flag: embed query, run VectorIndex::query, return SearchOutput JSON ranked by cosine similarity with score in [0.0,1.0]; handle missing index and feature-not-compiled errors")
+  (acceptance "Results ranked by cosine similarity; each result includes page, path, heading, score; --limit respected; missing index prints clear error; TEST-114 and TEST-115 pass; REQ-094, REQ-098, REQ-099 satisfied")
+  (context-files "src/cli.rs" "src/main.rs")
+  (evaluate-checks "test:cargo test --features semantic"))
+
+(meta task-hybrid-cli
+  (description "Implement zetl search --hybrid <QUERY> CLI flag: run BM25 and vector search in parallel, fuse via RRF, apply --near graph scoping after fusion, return fused SearchOutput")
+  (acceptance "Fused results combine BM25 and vector signals; --near intersects with graph neighbourhood; score is RRF fusion score; TEST-116 and TEST-117 pass; REQ-095, REQ-101 satisfied")
+  (context-files "src/cli.rs" "src/main.rs")
+  (evaluate-checks "test:cargo test --features semantic"))
+
+(meta task-rrf-fusion
+  (description "Implement reciprocal_rank_fusion(list_a, list_b, k) pure function with k=60 default; ensure all items from both lists appear in output; wire into hybrid CLI")
+  (acceptance "RRF correct for known inputs; all items from both lists in output; TEST-121 passes with property-based tests; ADR-053 satisfied")
+  (context-files "src/semantic/core.rs")
+  (evaluate-checks "test:cargo test --features semantic"))
+
+(meta task-feature-gating
+  (description "Gate all ONNX/vector code behind #[cfg(feature = \"semantic\")]; ensure compiling without --features semantic adds zero binary size and zero dependencies; --semantic and --hybrid flags print clear error when feature absent")
+  (acceptance "Without --features semantic: zero binary size increase, no additional deps; --semantic flag prints 'Semantic search requires --features semantic'; TEST-122 passes; REQ-098, NFR-041 satisfied")
+  (context-files "Cargo.toml" "src/cli.rs" "src/semantic/mod.rs" "src/semantic/core.rs")
+  (evaluate-checks "build:cargo build" "test:cargo test"))
+
+(meta task-web-integration
+  (description "Add GET /api/search?mode=semantic and ?mode=hybrid endpoints to zetl serve; add semantic_available: bool template variable to zetl build; skip vector index export in build mode")
+  (acceptance "GET /api/search?mode=semantic returns semantic results; GET /api/search?mode=hybrid returns hybrid results; default mode=bm25 unchanged; semantic_available template variable set correctly; REQ per web integration section satisfied")
+  (context-files "src/web/routes.rs" "src/web/build.rs" "src/web/context.rs")
+  (evaluate-checks "test:cargo test --features semantic" "lint:cargo clippy --features semantic"))
+
+(meta task-observability
+  (description "Implement OBS-017 through OBS-020: emit [zetl] embed: log during index, emit [zetl] vector-query: and [zetl] hybrid-fusion: under --verbose, add semantic field to zetl stats JSON output")
+  (acceptance "OBS-017 log emitted during zetl index with semantic feature; OBS-018 and OBS-019 emitted when --verbose; zetl stats JSON includes semantic.{chunk_count,index_size_mb,model_name} when feature compiled in; OBS-020 satisfied")
+  (context-files "src/cli.rs" "src/main.rs" "src/semantic/mod.rs")
+  (evaluate-checks "test:cargo test --features semantic"))
+
+(meta task-model-acquisition
+  (description "Implement model acquisition: check .zetl/models/all-MiniLM-L6-v2.onnx on first zetl index, download from HuggingFace Hub with user confirmation if absent, validate SHA-256, cache permanently; support ZETL_MODEL_PATH env var override")
+  (acceptance "Model downloaded and cached on first run; SHA-256 validated; user confirmation requested before download; ZETL_MODEL_PATH overrides default path; subsequent runs use cached model; NFR-039 satisfied")
+  (context-files "src/semantic/mod.rs")
+  (evaluate-checks "test:cargo test --features semantic"))
+
+(meta task-tests-unit
+  (description "Write unit and property-based tests: TEST-119 (VectorIndex::query returns <= limit results sorted desc), TEST-120 (chunk_page h2 splitting, roundtrip property), TEST-121 (RRF ordering and coverage property)")
+  (acceptance "TEST-119, TEST-120, TEST-121 all pass; property tests use proptest or quickcheck; roundtrip property holds for chunk_page; RRF all-items property holds")
+  (context-files "tests/semantic_integration.rs" "src/semantic/core.rs")
+  (evaluate-checks "test:cargo test --features semantic"))
+
+(meta task-tests-integration
+  (description "Write integration tests: TEST-114 (--semantic ranking), TEST-115 (missing index error), TEST-116 (--hybrid combining signals), TEST-117 (--hybrid --near scoping), TEST-118 (VectorIndex build/open round-trip), TEST-122 (feature gating), TEST-123 (incremental rebuild)")
+  (acceptance "All integration tests pass with --features semantic; TEST-122 build-level check passes without feature; assert_cmd used for CLI tests; tests in tests/semantic_integration.rs with required-features = [\"semantic\"]")
+  (context-files "tests/semantic_integration.rs" "Cargo.toml")
+  (evaluate-checks "test:cargo test --features semantic"))
+
+(meta task-build-mode-integration
+  (description "Integrate semantic index building into zetl index command: call VectorIndex::build after tantivy index build, emit OBS-017 timing, handle incremental rebuild logic, add semantic stats to cmd_stats")
+  (acceptance "zetl index builds both tantivy and vector indexes; incremental rebuild only re-embeds stale chunks; OBS-017 emitted; zetl stats reports semantic fields; REQ-092, REQ-097 satisfied end-to-end")
+  (context-files "src/cli.rs" "src/main.rs")
+  (evaluate-checks "test:cargo test --features semantic" "lint:cargo clippy --features semantic"))
+
+;; Readiness rules
+
+;; Tasks with no dependencies
+(normally r-ready-pure-core
+  (and task-pure-core no-deps-pure-core)
+  ready-pure-core)
+
+(normally r-ready-feature-gating
+  (and task-feature-gating no-deps-feature-gating)
+  ready-feature-gating)
+
+(normally r-ready-model-acquisition
+  (and task-model-acquisition no-deps-model-acquisition)
+  ready-model-acquisition)
+
+;; Chunking depends on pure core
+(normally r-ready-chunking
+  (and task-chunking completed-pure-core)
+  ready-chunking)
+
+;; RRF fusion depends on pure core
+(normally r-ready-rrf-fusion
+  (and task-rrf-fusion completed-pure-core)
+  ready-rrf-fusion)
+
+;; ONNX embedding shell depends on pure core, feature gating, and model acquisition
+(normally r-ready-onnx-embedding-shell
+  (and task-onnx-embedding-shell completed-pure-core completed-feature-gating completed-model-acquisition)
+  ready-onnx-embedding-shell)
+
+;; Vector index storage depends on ONNX embedding shell and chunking
+(normally r-ready-vector-index-storage
+  (and task-vector-index-storage completed-onnx-embedding-shell completed-chunking)
+  ready-vector-index-storage)
+
+;; Incremental rebuild depends on vector index storage
+(normally r-ready-incremental-rebuild
+  (and task-incremental-rebuild completed-vector-index-storage)
+  ready-incremental-rebuild)
+
+;; Build mode integration depends on vector index storage and incremental rebuild
+(normally r-ready-build-mode-integration
+  (and task-build-mode-integration completed-vector-index-storage completed-incremental-rebuild)
+  ready-build-mode-integration)
+
+;; Semantic CLI depends on vector index storage and feature gating
+(normally r-ready-semantic-cli
+  (and task-semantic-cli completed-vector-index-storage completed-feature-gating)
+  ready-semantic-cli)
+
+;; Hybrid CLI depends on semantic CLI, RRF fusion, and feature gating
+(normally r-ready-hybrid-cli
+  (and task-hybrid-cli completed-semantic-cli completed-rrf-fusion completed-feature-gating)
+  ready-hybrid-cli)
+
+;; Observability depends on build mode integration, semantic CLI, hybrid CLI
+(normally r-ready-observability
+  (and task-observability completed-build-mode-integration completed-semantic-cli completed-hybrid-cli)
+  ready-observability)
+
+;; Web integration depends on semantic CLI and hybrid CLI
+(normally r-ready-web-integration
+  (and task-web-integration completed-semantic-cli completed-hybrid-cli)
+  ready-web-integration)
+
+;; Unit tests depend on pure core, chunking, and RRF fusion
+(normally r-ready-tests-unit
+  (and task-tests-unit completed-pure-core completed-chunking completed-rrf-fusion)
+  ready-tests-unit)
+
+;; Integration tests depend on all CLI and index tasks
+(normally r-ready-tests-integration
+  (and task-tests-integration
+       completed-semantic-cli
+       completed-hybrid-cli
+       completed-build-mode-integration
+       completed-vector-index-storage
+       completed-feature-gating
+       completed-incremental-rebuild)
+  ready-tests-integration)
+
+;; Assignment rules — all tasks assigned to coder by default; reviewer for validation-heavy tasks
+(normally r-assign-pure-core
+  (and ready-pure-core agent-coder-available)
+  assign-to-pure-core-coder)
+
+(normally r-assign-feature-gating
+  (and ready-feature-gating agent-coder-available)
+  assign-to-feature-gating-coder)
+
+(normally r-assign-model-acquisition
+  (and ready-model-acquisition agent-coder-available)
+  assign-to-model-acquisition-coder)
+
+(normally r-assign-chunking
+  (and ready-chunking agent-coder-available)
+  assign-to-chunking-coder)
+
+(normally r-assign-rrf-fusion
+  (and ready-rrf-fusion agent-coder-available)
+  assign-to-rrf-fusion-coder)
+
+(normally r-assign-onnx-embedding-shell
+  (and ready-onnx-embedding-shell agent-coder-available)
+  assign-to-onnx-embedding-shell-coder)
+
+(normally r-assign-vector-index-storage
+  (and ready-vector-index-storage agent-coder-available)
+  assign-to-vector-index-storage-coder)
+
+(normally r-assign-incremental-rebuild
+  (and ready-incremental-rebuild agent-coder-available)
+  assign-to-incremental-rebuild-coder)
+
+(normally r-assign-build-mode-integration
+  (and ready-build-mode-integration agent-coder-available)
+  assign-to-build-mode-integration-coder)
+
+(normally r-assign-semantic-cli
+  (and ready-semantic-cli agent-coder-available)
+  assign-to-semantic-cli-coder)
+
+(normally r-assign-hybrid-cli
+  (and ready-hybrid-cli agent-coder-available)
+  assign-to-hybrid-cli-coder)
+
+(normally r-assign-observability
+  (and ready-observability agent-coder-available)
+  assign-to-observability-coder)
+
+(normally r-assign-web-integration
+  (and ready-web-integration agent-coder-available)
+  assign-to-web-integration-coder)
+
+(normally r-assign-tests-unit
+  (and ready-tests-unit agent-coder-available)
+  assign-to-tests-unit-coder)
+
+(normally r-assign-tests-integration
+  (and ready-tests-integration agent-reviewer-available)
+  assign-to-tests-integration-reviewer)
+
+(normally r-assign-tests-integration-coder
+  (and ready-tests-integration agent-coder-available)
+  assign-to-tests-integration-coder)
+
+;; Reviewer takes priority over coder for integration tests (verification task)
+(prefer r-assign-tests-integration r-assign-tests-integration-coder)
+
+(meta r-assign-tests-integration
+  (description "Integration tests are a verification task best suited for the reviewer agent")
+  (justification "Integration tests validate correctness of CLI contracts, feature gating, and end-to-end pipelines"))
+
+;; Safety constraint: integration tests must not run before feature gating is verified
+(except d-block-integration-tests-no-gating
+  (not completed-feature-gating)
+  (not ready-tests-integration))
+
+(meta d-block-integration-tests-no-gating
+  (description "Integration tests must not proceed until feature gating is complete")
+  (justification "TEST-122 verifies feature isolation; running integration tests without confirmed gating produces unreliable results"))
+
+;; Safety constraint: ONNX shell must not be built before model acquisition is resolved
+(except d-block-onnx-no-model
+  (not completed-model-acquisition)
+  (not ready-onnx-embedding-shell))
+
+(meta d-block-onnx-no-model
+  (description "ONNX embedding shell requires model acquisition to be complete first")
+  (justification "The embedding shell depends on a known model path; acquisition establishes the path contract and SHA-256 validation"))
+
+;; Superiority: defeaters beat their corresponding readiness rules
+(prefer d-block-integration-tests-no-gating r-ready-tests-integration)
+(prefer d-block-onnx-no-model r-ready-onnx-embedding-shell)
