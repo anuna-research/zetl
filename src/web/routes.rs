@@ -35,7 +35,7 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
     if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
         vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
     }
-    match state.engine.render_index(&vault_ctx, "serve", "") {
+    match state.engine.render_index(&vault_ctx, "serve", "", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
     }
@@ -77,7 +77,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
             let folder_ctx = build_folder_context(&data, slug, folder_name);
             return match state
                 .engine
-                .render_folder(&vault_ctx, &folder_ctx, "serve", "")
+                .render_folder(&vault_ctx, &folder_ctx, "serve", "", "")
             {
                 Ok(html) => Html(html).into_response(),
                 Err(e) => render_error_response(e),
@@ -189,7 +189,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
     if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
         vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
     }
-    match state.engine.render_page(&vault_ctx, &page_ctx, "serve", "") {
+    match state.engine.render_page(&vault_ctx, &page_ctx, "serve", "", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
     }

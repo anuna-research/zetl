@@ -1664,7 +1664,7 @@ fn test_125_vault_history_null_when_no_history() {
     };
 
     let engine = TemplateEngine::new(tmp.path(), "hist-test", false, false);
-    let html = engine.render_index(&vault_ctx, "serve", "").unwrap();
+    let html = engine.render_index(&vault_ctx, "serve", "", "").unwrap();
     assert!(html.contains("HISTORY_NULL"), "vault.history must be null/none when unavailable");
 }
 
@@ -1703,7 +1703,7 @@ fn test_126_vault_history_populated_in_template() {
     vault_ctx.history = serde_json::to_value(hist).unwrap();
 
     let engine = TemplateEngine::new(tmp.path(), "hist-test2", false, false);
-    let html = engine.render_index(&vault_ctx, "serve", "").unwrap();
+    let html = engine.render_index(&vault_ctx, "serve", "", "").unwrap();
     assert!(html.contains("SC:5"), "snapshot_count must be accessible in template");
     assert!(html.contains("US:3"), "unique_states must be accessible in template");
 }
@@ -1936,7 +1936,7 @@ fn test_130_page_history_null_in_template() {
     };
 
     let engine = TemplateEngine::new(tmp.path(), "phist-null", false, false);
-    let html = engine.render_page(&vault_ctx, &page_ctx, "serve", "").unwrap();
+    let html = engine.render_page(&vault_ctx, &page_ctx, "serve", "", "").unwrap();
     assert!(
         html.contains("PAGE_HIST_NULL"),
         "page.history must be null/none when unavailable"
@@ -1998,7 +1998,7 @@ fn test_131_page_history_populated_in_template() {
     page_ctx.history = serde_json::to_value(hist).unwrap();
 
     let engine = TemplateEngine::new(tmp.path(), "phist-set", false, false);
-    let html = engine.render_page(&vault_ctx, &page_ctx, "serve", "").unwrap();
+    let html = engine.render_page(&vault_ctx, &page_ctx, "serve", "", "").unwrap();
     assert!(html.contains("CA:2026-01-01T00:00:00Z"), "created_at must be in template");
     assert!(html.contains("AD:62"), "age_days must be in template");
     assert!(html.contains("SD:3"), "stable_days must be in template");
@@ -2189,4 +2189,202 @@ fn test_137_hook_history_delta_reflects_changes() {
 
     assert_eq!(delta["links_added"], 1, "one link added (page_a→page_b)");
     assert_eq!(delta["links_removed"], 0, "no links removed");
+}
+
+// TEST-138: serialize_history_index produces correct JSON structure (REQ-088).
+//
+// Pure unit test: no I/O, no VCS. Constructs VaultHistoryContext and
+// PageHistoryContext directly and checks the serialised payload.
+#[test]
+fn test_138_serialize_history_index_structure() {
+    use zetl::history::core::{
+        PageHistoryContext, PageHistoryEntry, PageTrendPoint, TrendPoint, VaultHistoryContext,
+        serialize_history_index,
+    };
+
+    let vault_ctx = VaultHistoryContext {
+        trend: vec![
+            TrendPoint {
+                timestamp: "2026-01-01T00:00:00+00:00".to_owned(),
+                total_pages: 5,
+                total_links: 3,
+            },
+            TrendPoint {
+                timestamp: "2026-02-01T00:00:00+00:00".to_owned(),
+                total_pages: 7,
+                total_links: 5,
+            },
+        ],
+        recent_changes: vec![],
+        oldest: Some("2026-01-01T00:00:00+00:00".to_owned()),
+        newest: Some("2026-02-01T00:00:00+00:00".to_owned()),
+        epoch: Some("2026-01-01T00:00:00+00:00".to_owned()),
+        snapshot_count: 10,
+        unique_states: 2,
+    };
+
+    let page_ctx = PageHistoryContext {
+        created_at: "2026-01-01T00:00:00+00:00".to_owned(),
+        last_changed: "2026-02-01T00:00:00+00:00".to_owned(),
+        age_days: 60,
+        stable_days: 30,
+        link_trend: vec![
+            PageTrendPoint {
+                timestamp: "2026-01-01T00:00:00+00:00".to_owned(),
+                link_count: 1,
+                backlink_count: 0,
+            },
+            PageTrendPoint {
+                timestamp: "2026-02-01T00:00:00+00:00".to_owned(),
+                link_count: 2,
+                backlink_count: 1,
+            },
+        ],
+        recent_changes: vec![PageHistoryEntry {
+            change_id: "aabbcc".to_owned(),
+            timestamp: "2026-02-01T00:00:00+00:00".to_owned(),
+            link_count: 2,
+            backlink_count: 1,
+            is_orphan: false,
+            delta: None,
+        }],
+    };
+
+    let pages = vec![("Alpha", &page_ctx)];
+    let result = serialize_history_index(&vault_ctx, &pages);
+
+    // Top-level keys
+    assert!(result["vault"].is_object(), "vault key must be object");
+    assert!(result["pages"].is_object(), "pages key must be object");
+
+    // Vault section
+    let vault = &result["vault"];
+    assert_eq!(vault["snapshot_count"], 10);
+    assert_eq!(vault["unique_states"], 2);
+    assert_eq!(vault["oldest"], "2026-01-01T00:00:00+00:00");
+    assert_eq!(vault["newest"], "2026-02-01T00:00:00+00:00");
+    let trend = vault["trend"].as_array().unwrap();
+    assert_eq!(trend.len(), 2, "vault trend must have 2 points");
+    assert_eq!(trend[0]["total_pages"], 5);
+    assert_eq!(trend[1]["total_pages"], 7);
+
+    // Pages section
+    let alpha = &result["pages"]["Alpha"];
+    assert!(alpha.is_object(), "Alpha page entry must be object");
+    assert_eq!(alpha["created_at"], "2026-01-01T00:00:00+00:00");
+    assert_eq!(alpha["last_changed"], "2026-02-01T00:00:00+00:00");
+    let link_trend = alpha["link_trend"].as_array().unwrap();
+    assert_eq!(link_trend.len(), 2, "page link_trend must have 2 points (≤10)");
+    assert_eq!(link_trend[0]["link_count"], 1);
+    assert_eq!(link_trend[1]["link_count"], 2);
+}
+
+// TEST-139: serialize_history_index resamples page link_trend to ≤10 points (REQ-088).
+#[test]
+fn test_139_serialize_history_index_resamples_link_trend() {
+    use zetl::history::core::{
+        PageHistoryContext, PageTrendPoint, TrendPoint, VaultHistoryContext,
+        serialize_history_index,
+    };
+
+    // Build a page context with 25 trend points (>10).
+    let link_trend: Vec<PageTrendPoint> = (0..25)
+        .map(|i| PageTrendPoint {
+            timestamp: format!("2026-01-{:02}T00:00:00+00:00", i + 1),
+            link_count: i,
+            backlink_count: 0,
+        })
+        .collect();
+
+    let page_ctx = PageHistoryContext {
+        created_at: "2026-01-01T00:00:00+00:00".to_owned(),
+        last_changed: "2026-01-25T00:00:00+00:00".to_owned(),
+        age_days: 25,
+        stable_days: 0,
+        link_trend,
+        recent_changes: vec![],
+    };
+
+    let vault_ctx = VaultHistoryContext {
+        trend: vec![TrendPoint {
+            timestamp: "2026-01-01T00:00:00+00:00".to_owned(),
+            total_pages: 1,
+            total_links: 0,
+        }],
+        recent_changes: vec![],
+        oldest: Some("2026-01-01T00:00:00+00:00".to_owned()),
+        newest: Some("2026-01-25T00:00:00+00:00".to_owned()),
+        epoch: Some("2026-01-01T00:00:00+00:00".to_owned()),
+        snapshot_count: 25,
+        unique_states: 25,
+    };
+
+    let pages = vec![("Beta", &page_ctx)];
+    let result = serialize_history_index(&vault_ctx, &pages);
+
+    let link_trend = result["pages"]["Beta"]["link_trend"].as_array().unwrap();
+    assert!(
+        link_trend.len() <= 10,
+        "link_trend must be ≤10 points; got {}",
+        link_trend.len()
+    );
+    assert_eq!(link_trend.len(), 10, "link_trend must be exactly 10 when source has 25 points");
+    // First point should correspond to oldest (index 0), last to newest (index 24).
+    assert_eq!(link_trend[0]["link_count"], 0, "first point is oldest (link_count=0)");
+    assert_eq!(link_trend[9]["link_count"], 24, "last point is newest (link_count=24)");
+}
+
+// TEST-140: build_history_index_json returns None when no history (REQ-088).
+#[test]
+fn test_140_build_history_index_json_no_history() {
+    let dir = tempfile::TempDir::new().unwrap();
+    // No jj workspace initialised → history unavailable.
+    let result = zetl::history::build_history_index_json(dir.path(), &[]);
+    assert!(result.is_none(), "must return None when history is unavailable");
+}
+
+// TEST-141: build_history_index_json produces valid JSON with vault and pages (REQ-088).
+#[test]
+fn test_141_build_history_index_json_with_history() {
+    use zetl::history::cache::HistoricalIndexCache;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let vault_root = dir.path();
+    write(vault_root, "alpha.md", "# Alpha");
+    write(vault_root, "beta.md", "# Beta");
+
+    let hash1 = "c".repeat(64);
+    let hash2 = "d".repeat(64);
+
+    zetl::history::auto_snapshot(vault_root, Some(&hash1)).unwrap();
+    write(vault_root, "beta.md", "# Beta updated");
+    zetl::history::auto_snapshot(vault_root, Some(&hash2)).unwrap();
+
+    let cache = HistoricalIndexCache::with_default_capacity();
+    cache
+        .store(vault_root, &hash1, &[make_parsed_file("alpha", &[])])
+        .unwrap();
+    cache
+        .store(
+            vault_root,
+            &hash2,
+            &[
+                make_parsed_file("alpha", &["beta"]),
+                make_parsed_file("beta", &[]),
+            ],
+        )
+        .unwrap();
+
+    let result = zetl::history::build_history_index_json(vault_root, &["alpha", "beta"]);
+    assert!(result.is_some(), "must produce JSON when history and cached indexes exist");
+
+    let json_str = result.unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("must be valid JSON");
+
+    assert!(parsed["vault"].is_object(), "vault key must be present");
+    assert!(parsed["pages"].is_object(), "pages key must be present");
+    assert!(
+        parsed["vault"]["snapshot_count"].as_u64().unwrap() >= 1,
+        "snapshot_count must be at least 1"
+    );
 }
