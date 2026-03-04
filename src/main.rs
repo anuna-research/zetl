@@ -354,15 +354,29 @@ fn cmd_index(cli: &Cli) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
     let elapsed = start.elapsed();
 
-    // Silently initialise (or re-open) the jj VCS workspace inside .zetl/jj/
-    // (REQ-075, ADR-044, ADR-045).  Errors are non-fatal — temporal commands
-    // will report NO_HISTORY if the workspace is unavailable (graceful
-    // degradation handled by task-graceful-degradation).
+    // Auto-snapshot after index completion (REQ-076, ADR-048).
+    // Non-fatal: errors are silently swallowed (or reported via --verbose).
+    // The vault_root_hash written to index.json by run_pipeline is used as the
+    // snapshot description and for fast deduplication.
     #[cfg(feature = "history")]
     {
-        let _ = zetl::history::jj_backend::JjBackend::open_or_init_at_vault_root(
+        let vault_root_hash = load_vault_root_hex(&pipeline.vault_root).unwrap_or(None);
+        match zetl::history::auto_snapshot(
             &pipeline.vault_root,
-        );
+            vault_root_hash.as_deref(),
+        ) {
+            Ok(Some(change_id)) => {
+                if cli.verbose > 0 {
+                    eprintln!("[zetl] snapshot: {change_id}");
+                }
+            }
+            Ok(None) => {} // deduplicated — vault state unchanged
+            Err(e) => {
+                if cli.verbose > 0 {
+                    eprintln!("[zetl] warning: auto-snapshot failed: {e}");
+                }
+            }
+        }
     }
 
     // OBS-007 + OBS-009: emit scan and cache-efficiency stats to stderr when --verbose.

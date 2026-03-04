@@ -5,6 +5,8 @@
 //!
 //! Test ranges: TEST-080 through TEST-113.
 //! TEST-080–089 are covered here (task-jj-backend).
+//! TEST-090–091 are covered here (task-time-expression-parser).
+//! TEST-092–094 are covered here (task-auto-snapshot).
 //! Remaining tests will be added incrementally as IMPL-017 tasks complete.
 
 use std::fs;
@@ -247,5 +249,93 @@ fn test_091_resolve_snapshot_against_real_jj() {
     assert!(
         err.to_string().contains("SNAPSHOT_NOT_FOUND"),
         "expected SNAPSHOT_NOT_FOUND, got {err}"
+    );
+}
+
+// ─── TEST-092..TEST-094: auto-snapshot integration (REQ-076, ADR-048) ─────────
+
+// TEST-092: auto_snapshot creates a jj commit whose description contains
+// the vault_root_hash (REQ-076).
+#[test]
+fn test_092_auto_snapshot_description_contains_hash() {
+    let dir = tempfile::TempDir::new().unwrap();
+    write(dir.path(), "note.md", "# Hello");
+
+    let hash = "a".repeat(64);
+    let result = zetl::history::auto_snapshot(dir.path(), Some(&hash))
+        .expect("auto_snapshot must not fail");
+    assert!(result.is_some(), "auto_snapshot must create a commit for new content");
+
+    let b = JjBackend::open_or_init_at_vault_root(dir.path()).unwrap();
+    let changes = b.list_changes(1).unwrap();
+    assert_eq!(changes.len(), 1, "must have exactly 1 commit");
+    assert!(
+        changes[0].description.contains(&hash),
+        "description must contain vault_root_hash; got {:?}",
+        changes[0].description
+    );
+}
+
+// TEST-093: auto_snapshot deduplicates when called twice with the same
+// vault_root_hash (REQ-076, ADR-048 fast-path deduplication).
+#[test]
+fn test_093_auto_snapshot_deduplicates_same_hash() {
+    let dir = tempfile::TempDir::new().unwrap();
+    write(dir.path(), "note.md", "# Hello");
+
+    let hash = "b".repeat(64);
+
+    let first = zetl::history::auto_snapshot(dir.path(), Some(&hash))
+        .expect("first auto_snapshot must not fail");
+    assert!(first.is_some(), "first call must produce a commit");
+
+    // Add a new file — jj tree hash changes, but vault_root_hash is still the
+    // same (caller controls it). The Merkle deduplication must win.
+    write(dir.path(), "new.md", "# New file");
+    let second = zetl::history::auto_snapshot(dir.path(), Some(&hash))
+        .expect("second auto_snapshot must not fail");
+    assert!(
+        second.is_none(),
+        "same vault_root_hash must be deduplicated; got {second:?}"
+    );
+
+    // Only one commit should exist.
+    let b = JjBackend::open_or_init_at_vault_root(dir.path()).unwrap();
+    let changes = b.list_changes(10).unwrap();
+    assert_eq!(changes.len(), 1, "deduplication must prevent a second commit");
+}
+
+// TEST-094: auto_snapshot creates a new commit when vault_root_hash changes,
+// and each commit carries its respective hash in the description (REQ-076).
+#[test]
+fn test_094_auto_snapshot_new_commit_on_hash_change() {
+    let dir = tempfile::TempDir::new().unwrap();
+    write(dir.path(), "note.md", "# Version one");
+
+    let hash1 = "c".repeat(64);
+    let hash2 = "d".repeat(64);
+
+    let first = zetl::history::auto_snapshot(dir.path(), Some(&hash1))
+        .expect("first auto_snapshot must not fail");
+    assert!(first.is_some(), "first call must produce a commit");
+
+    write(dir.path(), "note.md", "# Version two");
+    let second = zetl::history::auto_snapshot(dir.path(), Some(&hash2))
+        .expect("second auto_snapshot must not fail");
+    assert!(second.is_some(), "different vault_root_hash must produce a new commit");
+
+    let b = JjBackend::open_or_init_at_vault_root(dir.path()).unwrap();
+    let changes = b.list_changes(10).unwrap();
+    assert_eq!(changes.len(), 2, "must have 2 commits; got {changes:?}");
+    // Newest-first ordering.
+    assert!(
+        changes[0].description.contains(&hash2),
+        "newest commit must embed hash2; got {:?}",
+        changes[0].description
+    );
+    assert!(
+        changes[1].description.contains(&hash1),
+        "oldest commit must embed hash1; got {:?}",
+        changes[1].description
     );
 }

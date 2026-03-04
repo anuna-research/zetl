@@ -1,12 +1,12 @@
 {
-  "task_id": "time-expression-parser",
+  "task_id": "auto-snapshot",
   "token_budget": 5000,
-  "tokens_used": 139,
+  "tokens_used": 160,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement pure parse_time_expr() supporting ISO 8601, relative natural-language ('yesterday', '3 days ago', 'last monday'), and git refs (HEAD~N, branch names) (REQ-077, CON-024)",
-      "token_cost": 44,
+      "content": "Hook into zetl index completion to create a jj snapshot; include vault_root_hash in commit description; deduplicate when vault_root_hash unchanged (REQ-076, ADR-048)",
+      "token_cost": 41,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 4 files (+139, -13): .hence/context-manifest.json, src/history/jj_backend.rs, src/main.rs, tests/history_integration.rs",
       "token_cost": 32,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-time-expression-parser-changes",
+      "content": "Modified 3 files (+644, -0): src/history/core.rs, src/history/mod.rs, tests/history_integration.rs",
+      "token_cost": 24,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T07:03:42Z"
+  "constructed_at": "2026-03-04T07:10:07Z"
 }
