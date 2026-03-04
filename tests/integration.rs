@@ -4932,6 +4932,236 @@ fn test_014_path_traversal_rejected() {
     }
 }
 
+// (Chain navigation tests removed — chain logic stripped from core per IMPL-015.
+//  Chain navigation will be re-added via post-index theme hooks per SPEC-016.)
+
+// ====================================================================
+// TEST-015-001: fountain theme — Courier Prime font-face, no CDN URLs
+// ===========================================================================
+
+/// TEST-015-001: `zetl build --theme fountain` produces HTML that declares
+/// Courier Prime via @font-face with local WOFF2 paths and contains no
+/// external CDN URLs for fonts or stylesheets.
+#[test]
+fn test_015_001_fountain_font_face_no_cdn() {
+    let dir = TempDir::new().expect("create temp dir");
+    write_file(dir.path(), "Intro.md", "# Intro\n\nOpening scene.\n");
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("--theme")
+        .arg("fountain")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build --theme fountain");
+    assert!(
+        output.status.success(),
+        "zetl build --theme fountain failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("intro/index.html"))
+        .expect("intro/index.html should be built");
+
+    // Must declare Courier Prime via @font-face.
+    assert!(
+        html.contains("Courier Prime"),
+        "fountain HTML should declare 'Courier Prime' font"
+    );
+    assert!(
+        html.contains("@font-face"),
+        "fountain HTML should include @font-face declarations"
+    );
+    assert!(
+        html.contains("CourierPrime-Regular.woff2"),
+        "fountain HTML should reference CourierPrime-Regular.woff2"
+    );
+    assert!(
+        html.contains("CourierPrime-Bold.woff2"),
+        "fountain HTML should reference CourierPrime-Bold.woff2"
+    );
+
+    // Must not reference any CDN (no external font hosting).
+    assert!(
+        !html.contains("fonts.googleapis.com"),
+        "fountain HTML must not use Google Fonts CDN"
+    );
+    assert!(
+        !html.contains("fonts.gstatic.com"),
+        "fountain HTML must not reference Google's static CDN"
+    );
+    assert!(
+        !html.contains("cdnjs.cloudflare.com"),
+        "fountain HTML must not use cdnjs CDN"
+    );
+    assert!(
+        !html.contains("unpkg.com"),
+        "fountain HTML must not use unpkg CDN"
+    );
+    assert!(
+        !html.contains("jsdelivr.net"),
+        "fountain HTML must not use jsDelivr CDN"
+    );
+}
+
+// ===========================================================================
+// TEST-015-002: fountain theme — WOFF2 fonts copied to _static/
+// ===========================================================================
+
+/// TEST-015-002: After `zetl build --theme fountain`, all four Courier Prime
+/// WOFF2 font files are present in the `_static/` directory of the build
+/// output.
+#[test]
+fn test_015_002_fountain_woff2_fonts_in_static() {
+    let dir = TempDir::new().expect("create temp dir");
+    write_file(dir.path(), "Scene.md", "# Scene\n\nContent.\n");
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("--theme")
+        .arg("fountain")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build --theme fountain");
+    assert!(
+        output.status.success(),
+        "zetl build --theme fountain failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let static_dir = out_dir.join("_static");
+
+    for font in &[
+        "CourierPrime-Regular.woff2",
+        "CourierPrime-Bold.woff2",
+        "CourierPrime-Italic.woff2",
+        "CourierPrime-BoldItalic.woff2",
+    ] {
+        let path = static_dir.join(font);
+        assert!(
+            path.exists(),
+            "_static/{font} must exist in build output after `zetl build --theme fountain`"
+        );
+        let size = fs::metadata(&path)
+            .unwrap_or_else(|e| panic!("failed to stat {font}: {e}"))
+            .len();
+        assert!(
+            size > 0,
+            "_static/{font} must not be empty"
+        );
+    }
+}
+
+// (Fountain chain scene-nav tests removed — see IMPL-015.)
+
+/// TEST-015-003c: `zetl theme list` includes "fountain" with `source =
+/// "bundled"`.
+#[test]
+fn test_015_003_fountain_theme_list_bundled() {
+    let dir = TempDir::new().expect("create temp dir");
+    write_file(dir.path(), "Note.md", "# Note\n\nHello.\n");
+
+    let json = run_json(&mut {
+        let mut cmd = zetl_cmd(dir.path());
+        cmd.arg("theme").arg("list");
+        cmd
+    });
+
+    let themes = json["themes"].as_array().expect("themes must be an array");
+    let fountain = themes
+        .iter()
+        .find(|t| t["name"].as_str() == Some("fountain"))
+        .unwrap_or_else(|| {
+            panic!(
+                "fountain must appear in `zetl theme list`; got: {json}"
+            )
+        });
+
+    assert_eq!(
+        fountain["source"].as_str().unwrap_or(""),
+        "bundled",
+        "fountain theme source must be 'bundled'"
+    );
+}
+
+// ===========================================================================
+// TEST-015-004: fountain file embeds source + JS parser
+// ===========================================================================
+
+/// TEST-015-004: A `.fountain` file is built with the fountain theme, embedding
+/// the raw source in a `<script type="text/fountain">` tag alongside the
+/// client-side JS parser that converts it to McQueen-compatible HTML at runtime.
+#[test]
+fn test_015_004_fountain_file_renders_screenplay_html() {
+    let dir = TempDir::new().expect("create temp dir");
+
+    write_file(
+        dir.path(),
+        "Scene.fountain",
+        "---\ntitle: Scene\n---\n\nFADE IN:\n\nEXT. PARK — DAY\n\nA quiet morning.\n\nJANE\n(whispering)\nHello world.\n\nCUT TO:\n",
+    );
+
+    let out_dir = dir.path().join("dist");
+    let output = zetl_cmd(dir.path())
+        .arg("build")
+        .arg("--theme")
+        .arg("fountain")
+        .arg("-o")
+        .arg(&out_dir)
+        .output()
+        .expect("zetl build --theme fountain");
+    assert!(
+        output.status.success(),
+        "zetl build --theme fountain failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(out_dir.join("scene/index.html"))
+        .expect("scene/index.html should be built");
+
+    // Fountain source is embedded (frontmatter stripped)
+    assert!(
+        html.contains("id=\"fountain-source\""),
+        "should embed fountain source in a script tag"
+    );
+    assert!(
+        html.contains("EXT. PARK"),
+        "should contain scene heading text in fountain source"
+    );
+    assert!(
+        html.contains("JANE"),
+        "should contain character name in fountain source"
+    );
+    assert!(
+        html.contains("Hello world."),
+        "should contain dialogue text in fountain source"
+    );
+    assert!(
+        !html.contains("title: Scene"),
+        "frontmatter should be stripped from fountain source"
+    );
+
+    // Render target div exists
+    assert!(
+        html.contains("id=\"fountain-render\""),
+        "should have a fountain-render div for the JS parser output"
+    );
+
+    // JS fountain parser is present in the theme
+    assert!(
+        html.contains("fountain-source"),
+        "theme should include the fountain parser JS"
+    );
+    assert!(
+        html.contains("scene-heading"),
+        "theme JS parser should reference scene-heading class"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // zetl hook list
 // ---------------------------------------------------------------------------

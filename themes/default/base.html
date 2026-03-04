@@ -298,6 +298,31 @@
       font-size: 0.7rem;
       opacity: 0.5;
     }
+    /* ── Sidebar tree */
+    .sidebar-tree details > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 0.25rem 0.5rem;
+      font-weight: 600;
+      font-size: 0.85rem;
+      opacity: 0.7;
+    }
+    .sidebar-tree details > summary::-webkit-details-marker { display: none; }
+    .sidebar-tree details > summary::before {
+      content: '▶';
+      display: inline-block;
+      font-size: 0.6em;
+      margin-right: 0.4em;
+      transition: transform 0.15s ease;
+    }
+    .sidebar-tree details[open] > summary::before {
+      transform: rotate(90deg);
+    }
+    .sidebar-tree details > ul {
+      border-left: 1px solid oklch(var(--b3));
+      margin-left: 0.75rem;
+      padding-left: 0;
+    }
     {% block styles %}{% endblock %}
   </style>
 </head>
@@ -336,11 +361,24 @@
           <kbd>⌘K</kbd>
         </button>
         {% block sidebar %}
-        <ul class="menu menu-sm">
-          {%- for page in vault.pages %}
-          <li><a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}" class="{% if active_slug == page.slug %}active{% endif %}">{{ page.title }}</a></li>
+        {% macro render_tree(nodes) %}
+        <ul class="menu menu-sm sidebar-tree">
+          {%- for node in nodes %}
+          {%- if node.is_folder %}
+          <li>
+            <details{% if active_slug is startingwith(node.slug ~ "/") %} open{% endif %}>
+              <summary>{{ node.name }}</summary>
+              {{ render_tree(node.children) }}
+            </details>
+          </li>
+          {%- else %}
+          <li><a href="{{ root_path }}{{ node.slug | safe }}/{{ index_file }}"
+            class="{% if active_slug == node.slug %}active{% endif %}">{{ node.name }}</a></li>
+          {%- endif %}
           {%- endfor %}
         </ul>
+        {% endmacro %}
+        {{ render_tree(vault.sidebar_tree) }}
         {% endblock %}
       </aside>
     </div>

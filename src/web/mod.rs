@@ -143,6 +143,7 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", get(routes::index_handler))
         .route("/api/search", get(routes::api_search_handler))
+        .route("/_print", get(routes::print_handler))
         .route("/_static/{*path}", get(routes::static_handler))
         .route("/preview/{*path}", get(routes::preview_handler))
         .route(

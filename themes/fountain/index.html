@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vault.name }} — zetl{% endblock %}
+
+{% block styles %}
+  /* ── Vault landing page ── */
+
+  /* Title block — centred like a screenplay title page */
+  .fn-vault-header {
+    text-align: center;
+    margin: 2.5em 0 3em;
+  }
+  .fn-vault-name {
+    text-transform: uppercase;
+    font-weight: 700;
+    font-size: 1.5em;
+    letter-spacing: 0.18em;
+    margin-bottom: 0.4em;
+  }
+  .fn-vault-tagline {
+    font-size: 0.85em;
+    color: var(--muted);
+    margin-top: 0.25em;
+  }
+
+  /* Page entry row */
+  .fn-sp-entry {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 0.35em 0;
+    gap: 0.5em;
+  }
+  .fn-sp-entry a {
+    color: var(--link);
+    text-decoration: none;
+  }
+  .fn-sp-entry a:hover {
+    text-decoration: underline;
+  }
+{% endblock %}
+
+{# ── Sidebar: alphabetical page list ── #}
+{% block sidebar %}
+  <nav>
+    <ul class="sp-nav">
+      {%- for page in vault.pages %}
+      <li>
+        <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
+      </li>
+      {%- endfor %}
+    </ul>
+  </nav>
+{% endblock %}
+
+{# ── Vault landing content ── #}
+{% block content %}
+  {# ── Title block ── #}
+  <div class="fn-vault-header">
+    <div class="fn-vault-name">{{ vault.name }}</div>
+    <div class="fn-vault-tagline">
+      {{ vault.stats.total_pages -}}
+      {%- if vault.stats.total_pages == 1 %} page{%- else %} pages{%- endif %}
+    </div>
+  </div>
+
+  {# ── Pages (alphabetical) ── #}
+  <p class="scene-heading">Pages</p>
+  {%- for page in vault.pages %}
+  <p class="action fn-sp-entry">
+    <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}">{{ page.title }}</a>
+  </p>
+  {%- endfor %}
+{% endblock %}

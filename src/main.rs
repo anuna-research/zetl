@@ -891,7 +891,8 @@ fn cmd_check(
     let pipeline = run_pipeline(cli)?;
 
     // If none of the flags are set, show all
-    let show_all = !show_dead_links && !show_orphans && !show_syntax && !show_spl && !show_drift;
+    let show_all =
+        !show_dead_links && !show_orphans && !show_syntax && !show_spl && !show_drift;
 
     let dead = if show_all || show_dead_links {
         pipeline.graph.dead_links()

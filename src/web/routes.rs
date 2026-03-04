@@ -82,7 +82,16 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
         let file_slug = page_slug_from_path(&file.path);
         match std::fs::read_to_string(&full_path) {
             Ok(content) => {
-                let html = markdown::render_to_html(&content, &data.page_slug_map, "/", "");
+                let is_fountain = file.path.extension().map_or(false, |e| e == "fountain");
+                let html = if is_fountain {
+                    let body = crate::web::build::strip_fountain_frontmatter(&content);
+                    format!(
+                        "<script type=\"text/fountain\" id=\"fountain-source\">{}</script>\n<div id=\"fountain-render\"></div>",
+                        html_escape(&body)
+                    )
+                } else {
+                    markdown::render_to_html(&content, &data.page_slug_map, "/", "")
+                };
                 (html, file.page_name.clone(), file_slug, Some(content))
             }
             Err(_) => (
@@ -167,6 +176,7 @@ pub async fn save_handler(
     body: String,
 ) -> Response {
     let slug = urldecode(&slug);
+    let slug = slug.trim_end_matches('/');
 
     // Look up file path under read lock, then drop it before writing.
     // For new pages, create at vault_root/{slug}.md.
@@ -458,6 +468,172 @@ pub async fn api_search_handler(
     };
 
     Json(output).into_response()
+}
+
+/// GET /_print — Combined print view of all pages for PDF export.
+pub async fn print_handler(State(state): State<WebState>) -> Response {
+    let data = state.data.read().unwrap();
+
+    // Collect only fountain scenes, sorted alphabetically by title (sidebar order)
+    let mut fountain_files: Vec<_> = data
+        .files
+        .iter()
+        .filter(|f| f.path.extension().map_or(false, |e| e == "fountain"))
+        .collect();
+    fountain_files.sort_by(|a, b| a.page_name.to_lowercase().cmp(&b.page_name.to_lowercase()));
+
+    let mut sections = Vec::new();
+    for file in &fountain_files {
+        let full_path = state.vault_root.join(&file.path);
+        let content = match std::fs::read_to_string(&full_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let body = crate::web::build::strip_fountain_frontmatter(&content);
+        sections.push(format!(
+            "<section class=\"print-section\">\
+             <script type=\"text/fountain\">{src}</script>\
+             <div class=\"fountain-out\"></div></section>",
+            src = html_escape(&body),
+        ));
+    }
+
+    // Inline the Fountain.js parser from the bundled theme
+    let fountain_js = crate::web::engine::bundled_template("fountain", "base.html")
+        .and_then(|base| {
+            let start_marker = "<!-- fountain-js";
+            let end_marker = "</script>\n\n  <!-- Render fountain";
+            let start = base.find(start_marker)?;
+            let end = base.find(end_marker).map(|i| i + "</script>".len())?;
+            Some(base[start..end].to_string())
+        })
+        .unwrap_or_default();
+
+    let html = format!(
+        r##"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Print — Script</title>
+<style>
+  @font-face {{
+    font-family: 'Courier Prime';
+    src: url('/_static/CourierPrime-Regular.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+  }}
+  @font-face {{
+    font-family: 'Courier Prime';
+    src: url('/_static/CourierPrime-Bold.woff2') format('woff2');
+    font-weight: 700; font-style: normal; font-display: swap;
+  }}
+  @font-face {{
+    font-family: 'Courier Prime';
+    src: url('/_static/CourierPrime-Italic.woff2') format('woff2');
+    font-weight: 400; font-style: italic; font-display: swap;
+  }}
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{
+    font-family: 'Courier Prime', 'Courier New', Courier, monospace;
+    font-size: 12pt;
+    line-height: 1;
+    color: #1a1a1a;
+    background: #c8c8c8;
+  }}
+  .print-wrap {{
+    max-width: 8.5in;
+    margin: 1rem auto;
+    background: white;
+    padding: 1in 1in 1in 1.5in;
+    box-shadow: 0 2px 14px rgba(0,0,0,0.22);
+  }}
+  .scene-heading {{ font-weight: 700; text-transform: uppercase; margin-top: 2em; margin-bottom: 1em; }}
+  .action {{ margin: 1em 0; }}
+  .character {{ text-transform: uppercase; margin-left: 2in; margin-top: 1em; margin-bottom: 0; }}
+  .dialog {{ margin: 0; padding: 0; }}
+  .dialog .character {{ margin-top: 1em; }}
+  .lines, .dialogue {{ margin-left: 1in; width: 3.5in; margin-top: 0; margin-bottom: 0; }}
+  .paren, .parenthetical {{ margin-left: 1.6in; width: 2in; margin-top: 0; margin-bottom: 0; }}
+  .trans, .transition {{ text-transform: uppercase; text-align: right; width: 100%; margin: 1em 0; }}
+  .center {{ text-align: center; width: 100%; margin: 1em 0; }}
+  hr.page-break {{ border: none; page-break-after: always; margin: 0; }}
+  .bold {{ font-weight: 700; }}
+  .italic {{ font-style: italic; }}
+  .underline {{ text-decoration: underline; }}
+  a.wikilink, a.wikilink-dead {{ color: inherit; text-decoration: none; }}
+  /* Title page */
+  .title-page {{
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 9in; text-align: center;
+    page-break-after: always;
+  }}
+  .title-page h1 {{ font-size: 24pt; font-weight: 400; text-decoration: underline; margin-bottom: 1em; }}
+  .title-page .credit {{ margin-top: 2em; }}
+  .title-page .authors {{ margin-top: 0.5em; }}
+  .title-page .source {{ margin-top: 0.5em; }}
+  .title-page .draft-date, .title-page .date {{ margin-top: 2em; }}
+  .title-page .contact {{ margin-top: auto; align-self: flex-start; text-align: left; }}
+  .title-page .copyright {{ margin-top: 0.5em; align-self: flex-start; text-align: left; }}
+  .title-page .notes {{ margin-top: 1em; font-style: italic; }}
+  /* Keep character name + dialogue/parenthetical together across page breaks */
+  .dialog {{ page-break-inside: avoid; }}
+  .character {{ page-break-after: avoid; }}
+  .scene-heading {{ page-break-after: avoid; page-break-before: auto; }}
+  .scene-heading + .action {{ page-break-before: avoid; }}
+
+  .title-page {{ counter-reset: page; }}
+  @page {{
+    size: letter;
+    margin: 1in 1in 1in 1.5in;
+    @bottom-right {{
+      content: counter(page) ".";
+      font-family: 'Courier Prime', 'Courier New', Courier, monospace;
+      font-size: 12pt;
+    }}
+  }}
+  @page :first {{
+    @bottom-right {{ content: none; }}
+  }}
+  @media print {{
+    body {{ background: white; }}
+    .print-wrap {{ box-shadow: none; padding: 0; max-width: none; margin: 0; }}
+    hr.page-break {{ page-break-after: always; }}
+  }}
+</style>
+</head>
+<body>
+<div class="print-wrap">
+{sections}
+</div>
+
+{fountain_js}
+
+<script>
+(function(){{
+  document.querySelectorAll('.print-section').forEach(function(sec){{
+    var src = sec.querySelector('script[type="text/fountain"]');
+    var dest = sec.querySelector('.fountain-out');
+    if(!src||!dest) return;
+    var result = window.fountain.parse(src.textContent);
+    var out = '';
+    if(result.html.title_page){{
+      var d=new Date();
+      var months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+      var dateStr=months[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();
+      out += '<div class="title-page">' + result.html.title_page + '<p class="draft-date">' + dateStr + '</p></div>';
+    }}
+    out += result.html.script;
+    dest.innerHTML = out;
+  }});
+  setTimeout(function(){{ window.print(); }}, 600);
+}})();
+</script>
+</body>
+</html>"##,
+        sections = sections.join("\n"),
+        fountain_js = fountain_js,
+    );
+
+    Html(html).into_response()
 }
 
 /// GET /_static/{*path} — Serve static assets with two-tier lookup.
