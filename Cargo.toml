@@ -37,6 +37,7 @@ spindle-parser = { git = "ssh://git@codeberg.org/anuna/spindle-rust.git", option
 jj-lib = { version = "0.32", optional = true }
 chrono = { version = "0.4", optional = true, features = ["std"] }
 pollster = { version = "0.4", optional = true }
+notify = "6"
 tantivy = "0.22"
 
 [dev-dependencies]

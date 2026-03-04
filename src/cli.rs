@@ -262,6 +262,16 @@ pub enum Command {
         filter: Option<DiffFilter>,
     },
 
+    /// Watch vault for file changes and emit NDJSON graph events (SPEC-008)
+    Watch {
+        /// Debounce window in milliseconds (default: 150; min 10, max 5000)
+        #[arg(long, default_value = "150", value_parser = clap::value_parser!(u64).range(10..=5000))]
+        debounce: u64,
+        /// Shell command invoked once per event with event JSON on stdin
+        #[arg(long)]
+        exec: Option<String>,
+    },
+
     /// Browse vault history timeline (requires --features history)
     ///
     /// Shows the list of temporal snapshots and allows querying graph evolution.
