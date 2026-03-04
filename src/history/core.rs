@@ -137,7 +137,11 @@ pub fn resolve_snapshot<'a>(
 
         TimeExpr::Ref(ref ref_str) => snapshots
             .iter()
-            .find(|c| c.change_id.starts_with(ref_str.as_str()) || c.description == *ref_str)
+            .find(|c| {
+                c.change_id.starts_with(ref_str.as_str())
+                    || c.commit_id.starts_with(ref_str.as_str())
+                    || c.description == *ref_str
+            })
             .ok_or_else(|| {
                 anyhow!("SNAPSHOT_NOT_FOUND: no snapshot matching ref {ref_str:?}")
             }),
@@ -940,6 +944,23 @@ mod time_expression_parser {
             err.to_string().contains("SNAPSHOT_NOT_FOUND"),
             "expected SNAPSHOT_NOT_FOUND, got {err}"
         );
+    }
+
+    #[test]
+    fn resolve_ref_by_commit_id_prefix() {
+        // Build snapshots with distinct commit_ids (git SHAs via jj git backend).
+        let mut snaps = sample_snapshots();
+        snaps[0].commit_id = "cafe0000ffff".to_owned(); // newest: snap-c
+        snaps[1].commit_id = "babe1111eeee".to_owned(); // snap-b
+        snaps[2].commit_id = "dead2222dddd".to_owned(); // oldest: snap-a
+
+        // Resolve by full git commit SHA prefix.
+        let result = resolve_snapshot("babe", now_utc(), &snaps).unwrap();
+        assert_eq!(result.description, "snap-b");
+
+        // Resolve by shorter prefix (just 4 hex chars).
+        let result2 = resolve_snapshot("dead", now_utc(), &snaps).unwrap();
+        assert_eq!(result2.description, "snap-a");
     }
 
     #[test]

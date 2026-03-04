@@ -8088,10 +8088,20 @@ fn cmd_diff_history(
     }
 
     // Resolve the baseline to a snapshot.
-    let expr = baseline_expr.unwrap_or("HEAD~1");
+    // When no --from/--since is given, default to the previous distinct snapshot (@-).
     let now = chrono::Local::now().fixed_offset();
-    let baseline_snap = resolve_snapshot(expr, now, &snapshots)
-        .with_context(|| format!("resolving diff baseline {expr:?}"))?;
+    let baseline_snap: &zetl::history::jj_backend::ChangeInfo = if let Some(expr) = baseline_expr {
+        resolve_snapshot(expr, now, &snapshots)
+            .with_context(|| format!("resolving diff baseline {expr:?}"))?
+    } else {
+        // @- semantics: need at least two snapshots to compute a diff (REQ-083, ADR-046).
+        snapshots.get(1).ok_or_else(|| {
+            anyhow::anyhow!(
+                "NO_PREVIOUS_SNAPSHOT: only one snapshot exists; run `zetl index` again \
+                 after making changes to create a second snapshot to diff against."
+            )
+        })?
+    };
 
     // Load the historical index for the baseline snapshot.
     let vault_root_hash =
