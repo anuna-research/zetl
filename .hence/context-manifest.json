@@ -1,75 +1,15 @@
 {
-  "task_id": "bundled-hook-extraction",
-  "token_budget": 8000,
-  "tokens_used": 263,
+  "task_id": "cargo-feature-flag",
+  "token_budget": 3000,
+  "tokens_used": 31,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "For bundled (compile-time embedded) themes: extract hook files to .zetl/cache/hooks/<theme>/ before execution; refresh extracted hooks when zetl binary version changes; make extracted hooks executable",
-      "token_cost": 50,
+      "content": "Add optional 'history' Cargo feature flag; gate all jj-lib imports behind it; ensure builds without the feature are unaffected",
+      "token_cost": 31,
       "priority": "PlanMeta"
-    },
-    {
-      "source": "memory/episodic/task-hook-discovery-changes",
-      "content": "Modified 3 files (+375, -78): .hence/context-manifest.json, src/hooks/mod.rs, src/lib.rs",
-      "token_cost": 22,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-hook-executor-changes",
-      "content": "Modified 1 files (+430, -6): src/hooks/mod.rs",
-      "token_cost": 11,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-verbose-logging-changes",
-      "content": "Modified 1 files (+174, -7): src/hooks/mod.rs",
-      "token_cost": 11,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-context-builder-changes",
-      "content": "Modified 3 files (+398, -5): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs",
-      "token_cost": 24,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-wire-post-build-changes",
-      "content": "Modified 3 files (+83, -5): .hence/context-manifest.json, src/hooks/context.rs, src/main.rs",
-      "token_cost": 22,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-theme-hook-discovery-changes",
-      "content": "Modified 4 files (+231, -8): .hence/context-manifest.json, src/hooks/mod.rs, src/main.rs, src/web/engine.rs",
-      "token_cost": 26,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-hook-list-cmd-changes",
-      "content": "Modified 4 files (+202, -6): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/integration.rs",
-      "token_cost": 26,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-hook-timeout-changes",
-      "content": "Modified 2 files (+147, -15): .hence/context-manifest.json, src/hooks/mod.rs",
-      "token_cost": 19,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-hook-run-cmd-changes",
-      "content": "Modified 4 files (+299, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/integration.rs",
-      "token_cost": 26,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-post-check-hook-changes",
-      "content": "Modified 4 files (+193, -8): .hence/context-manifest.json, src/cli.rs, src/hooks/context.rs, src/main.rs",
-      "token_cost": 26,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-02T12:37:00Z"
+  "constructed_at": "2026-03-04T06:27:44Z"
 }
