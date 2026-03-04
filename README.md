@@ -11,10 +11,11 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Vault diagnostics** — dead links, orphan pages, syntax errors, SPL parse errors
 - **Full-text search** — content search with regex support, frontmatter/code-block awareness
 - **Fuzzy matching** — SimHash-based page name similarity
-- **Interactive TUI** — dashboard, page browser, link explorer, graph view, inline wikilink navigation
+- **Interactive TUI** — dashboard, page browser, link explorer, graph view, inline wikilink navigation, temporal timeline
 - **Page viewer** — Xanadu-inspired two-pane reader with context cards, bridge connectors, and wikilink navigation
 - **Web UI** — local web server with rendered pages, transclusion panels, backlink navigation, and inline editing
 - **Static site export** — generate a deployable HTML site from your vault (same look, no server required)
+- **Vault history** — jj-backed temporal snapshots with time-travel queries (`--at "3 days ago"`), graph evolution timeline, and automatic snapshotting on index
 - **Lifecycle hooks** — git-style executable hooks at `pre-build`, `post-build`, `post-index`, `post-check`, `pre-serve`, and `on-save` lifecycle points; receive vault context as JSON on stdin
 - **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context; themes can bundle hooks
 - **Content-addressable blocks** — BLAKE3 Merkle leaves for headings, paragraphs, code blocks, and SPL
@@ -37,9 +38,15 @@ make install
 
 # With defeasible reasoning
 cargo install --path . --features reason
+
+# With vault history (jj-backed temporal snapshots)
+cargo install --path . --features history
+
+# Both reasoning and history
+cargo install --path . --features "reason,history"
 ```
 
-Without `--features reason`, running `zetl reason` prints a helpful error instead of failing silently.
+Without `--features reason`, running `zetl reason` prints a helpful error instead of failing silently. Without `--features history`, history-related template variables and API endpoints gracefully degrade to null.
 
 ## Quick start
 
@@ -116,6 +123,31 @@ zetl -d ./my-vault build                                 # generates dist/
 zetl -d ./my-vault build --out-dir site                  # custom output directory
 zetl -d ./my-vault build --theme paper                   # build with custom theme
 ```
+
+### History commands
+
+Requires `--features history` at build time. History uses jj-lib for automatic, silent VCS snapshots stored in `.zetl/jj/`.
+
+```bash
+# View graph evolution timeline
+zetl -d ./my-vault history log
+zetl history log --since "last week"
+
+# Track a page's evolution across snapshots
+zetl history page "Some Page"
+
+# Query any command at a point in time
+zetl -d ./my-vault --at "3 days ago" links "Some Page"
+zetl --at "2024-01-15" stats
+zetl --at "last monday" check
+
+# Watch vault and auto-snapshot on changes
+zetl -d ./my-vault watch
+```
+
+The `--at` flag works on all read-only subcommands (`links`, `backlinks`, `stats`, `check`, `search`, etc.), resolving the vault state to a historical snapshot. Time expressions support ISO 8601 dates, relative natural language ("3 days ago", "last monday"), and VCS refs ("HEAD~1").
+
+When the history feature is enabled, `zetl index` automatically creates a snapshot, `vault.history` and `page.history` are available in templates, `page.backlinks[].since` provides backlink timestamps, hooks receive a `history` context object, and `zetl build` writes `history-index.json`.
 
 ### Reasoning commands
 
@@ -215,6 +247,7 @@ Multi-tab terminal interface for vault exploration:
 | Diagnostics | Dead links, orphans, syntax issues |
 | Page | Rendered markdown with wikilink navigation |
 | Graph | Local link graph with depth toggle |
+| Timeline | Temporal snapshot history (requires `--features history`) |
 
 Navigate with `Tab`/`Shift+Tab` to cycle views, `Ctrl+K` for the quick switcher, `j`/`k` for scrolling, `Enter` to follow wikilinks, `Backspace` to go back.
 
@@ -333,6 +366,7 @@ Templates use [Minijinja](https://github.com/mitsuhiko/minijinja) (Jinja2-compat
 | `vault.name` | string | Vault directory name |
 | `vault.pages` | array | All pages (`title`, `slug`, `outlink_count`, `backlink_count`) |
 | `vault.stats` | object | `total_pages`, `total_links`, `dead_links`, `orphans` |
+| `vault.history` | object\|null | Vault history summary: snapshot count, trend, oldest/newest (null without history) |
 | `search_index` | string | JSON search index (use with `{{ search_index \| safe }}`) |
 | `theme` | string | Active theme name |
 | `active_slug` | string | Current page slug (for sidebar highlighting) |
@@ -345,7 +379,8 @@ Templates use [Minijinja](https://github.com/mitsuhiko/minijinja) (Jinja2-compat
 | `page.slug` | string | URL slug |
 | `page.content_html` | string | Rendered HTML (use with `\| safe`) |
 | `page.frontmatter` | object | Parsed YAML frontmatter (e.g. `page.frontmatter.tags`) |
-| `page.backlinks` | array | Backlinks (`title`, `slug`, `line`) |
+| `page.backlinks` | array | Backlinks (`title`, `slug`, `line`, `since`) — `since` is an RFC 3339 timestamp (null without history) |
+| `page.history` | object\|null | Page history: `created_at`, `last_changed`, `age_days`, `stable_days`, `link_trend`, `recent_changes` (null without history) |
 | `page.outlinks` | array | Outgoing links (`title`, `slug`, `is_dead`, `color`) |
 | `page.breadcrumbs` | array | Path breadcrumbs (`title`, `slug`) |
 | `page.transclusion_cards` | string | Pre-rendered transclusion HTML (`\| safe`) |
@@ -416,7 +451,7 @@ chmod +x .zetl/hooks/post-build
 ```
 
 Every hook receives:
-- **stdin**: JSON context with vault metadata, page list, link graph, and hook-specific fields
+- **stdin**: JSON context with vault metadata, page list, link graph, history (when available), and hook-specific fields
 - **Environment**: `ZETL_HOOK`, `ZETL_VAULT_ROOT`, `ZETL_THEME`, `ZETL_VERSION`, plus hook-specific vars like `ZETL_OUT_DIR` and `ZETL_PORT`
 - **Working directory**: vault root
 
@@ -453,6 +488,7 @@ make build              # debug build
 make release            # release build
 make test               # run tests
 make test-reason        # run tests with reason feature
+cargo test --features history  # run history integration tests
 make check              # fmt + clippy
 make fmt-fix            # auto-format code
 make doc-open           # generate and open docs in browser
