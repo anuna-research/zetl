@@ -546,11 +546,27 @@ Trace:
 
 The implementation SHALL use jj-lib instead of git subprocesses. When `--from` is given a git ref (branch name, tag, SHA), jj-lib SHALL resolve it via the git backend. When `--since` is given a datetime, jj-lib SHALL find the nearest snapshot at or before that time.
 
-When the `history` feature is not compiled in, `zetl diff` SHALL fall back to the SPEC-007 git-subprocess implementation.
+**Default baseline (no arguments).** SPEC-007's CON-021 defines the no-arg default as `HEAD~1`, which requires git. When the `history` feature is enabled, the default baseline SHALL be the **previous snapshot** — the most recent jj snapshot whose `vault_root_hash` differs from the current one. This generalises `HEAD~1` to non-git vaults: in a git-tracked vault the previous snapshot typically corresponds to `HEAD~1` or a state between commits; in a non-git vault it is the last distinct graph state captured by `zetl index`. If no previous snapshot exists (only one snapshot in history), the system SHALL error with code `NO_PREVIOUS_SNAPSHOT` and a message: `"Only one snapshot exists. Run zetl index after making changes to create a diff baseline."`.
+
+The `from` field in diff output SHALL reflect the resolved baseline:
+
+```json
+{
+  "from": {
+    "ref": "@-",
+    "snapshot": "2026-03-03T16:45:00Z",
+    "vault_root_hash": "b7e2f4a0..."
+  }
+}
+```
+
+When a git ref was used: `"ref"` contains the original ref string. When the default (previous snapshot) was used: `"ref"` is `"@-"` (jj notation for previous change, used internally — not exposed to the user as syntax they need to learn).
+
+When the `history` feature is not compiled in, `zetl diff` SHALL fall back to the SPEC-007 git-subprocess implementation with its `HEAD~1` default.
 
 Trace:
-- TEST-091, TEST-092
-- CON-021 (preserved)
+- TEST-091, TEST-092, TEST-112
+- CON-021 (output schema preserved; default baseline extended)
 
 ### REQ-084: Graceful Degradation
 
@@ -807,7 +823,9 @@ Trace:
 
 ### NFR-031: VCS-Independence Preservation
 
-All zetl commands without the `--at` flag SHALL continue to function identically whether or not the `history` feature is compiled in, and whether or not `.zetl/jj/` exists. This extends NFR-017 (SPEC-006 §1.6): the `history` feature adds capabilities but never removes them.
+All zetl commands except `zetl diff` SHALL continue to function identically without the `--at` flag whether or not the `history` feature is compiled in, and whether or not `.zetl/jj/` exists. This extends NFR-017 (SPEC-006 §1.6): the `history` feature adds capabilities but never removes them.
+
+`zetl diff` is explicitly exempt: when the `history` feature is enabled, its resolution backend changes from git subprocesses to jj-lib (REQ-083, ADR-046), which alters baseline resolution granularity (snapshots between git commits become visible) and enables operation without a git repository. This is an intentional capability upgrade, not a regression. When the `history` feature is disabled, `zetl diff` falls back to SPEC-007 behavior unchanged.
 
 Trace:
 - TEST-093
@@ -1364,11 +1382,13 @@ Returns a `GraphDelta` between two time points:
 { "error": { "code": "NO_HISTORY", "message": "No history available." } }
 { "error": { "code": "SNAPSHOT_NOT_FOUND", "message": "No snapshot found at or before 2025-01-01. Earliest snapshot: 2026-02-20T09:00:00Z." } }
 { "error": { "code": "PAGE_NOT_FOUND", "message": "Page 'Nonexistent' not found in any snapshot." } }
+{ "error": { "code": "NO_PREVIOUS_SNAPSHOT", "message": "Only one snapshot exists. Run zetl index after making changes to create a diff baseline." } }
 ```
 
 - HTTP 404 with `NO_HISTORY` when no snapshots exist
 - HTTP 404 with `SNAPSHOT_NOT_FOUND` when the requested time is before the earliest snapshot (mirrors CLI `--at` semantics from CON-024)
 - HTTP 404 with `PAGE_NOT_FOUND` when the requested page does not exist (`/api/history/page/{name}` only)
+- HTTP 409 with `NO_PREVIOUS_SNAPSHOT` when `/api/history/diff` is called without explicit bounds and only one snapshot exists
 - HTTP 400 for malformed parameters (invalid ISO 8601, missing required params)
 
 **Implements:** REQ-087
@@ -1811,6 +1831,33 @@ Returns a `GraphDelta` between two time points:
 3. Compute per-build overhead: (enabled_total - disabled_total) / 10
 4. Verify overhead ≤ 2 seconds at p95
 
+### TEST-112: `zetl diff` — Non-Git Default Baseline
+
+**Requirement:** REQ-083
+
+**Preconditions:** Vault with NO `.git/` directory; `history` feature enabled; 3+ distinct snapshots exist (different `vault_root_hash` values)
+
+**Steps:**
+
+1. `zetl diff --format json` (no `--from`, no `--since`)
+2. Verify `from.ref` is `"@-"`
+3. Verify `from.snapshot` is a valid ISO 8601 timestamp
+4. Verify `from.vault_root_hash` differs from the current vault root hash
+5. Verify the diff reflects changes between the previous distinct snapshot and the current state
+6. Verify the output schema otherwise matches CON-021 (same fields, same structure)
+
+### TEST-113: `zetl diff` — No Previous Snapshot Error
+
+**Requirement:** REQ-083
+
+**Preconditions:** Vault with only one snapshot (first `zetl index` just ran); `history` feature enabled
+
+**Steps:**
+
+1. `zetl diff --format json` (no arguments)
+2. Verify error code `NO_PREVIOUS_SNAPSHOT`
+3. Verify error message mentions running `zetl index` after making changes
+
 ---
 
 ## 10. Observability
@@ -1871,7 +1918,7 @@ History:
 | REQ-080 | —       | CON-025 | —                | TEST-087, TEST-088| OBS-012 |
 | REQ-081 | —       | CON-025 | —                | TEST-089          | —       |
 | REQ-082 | NFR-026 | —       | ADR-048          | TEST-090          | OBS-011 |
-| REQ-083 | —       | CON-021 | ADR-046          | TEST-091, TEST-092| OBS-011 |
+| REQ-083 | —       | CON-021 | ADR-046          | TEST-091, TEST-092, TEST-112, TEST-113 | OBS-011 |
 | REQ-084 | NFR-031 | CON-024 | —                | TEST-093          | —       |
 | REQ-085 | —       | CON-026 | ADR-049          | TEST-099, TEST-100| OBS-013 |
 | REQ-086 | —       | CON-026 | ADR-049          | TEST-101, TEST-102| OBS-013 |
