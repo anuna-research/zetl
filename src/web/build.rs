@@ -291,6 +291,10 @@ pub fn build_static(
         let mut page_ctx = build_page_context(data, &file.page_name, &slug, &rendered, &content);
         page_ctx.transclusion_cards =
             build_transclusion_cards(data, vault_root, &file.page_name, &root_path);
+        #[cfg(feature = "history")]
+        if let Some(hist) = crate::history::build_template_page_history_context(&file.page_name, vault_root) {
+            page_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
 
         let page_html = engine
             .render_page(&vault_ctx, &page_ctx, "build", &bm25_json)

@@ -169,6 +169,10 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
     let mut page_ctx = build_page_context(&data, &page_name, &current_slug, &rendered, content_raw);
     page_ctx.transclusion_cards = transclusion_cards;
     page_ctx.raw_escaped = raw_content.map(|c| html_escape(&c));
+    #[cfg(feature = "history")]
+    if let Some(hist) = crate::history::build_template_page_history_context(&page_name, &state.vault_root) {
+        page_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+    }
 
     let mut vault_ctx = build_vault_context(&data, &vault_name);
     #[cfg(feature = "history")]

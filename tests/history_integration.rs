@@ -1705,3 +1705,299 @@ fn test_126_vault_history_populated_in_template() {
     assert!(html.contains("SC:5"), "snapshot_count must be accessible in template");
     assert!(html.contains("US:3"), "unique_states must be accessible in template");
 }
+
+// ── Page history template context tests (REQ-086) ───────────────────────────
+
+// TEST-127: build_page_history_context returns None when the page has no history.
+#[test]
+fn test_127_build_page_history_context_none_when_no_history() {
+    use chrono::{FixedOffset, TimeZone as _};
+    use zetl::history::core::build_page_history_context;
+    use zetl::history::jj_backend::ChangeInfo;
+
+    let now = FixedOffset::east_opt(0)
+        .unwrap()
+        .with_ymd_and_hms(2026, 3, 4, 12, 0, 0)
+        .unwrap();
+
+    // No snapshots — must return None.
+    let result = build_page_history_context("MyPage", &[], &[], now);
+    assert!(result.is_none(), "must return None with no snapshots");
+}
+
+// TEST-128: build_page_history_context returns correct summary fields when page has history.
+#[test]
+fn test_128_build_page_history_context_summary_fields() {
+    use chrono::{FixedOffset, TimeZone as _};
+    use zetl::history::core::build_page_history_context;
+    use zetl::history::jj_backend::ChangeInfo;
+    use zetl::types::{ParsedFile, WikiLink};
+    use std::path::PathBuf;
+    use std::time::SystemTime;
+
+    fn ts(y: i32, m: u32, d: u32) -> chrono::DateTime<FixedOffset> {
+        FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(y, m, d, 0, 0, 0)
+            .unwrap()
+    }
+
+    fn make_snap(id: &str, t: chrono::DateTime<FixedOffset>) -> ChangeInfo {
+        ChangeInfo {
+            change_id: id.to_owned(),
+            commit_id: "deadbeef0000".to_owned(),
+            timestamp: t,
+            description: "zetl-snapshot".to_owned(),
+        }
+    }
+
+    fn make_files(page_name: &str, link_targets: &[&str]) -> Vec<ParsedFile> {
+        vec![ParsedFile {
+            path: PathBuf::from(format!("{page_name}.md")),
+            page_name: page_name.to_owned(),
+            links: link_targets
+                .iter()
+                .enumerate()
+                .map(|(i, t)| WikiLink {
+                    target_page: t.to_string(),
+                    raw_target: t.to_string(),
+                    heading: None,
+                    block_ref: None,
+                    alias: None,
+                    is_embed: false,
+                    line: i as u32 + 1,
+                    column: 1,
+                })
+                .collect(),
+            spl_blocks: vec![],
+            diagnostics: vec![],
+            mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
+        }]
+    }
+
+    // Three snapshots newest-first: snap3 (Mar 4), snap2 (Mar 2), snap1 (Mar 1)
+    let snapshots = vec![
+        make_snap("snap3", ts(2026, 3, 4)),
+        make_snap("snap2", ts(2026, 3, 2)),
+        make_snap("snap1", ts(2026, 3, 1)),
+    ];
+
+    // snap1: page created with 1 link; snap2: link added; snap3: no change (new link dropped)
+    let files_per_snapshot: Vec<Option<Vec<ParsedFile>>> = vec![
+        Some(make_files("MyPage", &["A", "B"])), // snap3: 2 links (change from snap2)
+        Some(make_files("MyPage", &["A"])),       // snap2: 1 link (change from snap1)
+        Some(make_files("MyPage", &[])),          // snap1: 0 links (creation)
+    ];
+
+    let now = ts(2026, 3, 4);
+    let ctx = build_page_history_context("MyPage", &snapshots, &files_per_snapshot, now)
+        .expect("must return Some when page has history");
+
+    // created_at is the oldest changed snapshot (snap1 = 2026-03-01)
+    assert!(
+        ctx.created_at.starts_with("2026-03-01"),
+        "created_at must be the oldest changed snapshot: got {}",
+        ctx.created_at
+    );
+    // last_changed is the newest changed snapshot (snap3 = 2026-03-04)
+    assert!(
+        ctx.last_changed.starts_with("2026-03-04"),
+        "last_changed must be the newest changed snapshot: got {}",
+        ctx.last_changed
+    );
+    // age_days: Mar 1 → Mar 4 = 3 days
+    assert_eq!(ctx.age_days, 3, "age_days must be 3");
+    // stable_days: Mar 4 → Mar 4 = 0 days
+    assert_eq!(ctx.stable_days, 0, "stable_days must be 0");
+    // recent_changes: ≤ 5 entries (we have 3 changes)
+    assert!(ctx.recent_changes.len() <= 5);
+    assert_eq!(ctx.recent_changes.len(), 3);
+}
+
+// TEST-129: sample_page_trend returns oldest-first points from changed snapshots only.
+#[test]
+fn test_129_sample_page_trend_oldest_first() {
+    use chrono::{FixedOffset, TimeZone as _};
+    use zetl::history::core::{build_page_history_context, sample_page_trend};
+    use zetl::history::jj_backend::ChangeInfo;
+    use zetl::types::{ParsedFile, WikiLink};
+    use std::path::PathBuf;
+    use std::time::SystemTime;
+
+    fn ts(d: u32) -> chrono::DateTime<FixedOffset> {
+        FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2026, 3, d, 0, 0, 0)
+            .unwrap()
+    }
+
+    fn snap(id: &str, d: u32) -> ChangeInfo {
+        ChangeInfo {
+            change_id: id.to_owned(),
+            commit_id: "c0ffee".to_owned(),
+            timestamp: ts(d),
+            description: "zetl-snapshot".to_owned(),
+        }
+    }
+
+    fn files(page: &str, n_links: usize) -> Vec<ParsedFile> {
+        let links: Vec<WikiLink> = (0..n_links)
+            .map(|i| WikiLink {
+                target_page: format!("Link{i}"),
+                raw_target: format!("Link{i}"),
+                heading: None,
+                block_ref: None,
+                alias: None,
+                is_embed: false,
+                line: i as u32 + 1,
+                column: 1,
+            })
+            .collect();
+        vec![ParsedFile {
+            path: PathBuf::from(format!("{page}.md")),
+            page_name: page.to_owned(),
+            links,
+            spl_blocks: vec![],
+            diagnostics: vec![],
+            mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
+        }]
+    }
+
+    // 4 snapshots newest-first; page link count changes each time
+    let snapshots = vec![snap("s4", 4), snap("s3", 3), snap("s2", 2), snap("s1", 1)];
+    let fps: Vec<Option<Vec<ParsedFile>>> = vec![
+        Some(files("P", 3)),
+        Some(files("P", 2)),
+        Some(files("P", 1)),
+        Some(files("P", 0)),
+    ];
+
+    let now = ts(4);
+    let ctx = build_page_history_context("P", &snapshots, &fps, now).unwrap();
+
+    // link_trend must be oldest-first
+    let trend = &ctx.link_trend;
+    assert!(!trend.is_empty());
+    // First point should have the earliest timestamp
+    assert!(
+        trend[0].timestamp <= trend[trend.len() - 1].timestamp,
+        "link_trend must be oldest-first"
+    );
+    // link counts must be non-decreasing in this scenario (0, 1, 2, 3)
+    for i in 1..trend.len() {
+        assert!(
+            trend[i].link_count >= trend[i - 1].link_count,
+            "link_count must increase over time in this scenario"
+        );
+    }
+}
+
+// TEST-130: page.history is null in template when history field is Null (REQ-086).
+#[test]
+fn test_130_page_history_null_in_template() {
+    use zetl::web::engine::TemplateEngine;
+    use zetl::web::context::{PageContext, VaultContext, StatsContext};
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let theme_dir = tmp.path().join(".zetl/themes/phist-null");
+    std::fs::create_dir_all(&theme_dir).unwrap();
+    std::fs::write(
+        theme_dir.join("page.html"),
+        r#"{% extends "base.html" %}{% block content %}{% if page.history is none %}PAGE_HIST_NULL{% else %}PAGE_HIST_SET{% endif %}{% endblock %}"#,
+    ).unwrap();
+
+    let vault_ctx = VaultContext {
+        name: "test".to_owned(),
+        pages: vec![],
+        sidebar_tree: vec![],
+        stats: StatsContext { total_pages: 0, total_links: 0, dead_links: 0, orphans: 0 },
+        history: serde_json::Value::Null,
+    };
+
+    let page_ctx = PageContext {
+        title: "TestPage".to_owned(),
+        slug: "TestPage".to_owned(),
+        content_html: String::new(),
+        content_raw: String::new(),
+        frontmatter: serde_json::json!({}),
+        backlinks: vec![],
+        outlinks: vec![],
+        breadcrumbs: vec![],
+        transclusion_cards: String::new(),
+        is_new: false,
+        raw_escaped: None,
+        history: serde_json::Value::Null,
+    };
+
+    let engine = TemplateEngine::new(tmp.path(), "phist-null", false, false);
+    let html = engine.render_page(&vault_ctx, &page_ctx, "serve", "").unwrap();
+    assert!(
+        html.contains("PAGE_HIST_NULL"),
+        "page.history must be null/none when unavailable"
+    );
+}
+
+// TEST-131: page.history fields are accessible in template when populated (REQ-086).
+#[test]
+fn test_131_page_history_populated_in_template() {
+    use zetl::web::engine::TemplateEngine;
+    use zetl::web::context::{PageContext, VaultContext, StatsContext};
+    use zetl::history::core::{PageHistoryContext, PageTrendPoint};
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let theme_dir = tmp.path().join(".zetl/themes/phist-set");
+    std::fs::create_dir_all(&theme_dir).unwrap();
+    std::fs::write(
+        theme_dir.join("page.html"),
+        r#"{% extends "base.html" %}{% block content %}CA:{{ page.history.created_at }} AD:{{ page.history.age_days }} SD:{{ page.history.stable_days }}{% endblock %}"#,
+    ).unwrap();
+
+    let hist = PageHistoryContext {
+        created_at: "2026-01-01T00:00:00Z".to_owned(),
+        last_changed: "2026-03-01T00:00:00Z".to_owned(),
+        age_days: 62,
+        stable_days: 3,
+        link_trend: vec![
+            PageTrendPoint {
+                timestamp: "2026-01-01T00:00:00Z".to_owned(),
+                link_count: 0,
+                backlink_count: 0,
+            },
+        ],
+        recent_changes: vec![],
+    };
+
+    let vault_ctx = VaultContext {
+        name: "test".to_owned(),
+        pages: vec![],
+        sidebar_tree: vec![],
+        stats: StatsContext { total_pages: 0, total_links: 0, dead_links: 0, orphans: 0 },
+        history: serde_json::Value::Null,
+    };
+
+    let mut page_ctx = PageContext {
+        title: "TestPage".to_owned(),
+        slug: "TestPage".to_owned(),
+        content_html: String::new(),
+        content_raw: String::new(),
+        frontmatter: serde_json::json!({}),
+        backlinks: vec![],
+        outlinks: vec![],
+        breadcrumbs: vec![],
+        transclusion_cards: String::new(),
+        is_new: false,
+        raw_escaped: None,
+        history: serde_json::Value::Null,
+    };
+    page_ctx.history = serde_json::to_value(hist).unwrap();
+
+    let engine = TemplateEngine::new(tmp.path(), "phist-set", false, false);
+    let html = engine.render_page(&vault_ctx, &page_ctx, "serve", "").unwrap();
+    assert!(html.contains("CA:2026-01-01T00:00:00Z"), "created_at must be in template");
+    assert!(html.contains("AD:62"), "age_days must be in template");
+    assert!(html.contains("SD:3"), "stable_days must be in template");
+}
