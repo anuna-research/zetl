@@ -3,7 +3,7 @@
 //!
 //! Tests in this file require `--features history` to compile.
 //!
-//! Test ranges: TEST-080 through TEST-118.
+//! Test ranges: TEST-080 through TEST-134.
 //! TEST-080–089 are covered here (task-jj-backend).
 //! TEST-090–091 are covered here (task-time-expression-parser).
 //! TEST-092–094 are covered here (task-auto-snapshot).
@@ -14,6 +14,7 @@
 //! TEST-109–112 are covered here (task-history-page-cli).
 //! TEST-113–114 are covered here (task-diff-jj-backend).
 //! TEST-115–118 are covered here (task-serve-history-api).
+//! TEST-132–134 are covered here (task-backlink-timestamps).
 
 use std::fs;
 use std::path::Path;
@@ -2000,4 +2001,87 @@ fn test_131_page_history_populated_in_template() {
     assert!(html.contains("CA:2026-01-01T00:00:00Z"), "created_at must be in template");
     assert!(html.contains("AD:62"), "age_days must be in template");
     assert!(html.contains("SD:3"), "stable_days must be in template");
+}
+
+// ── Backlink timestamp tests (REQ-089, CON-026) ───────────────────────────────
+// TEST-132–134 cover task-backlink-timestamps.
+
+// TEST-132: resolve_backlink_since returns the timestamp of the earliest snapshot
+// where the source linked to the target (REQ-089).
+#[test]
+fn test_132_resolve_backlink_since_earliest_timestamp() {
+    use zetl::history::core::resolve_backlink_since;
+    use zetl::history::jj_backend::ChangeInfo;
+    use chrono::{FixedOffset, TimeZone as _};
+
+    let utc = FixedOffset::east_opt(0).unwrap();
+    let ts1 = utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+    let ts2 = utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+    let ts3 = utc.with_ymd_and_hms(2026, 3, 1, 0, 0, 0).unwrap();
+
+    // Snapshots are newest-first.
+    let snapshots = vec![
+        ChangeInfo { change_id: "s3".to_owned(), commit_id: "c3".to_owned(), timestamp: ts3, description: "snap3".to_owned() },
+        ChangeInfo { change_id: "s2".to_owned(), commit_id: "c2".to_owned(), timestamp: ts2, description: "snap2".to_owned() },
+        ChangeInfo { change_id: "s1".to_owned(), commit_id: "c1".to_owned(), timestamp: ts1, description: "snap1".to_owned() },
+    ];
+
+    // snap1 (oldest): source has no link to target yet.
+    // snap2: source starts linking to target — this is the earliest occurrence.
+    // snap3: source still links to target.
+    let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> = vec![
+        Some(vec![make_parsed_file("source", &["target"])]), // snap3
+        Some(vec![make_parsed_file("source", &["target"])]), // snap2 — earliest
+        Some(vec![make_parsed_file("source", &[])]),          // snap1 — no link
+    ];
+
+    let result = resolve_backlink_since("source", "target", &snapshots, &fps);
+    assert!(result.is_some(), "must return Some when the link exists");
+    let ts = result.unwrap();
+    assert!(
+        ts.starts_with("2026-02-01"),
+        "must return the earliest snapshot timestamp (snap2 = 2026-02-01), got {ts}"
+    );
+}
+
+// TEST-133: resolve_backlink_since returns None when the link never existed (REQ-089).
+#[test]
+fn test_133_resolve_backlink_since_none_when_no_link() {
+    use zetl::history::core::resolve_backlink_since;
+    use zetl::history::jj_backend::ChangeInfo;
+    use chrono::{FixedOffset, TimeZone as _};
+
+    let utc = FixedOffset::east_opt(0).unwrap();
+    let ts1 = utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+
+    let snapshots = vec![
+        ChangeInfo { change_id: "s1".to_owned(), commit_id: "c1".to_owned(), timestamp: ts1, description: "snap1".to_owned() },
+    ];
+    // source links to a different page, never to target.
+    let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> = vec![
+        Some(vec![make_parsed_file("source", &["other-page"])]),
+    ];
+
+    let result = resolve_backlink_since("source", "target", &snapshots, &fps);
+    assert!(result.is_none(), "must return None when the link never existed");
+}
+
+// TEST-134: resolve_backlink_since returns None when all snapshot indexes are missing (REQ-089).
+#[test]
+fn test_134_resolve_backlink_since_none_for_missing_cache() {
+    use zetl::history::core::resolve_backlink_since;
+    use zetl::history::jj_backend::ChangeInfo;
+    use chrono::{FixedOffset, TimeZone as _};
+
+    let utc = FixedOffset::east_opt(0).unwrap();
+    let ts1 = utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+
+    let snapshots = vec![
+        ChangeInfo { change_id: "s1".to_owned(), commit_id: "c1".to_owned(), timestamp: ts1, description: "snap1".to_owned() },
+    ];
+    // No cached index for any snapshot.
+    let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> = vec![None];
+
+    let result = resolve_backlink_since("source", "target", &snapshots, &fps);
+    assert!(result.is_none(), "must return None when no cached indexes are available");
 }

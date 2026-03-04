@@ -63,6 +63,9 @@ pub struct BacklinkEntry {
     pub title: String,
     pub slug: String,
     pub line: usize,
+    /// RFC 3339 timestamp of the earliest snapshot where this backlink existed.
+    /// `null` (JSON) when history is unavailable.
+    pub since: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -274,6 +277,7 @@ pub fn build_page_context(
                 title: bl.source,
                 slug: bl_slug,
                 line: bl.line as usize,
+                since: None,
             }
         })
         .collect();
