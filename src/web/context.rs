@@ -25,6 +25,9 @@ pub struct VaultContext {
     /// Vault snapshot history summary available as `vault.history` in templates.
     /// `null` (JSON) when history is unavailable.
     pub history: serde_json::Value,
+    /// Whether the semantic vector index is available (REQ-100).
+    /// Always `false` in build mode; `true` in serve mode when the index exists.
+    pub semantic_available: bool,
 }
 
 #[derive(Serialize)]
@@ -228,6 +231,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         sidebar_tree,
         stats,
         history: serde_json::Value::Null,
+        semantic_available: false,
     }
 }
 

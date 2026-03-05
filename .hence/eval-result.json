@@ -3,25 +3,30 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 113,
-    "deletions": 5,
+    "files_changed": 7,
+    "insertions": 276,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/main.rs"
+      "src/main.rs",
+      "src/web/context.rs",
+      "src/web/engine.rs",
+      "src/web/mod.rs",
+      "src/web/routes.rs",
+      "tests/web_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-build-mode-integration-changes",
-      "content": "Modified 2 files (+113, -5): .hence/context-manifest.json, src/main.rs",
+      "key": "task-web-integration-changes",
+      "content": "Modified 7 files (+276, -7): .hence/context-manifest.json, src/main.rs, src/web/context.rs, src/web/engine.rs, src/web/mod.rs and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/build-mode-integration-v1",
-  "evaluated_at": "2026-03-05T02:38:25Z",
+  "branch_name": "hence/web-integration-v1",
+  "evaluated_at": "2026-03-05T02:47:37Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

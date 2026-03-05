@@ -4719,6 +4719,33 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         true, // reload templates on every request in serve mode
         cli.verbose > 0,
     );
+    // Load the vector index for semantic/hybrid search in serve mode (REQ-100).
+    // Failures are non-fatal: serve continues without semantic support.
+    #[cfg(feature = "semantic")]
+    let vector_index = {
+        match zetl::semantic::VectorIndex::open(&pipeline.vault_root) {
+            Ok(Some(idx)) => {
+                if cli.verbose > 0 {
+                    eprintln!(
+                        "[zetl] semantic: loaded vector index ({} chunks)",
+                        idx.chunk_count()
+                    );
+                }
+                Some(std::sync::Arc::new(std::sync::Mutex::new(idx)))
+            }
+            Ok(None) => {
+                if cli.verbose > 0 {
+                    eprintln!("[zetl] semantic: no vector index found (run `zetl index` to build)");
+                }
+                None
+            }
+            Err(e) => {
+                eprintln!("[zetl] warning: could not load vector index: {e}");
+                None
+            }
+        }
+    };
+
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
         vault_root: std::sync::Arc::new(pipeline.vault_root),
@@ -4726,6 +4753,8 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         engine: std::sync::Arc::new(engine),
         theme: theme.to_string(),
         verbose: cli.verbose > 0,
+        #[cfg(feature = "semantic")]
+        vector_index,
     };
 
     let rt = tokio::runtime::Runtime::new()?;
