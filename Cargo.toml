@@ -9,6 +9,7 @@ license = "MIT"
 default = []
 reason = ["dep:spindle-core", "dep:spindle-parser"]
 history = ["dep:jj-lib", "dep:chrono", "dep:pollster"]
+semantic = ["dep:ort", "dep:tokenizers", "dep:ndarray"]
 
 [dependencies]
 anyhow = "1"
@@ -37,6 +38,9 @@ spindle-parser = { git = "ssh://git@codeberg.org/anuna/spindle-rust.git", option
 jj-lib = { version = "0.32", optional = true }
 chrono = { version = "0.4", optional = true, features = ["std"] }
 pollster = { version = "0.4", optional = true }
+ort = { version = "=2.0.0-rc.11", optional = true }
+tokenizers = { version = "0.21", optional = true, default-features = false, features = ["onig"] }
+ndarray = { version = "0.16", optional = true }
 notify = "6"
 tantivy = "0.22"
 
@@ -59,3 +63,7 @@ required-features = ["reason"]
 [[test]]
 name = "history_integration"
 required-features = ["history"]
+
+[[test]]
+name = "semantic_integration"
+required-features = ["semantic"]
