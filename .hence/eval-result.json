@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 202,
-    "deletions": 110,
+    "insertions": 113,
+    "deletions": 5,
     "file_list": [
-      "src/main.rs",
-      "tests/semantic_integration.rs"
+      ".hence/context-manifest.json",
+      "src/main.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-hybrid-cli-changes",
-      "content": "Modified 2 files (+202, -110): src/main.rs, tests/semantic_integration.rs",
+      "key": "task-build-mode-integration-changes",
+      "content": "Modified 2 files (+113, -5): .hence/context-manifest.json, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/hybrid-cli-v1",
-  "evaluated_at": "2026-03-05T02:33:32Z",
+  "branch_name": "hence/build-mode-integration-v1",
+  "evaluated_at": "2026-03-05T02:38:25Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
