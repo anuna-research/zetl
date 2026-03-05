@@ -1,12 +1,12 @@
 {
-  "task_id": "chunking",
+  "task_id": "model-acquisition",
   "token_budget": 8000,
-  "tokens_used": 88,
+  "tokens_used": 115,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement heading-level chunking strategy: split pages at ## boundaries, embed short pages (< 512 tokens) whole, each chunk carries page_name, path, heading, content_hash, embedding",
-      "token_cost": 45,
+      "content": "Implement model acquisition: check .zetl/models/all-MiniLM-L6-v2.onnx on first zetl index, download from HuggingFace Hub with user confirmation if absent, validate SHA-256, cache permanently; support ZETL_MODEL_PATH env var override",
+      "token_cost": 58,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 3 files (+40, -55): Cargo.lock, Cargo.toml, src/semantic/mod.rs",
       "token_cost": 18,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-chunking-changes",
+      "content": "Modified 1 files (+11, -5): .hence/context-manifest.json",
+      "token_cost": 14,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T01:44:51Z"
+  "constructed_at": "2026-03-05T01:46:21Z"
 }
