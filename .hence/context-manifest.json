@@ -1,12 +1,12 @@
 {
-  "task_id": "build-mode-integration",
+  "task_id": "web-integration",
   "token_budget": 8000,
-  "tokens_used": 281,
+  "tokens_used": 276,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Integrate semantic index building into zetl index command: call VectorIndex::build after tantivy index build, emit OBS-017 timing, handle incremental rebuild logic, add semantic stats to cmd_stats",
-      "token_cost": 49,
+      "content": "Add GET /api/search?mode=semantic and ?mode=hybrid endpoints to zetl serve; add semantic_available: bool template variable to zetl build; skip vector index export in build mode",
+      "token_cost": 44,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T02:33:39Z"
+  "constructed_at": "2026-03-05T02:38:31Z"
 }
