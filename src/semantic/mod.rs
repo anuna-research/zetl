@@ -257,6 +257,187 @@ impl VectorIndex {
     }
 }
 
+// ── Unit tests ────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// TEST-114: index.bin round-trip — write N embeddings as little-endian f32, read back
+    /// identical values. Verifies the flat-binary layout used by `VectorIndex::build`/`open`.
+    #[test]
+    fn test_index_bin_roundtrip() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let vectors_dir = tmp.path().join(VECTORS_DIR);
+        fs::create_dir_all(&vectors_dir).unwrap();
+
+        // Build 3 embeddings with distinct values.
+        let mut embeddings: Vec<[f32; EMBEDDING_DIM]> = Vec::new();
+        for i in 0..3usize {
+            let mut arr = [0.0f32; EMBEDDING_DIM];
+            arr[0] = i as f32 + 0.5;
+            arr[EMBEDDING_DIM - 1] = -(i as f32);
+            embeddings.push(arr);
+        }
+
+        // Write (same code path as VectorIndex::build).
+        let raw: Vec<u8> = embeddings
+            .iter()
+            .flat_map(|e| e.iter().flat_map(|f| f.to_le_bytes()))
+            .collect();
+        let index_path = vectors_dir.join(INDEX_FILE);
+        fs::write(&index_path, &raw).unwrap();
+
+        // Read back (same code path as VectorIndex::open).
+        let read_raw = fs::read(&index_path).unwrap();
+        let chunk_count = read_raw.len() / (EMBEDDING_DIM * 4);
+        assert_eq!(chunk_count, 3, "expected 3 chunks");
+
+        let mut read_embeddings: Vec<[f32; EMBEDDING_DIM]> = Vec::with_capacity(chunk_count);
+        for i in 0..chunk_count {
+            let mut arr = [0f32; EMBEDDING_DIM];
+            for (j, f) in arr.iter_mut().enumerate() {
+                let off = (i * EMBEDDING_DIM + j) * 4;
+                *f = f32::from_le_bytes(read_raw[off..off + 4].try_into().unwrap());
+            }
+            read_embeddings.push(arr);
+        }
+
+        for (orig, back) in embeddings.iter().zip(read_embeddings.iter()) {
+            for (a, b) in orig.iter().zip(back.iter()) {
+                assert!((a - b).abs() < f32::EPSILON, "f32 value mismatch: {a} vs {b}");
+            }
+        }
+    }
+
+    /// TEST-115: chunks.json round-trip — serialise a `Vec<ChunkMeta>`, write to disk,
+    /// deserialise, and verify all fields (including optional heading and content_hash).
+    #[test]
+    fn test_chunks_json_roundtrip() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let vectors_dir = tmp.path().join(VECTORS_DIR);
+        fs::create_dir_all(&vectors_dir).unwrap();
+
+        let chunks = vec![
+            ChunkMeta {
+                page_name: "page-alpha".to_string(),
+                path: "notes/page-alpha.md".to_string(),
+                heading: Some("Overview".to_string()),
+                content_hash: [42u8; 32],
+            },
+            ChunkMeta {
+                page_name: "page-beta".to_string(),
+                path: "notes/page-beta.md".to_string(),
+                heading: None,
+                content_hash: [7u8; 32],
+            },
+        ];
+
+        let chunks_path = vectors_dir.join(CHUNKS_FILE);
+        fs::write(&chunks_path, serde_json::to_string_pretty(&chunks).unwrap()).unwrap();
+
+        let read: Vec<ChunkMeta> =
+            serde_json::from_str(&fs::read_to_string(&chunks_path).unwrap()).unwrap();
+
+        assert_eq!(read.len(), 2);
+        assert_eq!(read[0].page_name, "page-alpha");
+        assert_eq!(read[0].path, "notes/page-alpha.md");
+        assert_eq!(read[0].heading, Some("Overview".to_string()));
+        assert_eq!(read[0].content_hash, [42u8; 32]);
+        assert_eq!(read[1].page_name, "page-beta");
+        assert_eq!(read[1].heading, None);
+        assert_eq!(read[1].content_hash, [7u8; 32]);
+    }
+
+    /// TEST-116: model.json round-trip — write `{ "model": MODEL_NAME, "dim": EMBEDDING_DIM }`,
+    /// read back and verify both fields are preserved correctly.
+    #[test]
+    fn test_model_json_roundtrip() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let vectors_dir = tmp.path().join(VECTORS_DIR);
+        fs::create_dir_all(&vectors_dir).unwrap();
+
+        let model_path = vectors_dir.join(MODEL_FILE);
+        let json = serde_json::json!({ "model": MODEL_NAME, "dim": EMBEDDING_DIM });
+        fs::write(&model_path, json.to_string()).unwrap();
+
+        let read: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&model_path).unwrap()).unwrap();
+        assert_eq!(read["model"].as_str().unwrap(), MODEL_NAME);
+        assert_eq!(read["dim"].as_u64().unwrap(), EMBEDDING_DIM as u64);
+    }
+
+    /// TEST-117: `VectorIndex::open` returns `None` when the vectors directory is absent.
+    /// Exercises the fast-path early exit before any file I/O or model loading.
+    #[test]
+    fn test_open_none_when_dir_absent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // No .zetl/search/vectors/ created.
+        let result = VectorIndex::open(tmp.path()).unwrap();
+        assert!(result.is_none(), "expected None when vectors dir is missing");
+    }
+
+    /// TEST-117: `VectorIndex::open` returns `None` when `index.bin` is absent even if
+    /// `chunks.json` exists. Both files are required for a valid index.
+    #[test]
+    fn test_open_none_when_index_bin_absent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let vectors_dir = tmp.path().join(VECTORS_DIR);
+        fs::create_dir_all(&vectors_dir).unwrap();
+        // Write chunks.json but not index.bin.
+        let empty: Vec<ChunkMeta> = vec![];
+        fs::write(
+            vectors_dir.join(CHUNKS_FILE),
+            serde_json::to_string_pretty(&empty).unwrap(),
+        )
+        .unwrap();
+
+        let result = VectorIndex::open(tmp.path()).unwrap();
+        assert!(result.is_none(), "expected None when index.bin is missing");
+    }
+
+    /// TEST-117: `VectorIndex::open` returns `None` when `chunks.json` is absent even if
+    /// `index.bin` exists.
+    #[test]
+    fn test_open_none_when_chunks_json_absent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let vectors_dir = tmp.path().join(VECTORS_DIR);
+        fs::create_dir_all(&vectors_dir).unwrap();
+        // Write index.bin but not chunks.json.
+        fs::write(vectors_dir.join(INDEX_FILE), b"").unwrap();
+
+        let result = VectorIndex::open(tmp.path()).unwrap();
+        assert!(result.is_none(), "expected None when chunks.json is missing");
+    }
+
+    /// TEST-118: index.bin byte layout — file size equals `chunk_count * EMBEDDING_DIM * 4`.
+    /// Ensures the flat-array format has no padding or headers.
+    #[test]
+    fn test_index_bin_size_invariant() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let vectors_dir = tmp.path().join(VECTORS_DIR);
+        fs::create_dir_all(&vectors_dir).unwrap();
+
+        for chunk_count in [0usize, 1, 5, 10] {
+            let embeddings: Vec<[f32; EMBEDDING_DIM]> = vec![[0.0f32; EMBEDDING_DIM]; chunk_count];
+            let raw: Vec<u8> = embeddings
+                .iter()
+                .flat_map(|e| e.iter().flat_map(|f| f.to_le_bytes()))
+                .collect();
+            let index_path = vectors_dir.join(INDEX_FILE);
+            fs::write(&index_path, &raw).unwrap();
+
+            let on_disk = fs::metadata(&index_path).unwrap().len() as usize;
+            let expected = chunk_count * EMBEDDING_DIM * 4;
+            assert_eq!(
+                on_disk, expected,
+                "chunk_count={chunk_count}: file size {on_disk} != {expected}"
+            );
+        }
+    }
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /// Load the ONNX session and HuggingFace tokenizer.

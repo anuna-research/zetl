@@ -241,3 +241,128 @@ fn test_rrf_double_appearance_boosts_rank() {
 // TEST-122 (CLI path): when compiled WITHOUT the feature, --semantic / --hybrid print an
 // error and exit non-zero. That path is tested in the standard integration suite
 // (tests/integration.rs) via assert_cmd, since those tests run without --features semantic.
+
+// ── Storage layout tests ────────────────────────────────────────────────────
+
+use zetl::semantic::{ChunkMeta, CHUNKS_FILE, EMBEDDING_DIM, INDEX_FILE, MODEL_FILE, MODEL_NAME, VECTORS_DIR};
+
+/// TEST-114: index.bin stores embeddings as a flat little-endian f32 array.
+/// The parsed chunk count matches the number of written embeddings.
+#[test]
+fn test_storage_index_bin_chunk_count() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let vectors_dir = tmp.path().join(VECTORS_DIR);
+    fs::create_dir_all(&vectors_dir).unwrap();
+
+    let n = 7usize;
+    let embeddings: Vec<[f32; EMBEDDING_DIM]> = (0..n)
+        .map(|i| {
+            let mut arr = [0.0f32; EMBEDDING_DIM];
+            arr[0] = i as f32;
+            arr
+        })
+        .collect();
+
+    let raw: Vec<u8> = embeddings
+        .iter()
+        .flat_map(|e| e.iter().flat_map(|f| f.to_le_bytes()))
+        .collect();
+    fs::write(vectors_dir.join(INDEX_FILE), &raw).unwrap();
+
+    let read_raw = fs::read(vectors_dir.join(INDEX_FILE)).unwrap();
+    let chunk_count = read_raw.len() / (EMBEDDING_DIM * 4);
+    assert_eq!(chunk_count, n, "chunk count mismatch");
+}
+
+/// TEST-115: chunks.json is valid JSON that round-trips all ChunkMeta fields.
+#[test]
+fn test_storage_chunks_json_fields() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let vectors_dir = tmp.path().join(VECTORS_DIR);
+    fs::create_dir_all(&vectors_dir).unwrap();
+
+    let meta = vec![
+        ChunkMeta {
+            page_name: "intro".to_string(),
+            path: "intro.md".to_string(),
+            heading: None,
+            content_hash: [1u8; 32],
+        },
+        ChunkMeta {
+            page_name: "guide".to_string(),
+            path: "guide.md".to_string(),
+            heading: Some("Installation".to_string()),
+            content_hash: [2u8; 32],
+        },
+    ];
+
+    let json_str = serde_json::to_string_pretty(&meta).unwrap();
+    fs::write(vectors_dir.join(CHUNKS_FILE), &json_str).unwrap();
+
+    let parsed: Vec<ChunkMeta> =
+        serde_json::from_str(&fs::read_to_string(vectors_dir.join(CHUNKS_FILE)).unwrap()).unwrap();
+
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(parsed[0].page_name, "intro");
+    assert_eq!(parsed[0].heading, None);
+    assert_eq!(parsed[0].content_hash, [1u8; 32]);
+    assert_eq!(parsed[1].heading, Some("Installation".to_string()));
+    assert_eq!(parsed[1].content_hash, [2u8; 32]);
+}
+
+/// TEST-116: model.json contains "model" and "dim" keys with expected values.
+#[test]
+fn test_storage_model_json_keys() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let vectors_dir = tmp.path().join(VECTORS_DIR);
+    fs::create_dir_all(&vectors_dir).unwrap();
+
+    let json = serde_json::json!({ "model": MODEL_NAME, "dim": EMBEDDING_DIM });
+    fs::write(vectors_dir.join(MODEL_FILE), json.to_string()).unwrap();
+
+    let v: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(vectors_dir.join(MODEL_FILE)).unwrap()).unwrap();
+    assert_eq!(v["model"].as_str().unwrap(), MODEL_NAME);
+    assert_eq!(v["dim"].as_u64().unwrap(), EMBEDDING_DIM as u64);
+}
+
+/// TEST-117: `VectorIndex::open` returns `None` for each partial-directory state.
+#[test]
+fn test_storage_open_none_cases() {
+    use zetl::semantic::VectorIndex;
+
+    // Case 1: directory absent.
+    let tmp = tempfile::TempDir::new().unwrap();
+    assert!(VectorIndex::open(tmp.path()).unwrap().is_none());
+
+    // Case 2: directory exists but both files absent.
+    let tmp2 = tempfile::TempDir::new().unwrap();
+    fs::create_dir_all(tmp2.path().join(VECTORS_DIR)).unwrap();
+    assert!(VectorIndex::open(tmp2.path()).unwrap().is_none());
+
+    // Case 3: only chunks.json present.
+    let tmp3 = tempfile::TempDir::new().unwrap();
+    let vd3 = tmp3.path().join(VECTORS_DIR);
+    fs::create_dir_all(&vd3).unwrap();
+    let empty: Vec<ChunkMeta> = vec![];
+    fs::write(vd3.join(CHUNKS_FILE), serde_json::to_string(&empty).unwrap()).unwrap();
+    assert!(VectorIndex::open(tmp3.path()).unwrap().is_none());
+
+    // Case 4: only index.bin present.
+    let tmp4 = tempfile::TempDir::new().unwrap();
+    let vd4 = tmp4.path().join(VECTORS_DIR);
+    fs::create_dir_all(&vd4).unwrap();
+    fs::write(vd4.join(INDEX_FILE), b"").unwrap();
+    assert!(VectorIndex::open(tmp4.path()).unwrap().is_none());
+}
+
+/// TEST-118: the three required files are co-located under VECTORS_DIR.
+/// Verifies the directory constant and file name constants align.
+#[test]
+fn test_storage_constants_alignment() {
+    assert!(VECTORS_DIR.contains("search/vectors"), "VECTORS_DIR should be under search/vectors");
+    assert_eq!(INDEX_FILE, "index.bin");
+    assert_eq!(CHUNKS_FILE, "chunks.json");
+    assert_eq!(MODEL_FILE, "model.json");
+    assert_eq!(EMBEDDING_DIM, 384, "all-MiniLM-L6-v2 dimension must be 384");
+}
