@@ -2277,7 +2277,30 @@ fn cmd_search(
     path_filter: Option<&str>,
     near: Option<&str>,
     depth: Option<usize>,
+    semantic: bool,
+    hybrid: bool,
 ) -> Result<()> {
+    // REQ-098: --semantic / --hybrid require the `semantic` feature at compile time.
+    #[cfg(not(feature = "semantic"))]
+    if semantic || hybrid {
+        let flag = if semantic { "--semantic" } else { "--hybrid" };
+        let msg = format!(
+            "{flag} requires the semantic feature. Rebuild with: cargo build --features semantic"
+        );
+        match cli.format {
+            OutputFormat::Json => exit_json_error(&msg, 1),
+            OutputFormat::Table => {
+                eprintln!("Error: {msg}");
+                std::process::exit(1);
+            }
+        }
+    }
+    // When the semantic feature IS compiled in, the semantic/hybrid paths will be
+    // implemented in SPEC-018 follow-up tasks. For now, acknowledge the flags so the
+    // compiler does not emit unused-variable warnings.
+    #[cfg(feature = "semantic")]
+    let _ = (semantic, hybrid);
+
     // REQ-013-007: --depth without --near is an error (exit 2).
     if depth.is_some() && near.is_none() {
         let msg = "--depth requires --near to be specified";
@@ -9001,6 +9024,8 @@ fn main() -> anyhow::Result<()> {
             path,
             near,
             depth,
+            semantic,
+            hybrid,
         } => cmd_search(
             &cli,
             query,
@@ -9010,6 +9035,8 @@ fn main() -> anyhow::Result<()> {
             path.as_deref(),
             near.as_deref(),
             *depth,
+            *semantic,
+            *hybrid,
         ),
         Command::List => cmd_list(&cli),
         Command::Stats { top } => cmd_stats(&cli, *top),
