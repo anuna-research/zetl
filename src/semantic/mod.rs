@@ -230,6 +230,14 @@ impl VectorIndex {
         Ok(results)
     }
 
+    /// Embed a query string and return its normalised 384-dimensional vector.
+    ///
+    /// Useful when the caller needs the raw embedding (e.g. for caching or
+    /// passing to `query` directly). REQ-099.
+    pub fn embed_query(&self, query: &str) -> Result<[f32; EMBEDDING_DIM]> {
+        embed_text(&self.session, &self.tokenizer, query)
+    }
+
     /// Emit OBS-018 timing line to stderr.
     pub fn log_query_stats(&self, results: usize, duration_ms: u128) {
         eprintln!(

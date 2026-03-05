@@ -1,12 +1,12 @@
 {
-  "task_id": "tests-unit",
+  "task_id": "onnx-embedding-shell",
   "token_budget": 8000,
-  "tokens_used": 158,
+  "tokens_used": 176,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Write unit and property-based tests: TEST-119 (VectorIndex::query returns <= limit results sorted desc), TEST-120 (chunk_page h2 splitting, roundtrip property), TEST-121 (RRF ordering and coverage property)",
-      "token_cost": 51,
+      "content": "Implement effectful embedding shell in src/semantic/mod.rs: embed_chunks via ort ONNX session, VectorIndex::build, VectorIndex::open, VectorIndex::query, VectorIndex::embed_query",
+      "token_cost": 44,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 2 files (+176, -9): .hence/context-manifest.json, src/main.rs",
       "token_cost": 17,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-tests-unit-changes",
+      "content": "Modified 3 files (+237, -10): src/semantic/core.rs, src/semantic/mod.rs, tests/semantic_integration.rs",
+      "token_cost": 25,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T01:55:30Z"
+  "constructed_at": "2026-03-05T02:04:44Z"
 }
