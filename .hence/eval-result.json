@@ -3,32 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 9,
-    "insertions": 1362,
-    "deletions": 6,
+    "files_changed": 3,
+    "insertions": 40,
+    "deletions": 55,
     "file_list": [
       "Cargo.lock",
       "Cargo.toml",
-      "src/cli.rs",
-      "src/lib.rs",
-      "src/main.rs",
-      "src/semantic/core.rs",
-      "src/semantic/mod.rs",
-      "tests/integration.rs",
-      "tests/semantic_integration.rs"
+      "src/semantic/mod.rs"
     ],
     "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-feature-gating-changes",
-      "content": "Modified 9 files (+1362, -6): Cargo.lock, Cargo.toml, src/cli.rs, src/lib.rs, src/main.rs and 4 more",
+      "key": "task-pure-core-changes",
+      "content": "Modified 3 files (+40, -55): Cargo.lock, Cargo.toml, src/semantic/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/feature-gating-v1",
-  "evaluated_at": "2026-03-05T01:36:48Z",
+  "branch_name": "hence/pure-core-v1",
+  "evaluated_at": "2026-03-05T01:44:44Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
