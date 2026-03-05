@@ -7,9 +7,11 @@
 //!
 //! ## Module layout
 //!
+//! - `acquisition` — model download from HuggingFace Hub with SHA-256 validation
 //! - `core` — pure functions: chunking, cosine similarity, RRF, stale-chunk detection
 //! - `mod`  — effectful shell: `VectorIndex` (ONNX I/O, disk persistence)
 
+pub mod acquisition;
 pub mod core;
 
 use std::cell::RefCell;
@@ -259,40 +261,19 @@ impl VectorIndex {
 
 /// Load the ONNX session and HuggingFace tokenizer.
 ///
-/// The model is expected at `.zetl/models/all-MiniLM-L6-v2.onnx`. If absent,
-/// an informative error is returned (download is the caller's responsibility).
+/// Delegates to `acquisition::ensure_model` which handles:
+/// - `ZETL_MODEL_PATH` env var override
+/// - automatic download with user confirmation when files are absent
+/// - SHA-256 integrity validation via sidecar files
 fn load_model(vault_root: &Path) -> Result<(Session, Tokenizer)> {
-    let model_path = vault_root
-        .join(".zetl")
-        .join("models")
-        .join(format!("{MODEL_NAME}.onnx"));
-
-    if !model_path.exists() {
-        anyhow::bail!(
-            "ONNX model not found at {}. \
-             Download it with: zetl index (will prompt to download automatically).",
-            model_path.display()
-        );
-    }
+    let (model_path, tokenizer_path) = acquisition::ensure_model(vault_root)?;
 
     let session = Session::builder()?
         .with_optimization_level(GraphOptimizationLevel::Level3)?
         .commit_from_file(&model_path)?;
 
-    let tokenizer_path = vault_root
-        .join(".zetl")
-        .join("models")
-        .join(format!("{MODEL_NAME}-tokenizer.json"));
-
-    let tokenizer = if tokenizer_path.exists() {
-        Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?
-    } else {
-        anyhow::bail!(
-            "Tokenizer not found at {}. Run `zetl index` to download it.",
-            tokenizer_path.display()
-        );
-    };
+    let tokenizer = Tokenizer::from_file(&tokenizer_path)
+        .map_err(|e| anyhow::anyhow!("Failed to load tokenizer from {}: {e}", tokenizer_path.display()))?;
 
     Ok((session, tokenizer))
 }
