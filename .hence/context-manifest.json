@@ -1,12 +1,12 @@
 {
-  "task_id": "onnx-embedding-shell",
+  "task_id": "vector-index-storage",
   "token_budget": 8000,
-  "tokens_used": 176,
+  "tokens_used": 199,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement effectful embedding shell in src/semantic/mod.rs: embed_chunks via ort ONNX session, VectorIndex::build, VectorIndex::open, VectorIndex::query, VectorIndex::embed_query",
-      "token_cost": 44,
+      "content": "Implement storage layout at .zetl/search/vectors/: index.bin (flat mmap-friendly vector file), chunks.json (chunk metadata with page, heading, content_hash), model.json (model name + dimension)",
+      "token_cost": 48,
       "priority": "PlanMeta"
     },
     {
@@ -44,8 +44,14 @@
       "content": "Modified 3 files (+237, -10): src/semantic/core.rs, src/semantic/mod.rs, tests/semantic_integration.rs",
       "token_cost": 25,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-onnx-embedding-shell-changes",
+      "content": "Modified 2 files (+19, -5): .hence/context-manifest.json, src/semantic/mod.rs",
+      "token_cost": 19,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T02:04:44Z"
+  "constructed_at": "2026-03-05T02:07:32Z"
 }
