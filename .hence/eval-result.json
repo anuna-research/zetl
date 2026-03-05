@@ -3,30 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 276,
-    "deletions": 7,
+    "files_changed": 4,
+    "insertions": 47,
+    "deletions": 34,
     "file_list": [
       ".hence/context-manifest.json",
       "src/main.rs",
-      "src/web/context.rs",
-      "src/web/engine.rs",
-      "src/web/mod.rs",
-      "src/web/routes.rs",
-      "tests/web_integration.rs"
+      "src/semantic/mod.rs",
+      "src/web/routes.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-web-integration-changes",
-      "content": "Modified 7 files (+276, -7): .hence/context-manifest.json, src/main.rs, src/web/context.rs, src/web/engine.rs, src/web/mod.rs and 2 more",
+      "key": "task-observability-changes",
+      "content": "Modified 4 files (+47, -34): .hence/context-manifest.json, src/main.rs, src/semantic/mod.rs, src/web/routes.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/web-integration-v1",
-  "evaluated_at": "2026-03-05T02:47:37Z",
+  "branch_name": "hence/observability-v1",
+  "evaluated_at": "2026-03-05T02:51:42Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
