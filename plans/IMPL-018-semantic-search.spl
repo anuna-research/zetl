@@ -299,3 +299,413 @@
 ;; Superiority: defeaters beat their corresponding readiness rules
 (prefer d-block-integration-tests-no-gating r-ready-tests-integration)
 (prefer d-block-onnx-no-model r-ready-onnx-embedding-shell)
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T01:28:26Z"
+  (given delegated-v1-feature-gating-to-agent:claude)
+  (given (during (leased-v1-feature-gating) (moment "2026-03-05T01:28:26Z") (moment "2026-03-05T01:58:26Z")))
+  (given claim-v1-feature-gating-by-claude)
+  (normally r-cl-state-v1-feature-gating-by-claude claim-v1-feature-gating-by-claude state-claimed-v1-feature-gating-by-claude)
+  (normally r-cl-chain-v1-feature-gating-by-claude state-claimed-v1-feature-gating-by-claude claimed-feature-gating)
+)
+
+;; Propagation rules: failures in 'feature-gating' block downstream tasks
+(normally r-propagate-hybrid-cli-from-feature-gating-failed failed-feature-gating upstream-blocked-hybrid-cli)
+(normally r-propagate-hybrid-cli-from-feature-gating-permanently-failed permanently-failed-feature-gating upstream-blocked-hybrid-cli)
+(normally r-propagate-hybrid-cli-from-feature-gating-stale-v1 stale-v1-feature-gating upstream-blocked-hybrid-cli)
+(normally r-propagate-hybrid-cli-from-feature-gating-timeout-v1 timeout-v1-feature-gating upstream-blocked-hybrid-cli)
+(normally r-propagate-hybrid-cli-from-feature-gating-blocked upstream-blocked-feature-gating upstream-blocked-hybrid-cli)
+(normally r-propagate-onnx-embedding-shell-from-feature-gating-failed failed-feature-gating upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-feature-gating-permanently-failed permanently-failed-feature-gating upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-feature-gating-stale-v1 stale-v1-feature-gating upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-feature-gating-timeout-v1 timeout-v1-feature-gating upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-feature-gating-blocked upstream-blocked-feature-gating upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-semantic-cli-from-feature-gating-failed failed-feature-gating upstream-blocked-semantic-cli)
+(normally r-propagate-semantic-cli-from-feature-gating-permanently-failed permanently-failed-feature-gating upstream-blocked-semantic-cli)
+(normally r-propagate-semantic-cli-from-feature-gating-stale-v1 stale-v1-feature-gating upstream-blocked-semantic-cli)
+(normally r-propagate-semantic-cli-from-feature-gating-timeout-v1 timeout-v1-feature-gating upstream-blocked-semantic-cli)
+(normally r-propagate-semantic-cli-from-feature-gating-blocked upstream-blocked-feature-gating upstream-blocked-semantic-cli)
+(normally r-propagate-tests-integration-from-feature-gating-failed failed-feature-gating upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-feature-gating-permanently-failed permanently-failed-feature-gating upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-feature-gating-stale-v1 stale-v1-feature-gating upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-feature-gating-timeout-v1 timeout-v1-feature-gating upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-feature-gating-blocked upstream-blocked-feature-gating upstream-blocked-tests-integration)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-observability-from-hybrid-cli-blocked upstream-blocked-hybrid-cli upstream-blocked-observability)
+(normally r-propagate-tests-integration-from-hybrid-cli-blocked upstream-blocked-hybrid-cli upstream-blocked-tests-integration)
+(normally r-propagate-web-integration-from-hybrid-cli-blocked upstream-blocked-hybrid-cli upstream-blocked-web-integration)
+(normally r-propagate-vector-index-storage-from-onnx-embedding-shell-blocked upstream-blocked-onnx-embedding-shell upstream-blocked-vector-index-storage)
+(normally r-propagate-hybrid-cli-from-semantic-cli-blocked upstream-blocked-semantic-cli upstream-blocked-hybrid-cli)
+(normally r-propagate-observability-from-semantic-cli-blocked upstream-blocked-semantic-cli upstream-blocked-observability)
+(normally r-propagate-tests-integration-from-semantic-cli-blocked upstream-blocked-semantic-cli upstream-blocked-tests-integration)
+(normally r-propagate-web-integration-from-semantic-cli-blocked upstream-blocked-semantic-cli upstream-blocked-web-integration)
+(normally r-propagate-build-mode-integration-from-vector-index-storage-blocked upstream-blocked-vector-index-storage upstream-blocked-build-mode-integration)
+(normally r-propagate-incremental-rebuild-from-vector-index-storage-blocked upstream-blocked-vector-index-storage upstream-blocked-incremental-rebuild)
+(normally r-propagate-semantic-cli-from-vector-index-storage-blocked upstream-blocked-vector-index-storage upstream-blocked-semantic-cli)
+(normally r-propagate-tests-integration-from-vector-index-storage-blocked upstream-blocked-vector-index-storage upstream-blocked-tests-integration)
+(normally r-propagate-observability-from-build-mode-integration-blocked upstream-blocked-build-mode-integration upstream-blocked-observability)
+(normally r-propagate-tests-integration-from-build-mode-integration-blocked upstream-blocked-build-mode-integration upstream-blocked-tests-integration)
+(normally r-propagate-build-mode-integration-from-incremental-rebuild-blocked upstream-blocked-incremental-rebuild upstream-blocked-build-mode-integration)
+(normally r-propagate-tests-integration-from-incremental-rebuild-blocked upstream-blocked-incremental-rebuild upstream-blocked-tests-integration)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T01:36:48Z"
+  (given completed-feature-gating)
+  (given eval-result-v1-feature-gating-by-claude)
+  (given eval-confidence-v1-feature-gating-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T01:36:54Z"
+  (given delegated-v1-pure-core-to-agent:claude)
+  (given (during (leased-v1-pure-core) (moment "2026-03-05T01:36:54Z") (moment "2026-03-05T02:06:54Z")))
+  (given claim-v1-pure-core-by-claude)
+  (normally r-cl-state-v1-pure-core-by-claude claim-v1-pure-core-by-claude state-claimed-v1-pure-core-by-claude)
+  (normally r-cl-chain-v1-pure-core-by-claude state-claimed-v1-pure-core-by-claude claimed-pure-core)
+)
+
+;; Propagation rules: failures in 'pure-core' block downstream tasks
+(normally r-propagate-chunking-from-pure-core-failed failed-pure-core upstream-blocked-chunking)
+(normally r-propagate-chunking-from-pure-core-permanently-failed permanently-failed-pure-core upstream-blocked-chunking)
+(normally r-propagate-chunking-from-pure-core-stale-v1 stale-v1-pure-core upstream-blocked-chunking)
+(normally r-propagate-chunking-from-pure-core-timeout-v1 timeout-v1-pure-core upstream-blocked-chunking)
+(normally r-propagate-chunking-from-pure-core-blocked upstream-blocked-pure-core upstream-blocked-chunking)
+(normally r-propagate-onnx-embedding-shell-from-pure-core-failed failed-pure-core upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-pure-core-permanently-failed permanently-failed-pure-core upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-pure-core-stale-v1 stale-v1-pure-core upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-pure-core-timeout-v1 timeout-v1-pure-core upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-pure-core-blocked upstream-blocked-pure-core upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-rrf-fusion-from-pure-core-failed failed-pure-core upstream-blocked-rrf-fusion)
+(normally r-propagate-rrf-fusion-from-pure-core-permanently-failed permanently-failed-pure-core upstream-blocked-rrf-fusion)
+(normally r-propagate-rrf-fusion-from-pure-core-stale-v1 stale-v1-pure-core upstream-blocked-rrf-fusion)
+(normally r-propagate-rrf-fusion-from-pure-core-timeout-v1 timeout-v1-pure-core upstream-blocked-rrf-fusion)
+(normally r-propagate-rrf-fusion-from-pure-core-blocked upstream-blocked-pure-core upstream-blocked-rrf-fusion)
+(normally r-propagate-tests-unit-from-pure-core-failed failed-pure-core upstream-blocked-tests-unit)
+(normally r-propagate-tests-unit-from-pure-core-permanently-failed permanently-failed-pure-core upstream-blocked-tests-unit)
+(normally r-propagate-tests-unit-from-pure-core-stale-v1 stale-v1-pure-core upstream-blocked-tests-unit)
+(normally r-propagate-tests-unit-from-pure-core-timeout-v1 timeout-v1-pure-core upstream-blocked-tests-unit)
+(normally r-propagate-tests-unit-from-pure-core-blocked upstream-blocked-pure-core upstream-blocked-tests-unit)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-tests-unit-from-chunking-blocked upstream-blocked-chunking upstream-blocked-tests-unit)
+(normally r-propagate-vector-index-storage-from-chunking-blocked upstream-blocked-chunking upstream-blocked-vector-index-storage)
+(normally r-propagate-hybrid-cli-from-rrf-fusion-blocked upstream-blocked-rrf-fusion upstream-blocked-hybrid-cli)
+(normally r-propagate-tests-unit-from-rrf-fusion-blocked upstream-blocked-rrf-fusion upstream-blocked-tests-unit)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T01:44:44Z"
+  (given completed-pure-core)
+  (given eval-result-v1-pure-core-by-claude)
+  (given eval-confidence-v1-pure-core-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T01:44:51Z"
+  (given delegated-v1-chunking-to-agent:claude)
+  (given (during (leased-v1-chunking) (moment "2026-03-05T01:44:51Z") (moment "2026-03-05T02:14:51Z")))
+  (given claim-v1-chunking-by-claude)
+  (normally r-cl-state-v1-chunking-by-claude claim-v1-chunking-by-claude state-claimed-v1-chunking-by-claude)
+  (normally r-cl-chain-v1-chunking-by-claude state-claimed-v1-chunking-by-claude claimed-chunking)
+)
+
+;; Propagation rules: failures in 'chunking' block downstream tasks
+(normally r-propagate-tests-unit-from-chunking-failed failed-chunking upstream-blocked-tests-unit)
+(normally r-propagate-tests-unit-from-chunking-permanently-failed permanently-failed-chunking upstream-blocked-tests-unit)
+(normally r-propagate-tests-unit-from-chunking-stale-v1 stale-v1-chunking upstream-blocked-tests-unit)
+(normally r-propagate-tests-unit-from-chunking-timeout-v1 timeout-v1-chunking upstream-blocked-tests-unit)
+(normally r-propagate-vector-index-storage-from-chunking-failed failed-chunking upstream-blocked-vector-index-storage)
+(normally r-propagate-vector-index-storage-from-chunking-permanently-failed permanently-failed-chunking upstream-blocked-vector-index-storage)
+(normally r-propagate-vector-index-storage-from-chunking-stale-v1 stale-v1-chunking upstream-blocked-vector-index-storage)
+(normally r-propagate-vector-index-storage-from-chunking-timeout-v1 timeout-v1-chunking upstream-blocked-vector-index-storage)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T01:46:15Z"
+  (given completed-chunking)
+  (given eval-result-v1-chunking-by-claude)
+  (given eval-confidence-v1-chunking-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T01:46:21Z"
+  (given delegated-v1-model-acquisition-to-agent:claude)
+  (given (during (leased-v1-model-acquisition) (moment "2026-03-05T01:46:21Z") (moment "2026-03-05T02:16:21Z")))
+  (given claim-v1-model-acquisition-by-claude)
+  (normally r-cl-state-v1-model-acquisition-by-claude claim-v1-model-acquisition-by-claude state-claimed-v1-model-acquisition-by-claude)
+  (normally r-cl-chain-v1-model-acquisition-by-claude state-claimed-v1-model-acquisition-by-claude claimed-model-acquisition)
+)
+
+;; Propagation rules: failures in 'model-acquisition' block downstream tasks
+(normally r-propagate-onnx-embedding-shell-from-model-acquisition-failed failed-model-acquisition upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-model-acquisition-permanently-failed permanently-failed-model-acquisition upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-model-acquisition-stale-v1 stale-v1-model-acquisition upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-model-acquisition-timeout-v1 timeout-v1-model-acquisition upstream-blocked-onnx-embedding-shell)
+(normally r-propagate-onnx-embedding-shell-from-model-acquisition-blocked upstream-blocked-model-acquisition upstream-blocked-onnx-embedding-shell)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T01:51:24Z"
+  (given completed-model-acquisition)
+  (given eval-result-v1-model-acquisition-by-claude)
+  (given eval-confidence-v1-model-acquisition-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T01:51:30Z"
+  (given delegated-v1-rrf-fusion-to-agent:claude)
+  (given (during (leased-v1-rrf-fusion) (moment "2026-03-05T01:51:30Z") (moment "2026-03-05T02:21:30Z")))
+  (given claim-v1-rrf-fusion-by-claude)
+  (normally r-cl-state-v1-rrf-fusion-by-claude claim-v1-rrf-fusion-by-claude state-claimed-v1-rrf-fusion-by-claude)
+  (normally r-cl-chain-v1-rrf-fusion-by-claude state-claimed-v1-rrf-fusion-by-claude claimed-rrf-fusion)
+)
+
+;; Propagation rules: failures in 'rrf-fusion' block downstream tasks
+(normally r-propagate-hybrid-cli-from-rrf-fusion-failed failed-rrf-fusion upstream-blocked-hybrid-cli)
+(normally r-propagate-hybrid-cli-from-rrf-fusion-permanently-failed permanently-failed-rrf-fusion upstream-blocked-hybrid-cli)
+(normally r-propagate-hybrid-cli-from-rrf-fusion-stale-v1 stale-v1-rrf-fusion upstream-blocked-hybrid-cli)
+(normally r-propagate-hybrid-cli-from-rrf-fusion-timeout-v1 timeout-v1-rrf-fusion upstream-blocked-hybrid-cli)
+(normally r-propagate-tests-unit-from-rrf-fusion-failed failed-rrf-fusion upstream-blocked-tests-unit)
+(normally r-propagate-tests-unit-from-rrf-fusion-permanently-failed permanently-failed-rrf-fusion upstream-blocked-tests-unit)
+(normally r-propagate-tests-unit-from-rrf-fusion-stale-v1 stale-v1-rrf-fusion upstream-blocked-tests-unit)
+(normally r-propagate-tests-unit-from-rrf-fusion-timeout-v1 timeout-v1-rrf-fusion upstream-blocked-tests-unit)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T01:55:22Z"
+  (given completed-rrf-fusion)
+  (given eval-result-v1-rrf-fusion-by-claude)
+  (given eval-confidence-v1-rrf-fusion-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T01:55:30Z"
+  (given delegated-v1-tests-unit-to-agent:claude)
+  (given (during (leased-v1-tests-unit) (moment "2026-03-05T01:55:30Z") (moment "2026-03-05T02:25:30Z")))
+  (given claim-v1-tests-unit-by-claude)
+  (normally r-cl-state-v1-tests-unit-by-claude claim-v1-tests-unit-by-claude state-claimed-v1-tests-unit-by-claude)
+  (normally r-cl-chain-v1-tests-unit-by-claude state-claimed-v1-tests-unit-by-claude claimed-tests-unit)
+)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T02:04:38Z"
+  (given completed-tests-unit)
+  (given eval-result-v1-tests-unit-by-claude)
+  (given eval-confidence-v1-tests-unit-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T02:04:43Z"
+  (given delegated-v1-onnx-embedding-shell-to-agent:claude)
+  (given (during (leased-v1-onnx-embedding-shell) (moment "2026-03-05T02:04:43Z") (moment "2026-03-05T02:34:43Z")))
+  (given claim-v1-onnx-embedding-shell-by-claude)
+  (normally r-cl-state-v1-onnx-embedding-shell-by-claude claim-v1-onnx-embedding-shell-by-claude state-claimed-v1-onnx-embedding-shell-by-claude)
+  (normally r-cl-chain-v1-onnx-embedding-shell-by-claude state-claimed-v1-onnx-embedding-shell-by-claude claimed-onnx-embedding-shell)
+)
+
+;; Propagation rules: failures in 'onnx-embedding-shell' block downstream tasks
+(normally r-propagate-vector-index-storage-from-onnx-embedding-shell-failed failed-onnx-embedding-shell upstream-blocked-vector-index-storage)
+(normally r-propagate-vector-index-storage-from-onnx-embedding-shell-permanently-failed permanently-failed-onnx-embedding-shell upstream-blocked-vector-index-storage)
+(normally r-propagate-vector-index-storage-from-onnx-embedding-shell-stale-v1 stale-v1-onnx-embedding-shell upstream-blocked-vector-index-storage)
+(normally r-propagate-vector-index-storage-from-onnx-embedding-shell-timeout-v1 timeout-v1-onnx-embedding-shell upstream-blocked-vector-index-storage)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T02:07:26Z"
+  (given completed-onnx-embedding-shell)
+  (given eval-result-v1-onnx-embedding-shell-by-claude)
+  (given eval-confidence-v1-onnx-embedding-shell-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T02:07:32Z"
+  (given delegated-v1-vector-index-storage-to-agent:claude)
+  (given (during (leased-v1-vector-index-storage) (moment "2026-03-05T02:07:32Z") (moment "2026-03-05T02:37:32Z")))
+  (given claim-v1-vector-index-storage-by-claude)
+  (normally r-cl-state-v1-vector-index-storage-by-claude claim-v1-vector-index-storage-by-claude state-claimed-v1-vector-index-storage-by-claude)
+  (normally r-cl-chain-v1-vector-index-storage-by-claude state-claimed-v1-vector-index-storage-by-claude claimed-vector-index-storage)
+)
+
+;; Propagation rules: failures in 'vector-index-storage' block downstream tasks
+(normally r-propagate-build-mode-integration-from-vector-index-storage-failed failed-vector-index-storage upstream-blocked-build-mode-integration)
+(normally r-propagate-build-mode-integration-from-vector-index-storage-permanently-failed permanently-failed-vector-index-storage upstream-blocked-build-mode-integration)
+(normally r-propagate-build-mode-integration-from-vector-index-storage-stale-v1 stale-v1-vector-index-storage upstream-blocked-build-mode-integration)
+(normally r-propagate-build-mode-integration-from-vector-index-storage-timeout-v1 timeout-v1-vector-index-storage upstream-blocked-build-mode-integration)
+(normally r-propagate-incremental-rebuild-from-vector-index-storage-failed failed-vector-index-storage upstream-blocked-incremental-rebuild)
+(normally r-propagate-incremental-rebuild-from-vector-index-storage-permanently-failed permanently-failed-vector-index-storage upstream-blocked-incremental-rebuild)
+(normally r-propagate-incremental-rebuild-from-vector-index-storage-stale-v1 stale-v1-vector-index-storage upstream-blocked-incremental-rebuild)
+(normally r-propagate-incremental-rebuild-from-vector-index-storage-timeout-v1 timeout-v1-vector-index-storage upstream-blocked-incremental-rebuild)
+(normally r-propagate-semantic-cli-from-vector-index-storage-failed failed-vector-index-storage upstream-blocked-semantic-cli)
+(normally r-propagate-semantic-cli-from-vector-index-storage-permanently-failed permanently-failed-vector-index-storage upstream-blocked-semantic-cli)
+(normally r-propagate-semantic-cli-from-vector-index-storage-stale-v1 stale-v1-vector-index-storage upstream-blocked-semantic-cli)
+(normally r-propagate-semantic-cli-from-vector-index-storage-timeout-v1 timeout-v1-vector-index-storage upstream-blocked-semantic-cli)
+(normally r-propagate-tests-integration-from-vector-index-storage-failed failed-vector-index-storage upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-vector-index-storage-permanently-failed permanently-failed-vector-index-storage upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-vector-index-storage-stale-v1 stale-v1-vector-index-storage upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-vector-index-storage-timeout-v1 timeout-v1-vector-index-storage upstream-blocked-tests-integration)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T02:16:32Z"
+  (given completed-vector-index-storage)
+  (given eval-result-v1-vector-index-storage-by-claude)
+  (given eval-confidence-v1-vector-index-storage-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T02:16:38Z"
+  (given delegated-v1-semantic-cli-to-agent:claude)
+  (given (during (leased-v1-semantic-cli) (moment "2026-03-05T02:16:38Z") (moment "2026-03-05T02:46:38Z")))
+  (given claim-v1-semantic-cli-by-claude)
+  (normally r-cl-state-v1-semantic-cli-by-claude claim-v1-semantic-cli-by-claude state-claimed-v1-semantic-cli-by-claude)
+  (normally r-cl-chain-v1-semantic-cli-by-claude state-claimed-v1-semantic-cli-by-claude claimed-semantic-cli)
+)
+
+;; Propagation rules: failures in 'semantic-cli' block downstream tasks
+(normally r-propagate-hybrid-cli-from-semantic-cli-failed failed-semantic-cli upstream-blocked-hybrid-cli)
+(normally r-propagate-hybrid-cli-from-semantic-cli-permanently-failed permanently-failed-semantic-cli upstream-blocked-hybrid-cli)
+(normally r-propagate-hybrid-cli-from-semantic-cli-stale-v1 stale-v1-semantic-cli upstream-blocked-hybrid-cli)
+(normally r-propagate-hybrid-cli-from-semantic-cli-timeout-v1 timeout-v1-semantic-cli upstream-blocked-hybrid-cli)
+(normally r-propagate-observability-from-semantic-cli-failed failed-semantic-cli upstream-blocked-observability)
+(normally r-propagate-observability-from-semantic-cli-permanently-failed permanently-failed-semantic-cli upstream-blocked-observability)
+(normally r-propagate-observability-from-semantic-cli-stale-v1 stale-v1-semantic-cli upstream-blocked-observability)
+(normally r-propagate-observability-from-semantic-cli-timeout-v1 timeout-v1-semantic-cli upstream-blocked-observability)
+(normally r-propagate-tests-integration-from-semantic-cli-failed failed-semantic-cli upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-semantic-cli-permanently-failed permanently-failed-semantic-cli upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-semantic-cli-stale-v1 stale-v1-semantic-cli upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-semantic-cli-timeout-v1 timeout-v1-semantic-cli upstream-blocked-tests-integration)
+(normally r-propagate-web-integration-from-semantic-cli-failed failed-semantic-cli upstream-blocked-web-integration)
+(normally r-propagate-web-integration-from-semantic-cli-permanently-failed permanently-failed-semantic-cli upstream-blocked-web-integration)
+(normally r-propagate-web-integration-from-semantic-cli-stale-v1 stale-v1-semantic-cli upstream-blocked-web-integration)
+(normally r-propagate-web-integration-from-semantic-cli-timeout-v1 timeout-v1-semantic-cli upstream-blocked-web-integration)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T02:20:24Z"
+  (given completed-semantic-cli)
+  (given eval-result-v1-semantic-cli-by-claude)
+  (given eval-confidence-v1-semantic-cli-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T02:20:30Z"
+  (given delegated-v1-incremental-rebuild-to-agent:claude)
+  (given (during (leased-v1-incremental-rebuild) (moment "2026-03-05T02:20:30Z") (moment "2026-03-05T02:50:30Z")))
+  (given claim-v1-incremental-rebuild-by-claude)
+  (normally r-cl-state-v1-incremental-rebuild-by-claude claim-v1-incremental-rebuild-by-claude state-claimed-v1-incremental-rebuild-by-claude)
+  (normally r-cl-chain-v1-incremental-rebuild-by-claude state-claimed-v1-incremental-rebuild-by-claude claimed-incremental-rebuild)
+)
+
+;; Propagation rules: failures in 'incremental-rebuild' block downstream tasks
+(normally r-propagate-build-mode-integration-from-incremental-rebuild-failed failed-incremental-rebuild upstream-blocked-build-mode-integration)
+(normally r-propagate-build-mode-integration-from-incremental-rebuild-permanently-failed permanently-failed-incremental-rebuild upstream-blocked-build-mode-integration)
+(normally r-propagate-build-mode-integration-from-incremental-rebuild-stale-v1 stale-v1-incremental-rebuild upstream-blocked-build-mode-integration)
+(normally r-propagate-build-mode-integration-from-incremental-rebuild-timeout-v1 timeout-v1-incremental-rebuild upstream-blocked-build-mode-integration)
+(normally r-propagate-tests-integration-from-incremental-rebuild-failed failed-incremental-rebuild upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-incremental-rebuild-permanently-failed permanently-failed-incremental-rebuild upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-incremental-rebuild-stale-v1 stale-v1-incremental-rebuild upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-incremental-rebuild-timeout-v1 timeout-v1-incremental-rebuild upstream-blocked-tests-integration)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T02:25:33Z"
+  (given completed-incremental-rebuild)
+  (given eval-result-v1-incremental-rebuild-by-claude)
+  (given eval-confidence-v1-incremental-rebuild-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T02:25:39Z"
+  (given delegated-v1-hybrid-cli-to-agent:claude)
+  (given (during (leased-v1-hybrid-cli) (moment "2026-03-05T02:25:39Z") (moment "2026-03-05T02:55:39Z")))
+  (given claim-v1-hybrid-cli-by-claude)
+  (normally r-cl-state-v1-hybrid-cli-by-claude claim-v1-hybrid-cli-by-claude state-claimed-v1-hybrid-cli-by-claude)
+  (normally r-cl-chain-v1-hybrid-cli-by-claude state-claimed-v1-hybrid-cli-by-claude claimed-hybrid-cli)
+)
+
+;; Propagation rules: failures in 'hybrid-cli' block downstream tasks
+(normally r-propagate-observability-from-hybrid-cli-failed failed-hybrid-cli upstream-blocked-observability)
+(normally r-propagate-observability-from-hybrid-cli-permanently-failed permanently-failed-hybrid-cli upstream-blocked-observability)
+(normally r-propagate-observability-from-hybrid-cli-stale-v1 stale-v1-hybrid-cli upstream-blocked-observability)
+(normally r-propagate-observability-from-hybrid-cli-timeout-v1 timeout-v1-hybrid-cli upstream-blocked-observability)
+(normally r-propagate-tests-integration-from-hybrid-cli-failed failed-hybrid-cli upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-hybrid-cli-permanently-failed permanently-failed-hybrid-cli upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-hybrid-cli-stale-v1 stale-v1-hybrid-cli upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-hybrid-cli-timeout-v1 timeout-v1-hybrid-cli upstream-blocked-tests-integration)
+(normally r-propagate-web-integration-from-hybrid-cli-failed failed-hybrid-cli upstream-blocked-web-integration)
+(normally r-propagate-web-integration-from-hybrid-cli-permanently-failed permanently-failed-hybrid-cli upstream-blocked-web-integration)
+(normally r-propagate-web-integration-from-hybrid-cli-stale-v1 stale-v1-hybrid-cli upstream-blocked-web-integration)
+(normally r-propagate-web-integration-from-hybrid-cli-timeout-v1 timeout-v1-hybrid-cli upstream-blocked-web-integration)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T02:33:32Z"
+  (given completed-hybrid-cli)
+  (given eval-result-v1-hybrid-cli-by-claude)
+  (given eval-confidence-v1-hybrid-cli-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T02:33:39Z"
+  (given delegated-v1-build-mode-integration-to-agent:claude)
+  (given (during (leased-v1-build-mode-integration) (moment "2026-03-05T02:33:39Z") (moment "2026-03-05T03:03:39Z")))
+  (given claim-v1-build-mode-integration-by-claude)
+  (normally r-cl-state-v1-build-mode-integration-by-claude claim-v1-build-mode-integration-by-claude state-claimed-v1-build-mode-integration-by-claude)
+  (normally r-cl-chain-v1-build-mode-integration-by-claude state-claimed-v1-build-mode-integration-by-claude claimed-build-mode-integration)
+)
+
+;; Propagation rules: failures in 'build-mode-integration' block downstream tasks
+(normally r-propagate-observability-from-build-mode-integration-failed failed-build-mode-integration upstream-blocked-observability)
+(normally r-propagate-observability-from-build-mode-integration-permanently-failed permanently-failed-build-mode-integration upstream-blocked-observability)
+(normally r-propagate-observability-from-build-mode-integration-stale-v1 stale-v1-build-mode-integration upstream-blocked-observability)
+(normally r-propagate-observability-from-build-mode-integration-timeout-v1 timeout-v1-build-mode-integration upstream-blocked-observability)
+(normally r-propagate-tests-integration-from-build-mode-integration-failed failed-build-mode-integration upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-build-mode-integration-permanently-failed permanently-failed-build-mode-integration upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-build-mode-integration-stale-v1 stale-v1-build-mode-integration upstream-blocked-tests-integration)
+(normally r-propagate-tests-integration-from-build-mode-integration-timeout-v1 timeout-v1-build-mode-integration upstream-blocked-tests-integration)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T02:38:25Z"
+  (given completed-build-mode-integration)
+  (given eval-result-v1-build-mode-integration-by-claude)
+  (given eval-confidence-v1-build-mode-integration-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T02:38:31Z"
+  (given delegated-v1-web-integration-to-agent:claude)
+  (given (during (leased-v1-web-integration) (moment "2026-03-05T02:38:31Z") (moment "2026-03-05T03:08:31Z")))
+  (given claim-v1-web-integration-by-claude)
+  (normally r-cl-state-v1-web-integration-by-claude claim-v1-web-integration-by-claude state-claimed-v1-web-integration-by-claude)
+  (normally r-cl-chain-v1-web-integration-by-claude state-claimed-v1-web-integration-by-claude claimed-web-integration)
+)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T02:47:37Z"
+  (given completed-web-integration)
+  (given eval-result-v1-web-integration-by-claude)
+  (given eval-confidence-v1-web-integration-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T02:47:43Z"
+  (given delegated-v1-observability-to-agent:claude)
+  (given (during (leased-v1-observability) (moment "2026-03-05T02:47:43Z") (moment "2026-03-05T03:17:43Z")))
+  (given claim-v1-observability-by-claude)
+  (normally r-cl-state-v1-observability-by-claude claim-v1-observability-by-claude state-claimed-v1-observability-by-claude)
+  (normally r-cl-chain-v1-observability-by-claude state-claimed-v1-observability-by-claude claimed-observability)
+)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T02:51:43Z"
+  (given completed-observability)
+  (given eval-result-v1-observability-by-claude)
+  (given eval-confidence-v1-observability-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-03-05T02:51:48Z"
+  (given delegated-v1-tests-integration-to-agent:claude)
+  (given (during (leased-v1-tests-integration) (moment "2026-03-05T02:51:48Z") (moment "2026-03-05T03:21:48Z")))
+  (given claim-v1-tests-integration-by-claude)
+  (normally r-cl-state-v1-tests-integration-by-claude claim-v1-tests-integration-by-claude state-claimed-v1-tests-integration-by-claude)
+  (normally r-cl-chain-v1-tests-integration-by-claude state-claimed-v1-tests-integration-by-claude claimed-tests-integration)
+)
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-03-05T03:00:17Z"
+  (given completed-tests-integration)
+  (given eval-result-v1-tests-integration-by-claude)
+  (given eval-confidence-v1-tests-integration-1.00)
+)
