@@ -8,7 +8,7 @@ use std::fs;
 use std::path::Path;
 
 use zetl::semantic::core::{
-    chunk_page, cosine_similarity, detect_stale_chunks, reciprocal_rank_fusion,
+    chunk_page, cosine_similarity, detect_stale_chunks, reciprocal_rank_fusion, vector_search,
 };
 
 fn write(root: &Path, name: &str, content: &str) {
@@ -84,6 +84,158 @@ fn test_semantic_module_available() {
     let _sim = cosine_similarity(&[1.0f32, 0.0], &[0.0f32, 1.0]);
     let _rrf = reciprocal_rank_fusion(&[], &[], 60);
     let _stale = detect_stale_chunks(&[], &[]);
+}
+
+// TEST-119 (property): vector_search always returns <= limit results, sorted descending.
+// Verified over a range of (embeddings_count, limit) pairs.
+#[test]
+fn test_vector_search_count_and_order_property() {
+    // Build a set of 2-D unit vectors at various angles.
+    let angles_deg: Vec<f32> = (0..20).map(|i| i as f32 * 18.0).collect();
+    let embeddings: Vec<Vec<f32>> = angles_deg
+        .iter()
+        .map(|deg| {
+            let rad = deg.to_radians();
+            vec![rad.cos(), rad.sin()]
+        })
+        .collect();
+    let query = vec![1.0f32, 0.0]; // 0°
+
+    for limit in [0, 1, 3, 10, 20, 50] {
+        let results = vector_search(&embeddings, &query, limit);
+        // count <= limit
+        assert!(
+            results.len() <= limit,
+            "limit={limit}: got {} results",
+            results.len()
+        );
+        // count <= total embeddings
+        assert!(results.len() <= embeddings.len());
+        // scores are non-increasing
+        for w in results.windows(2) {
+            assert!(
+                w[0].0 >= w[1].0,
+                "limit={limit}: scores not sorted desc: {} then {}",
+                w[0].0,
+                w[1].0
+            );
+        }
+    }
+}
+
+// TEST-119 (property): the highest-scoring result equals the embedding closest to the query.
+#[test]
+fn test_vector_search_top_result_is_best_match() {
+    let embeddings: Vec<Vec<f32>> = vec![
+        vec![0.0f32, 1.0],  // 90°  score = 0
+        vec![-1.0f32, 0.0], // 180° score = -1
+        vec![1.0f32, 0.0],  // 0°   score = 1 (best)
+        vec![0.6f32, 0.8],  // ~53° score = 0.6
+    ];
+    let query = vec![1.0f32, 0.0];
+    let results = vector_search(&embeddings, &query, 4);
+    // Index 2 should be ranked first.
+    assert_eq!(results[0].1, 2, "best match should be index 2");
+    assert!((results[0].0 - 1.0).abs() < 1e-5);
+}
+
+// TEST-120 (property): chunk texts concatenated reproduce the full input.
+// Verified for several page sizes and heading configurations.
+#[test]
+fn test_chunk_page_roundtrip_various_configs() {
+    let cases: &[(&str, Vec<(usize, u8, String)>, usize)] = &[
+        // Long page, no headings → single chunk, roundtrip trivially holds.
+        ("a".repeat(2048).leak(), vec![], 100),
+        // Long page with one h2 at offset 512.
+        ({
+            let mut s = "a".repeat(512);
+            s.push_str("## Section\n");
+            s.push_str(&"b".repeat(512));
+            s.leak()
+        }, vec![(512, 2, "Section".to_string())], 100),
+        // Long page with two h2s.
+        ({
+            let mut s = "intro ".repeat(20); // 120 bytes
+            s.push_str("## Alpha\n");
+            s.push_str(&"x".repeat(300));
+            s.push_str("## Beta\n");
+            s.push_str(&"y".repeat(300));
+            s.leak()
+        }, vec![
+            (120, 2, "Alpha".to_string()),
+            (120 + 9 + 300, 2, "Beta".to_string()),
+        ], 10),
+    ];
+
+    for (content, headings, threshold) in cases {
+        let chunks = chunk_page("p", "p.md", content, headings, *threshold);
+        let rejoined: String = chunks.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(
+            &rejoined, content,
+            "roundtrip failed for content of length {}",
+            content.len()
+        );
+    }
+}
+
+// TEST-120 (property): when there is content before the first h2, an intro chunk (heading=None)
+// appears first.
+#[test]
+fn test_chunk_page_intro_chunk_present() {
+    let content = "Intro paragraph.\n## First Section\n".to_string() + &"x".repeat(500);
+    let headings = vec![(17, 2u8, "First Section".to_string())];
+    let chunks = chunk_page("p", "p.md", &content, &headings, 1);
+    // First chunk should be the intro with no heading.
+    assert_eq!(chunks[0].heading, None);
+    assert!(chunks[0].text.starts_with("Intro"));
+}
+
+// TEST-120 (property): each chunk's page_name and path match the arguments passed in.
+#[test]
+fn test_chunk_page_metadata_propagated() {
+    let content = "x".repeat(600);
+    let headings = vec![(100, 2u8, "H".to_string())];
+    let chunks = chunk_page("my-page", "notes/my-page.md", &content, &headings, 1);
+    for chunk in &chunks {
+        assert_eq!(chunk.page_name, "my-page");
+        assert_eq!(chunk.path, "notes/my-page.md");
+    }
+}
+
+// TEST-121 (property): RRF output length equals the union of both input lists.
+#[test]
+fn test_rrf_output_length_equals_union() {
+    let a = vec![
+        ("p1".to_string(), 1),
+        ("p2".to_string(), 2),
+        ("p3".to_string(), 3),
+    ];
+    let b = vec![
+        ("p2".to_string(), 1), // duplicate
+        ("p4".to_string(), 2),
+        ("p5".to_string(), 3),
+    ];
+    let fused = reciprocal_rank_fusion(&a, &b, 60);
+    // Union of {p1,p2,p3} and {p2,p4,p5} = {p1,p2,p3,p4,p5} = 5 distinct pages.
+    assert_eq!(fused.len(), 5, "expected union size 5, got {}", fused.len());
+}
+
+// TEST-121 (property): a page that appears in both lists ranks above pages in only one list
+// when both lists share the same rank for that page.
+#[test]
+fn test_rrf_double_appearance_boosts_rank() {
+    let shared = "shared".to_string();
+    let only_a = "only_a".to_string();
+    let only_b = "only_b".to_string();
+    let a = vec![(shared.clone(), 1), (only_a.clone(), 2)];
+    let b = vec![(shared.clone(), 1), (only_b.clone(), 2)];
+    let fused = reciprocal_rank_fusion(&a, &b, 60);
+    // "shared" appears in both at rank 1 → highest fused score.
+    assert_eq!(fused[0].0, shared);
+    // The two single-list entries have equal scores; verify both appear.
+    let pages: Vec<&str> = fused.iter().map(|(p, _)| p.as_str()).collect();
+    assert!(pages.contains(&"only_a"));
+    assert!(pages.contains(&"only_b"));
 }
 
 // TEST-122 (CLI path): when compiled WITHOUT the feature, --semantic / --hybrid print an

@@ -208,15 +208,7 @@ impl VectorIndex {
     pub fn query(&self, embedding: &[f32; EMBEDDING_DIM], limit: usize) -> Result<Vec<VectorHit>> {
         let start = std::time::Instant::now();
 
-        let mut scored: Vec<(f32, usize)> = self
-            .embeddings
-            .iter()
-            .enumerate()
-            .map(|(i, e)| (core::cosine_similarity(e, embedding), i))
-            .collect();
-
-        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-        scored.truncate(limit);
+        let scored = core::vector_search(&self.embeddings, embedding, limit);
 
         let results: Vec<VectorHit> = scored
             .into_iter()

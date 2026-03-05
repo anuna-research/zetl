@@ -3,25 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 176,
-    "deletions": 9,
+    "files_changed": 3,
+    "insertions": 237,
+    "deletions": 10,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/main.rs"
+      "src/semantic/core.rs",
+      "src/semantic/mod.rs",
+      "tests/semantic_integration.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-rrf-fusion-changes",
-      "content": "Modified 2 files (+176, -9): .hence/context-manifest.json, src/main.rs",
+      "key": "task-tests-unit-changes",
+      "content": "Modified 3 files (+237, -10): src/semantic/core.rs, src/semantic/mod.rs, tests/semantic_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/rrf-fusion-v1",
-  "evaluated_at": "2026-03-05T01:55:22Z",
+  "branch_name": "hence/tests-unit-v1",
+  "evaluated_at": "2026-03-05T02:04:38Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
