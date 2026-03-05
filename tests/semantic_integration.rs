@@ -502,3 +502,425 @@ fn test_search_semantic_missing_index_exits_nonzero() {
         "error output should mention the index; got: {combined}"
     );
 }
+
+// ── CLI integration tests (with ONNX model) ──────────────────────────────────
+//
+// The tests below exercise the full CLI pipeline including vector embeddings.
+// They are skipped when ZETL_MODEL_PATH is not set, since the ONNX model and
+// tokenizer are not bundled in the repository.
+//
+// To run these tests:
+//   export ZETL_MODEL_PATH=/path/to/all-MiniLM-L6-v2.onnx
+//   # (all-MiniLM-L6-v2-tokenizer.json must be in the same directory)
+//   cargo test --features semantic
+
+/// Returns true if ZETL_MODEL_PATH is set and points to an existing file.
+/// Tests that require the ONNX model early-return when this is false.
+fn onnx_model_available() -> bool {
+    std::env::var("ZETL_MODEL_PATH")
+        .map(|p| std::path::Path::new(&p).exists())
+        .unwrap_or(false)
+}
+
+/// Run `zetl -d <vault> index` and return (success, stderr).
+fn run_zetl_index(vault: &std::path::Path) -> (bool, String) {
+    let bin = assert_cmd::cargo::cargo_bin("zetl");
+    let output = std::process::Command::new(bin)
+        .args(["-d", vault.to_str().unwrap(), "index"])
+        .output()
+        .expect("failed to run zetl index");
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    (output.status.success(), stderr)
+}
+
+/// Run `zetl -d <vault> search [args...]` and return (success, stdout, stderr).
+fn run_zetl_search(vault: &std::path::Path, args: &[&str]) -> (bool, String, String) {
+    let bin = assert_cmd::cargo::cargo_bin("zetl");
+    let mut cmd = std::process::Command::new(bin);
+    cmd.arg("-d").arg(vault.to_str().unwrap()).arg("search");
+    for a in args {
+        cmd.arg(a);
+    }
+    let output = cmd.output().expect("failed to run zetl search");
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    (output.status.success(), stdout, stderr)
+}
+
+/// TEST-122 (with semantic feature compiled in): `--semantic` and `--hybrid` flags are
+/// accepted by the CLI parser and produce a meaningful error (missing index) rather than
+/// "requires the semantic feature". REQ-098, NFR-041.
+///
+/// This test file only compiles with `--features semantic`, so reaching this test
+/// already proves the feature is compiled in. We verify the flag is accepted.
+#[test]
+fn test_semantic_flags_accepted_with_feature_compiled_in() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    fs::write(tmp.path().join("note.md"), "# Note\nSome content.").unwrap();
+
+    for flag in &["--semantic", "--hybrid"] {
+        let (success, stdout, stderr) = run_zetl_search(tmp.path(), &[flag, "hello"]);
+        let combined = format!("{stderr}{stdout}");
+        // Must NOT say "requires the semantic feature"
+        assert!(
+            !combined.contains("requires the semantic feature"),
+            "{flag}: unexpected 'requires the semantic feature' error: {combined}"
+        );
+        // Must exit non-zero because the index hasn't been built yet.
+        assert!(
+            !success,
+            "{flag}: expected non-zero exit when index is absent, but exited successfully"
+        );
+    }
+}
+
+/// TEST-118 (CLI): `zetl index` creates `.zetl/search/vectors/` with all three required
+/// files (`index.bin`, `chunks.json`, `model.json`). `VectorIndex::open` reads the index
+/// back and reports the same chunk count that was embedded. REQ-092, REQ-093.
+///
+/// Skipped when ZETL_MODEL_PATH is not set.
+#[test]
+fn test_vector_index_build_open_roundtrip_cli() {
+    use zetl::semantic::{VectorIndex, CHUNKS_FILE, INDEX_FILE, MODEL_FILE, VECTORS_DIR};
+
+    if !onnx_model_available() {
+        eprintln!("Skipping test_vector_index_build_open_roundtrip_cli: ZETL_MODEL_PATH not set");
+        return;
+    }
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    fs::write(
+        tmp.path().join("alpha.md"),
+        "# Alpha\nThis note covers graph algorithms and shortest path problems.",
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join("beta.md"),
+        "# Beta\nThis note covers dynamic programming and memoisation.",
+    )
+    .unwrap();
+
+    let (ok, stderr) = run_zetl_index(tmp.path());
+    assert!(ok, "zetl index failed:\n{stderr}");
+
+    // Verify all three vector index files exist.
+    let vectors_dir = tmp.path().join(VECTORS_DIR);
+    assert!(
+        vectors_dir.join(INDEX_FILE).exists(),
+        "index.bin must exist after zetl index"
+    );
+    assert!(
+        vectors_dir.join(CHUNKS_FILE).exists(),
+        "chunks.json must exist after zetl index"
+    );
+    assert!(
+        vectors_dir.join(MODEL_FILE).exists(),
+        "model.json must exist after zetl index"
+    );
+
+    // VectorIndex::open reads back the index built by zetl index.
+    let idx = VectorIndex::open(tmp.path())
+        .expect("VectorIndex::open should not error")
+        .expect("VectorIndex::open should find the index written by zetl index");
+
+    // With 2 short pages, each page should produce at least one chunk.
+    assert!(
+        idx.chunk_count() >= 2,
+        "expected at least 2 chunks (one per page), got {}",
+        idx.chunk_count()
+    );
+
+    // chunks.json should agree with the in-memory chunk count.
+    let chunks_json =
+        fs::read_to_string(vectors_dir.join(CHUNKS_FILE)).expect("read chunks.json");
+    let meta: Vec<zetl::semantic::ChunkMeta> =
+        serde_json::from_str(&chunks_json).expect("parse chunks.json");
+    assert_eq!(
+        meta.len(),
+        idx.chunk_count(),
+        "chunks.json length must match VectorIndex chunk count"
+    );
+}
+
+/// TEST-114 (CLI): `zetl search --semantic <QUERY>` returns pages ranked by cosine
+/// similarity. A note that is conceptually close to the query scores higher than an
+/// unrelated note. REQ-094, REQ-099.
+///
+/// Skipped when ZETL_MODEL_PATH is not set.
+#[test]
+fn test_semantic_ranking_by_cosine_similarity_cli() {
+    if !onnx_model_available() {
+        eprintln!(
+            "Skipping test_semantic_ranking_by_cosine_similarity_cli: ZETL_MODEL_PATH not set"
+        );
+        return;
+    }
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    // "pid.md" is semantically about feedback control systems.
+    fs::write(
+        tmp.path().join("pid.md"),
+        "# PID Controllers\n\
+         Feedback loops maintain system equilibrium by measuring error and applying a \
+         corrective response. A proportional-integral-derivative controller is the \
+         standard mechanism for closed-loop feedback control.",
+    )
+    .unwrap();
+    // "recipes.md" is semantically unrelated to feedback/control.
+    fs::write(
+        tmp.path().join("recipes.md"),
+        "# Cooking Recipes\n\
+         Stir-fry vegetables with garlic and ginger. Serve with steamed rice. \
+         Bake the cake at 180 degrees for 30 minutes.",
+    )
+    .unwrap();
+
+    let (ok, stderr) = run_zetl_index(tmp.path());
+    assert!(ok, "zetl index failed:\n{stderr}");
+
+    let (ok, stdout, stderr) =
+        run_zetl_search(tmp.path(), &["--semantic", "feedback equilibrium control loop"]);
+    assert!(ok, "zetl search --semantic failed:\n{stderr}");
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("failed to parse search output: {e}\nraw: {stdout}"));
+
+    let results = json["results"].as_array().expect("results must be an array");
+    assert!(
+        !results.is_empty(),
+        "expected at least one semantic search result"
+    );
+
+    // pid.md should rank before recipes.md.
+    let top_page = results[0]["page"].as_str().unwrap_or("");
+    assert_eq!(
+        top_page, "pid",
+        "pid note should rank first for 'feedback equilibrium control loop'; \
+         got top page: {top_page}"
+    );
+
+    // Scores must be in [0.0, 1.0] and non-increasing.
+    for (i, r) in results.iter().enumerate() {
+        let score = r["score"].as_f64().expect("result must have a score");
+        assert!(
+            (0.0..=1.0).contains(&score),
+            "result[{i}] score {score} out of range [0.0, 1.0]"
+        );
+    }
+    for w in results.windows(2) {
+        let s0 = w[0]["score"].as_f64().unwrap();
+        let s1 = w[1]["score"].as_f64().unwrap();
+        assert!(
+            s0 >= s1,
+            "semantic scores not sorted descending: {s0} then {s1}"
+        );
+    }
+}
+
+/// TEST-116 (CLI): `zetl search --hybrid <QUERY>` returns results that combine BM25 and
+/// vector signals via RRF. A page matching both keyword and semantic signals ranks above
+/// pages matching only one signal. REQ-095.
+///
+/// Skipped when ZETL_MODEL_PATH is not set.
+#[test]
+fn test_hybrid_combines_bm25_and_semantic_signals_cli() {
+    if !onnx_model_available() {
+        eprintln!(
+            "Skipping test_hybrid_combines_bm25_and_semantic_signals_cli: ZETL_MODEL_PATH not set"
+        );
+        return;
+    }
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    // "both.md" contains the keyword "quantum computing" AND is about quantum computing.
+    fs::write(
+        tmp.path().join("both.md"),
+        "# Quantum Computing\n\
+         Quantum computing uses qubits and superposition to solve problems that are \
+         intractable for classical computers. Quantum algorithms exploit entanglement \
+         and interference.",
+    )
+    .unwrap();
+    // "keyword-only.md" contains "quantum computing" but is otherwise unrelated.
+    fs::write(
+        tmp.path().join("keyword-only.md"),
+        "# Groceries\n\
+         Quantum computing aside, I need bread, milk, and eggs. \
+         The quantum computing hype is everywhere but I just want coffee.",
+    )
+    .unwrap();
+    // "semantic-only.md" is about the same topic but uses different vocabulary.
+    fs::write(
+        tmp.path().join("semantic-only.md"),
+        "# Qubit Operations\n\
+         Superposition allows qubits to represent both 0 and 1 simultaneously. \
+         Entanglement correlates qubit states enabling parallel computation speedup.",
+    )
+    .unwrap();
+
+    let (ok, stderr) = run_zetl_index(tmp.path());
+    assert!(ok, "zetl index failed:\n{stderr}");
+
+    let (ok, stdout, stderr) =
+        run_zetl_search(tmp.path(), &["--hybrid", "quantum computing"]);
+    assert!(ok, "zetl search --hybrid failed:\n{stderr}");
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("failed to parse hybrid output: {e}\nraw: {stdout}"));
+
+    let results = json["results"].as_array().expect("results must be an array");
+    assert!(
+        !results.is_empty(),
+        "expected at least one hybrid search result"
+    );
+
+    // "both.md" should rank first: it matches both BM25 and vector signals.
+    let top_page = results[0]["page"].as_str().unwrap_or("");
+    assert_eq!(
+        top_page, "both",
+        "both.md (keyword + semantic match) should rank first in hybrid search; \
+         got top page: {top_page}"
+    );
+
+    // All three pages should appear in the results (union of BM25 + vector candidates).
+    let pages: Vec<&str> = results.iter().map(|r| r["page"].as_str().unwrap_or("")).collect();
+    for expected in &["both", "keyword-only", "semantic-only"] {
+        assert!(
+            pages.contains(expected),
+            "hybrid results should include '{expected}'; got pages: {pages:?}"
+        );
+    }
+}
+
+/// TEST-117 (CLI): `zetl search --hybrid --near <PAGE>` restricts fused results to the
+/// graph neighbourhood of the anchor page. Pages outside the neighbourhood are excluded
+/// from the results even if they score highly on either BM25 or vector signals. REQ-101.
+///
+/// Skipped when ZETL_MODEL_PATH is not set.
+#[test]
+fn test_hybrid_near_restricts_to_neighbourhood_cli() {
+    if !onnx_model_available() {
+        eprintln!(
+            "Skipping test_hybrid_near_restricts_to_neighbourhood_cli: ZETL_MODEL_PATH not set"
+        );
+        return;
+    }
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    // "hub.md" links to "linked.md" but not to "unlinked.md".
+    fs::write(
+        tmp.path().join("hub.md"),
+        "# Hub\nSee [[linked]] for details about caching strategies.",
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join("linked.md"),
+        "# Linked\n\
+         Caching strategies improve performance by storing frequently accessed data. \
+         LRU cache eviction removes least recently used entries.",
+    )
+    .unwrap();
+    // "unlinked.md" is about caching (should score well on BM25+vector) but has no link from hub.
+    fs::write(
+        tmp.path().join("unlinked.md"),
+        "# Unlinked\n\
+         Caching strategies reduce latency. LRU and LFU eviction policies differ in \
+         how they prioritise cache entries based on usage patterns.",
+    )
+    .unwrap();
+
+    let (ok, stderr) = run_zetl_index(tmp.path());
+    assert!(ok, "zetl index failed:\n{stderr}");
+
+    // Query with --near hub: only hub + linked are in the neighbourhood (depth 1).
+    let (ok, stdout, stderr) = run_zetl_search(
+        tmp.path(),
+        &["--hybrid", "--near", "hub", "caching strategies"],
+    );
+    assert!(ok, "zetl search --hybrid --near failed:\n{stderr}");
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("failed to parse output: {e}\nraw: {stdout}"));
+
+    let results = json["results"].as_array().expect("results must be an array");
+    let pages: Vec<&str> = results.iter().map(|r| r["page"].as_str().unwrap_or("")).collect();
+
+    // "unlinked" is outside the hub neighbourhood and must not appear.
+    assert!(
+        !pages.contains(&"unlinked"),
+        "unlinked.md is outside the hub neighbourhood and must not appear; \
+         got pages: {pages:?}"
+    );
+
+    // The JSON output should carry the --near anchor.
+    let near_field = json["near"].as_str().unwrap_or("");
+    assert_eq!(
+        near_field, "hub",
+        "output 'near' field should be 'hub'; got: {near_field}"
+    );
+}
+
+/// TEST-123 (CLI): Incremental rebuild — `zetl index` reuses cached embeddings for
+/// unchanged pages and only re-embeds modified pages, as evidenced by the OBS-017 log
+/// line (`reused=N` > 0 on the second run). REQ-097.
+///
+/// Skipped when ZETL_MODEL_PATH is not set.
+#[test]
+fn test_incremental_rebuild_reuses_embeddings_cli() {
+    if !onnx_model_available() {
+        eprintln!(
+            "Skipping test_incremental_rebuild_reuses_embeddings_cli: ZETL_MODEL_PATH not set"
+        );
+        return;
+    }
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    fs::write(
+        tmp.path().join("stable.md"),
+        "# Stable\nThis page will not change between index runs.",
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join("changing.md"),
+        "# Changing v1\nOriginal content for the page that will be modified.",
+    )
+    .unwrap();
+
+    // First index build — all chunks embedded from scratch.
+    let (ok, stderr1) = run_zetl_index(tmp.path());
+    assert!(ok, "first zetl index failed:\n{stderr1}");
+    // OBS-017: first run must show embedded > 0, reused == 0.
+    assert!(
+        stderr1.contains("embedded="),
+        "first index run must log OBS-017 embed line; got stderr: {stderr1}"
+    );
+
+    // Modify "changing.md" only.
+    fs::write(
+        tmp.path().join("changing.md"),
+        "# Changing v2\nModified content that should trigger re-embedding.",
+    )
+    .unwrap();
+
+    // Second index build — stable.md's chunks should be reused.
+    let (ok, stderr2) = run_zetl_index(tmp.path());
+    assert!(ok, "second zetl index failed:\n{stderr2}");
+
+    // OBS-017: second run must show reused > 0 (stable.md reused).
+    // Extract the reused count from the log line.
+    let reused_count: usize = stderr2
+        .lines()
+        .find(|l| l.contains("[zetl] embed:"))
+        .and_then(|l| {
+            l.split_whitespace()
+                .find(|p| p.starts_with("reused="))
+                .and_then(|p| p.trim_start_matches("reused=").parse().ok())
+        })
+        .unwrap_or(0);
+
+    assert!(
+        reused_count > 0,
+        "second index run should reuse at least one chunk (stable.md unchanged); \
+         got reused={reused_count}\nstderr: {stderr2}"
+    );
+}

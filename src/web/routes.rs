@@ -1463,6 +1463,8 @@ mod tests {
             engine: Arc::new(TemplateEngine::new(vault_root, theme, false, false)),
             theme: theme.to_string(),
             verbose: false,
+            #[cfg(feature = "semantic")]
+            vector_index: None,
         }
     }
 
