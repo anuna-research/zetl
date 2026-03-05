@@ -2295,10 +2295,9 @@ fn cmd_search(
             }
         }
     }
-    // When the semantic feature IS compiled in, the semantic/hybrid paths will be
-    // implemented in SPEC-018 follow-up tasks. For now, acknowledge the flags so the
-    // compiler does not emit unused-variable warnings.
-    #[cfg(feature = "semantic")]
+    // REQ-095, ADR-053: hybrid BM25 + vector search via RRF is implemented below,
+    // after the BM25 results have been collected.
+    #[cfg(not(feature = "semantic"))]
     let _ = (semantic, hybrid);
 
     // REQ-013-007: --depth without --near is an error (exit 2).
@@ -2450,6 +2449,168 @@ fn cmd_search(
             }
         }
     };
+
+    // REQ-095, ADR-053: apply semantic / hybrid re-ranking when the semantic feature
+    // is active and the caller requested --semantic or --hybrid.
+    #[cfg(feature = "semantic")]
+    {
+        use zetl::search::SearchMatch;
+        if semantic || hybrid {
+            let vec_start = std::time::Instant::now();
+            let vec_index = zetl::semantic::VectorIndex::open(&vault_root);
+            match vec_index {
+                Err(e) => {
+                    let msg = format!("Failed to load vector index: {e}. Run `zetl index` first.");
+                    match cli.format {
+                        OutputFormat::Json => exit_json_error(&msg, 1),
+                        OutputFormat::Table => {
+                            eprintln!("Error: {msg}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Ok(None) => {
+                    let msg =
+                        "Vector index not found. Run `zetl index` to build it first.";
+                    match cli.format {
+                        OutputFormat::Json => exit_json_error(msg, 1),
+                        OutputFormat::Table => {
+                            eprintln!("Error: {msg}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Ok(Some(ref idx)) => {
+                    // Query vector index (fetch enough candidates for fusion).
+                    let vec_limit = if hybrid { limit * 2 } else { limit };
+                    match idx.query_text(query, vec_limit) {
+                        Err(e) => {
+                            let msg = format!("Vector query failed: {e}");
+                            match cli.format {
+                                OutputFormat::Json => exit_json_error(&msg, 1),
+                                OutputFormat::Table => {
+                                    eprintln!("Error: {msg}");
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                        Ok(vec_hits) => {
+                            let vec_ms = vec_start.elapsed().as_millis();
+                            if cli.verbose > 0 {
+                                idx.log_query_stats(vec_hits.len(), vec_ms);
+                            }
+
+                            if semantic {
+                                // Pure vector search: replace BM25 output entirely.
+                                // Convert VectorHit → SearchMatch (no line/column info).
+                                let results: Vec<SearchMatch> = vec_hits
+                                    .into_iter()
+                                    .map(|h| SearchMatch {
+                                        page: h.page_name,
+                                        path: h.path,
+                                        line: 0,
+                                        column: 0,
+                                        context: None,
+                                        heading: h.heading,
+                                        heading_level: None,
+                                        score: h.score as f64,
+                                    })
+                                    .collect();
+                                let total = results.len();
+                                output.results = results;
+                                output.total_matches = total;
+                            } else {
+                                // Hybrid: fuse BM25 and vector ranks via RRF (REQ-095, ADR-053).
+                                // Build rank lists (1-indexed, deduplicated by page).
+                                let bm25_ranks: Vec<(String, usize)> = {
+                                    let mut seen = std::collections::HashSet::new();
+                                    output
+                                        .results
+                                        .iter()
+                                        .filter_map(|r| {
+                                            if seen.insert(r.page.clone()) {
+                                                Some((r.page.clone(), seen.len()))
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect()
+                                };
+                                let vec_ranks: Vec<(String, usize)> = {
+                                    let mut seen = std::collections::HashSet::new();
+                                    vec_hits
+                                        .iter()
+                                        .filter_map(|h| {
+                                            if seen.insert(h.page_name.clone()) {
+                                                Some((h.page_name.clone(), seen.len()))
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect()
+                                };
+
+                                let fused = zetl::semantic::core::reciprocal_rank_fusion(
+                                    &bm25_ranks,
+                                    &vec_ranks,
+                                    zetl::semantic::RRF_K,
+                                );
+
+                                // Build a score map from page_name → fused score.
+                                let score_map: std::collections::HashMap<String, f64> =
+                                    fused.into_iter().collect();
+
+                                // Collect all BM25 matches, re-scored by fused value.
+                                // Pages only in vector results get a placeholder match.
+                                let mut new_results: Vec<SearchMatch> = output
+                                    .results
+                                    .drain(..)
+                                    .map(|mut m| {
+                                        if let Some(&fs) = score_map.get(&m.page) {
+                                            m.score = fs;
+                                        }
+                                        m
+                                    })
+                                    .collect();
+
+                                // Add pages that appear only in vector results (no BM25 match).
+                                let bm25_pages: std::collections::HashSet<String> =
+                                    new_results.iter().map(|r| r.page.clone()).collect();
+                                for hit in &vec_hits {
+                                    if !bm25_pages.contains(&hit.page_name) {
+                                        if let Some(&fs) = score_map.get(&hit.page_name) {
+                                            new_results.push(SearchMatch {
+                                                page: hit.page_name.clone(),
+                                                path: hit.path.clone(),
+                                                line: 0,
+                                                column: 0,
+                                                context: None,
+                                                heading: hit.heading.clone(),
+                                                heading_level: None,
+                                                score: fs,
+                                            });
+                                        }
+                                    }
+                                }
+
+                                // Sort by fused score descending, then truncate to limit.
+                                new_results.sort_by(|a, b| {
+                                    b.score
+                                        .partial_cmp(&a.score)
+                                        .unwrap_or(std::cmp::Ordering::Equal)
+                                });
+                                new_results.truncate(limit);
+
+                                let total = new_results.len();
+                                output.results = new_results;
+                                output.total_matches = total;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Filter results to the neighbourhood if --near was specified.
     // REQ-013-009: populate neighbourhood metadata in the output envelope.
