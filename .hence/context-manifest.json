@@ -1,11 +1,11 @@
 {
-  "task_id": "incremental-rebuild",
+  "task_id": "hybrid-cli",
   "token_budget": 8000,
-  "tokens_used": 247,
+  "tokens_used": 274,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement incremental embedding rebuild in zetl index: BLAKE3-hash each chunk, compare against chunks.json, re-embed only stale chunks, write updated vectors and metadata",
+      "content": "Implement zetl search --hybrid <QUERY> CLI flag: run BM25 and vector search in parallel, fuse via RRF, apply --near graph scoping after fusion, return fused SearchOutput",
       "token_cost": 42,
       "priority": "PlanMeta"
     },
@@ -62,8 +62,14 @@
       "content": "Modified 3 files (+64, -9): .hence/context-manifest.json, tests/integration.rs, tests/semantic_integration.rs",
       "token_cost": 27,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-incremental-rebuild-changes",
+      "content": "Modified 3 files (+230, -12): .hence/context-manifest.json, src/semantic/mod.rs, tests/semantic_integration.rs",
+      "token_cost": 27,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T02:20:30Z"
+  "constructed_at": "2026-03-05T02:25:39Z"
 }
