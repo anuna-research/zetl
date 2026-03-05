@@ -3,24 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 11,
-    "deletions": 5,
+    "files_changed": 5,
+    "insertions": 286,
+    "deletions": 36,
     "file_list": [
-      ".hence/context-manifest.json"
+      ".hence/context-manifest.json",
+      "Cargo.lock",
+      "Cargo.toml",
+      "src/semantic/acquisition.rs",
+      "src/semantic/mod.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-chunking-changes",
-      "content": "Modified 1 files (+11, -5): .hence/context-manifest.json",
+      "key": "task-model-acquisition-changes",
+      "content": "Modified 5 files (+286, -36): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/semantic/acquisition.rs, src/semantic/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/chunking-v1",
-  "evaluated_at": "2026-03-05T01:46:15Z",
+  "branch_name": "hence/model-acquisition-v1",
+  "evaluated_at": "2026-03-05T01:51:24Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
