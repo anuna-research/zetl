@@ -1,12 +1,12 @@
 {
-  "task_id": "vector-index-storage",
+  "task_id": "semantic-cli",
   "token_budget": 8000,
-  "tokens_used": 199,
+  "tokens_used": 232,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement storage layout at .zetl/search/vectors/: index.bin (flat mmap-friendly vector file), chunks.json (chunk metadata with page, heading, content_hash), model.json (model name + dimension)",
-      "token_cost": 48,
+      "content": "Implement zetl search --semantic <QUERY> CLI flag: embed query, run VectorIndex::query, return SearchOutput JSON ranked by cosine similarity with score in [0.0,1.0]; handle missing index and feature-not-compiled errors",
+      "token_cost": 54,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,14 @@
       "content": "Modified 2 files (+19, -5): .hence/context-manifest.json, src/semantic/mod.rs",
       "token_cost": 19,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-vector-index-storage-changes",
+      "content": "Modified 3 files (+317, -5): .hence/context-manifest.json, src/semantic/mod.rs, tests/semantic_integration.rs",
+      "token_cost": 27,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T02:07:32Z"
+  "constructed_at": "2026-03-05T02:16:38Z"
 }

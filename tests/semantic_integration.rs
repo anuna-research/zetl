@@ -366,3 +366,46 @@ fn test_storage_constants_alignment() {
     assert_eq!(MODEL_FILE, "model.json");
     assert_eq!(EMBEDDING_DIM, 384, "all-MiniLM-L6-v2 dimension must be 384");
 }
+
+// ── CLI path tests (feature = "semantic") ────────────────────────────────────
+
+/// TEST-123: `zetl search --semantic <QUERY>` exits non-zero with a descriptive error when the
+/// vector index has not been built yet (VectorIndex::open returns None). REQ-094, REQ-098.
+///
+/// The binary must be compiled with `--features semantic` for this test to exercise the real
+/// code path (not the stub that always rejects the flag).
+#[test]
+fn test_search_semantic_missing_index_exits_nonzero() {
+    use std::process::Command;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    // Write a markdown file so the vault is non-empty.
+    fs::write(tmp.path().join("note.md"), "# Note\nSome content here.").unwrap();
+    // Do NOT build the vector index — .zetl/search/vectors/ is absent.
+
+    let bin = assert_cmd::cargo::cargo_bin("zetl");
+    let output = Command::new(bin)
+        .args([
+            "-d",
+            tmp.path().to_str().unwrap(),
+            "search",
+            "--semantic",
+            "test query",
+        ])
+        .output()
+        .expect("failed to run zetl");
+
+    assert!(
+        !output.status.success(),
+        "`zetl search --semantic` without a built index should exit non-zero"
+    );
+    // The error must mention the index is missing and how to fix it.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    assert!(
+        combined.contains("index") || combined.contains("zetl index"),
+        "error output should mention the index; got: {combined}"
+    );
+}
