@@ -3,26 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 237,
-    "deletions": 10,
+    "files_changed": 2,
+    "insertions": 19,
+    "deletions": 5,
     "file_list": [
-      "src/semantic/core.rs",
-      "src/semantic/mod.rs",
-      "tests/semantic_integration.rs"
+      ".hence/context-manifest.json",
+      "src/semantic/mod.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-tests-unit-changes",
-      "content": "Modified 3 files (+237, -10): src/semantic/core.rs, src/semantic/mod.rs, tests/semantic_integration.rs",
+      "key": "task-onnx-embedding-shell-changes",
+      "content": "Modified 2 files (+19, -5): .hence/context-manifest.json, src/semantic/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/tests-unit-v1",
-  "evaluated_at": "2026-03-05T02:04:38Z",
+  "branch_name": "hence/onnx-embedding-shell-v1",
+  "evaluated_at": "2026-03-05T02:07:26Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
