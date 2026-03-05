@@ -624,6 +624,55 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         eprintln!("search index build time: {search_index_build_ms}ms");
     }
 
+    // Build or skip the semantic (vector) index (REQ-092, REQ-097).
+    //
+    // Uses the same `needs_rebuild` condition as the Tantivy index.
+    // `VectorIndex::build` handles incremental rebuild internally: chunks
+    // whose BLAKE3 content hash is unchanged are reused without re-embedding
+    // (REQ-097). OBS-017 is emitted by `VectorIndex::build` unconditionally.
+    #[cfg(feature = "semantic")]
+    let semantic_stats: Option<serde_json::Value> = if needs_rebuild {
+        let vectors_dir = pipeline.vault_root.join(zetl::semantic::VECTORS_DIR);
+        match zetl::semantic::VectorIndex::build(&pipeline.vault_root, &pipeline.files) {
+            Ok(idx) => {
+                let chunk_count = idx.chunk_count();
+                let index_size_kb = dir_size_kb(&vectors_dir);
+                Some(serde_json::json!({
+                    "chunk_count": chunk_count,
+                    "index_size_kb": index_size_kb,
+                    "model_name": zetl::semantic::MODEL_NAME,
+                }))
+            }
+            Err(e) => {
+                if cli.verbose > 0 {
+                    eprintln!("[zetl] warning: semantic index build failed: {e}");
+                }
+                None
+            }
+        }
+    } else {
+        // No file changes — report existing vector index size if available.
+        let vectors_dir = pipeline.vault_root.join(zetl::semantic::VECTORS_DIR);
+        if vectors_dir.exists() {
+            let chunks_path = vectors_dir.join(zetl::semantic::CHUNKS_FILE);
+            let chunk_count = std::fs::read_to_string(&chunks_path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
+                .map(|v| v.len())
+                .unwrap_or(0);
+            let index_size_kb = dir_size_kb(&vectors_dir);
+            Some(serde_json::json!({
+                "chunk_count": chunk_count,
+                "index_size_kb": index_size_kb,
+                "model_name": zetl::semantic::MODEL_NAME,
+            }))
+        } else {
+            None
+        }
+    };
+    #[cfg(not(feature = "semantic"))]
+    let semantic_stats: Option<serde_json::Value> = None;
+
     let total_links: usize = pipeline.files.iter().map(|f| f.links.len()).sum();
     let total_diagnostics: usize = pipeline.files.iter().map(|f| f.diagnostics.len()).sum();
     let dead_links = pipeline.graph.dead_links();
@@ -637,6 +686,8 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         elapsed_ms: u128,
         search_index_docs: usize,
         search_index_size_kb: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        semantic: Option<serde_json::Value>,
     }
 
     let result = IndexResult {
@@ -647,6 +698,7 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         elapsed_ms: elapsed.as_millis(),
         search_index_docs,
         search_index_size_kb,
+        semantic: semantic_stats,
     };
 
     match cli.format {
@@ -679,6 +731,16 @@ fn cmd_index(cli: &Cli) -> Result<()> {
                 Cell::new("Search index size (KB)"),
                 Cell::new(result.search_index_size_kb),
             ]);
+            if let Some(ref sem) = result.semantic {
+                table.add_row(vec![
+                    Cell::new("Vector chunks"),
+                    Cell::new(sem["chunk_count"].as_u64().unwrap_or(0)),
+                ]);
+                table.add_row(vec![
+                    Cell::new("Vector index size (KB)"),
+                    Cell::new(sem["index_size_kb"].as_u64().unwrap_or(0)),
+                ]);
+            }
             println!("{table}");
         }
     }
@@ -2115,6 +2177,31 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     #[cfg(not(feature = "history"))]
     let history_stats: Option<serde_json::Value> = None;
 
+    // OBS-020: semantic stats for `zetl stats` when semantic feature is enabled.
+    #[cfg(feature = "semantic")]
+    let semantic_stats: Option<serde_json::Value> = {
+        let vectors_dir = pipeline.vault_root.join(zetl::semantic::VECTORS_DIR);
+        if vectors_dir.exists() {
+            let chunks_path = vectors_dir.join(zetl::semantic::CHUNKS_FILE);
+            let chunk_count = std::fs::read_to_string(&chunks_path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
+                .map(|v| v.len())
+                .unwrap_or(0);
+            let total_bytes = dir_size_kb(&vectors_dir);
+            let index_size_mb = (total_bytes as f64 / 1024.0 * 10.0).round() / 10.0;
+            Some(serde_json::json!({
+                "chunk_count": chunk_count,
+                "index_size_mb": index_size_mb,
+                "model_name": zetl::semantic::MODEL_NAME,
+            }))
+        } else {
+            None
+        }
+    };
+    #[cfg(not(feature = "semantic"))]
+    let semantic_stats: Option<serde_json::Value> = None;
+
     #[derive(Serialize)]
     struct StatsOutput {
         #[serde(flatten)]
@@ -2125,6 +2212,8 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
         explicitly_grounded_facts: usize,
         #[serde(skip_serializing_if = "Option::is_none")]
         history: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        semantic: Option<serde_json::Value>,
     }
 
     let output = StatsOutput {
@@ -2134,6 +2223,7 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
         grounded_spl_blocks,
         explicitly_grounded_facts,
         history: history_stats,
+        semantic: semantic_stats,
     };
 
     match cli.format {
@@ -2213,6 +2303,24 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
                 println!(
                     "  Cache size:     {:.1} MB",
                     hs["cache_size_mb"].as_f64().unwrap_or(0.0)
+                );
+            }
+
+            // OBS-020: print semantic vector index section when available.
+            if let Some(ref sem) = output.semantic {
+                println!();
+                println!("Semantic index:");
+                println!(
+                    "  Chunks:         {}",
+                    sem["chunk_count"].as_u64().unwrap_or(0)
+                );
+                println!(
+                    "  Index size:     {:.1} MB",
+                    sem["index_size_mb"].as_f64().unwrap_or(0.0)
+                );
+                println!(
+                    "  Model:          {}",
+                    sem["model_name"].as_str().unwrap_or("N/A")
                 );
             }
         }

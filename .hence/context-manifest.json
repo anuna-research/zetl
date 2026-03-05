@@ -1,12 +1,12 @@
 {
-  "task_id": "hybrid-cli",
+  "task_id": "build-mode-integration",
   "token_budget": 8000,
-  "tokens_used": 274,
+  "tokens_used": 281,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement zetl search --hybrid <QUERY> CLI flag: run BM25 and vector search in parallel, fuse via RRF, apply --near graph scoping after fusion, return fused SearchOutput",
-      "token_cost": 42,
+      "content": "Integrate semantic index building into zetl index command: call VectorIndex::build after tantivy index build, emit OBS-017 timing, handle incremental rebuild logic, add semantic stats to cmd_stats",
+      "token_cost": 49,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T02:25:39Z"
+  "constructed_at": "2026-03-05T02:33:39Z"
 }
