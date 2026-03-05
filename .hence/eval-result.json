@@ -3,28 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 286,
-    "deletions": 36,
+    "files_changed": 2,
+    "insertions": 176,
+    "deletions": 9,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml",
-      "src/semantic/acquisition.rs",
-      "src/semantic/mod.rs"
+      "src/main.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-model-acquisition-changes",
-      "content": "Modified 5 files (+286, -36): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/semantic/acquisition.rs, src/semantic/mod.rs",
+      "key": "task-rrf-fusion-changes",
+      "content": "Modified 2 files (+176, -9): .hence/context-manifest.json, src/main.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/model-acquisition-v1",
-  "evaluated_at": "2026-03-05T01:51:24Z",
+  "branch_name": "hence/rrf-fusion-v1",
+  "evaluated_at": "2026-03-05T01:55:22Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

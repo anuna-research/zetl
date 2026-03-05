@@ -1,12 +1,12 @@
 {
-  "task_id": "model-acquisition",
+  "task_id": "rrf-fusion",
   "token_budget": 8000,
-  "tokens_used": 115,
+  "tokens_used": 129,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement model acquisition: check .zetl/models/all-MiniLM-L6-v2.onnx on first zetl index, download from HuggingFace Hub with user confirmation if absent, validate SHA-256, cache permanently; support ZETL_MODEL_PATH env var override",
-      "token_cost": 58,
+      "content": "Implement reciprocal_rank_fusion(list_a, list_b, k) pure function with k=60 default; ensure all items from both lists appear in output; wire into hybrid CLI",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 1 files (+11, -5): .hence/context-manifest.json",
       "token_cost": 14,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-model-acquisition-changes",
+      "content": "Modified 5 files (+286, -36): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/semantic/acquisition.rs, src/semantic/mod.rs",
+      "token_cost": 33,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T01:46:21Z"
+  "constructed_at": "2026-03-05T01:51:30Z"
 }
