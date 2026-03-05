@@ -5439,10 +5439,13 @@ fn test_search_semantic_flag_requires_feature() {
         !output.status.success(),
         "`zetl search --semantic` should exit non-zero without semantic feature"
     );
+    // Error is emitted as JSON on stdout (default format) or plain text on stderr.
     let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
     assert!(
-        stderr.contains("semantic") || stderr.contains("feature"),
-        "error message should mention 'semantic' or 'feature', got: {stderr}"
+        combined.contains("semantic") || combined.contains("feature"),
+        "error message should mention 'semantic' or 'feature', got: {combined}"
     );
 }
 
@@ -5459,9 +5462,12 @@ fn test_search_hybrid_flag_requires_feature() {
         !output.status.success(),
         "`zetl search --hybrid` should exit non-zero without semantic feature"
     );
+    // Error is emitted as JSON on stdout (default format) or plain text on stderr.
     let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
     assert!(
-        stderr.contains("semantic") || stderr.contains("feature"),
-        "error message should mention 'semantic' or 'feature', got: {stderr}"
+        combined.contains("semantic") || combined.contains("feature"),
+        "error message should mention 'semantic' or 'feature', got: {combined}"
     );
 }
