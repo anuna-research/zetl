@@ -114,6 +114,22 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
 }
 
+/// Brute-force vector search: score all embeddings against a query, return top-N by cosine
+/// similarity sorted descending.
+///
+/// Returns `(score, index)` pairs where `index` is the position in `embeddings`.
+/// The result length is `min(limit, embeddings.len())`. TEST-119.
+pub fn vector_search(embeddings: &[impl AsRef<[f32]>], query: &[f32], limit: usize) -> Vec<(f32, usize)> {
+    let mut scored: Vec<(f32, usize)> = embeddings
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (cosine_similarity(e.as_ref(), query), i))
+        .collect();
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(limit);
+    scored
+}
+
 /// Reciprocal rank fusion of two ranked result lists.
 ///
 /// `list_a` and `list_b` are `(page_name, rank)` pairs (1-indexed).
@@ -232,6 +248,73 @@ mod tests {
         let a = vec![1.0f32, 0.0, 0.0];
         let b = vec![0.0f32, 1.0, 0.0];
         assert!(cosine_similarity(&a, &b).abs() < 1e-6);
+    }
+
+    // TEST-119: vector_search never returns more than `limit` results.
+    #[test]
+    fn test_vector_search_respects_limit() {
+        // 10 unit embeddings in 3-D.
+        let embeddings: Vec<Vec<f32>> = (0..10)
+            .map(|i| {
+                let v = i as f32;
+                vec![v, 0.0, 0.0]
+            })
+            .collect();
+        let query = vec![1.0f32, 0.0, 0.0];
+        for limit in [0, 1, 5, 10, 20] {
+            let results = vector_search(&embeddings, &query, limit);
+            assert!(
+                results.len() <= limit,
+                "limit={limit}: got {} results",
+                results.len()
+            );
+            assert!(
+                results.len() <= embeddings.len(),
+                "returned more results than embeddings"
+            );
+        }
+    }
+
+    // TEST-119: vector_search returns results sorted by descending score.
+    #[test]
+    fn test_vector_search_sorted_descending() {
+        let embeddings: Vec<Vec<f32>> = vec![
+            vec![0.0f32, 1.0, 0.0], // score against [1,0,0] = 0.0
+            vec![1.0f32, 0.0, 0.0], // score = 1.0
+            vec![0.6f32, 0.8, 0.0], // score = 0.6
+        ];
+        let query = vec![1.0f32, 0.0, 0.0];
+        let results = vector_search(&embeddings, &query, 10);
+        assert_eq!(results.len(), 3);
+        // Scores must be non-increasing.
+        for w in results.windows(2) {
+            assert!(
+                w[0].0 >= w[1].0,
+                "scores not sorted: {} > {}",
+                w[0].0,
+                w[1].0
+            );
+        }
+        // Best match is index 1 (score 1.0).
+        assert_eq!(results[0].1, 1);
+    }
+
+    // TEST-119: vector_search on empty embeddings returns empty.
+    #[test]
+    fn test_vector_search_empty_embeddings() {
+        let embeddings: Vec<Vec<f32>> = vec![];
+        let query = vec![1.0f32, 0.0, 0.0];
+        let results = vector_search(&embeddings, &query, 5);
+        assert!(results.is_empty());
+    }
+
+    // TEST-119: vector_search with limit=0 returns empty.
+    #[test]
+    fn test_vector_search_limit_zero() {
+        let embeddings: Vec<Vec<f32>> = vec![vec![1.0f32, 0.0], vec![0.0f32, 1.0]];
+        let query = vec![1.0f32, 0.0];
+        let results = vector_search(&embeddings, &query, 0);
+        assert!(results.is_empty());
     }
 
     #[test]
