@@ -1,12 +1,12 @@
 {
-  "task_id": "pure-core",
+  "task_id": "chunking",
   "token_budget": 8000,
-  "tokens_used": 57,
+  "tokens_used": 88,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement pure core functions: chunk_page, reciprocal_rank_fusion, cosine_similarity, detect_stale_chunks in src/semantic/core.rs",
-      "token_cost": 32,
+      "content": "Implement heading-level chunking strategy: split pages at ## boundaries, embed short pages (< 512 tokens) whole, each chunk carries page_name, path, heading, content_hash, embedding",
+      "token_cost": 45,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 9 files (+1362, -6): Cargo.lock, Cargo.toml, src/cli.rs, src/lib.rs, src/main.rs and 4 more",
       "token_cost": 25,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-pure-core-changes",
+      "content": "Modified 3 files (+40, -55): Cargo.lock, Cargo.toml, src/semantic/mod.rs",
+      "token_cost": 18,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T01:36:54Z"
+  "constructed_at": "2026-03-05T01:44:51Z"
 }
