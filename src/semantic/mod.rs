@@ -12,11 +12,12 @@
 
 pub mod core;
 
+use std::cell::RefCell;
 use std::path::Path;
 
 use anyhow::Result;
-use ndarray::{Array2, CowArray, IxDyn};
-use ort::{Environment, GraphOptimizationLevel, Session, SessionBuilder, Value};
+use ort::session::{Session, builder::GraphOptimizationLevel};
+use ort::value::TensorRef;
 use tokenizers::Tokenizer;
 
 pub use core::{Chunk, VectorHit};
@@ -50,8 +51,9 @@ pub struct VectorIndex {
     embeddings: Vec<[f32; EMBEDDING_DIM]>,
     /// Chunk metadata parallel to `embeddings`.
     chunks: Vec<ChunkMeta>,
-    /// ONNX inference session (shared across queries).
-    session: Session,
+    /// ONNX inference session (shared across queries). RefCell for interior mutability
+    /// since ort v2 `Session::run` requires `&mut self`.
+    session: RefCell<Session>,
     /// HuggingFace tokenizer.
     tokenizer: Tokenizer,
 }
@@ -75,6 +77,7 @@ impl VectorIndex {
         std::fs::create_dir_all(&vectors_dir)?;
 
         let (session, tokenizer) = load_model(vault_root)?;
+        let session = RefCell::new(session);
 
         let mut all_embeddings: Vec<[f32; EMBEDDING_DIM]> = Vec::new();
         let mut all_meta: Vec<ChunkMeta> = Vec::new();
@@ -83,10 +86,15 @@ impl VectorIndex {
         let mut chunk_count = 0usize;
 
         for file in files {
+            let file_path = vault_root.join(&file.path);
+            let content = std::fs::read_to_string(&file_path)?;
+            let path_str = file.path.to_string_lossy().into_owned();
+
             let headings: Vec<(usize, u8, String)> = {
-                use crate::search::{body_text_ranges, detect_headings};
-                let ranges = body_text_ranges(&file.content);
-                detect_headings(&file.content, &ranges)
+                use crate::scanner::body_text_ranges;
+                use crate::search::detect_headings;
+                let ranges = body_text_ranges(&content);
+                detect_headings(&content, &ranges)
                     .into_iter()
                     .map(|h| (h.byte_offset, h.level, h.text))
                     .collect()
@@ -94,8 +102,8 @@ impl VectorIndex {
 
             let chunks = core::chunk_page(
                 &file.page_name,
-                &file.path,
-                &file.content,
+                &path_str,
+                &content,
                 &headings,
                 CHUNK_THRESHOLD,
             );
@@ -178,7 +186,7 @@ impl VectorIndex {
         Ok(Some(VectorIndex {
             embeddings,
             chunks,
-            session,
+            session: RefCell::new(session),
             tokenizer,
         }))
     }
@@ -190,6 +198,7 @@ impl VectorIndex {
         let q_emb = embed_text(&self.session, &self.tokenizer, query)?;
         self.query(&q_emb, limit)
     }
+
 
     /// Query by a pre-computed embedding vector. Returns top-N chunks by cosine similarity.
     ///
@@ -266,15 +275,9 @@ fn load_model(vault_root: &Path) -> Result<(Session, Tokenizer)> {
         );
     }
 
-    let environment = std::sync::Arc::new(
-        Environment::builder()
-            .with_name("zetl-semantic")
-            .build()?,
-    );
-
-    let session = SessionBuilder::new(&environment)?
+    let session = Session::builder()?
         .with_optimization_level(GraphOptimizationLevel::Level3)?
-        .with_model_from_file(&model_path)?;
+        .commit_from_file(&model_path)?;
 
     let tokenizer_path = vault_root
         .join(".zetl")
@@ -297,7 +300,7 @@ fn load_model(vault_root: &Path) -> Result<(Session, Tokenizer)> {
 /// Tokenize `text` and run a single ONNX inference pass, returning a
 /// normalised 384-dimensional embedding.
 fn embed_text(
-    session: &Session,
+    session: &RefCell<Session>,
     tokenizer: &Tokenizer,
     text: &str,
 ) -> Result<[f32; EMBEDDING_DIM]> {
@@ -318,31 +321,30 @@ fn embed_text(
         .collect();
     let seq_len = ids.len();
 
-    let input_ids =
-        CowArray::from(Array2::from_shape_vec((1, seq_len), ids)?).into_dyn();
-    let attention_mask =
-        CowArray::from(Array2::from_shape_vec((1, seq_len), mask)?).into_dyn();
-    let token_type_ids =
-        CowArray::from(Array2::from_shape_vec((1, seq_len), type_ids)?).into_dyn();
+    let shape = [1i64, seq_len as i64];
+    let t_ids = TensorRef::<i64>::from_array_view((shape, ids.as_slice()))
+        .map_err(|e| anyhow::anyhow!("Failed to create input_ids tensor: {e}"))?;
+    let t_mask = TensorRef::<i64>::from_array_view((shape, mask.as_slice()))
+        .map_err(|e| anyhow::anyhow!("Failed to create attention_mask tensor: {e}"))?;
+    let t_type = TensorRef::<i64>::from_array_view((shape, type_ids.as_slice()))
+        .map_err(|e| anyhow::anyhow!("Failed to create token_type_ids tensor: {e}"))?;
 
-    let inputs = vec![
-        Value::from_array(session.allocator(), &input_ids)?,
-        Value::from_array(session.allocator(), &attention_mask)?,
-        Value::from_array(session.allocator(), &token_type_ids)?,
-    ];
+    let mut session_guard = session.borrow_mut();
+    let outputs = session_guard.run(ort::inputs![t_ids, t_mask, t_type])?;
 
-    let outputs = session.run(inputs)?;
     // The first output is the last hidden state; mean-pool across the sequence dimension.
-    let tensor = outputs[0].try_extract::<f32>()?;
-    let view = tensor.view();
+    let (out_shape, data) = outputs[0]
+        .try_extract_tensor::<f32>()
+        .map_err(|e| anyhow::anyhow!("Failed to extract tensor: {e}"))?;
     // Shape: (1, seq_len, 384) → mean over dim 1.
-    let shape = view.shape();
-    let hidden_dim = shape[2];
+    let dims: &[i64] = &out_shape;
+    anyhow::ensure!(dims.len() == 3, "expected 3-D output, got {}D", dims.len());
+    let hidden_dim = dims[2] as usize;
     anyhow::ensure!(hidden_dim == EMBEDDING_DIM, "unexpected embedding dim {hidden_dim}");
 
     let mut embedding = [0f32; EMBEDDING_DIM];
     for j in 0..EMBEDDING_DIM {
-        let sum: f32 = (0..seq_len).map(|t| view[[0, t, j]]).sum();
+        let sum: f32 = (0..seq_len).map(|t| data[t * EMBEDDING_DIM + j]).sum();
         embedding[j] = sum / seq_len as f32;
     }
 
