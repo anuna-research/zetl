@@ -1,15 +1,21 @@
 {
-  "task_id": "feature-gating",
+  "task_id": "pure-core",
   "token_budget": 8000,
-  "tokens_used": 55,
+  "tokens_used": 57,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Gate all ONNX/vector code behind #[cfg(feature = \"semantic\")]; ensure compiling without --features semantic adds zero binary size and zero dependencies; --semantic and --hybrid flags print clear error when feature absent",
-      "token_cost": 55,
+      "content": "Implement pure core functions: chunk_page, reciprocal_rank_fusion, cosine_similarity, detect_stale_chunks in src/semantic/core.rs",
+      "token_cost": 32,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-feature-gating-changes",
+      "content": "Modified 9 files (+1362, -6): Cargo.lock, Cargo.toml, src/cli.rs, src/lib.rs, src/main.rs and 4 more",
+      "token_cost": 25,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T01:28:26Z"
+  "constructed_at": "2026-03-05T01:36:54Z"
 }
