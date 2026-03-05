@@ -2431,6 +2431,29 @@ fn cmd_search(
         path_filter,
     };
 
+    // REQ-095, ADR-053: for --hybrid, launch vector search in a background thread so that
+    // BM25 and vector retrieval run in parallel. The handle is joined after BM25 completes.
+    // For --semantic (pure vector) the index is loaded sequentially after BM25 is skipped.
+    #[cfg(feature = "semantic")]
+    let hybrid_vec_thread: Option<
+        std::thread::JoinHandle<anyhow::Result<Vec<zetl::semantic::VectorHit>>>,
+    > = if hybrid {
+        let vault_root_vec = vault_root.clone();
+        let query_owned = query.to_string();
+        let vec_limit = limit.saturating_mul(2);
+        Some(std::thread::spawn(move || {
+            let idx = zetl::semantic::VectorIndex::open(&vault_root_vec)?;
+            match idx {
+                None => anyhow::bail!(
+                    "Vector index not found. Run `zetl index` to build it first."
+                ),
+                Some(idx) => idx.query_text(&query_owned, vec_limit),
+            }
+        }))
+    } else {
+        None
+    };
+
     let mut output = match search_vault(&vault_root, &config) {
         Ok(o) => o,
         Err(e) => {
@@ -2455,7 +2478,8 @@ fn cmd_search(
     #[cfg(feature = "semantic")]
     {
         use zetl::search::SearchMatch;
-        if semantic || hybrid {
+        if semantic {
+            // --semantic: pure vector search — load index sequentially and replace BM25 output.
             let vec_start = std::time::Instant::now();
             let vec_index = zetl::semantic::VectorIndex::open(&vault_root);
             match vec_index {
@@ -2470,8 +2494,7 @@ fn cmd_search(
                     }
                 }
                 Ok(None) => {
-                    let msg =
-                        "Vector index not found. Run `zetl index` to build it first.";
+                    let msg = "Vector index not found. Run `zetl index` to build it first.";
                     match cli.format {
                         OutputFormat::Json => exit_json_error(msg, 1),
                         OutputFormat::Table => {
@@ -2481,9 +2504,7 @@ fn cmd_search(
                     }
                 }
                 Ok(Some(ref idx)) => {
-                    // Query vector index (fetch enough candidates for fusion).
-                    let vec_limit = if hybrid { limit * 2 } else { limit };
-                    match idx.query_text(query, vec_limit) {
+                    match idx.query_text(query, limit) {
                         Err(e) => {
                             let msg = format!("Vector query failed: {e}");
                             match cli.format {
@@ -2499,116 +2520,146 @@ fn cmd_search(
                             if cli.verbose > 0 {
                                 idx.log_query_stats(vec_hits.len(), vec_ms);
                             }
-
-                            if semantic {
-                                // Pure vector search: replace BM25 output entirely.
-                                // Convert VectorHit → SearchMatch (no line/column info).
-                                let results: Vec<SearchMatch> = vec_hits
-                                    .into_iter()
-                                    .map(|h| SearchMatch {
-                                        page: h.page_name,
-                                        path: h.path,
-                                        line: 0,
-                                        column: 0,
-                                        context: None,
-                                        heading: h.heading,
-                                        heading_level: None,
-                                        score: h.score as f64,
-                                    })
-                                    .collect();
-                                let total = results.len();
-                                output.results = results;
-                                output.total_matches = total;
-                            } else {
-                                // Hybrid: fuse BM25 and vector ranks via RRF (REQ-095, ADR-053).
-                                // Build rank lists (1-indexed, deduplicated by page).
-                                let bm25_ranks: Vec<(String, usize)> = {
-                                    let mut seen = std::collections::HashSet::new();
-                                    output
-                                        .results
-                                        .iter()
-                                        .filter_map(|r| {
-                                            if seen.insert(r.page.clone()) {
-                                                Some((r.page.clone(), seen.len()))
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .collect()
-                                };
-                                let vec_ranks: Vec<(String, usize)> = {
-                                    let mut seen = std::collections::HashSet::new();
-                                    vec_hits
-                                        .iter()
-                                        .filter_map(|h| {
-                                            if seen.insert(h.page_name.clone()) {
-                                                Some((h.page_name.clone(), seen.len()))
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .collect()
-                                };
-
-                                let fused = zetl::semantic::core::reciprocal_rank_fusion(
-                                    &bm25_ranks,
-                                    &vec_ranks,
-                                    zetl::semantic::RRF_K,
-                                );
-
-                                // Build a score map from page_name → fused score.
-                                let score_map: std::collections::HashMap<String, f64> =
-                                    fused.into_iter().collect();
-
-                                // Collect all BM25 matches, re-scored by fused value.
-                                // Pages only in vector results get a placeholder match.
-                                let mut new_results: Vec<SearchMatch> = output
-                                    .results
-                                    .drain(..)
-                                    .map(|mut m| {
-                                        if let Some(&fs) = score_map.get(&m.page) {
-                                            m.score = fs;
-                                        }
-                                        m
-                                    })
-                                    .collect();
-
-                                // Add pages that appear only in vector results (no BM25 match).
-                                let bm25_pages: std::collections::HashSet<String> =
-                                    new_results.iter().map(|r| r.page.clone()).collect();
-                                for hit in &vec_hits {
-                                    if !bm25_pages.contains(&hit.page_name) {
-                                        if let Some(&fs) = score_map.get(&hit.page_name) {
-                                            new_results.push(SearchMatch {
-                                                page: hit.page_name.clone(),
-                                                path: hit.path.clone(),
-                                                line: 0,
-                                                column: 0,
-                                                context: None,
-                                                heading: hit.heading.clone(),
-                                                heading_level: None,
-                                                score: fs,
-                                            });
-                                        }
-                                    }
-                                }
-
-                                // Sort by fused score descending, then truncate to limit.
-                                new_results.sort_by(|a, b| {
-                                    b.score
-                                        .partial_cmp(&a.score)
-                                        .unwrap_or(std::cmp::Ordering::Equal)
-                                });
-                                new_results.truncate(limit);
-
-                                let total = new_results.len();
-                                output.results = new_results;
-                                output.total_matches = total;
-                            }
+                            // Pure vector search: replace BM25 output entirely.
+                            // Convert VectorHit → SearchMatch (no line/column info).
+                            let results: Vec<SearchMatch> = vec_hits
+                                .into_iter()
+                                .map(|h| SearchMatch {
+                                    page: h.page_name,
+                                    path: h.path,
+                                    line: 0,
+                                    column: 0,
+                                    context: None,
+                                    heading: h.heading,
+                                    heading_level: None,
+                                    score: h.score as f64,
+                                })
+                                .collect();
+                            let total = results.len();
+                            output.results = results;
+                            output.total_matches = total;
                         }
                     }
                 }
             }
+        } else if hybrid {
+            // --hybrid: join the pre-spawned vector thread (runs in parallel with BM25)
+            // and fuse results via RRF (REQ-095, ADR-053).
+            let vec_hits = match hybrid_vec_thread.unwrap().join() {
+                Err(_) => {
+                    let msg = "Vector search thread panicked";
+                    match cli.format {
+                        OutputFormat::Json => exit_json_error(msg, 1),
+                        OutputFormat::Table => {
+                            eprintln!("Error: {msg}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    let msg = format!("{e}");
+                    match cli.format {
+                        OutputFormat::Json => exit_json_error(&msg, 1),
+                        OutputFormat::Table => {
+                            eprintln!("Error: {msg}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Ok(Ok(hits)) => hits,
+            };
+
+            if cli.verbose > 0 {
+                eprintln!(
+                    "[zetl] vector-query: results={} (parallel with BM25)",
+                    vec_hits.len()
+                );
+            }
+
+            // Fuse BM25 and vector ranks via RRF. Build rank lists (1-indexed,
+            // deduplicated by page).
+            let bm25_ranks: Vec<(String, usize)> = {
+                let mut seen = std::collections::HashSet::new();
+                output
+                    .results
+                    .iter()
+                    .filter_map(|r| {
+                        if seen.insert(r.page.clone()) {
+                            Some((r.page.clone(), seen.len()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            };
+            let vec_ranks: Vec<(String, usize)> = {
+                let mut seen = std::collections::HashSet::new();
+                vec_hits
+                    .iter()
+                    .filter_map(|h| {
+                        if seen.insert(h.page_name.clone()) {
+                            Some((h.page_name.clone(), seen.len()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            };
+
+            let fused = zetl::semantic::core::reciprocal_rank_fusion(
+                &bm25_ranks,
+                &vec_ranks,
+                zetl::semantic::RRF_K,
+            );
+
+            // Build a score map from page_name → fused score.
+            let score_map: std::collections::HashMap<String, f64> =
+                fused.into_iter().collect();
+
+            // Collect all BM25 matches, re-scored by fused value.
+            // Pages only in vector results get a placeholder match.
+            let mut new_results: Vec<SearchMatch> = output
+                .results
+                .drain(..)
+                .map(|mut m| {
+                    if let Some(&fs) = score_map.get(&m.page) {
+                        m.score = fs;
+                    }
+                    m
+                })
+                .collect();
+
+            // Add pages that appear only in vector results (no BM25 match).
+            let bm25_pages: std::collections::HashSet<String> =
+                new_results.iter().map(|r| r.page.clone()).collect();
+            for hit in &vec_hits {
+                if !bm25_pages.contains(&hit.page_name) {
+                    if let Some(&fs) = score_map.get(&hit.page_name) {
+                        new_results.push(SearchMatch {
+                            page: hit.page_name.clone(),
+                            path: hit.path.clone(),
+                            line: 0,
+                            column: 0,
+                            context: None,
+                            heading: hit.heading.clone(),
+                            heading_level: None,
+                            score: fs,
+                        });
+                    }
+                }
+            }
+
+            // Sort by fused score descending, then truncate to limit.
+            new_results.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            new_results.truncate(limit);
+
+            let total = new_results.len();
+            output.results = new_results;
+            output.total_matches = total;
         }
     }
 

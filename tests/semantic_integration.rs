@@ -420,6 +420,47 @@ fn test_incremental_rebuild_new_chunk_is_stale() {
     assert!(stale.contains(&1), "new chunk must be detected as stale");
 }
 
+/// TEST-122 (CLI path): `zetl search --hybrid <QUERY>` exits non-zero with a descriptive
+/// error when the vector index has not been built yet. REQ-095, REQ-098.
+///
+/// The binary must be compiled with `--features semantic` for this test to exercise the real
+/// code path (not the stub that always rejects the flag).
+#[test]
+fn test_search_hybrid_missing_index_exits_nonzero() {
+    use std::process::Command;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    // Write a markdown file so the vault is non-empty.
+    fs::write(tmp.path().join("note.md"), "# Note\nSome content here.").unwrap();
+    // Do NOT build the vector index — .zetl/search/vectors/ is absent.
+
+    let bin = assert_cmd::cargo::cargo_bin("zetl");
+    let output = Command::new(bin)
+        .args([
+            "-d",
+            tmp.path().to_str().unwrap(),
+            "search",
+            "--hybrid",
+            "test query",
+        ])
+        .output()
+        .expect("failed to run zetl");
+
+    assert!(
+        !output.status.success(),
+        "`zetl search --hybrid` without a built index should exit non-zero"
+    );
+    // The error must mention the index is missing and how to fix it.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    assert!(
+        combined.contains("index") || combined.contains("zetl index"),
+        "error output should mention the index; got: {combined}"
+    );
+}
+
 /// TEST-123 (CLI path): `zetl search --semantic <QUERY>` exits non-zero with a descriptive
 /// error when the vector index has not been built yet (VectorIndex::open returns None).
 /// REQ-094, REQ-098.
