@@ -1,75 +1,15 @@
 {
-  "task_id": "integration-tests",
-  "token_budget": 12000,
-  "tokens_used": 361,
+  "task_id": "feature-gating",
+  "token_budget": 8000,
+  "tokens_used": 55,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement and verify all TEST-080 through TEST-113 integration tests; verify NFR-026 (≤50ms snapshot overhead), NFR-028 (≤100ms cache hit), NFR-029 (≤3s cache miss), NFR-030 (≤15MB binary delta), NFR-032 (≤500KB history-index.json), NFR-033 (≤2s build overhead)",
-      "token_cost": 68,
+      "content": "Gate all ONNX/vector code behind #[cfg(feature = \"semantic\")]; ensure compiling without --features semantic adds zero binary size and zero dependencies; --semantic and --hybrid flags print clear error when feature absent",
+      "token_cost": 55,
       "priority": "PlanMeta"
-    },
-    {
-      "source": "memory/episodic/task-cargo-feature-flag-changes",
-      "content": "Modified 5 files (+1887, -91): Cargo.lock, Cargo.toml, src/history/mod.rs, src/lib.rs, tests/history_integration.rs",
-      "token_cost": 28,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-jj-backend-changes",
-      "content": "Modified 6 files (+749, -11): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/history/jj_backend.rs, src/history/mod.rs and 1 more",
-      "token_cost": 35,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-vcs-init-changes",
-      "content": "Modified 4 files (+139, -13): .hence/context-manifest.json, src/history/jj_backend.rs, src/main.rs, tests/history_integration.rs",
-      "token_cost": 32,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-time-expression-parser-changes",
-      "content": "Modified 3 files (+644, -0): src/history/core.rs, src/history/mod.rs, tests/history_integration.rs",
-      "token_cost": 24,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-auto-snapshot-changes",
-      "content": "Modified 4 files (+163, -11): .hence/context-manifest.json, src/history/mod.rs, src/main.rs, tests/history_integration.rs",
-      "token_cost": 30,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-historical-index-cache-changes",
-      "content": "Modified 4 files (+385, -6): .hence/context-manifest.json, src/history/cache.rs, src/history/mod.rs, tests/history_integration.rs",
-      "token_cost": 32,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-point-in-time-query-changes",
-      "content": "Modified 5 files (+459, -17): .hence/context-manifest.json, src/cli.rs, src/history/core.rs, src/main.rs, tests/history_integration.rs",
-      "token_cost": 33,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-tui-timeline-navigation-changes",
-      "content": "Modified 3 files (+356, -1): src/main.rs, src/tui/mod.rs, src/tui/ui.rs",
-      "token_cost": 17,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-graceful-degradation-changes",
-      "content": "Modified 5 files (+879, -23): .hence/context-manifest.json, src/cli.rs, src/history/mod.rs, src/main.rs, tests/history_integration.rs",
-      "token_cost": 33,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-watch-mode-snapshot-changes",
-      "content": "Modified 6 files (+614, -29): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cli.rs, src/main.rs and 1 more",
-      "token_cost": 29,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-04T09:55:48Z"
+  "constructed_at": "2026-03-05T01:28:26Z"
 }
