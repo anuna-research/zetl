@@ -1,12 +1,12 @@
 {
-  "task_id": "rrf-fusion",
+  "task_id": "tests-unit",
   "token_budget": 8000,
-  "tokens_used": 129,
+  "tokens_used": 158,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement reciprocal_rank_fusion(list_a, list_b, k) pure function with k=60 default; ensure all items from both lists appear in output; wire into hybrid CLI",
-      "token_cost": 39,
+      "content": "Write unit and property-based tests: TEST-119 (VectorIndex::query returns <= limit results sorted desc), TEST-120 (chunk_page h2 splitting, roundtrip property), TEST-121 (RRF ordering and coverage property)",
+      "token_cost": 51,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 5 files (+286, -36): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/semantic/acquisition.rs, src/semantic/mod.rs",
       "token_cost": 33,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-rrf-fusion-changes",
+      "content": "Modified 2 files (+176, -9): .hence/context-manifest.json, src/main.rs",
+      "token_cost": 17,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T01:51:30Z"
+  "constructed_at": "2026-03-05T01:55:30Z"
 }
