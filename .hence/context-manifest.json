@@ -1,12 +1,12 @@
 {
-  "task_id": "semantic-cli",
+  "task_id": "incremental-rebuild",
   "token_budget": 8000,
-  "tokens_used": 232,
+  "tokens_used": 247,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement zetl search --semantic <QUERY> CLI flag: embed query, run VectorIndex::query, return SearchOutput JSON ranked by cosine similarity with score in [0.0,1.0]; handle missing index and feature-not-compiled errors",
-      "token_cost": 54,
+      "content": "Implement incremental embedding rebuild in zetl index: BLAKE3-hash each chunk, compare against chunks.json, re-embed only stale chunks, write updated vectors and metadata",
+      "token_cost": 42,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 3 files (+317, -5): .hence/context-manifest.json, src/semantic/mod.rs, tests/semantic_integration.rs",
       "token_cost": 27,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-semantic-cli-changes",
+      "content": "Modified 3 files (+64, -9): .hence/context-manifest.json, tests/integration.rs, tests/semantic_integration.rs",
+      "token_cost": 27,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T02:16:38Z"
+  "constructed_at": "2026-03-05T02:20:30Z"
 }

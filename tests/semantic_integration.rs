@@ -369,8 +369,60 @@ fn test_storage_constants_alignment() {
 
 // ── CLI path tests (feature = "semantic") ────────────────────────────────────
 
-/// TEST-123: `zetl search --semantic <QUERY>` exits non-zero with a descriptive error when the
-/// vector index has not been built yet (VectorIndex::open returns None). REQ-094, REQ-098.
+/// TEST-123: incremental rebuild — when an existing vector store is on disk, chunks whose
+/// BLAKE3 content hash is unchanged are detected as fresh (not stale) by `detect_stale_chunks`,
+/// while changed or new chunks are detected as stale and would be re-embedded.
+///
+/// This test exercises the full stale-detection pipeline at the integration boundary:
+/// real file I/O for the chunks.json layout + `detect_stale_chunks` logic. REQ-097.
+#[test]
+fn test_incremental_rebuild_stale_detection() {
+    // Simulate an existing index: two chunks for "page-a" and "page-b".
+    let hash_a1 = [0x11u8; 32]; // page-a original hash
+    let hash_b1 = [0x22u8; 32]; // page-b original hash
+
+    let old_chunks = vec![
+        ChunkMeta {
+            page_name: "page-a".to_string(),
+            path: "page-a.md".to_string(),
+            heading: None,
+            content_hash: hash_a1,
+        },
+        ChunkMeta {
+            page_name: "page-b".to_string(),
+            path: "page-b.md".to_string(),
+            heading: None,
+            content_hash: hash_b1,
+        },
+    ];
+
+    // After editing only page-a, page-a's hash changes; page-b's hash stays the same.
+    let hash_a2 = [0xAAu8; 32]; // page-a new hash (content changed)
+    let new_hashes = vec![hash_a2, hash_b1]; // page-b unchanged
+
+    let old_hashes: Vec<[u8; 32]> = old_chunks.iter().map(|c| c.content_hash).collect();
+    let stale = detect_stale_chunks(&old_hashes, &new_hashes);
+
+    // Only index 0 (page-a) is stale; index 1 (page-b) is fresh.
+    assert!(stale.contains(&0), "page-a (changed hash) must be detected as stale");
+    assert!(!stale.contains(&1), "page-b (unchanged hash) must NOT be stale");
+    assert_eq!(stale.len(), 1, "exactly one chunk should be stale");
+}
+
+/// TEST-123 (new page): a chunk that does not exist in the old index is detected as stale.
+#[test]
+fn test_incremental_rebuild_new_chunk_is_stale() {
+    let old_hashes: Vec<[u8; 32]> = vec![[0x11u8; 32]];
+    let new_hashes: Vec<[u8; 32]> = vec![[0x11u8; 32], [0x33u8; 32]]; // second chunk is new
+
+    let stale = detect_stale_chunks(&old_hashes, &new_hashes);
+    assert!(!stale.contains(&0), "unchanged chunk must not be stale");
+    assert!(stale.contains(&1), "new chunk must be detected as stale");
+}
+
+/// TEST-123 (CLI path): `zetl search --semantic <QUERY>` exits non-zero with a descriptive
+/// error when the vector index has not been built yet (VectorIndex::open returns None).
+/// REQ-094, REQ-098.
 ///
 /// The binary must be compiled with `--features semantic` for this test to exercise the real
 /// code path (not the stub that always rejects the flag).
