@@ -222,8 +222,6 @@ impl VectorIndex {
     ///
     /// CON-030.
     pub fn query(&self, embedding: &[f32; EMBEDDING_DIM], limit: usize) -> Result<Vec<VectorHit>> {
-        let start = std::time::Instant::now();
-
         let scored = core::vector_search(&self.embeddings, embedding, limit);
 
         let results: Vec<VectorHit> = scored
@@ -238,10 +236,6 @@ impl VectorIndex {
                 }
             })
             .collect();
-
-        let duration_ms = start.elapsed().as_millis();
-        // OBS-018: emitted when --verbose; caller checks verbosity.
-        let _ = (duration_ms, self.embeddings.len()); // used in verbose path
 
         Ok(results)
     }

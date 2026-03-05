@@ -618,10 +618,11 @@ pub async fn api_search_handler(
             let mut seen: std::collections::HashMap<String, usize> =
                 std::collections::HashMap::new();
             for hit in &vec_hits {
+                let rank = seen.len() + 1;
                 let entry = seen.entry(hit.page_name.clone()).or_insert(0);
                 // rank is 1-based; we record order of first appearance
                 if *entry == 0 {
-                    *entry = seen.len();
+                    *entry = rank;
                 }
             }
             let mut page_order: Vec<(String, usize)> = seen.into_iter().collect();

@@ -2544,7 +2544,7 @@ fn cmd_search(
     // For --semantic (pure vector) the index is loaded sequentially after BM25 is skipped.
     #[cfg(feature = "semantic")]
     let hybrid_vec_thread: Option<
-        std::thread::JoinHandle<anyhow::Result<Vec<zetl::semantic::VectorHit>>>,
+        std::thread::JoinHandle<anyhow::Result<(Vec<zetl::semantic::VectorHit>, usize, u128)>>,
     > = if hybrid {
         let vault_root_vec = vault_root.clone();
         let query_owned = query.to_string();
@@ -2555,7 +2555,13 @@ fn cmd_search(
                 None => anyhow::bail!(
                     "Vector index not found. Run `zetl index` to build it first."
                 ),
-                Some(idx) => idx.query_text(&query_owned, vec_limit),
+                Some(idx) => {
+                    let start = std::time::Instant::now();
+                    let hits = idx.query_text(&query_owned, vec_limit)?;
+                    let duration_ms = start.elapsed().as_millis();
+                    let chunk_count = idx.chunk_count();
+                    Ok((hits, chunk_count, duration_ms))
+                }
             }
         }))
     } else {
@@ -2653,33 +2659,34 @@ fn cmd_search(
         } else if hybrid {
             // --hybrid: join the pre-spawned vector thread (runs in parallel with BM25)
             // and fuse results via RRF (REQ-095, ADR-053).
-            let vec_hits = match hybrid_vec_thread.unwrap().join() {
-                Err(_) => {
-                    let msg = "Vector search thread panicked";
-                    match cli.format {
-                        OutputFormat::Json => exit_json_error(msg, 1),
-                        OutputFormat::Table => {
-                            eprintln!("Error: {msg}");
-                            std::process::exit(1);
+            let (vec_hits, vec_chunks_scanned, vec_ms) =
+                match hybrid_vec_thread.unwrap().join() {
+                    Err(_) => {
+                        let msg = "Vector search thread panicked";
+                        match cli.format {
+                            OutputFormat::Json => exit_json_error(msg, 1),
+                            OutputFormat::Table => {
+                                eprintln!("Error: {msg}");
+                                std::process::exit(1);
+                            }
                         }
                     }
-                }
-                Ok(Err(e)) => {
-                    let msg = format!("{e}");
-                    match cli.format {
-                        OutputFormat::Json => exit_json_error(&msg, 1),
-                        OutputFormat::Table => {
-                            eprintln!("Error: {msg}");
-                            std::process::exit(1);
+                    Ok(Err(e)) => {
+                        let msg = format!("{e}");
+                        match cli.format {
+                            OutputFormat::Json => exit_json_error(&msg, 1),
+                            OutputFormat::Table => {
+                                eprintln!("Error: {msg}");
+                                std::process::exit(1);
+                            }
                         }
                     }
-                }
-                Ok(Ok(hits)) => hits,
-            };
+                    Ok(Ok(tuple)) => tuple,
+                };
 
             if cli.verbose > 0 {
                 eprintln!(
-                    "[zetl] vector-query: results={} (parallel with BM25)",
+                    "[zetl] vector-query: chunks_scanned={vec_chunks_scanned} results={} duration_ms={vec_ms}",
                     vec_hits.len()
                 );
             }
@@ -2714,11 +2721,22 @@ fn cmd_search(
                     .collect()
             };
 
+            let fusion_start = std::time::Instant::now();
             let fused = zetl::semantic::core::reciprocal_rank_fusion(
                 &bm25_ranks,
                 &vec_ranks,
                 zetl::semantic::RRF_K,
             );
+            let fusion_ms = fusion_start.elapsed().as_millis();
+
+            if cli.verbose > 0 {
+                eprintln!(
+                    "[zetl] hybrid-fusion: bm25_candidates={} vec_candidates={} fused={} duration_ms={fusion_ms}",
+                    bm25_ranks.len(),
+                    vec_ranks.len(),
+                    fused.len(),
+                );
+            }
 
             // Build a score map from page_name → fused score.
             let score_map: std::collections::HashMap<String, f64> =
