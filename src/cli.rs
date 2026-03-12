@@ -4,23 +4,28 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[command(
     name = "zetl",
     version,
-    about = "Bi-directional wikilink graph CLI with defeasible reasoning"
+    about = "Bi-directional wikilink graph CLI for personal knowledge management",
+    after_help = "Examples:\n  zetl list                    List all pages\n  zetl links \"My Page\"         Show forward links\n  zetl search \"query\"          Search vault contents\n  zetl check                   Validate vault health\n  zetl serve                   Start local web server\n\nLearn more: https://github.com/anuna/zetl"
 )]
 pub struct Cli {
     /// Vault root directory
-    #[arg(short = 'd', long, default_value = ".")]
+    #[arg(short = 'd', long, default_value = ".", env = "ZETL_DIR")]
     pub dir: String,
 
-    /// Output format
-    #[arg(short = 'f', long, default_value = "json")]
+    /// Output format (auto-detects: table for TTY, JSON for pipes)
+    #[arg(short = 'f', long, default_value = "auto", env = "ZETL_FORMAT")]
     pub format: OutputFormat,
 
-    /// Force full rescan, ignore cached index
+    /// Force JSON output (shorthand for -f json)
     #[arg(long)]
+    pub json: bool,
+
+    /// Force full rescan, ignore cached index
+    #[arg(long, env = "ZETL_NO_CACHE")]
     pub no_cache: bool,
 
     /// Disable colored output
-    #[arg(long)]
+    #[arg(long, env = "NO_COLOR")]
     pub no_color: bool,
 
     /// Suppress non-essential output
@@ -42,10 +47,11 @@ pub struct Cli {
     pub command: Command,
 }
 
-#[derive(Clone, ValueEnum)]
+#[derive(Clone, ValueEnum, PartialEq)]
 pub enum OutputFormat {
     Json,
     Table,
+    Auto,
 }
 
 #[derive(Subcommand)]
@@ -54,6 +60,7 @@ pub enum Command {
     Index,
 
     /// Query forward links from a page
+    #[command(after_help = "Examples:\n  zetl links \"My Page\"              Direct links\n  zetl links \"My Page\" --depth 2    Two hops deep")]
     Links {
         /// Page name (case-insensitive)
         page: String,
@@ -90,6 +97,7 @@ pub enum Command {
     },
 
     /// Validate: report dead links, orphans, syntax errors, and SPL diagnostics
+    #[command(after_help = "Examples:\n  zetl check                   Full vault health check\n  zetl check --dead-links      Show only broken links\n  zetl check --orphans          Show only unlinked pages")]
     Check {
         /// Show only dead links
         #[arg(long)]
@@ -127,6 +135,7 @@ pub enum Command {
     },
 
     /// Search vault file contents for text
+    #[command(after_help = "Examples:\n  zetl search \"wikilink\"                 Basic search\n  zetl search \"API\" --near \"Backend\"     Search near a page\n  zetl search \"TODO\" --case-sensitive    Exact case match")]
     Search {
         /// Search string
         query: String,
@@ -161,6 +170,7 @@ pub enum Command {
     },
 
     /// Find shortest link path between two pages
+    #[command(after_help = "Examples:\n  zetl path \"Page A\" \"Page B\"           Find shortest path\n  zetl path \"Page A\" \"Page B\" --max-depth 5")]
     Path {
         /// Source page name
         from: String,
@@ -209,7 +219,7 @@ pub enum Command {
         theme: String,
     },
 
-    /// Launch the Xanadu-style two-pane view for a note (SPEC-009)
+    /// Launch the Xanadu-style two-pane view for a note
     View {
         /// Page title to open (launches a page picker when omitted)
         page: Option<String>,
@@ -247,7 +257,7 @@ pub enum Command {
         _args: Vec<String>,
     },
 
-    /// Compute graph-level diff against a git ref or historical snapshot (REQ-046, REQ-083)
+    /// Compute graph-level diff against a git ref or historical snapshot
     Diff {
         /// Git ref or jj change-ID / time expression to use as the diff baseline
         #[arg(long, value_name = "REF")]
@@ -262,7 +272,7 @@ pub enum Command {
         filter: Option<DiffFilter>,
     },
 
-    /// Watch vault for file changes and emit NDJSON graph events (SPEC-008)
+    /// Watch vault for file changes and emit NDJSON graph events
     Watch {
         /// Debounce window in milliseconds (default: 150; min 10, max 5000)
         #[arg(long, default_value = "150", value_parser = clap::value_parser!(u64).range(10..=5000))]
@@ -484,7 +494,7 @@ pub enum HistoryCommand {
         #[arg(long, default_value = "20")]
         limit: usize,
     },
-    /// Reverse-chronological timeline of graph-level deltas (REQ-080, CON-025).
+    /// Reverse-chronological timeline of graph-level deltas.
     ///
     /// Each row shows what changed between consecutive snapshots: pages added or
     /// removed, and net link-count deltas. Identical vault states (same

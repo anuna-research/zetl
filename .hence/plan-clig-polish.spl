@@ -1,0 +1,91 @@
+(meta plan
+  (id clig-polish)
+  (title "CLI polish: align zetl with clig.dev guidelines")
+  (status active)
+  (description "Review and refactor zetl CLI to follow clig.dev best practices. Key gaps: TTY-aware output format, --json flag convention, typo suggestions, env var support, cleaner help text, better error messages."))
+
+;; ── Agents ──────────────────────────────────────────────────────────
+
+(given agent-cli-available)
+(given agent-errors-available)
+(given agent-env-available)
+(given agent-help-available)
+(given agent-tests-available)
+
+;; ── Tasks ───────────────────────────────────────────────────────────
+
+(given task-tty-format)
+(meta task-tty-format
+  (description "Auto-detect TTY: default to table for interactive terminals, JSON for pipes. Add --json flag as alias. Keep -f for backward compat.")
+  (acceptance "Running `zetl list` in terminal shows table; piping `zetl list | cat` produces JSON; `zetl list --json` always produces JSON"))
+
+(given task-clap-features)
+(meta task-clap-features
+  (description "Enable clap suggest feature for typo suggestions on subcommands. Add after_help with examples to top-level command and key subcommands.")
+  (acceptance "Typing `zetl linkss` suggests 'links'; `zetl --help` shows examples section"))
+
+(given task-env-vars)
+(meta task-env-vars
+  (description "Support ZETL_DIR, ZETL_FORMAT env vars as defaults (lower priority than flags). Document in help text with env annotations.")
+  (acceptance "`ZETL_DIR=/tmp zetl list` uses /tmp as vault root; flag -d overrides"))
+
+(given task-clean-help)
+(meta task-clean-help
+  (description "Remove spec references (SPEC-009, REQ-046 etc) from user-facing help text. Add short examples to key subcommands via clap after_help. Improve about strings.")
+  (acceptance "No SPEC-/REQ-/CON- references in --help output; examples shown for search, links, path"))
+
+(given task-error-messages)
+(meta task-error-messages
+  (description "Improve error messages to be conversational per clig.dev. Include suggested fix actions. Use stderr consistently for errors in both formats.")
+  (acceptance "Page not found errors suggest similar pages or `zetl list`; errors go to stderr"))
+
+(given task-tests)
+(meta task-tests
+  (description "Add/update integration tests for TTY format detection, --json flag, env var overrides, and error message improvements.")
+  (acceptance "All existing tests pass; new tests cover --json flag and env var overrides"))
+
+;; ── Dependencies ────────────────────────────────────────────────────
+
+;; tty-format and clap-features are foundational - do first in parallel
+(rule ready-tty-format
+  (given task-tty-format)
+  (given agent-cli-available)
+  => (ready task-tty-format))
+
+(rule ready-clap-features
+  (given task-clap-features)
+  (given agent-cli-available)
+  => (ready task-clap-features))
+
+(rule ready-env-vars
+  (given task-tty-format)  ;; needs format enum changes from tty-format
+  => (ready task-env-vars))
+
+;; clean-help can run in parallel with tty-format
+(rule ready-clean-help
+  (given task-clean-help)
+  (given agent-help-available)
+  => (ready task-clean-help))
+
+;; error messages depend on format changes
+(rule ready-error-messages
+  (given task-tty-format)
+  => (ready task-error-messages))
+
+;; tests run last
+(rule ready-tests
+  (done task-tty-format)
+  (done task-clap-features)
+  (done task-env-vars)
+  (done task-clean-help)
+  (done task-error-messages)
+  => (ready task-tests))
+
+;; ── Assignments ─────────────────────────────────────────────────────
+
+(rule assign-tty-format (ready task-tty-format) => (assign task-tty-format agent-cli))
+(rule assign-clap-features (ready task-clap-features) => (assign task-clap-features agent-cli))
+(rule assign-env-vars (ready task-env-vars) => (assign task-env-vars agent-env))
+(rule assign-clean-help (ready task-clean-help) => (assign task-clean-help agent-help))
+(rule assign-error-messages (ready task-error-messages) => (assign task-error-messages agent-errors))
+(rule assign-tests (ready task-tests) => (assign task-tests agent-tests))
