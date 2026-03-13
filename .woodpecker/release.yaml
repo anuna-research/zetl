@@ -1,0 +1,124 @@
+when:
+  - event: tag
+    branch: main
+
+steps:
+  - name: build-linux
+    image: rust:1-bookworm
+    commands:
+      - cargo build --release --target x86_64-unknown-linux-gnu
+      - mkdir -p dist
+      - cp target/x86_64-unknown-linux-gnu/release/zetl dist/zetl
+      - cd dist && tar czf zetl-linux-x86_64.tar.gz zetl && rm zetl && cd ..
+
+  - name: build-macos-arm64
+    image: rust:1-bookworm
+    commands:
+      - apt-get update && apt-get install -y clang cmake libxml2-dev libssl-dev lzma-dev libbz2-dev
+      - rustup target add aarch64-apple-darwin
+      - |
+        [ -d /tmp/osxcross ] || git clone https://github.com/tpoechtrager/osxcross /tmp/osxcross
+        cd /tmp/osxcross
+        curl -fsSL https://github.com/joseluisq/macosx-sdks/releases/download/14.5/MacOSX14.5.sdk.tar.xz -o tarballs/MacOSX14.5.sdk.tar.xz
+        UNATTENDED=1 ./build.sh
+        export PATH="/tmp/osxcross/target/bin:$PATH"
+        export CC_aarch64_apple_darwin=aarch64-apple-darwin23.5-clang
+        export CXX_aarch64_apple_darwin=aarch64-apple-darwin23.5-clang++
+        export CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=aarch64-apple-darwin23.5-clang
+        cd -
+        cargo build --release --target aarch64-apple-darwin
+        mkdir -p dist
+        cp target/aarch64-apple-darwin/release/zetl dist/zetl
+        cd dist && tar czf zetl-macos-arm64.tar.gz zetl && rm zetl && cd ..
+
+  - name: build-macos-x86_64
+    image: rust:1-bookworm
+    commands:
+      - apt-get update && apt-get install -y clang cmake libxml2-dev libssl-dev lzma-dev libbz2-dev
+      - rustup target add x86_64-apple-darwin
+      - |
+        [ -d /tmp/osxcross ] || git clone https://github.com/tpoechtrager/osxcross /tmp/osxcross
+        cd /tmp/osxcross
+        curl -fsSL https://github.com/joseluisq/macosx-sdks/releases/download/14.5/MacOSX14.5.sdk.tar.xz -o tarballs/MacOSX14.5.sdk.tar.xz
+        UNATTENDED=1 ./build.sh
+        export PATH="/tmp/osxcross/target/bin:$PATH"
+        export CC_x86_64_apple_darwin=x86_64-apple-darwin23.5-clang
+        export CXX_x86_64_apple_darwin=x86_64-apple-darwin23.5-clang++
+        export CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER=x86_64-apple-darwin23.5-clang
+        cd -
+        cargo build --release --target x86_64-apple-darwin
+        mkdir -p dist
+        cp target/x86_64-apple-darwin/release/zetl dist/zetl
+        cd dist && tar czf zetl-macos-x86_64.tar.gz zetl && rm zetl && cd ..
+
+  - name: build-windows
+    image: rust:1-bookworm
+    commands:
+      - apt-get update && apt-get install -y gcc-mingw-w64-x86-64 zip
+      - rustup target add x86_64-pc-windows-gnu
+      - cargo build --release --target x86_64-pc-windows-gnu
+      - mkdir -p dist
+      - cp target/x86_64-pc-windows-gnu/release/zetl.exe dist/zetl.exe
+      - cd dist && zip zetl-windows-x86_64.zip zetl.exe && rm zetl.exe && cd ..
+
+  - name: create-metadata
+    image: alpine:3
+    commands:
+      - apk add --no-cache jq
+      - |
+        cat > dist/version.json << EOF
+        {
+          "version": "${CI_COMMIT_TAG#v}",
+          "download_url": "https://files.anuna.io/zetl/${CI_COMMIT_TAG}"
+        }
+        EOF
+      - ls -la dist/
+
+  - name: upload-to-cloudflare-r2
+    image: amazon/aws-cli:2.15.0
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: cf_r2_access_key_id
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: cf_r2_secret_access_key
+      CF_ACCOUNT_ID:
+        from_secret: cf_account_id
+    commands:
+      - export AWS_DEFAULT_REGION=auto
+      - export R2_ENDPOINT="https://$${CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
+      - export BUCKET="anuna-files"
+      - export PROJECT="zetl"
+
+      # Upload versioned release
+      - echo "Uploading to $${PROJECT}/$${CI_COMMIT_TAG}/..."
+      - |
+        for file in dist/zetl-*.tar.gz dist/zetl-*.zip dist/version.json; do
+          if [ -f "$$file" ]; then
+            filename=$$(basename "$$file")
+            aws s3 cp "$$file" "s3://$${BUCKET}/$${PROJECT}/$${CI_COMMIT_TAG}/$$filename" \
+              --endpoint-url "$$R2_ENDPOINT"
+            echo "Uploaded: $$filename"
+          fi
+        done
+
+      # Upload to latest/
+      - echo "Uploading to $${PROJECT}/latest/..."
+      - |
+        for file in dist/zetl-*.tar.gz dist/zetl-*.zip dist/version.json; do
+          if [ -f "$$file" ]; then
+            filename=$$(basename "$$file")
+            aws s3 cp "$$file" "s3://$${BUCKET}/$${PROJECT}/latest/$$filename" \
+              --endpoint-url "$$R2_ENDPOINT"
+            echo "Uploaded to latest: $$filename"
+          fi
+        done
+
+      # List uploaded files
+      - echo "Files in $${PROJECT}/$${CI_COMMIT_TAG}:"
+      - aws s3 ls "s3://$${BUCKET}/$${PROJECT}/$${CI_COMMIT_TAG}/" --endpoint-url "$$R2_ENDPOINT"
+      - echo "Files in $${PROJECT}/latest:"
+      - aws s3 ls "s3://$${BUCKET}/$${PROJECT}/latest/" --endpoint-url "$$R2_ENDPOINT"
+      - echo ""
+      - echo "Release available at:"
+      - echo "  https://files.anuna.io/$${PROJECT}/$${CI_COMMIT_TAG}/"
+      - echo "  https://files.anuna.io/$${PROJECT}/latest/"

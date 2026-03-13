@@ -2,7 +2,7 @@
 name = "zetl"
 version = "0.1.0"
 edition = "2021"
-description = "Bi-directional wikilink graph CLI with defeasible reasoning for personal knowledge management"
+description = "Bi-directional wikilink graph CLI for personal knowledge management"
 license = "MIT"
 
 [features]
@@ -15,7 +15,7 @@ semantic = ["dep:ort", "dep:tokenizers", "dep:sha2", "dep:ureq"]
 anyhow = "1"
 tempfile = "3"
 blake3 = "1"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "suggestions", "env"] }
 comfy-table = "7"
 globset = "0.4"
 ignore = "0.4"

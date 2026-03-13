@@ -1,0 +1,11 @@
+when:
+  - event: [push, pull_request]
+
+steps:
+  - name: test
+    image: rust:1-bookworm
+    commands:
+      - rustup component add rustfmt clippy
+      - cargo test --verbose
+      - cargo fmt --check
+      - cargo clippy -- -D warnings

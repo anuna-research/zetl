@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -490,8 +491,10 @@ fn exit_json_error(message: &str, code: i32) -> ! {
 fn exit_page_not_found(format: &OutputFormat, message: &str) -> ! {
     match format {
         OutputFormat::Json => exit_json_error(message, 1),
-        OutputFormat::Table => {
+        _ => {
             eprintln!("{message}");
+            eprintln!();
+            eprintln!("Hint: run `zetl list` to see all pages, or use --fuzzy for approximate matching.");
             std::process::exit(1);
         }
     }
@@ -703,7 +706,7 @@ fn cmd_index(cli: &Cli) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&result)?,
-        OutputFormat::Table => {
+        _ => {
             let mut table = Table::new();
             table.set_header(vec!["Metric", "Value"]);
             table.add_row(vec![
@@ -1374,7 +1377,7 @@ fn cmd_links(
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             let mut table = Table::new();
             let mut headers = vec!["Hop", "Source", "Target", "Line"];
             if context > 0 {
@@ -1550,7 +1553,7 @@ fn cmd_backlinks(
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             let mut table = Table::new();
             let mut headers = vec!["Hop", "Source", "Line"];
             if context > 0 {
@@ -1787,7 +1790,7 @@ fn cmd_check(
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             if !output.dead_links.is_empty() {
                 let mut table = Table::new();
                 table.set_header(vec!["Source", "Line", "Dead Target"]);
@@ -2075,7 +2078,7 @@ fn cmd_similar(cli: &Cli, query: &str, threshold: u32, limit: usize) -> Result<(
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             if output.results.is_empty() {
                 println!("No similar pages found for '{query}'.");
             } else {
@@ -2228,7 +2231,7 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             let mut table = Table::new();
             table.set_header(vec!["Metric", "Value"]);
             table.add_row(vec![Cell::new("Pages"), Cell::new(output.graph.pages)]);
@@ -2349,7 +2352,7 @@ fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
     match result {
         Some(path_result) => match cli.format {
             OutputFormat::Json => print_json(&path_result)?,
-            OutputFormat::Table => {
+            _ => {
                 println!(
                     "Shortest path from '{}' to '{}' ({} hops):",
                     path_result.from, path_result.to, path_result.hops
@@ -2364,8 +2367,10 @@ fn cmd_path(cli: &Cli, from: &str, to: &str, max_depth: usize) -> Result<()> {
             );
             match cli.format {
                 OutputFormat::Json => exit_json_error(&msg, 1),
-                OutputFormat::Table => {
+                _ => {
                     eprintln!("{msg}.");
+                    eprintln!();
+                    eprintln!("Hint: try increasing --max-depth (currently {max_depth}) to search further.");
                     std::process::exit(1);
                 }
             }
@@ -2413,7 +2418,7 @@ fn cmd_search(
         let msg = "--depth requires --near to be specified";
         match cli.format {
             OutputFormat::Json => exit_json_error(msg, 2),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("Error: {msg}");
                 std::process::exit(2);
             }
@@ -2427,7 +2432,7 @@ fn cmd_search(
         let msg = "--depth must be >= 1";
         match cli.format {
             OutputFormat::Json => exit_json_error(msg, 2),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("Error: {msg}");
                 std::process::exit(2);
             }
@@ -2459,7 +2464,7 @@ fn cmd_search(
             let msg = "Graph required for --near. Run `zetl index` first.";
             match cli.format {
                 OutputFormat::Json => exit_json_error(msg, 1),
-                OutputFormat::Table => {
+                _ => {
                     eprintln!("Error: {msg}");
                     std::process::exit(1);
                 }
@@ -2503,7 +2508,7 @@ fn cmd_search(
                 };
                 match cli.format {
                     OutputFormat::Json => exit_json_error(&msg, 2),
-                    OutputFormat::Table => {
+                    _ => {
                         eprintln!("Error: {msg}");
                         std::process::exit(2);
                     }
@@ -2579,7 +2584,7 @@ fn cmd_search(
             };
             match cli.format {
                 OutputFormat::Json => exit_json_error(&msg, code),
-                OutputFormat::Table => {
+                _ => {
                     eprintln!("Error: {msg}");
                     std::process::exit(code);
                 }
@@ -2817,8 +2822,10 @@ fn cmd_search(
                     snapshot: search_snapshot.clone(),
                 })?
             }
-            OutputFormat::Table => {
-                println!("No matches found for '{query}'.");
+            _ => {
+                eprintln!("No matches found for '{query}'.");
+                eprintln!();
+                eprintln!("Hint: try different search terms, or use --near <page> to search within a neighbourhood.");
             }
         }
         std::process::exit(1);
@@ -2838,7 +2845,7 @@ fn cmd_search(
                 snapshot: search_snapshot,
             })?
         }
-        OutputFormat::Table => {
+        _ => {
             let mut table = Table::new();
             table.set_header(vec!["Page", "Score", "Line", "Heading", "Context"]);
             for r in &output.results {
@@ -2902,7 +2909,7 @@ fn cmd_list(cli: &Cli) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             if output.pages.is_empty() {
                 println!("No pages found.");
             } else {
@@ -2929,7 +2936,7 @@ fn cmd_blocks(
     if page.is_some() && resolve.is_some() {
         match cli.format {
             OutputFormat::Json => exit_json_error("--resolve and page are mutually exclusive", 2),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("Error: --resolve and page are mutually exclusive");
                 std::process::exit(2);
             }
@@ -2940,7 +2947,7 @@ fn cmd_blocks(
             OutputFormat::Json => {
                 exit_json_error("Either a page name or --resolve <HASH> is required", 2)
             }
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("Error: Either a page name or --resolve <HASH> is required");
                 std::process::exit(2);
             }
@@ -3121,7 +3128,7 @@ fn cmd_blocks(
 
         match cli.format {
             OutputFormat::Json => print_json(&output)?,
-            OutputFormat::Table => {
+            _ => {
                 println!(
                     "Blocks for '{}' ({} blocks):",
                     output.page, output.block_count
@@ -3184,7 +3191,7 @@ fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
                 let _ = print_json(&E { error: msg });
                 std::process::exit(1);
             }
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("Error: {msg}");
                 std::process::exit(1);
             }
@@ -3295,7 +3302,7 @@ fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
 
                 match cli.format {
                     OutputFormat::Json => print_json(&output)?,
-                    OutputFormat::Table => {
+                    _ => {
                         println!(
                             "{}  {}:{}-{}  {}",
                             output.hash,
@@ -3362,7 +3369,7 @@ fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
 
                 match cli.format {
                     OutputFormat::Json => print_json(&output)?,
-                    OutputFormat::Table => {
+                    _ => {
                         println!(
                             "Block {} found at {} location(s) (identical content):",
                             output.hash,
@@ -3392,7 +3399,7 @@ fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
                     let _ = print_json(&err);
                     std::process::exit(1);
                 }
-                OutputFormat::Table => {
+                _ => {
                     eprintln!(
                         "Error: content hash {hash_prefix} not found — source content may have been modified or removed"
                     );
@@ -3442,7 +3449,7 @@ fn cmd_blocks_resolve(cli: &Cli, hash_prefix: &str) -> Result<()> {
                     let _ = print_json(&err);
                     std::process::exit(1);
                 }
-                OutputFormat::Table => {
+                _ => {
                     eprintln!("Error: ambiguous hash prefix {prefix}");
                     for m in &err.matches {
                         eprintln!("  {} {}:{}-{}", m.hash, m.file, m.lines[0], m.lines[1]);
@@ -3521,7 +3528,7 @@ fn cmd_export(cli: &Cli) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             println!(
                 "Graph: {} nodes, {} edges",
                 output.node_count, output.edge_count
@@ -4038,7 +4045,7 @@ fn cmd_theme_list(cli: &Cli) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             if output.themes.is_empty() {
                 println!("No themes found.");
             } else {
@@ -4276,7 +4283,7 @@ fn cmd_theme_install(
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             println!("Installed theme {resolved_name:?}");
             if !installed_hooks.is_empty() {
                 println!("Hooks: {}", installed_hooks.join(", "));
@@ -4383,7 +4390,7 @@ fn cmd_theme_remove(cli: &Cli, name: &str) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             println!(
                 "Removed theme {:?}{}",
                 name,
@@ -4459,7 +4466,7 @@ fn cmd_theme_export(cli: &Cli, name: &str, force: bool) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             println!(
                 "Exported theme {:?} to {} ({} files)",
                 name,
@@ -4513,7 +4520,7 @@ fn cmd_hook_list(cli: &Cli, theme: &str) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             if output.hooks.is_empty() {
                 println!("No hooks found.");
             } else {
@@ -5182,7 +5189,7 @@ fn cmd_reason_status(
     if block_count == 0 {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("No SPL blocks found in vault.");
                 std::process::exit(1);
             }
@@ -5339,7 +5346,7 @@ fn cmd_reason_status(
             };
             print_json(&output)?;
         }
-        OutputFormat::Table => {
+        _ => {
             println!(
                 "Theory: {} facts, {} rules, {} defeaters, {} superiority relations from {} files",
                 result.summary.fact_count,
@@ -5447,7 +5454,7 @@ fn cmd_reason_explain(
     if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("No SPL blocks found in vault.");
                 std::process::exit(1);
             }
@@ -5545,7 +5552,7 @@ fn cmd_reason_explain(
                 print_json(&output)?;
                 std::process::exit(1);
             }
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("{msg}");
                 std::process::exit(1);
             }
@@ -5594,7 +5601,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
     if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("No SPL blocks found in vault.");
                 std::process::exit(1);
             }
@@ -5643,7 +5650,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
                 print_json(&output)?;
                 std::process::exit(1);
             }
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("{msg}");
                 std::process::exit(1);
             }
@@ -5680,7 +5687,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
                 print_json(&output)?;
                 std::process::exit(1);
             }
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("{msg}");
                 std::process::exit(1);
             }
@@ -5857,7 +5864,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             println!(
                 "Why not '{}'?  (conclusion: {})",
                 output.literal, output.conclusion
@@ -6007,7 +6014,7 @@ fn cmd_reason_require(
     if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("No SPL blocks found in vault.");
                 std::process::exit(1);
             }
@@ -6025,7 +6032,7 @@ fn cmd_reason_require(
                 let msg = format!("--assume SPL parse error: {e}");
                 match cli.format {
                     OutputFormat::Json => exit_json_error(&msg, 1),
-                    OutputFormat::Table => {
+                    _ => {
                         eprintln!("{msg}");
                         std::process::exit(1);
                     }
@@ -6078,7 +6085,7 @@ fn cmd_reason_require(
         };
         match cli.format {
             OutputFormat::Json => print_json(&output)?,
-            OutputFormat::Table => {
+            _ => {
                 println!(
                     "Literal '{}' is already provable. No additional facts needed.",
                     literal_input
@@ -6128,7 +6135,7 @@ fn cmd_reason_require(
                 print_json(&output)?;
                 std::process::exit(1);
             }
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("{msg}");
                 std::process::exit(1);
             }
@@ -6278,7 +6285,7 @@ fn cmd_reason_require(
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             println!("Requirements to prove '{}':", literal_input);
             if !output.assumed.is_empty() {
                 println!("  Assumed facts: {}", output.assumed.join(", "));
@@ -6371,7 +6378,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
     if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("No SPL blocks found in vault.");
                 std::process::exit(1);
             }
@@ -6580,7 +6587,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             if conflicts.is_empty() {
                 println!("No unresolved conflicts found in theory.");
             } else {
@@ -6874,7 +6881,7 @@ fn cmd_reason_what_if(
             let msg = "Provide either inline SPL or --file, not both";
             match cli.format {
                 OutputFormat::Json => exit_json_error(msg, 1),
-                OutputFormat::Table => {
+                _ => {
                     eprintln!("{msg}");
                     std::process::exit(1);
                 }
@@ -6884,7 +6891,7 @@ fn cmd_reason_what_if(
             let msg = "Provide inline SPL argument or --file <PATH>";
             match cli.format {
                 OutputFormat::Json => exit_json_error(msg, 1),
-                OutputFormat::Table => {
+                _ => {
                     eprintln!("{msg}");
                     std::process::exit(1);
                 }
@@ -6903,7 +6910,7 @@ fn cmd_reason_what_if(
             let msg = format!("Hypothetical SPL parse error: {e}");
             match cli.format {
                 OutputFormat::Json => exit_json_error(&msg, 1),
-                OutputFormat::Table => {
+                _ => {
                     eprintln!("{msg}");
                     std::process::exit(1);
                 }
@@ -6918,7 +6925,7 @@ fn cmd_reason_what_if(
     if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("No SPL blocks found in vault.");
                 std::process::exit(1);
             }
@@ -7078,7 +7085,7 @@ fn cmd_reason_what_if(
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             println!(
                 "What-if analysis: hypothetically adding:\n  {}\n",
                 hyp_spl.trim()
@@ -7134,7 +7141,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
     if !has_spl {
         match cli.format {
             OutputFormat::Json => exit_json_error("No SPL blocks found in vault", 1),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("No SPL blocks found in vault.");
                 std::process::exit(1);
             }
@@ -7172,7 +7179,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
         );
         match cli.format {
             OutputFormat::Json => exit_json_error(&msg, 1),
-            OutputFormat::Table => {
+            _ => {
                 eprintln!("{msg}");
                 std::process::exit(1);
             }
@@ -7272,7 +7279,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
-        OutputFormat::Table => {
+        _ => {
             println!("Provenance for '{}':\n", literal_str);
 
             if let Some(ref vr) = output.vault_root_hash {
@@ -9015,7 +9022,7 @@ fn diff_graphs_and_output(
 
     match cli.format {
         OutputFormat::Json => print_json(&diff)?,
-        OutputFormat::Table => {
+        _ => {
             let mut table = Table::new();
             table.set_header(vec!["Category", "Added / Gained", "Removed / Resolved"]);
             if include_pages {
@@ -9077,7 +9084,7 @@ fn cmd_history_timeline(cli: &Cli, limit: usize) -> Result<()> {
                 "snapshots": [],
                 "message": "No snapshots yet. Run `zetl index` to create the first snapshot."
             }))?,
-            OutputFormat::Table => {
+            _ => {
                 println!("No snapshots yet. Run `zetl index` to create the first snapshot.");
             }
         }
@@ -9110,7 +9117,7 @@ fn cmd_history_timeline(cli: &Cli, limit: usize) -> Result<()> {
 
     match cli.format {
         OutputFormat::Json => print_json(&serde_json::json!({ "snapshots": entries }))?,
-        OutputFormat::Table => {
+        _ => {
             let mut table = Table::new();
             table.set_header(vec!["Change ID", "Timestamp", "Indexed"]);
             for e in &entries {
@@ -9170,7 +9177,7 @@ fn cmd_history_page(cli: &Cli, page_name: &str, limit: usize) -> Result<()> {
             "page": page_name,
             "snapshots": entries,
         }))?,
-        OutputFormat::Table => {
+        _ => {
             let mut table = Table::new();
             table.set_header(vec!["Timestamp", "Links", "Backlinks", "Orphan", "Changes"]);
             for e in &entries {
@@ -9251,7 +9258,7 @@ fn cmd_history_log(cli: &Cli, since: Option<&str>, limit: usize) -> Result<()> {
                 "entries": [],
                 "message": "No snapshots found. Run `zetl index` to create the first snapshot."
             }))?,
-            OutputFormat::Table => {
+            _ => {
                 println!("No snapshots found. Run `zetl index` to create the first snapshot.");
             }
         }
@@ -9294,7 +9301,7 @@ fn cmd_history_log(cli: &Cli, since: Option<&str>, limit: usize) -> Result<()> {
                 .collect();
             print_json(&serde_json::json!({ "entries": json_entries }))?;
         }
-        OutputFormat::Table => {
+        _ => {
             let mut table = Table::new();
             table.set_header(vec![
                 "Change ID",
@@ -9342,7 +9349,18 @@ fn cmd_history_log(cli: &Cli, since: Option<&str>, limit: usize) -> Result<()> {
 // ── Main ───────────────────────────────────────────────────────────────────
 
 fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+
+    // Resolve output format: --json flag takes priority, then -f, then TTY detection
+    if cli.json {
+        cli.format = OutputFormat::Json;
+    } else if cli.format == OutputFormat::Auto {
+        cli.format = if std::io::stdout().is_terminal() {
+            OutputFormat::Table
+        } else {
+            OutputFormat::Json
+        };
+    }
 
     match &cli.command {
         Command::Index => cmd_index(&cli),
