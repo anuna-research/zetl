@@ -5423,3 +5423,51 @@ fn hook_run_invalid_extra_json_errors() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("invalid JSON"), "stderr: {stderr}");
 }
+
+// TEST-122: When compiled without `--features semantic`, `zetl search --semantic` and
+// `zetl search --hybrid` must exit non-zero with a clear error message. REQ-098, NFR-041.
+#[cfg(not(feature = "semantic"))]
+#[test]
+fn test_search_semantic_flag_requires_feature() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello\nSome content here.");
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["search", "--semantic", "hello"]);
+    let output = cmd.output().unwrap();
+    assert!(
+        !output.status.success(),
+        "`zetl search --semantic` should exit non-zero without semantic feature"
+    );
+    // Error is emitted as JSON on stdout (default format) or plain text on stderr.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    assert!(
+        combined.contains("semantic") || combined.contains("feature"),
+        "error message should mention 'semantic' or 'feature', got: {combined}"
+    );
+}
+
+#[cfg(not(feature = "semantic"))]
+#[test]
+fn test_search_hybrid_flag_requires_feature() {
+    let tmp = TempDir::new().unwrap();
+    write_file(tmp.path(), "note.md", "# Hello\nSome content here.");
+
+    let mut cmd = zetl_cmd(tmp.path());
+    cmd.args(["search", "--hybrid", "hello"]);
+    let output = cmd.output().unwrap();
+    assert!(
+        !output.status.success(),
+        "`zetl search --hybrid` should exit non-zero without semantic feature"
+    );
+    // Error is emitted as JSON on stdout (default format) or plain text on stderr.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    assert!(
+        combined.contains("semantic") || combined.contains("feature"),
+        "error message should mention 'semantic' or 'feature', got: {combined}"
+    );
+}

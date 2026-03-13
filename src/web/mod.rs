@@ -56,6 +56,10 @@ pub struct WebState {
     pub theme: String,
     /// Whether --verbose was set; controls history-context timing output (OBS-013).
     pub verbose: bool,
+    /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
+    /// `None` when the semantic feature is inactive or the index has not been built.
+    #[cfg(feature = "semantic")]
+    pub vector_index: Option<Arc<std::sync::Mutex<crate::semantic::VectorIndex>>>,
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.

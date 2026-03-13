@@ -48,6 +48,10 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
             vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
         }
     }
+    #[cfg(feature = "semantic")]
+    {
+        vault_ctx.semantic_available = state.vector_index.is_some();
+    }
     match state.engine.render_index(&vault_ctx, "serve", "", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
@@ -102,6 +106,10 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
                     vault_ctx.history =
                         serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
                 }
+            }
+            #[cfg(feature = "semantic")]
+            {
+                vault_ctx.semantic_available = state.vector_index.is_some();
             }
             let folder_ctx = build_folder_context(&data, slug, folder_name);
             return match state
@@ -247,6 +255,10 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
             }
             vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
         }
+    }
+    #[cfg(feature = "semantic")]
+    {
+        vault_ctx.semantic_available = state.vector_index.is_some();
     }
     match state
         .engine
@@ -456,17 +468,21 @@ pub async fn preview_handler(
 pub struct SearchParams {
     pub q: Option<String>,
     pub limit: Option<usize>,
+    /// Search mode: "bm25" (default), "semantic", or "hybrid". REQ-100.
+    pub mode: Option<String>,
 }
 
-/// GET /api/search — Full-text search over the vault index.
+/// GET /api/search — Full-text, semantic, or hybrid search over the vault index.
 ///
 /// Query parameters:
 ///   - q (required): search query string
 ///   - limit (optional, default 20): max results
+///   - mode (optional, default "bm25"): search mode — "bm25", "semantic", or "hybrid"
 ///
 /// Returns 400 if `q` is absent or whitespace-only.
+/// Returns 503 if mode=semantic or mode=hybrid but the vector index is unavailable.
 ///
-/// REQ-013-012, CON-013-003.
+/// REQ-013-012, REQ-100, CON-013-003.
 pub async fn api_search_handler(
     State(state): State<WebState>,
     Query(params): Query<SearchParams>,
@@ -479,7 +495,220 @@ pub async fn api_search_handler(
     };
 
     let limit = params.limit.unwrap_or(20).max(1);
+    let mode = params.mode.as_deref().unwrap_or("bm25");
 
+    // When the semantic feature is not compiled, reject semantic/hybrid modes immediately.
+    #[cfg(not(feature = "semantic"))]
+    if mode == "semantic" || mode == "hybrid" {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Semantic search requires the `semantic` feature. \
+             Rebuild with: cargo build --features semantic",
+        )
+            .into_response();
+    }
+
+    // ── semantic / hybrid modes (REQ-100) ────────────────────────────────────
+    #[cfg(feature = "semantic")]
+    if mode == "semantic" || mode == "hybrid" {
+        let vec_index_arc = match &state.vector_index {
+            Some(arc) => arc.clone(),
+            None => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Vector index not available. Run `zetl index` first.",
+                )
+                    .into_response();
+            }
+        };
+
+        if mode == "semantic" {
+            // Pure vector search: embed query, scan index, return chunk-level hits.
+            let q_owned = q.clone();
+            let vec_limit = limit;
+            let hits = tokio::task::spawn_blocking(move || {
+                let idx = vec_index_arc.lock().map_err(|_| {
+                    anyhow::anyhow!("vector index lock poisoned")
+                })?;
+                idx.query_text(&q_owned, vec_limit)
+            })
+            .await;
+
+            let hits = match hits {
+                Ok(Ok(h)) => h,
+                Ok(Err(e)) => {
+                    eprintln!("api/search semantic error: {e}");
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Semantic search failed")
+                        .into_response();
+                }
+                Err(e) => {
+                    eprintln!("api/search semantic join error: {e}");
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Semantic search failed")
+                        .into_response();
+                }
+            };
+
+            let total = hits.len();
+            let results: Vec<SearchMatch> = hits
+                .into_iter()
+                .map(|hit| SearchMatch {
+                    page: hit.page_name,
+                    path: hit.path,
+                    line: 0,
+                    column: 0,
+                    context: hit.heading.clone(),
+                    heading: hit.heading,
+                    heading_level: None,
+                    score: hit.score as f64,
+                })
+                .collect();
+
+            let output = SearchOutput {
+                query: q,
+                total_matches: total,
+                near: None,
+                depth: None,
+                neighbourhood_size: None,
+                results,
+            };
+            return Json(output).into_response();
+        }
+
+        // mode == "hybrid": RRF fusion of BM25 + vector search (ADR-053, REQ-095).
+        let bm25_hits = match state.search_index.query(&q, limit.saturating_mul(2)) {
+            Ok(h) => h,
+            Err(e) => {
+                eprintln!("api/search bm25 error: {e}");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Search failed").into_response();
+            }
+        };
+
+        let q_owned = q.clone();
+        let vec_limit = limit.saturating_mul(2);
+        let vec_hits = tokio::task::spawn_blocking(move || {
+            let idx = vec_index_arc.lock().map_err(|_| {
+                anyhow::anyhow!("vector index lock poisoned")
+            })?;
+            idx.query_text(&q_owned, vec_limit)
+        })
+        .await;
+
+        let vec_hits = match vec_hits {
+            Ok(Ok(h)) => h,
+            Ok(Err(e)) => {
+                eprintln!("api/search vector error: {e}");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Hybrid search failed")
+                    .into_response();
+            }
+            Err(e) => {
+                eprintln!("api/search hybrid join error: {e}");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Hybrid search failed")
+                    .into_response();
+            }
+        };
+
+        // Build ranked lists at page level for RRF.
+        let bm25_ranks: Vec<(String, usize)> = bm25_hits
+            .iter()
+            .enumerate()
+            .map(|(i, h)| (h.page_name.clone(), i + 1))
+            .collect();
+        let vec_ranks: Vec<(String, usize)> = {
+            // Deduplicate chunks by page: keep highest-scoring chunk per page.
+            let mut seen: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
+            for hit in &vec_hits {
+                let rank = seen.len() + 1;
+                let entry = seen.entry(hit.page_name.clone()).or_insert(0);
+                // rank is 1-based; we record order of first appearance
+                if *entry == 0 {
+                    *entry = rank;
+                }
+            }
+            let mut page_order: Vec<(String, usize)> = seen.into_iter().collect();
+            page_order.sort_by_key(|(_, r)| *r);
+            page_order
+        };
+
+        let fused = crate::semantic::core::reciprocal_rank_fusion(
+            &bm25_ranks,
+            &vec_ranks,
+            crate::semantic::RRF_K,
+        );
+
+        // Build a score map from page_name → fused score.
+        let score_map: std::collections::HashMap<String, f64> =
+            fused.into_iter().collect();
+
+        // Collect BM25 hits for pages in the fused set, scored by RRF.
+        let terms: Vec<String> = q.split_whitespace().map(|t| t.to_lowercase()).collect();
+        let mut all_matches: Vec<SearchMatch> = Vec::new();
+
+        for hit in &bm25_hits {
+            let rrf_score = match score_map.get(&hit.page_name) {
+                Some(&s) => s,
+                None => continue,
+            };
+            let abs_path = state.vault_root.join(&hit.path);
+            let content = match std::fs::read_to_string(&abs_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let body_ranges = body_text_ranges(&content);
+            let line_starts: Vec<usize> = std::iter::once(0)
+                .chain(content.match_indices('\n').map(|(i, _)| i + 1))
+                .collect();
+            let headings = detect_headings(&content, &body_ranges);
+            let search_content = content.to_lowercase();
+
+            for term in &terms {
+                let mut start = 0usize;
+                while let Some(pos) = search_content[start..].find(term.as_str()) {
+                    let byte_offset = start + pos;
+                    start = byte_offset + 1;
+                    if !in_body_text(byte_offset, &body_ranges) {
+                        continue;
+                    }
+                    let (line, col) = byte_offset_to_line_col(&line_starts, byte_offset);
+                    let ctx = extract_search_context(&content, byte_offset, term.len(), 80);
+                    let (heading, heading_level) = find_heading_for_offset(&headings, byte_offset);
+                    all_matches.push(SearchMatch {
+                        page: hit.page_name.clone(),
+                        path: hit.path.clone(),
+                        line,
+                        column: col,
+                        context: ctx,
+                        heading,
+                        heading_level,
+                        score: rrf_score,
+                    });
+                }
+            }
+        }
+
+        all_matches.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.path.cmp(&b.path))
+                .then(a.line.cmp(&b.line))
+        });
+
+        let total = all_matches.len();
+        all_matches.truncate(limit);
+
+        let output = SearchOutput {
+            query: q,
+            total_matches: total,
+            near: None,
+            depth: None,
+            neighbourhood_size: None,
+            results: all_matches,
+        };
+        return Json(output).into_response();
+    }
+
+    // ── BM25 mode (default) ──────────────────────────────────────────────────
     let hits = match state.search_index.query(&q, limit) {
         Ok(hits) => hits,
         Err(e) => {
@@ -1234,6 +1463,8 @@ mod tests {
             engine: Arc::new(TemplateEngine::new(vault_root, theme, false, false)),
             theme: theme.to_string(),
             verbose: false,
+            #[cfg(feature = "semantic")]
+            vector_index: None,
         }
     }
 

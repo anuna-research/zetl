@@ -11,6 +11,8 @@ pub mod reason;
 pub mod scanner;
 pub mod search;
 pub mod search_index;
+#[cfg(feature = "semantic")]
+pub mod semantic;
 pub mod simhash;
 pub mod tui;
 pub mod types;
