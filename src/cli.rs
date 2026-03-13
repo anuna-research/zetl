@@ -157,6 +157,12 @@ pub enum Command {
         /// Neighbourhood radius (default: 1, must be >= 1; only valid with --near)
         #[arg(long, value_name = "N")]
         depth: Option<usize>,
+        /// Pure vector (semantic) search ranked by cosine similarity (requires --features semantic)
+        #[arg(long)]
+        semantic: bool,
+        /// Hybrid BM25 + vector search via reciprocal rank fusion (requires --features semantic)
+        #[arg(long)]
+        hybrid: bool,
     },
 
     /// List all pages in the vault

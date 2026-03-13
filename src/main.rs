@@ -627,6 +627,55 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         eprintln!("search index build time: {search_index_build_ms}ms");
     }
 
+    // Build or skip the semantic (vector) index (REQ-092, REQ-097).
+    //
+    // Uses the same `needs_rebuild` condition as the Tantivy index.
+    // `VectorIndex::build` handles incremental rebuild internally: chunks
+    // whose BLAKE3 content hash is unchanged are reused without re-embedding
+    // (REQ-097). OBS-017 is emitted by `VectorIndex::build` unconditionally.
+    #[cfg(feature = "semantic")]
+    let semantic_stats: Option<serde_json::Value> = if needs_rebuild {
+        let vectors_dir = pipeline.vault_root.join(zetl::semantic::VECTORS_DIR);
+        match zetl::semantic::VectorIndex::build(&pipeline.vault_root, &pipeline.files) {
+            Ok(idx) => {
+                let chunk_count = idx.chunk_count();
+                let index_size_kb = dir_size_kb(&vectors_dir);
+                Some(serde_json::json!({
+                    "chunk_count": chunk_count,
+                    "index_size_kb": index_size_kb,
+                    "model_name": zetl::semantic::MODEL_NAME,
+                }))
+            }
+            Err(e) => {
+                if cli.verbose > 0 {
+                    eprintln!("[zetl] warning: semantic index build failed: {e}");
+                }
+                None
+            }
+        }
+    } else {
+        // No file changes — report existing vector index size if available.
+        let vectors_dir = pipeline.vault_root.join(zetl::semantic::VECTORS_DIR);
+        if vectors_dir.exists() {
+            let chunks_path = vectors_dir.join(zetl::semantic::CHUNKS_FILE);
+            let chunk_count = std::fs::read_to_string(&chunks_path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
+                .map(|v| v.len())
+                .unwrap_or(0);
+            let index_size_kb = dir_size_kb(&vectors_dir);
+            Some(serde_json::json!({
+                "chunk_count": chunk_count,
+                "index_size_kb": index_size_kb,
+                "model_name": zetl::semantic::MODEL_NAME,
+            }))
+        } else {
+            None
+        }
+    };
+    #[cfg(not(feature = "semantic"))]
+    let semantic_stats: Option<serde_json::Value> = None;
+
     let total_links: usize = pipeline.files.iter().map(|f| f.links.len()).sum();
     let total_diagnostics: usize = pipeline.files.iter().map(|f| f.diagnostics.len()).sum();
     let dead_links = pipeline.graph.dead_links();
@@ -640,6 +689,8 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         elapsed_ms: u128,
         search_index_docs: usize,
         search_index_size_kb: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        semantic: Option<serde_json::Value>,
     }
 
     let result = IndexResult {
@@ -650,6 +701,7 @@ fn cmd_index(cli: &Cli) -> Result<()> {
         elapsed_ms: elapsed.as_millis(),
         search_index_docs,
         search_index_size_kb,
+        semantic: semantic_stats,
     };
 
     match cli.format {
@@ -682,6 +734,16 @@ fn cmd_index(cli: &Cli) -> Result<()> {
                 Cell::new("Search index size (KB)"),
                 Cell::new(result.search_index_size_kb),
             ]);
+            if let Some(ref sem) = result.semantic {
+                table.add_row(vec![
+                    Cell::new("Vector chunks"),
+                    Cell::new(sem["chunk_count"].as_u64().unwrap_or(0)),
+                ]);
+                table.add_row(vec![
+                    Cell::new("Vector index size (KB)"),
+                    Cell::new(sem["index_size_kb"].as_u64().unwrap_or(0)),
+                ]);
+            }
             println!("{table}");
         }
     }
@@ -2118,6 +2180,31 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     #[cfg(not(feature = "history"))]
     let history_stats: Option<serde_json::Value> = None;
 
+    // OBS-020: semantic stats for `zetl stats` when semantic feature is enabled.
+    #[cfg(feature = "semantic")]
+    let semantic_stats: Option<serde_json::Value> = {
+        let vectors_dir = pipeline.vault_root.join(zetl::semantic::VECTORS_DIR);
+        if vectors_dir.exists() {
+            let chunks_path = vectors_dir.join(zetl::semantic::CHUNKS_FILE);
+            let chunk_count = std::fs::read_to_string(&chunks_path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
+                .map(|v| v.len())
+                .unwrap_or(0);
+            let total_bytes = dir_size_kb(&vectors_dir);
+            let index_size_mb = (total_bytes as f64 / 1024.0 * 10.0).round() / 10.0;
+            Some(serde_json::json!({
+                "chunk_count": chunk_count,
+                "index_size_mb": index_size_mb,
+                "model_name": zetl::semantic::MODEL_NAME,
+            }))
+        } else {
+            None
+        }
+    };
+    #[cfg(not(feature = "semantic"))]
+    let semantic_stats: Option<serde_json::Value> = None;
+
     #[derive(Serialize)]
     struct StatsOutput {
         #[serde(flatten)]
@@ -2128,6 +2215,8 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
         explicitly_grounded_facts: usize,
         #[serde(skip_serializing_if = "Option::is_none")]
         history: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        semantic: Option<serde_json::Value>,
     }
 
     let output = StatsOutput {
@@ -2137,6 +2226,7 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
         grounded_spl_blocks,
         explicitly_grounded_facts,
         history: history_stats,
+        semantic: semantic_stats,
     };
 
     match cli.format {
@@ -2218,6 +2308,24 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
                     hs["cache_size_mb"].as_f64().unwrap_or(0.0)
                 );
             }
+
+            // OBS-020: print semantic vector index section when available.
+            if let Some(ref sem) = output.semantic {
+                println!();
+                println!("Semantic index:");
+                println!(
+                    "  Chunks:         {}",
+                    sem["chunk_count"].as_u64().unwrap_or(0)
+                );
+                println!(
+                    "  Index size:     {:.1} MB",
+                    sem["index_size_mb"].as_f64().unwrap_or(0.0)
+                );
+                println!(
+                    "  Model:          {}",
+                    sem["model_name"].as_str().unwrap_or("N/A")
+                );
+            }
         }
     }
 
@@ -2282,7 +2390,29 @@ fn cmd_search(
     path_filter: Option<&str>,
     near: Option<&str>,
     depth: Option<usize>,
+    semantic: bool,
+    hybrid: bool,
 ) -> Result<()> {
+    // REQ-098: --semantic / --hybrid require the `semantic` feature at compile time.
+    #[cfg(not(feature = "semantic"))]
+    if semantic || hybrid {
+        let flag = if semantic { "--semantic" } else { "--hybrid" };
+        let msg = format!(
+            "{flag} requires the semantic feature. Rebuild with: cargo build --features semantic"
+        );
+        match cli.format {
+            OutputFormat::Json => exit_json_error(&msg, 1),
+            OutputFormat::Table => {
+                eprintln!("Error: {msg}");
+                std::process::exit(1);
+            }
+        }
+    }
+    // REQ-095, ADR-053: hybrid BM25 + vector search via RRF is implemented below,
+    // after the BM25 results have been collected.
+    #[cfg(not(feature = "semantic"))]
+    let _ = (semantic, hybrid);
+
     // REQ-013-007: --depth without --near is an error (exit 2).
     if depth.is_some() && near.is_none() {
         let msg = "--depth requires --near to be specified";
@@ -2414,6 +2544,35 @@ fn cmd_search(
         path_filter,
     };
 
+    // REQ-095, ADR-053: for --hybrid, launch vector search in a background thread so that
+    // BM25 and vector retrieval run in parallel. The handle is joined after BM25 completes.
+    // For --semantic (pure vector) the index is loaded sequentially after BM25 is skipped.
+    #[cfg(feature = "semantic")]
+    let hybrid_vec_thread: Option<
+        std::thread::JoinHandle<anyhow::Result<(Vec<zetl::semantic::VectorHit>, usize, u128)>>,
+    > = if hybrid {
+        let vault_root_vec = vault_root.clone();
+        let query_owned = query.to_string();
+        let vec_limit = limit.saturating_mul(2);
+        Some(std::thread::spawn(move || {
+            let idx = zetl::semantic::VectorIndex::open(&vault_root_vec)?;
+            match idx {
+                None => anyhow::bail!(
+                    "Vector index not found. Run `zetl index` to build it first."
+                ),
+                Some(idx) => {
+                    let start = std::time::Instant::now();
+                    let hits = idx.query_text(&query_owned, vec_limit)?;
+                    let duration_ms = start.elapsed().as_millis();
+                    let chunk_count = idx.chunk_count();
+                    Ok((hits, chunk_count, duration_ms))
+                }
+            }
+        }))
+    } else {
+        None
+    };
+
     let mut output = match search_vault(&vault_root, &config) {
         Ok(o) => o,
         Err(e) => {
@@ -2432,6 +2591,208 @@ fn cmd_search(
             }
         }
     };
+
+    // REQ-095, ADR-053: apply semantic / hybrid re-ranking when the semantic feature
+    // is active and the caller requested --semantic or --hybrid.
+    #[cfg(feature = "semantic")]
+    {
+        use zetl::search::SearchMatch;
+        if semantic {
+            // --semantic: pure vector search — load index sequentially and replace BM25 output.
+            let vec_start = std::time::Instant::now();
+            let vec_index = zetl::semantic::VectorIndex::open(&vault_root);
+            match vec_index {
+                Err(e) => {
+                    let msg = format!("Failed to load vector index: {e}. Run `zetl index` first.");
+                    match cli.format {
+                        OutputFormat::Json => exit_json_error(&msg, 1),
+                        OutputFormat::Table => {
+                            eprintln!("Error: {msg}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Ok(None) => {
+                    let msg = "Vector index not found. Run `zetl index` to build it first.";
+                    match cli.format {
+                        OutputFormat::Json => exit_json_error(msg, 1),
+                        OutputFormat::Table => {
+                            eprintln!("Error: {msg}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Ok(Some(ref idx)) => {
+                    match idx.query_text(query, limit) {
+                        Err(e) => {
+                            let msg = format!("Vector query failed: {e}");
+                            match cli.format {
+                                OutputFormat::Json => exit_json_error(&msg, 1),
+                                OutputFormat::Table => {
+                                    eprintln!("Error: {msg}");
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                        Ok(vec_hits) => {
+                            let vec_ms = vec_start.elapsed().as_millis();
+                            if cli.verbose > 0 {
+                                idx.log_query_stats(vec_hits.len(), vec_ms);
+                            }
+                            // Pure vector search: replace BM25 output entirely.
+                            // Convert VectorHit → SearchMatch (no line/column info).
+                            let results: Vec<SearchMatch> = vec_hits
+                                .into_iter()
+                                .map(|h| SearchMatch {
+                                    page: h.page_name,
+                                    path: h.path,
+                                    line: 0,
+                                    column: 0,
+                                    context: None,
+                                    heading: h.heading,
+                                    heading_level: None,
+                                    score: h.score as f64,
+                                })
+                                .collect();
+                            let total = results.len();
+                            output.results = results;
+                            output.total_matches = total;
+                        }
+                    }
+                }
+            }
+        } else if hybrid {
+            // --hybrid: join the pre-spawned vector thread (runs in parallel with BM25)
+            // and fuse results via RRF (REQ-095, ADR-053).
+            let (vec_hits, vec_chunks_scanned, vec_ms) =
+                match hybrid_vec_thread.unwrap().join() {
+                    Err(_) => {
+                        let msg = "Vector search thread panicked";
+                        match cli.format {
+                            OutputFormat::Json => exit_json_error(msg, 1),
+                            OutputFormat::Table => {
+                                eprintln!("Error: {msg}");
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        let msg = format!("{e}");
+                        match cli.format {
+                            OutputFormat::Json => exit_json_error(&msg, 1),
+                            OutputFormat::Table => {
+                                eprintln!("Error: {msg}");
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    Ok(Ok(tuple)) => tuple,
+                };
+
+            if cli.verbose > 0 {
+                eprintln!(
+                    "[zetl] vector-query: chunks_scanned={vec_chunks_scanned} results={} duration_ms={vec_ms}",
+                    vec_hits.len()
+                );
+            }
+
+            // Fuse BM25 and vector ranks via RRF. Build rank lists (1-indexed,
+            // deduplicated by page).
+            let bm25_ranks: Vec<(String, usize)> = {
+                let mut seen = std::collections::HashSet::new();
+                output
+                    .results
+                    .iter()
+                    .filter_map(|r| {
+                        if seen.insert(r.page.clone()) {
+                            Some((r.page.clone(), seen.len()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            };
+            let vec_ranks: Vec<(String, usize)> = {
+                let mut seen = std::collections::HashSet::new();
+                vec_hits
+                    .iter()
+                    .filter_map(|h| {
+                        if seen.insert(h.page_name.clone()) {
+                            Some((h.page_name.clone(), seen.len()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            };
+
+            let fusion_start = std::time::Instant::now();
+            let fused = zetl::semantic::core::reciprocal_rank_fusion(
+                &bm25_ranks,
+                &vec_ranks,
+                zetl::semantic::RRF_K,
+            );
+            let fusion_ms = fusion_start.elapsed().as_millis();
+
+            if cli.verbose > 0 {
+                eprintln!(
+                    "[zetl] hybrid-fusion: bm25_candidates={} vec_candidates={} fused={} duration_ms={fusion_ms}",
+                    bm25_ranks.len(),
+                    vec_ranks.len(),
+                    fused.len(),
+                );
+            }
+
+            // Build a score map from page_name → fused score.
+            let score_map: std::collections::HashMap<String, f64> =
+                fused.into_iter().collect();
+
+            // Collect all BM25 matches, re-scored by fused value.
+            // Pages only in vector results get a placeholder match.
+            let mut new_results: Vec<SearchMatch> = output
+                .results
+                .drain(..)
+                .map(|mut m| {
+                    if let Some(&fs) = score_map.get(&m.page) {
+                        m.score = fs;
+                    }
+                    m
+                })
+                .collect();
+
+            // Add pages that appear only in vector results (no BM25 match).
+            let bm25_pages: std::collections::HashSet<String> =
+                new_results.iter().map(|r| r.page.clone()).collect();
+            for hit in &vec_hits {
+                if !bm25_pages.contains(&hit.page_name) {
+                    if let Some(&fs) = score_map.get(&hit.page_name) {
+                        new_results.push(SearchMatch {
+                            page: hit.page_name.clone(),
+                            path: hit.path.clone(),
+                            line: 0,
+                            column: 0,
+                            context: None,
+                            heading: hit.heading.clone(),
+                            heading_level: None,
+                            score: fs,
+                        });
+                    }
+                }
+            }
+
+            // Sort by fused score descending, then truncate to limit.
+            new_results.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            new_results.truncate(limit);
+
+            let total = new_results.len();
+            output.results = new_results;
+            output.total_matches = total;
+        }
+    }
 
     // Filter results to the neighbourhood if --near was specified.
     // REQ-013-009: populate neighbourhood metadata in the output envelope.
@@ -4383,6 +4744,33 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         true, // reload templates on every request in serve mode
         cli.verbose > 0,
     );
+    // Load the vector index for semantic/hybrid search in serve mode (REQ-100).
+    // Failures are non-fatal: serve continues without semantic support.
+    #[cfg(feature = "semantic")]
+    let vector_index = {
+        match zetl::semantic::VectorIndex::open(&pipeline.vault_root) {
+            Ok(Some(idx)) => {
+                if cli.verbose > 0 {
+                    eprintln!(
+                        "[zetl] semantic: loaded vector index ({} chunks)",
+                        idx.chunk_count()
+                    );
+                }
+                Some(std::sync::Arc::new(std::sync::Mutex::new(idx)))
+            }
+            Ok(None) => {
+                if cli.verbose > 0 {
+                    eprintln!("[zetl] semantic: no vector index found (run `zetl index` to build)");
+                }
+                None
+            }
+            Err(e) => {
+                eprintln!("[zetl] warning: could not load vector index: {e}");
+                None
+            }
+        }
+    };
+
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
         vault_root: std::sync::Arc::new(pipeline.vault_root),
@@ -4390,6 +4778,8 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         engine: std::sync::Arc::new(engine),
         theme: theme.to_string(),
         verbose: cli.verbose > 0,
+        #[cfg(feature = "semantic")]
+        vector_index,
     };
 
     let rt = tokio::runtime::Runtime::new()?;
@@ -9019,6 +9409,8 @@ fn main() -> anyhow::Result<()> {
             path,
             near,
             depth,
+            semantic,
+            hybrid,
         } => cmd_search(
             &cli,
             query,
@@ -9028,6 +9420,8 @@ fn main() -> anyhow::Result<()> {
             path.as_deref(),
             near.as_deref(),
             *depth,
+            *semantic,
+            *hybrid,
         ),
         Command::List => cmd_list(&cli),
         Command::Stats { top } => cmd_stats(&cli, *top),

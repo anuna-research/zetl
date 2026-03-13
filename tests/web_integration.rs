@@ -59,6 +59,8 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         engine: Arc::new(TemplateEngine::new(vault_root, theme, true, false)),
         theme: theme.to_string(),
         verbose: false,
+        #[cfg(feature = "semantic")]
+        vector_index: None,
     }
 }
 

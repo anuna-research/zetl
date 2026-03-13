@@ -463,6 +463,7 @@ mod tests {
                 orphans: 0,
             },
             history: serde_json::Value::Null,
+            semantic_available: false,
         }
     }
 
@@ -544,6 +545,7 @@ mod tests {
                 orphans: 0,
             },
             history: serde_json::Value::Null,
+            semantic_available: false,
         };
         let idx = build_search_index(&vault);
         assert!(idx.contains(r#"\"hello\""#));
