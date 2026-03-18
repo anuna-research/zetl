@@ -16,6 +16,7 @@ pub mod semantic;
 pub mod simhash;
 pub mod tui;
 pub mod types;
+pub mod user;
 pub mod vcs;
 pub mod view;
 pub mod web;
