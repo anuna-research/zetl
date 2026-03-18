@@ -4989,6 +4989,10 @@ fn cmd_serve(
         }
     };
 
+    // Open git repository for auto-commit on save (REQ-020-015).
+    let git_commit_lock = zetl::web::git_commit::open_repo(&pipeline.vault_root)
+        .map(|lock| std::sync::Arc::new(lock));
+
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
         vault_root: std::sync::Arc::new(pipeline.vault_root),
@@ -5004,6 +5008,7 @@ fn cmd_serve(
         mnemonic_shown: std::sync::Arc::new(std::sync::Mutex::new(
             std::collections::HashSet::new(),
         )),
+        git_commit_lock,
         #[cfg(feature = "semantic")]
         vector_index,
     };

@@ -308,6 +308,56 @@ pub async fn save_handler(
         return (StatusCode::INTERNAL_SERVER_ERROR, "Write failed").into_response();
     }
 
+    // ── Git auto-commit (REQ-020-015, CON-020-006) ────────────────────
+    // Resolve user identity early so we can attribute the git commit.
+    let session_user_id: Option<String> = crate::web::session::token_from_cookies(&headers)
+        .and_then(|token| state.sessions.validate(&token));
+
+    if let Some(ref lock) = state.git_commit_lock {
+        let rel_path_for_git = full_path
+            .strip_prefix(state.vault_root.as_ref())
+            .unwrap_or(&full_path)
+            .to_path_buf();
+
+        // Resolve author from authenticated session, fallback to "zetl".
+        let (author_name, author_id) = if let Some(ref uid) = session_user_id {
+            match crate::user::load_profile(&state.vault_root, uid) {
+                Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
+                _ => ("zetl".to_string(), "zetl".to_string()),
+            }
+        } else {
+            ("zetl".to_string(), "zetl".to_string())
+        };
+
+        let custom_message = headers
+            .get("X-Commit-Message")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        match lock.lock() {
+            Ok(repo) => {
+                match super::git_commit::auto_commit(
+                    &repo,
+                    &rel_path_for_git,
+                    &author_name,
+                    &author_id,
+                    custom_message.as_deref(),
+                ) {
+                    Ok(_oid) => {
+                        // Synchronize jj's view of the git repo (step 4).
+                        super::git_commit::jj_git_import(&state.vault_root);
+                    }
+                    Err(e) => {
+                        eprintln!("warning: git auto-commit failed: {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("warning: git commit lock poisoned: {e}");
+            }
+        }
+    }
+
     // Re-index the vault so the graph/links and search index reflect the edit.
     match reindex(&state.vault_root) {
         Ok(new_data) => {
@@ -323,10 +373,6 @@ pub async fn save_handler(
             // File was saved; index is stale but not fatal
         }
     }
-
-    // Resolve authenticated user (if any) for hook context.
-    let session_user_id: Option<String> = crate::web::session::token_from_cookies(&headers)
-        .and_then(|token| state.sessions.validate(&token));
 
     // Fire on-save hooks asynchronously so the response returns immediately.
     {
@@ -1968,6 +2014,7 @@ mod tests {
                 crate::user::recovery::RecoveryChallengeStore::new(),
             ),
             mnemonic_shown: Arc::new(std::sync::Mutex::new(HashSet::new())),
+            git_commit_lock: None,
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

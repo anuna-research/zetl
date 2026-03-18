@@ -65,6 +65,7 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         ),
         mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         collab: false,
+        git_commit_lock: None,
         #[cfg(feature = "semantic")]
         vector_index: None,
     }
