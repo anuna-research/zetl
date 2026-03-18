@@ -4,25 +4,25 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 435,
-    "deletions": 11,
+    "insertions": 466,
+    "deletions": 65,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/routes.rs",
-      "tests/semantic_integration.rs"
+      "src/lib.rs",
+      "src/user/mod.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-tests-integration-changes",
-      "content": "Modified 3 files (+435, -11): .hence/context-manifest.json, src/web/routes.rs, tests/semantic_integration.rs",
+      "key": "task-user-profiles-changes",
+      "content": "Modified 3 files (+466, -65): .hence/context-manifest.json, src/lib.rs, src/user/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/tests-integration-v1",
-  "evaluated_at": "2026-03-05T03:00:17Z",
+  "branch_name": "hence/user-profiles-v1",
+  "evaluated_at": "2026-03-18T06:28:25Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
