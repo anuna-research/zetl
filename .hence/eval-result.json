@@ -3,28 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 155,
-    "deletions": 7,
+    "files_changed": 6,
+    "insertions": 204,
+    "deletions": 20,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
       "src/main.rs",
+      "src/user/mod.rs",
       "src/web/mod.rs",
-      "src/web/routes.rs"
+      "src/web/routes.rs",
+      "src/web/session.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-bootstrap-owner-changes",
-      "content": "Modified 5 files (+155, -7): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/mod.rs, src/web/routes.rs",
+      "key": "task-collab-gate-changes",
+      "content": "Modified 6 files (+204, -20): .hence/context-manifest.json, src/main.rs, src/user/mod.rs, src/web/mod.rs, src/web/routes.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/bootstrap-owner-v1",
-  "evaluated_at": "2026-03-18T07:25:21Z",
+  "branch_name": "hence/collab-gate-v1",
+  "evaluated_at": "2026-03-18T07:31:49Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
