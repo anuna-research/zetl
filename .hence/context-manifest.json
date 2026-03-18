@@ -1,12 +1,12 @@
 {
-  "task_id": "git-autocommit",
+  "task_id": "csp-headers",
   "token_budget": 8000,
-  "tokens_used": 333,
+  "tokens_used": 330,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement git2-based auto-commit in save handler: git add, git commit with user attribution, Mutex serialization, jj git import after commit",
-      "token_cost": 35,
+      "content": "Implement Content-Security-Policy header on all HTML responses: script-src 'self', frame-ancestors 'none', connect-src 'self' wss:",
+      "token_cost": 32,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T08:01:06Z"
+  "constructed_at": "2026-03-18T08:09:29Z"
 }
