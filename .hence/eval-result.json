@@ -3,29 +3,32 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 622,
-    "deletions": 7,
+    "files_changed": 9,
+    "insertions": 687,
+    "deletions": 16,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/engine.rs",
+      "src/crdt/marks.rs",
+      "src/main.rs",
       "src/web/mod.rs",
       "src/web/routes.rs",
-      "themes/default/editor.html",
-      "themes/default/page.html"
+      "src/web/session.rs",
+      "src/web/ws.rs",
+      "tests/history_integration.rs",
+      "tests/web_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-editor-frontend-changes",
-      "content": "Modified 6 files (+622, -7): .hence/context-manifest.json, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs, themes/default/editor.html and 1 more",
+      "key": "task-crdt-state-mgmt-changes",
+      "content": "Modified 9 files (+687, -16): .hence/context-manifest.json, src/crdt/marks.rs, src/main.rs, src/web/mod.rs, src/web/routes.rs and 4 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/editor-frontend-v1",
-  "evaluated_at": "2026-03-18T11:52:23Z",
+  "branch_name": "hence/crdt-state-mgmt-v1",
+  "evaluated_at": "2026-03-18T12:03:01Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
