@@ -252,6 +252,56 @@ pub fn delete_profile(vault_root: &Path, user_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Ensure sensitive `.zetl/` subdirectories are listed in the vault's `.gitignore`.
+///
+/// Appends `.zetl/collab/`, `.zetl/users/`, and `.zetl/sessions/` if they are
+/// not already present. Creates the `.gitignore` file if it does not exist.
+pub fn ensure_gitignore(vault_root: &Path) -> Result<()> {
+    let gitignore = vault_root.join(".gitignore");
+    let entries = [".zetl/collab/", ".zetl/users/", ".zetl/sessions/"];
+
+    let existing = if gitignore.exists() {
+        fs::read_to_string(&gitignore)
+            .with_context(|| format!("failed to read {}", gitignore.display()))?
+    } else {
+        String::new()
+    };
+
+    let lines: std::collections::HashSet<&str> = existing.lines().map(|l| l.trim()).collect();
+
+    let mut missing: Vec<&str> = Vec::new();
+    for entry in &entries {
+        if !lines.contains(entry) {
+            missing.push(entry);
+        }
+    }
+
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    let mut content = existing;
+    // Ensure trailing newline before appending
+    if !content.is_empty() && !content.ends_with('\n') {
+        content.push('\n');
+    }
+
+    // Add a header comment if we're adding to an existing file
+    if !content.is_empty() {
+        content.push_str("\n# zetl collab secrets (auto-added)\n");
+    }
+
+    for entry in &missing {
+        content.push_str(entry);
+        content.push('\n');
+    }
+
+    fs::write(&gitignore, &content)
+        .with_context(|| format!("failed to write {}", gitignore.display()))?;
+
+    Ok(())
+}
+
 /// Check if a vault owner already exists.
 pub fn owner_exists(vault_root: &Path) -> Result<bool> {
     let profiles = list_profiles(vault_root)?;
@@ -524,6 +574,45 @@ mod tests {
     fn test_role_for_non_owner_is_editor() {
         let profile = make_profile("Bob", false);
         assert_eq!(Role::for_profile(&profile), Role::Editor);
+    }
+
+    #[test]
+    fn test_ensure_gitignore_creates_file() {
+        let tmp = TempDir::new().unwrap();
+        ensure_gitignore(tmp.path()).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        assert!(content.contains(".zetl/collab/"));
+        assert!(content.contains(".zetl/users/"));
+        assert!(content.contains(".zetl/sessions/"));
+    }
+
+    #[test]
+    fn test_ensure_gitignore_appends_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join(".gitignore"), "/target\n.zetl/collab/\n").unwrap();
+
+        ensure_gitignore(tmp.path()).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        // Should preserve existing entries
+        assert!(content.contains("/target"));
+        assert!(content.contains(".zetl/collab/"));
+        // Should add missing ones
+        assert!(content.contains(".zetl/users/"));
+        assert!(content.contains(".zetl/sessions/"));
+    }
+
+    #[test]
+    fn test_ensure_gitignore_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        ensure_gitignore(tmp.path()).unwrap();
+        let first = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+
+        ensure_gitignore(tmp.path()).unwrap();
+        let second = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+
+        assert_eq!(first, second);
     }
 
     #[test]

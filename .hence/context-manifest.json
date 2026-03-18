@@ -1,12 +1,12 @@
 {
-  "task_id": "agent-loop-prevention",
+  "task_id": "server-key-protection",
   "token_budget": 8000,
-  "tokens_used": 317,
+  "tokens_used": 337,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement ZETL_HOOK_DEPTH counter, X-No-Hooks header, is_agent in hook context",
-      "token_cost": 19,
+      "content": "Implement server key protection: 0600 permissions on creation, auto-add .zetl/collab/, .zetl/users/, .zetl/sessions/ to .gitignore, permission check on startup",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T08:27:07Z"
+  "constructed_at": "2026-03-18T08:33:07Z"
 }
