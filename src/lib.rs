@@ -1,3 +1,5 @@
+#[cfg(feature = "reason")]
+pub mod acl;
 pub mod cache;
 pub mod cli;
 pub mod drift;
