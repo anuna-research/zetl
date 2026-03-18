@@ -7,6 +7,13 @@
 //! 4. Load user roles from profile → inject as facts
 //! 5. Combine into single theory, ground, reason
 //! 6. Check conclusion for `(can-<action> "<user_id>" "<page_slug>")`
+//!
+//! ## Deontic Overlay (REQ-020-012)
+//!
+//! After the base ACL check, the pipeline scans for modal conclusions:
+//! - `[F](edit/read user page)` at +d/+D → overrides base Allowed → Denied (403)
+//! - `[P](edit/read user page)` at +d/+D → explicit permission (redundant with base)
+//! - `[O](action user page)` at +d/+D → informational obligation (does not affect access)
 
 use anyhow::{Context, Result};
 use regex::Regex;
@@ -161,6 +168,70 @@ fn ground_temporal_facts(spl_blocks: &[SplBlock], now_epoch_ms: i64) -> String {
     facts
 }
 
+/// Deontic modality from SPL modal operators (REQ-020-012).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeonticModality {
+    /// `[P]` — Permission: action is explicitly permitted.
+    Permission,
+    /// `[F]` — Forbidden: action is explicitly prohibited.
+    Forbidden,
+    /// `[O]` — Obligation: user is obligated to perform action (informational).
+    Obligation,
+}
+
+impl std::fmt::Display for DeonticModality {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DeonticModality::Permission => write!(f, "[P]"),
+            DeonticModality::Forbidden => write!(f, "[F]"),
+            DeonticModality::Obligation => write!(f, "[O]"),
+        }
+    }
+}
+
+/// A single deontic conclusion found in the theory (REQ-020-012).
+#[derive(Debug, Clone)]
+pub struct DeonticConclusion {
+    /// The modality: Permission, Forbidden, or Obligation.
+    pub modality: DeonticModality,
+    /// The predicate name (e.g. "edit", "read", "review").
+    pub predicate: String,
+    /// The conclusion tag (+D, +d, -D, -d).
+    pub tag: ConclusionTag,
+    /// Rules that contributed to this conclusion.
+    pub rule_trace: Vec<RuleRef>,
+}
+
+/// Deontic overlay: optional layer of modal conclusions on top of base ACL (REQ-020-012).
+///
+/// Vaults that don't use deontic modalities will have an empty overlay.
+#[derive(Debug, Clone, Default)]
+pub struct DeonticOverlay {
+    /// `[F]` conclusions — forbidden actions. If provable, overrides base Allowed → Denied.
+    pub forbidden: Vec<DeonticConclusion>,
+    /// `[P]` conclusions — explicitly permitted actions (redundant with base, but explicit).
+    pub permitted: Vec<DeonticConclusion>,
+    /// `[O]` conclusions — obligations (informational only, does not affect access).
+    pub obligations: Vec<DeonticConclusion>,
+}
+
+impl DeonticOverlay {
+    /// Returns true if this overlay has any deontic conclusions.
+    pub fn is_empty(&self) -> bool {
+        self.forbidden.is_empty() && self.permitted.is_empty() && self.obligations.is_empty()
+    }
+
+    /// Returns true if a matching `[F]` conclusion is provable (overrides base access).
+    pub fn has_active_forbidden(&self) -> bool {
+        self.forbidden.iter().any(|c| {
+            matches!(
+                c.tag,
+                ConclusionTag::DefinitelyProvable | ConclusionTag::DefeasiblyProvable
+            )
+        })
+    }
+}
+
 /// An access control action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Action {
@@ -291,6 +362,93 @@ fn built_in_defaults(user_id: &str, page_slug: &str) -> String {
 (given (visibility-mode mixed))
 "#
     )
+}
+
+/// Scan theory conclusions for deontic modal literals matching the query (REQ-020-012).
+///
+/// Looks for `[P]`, `[F]`, `[O]` prefixed conclusions that match the queried
+/// action/user/page combination and collects them into a `DeonticOverlay`.
+fn scan_deontic_conclusions(
+    conclusions: &[crate::reason::types::ProvenancedConclusion],
+    user_id: &str,
+    page_slug: &str,
+    action: Action,
+) -> DeonticOverlay {
+    let mut overlay = DeonticOverlay::default();
+
+    let action_str = match action {
+        Action::Read => "read",
+        Action::Edit => "edit",
+    };
+
+    for conclusion in conclusions {
+        let lit = &conclusion.literal;
+
+        // Match deontic conclusions: [P]pred(user, page), [F]pred(user, page), [O]pred(user, page)
+        let (modality, rest) = if let Some(rest) = lit.strip_prefix("[P]") {
+            (DeonticModality::Permission, rest)
+        } else if let Some(rest) = lit.strip_prefix("[F]") {
+            (DeonticModality::Forbidden, rest)
+        } else if let Some(rest) = lit.strip_prefix("[O]") {
+            (DeonticModality::Obligation, rest)
+        } else {
+            continue;
+        };
+
+        // Extract predicate and check if it matches our query args.
+        // Format: "pred(arg1, arg2)" or just "pred"
+        let (predicate, matches_query) = if let Some(paren_pos) = rest.find('(') {
+            let pred = &rest[..paren_pos];
+            let args_str = &rest[paren_pos + 1..rest.len().saturating_sub(1)]; // strip parens
+            let args: Vec<&str> = args_str.split(", ").collect();
+            let matches = args.len() == 2 && args[0] == user_id && args[1] == page_slug;
+            (pred.to_string(), matches)
+        } else {
+            (rest.to_string(), false)
+        };
+
+        if !matches_query {
+            continue;
+        }
+
+        let tag = match conclusion.conclusion_type {
+            ConclusionType::DefinitelyProvable => ConclusionTag::DefinitelyProvable,
+            ConclusionType::DefeasiblyProvable => ConclusionTag::DefeasiblyProvable,
+            ConclusionType::DefinitelyNotProvable => ConclusionTag::DefinitelyNotProvable,
+            ConclusionType::DefeasiblyNotProvable => ConclusionTag::DefeasiblyNotProvable,
+        };
+
+        let rule_trace: Vec<RuleRef> =
+            conclusion.proof_sources.iter().map(RuleRef::from).collect();
+
+        let dc = DeonticConclusion {
+            modality,
+            predicate: predicate.clone(),
+            tag,
+            rule_trace,
+        };
+
+        match modality {
+            DeonticModality::Permission => {
+                // [P] for the matching action
+                if predicate == action_str {
+                    overlay.permitted.push(dc);
+                }
+            }
+            DeonticModality::Forbidden => {
+                // [F] for the matching action
+                if predicate == action_str {
+                    overlay.forbidden.push(dc);
+                }
+            }
+            DeonticModality::Obligation => {
+                // [O] for any predicate (informational)
+                overlay.obligations.push(dc);
+            }
+        }
+    }
+
+    overlay
 }
 
 /// Evaluate an ACL query against the vault's policy.
@@ -451,6 +609,7 @@ pub fn evaluate(
     };
 
     // Look for a conclusion matching (can-<action> "<user_id>" "<page_slug>")
+    let mut base_decision = None;
     for conclusion in &result.conclusions {
         let lit = &conclusion.literal;
 
@@ -477,18 +636,48 @@ pub fn evaluate(
             }
         };
 
-        if allowed {
-            return Ok(AclDecision::Allowed { tag, rule_trace });
+        base_decision = Some(if allowed {
+            AclDecision::Allowed { tag, rule_trace }
         } else {
-            return Ok(AclDecision::Denied { tag, rule_trace });
-        }
+            AclDecision::Denied { tag, rule_trace }
+        });
+        break;
     }
 
-    // No conclusion found → access denied (closed-world assumption)
-    Ok(AclDecision::Denied {
+    let decision = base_decision.unwrap_or(AclDecision::Denied {
         tag: ConclusionTag::DefeasiblyNotProvable,
         rule_trace: vec![],
-    })
+    });
+
+    // ── Step 7: Deontic overlay (REQ-020-012) ────────────────────────────
+    // Scan for [F], [P], [O] modal conclusions. If [F] is provable and
+    // the base decision was Allowed, override to Denied.
+    let overlay = scan_deontic_conclusions(
+        &result.conclusions,
+        &query.user_id,
+        &query.page_slug,
+        query.action,
+    );
+
+    if decision.is_allowed() && overlay.has_active_forbidden() {
+        // [F] override: forbidden conclusion overrides base permission
+        let forbidden = overlay
+            .forbidden
+            .iter()
+            .find(|c| {
+                matches!(
+                    c.tag,
+                    ConclusionTag::DefinitelyProvable | ConclusionTag::DefeasiblyProvable
+                )
+            })
+            .unwrap();
+        return Ok(AclDecision::Denied {
+            tag: forbidden.tag,
+            rule_trace: forbidden.rule_trace.clone(),
+        });
+    }
+
+    Ok(decision)
 }
 
 /// Strip `(given (owner ...))` facts from SPL content (REQ-020-058).
@@ -526,17 +715,17 @@ fn strip_owner_facts(block: &mut SplBlock) {
     }
 }
 
-/// Evaluate an ACL query and return both the decision and the full `TheoryResult`.
+/// Evaluate an ACL query and return the decision, deontic overlay, and full `TheoryResult`.
 ///
-/// This is the same as [`evaluate`] but also returns the reasoner output,
-/// enabling proof-trace / why-not explanation in the `/api/acl/explain` endpoint
-/// (REQ-020-014).
+/// This is the same as [`evaluate`] but also returns the reasoner output and
+/// deontic overlay, enabling proof-trace / why-not explanation in the
+/// `/api/acl/explain` endpoint (REQ-020-014) and deontic modality display (REQ-020-012).
 pub fn evaluate_with_theory(
     vault_root: &Path,
     query: &AclQuery,
     page_spl_blocks: &[SplBlock],
     all_page_slugs: &[String],
-) -> Result<(AclDecision, crate::reason::types::TheoryResult)> {
+) -> Result<(AclDecision, DeonticOverlay, crate::reason::types::TheoryResult)> {
     let mut spl_blocks: Vec<SplBlock> = Vec::new();
 
     // ── Step 1: Load SPL sources ─────────────────────────────────────────
@@ -641,6 +830,7 @@ pub fn evaluate_with_theory(
         Action::Edit => "can-edit",
     };
 
+    let mut base_decision = None;
     for conclusion in &result.conclusions {
         let lit = &conclusion.literal;
         if !lit.contains(target_predicate) {
@@ -665,21 +855,47 @@ pub fn evaluate_with_theory(
             }
         };
 
-        let decision = if allowed {
+        base_decision = Some(if allowed {
             AclDecision::Allowed { tag, rule_trace }
         } else {
             AclDecision::Denied { tag, rule_trace }
-        };
-        return Ok((decision, result));
+        });
+        break;
     }
 
-    Ok((
+    let decision = base_decision.unwrap_or(AclDecision::Denied {
+        tag: ConclusionTag::DefeasiblyNotProvable,
+        rule_trace: vec![],
+    });
+
+    // ── Step 7: Deontic overlay (REQ-020-012) ────────────────────────────
+    let overlay = scan_deontic_conclusions(
+        &result.conclusions,
+        &query.user_id,
+        &query.page_slug,
+        query.action,
+    );
+
+    let final_decision = if decision.is_allowed() && overlay.has_active_forbidden() {
+        let forbidden = overlay
+            .forbidden
+            .iter()
+            .find(|c| {
+                matches!(
+                    c.tag,
+                    ConclusionTag::DefinitelyProvable | ConclusionTag::DefeasiblyProvable
+                )
+            })
+            .unwrap();
         AclDecision::Denied {
-            tag: ConclusionTag::DefeasiblyNotProvable,
-            rule_trace: vec![],
-        },
-        result,
-    ))
+            tag: forbidden.tag,
+            rule_trace: forbidden.rule_trace.clone(),
+        }
+    } else {
+        decision
+    };
+
+    Ok((final_decision, overlay, result))
 }
 
 /// Load `.zetl/collab/access.spl` as a single SPL block.
@@ -816,7 +1032,7 @@ pub fn query_page_visibility_override(
     };
 
     let result = match evaluate_with_theory(vault_root, &query, page_spl_blocks, all_page_slugs) {
-        Ok((_decision, theory)) => theory,
+        Ok((_decision, _overlay, theory)) => theory,
         Err(_) => return PageVisibilityOverride::None,
     };
 
@@ -1640,6 +1856,247 @@ mod tests {
         assert_eq!(
             effective_visibility(VisibilityMode::Hidden, PageVisibilityOverride::None),
             VisibilityMode::Hidden
+        );
+    }
+
+    // ── Deontic modality tests (TEST-020-012) ────────────────────────────
+
+    #[test]
+    fn deontic_forbidden_overrides_base_allowed() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Grant Bob editor on all pages, but forbid editing "Audit Log"
+        // SPL syntax: (forbidden (pred args...)) maps to [F] modality
+        let access_spl = format!(
+            r#"(given (role "{bob_id}" editor))
+(given (scope "{bob_id}" "**"))
+(always s-no-audit-edit
+  (authenticated "{bob_id}")
+  (forbidden (edit "{bob_id}" "Audit Log")))
+"#
+        );
+        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+
+        // Bob can edit regular pages
+        let q = AclQuery {
+            user_id: bob_id.clone(),
+            page_slug: "notes".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+        let decision = evaluate(&vault, &q, &[], &["notes".to_string(), "Audit Log".to_string()]).unwrap();
+        assert!(
+            decision.is_allowed(),
+            "editor should be able to edit regular pages"
+        );
+
+        // Bob is forbidden from editing Audit Log (deontic override)
+        let q2 = AclQuery {
+            user_id: bob_id.clone(),
+            page_slug: "Audit Log".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+        let decision2 = evaluate(&vault, &q2, &[], &["notes".to_string(), "Audit Log".to_string()]).unwrap();
+        assert!(
+            !decision2.is_allowed(),
+            "[F] should override base can-edit to deny access"
+        );
+    }
+
+    #[test]
+    fn deontic_forbidden_with_theory_returns_overlay() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        let access_spl = format!(
+            r#"(given (role "{bob_id}" editor))
+(given (scope "{bob_id}" "**"))
+(always s-no-audit
+  (authenticated "{bob_id}")
+  (forbidden (edit "{bob_id}" "Audit Log")))
+"#
+        );
+        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+
+        let q = AclQuery {
+            user_id: bob_id.clone(),
+            page_slug: "Audit Log".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+        let (decision, overlay, _theory) =
+            evaluate_with_theory(&vault, &q, &[], &["Audit Log".to_string()]).unwrap();
+
+        assert!(!decision.is_allowed(), "should be denied by [F] override");
+        assert!(!overlay.forbidden.is_empty(), "overlay should contain [F] conclusion");
+        assert_eq!(overlay.forbidden[0].modality, DeonticModality::Forbidden);
+        assert_eq!(overlay.forbidden[0].predicate, "edit");
+        assert!(overlay.has_active_forbidden());
+    }
+
+    #[test]
+    fn deontic_permission_explicit_but_redundant() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Grant Bob editor + explicit [P] permission
+        // SPL syntax: (may (pred args...)) maps to [P] modality
+        let access_spl = format!(
+            r#"(given (role "{bob_id}" editor))
+(given (scope "{bob_id}" "**"))
+(normally r-explicit-perm
+  (authenticated "{bob_id}")
+  (may (edit "{bob_id}" "docs")))
+"#
+        );
+        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+
+        let q = AclQuery {
+            user_id: bob_id.clone(),
+            page_slug: "docs".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+        let (decision, overlay, _theory) =
+            evaluate_with_theory(&vault, &q, &[], &["docs".to_string()]).unwrap();
+
+        assert!(decision.is_allowed(), "[P] should not prevent access");
+        assert!(
+            !overlay.permitted.is_empty(),
+            "overlay should contain [P] conclusion"
+        );
+        assert_eq!(overlay.permitted[0].modality, DeonticModality::Permission);
+    }
+
+    #[test]
+    fn deontic_obligation_informational_only() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Bob is obligated to review a page, but can still read it
+        // SPL syntax: (must (pred args...)) maps to [O] modality
+        let access_spl = format!(
+            r#"(given (role "{bob_id}" editor))
+(given (scope "{bob_id}" "**"))
+(normally r-review-oblig
+  (authenticated "{bob_id}")
+  (must (review "{bob_id}" "flagged-page")))
+"#
+        );
+        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+
+        let q = AclQuery {
+            user_id: bob_id.clone(),
+            page_slug: "flagged-page".to_string(),
+            action: Action::Read,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+        let (decision, overlay, _theory) =
+            evaluate_with_theory(&vault, &q, &[], &["flagged-page".to_string()]).unwrap();
+
+        assert!(
+            decision.is_allowed(),
+            "[O] should not block read access"
+        );
+        assert!(
+            !overlay.obligations.is_empty(),
+            "overlay should contain [O] conclusion"
+        );
+        assert_eq!(overlay.obligations[0].modality, DeonticModality::Obligation);
+        assert_eq!(overlay.obligations[0].predicate, "review");
+    }
+
+    #[test]
+    fn deontic_overlay_empty_when_no_modalities() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+
+        let q = AclQuery {
+            user_id: owner_id.clone(),
+            page_slug: "plain-page".to_string(),
+            action: Action::Read,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+        let (decision, overlay, _theory) =
+            evaluate_with_theory(&vault, &q, &[], &["plain-page".to_string()]).unwrap();
+
+        assert!(decision.is_allowed());
+        assert!(
+            overlay.is_empty(),
+            "overlay should be empty when no deontic modalities used"
+        );
+    }
+
+    #[test]
+    fn deontic_forbidden_read_blocks_read() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Forbid Bob from reading a classified page
+        // SPL syntax: (forbidden (pred args...)) maps to [F] modality
+        let access_spl = format!(
+            r#"(always s-no-classified-read
+  (authenticated "{bob_id}")
+  (forbidden (read "{bob_id}" "classified")))
+"#
+        );
+        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+
+        let q = AclQuery {
+            user_id: bob_id.clone(),
+            page_slug: "classified".to_string(),
+            action: Action::Read,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+        let decision = evaluate(&vault, &q, &[], &["classified".to_string()]).unwrap();
+        assert!(
+            !decision.is_allowed(),
+            "[F](read ...) should override base default-read to deny"
+        );
+    }
+
+    #[test]
+    fn deontic_modality_display() {
+        assert_eq!(DeonticModality::Permission.to_string(), "[P]");
+        assert_eq!(DeonticModality::Forbidden.to_string(), "[F]");
+        assert_eq!(DeonticModality::Obligation.to_string(), "[O]");
+    }
+
+    #[test]
+    fn deontic_overlay_has_active_forbidden_false_when_not_provable() {
+        let overlay = DeonticOverlay {
+            forbidden: vec![DeonticConclusion {
+                modality: DeonticModality::Forbidden,
+                predicate: "edit".to_string(),
+                tag: ConclusionTag::DefeasiblyNotProvable,
+                rule_trace: vec![],
+            }],
+            permitted: vec![],
+            obligations: vec![],
+        };
+        assert!(
+            !overlay.has_active_forbidden(),
+            "not-provable [F] should not count as active"
         );
     }
 }

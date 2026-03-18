@@ -3,30 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 1412,
-    "deletions": 5,
+    "files_changed": 3,
+    "insertions": 523,
+    "deletions": 28,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml",
-      "src/crdt/blocks.rs",
-      "src/crdt/marks.rs",
-      "src/crdt/mod.rs",
-      "src/lib.rs"
+      "src/acl.rs",
+      "src/web/routes.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-crdt-engine-changes",
-      "content": "Modified 7 files (+1412, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/blocks.rs, src/crdt/marks.rs and 2 more",
+      "key": "task-deontic-acl-changes",
+      "content": "Modified 3 files (+523, -28): .hence/context-manifest.json, src/acl.rs, src/web/routes.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/crdt-engine-v1",
-  "evaluated_at": "2026-03-18T10:41:00Z",
+  "branch_name": "hence/deontic-acl-v1",
+  "evaluated_at": "2026-03-18T10:53:35Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
