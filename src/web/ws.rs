@@ -68,6 +68,12 @@ pub enum ServerMsg {
         user: String,
         page: String,
     },
+    /// Notification when an admin changes the vault's visibility mode (REQ-020-054).
+    VisibilityModeChanged {
+        old_mode: String,
+        new_mode: String,
+        changed_by: String,
+    },
 }
 
 /// A single edit operation (splice text or mark).
