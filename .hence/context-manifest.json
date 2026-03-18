@@ -1,12 +1,12 @@
 {
-  "task_id": "agent-token",
+  "task_id": "csrf",
   "token_budget": 8000,
-  "tokens_used": 329,
+  "tokens_used": 331,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement agent token derivation CLI and Bearer auth middleware: ed25519 signed token with generation counter per CON-020-003",
-      "token_cost": 31,
+      "content": "Implement CSRF protection: issue token with session, require X-CSRF-Token header on PUT/POST/DELETE, exempt Bearer auth and WebSocket",
+      "token_cost": 33,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T07:43:38Z"
+  "constructed_at": "2026-03-18T07:51:34Z"
 }
