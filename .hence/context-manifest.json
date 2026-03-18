@@ -1,12 +1,12 @@
 {
-  "task_id": "crdt-engine",
+  "task_id": "deontic-acl",
   "token_budget": 8000,
-  "tokens_used": 334,
+  "tokens_used": 326,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement Peritext CRDT engine: automerge-rs RichText integration, mark types for markdown + wikilinks, block-level atomic tokens, growth behavior",
-      "token_cost": 36,
+      "content": "Implement deontic modality mapping: [P] → 200, [F] → 403, [O] → informational; optional overlay on base ACL",
+      "token_cost": 28,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T10:28:28Z"
+  "constructed_at": "2026-03-18T10:41:06Z"
 }

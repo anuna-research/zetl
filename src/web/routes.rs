@@ -4061,6 +4061,16 @@ struct AclExplainResponse {
     proof_trace: Vec<AclExplainProofEntry>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     why_not: Vec<AclExplainWhyNotRule>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    deontic: Vec<AclExplainDeonticEntry>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct AclExplainDeonticEntry {
+    modality: String,
+    predicate: String,
+    tag: String,
 }
 
 #[cfg(feature = "reason")]
@@ -4146,7 +4156,7 @@ pub async fn api_acl_explain_handler(
         now_epoch_ms: now_ms,
     };
 
-    let (decision, theory_result) = match crate::acl::evaluate_with_theory(
+    let (decision, deontic_overlay, theory_result) = match crate::acl::evaluate_with_theory(
         &state.vault_root,
         &query,
         &page_spl_blocks,
@@ -4192,6 +4202,33 @@ pub async fn api_acl_explain_handler(
         vec![]
     };
 
+    // Build deontic entries from overlay (REQ-020-012)
+    let deontic_entries: Vec<AclExplainDeonticEntry> = {
+        let mut entries = Vec::new();
+        for c in &deontic_overlay.forbidden {
+            entries.push(AclExplainDeonticEntry {
+                modality: "[F]".to_string(),
+                predicate: c.predicate.clone(),
+                tag: format_tag(c.tag),
+            });
+        }
+        for c in &deontic_overlay.permitted {
+            entries.push(AclExplainDeonticEntry {
+                modality: "[P]".to_string(),
+                predicate: c.predicate.clone(),
+                tag: format_tag(c.tag),
+            });
+        }
+        for c in &deontic_overlay.obligations {
+            entries.push(AclExplainDeonticEntry {
+                modality: "[O]".to_string(),
+                predicate: c.predicate.clone(),
+                tag: format_tag(c.tag),
+            });
+        }
+        entries
+    };
+
     ApiResponse::ok(AclExplainResponse {
         decision: decision_str.to_string(),
         tag,
@@ -4200,6 +4237,7 @@ pub async fn api_acl_explain_handler(
         action: action.to_string(),
         proof_trace,
         why_not,
+        deontic: deontic_entries,
     })
     .into_response()
 }
