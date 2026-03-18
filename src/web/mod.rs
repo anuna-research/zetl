@@ -5,6 +5,7 @@ pub mod git_commit;
 pub mod html;
 pub mod markdown;
 pub mod routes;
+pub mod rate_limit;
 pub mod session;
 pub mod theme;
 
@@ -23,6 +24,7 @@ use crate::search_index::SearchIndex;
 use crate::types::ParsedFile;
 
 use self::engine::TemplateEngine;
+use self::rate_limit::AuthRateLimiters;
 use self::session::SessionStore;
 use crate::user::recovery::RecoveryChallengeStore;
 
@@ -70,6 +72,8 @@ pub struct WebState {
     pub recovery_challenges: Arc<RecoveryChallengeStore>,
     /// Tracks user_ids whose mnemonic has already been displayed (one-time serve).
     pub mnemonic_shown: Arc<Mutex<HashSet<String>>>,
+    /// Authentication rate limiters (per-user and per-IP).
+    pub rate_limiters: AuthRateLimiters,
     /// Git repository lock for serializing auto-commits on save (REQ-020-015, CON-020-006).
     /// `None` when the vault is not inside a git repository.
     pub git_commit_lock: Option<Arc<git_commit::GitCommitLock>>,
@@ -183,7 +187,11 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
         .route(
             "/auth/accept",
             get(routes::accept_invite_handler).post(routes::accept_invite_submit_handler),
-        );
+        )
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit::auth_ip_rate_limit,
+        ));
 
     // ── Admin routes (hardcoded owner/admin gate — not defeatable by SPL) ──
     let admin_routes = Router::new()

@@ -730,6 +730,7 @@ mod tests {
             sessions: SessionStore::new(),
             recovery_challenges: Arc::new(crate::user::recovery::RecoveryChallengeStore::new()),
             mnemonic_shown: Arc::new(Mutex::new(std::collections::HashSet::new())),
+            rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
             git_commit_lock: None,
         }
     }

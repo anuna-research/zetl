@@ -64,6 +64,7 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
             zetl::user::recovery::RecoveryChallengeStore::new(),
         ),
         mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
+        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
         collab: false,
         git_commit_lock: None,
         #[cfg(feature = "semantic")]

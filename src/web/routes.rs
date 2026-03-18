@@ -1551,6 +1551,11 @@ pub async fn passkey_register_start_handler(
 ) -> Response {
     let vault_root = &*state.vault_root;
 
+    // Per-user rate limit on passkey registration attempts
+    if let Err(retry_after) = state.rate_limiters.passkey_per_user.check(&body.user_id) {
+        return crate::web::rate_limit::too_many_requests(retry_after);
+    }
+
     let passkey_mgr = match crate::user::passkey::PasskeyManager::new(
         "localhost",
         "http://localhost:3000",
@@ -1610,6 +1615,11 @@ pub async fn passkey_register_finish_handler(
             return (StatusCode::BAD_REQUEST, "missing user_id").into_response();
         }
     };
+
+    // Per-user rate limit on passkey registration finish attempts
+    if let Err(retry_after) = state.rate_limiters.passkey_per_user.check(&user_id) {
+        return crate::web::rate_limit::too_many_requests(retry_after);
+    }
 
     let passkey_mgr = match crate::user::passkey::PasskeyManager::new(
         "localhost",
@@ -1808,6 +1818,11 @@ pub async fn recover_challenge_handler(
     let vault_root = &*state.vault_root;
     let user_id = &query.user;
 
+    // Per-user rate limit on recovery challenge requests
+    if let Err(retry_after) = state.rate_limiters.recovery_per_user.check(user_id) {
+        return crate::web::rate_limit::too_many_requests(retry_after);
+    }
+
     // Verify user exists and has a recovery_pubkey
     match crate::user::load_profile(vault_root, user_id) {
         Ok(Some(profile)) if !profile.recovery_pubkey.is_empty() => {}
@@ -1856,6 +1871,11 @@ pub async fn recover_verify_handler(
     Json(body): Json<RecoverRequest>,
 ) -> Response {
     let vault_root = &*state.vault_root;
+
+    // Per-user rate limit on recovery verify requests
+    if let Err(retry_after) = state.rate_limiters.recovery_per_user.check(&body.user_id) {
+        return crate::web::rate_limit::too_many_requests(retry_after);
+    }
 
     // Load user profile
     let profile = match crate::user::load_profile(vault_root, &body.user_id) {
@@ -2033,6 +2053,11 @@ pub async fn accept_invite_submit_handler(
     axum::Form(form): axum::Form<AcceptForm>,
 ) -> Response {
     let vault_root = &*state.vault_root;
+
+    // Per-token rate limit on invitation acceptance attempts
+    if let Err(retry_after) = state.rate_limiters.invite_per_user.check(&form.token) {
+        return crate::web::rate_limit::too_many_requests(retry_after);
+    }
 
     let name = form.name.trim();
     if name.is_empty() || name.len() > 64 {
@@ -2774,6 +2799,7 @@ mod tests {
                 crate::user::recovery::RecoveryChallengeStore::new(),
             ),
             mnemonic_shown: Arc::new(std::sync::Mutex::new(HashSet::new())),
+            rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
             git_commit_lock: None,
             #[cfg(feature = "semantic")]
             vector_index: None,
