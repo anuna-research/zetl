@@ -170,6 +170,9 @@ pub struct WebState {
     pub crdt_store: ws::CrdtDocStore,
     /// CRDT write-ahead log for crash recovery (REQ-020-044).
     pub wal_store: Arc<wal::WalStore>,
+    /// Shared PasskeyManager for WebAuthn registration/authentication ceremonies.
+    /// Must persist across /start and /finish requests to retain challenge state.
+    pub passkey_mgr: Option<Arc<crate::user::passkey::PasskeyManager>>,
     /// Tracks files zetl is currently writing, for external edit detection (REQ-020-039).
     pub pending_writes: fs_watch::PendingWrites,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).

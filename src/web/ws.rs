@@ -952,8 +952,73 @@ pub async fn ws_edit_handler(
     let user_id = authenticate(&state, &query);
 
     match user_id {
-        Some(uid) => ws.on_upgrade(move |socket| handle_socket(socket, slug, uid, state)),
+        Some(uid) => {
+            // In collab mode, enforce page ACL before upgrading the WebSocket.
+            #[cfg(feature = "reason")]
+            if state.collab {
+                if let Err(_) = check_ws_page_acl(&state, &uid, &slug) {
+                    return axum::http::StatusCode::FORBIDDEN.into_response();
+                }
+            }
+            ws.on_upgrade(move |socket| handle_socket(socket, slug, uid, state))
+        }
         None => axum::http::StatusCode::UNAUTHORIZED.into_response(),
+    }
+}
+
+/// Check that a user can edit a page (for WebSocket upgrade).
+#[cfg(feature = "reason")]
+fn check_ws_page_acl(state: &WebState, user_id: &str, page_slug: &str) -> Result<(), ()> {
+    let (spl_blocks, all_slugs) = {
+        let data = state.data.read().unwrap();
+        let file = data.files.iter().find(|f| {
+            crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
+        });
+        let spl = file.map(|f| f.spl_blocks.clone()).unwrap_or_default();
+        let slugs: Vec<String> = data
+            .files
+            .iter()
+            .map(|f| crate::scanner::page_slug_from_path(&f.path))
+            .collect();
+        (spl, slugs)
+    };
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let query = crate::acl::AclQuery {
+        user_id: user_id.to_string(),
+        page_slug: page_slug.to_string(),
+        action: crate::acl::Action::Edit,
+        is_agent: false,
+        now_epoch_ms: now_ms,
+    };
+    let decision = {
+        let cache = state.acl_cache.lock().unwrap();
+        if let Some(cached) = cache.lookup(user_id, page_slug, crate::acl::Action::Edit) {
+            cached.clone()
+        } else {
+            drop(cache);
+            match crate::acl::evaluate(&state.vault_root, &query, &spl_blocks, &all_slugs) {
+                Ok(d) => {
+                    let mut cache = state.acl_cache.lock().unwrap();
+                    cache.insert(
+                        user_id.to_string(),
+                        page_slug.to_string(),
+                        crate::acl::Action::Edit,
+                        d.clone(),
+                    );
+                    d
+                }
+                Err(_) => return Err(()),
+            }
+        }
+    };
+    if decision.is_allowed() {
+        Ok(())
+    } else {
+        Err(())
     }
 }
 

@@ -551,7 +551,7 @@ pub fn evaluate(
             ));
         }
 
-        let role = user::Role::for_profile(&profile);
+        let role = user::Role::for_profile_with_vault(&profile, vault_root);
         runtime_facts.push_str(&format!(
             "(given (role \"{}\" {}))\n",
             query.user_id, role
@@ -569,7 +569,7 @@ pub fn evaluate(
     // The built-in defaults use `(in-scope "<page>" "<user_id>")` as a proxy.
     // We inject this fact when the queried page matches any of the user's scopes.
 
-    let scopes = extract_scopes_from_access_spl(vault_root);
+    let scopes = extract_user_scopes_from_access_spl(vault_root, &query.user_id);
     let page_in_scope = scopes.iter().any(|s| {
         let glob = build_scope_glob(s);
         glob.is_match(&query.page_slug)
@@ -868,14 +868,14 @@ pub fn evaluate_with_theory(
             runtime_facts.push_str(&format!("(given (owner \"{}\"))\n", query.user_id));
             runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", query.user_id));
         }
-        let role = user::Role::for_profile(&profile);
+        let role = user::Role::for_profile_with_vault(&profile, vault_root);
         runtime_facts.push_str(&format!("(given (role \"{}\" {}))\n", query.user_id, role));
         if role == user::Role::Admin {
             runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", query.user_id));
         }
     }
 
-    let scopes = extract_scopes_from_access_spl(vault_root);
+    let scopes = extract_user_scopes_from_access_spl(vault_root, &query.user_id);
     let page_in_scope = scopes.iter().any(|s| {
         let glob = build_scope_glob(s);
         glob.is_match(&query.page_slug)
@@ -1021,7 +1021,11 @@ fn load_access_spl(vault_root: &Path) -> Result<Option<SplBlock>> {
 ///
 /// Looks for `(given (scope "<user>" "<pattern>"))` facts and returns
 /// the unique set of scope patterns.
-fn extract_scopes_from_access_spl(vault_root: &Path) -> Vec<String> {
+/// Extract scope patterns from access.spl that belong to a specific user.
+///
+/// Looks for `(given (scope "<user>" "<pattern>"))` facts and returns only
+/// the patterns assigned to the given `user_id`.
+fn extract_user_scopes_from_access_spl(vault_root: &Path, user_id: &str) -> Vec<String> {
     let path = vault_root.join(".zetl/collab/access.spl");
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
@@ -1036,6 +1040,11 @@ fn extract_scopes_from_access_spl(vault_root: &Path) -> Vec<String> {
             if let Some(start) = rest.find('"') {
                 let after_first = &rest[start + 1..];
                 if let Some(end) = after_first.find('"') {
+                    let scope_user = &after_first[..end];
+                    // Only include scopes belonging to this user
+                    if scope_user != user_id {
+                        continue;
+                    }
                     let remaining = &after_first[end + 1..];
                     if let Some(s2) = remaining.find('"') {
                         let after_s2 = &remaining[s2 + 1..];

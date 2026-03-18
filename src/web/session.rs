@@ -753,6 +753,7 @@ mod tests {
             crdt_store: crate::web::ws::CrdtDocStore::new(Arc::new(tmp.to_path_buf())),
             wal_store: std::sync::Arc::new(crate::web::wal::WalStore::new(tmp)),
             pending_writes: crate::web::fs_watch::PendingWrites::new(),
+            passkey_mgr: None,
         }
     }
 

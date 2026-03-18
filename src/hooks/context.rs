@@ -743,7 +743,7 @@ mod tests {
         assert_eq!(hook_user.id, "bob-12345678");
         assert_eq!(hook_user.name, "Bob");
         assert!(hook_user.is_agent);
-        assert_eq!(hook_user.roles, vec!["editor"]);
+        assert_eq!(hook_user.roles, vec!["reader"]);
     }
 
     #[test]

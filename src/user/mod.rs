@@ -31,14 +31,49 @@ pub enum Role {
 impl Role {
     /// Determine the role for a user profile.
     ///
-    /// Hardcoded placeholder: owner → Admin, invited users → Editor.
-    /// Will be replaced by SPL-driven authorization.
+    /// Owner → Admin.  For non-owners, reads the role from
+    /// `.zetl/collab/access.spl` (written by `/_admin/permissions`).
+    /// Falls back to Reader when no explicit assignment exists.
     pub fn for_profile(profile: &UserProfile) -> Self {
         if profile.owner {
-            Role::Admin
-        } else {
-            Role::Editor
+            return Role::Admin;
         }
+        Role::Reader
+    }
+
+    /// Determine the role by reading the configured access.spl assignment.
+    ///
+    /// Owner → Admin.  Non-owners get the role written by `/_admin/permissions`.
+    /// Falls back to Reader when no explicit assignment exists.
+    pub fn for_profile_with_vault(profile: &UserProfile, vault_root: &std::path::Path) -> Self {
+        if profile.owner {
+            return Role::Admin;
+        }
+
+        // Read role from access.spl
+        let path = vault_root.join(".zetl/collab/access.spl");
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if let Some(rest) = trimmed.strip_prefix("(given (role ") {
+                    if let Some(start) = rest.find('"') {
+                        let after = &rest[start + 1..];
+                        if let Some(end) = after.find('"') {
+                            let user_id = &after[..end];
+                            if user_id == profile.id {
+                                let remaining = after[end + 1..].trim();
+                                let role_str = remaining.trim_end_matches(')').trim();
+                                if let Ok(role) = role_str.parse::<Role>() {
+                                    return role;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Role::Reader
     }
 }
 
@@ -588,9 +623,9 @@ mod tests {
     }
 
     #[test]
-    fn test_role_for_non_owner_is_editor() {
+    fn test_role_for_non_owner_default_is_reader() {
         let profile = make_profile("Bob", false);
-        assert_eq!(Role::for_profile(&profile), Role::Editor);
+        assert_eq!(Role::for_profile(&profile), Role::Reader);
     }
 
     #[test]

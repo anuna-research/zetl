@@ -5160,6 +5160,13 @@ fn cmd_serve(
         ticket_store: zetl::web::ws::TicketStore::new(),
         wal_store: std::sync::Arc::new(zetl::web::wal::WalStore::new(&vault_root)),
         pending_writes: zetl::web::fs_watch::PendingWrites::new(),
+        passkey_mgr: zetl::user::passkey::PasskeyManager::new(
+            "localhost",
+            "http://localhost:3000",
+            "zetl vault",
+        )
+        .ok()
+        .map(std::sync::Arc::new),
         #[cfg(feature = "semantic")]
         vector_index,
     };

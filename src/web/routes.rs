@@ -1996,6 +1996,25 @@ pub async fn api_restore_handler(
     let file_path = file.path.clone();
     drop(data);
 
+    // In collab mode, verify the user has edit permission on this page.
+    #[cfg(feature = "reason")]
+    if state.collab {
+        let user_id = match extract_session_user_id(&state, &headers) {
+            Some(uid) => uid,
+            None => {
+                return ApiResponse::err(
+                    StatusCode::UNAUTHORIZED,
+                    "INVALID_TOKEN",
+                    "authentication required",
+                )
+                .into_response();
+            }
+        };
+        if let Err(resp) = check_page_acl_edit(&state, &user_id, &slug) {
+            return resp;
+        }
+    }
+
     let Some(ref lock) = state.git_commit_lock else {
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "git not available" }))).into_response();
     };
@@ -2498,16 +2517,12 @@ pub async fn passkey_register_start_handler(
         return crate::web::rate_limit::too_many_requests(retry_after);
     }
 
-    let passkey_mgr = match crate::user::passkey::PasskeyManager::new(
-        "localhost",
-        "http://localhost:3000",
-        "zetl vault",
-    ) {
-        Ok(mgr) => mgr,
-        Err(e) => {
+    let passkey_mgr = match &state.passkey_mgr {
+        Some(mgr) => mgr.clone(),
+        None => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("failed to initialize passkey manager: {e}"),
+                "passkey manager not available".to_string(),
             )
                 .into_response();
         }
@@ -2563,16 +2578,12 @@ pub async fn passkey_register_finish_handler(
         return crate::web::rate_limit::too_many_requests(retry_after);
     }
 
-    let passkey_mgr = match crate::user::passkey::PasskeyManager::new(
-        "localhost",
-        "http://localhost:3000",
-        "zetl vault",
-    ) {
-        Ok(mgr) => mgr,
-        Err(e) => {
+    let passkey_mgr = match &state.passkey_mgr {
+        Some(mgr) => mgr.clone(),
+        None => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("failed to initialize passkey manager: {e}"),
+                "passkey manager not available".to_string(),
             )
                 .into_response();
         }
@@ -2652,6 +2663,7 @@ pub struct RecoveryShowParams {
 /// the user profile, and the phrase is rendered once (never stored server-side).
 pub async fn recovery_show_handler(
     State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
     Query(params): Query<RecoveryShowParams>,
 ) -> Response {
     let vault_root = &*state.vault_root;
@@ -2664,6 +2676,21 @@ pub async fn recovery_show_handler(
     let user_id = params.user_id.as_deref().unwrap_or("");
     if user_id.is_empty() {
         return (StatusCode::BAD_REQUEST, "missing user_id parameter").into_response();
+    }
+
+    // In collab mode, require authentication and verify the caller is requesting
+    // their own recovery phrase (prevents unauthenticated account takeover).
+    if state.collab {
+        match extract_session_user_id(&state, &headers) {
+            Some(session_uid) if session_uid == user_id => { /* ok */ }
+            Some(_) => {
+                return (StatusCode::FORBIDDEN, "cannot access another user's recovery phrase")
+                    .into_response();
+            }
+            None => {
+                return (StatusCode::UNAUTHORIZED, "authentication required").into_response();
+            }
+        }
     }
 
     // One-time serve: reject if mnemonic was already shown for this user (REQ-020-056).
@@ -5373,6 +5400,13 @@ mod tests {
             crdt_store: crate::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
             wal_store: Arc::new(crate::web::wal::WalStore::new(vault_root)),
             pending_writes: crate::web::fs_watch::PendingWrites::new(),
+            passkey_mgr: crate::user::passkey::PasskeyManager::new(
+                "localhost",
+                "http://localhost:3000",
+                "zetl vault",
+            )
+            .ok()
+            .map(Arc::new),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

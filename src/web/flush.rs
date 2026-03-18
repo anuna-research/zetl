@@ -366,6 +366,7 @@ mod tests {
             crdt_store: CrdtDocStore::new(vault_root.clone()),
             wal_store: Arc::new(crate::web::wal::WalStore::new(&vault_root)),
             pending_writes: crate::web::fs_watch::PendingWrites::new(),
+            passkey_mgr: None,
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

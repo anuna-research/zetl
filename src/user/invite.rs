@@ -177,8 +177,9 @@ pub fn generate_invitation(
 
     let jwt = encode_jwt(&signing_key, &claims)?;
 
-    // Record the nonce
-    record_nonce(vault_root, &nonce, exp)?;
+    // NOTE: Do NOT record the nonce here — nonces are only marked as used
+    // when the invitation is accepted (mark_nonce_used).  Recording at
+    // generation time would make every fresh invite appear "already used".
 
     Ok((jwt, nonce))
 }
@@ -586,7 +587,8 @@ mod tests {
     fn test_nonce_tracking() {
         let tmp = TempDir::new().unwrap();
 
-        // Generate invitation records the nonce
+        // Generate invitation does NOT record the nonce (nonces are only
+        // marked as used when the invitation is accepted).
         let (_, nonce) = generate_invitation(
             tmp.path(),
             "alice-a1b2c3d4",
@@ -596,8 +598,13 @@ mod tests {
         )
         .unwrap();
 
-        assert!(is_nonce_used(tmp.path(), &nonce).unwrap());
+        // Nonce should not be recorded at generation time.
+        assert!(!is_nonce_used(tmp.path(), &nonce).unwrap());
         assert!(!is_nonce_used(tmp.path(), "nonexistent").unwrap());
+
+        // Only after explicit mark_nonce_used should it be flagged.
+        mark_nonce_used(tmp.path(), &nonce, 9999999999).unwrap();
+        assert!(is_nonce_used(tmp.path(), &nonce).unwrap());
     }
 
     #[test]
@@ -636,8 +643,8 @@ mod tests {
                 .unwrap();
         assert_ne!(n1, n2);
 
-        // Both nonces should be tracked
-        assert!(is_nonce_used(tmp.path(), &n1).unwrap());
-        assert!(is_nonce_used(tmp.path(), &n2).unwrap());
+        // Nonces are NOT tracked at generation time — only at acceptance.
+        assert!(!is_nonce_used(tmp.path(), &n1).unwrap());
+        assert!(!is_nonce_used(tmp.path(), &n2).unwrap());
     }
 }
