@@ -4,25 +4,25 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 337,
-    "deletions": 10,
+    "insertions": 331,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/acl.rs",
-      "src/scanner.rs"
+      "src/web/fs_watch.rs",
+      "src/web/ws.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-spl-sandbox-changes",
-      "content": "Modified 3 files (+337, -10): .hence/context-manifest.json, src/acl.rs, src/scanner.rs",
+      "key": "task-crdt-reconcile-changes",
+      "content": "Modified 3 files (+331, -7): .hence/context-manifest.json, src/web/fs_watch.rs, src/web/ws.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/spl-sandbox-v1",
-  "evaluated_at": "2026-03-18T14:05:23Z",
+  "branch_name": "hence/crdt-reconcile-v1",
+  "evaluated_at": "2026-03-18T14:12:41Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
