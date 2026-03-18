@@ -16,6 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const COLLAB_DIR: &str = ".zetl/collab";
 const SERVER_KEY_FILE: &str = "server.key";
 const USED_NONCES_FILE: &str = "used-nonces.json";
+const PENDING_INVITES_FILE: &str = "pending-invites.json";
 
 /// Default invitation expiry: 72 hours.
 const DEFAULT_EXPIRY_SECS: u64 = 72 * 60 * 60;
@@ -293,6 +294,113 @@ fn load_used_nonces(vault_root: &Path) -> Result<Vec<UsedNonce>> {
 /// Build a full invitation URL.
 pub fn invitation_url(host: &str, port: u16, token: &str) -> String {
     format!("http://{host}:{port}/auth/accept?token={token}")
+}
+
+// ── Pending invitations ──────────────────────────────────────────────────
+
+/// A pending invitation record stored in `.zetl/collab/pending-invites.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingInvitation {
+    /// The nonce (unique identifier for this invitation).
+    pub nonce: String,
+    /// The JWT token string.
+    pub token: String,
+    /// Inviter user ID.
+    pub inviter_id: String,
+    /// Inviter display name.
+    pub inviter_name: String,
+    /// Granted role.
+    pub role: String,
+    /// Optional page scope.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pages: Option<String>,
+    /// Expiry as Unix timestamp.
+    pub exp: u64,
+    /// Whether this invitation has been revoked.
+    #[serde(default)]
+    pub revoked: bool,
+}
+
+/// Return the pending-invites file path.
+fn pending_invites_path(vault_root: &Path) -> PathBuf {
+    collab_dir(vault_root).join(PENDING_INVITES_FILE)
+}
+
+/// Save a pending invitation record.
+pub fn save_pending_invitation(vault_root: &Path, invite: &PendingInvitation) -> Result<()> {
+    let mut invites = load_pending_invitations(vault_root)?;
+    invites.push(invite.clone());
+    write_pending_invitations(vault_root, &invites)
+}
+
+/// Load all pending invitations, pruning expired entries (24h past expiry).
+pub fn load_pending_invitations(vault_root: &Path) -> Result<Vec<PendingInvitation>> {
+    let path = pending_invites_path(vault_root);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read pending invites: {}", path.display()))?;
+    let invites: Vec<PendingInvitation> =
+        serde_json::from_str(&content).context("failed to parse pending-invites.json")?;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let cutoff = now.saturating_sub(24 * 60 * 60);
+
+    Ok(invites.into_iter().filter(|i| i.exp > cutoff).collect())
+}
+
+/// Write pending invitations to disk.
+fn write_pending_invitations(vault_root: &Path, invites: &[PendingInvitation]) -> Result<()> {
+    let dir = collab_dir(vault_root);
+    fs::create_dir_all(&dir)?;
+    let path = pending_invites_path(vault_root);
+    let json =
+        serde_json::to_string_pretty(invites).context("failed to serialize pending invites")?;
+    fs::write(&path, json)
+        .with_context(|| format!("failed to write pending invites: {}", path.display()))?;
+    Ok(())
+}
+
+/// Revoke a pending invitation by nonce. Returns true if found and revoked.
+pub fn revoke_invitation(vault_root: &Path, nonce: &str) -> Result<bool> {
+    let mut invites = load_pending_invitations(vault_root)?;
+    let mut found = false;
+    for invite in &mut invites {
+        if invite.nonce == nonce && !invite.revoked {
+            invite.revoked = true;
+            found = true;
+            break;
+        }
+    }
+    if found {
+        write_pending_invitations(vault_root, &invites)?;
+        // Also mark the nonce as used so the token can't be accepted
+        let exp = invites
+            .iter()
+            .find(|i| i.nonce == nonce)
+            .map(|i| i.exp)
+            .unwrap_or(0);
+        mark_nonce_used(vault_root, nonce, exp)?;
+    }
+    Ok(found)
+}
+
+/// Mark a pending invitation as consumed (accepted). Returns true if found.
+pub fn mark_invitation_consumed(vault_root: &Path, nonce: &str) -> Result<bool> {
+    let mut invites = load_pending_invitations(vault_root)?;
+    let pos = invites.iter().position(|i| i.nonce == nonce);
+    if let Some(idx) = pos {
+        invites.remove(idx);
+        write_pending_invitations(vault_root, &invites)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 #[cfg(test)]

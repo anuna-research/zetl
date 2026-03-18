@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block title %}Invite Collaborator — {{ vault_name }}{% endblock %}
+
+{% block styles %}
+  .ai-container {
+    max-width: 42rem;
+    margin: 2rem auto;
+    padding: 2rem;
+  }
+  .ai-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  .ai-header-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: oklch(var(--p) / 0.12);
+    color: oklch(var(--p));
+    flex-shrink: 0;
+  }
+  .ai-header-icon svg { width: 1.25rem; height: 1.25rem; }
+  .ai-section {
+    background: oklch(var(--b2));
+    border: 1px solid oklch(var(--bc) / 0.1);
+    border-radius: 0.5rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .ai-section h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: oklch(var(--bc) / 0.7);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+  }
+  .ai-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+  }
+  .ai-field label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: oklch(var(--bc) / 0.7);
+    margin-bottom: 0.375rem;
+  }
+  .ai-field select,
+  .ai-field input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: oklch(var(--b1));
+    border: 1px solid oklch(var(--bc) / 0.15);
+    border-radius: 0.375rem;
+    color: oklch(var(--bc));
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .ai-field select:focus,
+  .ai-field input:focus {
+    border-color: oklch(var(--p) / 0.5);
+  }
+  .ai-field .ai-hint {
+    font-size: 0.75rem;
+    color: oklch(var(--bc) / 0.4);
+    margin-top: 0.25rem;
+  }
+  .ai-submit-btn {
+    padding: 0.625rem 1.25rem;
+    background: oklch(var(--p));
+    color: oklch(var(--pc));
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    align-self: flex-start;
+  }
+  .ai-submit-btn:hover { opacity: 0.9; }
+  .ai-submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .ai-result {
+    background: oklch(var(--su) / 0.08);
+    border: 1px solid oklch(var(--su) / 0.25);
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    display: none;
+  }
+  .ai-result-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: oklch(var(--su));
+    margin-bottom: 0.5rem;
+  }
+  .ai-result-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .ai-result-url {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background: oklch(var(--b1));
+    border: 1px solid oklch(var(--bc) / 0.1);
+    border-radius: 0.375rem;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: oklch(var(--bc));
+    word-break: break-all;
+    user-select: all;
+  }
+  .ai-copy-btn {
+    padding: 0.5rem 0.75rem;
+    background: oklch(var(--b2));
+    border: 1px solid oklch(var(--bc) / 0.15);
+    border-radius: 0.375rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: oklch(var(--bc));
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .ai-copy-btn:hover { background: oklch(var(--bc) / 0.08); }
+
+  .ai-error {
+    background: oklch(var(--er) / 0.1);
+    border: 1px solid oklch(var(--er) / 0.3);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: oklch(var(--er));
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    display: none;
+  }
+
+  .ai-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .ai-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid oklch(var(--bc) / 0.12);
+    color: oklch(var(--bc) / 0.5);
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .ai-table td {
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid oklch(var(--bc) / 0.06);
+    color: oklch(var(--bc));
+  }
+  .ai-table tr:last-child td { border-bottom: none; }
+  .ai-role-badge {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+  .ai-role-reader { background: oklch(var(--in) / 0.15); color: oklch(var(--in)); }
+  .ai-role-editor { background: oklch(var(--su) / 0.15); color: oklch(var(--su)); }
+  .ai-role-admin  { background: oklch(var(--wa) / 0.15); color: oklch(var(--wa)); }
+  .ai-status-active {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: oklch(var(--su) / 0.12);
+    color: oklch(var(--su));
+  }
+  .ai-status-revoked {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: oklch(var(--er) / 0.12);
+    color: oklch(var(--er));
+  }
+  .ai-revoke-btn {
+    padding: 0.25rem 0.5rem;
+    background: transparent;
+    border: 1px solid oklch(var(--er) / 0.3);
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    color: oklch(var(--er));
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .ai-revoke-btn:hover {
+    background: oklch(var(--er) / 0.08);
+  }
+  .ai-empty {
+    text-align: center;
+    padding: 1.5rem;
+    color: oklch(var(--bc) / 0.4);
+    font-size: 0.85rem;
+  }
+  .ai-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.85rem;
+    color: oklch(var(--bc) / 0.5);
+    text-decoration: none;
+    margin-top: 0.5rem;
+  }
+  .ai-back:hover { color: oklch(var(--bc) / 0.8); }
+{% endblock %}
+
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+<div class="ai-container">
+  <div class="ai-header">
+    <div class="ai-header-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z"/>
+      </svg>
+    </div>
+    <div>
+      <h2 style="font-size: 1.25rem; font-weight: 700; margin: 0;">Invite Collaborator</h2>
+      <p style="font-size: 0.8rem; color: oklch(var(--bc) / 0.5); margin: 0;">Generate an invitation link for {{ vault_name }}</p>
+    </div>
+  </div>
+
+  <div id="ai-error" class="ai-error"></div>
+  <div id="ai-result" class="ai-result">
+    <div class="ai-result-label">Invitation link created</div>
+    <div class="ai-result-link">
+      <span id="ai-result-url" class="ai-result-url"></span>
+      <button type="button" class="ai-copy-btn" id="ai-copy-btn">Copy</button>
+    </div>
+  </div>
+
+  <div class="ai-section">
+    <h3>New Invitation</h3>
+    <form id="ai-form" class="ai-form">
+      <div class="ai-field">
+        <label for="ai-role">Role</label>
+        <select id="ai-role" name="role">
+          <option value="reader">Reader — view pages only</option>
+          <option value="editor" selected>Editor — view and edit pages</option>
+          <option value="admin">Admin — full control</option>
+        </select>
+      </div>
+      <div class="ai-field">
+        <label for="ai-pages">Page Scope <span style="font-weight: 400; opacity: 0.6;">(optional)</span></label>
+        <input type="text" id="ai-pages" name="pages" placeholder="e.g. projects/** or leave blank for all pages">
+        <div class="ai-hint">Glob pattern to restrict access. Leave empty to grant access to all pages.</div>
+      </div>
+      <div class="ai-field">
+        <label for="ai-expiry">Expires In</label>
+        <select id="ai-expiry" name="expiry_hours">
+          <option value="24">24 hours</option>
+          <option value="72" selected>72 hours (default)</option>
+          <option value="168">7 days</option>
+        </select>
+      </div>
+      <button type="submit" class="ai-submit-btn" id="ai-submit">Generate Invitation Link</button>
+    </form>
+  </div>
+
+  <div class="ai-section">
+    <h3>Pending Invitations</h3>
+    {% if invitations | length > 0 %}
+    <table class="ai-table">
+      <thead>
+        <tr>
+          <th>Role</th>
+          <th>Scope</th>
+          <th>Expires</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="ai-invites-body">
+        {% for inv in invitations %}
+        <tr id="ai-row-{{ inv.nonce }}">
+          <td><span class="ai-role-badge ai-role-{{ inv.role }}">{{ inv.role }}</span></td>
+          <td style="font-family: ui-monospace, monospace; font-size: 0.8rem;">{{ inv.pages if inv.pages else "all pages" }}</td>
+          <td style="font-size: 0.8rem;">{{ inv.expires_display }}</td>
+          <td>
+            {% if inv.revoked %}
+              <span class="ai-status-revoked">revoked</span>
+            {% else %}
+              <span class="ai-status-active">active</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if not inv.revoked %}
+              <button type="button" class="ai-revoke-btn" data-nonce="{{ inv.nonce }}" onclick="revokeInvite(this)">Revoke</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="ai-empty">No pending invitations</div>
+    {% endif %}
+  </div>
+
+  <a class="ai-back" href="/">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+    Back to vault
+  </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var form = document.getElementById('ai-form');
+  var btn = document.getElementById('ai-submit');
+  var errorEl = document.getElementById('ai-error');
+  var resultEl = document.getElementById('ai-result');
+  var urlEl = document.getElementById('ai-result-url');
+  var copyBtn = document.getElementById('ai-copy-btn');
+  var csrfToken = '{{ csrf_token }}';
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    btn.disabled = true;
+    btn.textContent = 'Generating…';
+    errorEl.style.display = 'none';
+    resultEl.style.display = 'none';
+
+    var body = {
+      role: form.role.value,
+      pages: form.pages.value.trim() || null,
+      expiry_hours: parseInt(form.expiry_hours.value, 10)
+    };
+
+    fetch('/_admin/invite', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
+      },
+      body: JSON.stringify(body)
+    })
+    .then(function(r) {
+      if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      return r.json();
+    })
+    .then(function(data) {
+      urlEl.textContent = data.invite_url;
+      resultEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Generate Invitation Link';
+      // Reload to show new invitation in the table
+      setTimeout(function(){ location.reload(); }, 100);
+    })
+    .catch(function(err) {
+      errorEl.textContent = err.message || 'Failed to generate invitation.';
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Generate Invitation Link';
+    });
+  });
+
+  copyBtn.addEventListener('click', function() {
+    var url = urlEl.textContent;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(function() {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(function(){ copyBtn.textContent = 'Copy'; }, 2000);
+      });
+    } else {
+      var range = document.createRange();
+      range.selectNodeContents(urlEl);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.execCommand('copy');
+      copyBtn.textContent = 'Copied!';
+      setTimeout(function(){ copyBtn.textContent = 'Copy'; }, 2000);
+    }
+  });
+})();
+
+function revokeInvite(el) {
+  var nonce = el.getAttribute('data-nonce');
+  if (!confirm('Revoke this invitation? The link will no longer work.')) return;
+
+  var csrfToken = '{{ csrf_token }}';
+  fetch('/_admin/invite/revoke', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': csrfToken
+    },
+    body: JSON.stringify({ nonce: nonce })
+  })
+  .then(function(r) {
+    if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+    location.reload();
+  })
+  .catch(function(err) {
+    alert('Failed to revoke: ' + (err.message || 'unknown error'));
+  });
+}
+</script>
+{% endblock %}

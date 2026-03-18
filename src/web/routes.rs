@@ -2103,6 +2103,9 @@ pub async fn accept_invite_submit_handler(
         eprintln!("warning: failed to mark nonce as used: {e}");
     }
 
+    // Remove from pending invitations list
+    let _ = crate::user::invite::mark_invitation_consumed(vault_root, &claims.nonce);
+
     // Issue a session for the new user
     let token = state.sessions.create(&user_id);
     let cookie = crate::web::session::session_cookie(&token);
@@ -2195,6 +2198,195 @@ pub async fn bootstrap_handler(State(state): State<WebState>) -> Response {
         None => (
             StatusCode::CONFLICT,
             "no owner profile found — run with --collab --init-owner first",
+        )
+            .into_response(),
+    }
+}
+
+// ── Admin invitation management (/_admin/invite) ────────────────────────
+
+/// GET /_admin/invite — render the admin invitation management page.
+pub async fn admin_invite_handler(
+    State(state): State<WebState>,
+    session: crate::web::session::SessionRole,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    // Require Admin role
+    if let Err(status) = crate::web::session::require_role(session.role, crate::user::Role::Admin) {
+        return status.into_response();
+    }
+
+    let vault_root = &*state.vault_root;
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    // Load pending invitations
+    let invitations = match crate::user::invite::load_pending_invitations(vault_root) {
+        Ok(invites) => invites,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to load invitations: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Convert to template-friendly JSON values
+    let inv_values: Vec<serde_json::Value> = invitations
+        .iter()
+        .filter(|i| i.exp > now) // only show non-expired
+        .map(|i| {
+            let remaining = i.exp.saturating_sub(now);
+            let expires_display = if remaining > 86400 {
+                format!("{} days", remaining / 86400)
+            } else if remaining > 3600 {
+                format!("{} hours", remaining / 3600)
+            } else if remaining > 60 {
+                format!("{} minutes", remaining / 60)
+            } else {
+                "< 1 minute".to_string()
+            };
+            serde_json::json!({
+                "nonce": i.nonce,
+                "role": i.role,
+                "pages": i.pages,
+                "expires_display": expires_display,
+                "revoked": i.revoked,
+            })
+        })
+        .collect();
+
+    // Get CSRF token from the session cookie
+    let csrf_token = crate::web::session::token_from_cookies(&headers)
+        .and_then(|t| state.sessions.csrf_token(&t))
+        .unwrap_or_default();
+
+    match state
+        .engine
+        .render_admin_invite(&vault_name, &csrf_token, &inv_values)
+    {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => {
+            eprintln!("{}", e.stderr_line("_admin/invite"));
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(e.to_error_html())).into_response()
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateInviteRequest {
+    pub role: String,
+    pub pages: Option<String>,
+    pub expiry_hours: Option<u64>,
+}
+
+/// POST /_admin/invite — generate a new invitation and return the link as JSON.
+pub async fn admin_invite_create_handler(
+    State(state): State<WebState>,
+    session: crate::web::session::SessionRole,
+    Json(body): Json<CreateInviteRequest>,
+) -> Response {
+    if let Err(status) = crate::web::session::require_role(session.role, crate::user::Role::Admin) {
+        return status.into_response();
+    }
+
+    let vault_root = &*state.vault_root;
+
+    // Validate role
+    let role = body.role.to_lowercase();
+    if !matches!(role.as_str(), "reader" | "editor" | "admin") {
+        return (StatusCode::BAD_REQUEST, "invalid role").into_response();
+    }
+
+    let pages = body.pages.as_deref().filter(|p| !p.is_empty());
+    let expiry_secs = body.expiry_hours.map(|h| h * 3600);
+
+    // Generate the invitation JWT
+    let (token, nonce) = match crate::user::invite::generate_invitation(
+        vault_root,
+        &session.user_id,
+        &role,
+        pages,
+        expiry_secs,
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to generate invitation: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    // Look up inviter display name
+    let inviter_name = crate::user::load_profile(vault_root, &session.user_id)
+        .ok()
+        .flatten()
+        .map(|p| p.name)
+        .unwrap_or_else(|| session.user_id.clone());
+
+    // Decode claims to get exp
+    let claims = crate::user::invite::decode_jwt(vault_root, &token).unwrap();
+
+    // Save pending invitation record
+    let pending = crate::user::invite::PendingInvitation {
+        nonce: nonce.clone(),
+        token: token.clone(),
+        inviter_id: session.user_id.clone(),
+        inviter_name,
+        role: role.clone(),
+        pages: pages.map(|s| s.to_string()),
+        exp: claims.exp,
+        revoked: false,
+    };
+    if let Err(e) = crate::user::invite::save_pending_invitation(vault_root, &pending) {
+        eprintln!("warning: failed to save pending invitation: {e}");
+    }
+
+    // Build invite URL (use the Host header or fall back to localhost)
+    let invite_url = format!("/auth/accept?token={token}");
+
+    Json(serde_json::json!({
+        "invite_url": invite_url,
+        "nonce": nonce,
+        "role": role,
+    }))
+    .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RevokeInviteRequest {
+    pub nonce: String,
+}
+
+/// POST /_admin/invite/revoke — revoke a pending invitation.
+pub async fn admin_invite_revoke_handler(
+    State(state): State<WebState>,
+    session: crate::web::session::SessionRole,
+    Json(body): Json<RevokeInviteRequest>,
+) -> Response {
+    if let Err(status) = crate::web::session::require_role(session.role, crate::user::Role::Admin) {
+        return status.into_response();
+    }
+
+    let vault_root = &*state.vault_root;
+
+    match crate::user::invite::revoke_invitation(vault_root, &body.nonce) {
+        Ok(true) => Json(serde_json::json!({"ok": true})).into_response(),
+        Ok(false) => (StatusCode::NOT_FOUND, "invitation not found").into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to revoke invitation: {e}"),
         )
             .into_response(),
     }
