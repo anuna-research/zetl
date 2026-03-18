@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block title %}History: {{ page_title }} — zetl{% endblock %}
+
+{% block styles %}
+<style>
+  .history-entry {
+    border-left: 3px solid oklch(var(--b3));
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    border-radius: 0 0.375rem 0.375rem 0;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    cursor: pointer;
+  }
+  .history-entry:hover,
+  .history-entry.he-active {
+    background: oklch(var(--b2) / 0.5);
+    border-left-color: oklch(var(--p));
+  }
+  .he-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    opacity: 0.7;
+  }
+  .he-hash {
+    font-family: ui-monospace, monospace;
+    font-size: 0.75rem;
+    background: oklch(var(--b2));
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .he-author { font-weight: 600; }
+  .he-time { opacity: 0.6; }
+  .he-message {
+    margin-top: 0.25rem;
+    font-size: 0.9rem;
+  }
+  .diff-panel {
+    margin-top: 1.5rem;
+    border: 1px solid oklch(var(--b3));
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+  .diff-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: oklch(var(--b2));
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .diff-body {
+    max-height: 60vh;
+    overflow: auto;
+    padding: 0;
+    margin: 0;
+  }
+  .diff-body pre {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: ui-monospace, monospace;
+  }
+  .diff-line-add {
+    background: oklch(var(--su) / 0.15);
+    color: oklch(var(--su));
+  }
+  .diff-line-del {
+    background: oklch(var(--er) / 0.15);
+    color: oklch(var(--er));
+  }
+  .diff-line-ctx {
+    opacity: 0.7;
+  }
+  .draft-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: oklch(var(--wa) / 0.15);
+    color: oklch(var(--wa));
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .draft-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: oklch(var(--wa));
+    animation: pulse-dot 2s infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    opacity: 0.5;
+  }
+  .empty-state svg {
+    margin: 0 auto 1rem;
+    opacity: 0.3;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
+
+  {# Breadcrumbs #}
+  <nav class="text-sm breadcrumbs mb-4">
+    <ul>
+      <li><a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a></li>
+      {%- for crumb in breadcrumbs %}
+      <li><a href="{{ root_path }}{{ crumb.slug | safe }}/{{ index_file }}">{{ crumb.title }}</a></li>
+      {%- endfor %}
+      <li><a href="{{ root_path }}{{ page_slug | safe }}/">{{ page_title }}</a></li>
+      <li>History</li>
+    </ul>
+  </nav>
+
+  <div class="flex items-center gap-3 mb-6">
+    <h1 class="text-2xl font-bold flex-1">History: {{ page_title }}</h1>
+    {% if has_draft %}
+    <span class="draft-badge">Unsaved draft</span>
+    {% endif %}
+  </div>
+
+  <div id="history-list"></div>
+
+  <div id="diff-panel" class="diff-panel" style="display:none;">
+    <div class="diff-header">
+      <span id="diff-title">Diff</span>
+      <div class="flex gap-2">
+        <button class="btn btn-xs btn-outline" onclick="closeDiff()">Close</button>
+        <button class="btn btn-xs btn-warning" id="restore-btn" onclick="restoreCommit()">Restore this version</button>
+      </div>
+    </div>
+    <div class="diff-body">
+      <pre id="diff-content"></pre>
+    </div>
+  </div>
+
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var HISTORY = [];
+  try { HISTORY = JSON.parse({{ history_json | tojson }}); } catch(e) {}
+  var ROOT = '{{ root_path | safe }}';
+  var SLUG = '{{ page_slug | safe }}';
+  var activeCommit = null;
+
+  function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function relTime(ts) {
+    var now = Math.floor(Date.now() / 1000);
+    var age = now - ts;
+    if (age < 60) return 'just now';
+    if (age < 3600) return Math.floor(age / 60) + ' min ago';
+    if (age < 86400) return Math.floor(age / 3600) + 'h ago';
+    if (age < 2592000) return Math.floor(age / 86400) + 'd ago';
+    var d = new Date(ts * 1000);
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function fullDate(ts) {
+    var d = new Date(ts * 1000);
+    return d.toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function renderList() {
+    var el = document.getElementById('history-list');
+    if (!HISTORY.length) {
+      el.innerHTML = '<div class="empty-state">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>' +
+        '<p>No git history available for this page.</p>' +
+        '<p class="text-xs mt-1">History is recorded when pages are saved with git enabled.</p>' +
+        '</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < HISTORY.length; i++) {
+      var entry = HISTORY[i];
+      var isFirst = (i === 0);
+      html += '<div class="history-entry' + (isFirst ? ' he-active' : '') + '" data-commit="' + esc(entry.full_oid) + '" onclick="showDiff(\'' + esc(entry.full_oid) + '\', this)">';
+      html += '<div class="he-meta">';
+      html += '<span class="he-hash">' + esc(entry.commit_id) + '</span>';
+      html += '<span class="he-author">' + esc(entry.author) + '</span>';
+      html += '<span class="he-time" title="' + fullDate(entry.timestamp) + '">' + relTime(entry.timestamp) + '</span>';
+      if (isFirst) html += '<span class="badge badge-sm badge-primary badge-outline">latest</span>';
+      html += '</div>';
+      html += '<div class="he-message">' + esc(entry.summary) + '</div>';
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  window.showDiff = function(commitId, el) {
+    // Update active state
+    document.querySelectorAll('.history-entry').forEach(function(e) {
+      e.classList.remove('he-active');
+    });
+    if (el) el.classList.add('he-active');
+
+    activeCommit = commitId;
+    var panel = document.getElementById('diff-panel');
+    var content = document.getElementById('diff-content');
+    var title = document.getElementById('diff-title');
+    var restoreBtn = document.getElementById('restore-btn');
+
+    // Find entry for title
+    var entry = HISTORY.find(function(h) { return h.full_oid === commitId; });
+    title.textContent = 'Diff: ' + (entry ? entry.commit_id : commitId.substring(0, 7));
+
+    // Hide restore for latest commit
+    var isLatest = HISTORY.length > 0 && HISTORY[0].full_oid === commitId;
+    restoreBtn.style.display = isLatest ? 'none' : '';
+
+    content.textContent = 'Loading diff...';
+    panel.style.display = '';
+
+    var csrfCookie = document.cookie.split(';').map(function(c){return c.trim();}).find(function(c){return c.startsWith('zetl_csrf=');});
+    var csrfVal = csrfCookie ? csrfCookie.split('=')[1] : '';
+
+    fetch(ROOT + 'api/history/file-diff?commit=' + encodeURIComponent(commitId) + '&slug=' + encodeURIComponent(SLUG), {
+      headers: { 'X-CSRF-Token': csrfVal }
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.diff) {
+          content.innerHTML = '<span style="opacity:0.5">No diff available (initial commit or binary file).</span>';
+          return;
+        }
+        var lines = data.diff.split('\n');
+        var html = '';
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i];
+          var cls = '';
+          if (line.startsWith('+')) cls = 'diff-line-add';
+          else if (line.startsWith('-')) cls = 'diff-line-del';
+          else cls = 'diff-line-ctx';
+          html += '<div class="' + cls + '">' + esc(line) + '</div>';
+        }
+        content.innerHTML = html;
+      })
+      .catch(function(err) {
+        content.textContent = 'Error loading diff: ' + err;
+      });
+  };
+
+  window.closeDiff = function() {
+    document.getElementById('diff-panel').style.display = 'none';
+    activeCommit = null;
+    document.querySelectorAll('.history-entry').forEach(function(e) {
+      e.classList.remove('he-active');
+    });
+  };
+
+  window.restoreCommit = function() {
+    if (!activeCommit) return;
+    var entry = HISTORY.find(function(h) { return h.full_oid === activeCommit; });
+    var label = entry ? entry.commit_id + ' (' + entry.summary + ')' : activeCommit.substring(0, 7);
+    if (!confirm('Restore page to version ' + label + '?\n\nThis will overwrite the current content and create a new commit.')) return;
+
+    var btn = document.getElementById('restore-btn');
+    btn.disabled = true;
+    btn.textContent = 'Restoring...';
+
+    var csrfCookie = document.cookie.split(';').map(function(c){return c.trim();}).find(function(c){return c.startsWith('zetl_csrf=');});
+    var csrfVal = csrfCookie ? csrfCookie.split('=')[1] : '';
+
+    fetch(ROOT + 'api/history/restore', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfVal
+      },
+      body: JSON.stringify({ commit: activeCommit, slug: SLUG })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) {
+          window.location.reload();
+        } else {
+          alert('Restore failed: ' + (data.error || 'unknown error'));
+          btn.disabled = false;
+          btn.textContent = 'Restore this version';
+        }
+      })
+      .catch(function(err) {
+        alert('Restore failed: ' + err);
+        btn.disabled = false;
+        btn.textContent = 'Restore this version';
+      });
+  };
+
+  renderList();
+
+  // Auto-show diff for latest commit
+  if (HISTORY.length > 0) {
+    var first = document.querySelector('.history-entry');
+    showDiff(HISTORY[0].full_oid, first);
+  }
+})();
+</script>
+{% endblock %}
