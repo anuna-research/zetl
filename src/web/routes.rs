@@ -4718,8 +4718,20 @@ pub async fn api_comments_get_handler(
         }
     }
 
+    // Load server key for HMAC verification (REQ-020-066)
+    let server_key = match crate::user::invite::load_or_create_server_key(&state.vault_root) {
+        Ok(k) => k.to_bytes().to_vec(),
+        Err(e) => {
+            eprintln!("error loading server key for comment verification: {e}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "failed to verify comments").into_response();
+        }
+    };
+
     match crate::user::comment::load_comments(&state.vault_root, slug) {
-        Ok(comments) => ApiResponse::ok(serde_json::json!({ "comments": comments })).into_response(),
+        Ok(comments) => {
+            let verified = crate::user::comment::verify_comments(&server_key, &comments);
+            ApiResponse::ok(serde_json::json!({ "comments": verified })).into_response()
+        }
         Err(e) => {
             eprintln!("error loading comments for {slug}: {e}");
             (StatusCode::INTERNAL_SERVER_ERROR, "failed to load comments").into_response()
@@ -4760,7 +4772,16 @@ pub async fn api_comments_post_handler(
         }
     }
 
-    match crate::user::comment::append_comment(&state.vault_root, slug, &session.user_id, text) {
+    // Load server key for HMAC signing (REQ-020-066)
+    let server_key = match crate::user::invite::load_or_create_server_key(&state.vault_root) {
+        Ok(k) => k.to_bytes().to_vec(),
+        Err(e) => {
+            eprintln!("error loading server key for comment HMAC: {e}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "failed to sign comment").into_response();
+        }
+    };
+
+    match crate::user::comment::append_comment(&state.vault_root, slug, &session.user_id, text, &server_key) {
         Ok(comment) => {
             // Broadcast to all connected WebSocket clients viewing this page
             let room = state.ws_hub.room(slug);

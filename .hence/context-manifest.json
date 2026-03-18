@@ -1,12 +1,12 @@
 {
-  "task_id": "crdt-history",
+  "task_id": "comment-integrity",
   "token_budget": 8000,
-  "tokens_used": 329,
+  "tokens_used": 334,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement CRDT-aware history: X-CRDT-Dirty/X-CRDT-Last-Flush headers, merkle hash for API conflict detection with active CRDT",
-      "token_cost": 31,
+      "content": "Implement comment HMAC integrity: HMAC-SHA256(server_key, user_id||text||at) per comment; verify on read; (unverified) badge on tampered comments",
+      "token_cost": 36,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T12:47:53Z"
+  "constructed_at": "2026-03-18T12:57:30Z"
 }
