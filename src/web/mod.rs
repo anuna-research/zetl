@@ -21,6 +21,7 @@ use crate::types::ParsedFile;
 
 use self::engine::TemplateEngine;
 use self::session::SessionStore;
+use crate::user::recovery::RecoveryChallengeStore;
 
 /// Snapshot of vault data that can be swapped after re-indexing.
 pub struct VaultData {
@@ -60,6 +61,8 @@ pub struct WebState {
     pub verbose: bool,
     /// In-memory session store for authenticated users.
     pub sessions: SessionStore,
+    /// In-memory recovery challenge store (CON-020-002).
+    pub recovery_challenges: Arc<RecoveryChallengeStore>,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]
@@ -164,6 +167,10 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
         .route(
             "/api/passkey/register/finish",
             post(routes::passkey_register_finish_handler),
+        )
+        .route(
+            "/auth/recover",
+            get(routes::recover_challenge_handler).post(routes::recover_verify_handler),
         )
         .route(
             "/{*path}",

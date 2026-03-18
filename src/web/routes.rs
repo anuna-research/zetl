@@ -7,6 +7,7 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
 
+use base64::Engine as _;
 use crate::hooks;
 use crate::hooks::context::{build_hook_context, HookSaved};
 use crate::scanner::{body_text_ranges, page_slug_from_path};
@@ -1618,6 +1619,159 @@ pub struct PasskeyApiRequest {
     pub user_id: String,
 }
 
+// -- Recovery endpoints (CON-020-002, REQ-020-002) --
+
+#[derive(Debug, Deserialize)]
+pub struct RecoverQuery {
+    pub user: String,
+}
+
+/// GET /auth/recover?user=<id> — issue a 256-bit recovery challenge.
+pub async fn recover_challenge_handler(
+    State(state): State<WebState>,
+    Query(query): Query<RecoverQuery>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+    let user_id = &query.user;
+
+    // Verify user exists and has a recovery_pubkey
+    match crate::user::load_profile(vault_root, user_id) {
+        Ok(Some(profile)) if !profile.recovery_pubkey.is_empty() => {}
+        Ok(Some(_)) => {
+            return (StatusCode::BAD_REQUEST, "user has no recovery key").into_response();
+        }
+        Ok(None) => {
+            return (StatusCode::NOT_FOUND, "user not found").into_response();
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to load profile: {e}"),
+            )
+                .into_response();
+        }
+    }
+
+    match state.recovery_challenges.issue_challenge(user_id) {
+        Ok(challenge) => {
+            let challenge_b64 =
+                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(challenge);
+            let body = serde_json::json!({ "challenge": challenge_b64 });
+            (StatusCode::OK, Json(body)).into_response()
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("too many") {
+                (StatusCode::TOO_MANY_REQUESTS, msg).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, msg).into_response()
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RecoverRequest {
+    pub user_id: String,
+    pub challenge_response: String,
+}
+
+/// POST /auth/recover — verify signed challenge, issue session, redirect to passkey registration.
+pub async fn recover_verify_handler(
+    State(state): State<WebState>,
+    Json(body): Json<RecoverRequest>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+
+    // Load user profile
+    let profile = match crate::user::load_profile(vault_root, &body.user_id) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return (StatusCode::NOT_FOUND, "user not found").into_response();
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to load profile: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    if profile.recovery_pubkey.is_empty() {
+        return (StatusCode::BAD_REQUEST, "user has no recovery key").into_response();
+    }
+
+    // Decode the challenge_response: base64url(challenge || signature)
+    // challenge = 32 bytes, signature = 64 bytes → 96 bytes total
+    let response_bytes = match base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(&body.challenge_response)
+    {
+        Ok(b) => b,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, "invalid base64url encoding").into_response();
+        }
+    };
+
+    if response_bytes.len() != 96 {
+        return (
+            StatusCode::BAD_REQUEST,
+            "challenge_response must be 96 bytes (32 challenge + 64 signature)",
+        )
+            .into_response();
+    }
+
+    let mut challenge = [0u8; 32];
+    challenge.copy_from_slice(&response_bytes[..32]);
+    let signature = &response_bytes[32..];
+
+    // Consume the challenge from the store
+    match state.recovery_challenges.consume_challenge(&body.user_id, &challenge) {
+        Ok(crate::user::recovery::ChallengeResult::Valid) => {}
+        Ok(crate::user::recovery::ChallengeResult::Expired) => {
+            return (StatusCode::GONE, "challenge expired").into_response();
+        }
+        Ok(crate::user::recovery::ChallengeResult::NotFound) => {
+            return (StatusCode::BAD_REQUEST, "unknown challenge").into_response();
+        }
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+        }
+    }
+
+    // Verify the signature against the stored recovery pubkey
+    match crate::user::recovery::verify_challenge(
+        &profile.recovery_pubkey,
+        &challenge,
+        signature,
+    ) {
+        Ok(true) => {
+            // Issue session and redirect to passkey registration
+            let token = state.sessions.create(&body.user_id);
+            let cookie = crate::web::session::session_cookie(&token);
+            (
+                StatusCode::OK,
+                [
+                    (header::SET_COOKIE, cookie),
+                    (header::CONTENT_TYPE, "application/json".to_string()),
+                ],
+                serde_json::json!({
+                    "status": "ok",
+                    "redirect": "/passkey/register"
+                })
+                .to_string(),
+            )
+                .into_response()
+        }
+        Ok(false) => (StatusCode::UNAUTHORIZED, "invalid signature").into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("verification error: {e}"),
+        )
+            .into_response(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1653,6 +1807,9 @@ mod tests {
             theme: theme.to_string(),
             verbose: false,
             sessions: crate::web::session::SessionStore::new(),
+            recovery_challenges: Arc::new(
+                crate::user::recovery::RecoveryChallengeStore::new(),
+            ),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

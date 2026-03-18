@@ -4779,6 +4779,9 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         theme: theme.to_string(),
         verbose: cli.verbose > 0,
         sessions: zetl::web::session::SessionStore::new(),
+        recovery_challenges: std::sync::Arc::new(
+            zetl::user::recovery::RecoveryChallengeStore::new(),
+        ),
         #[cfg(feature = "semantic")]
         vector_index,
     };
