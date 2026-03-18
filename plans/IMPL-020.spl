@@ -1,0 +1,956 @@
+;; ============================================================
+;; IMPL-020: Multi-User Collaborative Editing
+;; Implementation plan for SPEC-020
+;; ============================================================
+
+(meta plan
+  (id "IMPL-020")
+  (title "Multi-User Collaborative Editing")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-03-18")
+  (author "agent:architect")
+  (spec "SPEC-020")
+  (description "Implement multi-user collab editing for zetl serve: passkey auth, BIP39 recovery, SPL-based ACL, git auto-commit, Peritext CRDT, agent integration, external edit reconciliation, UX layer, and security hardening"))
+
+;; ============================================================
+;; Agents
+;; ============================================================
+
+(given agent-backend-available)
+(given agent-frontend-available)
+(given agent-security-available)
+
+;; ============================================================
+;; Phase 1: Identity Foundation
+;; REQ-020-001 through REQ-020-005
+;; ============================================================
+
+(given task-user-profiles)
+(given no-deps-user-profiles)
+(meta task-user-profiles
+  (description "Implement user profile storage in .zetl/users/<id>/profile.json with WebAuthn credential and recovery pubkey fields")
+  (acceptance "User profile created, read, serialized via serde; credential.json and recovery.json written; CON-020-001 schema validated")
+  (phase "1")
+  (reqs "REQ-020-001 REQ-020-002 REQ-020-005"))
+
+(given task-passkey-auth)
+(meta task-passkey-auth
+  (description "Implement WebAuthn passkey registration and authentication via webauthn-rs: challenge generation, credential storage, verification")
+  (acceptance "TEST-020-001 passes; multiple passkeys per user; registration and login flows work end-to-end")
+  (phase "1")
+  (reqs "REQ-020-001"))
+
+(given task-bip39-recovery)
+(meta task-bip39-recovery
+  (description "Implement BIP39 mnemonic generation (128-bit), SLIP-0010 ed25519 derivation, recovery challenge-response flow per CON-020-002")
+  (acceptance "TEST-020-002 passes; mnemonic generates valid keypair; recovery flow issues session and allows passkey re-registration")
+  (phase "1")
+  (reqs "REQ-020-002"))
+
+(given task-session-mgmt)
+(meta task-session-mgmt
+  (description "Implement session middleware for Axum: opaque token generation, HttpOnly/SameSite=Strict cookies, idle/max timeout, in-memory HashMap store")
+  (acceptance "TEST-020-003 passes; sessions expire correctly; cookie flags verified")
+  (phase "1")
+  (reqs "REQ-020-003"))
+
+(given task-bootstrap-owner)
+(meta task-bootstrap-owner
+  (description "Implement --collab --init-owner CLI flow: generate passkey challenge at /auth/bootstrap, display BIP39 on stderr, create owner profile, one-time guard")
+  (acceptance "TEST-020-005 passes; second --init-owner fails; owner: true set in profile")
+  (phase "1")
+  (reqs "REQ-020-005"))
+
+(given task-collab-gate)
+(meta task-collab-gate
+  (description "Gate all existing routes behind session check when --collab is active; add basic hardcoded role check (admin/editor/reader) as placeholder for SPL")
+  (acceptance "Unauthenticated GET / returns 401 when --collab active; non-collab mode unaffected")
+  (phase "1")
+  (reqs "REQ-020-001"))
+
+;; Phase 1 readiness rules
+(normally r-ready-user-profiles
+  (and task-user-profiles no-deps-user-profiles)
+  ready-user-profiles)
+
+(normally r-ready-passkey-auth
+  (and task-passkey-auth completed-user-profiles)
+  ready-passkey-auth)
+
+(normally r-ready-bip39-recovery
+  (and task-bip39-recovery completed-user-profiles)
+  ready-bip39-recovery)
+
+(normally r-ready-session-mgmt
+  (and task-session-mgmt completed-passkey-auth)
+  ready-session-mgmt)
+
+(normally r-ready-bootstrap-owner
+  (and task-bootstrap-owner completed-passkey-auth completed-bip39-recovery)
+  ready-bootstrap-owner)
+
+(normally r-ready-collab-gate
+  (and task-collab-gate completed-session-mgmt completed-bootstrap-owner)
+  ready-collab-gate)
+
+;; Phase 1 assignments
+(normally r-assign-user-profiles
+  (and ready-user-profiles agent-backend-available)
+  assign-to-user-profiles-backend)
+
+(normally r-assign-passkey-auth
+  (and ready-passkey-auth agent-backend-available)
+  assign-to-passkey-auth-backend)
+
+(normally r-assign-bip39-recovery
+  (and ready-bip39-recovery agent-backend-available)
+  assign-to-bip39-recovery-backend)
+
+(normally r-assign-session-mgmt
+  (and ready-session-mgmt agent-backend-available)
+  assign-to-session-mgmt-backend)
+
+(normally r-assign-bootstrap-owner
+  (and ready-bootstrap-owner agent-backend-available)
+  assign-to-bootstrap-owner-backend)
+
+(normally r-assign-collab-gate
+  (and ready-collab-gate agent-backend-available)
+  assign-to-collab-gate-backend)
+
+;; ============================================================
+;; Phase 2: Invitations and Git Integration
+;; REQ-020-006, REQ-020-007, REQ-020-015, REQ-020-016, REQ-020-022
+;; ============================================================
+
+(given task-invitation-gen)
+(meta task-invitation-gen
+  (description "Implement zetl invite CLI: JWT generation with EdDSA signature, server.key creation, nonce tracking, expiry, URL output")
+  (acceptance "TEST-020-006 passes; JWT verifiable; nonce recorded; expiry enforced")
+  (phase "2")
+  (reqs "REQ-020-006"))
+
+(given task-invitation-accept)
+(meta task-invitation-accept
+  (description "Implement /auth/accept endpoint: JWT validation, registration page, passkey setup, BIP39 display, SPL fact injection into access.spl, session issuance")
+  (acceptance "TEST-020-007 passes; new user created; SPL facts appended; nonce consumed; replay returns 410")
+  (phase "2")
+  (reqs "REQ-020-007"))
+
+(given task-git-autocommit)
+(meta task-git-autocommit
+  (description "Implement git2-based auto-commit in save handler: git add, git commit with user attribution, Mutex serialization, jj git import after commit")
+  (acceptance "TEST-020-015 passes; git log shows correct author; jj snapshot created; CON-020-006 contract met")
+  (phase "2")
+  (reqs "REQ-020-015"))
+
+(given task-hook-user-context)
+(meta task-hook-user-context
+  (description "Extend HookContext with user identity field: id, name, is_agent, roles; null for unauthenticated CLI operations")
+  (acceptance "TEST-020-022 passes; on-save hook receives saved.user with correct identity")
+  (phase "2")
+  (reqs "REQ-020-022"))
+
+;; Phase 2 readiness (depends on Phase 1 completion)
+(normally r-ready-invitation-gen
+  (and task-invitation-gen completed-collab-gate completed-bip39-recovery)
+  ready-invitation-gen)
+
+(normally r-ready-invitation-accept
+  (and task-invitation-accept completed-invitation-gen completed-passkey-auth)
+  ready-invitation-accept)
+
+(normally r-ready-git-autocommit
+  (and task-git-autocommit completed-collab-gate)
+  ready-git-autocommit)
+
+(normally r-ready-hook-user-context
+  (and task-hook-user-context completed-collab-gate)
+  ready-hook-user-context)
+
+;; Phase 2 assignments
+(normally r-assign-invitation-gen
+  (and ready-invitation-gen agent-backend-available)
+  assign-to-invitation-gen-backend)
+
+(normally r-assign-invitation-accept
+  (and ready-invitation-accept agent-backend-available)
+  assign-to-invitation-accept-backend)
+
+(normally r-assign-git-autocommit
+  (and ready-git-autocommit agent-backend-available)
+  assign-to-git-autocommit-backend)
+
+(normally r-assign-hook-user-context
+  (and ready-hook-user-context agent-backend-available)
+  assign-to-hook-user-context-backend)
+
+;; ============================================================
+;; Phase 3: SPL Access Control
+;; REQ-020-009 through REQ-020-014, REQ-020-030 through REQ-020-033
+;; ============================================================
+
+(given task-acl-pipeline)
+(meta task-acl-pipeline
+  (description "Implement ACL evaluation: load built-in defaults + access.spl + page SPL, inject runtime facts, combine theory, reason, check can-read/can-edit conclusions per CON-020-005")
+  (acceptance "TEST-020-009, TEST-020-010 pass; basic read/edit access governed by SPL; page-level overrides defeat vault policy")
+  (phase "3")
+  (reqs "REQ-020-009 REQ-020-010"))
+
+(given task-acl-cache)
+(meta task-acl-cache
+  (description "Implement lazy ACL cache: HashMap<(user,page,action), AclDecision> in WebState, invalidated on vault_root_hash change")
+  (acceptance "TEST-020-013 passes; cache hit < 1ms; invalidation on save works")
+  (phase "3")
+  (reqs "REQ-020-013"))
+
+(given task-acl-explain)
+(meta task-acl-explain
+  (description "Implement /api/acl/explain endpoint using spindle why_not() for denied decisions and proof tracing for allowed")
+  (acceptance "TEST-020-014 passes; JSON response includes proof trace and source locations")
+  (phase "3")
+  (reqs "REQ-020-014"))
+
+(given task-temporal-acl)
+(meta task-temporal-acl
+  (description "Implement temporal access control: inject (now <epoch-ms>) fact, support Allen interval algebra in ACL rules")
+  (acceptance "TEST-020-011 passes; time-bounded access expires correctly")
+  (phase "3")
+  (reqs "REQ-020-011"))
+
+(given task-deontic-acl)
+(meta task-deontic-acl
+  (description "Implement deontic modality mapping: [P] → 200, [F] → 403, [O] → informational; optional overlay on base ACL")
+  (acceptance "TEST-020-012 passes; [F] overrides can-edit; [O] surfaced in UI")
+  (phase "3")
+  (reqs "REQ-020-012"))
+
+(given task-visibility)
+(meta task-visibility
+  (description "Implement three visibility modes (transparent/mixed/hidden): sidebar filtering, wikilink rendering, 403/404 responses, per-page overrides, link graph filtering")
+  (acceptance "TEST-020-030 through TEST-020-033 pass; mixed mode default; search never leaks content")
+  (phase "3")
+  (reqs "REQ-020-030 REQ-020-031 REQ-020-032 REQ-020-033"))
+
+;; Phase 3 readiness
+(normally r-ready-acl-pipeline
+  (and task-acl-pipeline completed-collab-gate completed-invitation-accept)
+  ready-acl-pipeline)
+
+(normally r-ready-acl-cache
+  (and task-acl-cache completed-acl-pipeline)
+  ready-acl-cache)
+
+(normally r-ready-acl-explain
+  (and task-acl-explain completed-acl-pipeline)
+  ready-acl-explain)
+
+(normally r-ready-temporal-acl
+  (and task-temporal-acl completed-acl-pipeline)
+  ready-temporal-acl)
+
+(normally r-ready-deontic-acl
+  (and task-deontic-acl completed-acl-pipeline)
+  ready-deontic-acl)
+
+(normally r-ready-visibility
+  (and task-visibility completed-acl-cache)
+  ready-visibility)
+
+;; Phase 3 assignments
+(normally r-assign-acl-pipeline
+  (and ready-acl-pipeline agent-backend-available)
+  assign-to-acl-pipeline-backend)
+
+(normally r-assign-acl-cache
+  (and ready-acl-cache agent-backend-available)
+  assign-to-acl-cache-backend)
+
+(normally r-assign-acl-explain
+  (and ready-acl-explain agent-backend-available)
+  assign-to-acl-explain-backend)
+
+(normally r-assign-temporal-acl
+  (and ready-temporal-acl agent-backend-available)
+  assign-to-temporal-acl-backend)
+
+(normally r-assign-deontic-acl
+  (and ready-deontic-acl agent-backend-available)
+  assign-to-deontic-acl-backend)
+
+(normally r-assign-visibility
+  (and ready-visibility agent-backend-available)
+  assign-to-visibility-backend)
+
+;; ============================================================
+;; Phase 4: Agent Integration
+;; REQ-020-004, REQ-020-017 through REQ-020-023
+;; ============================================================
+
+(given task-agent-token)
+(meta task-agent-token
+  (description "Implement agent token derivation CLI and Bearer auth middleware: ed25519 signed token with generation counter per CON-020-003")
+  (acceptance "TEST-020-004, TEST-020-019 pass; token resolves to correct user; generation counter rotation works")
+  (phase "4")
+  (reqs "REQ-020-004 REQ-020-019 REQ-020-055"))
+
+(given task-agent-api)
+(meta task-agent-api
+  (description "Implement /api/* JSON endpoints: pages list/get/put, index, build, graph, reason; consistent envelope per CON-020-007")
+  (acceptance "TEST-020-017, TEST-020-018 pass; all endpoints ACL-gated; page creation with X-Create works; DELETE removes page")
+  (phase "4")
+  (reqs "REQ-020-017 REQ-020-018"))
+
+(given task-agent-loop-prevention)
+(meta task-agent-loop-prevention
+  (description "Implement ZETL_HOOK_DEPTH counter, X-No-Hooks header, is_agent in hook context")
+  (acceptance "TEST-020-020 passes; hook depth ≥ 1 prevents recursive agent invocation")
+  (phase "4")
+  (reqs "REQ-020-020"))
+
+(given task-agent-spl)
+(meta task-agent-spl
+  (description "Implement (is-agent) fact injection, agent-assigned predicates, defeater for access.spl editing by agents")
+  (acceptance "TEST-020-021 passes; agent cannot edit access.spl; agent can edit assigned pages")
+  (phase "4")
+  (reqs "REQ-020-021"))
+
+(given task-agent-hook)
+(meta task-agent-hook
+  (description "Implement on-agent hook lifecycle point: manual trigger via zetl agent run, context with task/target_pages/user/budget")
+  (acceptance "TEST-020-023 passes; hook fires with correct context; exit codes handled")
+  (phase "4")
+  (reqs "REQ-020-023"))
+
+;; Phase 4 readiness
+(normally r-ready-agent-token
+  (and task-agent-token completed-collab-gate completed-bip39-recovery)
+  ready-agent-token)
+
+(normally r-ready-agent-api
+  (and task-agent-api completed-acl-cache completed-git-autocommit)
+  ready-agent-api)
+
+(normally r-ready-agent-loop-prevention
+  (and task-agent-loop-prevention completed-hook-user-context completed-agent-token)
+  ready-agent-loop-prevention)
+
+(normally r-ready-agent-spl
+  (and task-agent-spl completed-acl-pipeline completed-agent-token)
+  ready-agent-spl)
+
+(normally r-ready-agent-hook
+  (and task-agent-hook completed-hook-user-context completed-agent-loop-prevention)
+  ready-agent-hook)
+
+;; Phase 4 assignments
+(normally r-assign-agent-token
+  (and ready-agent-token agent-backend-available)
+  assign-to-agent-token-backend)
+
+(normally r-assign-agent-api
+  (and ready-agent-api agent-backend-available)
+  assign-to-agent-api-backend)
+
+(normally r-assign-agent-loop-prevention
+  (and ready-agent-loop-prevention agent-backend-available)
+  assign-to-agent-loop-prevention-backend)
+
+(normally r-assign-agent-spl
+  (and ready-agent-spl agent-backend-available)
+  assign-to-agent-spl-backend)
+
+(normally r-assign-agent-hook
+  (and ready-agent-hook agent-backend-available)
+  assign-to-agent-hook-backend)
+
+;; ============================================================
+;; Phase 5: Peritext CRDT Collaborative Editing
+;; REQ-020-024 through REQ-020-029, REQ-020-034 through REQ-020-038, REQ-020-044
+;; ============================================================
+
+(given task-crdt-engine)
+(meta task-crdt-engine
+  (description "Implement Peritext CRDT engine: automerge-rs RichText integration, mark types for markdown + wikilinks, block-level atomic tokens, growth behavior")
+  (acceptance "TEST-020-025, TEST-020-026 pass; mark types map to/from markdown; code marks are non-growing; blocks are atomic")
+  (phase "5")
+  (reqs "REQ-020-024 REQ-020-025 REQ-020-026"))
+
+(given task-md-crdt-roundtrip)
+(meta task-md-crdt-roundtrip
+  (description "Implement markdown→CRDT parser and CRDT→canonical markdown serializer per CON-020-008; deterministic output, fixed nesting order")
+  (acceptance "TEST-020-027 passes; parse(serialize(state)) round-trips; byte-identical output; clean git diffs")
+  (phase "5")
+  (reqs "REQ-020-027"))
+
+(given task-ws-protocol)
+(meta task-ws-protocol
+  (description "Implement WebSocket /ws/edit/{slug} endpoint: sync, op, presence messages; session cookie or ticket auth; cursor broadcast")
+  (acceptance "TEST-020-024, TEST-020-028 pass; concurrent edits merge; presence updates broadcast; ticket auth works for agents")
+  (phase "5")
+  (reqs "REQ-020-028"))
+
+(given task-crdt-state-mgmt)
+(meta task-crdt-state-mgmt
+  (description "Implement CrdtDocument lifecycle: load on first WS connection, eviction TTL, memory bound (50 docs), quiescence flush")
+  (acceptance "TEST-020-029 passes; eviction after TTL; LRU eviction at capacity; clean CRDT loads from disk")
+  (phase "5")
+  (reqs "REQ-020-029"))
+
+(given task-crdt-flush-pipeline)
+(meta task-crdt-flush-pipeline
+  (description "Implement unified flush pipeline: serialize → write → re-scan → merkle → ACL invalidate → search → git commit → jj import → jj snapshot → graph → hooks")
+  (acceptance "TEST-020-034 passes; all 10 pipeline steps execute in order; vault_root_hash updated; jj snapshot created")
+  (phase "5")
+  (reqs "REQ-020-034"))
+
+(given task-acl-immediate-flush)
+(meta task-acl-immediate-flush
+  (description "Implement immediate flush for access.spl edits (zero delay) and SPL code fence edits (500ms); parse error fallback to previous valid policy")
+  (acceptance "TEST-020-035 passes; ACL changes take effect within 500ms; parse errors show spl-error WS message")
+  (phase "5")
+  (reqs "REQ-020-035"))
+
+(given task-crdt-history)
+(meta task-crdt-history
+  (description "Implement CRDT-aware history: X-CRDT-Dirty/X-CRDT-Last-Flush headers, merkle hash for API conflict detection with active CRDT")
+  (acceptance "TEST-020-036, TEST-020-037 pass; history reflects last flush; API conflict detects CRDT divergence")
+  (phase "5")
+  (reqs "REQ-020-036 REQ-020-037"))
+
+(given task-spl-rehash)
+(meta task-spl-rehash
+  (description "Implement SPL block dual hashing on flush: content_hash + ast_hash; theory cache invalidation; drift detection")
+  (acceptance "TEST-020-038 passes; whitespace-only SPL edits skip theory rebuild; semantic edits trigger rebuild")
+  (phase "5")
+  (reqs "REQ-020-038"))
+
+(given task-crdt-wal)
+(meta task-crdt-wal
+  (description "Implement CRDT write-ahead log: append ops to .zetl/crdt/<slug>.wal; truncate on flush; replay on startup; 10MB max WAL size")
+  (acceptance "TEST-020-044 passes; crash recovery replays WAL; flush clears WAL; max size triggers force-flush")
+  (phase "5")
+  (reqs "REQ-020-044"))
+
+(given task-editor-frontend)
+(meta task-editor-frontend
+  (description "Build browser editor component: ProseMirror or CodeMirror 6 with CRDT client, cursor rendering, presence indicators")
+  (acceptance "Two browsers editing same page see each other's cursors and converge to identical document")
+  (phase "5")
+  (reqs "REQ-020-024 REQ-020-028"))
+
+;; Phase 5 readiness
+(normally r-ready-crdt-engine
+  (and task-crdt-engine completed-acl-cache)
+  ready-crdt-engine)
+
+(normally r-ready-md-crdt-roundtrip
+  (and task-md-crdt-roundtrip completed-crdt-engine)
+  ready-md-crdt-roundtrip)
+
+(normally r-ready-ws-protocol
+  (and task-ws-protocol completed-crdt-engine completed-session-mgmt)
+  ready-ws-protocol)
+
+(normally r-ready-crdt-state-mgmt
+  (and task-crdt-state-mgmt completed-ws-protocol completed-md-crdt-roundtrip)
+  ready-crdt-state-mgmt)
+
+(normally r-ready-crdt-flush-pipeline
+  (and task-crdt-flush-pipeline completed-crdt-state-mgmt completed-git-autocommit)
+  ready-crdt-flush-pipeline)
+
+(normally r-ready-acl-immediate-flush
+  (and task-acl-immediate-flush completed-crdt-flush-pipeline completed-acl-pipeline)
+  ready-acl-immediate-flush)
+
+(normally r-ready-crdt-history
+  (and task-crdt-history completed-crdt-flush-pipeline)
+  ready-crdt-history)
+
+(normally r-ready-spl-rehash
+  (and task-spl-rehash completed-crdt-flush-pipeline)
+  ready-spl-rehash)
+
+(normally r-ready-crdt-wal
+  (and task-crdt-wal completed-crdt-state-mgmt)
+  ready-crdt-wal)
+
+(normally r-ready-editor-frontend
+  (and task-editor-frontend completed-ws-protocol completed-md-crdt-roundtrip)
+  ready-editor-frontend)
+
+;; Phase 5 assignments — CRDT engine to backend, editor to frontend
+(normally r-assign-crdt-engine
+  (and ready-crdt-engine agent-backend-available)
+  assign-to-crdt-engine-backend)
+
+(normally r-assign-md-crdt-roundtrip
+  (and ready-md-crdt-roundtrip agent-backend-available)
+  assign-to-md-crdt-roundtrip-backend)
+
+(normally r-assign-ws-protocol
+  (and ready-ws-protocol agent-backend-available)
+  assign-to-ws-protocol-backend)
+
+(normally r-assign-crdt-state-mgmt
+  (and ready-crdt-state-mgmt agent-backend-available)
+  assign-to-crdt-state-mgmt-backend)
+
+(normally r-assign-crdt-flush-pipeline
+  (and ready-crdt-flush-pipeline agent-backend-available)
+  assign-to-crdt-flush-pipeline-backend)
+
+(normally r-assign-acl-immediate-flush
+  (and ready-acl-immediate-flush agent-backend-available)
+  assign-to-acl-immediate-flush-backend)
+
+(normally r-assign-crdt-history
+  (and ready-crdt-history agent-backend-available)
+  assign-to-crdt-history-backend)
+
+(normally r-assign-spl-rehash
+  (and ready-spl-rehash agent-backend-available)
+  assign-to-spl-rehash-backend)
+
+(normally r-assign-crdt-wal
+  (and ready-crdt-wal agent-backend-available)
+  assign-to-crdt-wal-backend)
+
+(normally r-assign-editor-frontend
+  (and ready-editor-frontend agent-frontend-available)
+  assign-to-editor-frontend-frontend)
+
+;; ============================================================
+;; Phase 6: External Edit Reconciliation
+;; REQ-020-039 through REQ-020-043
+;; ============================================================
+
+(given task-fs-watch-external)
+(meta task-fs-watch-external
+  (description "Extend filesystem watch to detect external edits via pending_writes set; debounce, re-scan, merkle recompute, ACL invalidate, search/graph rebuild, jj snapshot, notify editors")
+  (acceptance "TEST-020-039 passes; external file write detected within 1s; vault state updated")
+  (phase "6")
+  (reqs "REQ-020-039"))
+
+(given task-crdt-reconcile)
+(meta task-crdt-reconcile
+  (description "Implement CRDT reconciliation on external edit: clean (reload), dirty (CRDT merge), delete (recovery file)")
+  (acceptance "TEST-020-040 passes; dirty CRDT merge preserves both edits; deleted file recovers unflushed edits")
+  (phase "6")
+  (reqs "REQ-020-040"))
+
+(given task-git-poll)
+(meta task-git-poll
+  (description "Implement git HEAD polling (configurable, default 30s): detect external commits via git2, diff changed files, feed into reconciliation pipeline")
+  (acceptance "TEST-020-041 passes; git pull detected; new pages appear; modified content updated")
+  (phase "6")
+  (reqs "REQ-020-041"))
+
+(given task-external-attribution)
+(meta task-external-attribution
+  (description "Implement external edit attribution: git commit author → is_external:true; uncommitted → external:filesystem; on-save hooks fire with flag")
+  (acceptance "TEST-020-042 passes; hook context has is_external flag; git author extracted")
+  (phase "6")
+  (reqs "REQ-020-042"))
+
+(given task-acl-violation-detect)
+(meta task-acl-violation-detect
+  (description "Implement post-reconciliation ACL violation detection: evaluate changes against policy; WARN log; on-acl-violation hook; admin banner")
+  (acceptance "TEST-020-043 passes; violation logged; hook fires; file NOT reverted")
+  (phase "6")
+  (reqs "REQ-020-043"))
+
+;; Phase 6 readiness (depends on Phase 5 CRDT + Phase 3 ACL)
+(normally r-ready-fs-watch-external
+  (and task-fs-watch-external completed-crdt-flush-pipeline completed-acl-cache)
+  ready-fs-watch-external)
+
+(normally r-ready-crdt-reconcile
+  (and task-crdt-reconcile completed-fs-watch-external completed-crdt-state-mgmt)
+  ready-crdt-reconcile)
+
+(normally r-ready-git-poll
+  (and task-git-poll completed-fs-watch-external completed-git-autocommit)
+  ready-git-poll)
+
+(normally r-ready-external-attribution
+  (and task-external-attribution completed-fs-watch-external completed-hook-user-context)
+  ready-external-attribution)
+
+(normally r-ready-acl-violation-detect
+  (and task-acl-violation-detect completed-fs-watch-external completed-acl-pipeline)
+  ready-acl-violation-detect)
+
+;; Phase 6 assignments
+(normally r-assign-fs-watch-external
+  (and ready-fs-watch-external agent-backend-available)
+  assign-to-fs-watch-external-backend)
+
+(normally r-assign-crdt-reconcile
+  (and ready-crdt-reconcile agent-backend-available)
+  assign-to-crdt-reconcile-backend)
+
+(normally r-assign-git-poll
+  (and ready-git-poll agent-backend-available)
+  assign-to-git-poll-backend)
+
+(normally r-assign-external-attribution
+  (and ready-external-attribution agent-backend-available)
+  assign-to-external-attribution-backend)
+
+(normally r-assign-acl-violation-detect
+  (and ready-acl-violation-detect agent-backend-available)
+  assign-to-acl-violation-detect-backend)
+
+;; ============================================================
+;; Phase 7: User Experience Layer
+;; REQ-020-045 through REQ-020-054
+;; ============================================================
+
+(given task-recovery-ux)
+(meta task-recovery-ux
+  (description "Implement mnemonic display UX: plain-language explanation, numbered word list, confirmation checkbox, copy-to-clipboard with warning")
+  (acceptance "TEST-020-045 passes; proceed button disabled until checkbox checked")
+  (phase "7")
+  (reqs "REQ-020-045"))
+
+(given task-passkey-guidance)
+(meta task-passkey-guidance
+  (description "Implement passkey registration guidance screen: explanation text, visual indicator, failure handling with retry, fallback note")
+  (acceptance "TEST-020-046 passes; guidance displayed; registration failure shows retry button")
+  (phase "7")
+  (reqs "REQ-020-046"))
+
+(given task-access-request)
+(meta task-access-request
+  (description "Implement access request flow: button on 403, request record in .zetl/collab/access-requests.json, admin WebSocket notification, on-access-request hook")
+  (acceptance "TEST-020-047 passes; admin receives notification; request appears in dashboard")
+  (phase "7")
+  (reqs "REQ-020-047"))
+
+(given task-permission-ui)
+(meta task-permission-ui
+  (description "Implement /_admin/permissions: user list with roles/scopes, change role dropdown, change scope field, revoke button, SPL preview, save through normal pipeline")
+  (acceptance "TEST-020-048 passes; role change generates correct SPL; access.spl updated and committed")
+  (phase "7")
+  (reqs "REQ-020-048"))
+
+(given task-dashboard)
+(meta task-dashboard
+  (description "Implement /_me dashboard: recent edits (git log), accessible pages, pending reviews, access requests (admin), role summary, active sessions, recovery link")
+  (acceptance "TEST-020-049 passes; recent edits show last 20 commits by user; role summary in plain language")
+  (phase "7")
+  (reqs "REQ-020-049"))
+
+(given task-web-invite)
+(meta task-web-invite
+  (description "Implement /_admin/invite: form with role/scope/expiry, generate JWT, copy link, list pending invitations, revoke")
+  (acceptance "TEST-020-050 passes; generated URL works for acceptance; pending list shows unexpired invitations")
+  (phase "7")
+  (reqs "REQ-020-050"))
+
+(given task-page-comments)
+(meta task-page-comments
+  (description "Implement page comments: sidecar storage in .zetl/comments/<slug>.json, comment sidebar, WebSocket broadcast, ACL-gated, 30-day auto-prune")
+  (acceptance "TEST-020-051 passes; comments appear in real time; pruned after 30 days")
+  (phase "7")
+  (reqs "REQ-020-051"))
+
+(given task-merge-notification)
+(meta task-merge-notification
+  (description "Implement agent merge notification in editor: external-merge WebSocket message, banner with summary, changed range highlighting, review button for large merges")
+  (acceptance "TEST-020-052 passes; banner shows source and summary; changed ranges highlighted briefly")
+  (phase "7")
+  (reqs "REQ-020-052"))
+
+(given task-page-history-ui)
+(meta task-page-history-ui
+  (description "Implement /{slug}/_history: chronological edit list from git log, author/timestamp/message, diff view, restore button, draft indicator for active CRDT")
+  (acceptance "TEST-020-053 passes; diff view renders correctly; restore creates new commit")
+  (phase "7")
+  (reqs "REQ-020-053"))
+
+(given task-visibility-ux)
+(meta task-visibility-ux
+  (description "Implement visibility explanations: lock icon tooltips with admin contact, 403 page with admin names, hidden-mode collision warning, visibility mode switch notification")
+  (acceptance "TEST-020-054 passes; tooltip shows contact; collision warning on duplicate name creation")
+  (phase "7")
+  (reqs "REQ-020-054"))
+
+;; Phase 7 readiness (depends on Phase 3 ACL + Phase 5 CRDT + Phase 6 external)
+(normally r-ready-recovery-ux
+  (and task-recovery-ux completed-bip39-recovery)
+  ready-recovery-ux)
+
+(normally r-ready-passkey-guidance
+  (and task-passkey-guidance completed-passkey-auth)
+  ready-passkey-guidance)
+
+(normally r-ready-access-request
+  (and task-access-request completed-visibility completed-ws-protocol)
+  ready-access-request)
+
+(normally r-ready-permission-ui
+  (and task-permission-ui completed-acl-pipeline completed-collab-gate)
+  ready-permission-ui)
+
+(normally r-ready-dashboard
+  (and task-dashboard completed-acl-cache completed-git-autocommit completed-session-mgmt)
+  ready-dashboard)
+
+(normally r-ready-web-invite
+  (and task-web-invite completed-invitation-gen completed-invitation-accept)
+  ready-web-invite)
+
+(normally r-ready-page-comments
+  (and task-page-comments completed-ws-protocol completed-acl-cache)
+  ready-page-comments)
+
+(normally r-ready-merge-notification
+  (and task-merge-notification completed-crdt-reconcile completed-editor-frontend)
+  ready-merge-notification)
+
+(normally r-ready-page-history-ui
+  (and task-page-history-ui completed-git-autocommit completed-crdt-flush-pipeline)
+  ready-page-history-ui)
+
+(normally r-ready-visibility-ux
+  (and task-visibility-ux completed-visibility completed-acl-explain)
+  ready-visibility-ux)
+
+;; Phase 7 assignments — frontend-heavy
+(normally r-assign-recovery-ux
+  (and ready-recovery-ux agent-frontend-available)
+  assign-to-recovery-ux-frontend)
+
+(normally r-assign-passkey-guidance
+  (and ready-passkey-guidance agent-frontend-available)
+  assign-to-passkey-guidance-frontend)
+
+(normally r-assign-access-request
+  (and ready-access-request agent-frontend-available)
+  assign-to-access-request-frontend)
+
+(normally r-assign-permission-ui
+  (and ready-permission-ui agent-frontend-available)
+  assign-to-permission-ui-frontend)
+
+(normally r-assign-dashboard
+  (and ready-dashboard agent-frontend-available)
+  assign-to-dashboard-frontend)
+
+(normally r-assign-web-invite
+  (and ready-web-invite agent-frontend-available)
+  assign-to-web-invite-frontend)
+
+(normally r-assign-page-comments
+  (and ready-page-comments agent-backend-available)
+  assign-to-page-comments-backend)
+
+(normally r-assign-merge-notification
+  (and ready-merge-notification agent-frontend-available)
+  assign-to-merge-notification-frontend)
+
+(normally r-assign-page-history-ui
+  (and ready-page-history-ui agent-frontend-available)
+  assign-to-page-history-ui-frontend)
+
+(normally r-assign-visibility-ux
+  (and ready-visibility-ux agent-frontend-available)
+  assign-to-visibility-ux-frontend)
+
+;; ============================================================
+;; Phase 8: Security Hardening
+;; REQ-020-055 through REQ-020-067
+;; ============================================================
+
+(given task-mnemonic-security)
+(meta task-mnemonic-security
+  (description "Implement mnemonic display security: CSP header, user-select:none, auto-clear DOM after 5min, one-time serve, clipboard clear after 60s")
+  (acceptance "TEST-020-056 passes; CSP present; DOM auto-clears; reload fails")
+  (phase "8")
+  (reqs "REQ-020-056"))
+
+(given task-server-key-protection)
+(meta task-server-key-protection
+  (description "Implement server key protection: 0600 permissions on creation, auto-add .zetl/collab/, .zetl/users/, .zetl/sessions/ to .gitignore, permission check on startup")
+  (acceptance "TEST-020-057 passes; .gitignore updated; WARN on permissive file permissions")
+  (phase "8")
+  (reqs "REQ-020-057"))
+
+(given task-owner-hardening)
+(meta task-owner-hardening
+  (description "Implement owner fact stripping: strip (given (owner ...)) from access.spl and page SPL; inject owner only from profile.json; WARN on stripped facts")
+  (acceptance "TEST-020-058 passes; access.spl owner assertion ignored; owner privileges only from profile")
+  (phase "8")
+  (reqs "REQ-020-058"))
+
+(given task-spl-sandbox)
+(meta task-spl-sandbox
+  (description "Implement page-level SPL sandboxing: validate on re-scan; allow only own-page access conclusions; strip global predicates (owner/admin/role/scope/visibility-mode/is-agent) with WARN")
+  (acceptance "TEST-020-059 passes; page cannot assert admin/owner; can restrict own page access")
+  (phase "8")
+  (reqs "REQ-020-059"))
+
+(given task-rate-limiting)
+(given security-sensitive-rate-limiting)
+(meta task-rate-limiting
+  (description "Implement authentication rate limiting: per-user and per-IP limits on login, recovery, invitation, and agent token endpoints; in-memory counters; 429 responses")
+  (acceptance "TEST-020-060 passes; 6th failed recovery returns 429; counters reset after window")
+  (phase "8")
+  (reqs "REQ-020-060"))
+
+(given task-ws-ticket)
+(meta task-ws-ticket
+  (description "Implement WebSocket ticket auth: POST /auth/ws-ticket issues 30s one-time ticket; WS validates and invalidates; prevents bearer tokens in logs")
+  (acceptance "TEST-020-061 passes; ticket single-use; expired ticket rejected; logs show ticket not bearer")
+  (phase "8")
+  (reqs "REQ-020-061"))
+
+(given task-challenge-expiry)
+(meta task-challenge-expiry
+  (description "Implement recovery challenge expiry: 5-minute TTL, max 3 active per user, lazy pruning, 410 Gone on expired")
+  (acceptance "TEST-020-062 passes; expired challenge returns 410; max 3 concurrent challenges")
+  (phase "8")
+  (reqs "REQ-020-062"))
+
+(given task-csp-headers)
+(meta task-csp-headers
+  (description "Implement Content-Security-Policy header on all HTML responses: script-src 'self', frame-ancestors 'none', connect-src 'self' wss:")
+  (acceptance "TEST-020-063 passes; CSP header present on all pages; inline scripts blocked")
+  (phase "8")
+  (reqs "REQ-020-063"))
+
+(given task-csrf)
+(meta task-csrf
+  (description "Implement CSRF protection: issue token with session, require X-CSRF-Token header on PUT/POST/DELETE, exempt Bearer auth and WebSocket")
+  (acceptance "TEST-020-064 passes; PUT without CSRF token → 403; Bearer-authed API calls exempt")
+  (phase "8")
+  (reqs "REQ-020-064"))
+
+(given task-admin-hardcode)
+(meta task-admin-hardcode
+  (description "Implement hardcoded admin check on /_admin/* routes: profile-based owner||admin check before SPL evaluation; not defeatable by policy")
+  (acceptance "TEST-020-065 passes; non-admin blocked even with permissive SPL")
+  (phase "8")
+  (reqs "REQ-020-065"))
+
+(given task-comment-integrity)
+(meta task-comment-integrity
+  (description "Implement comment HMAC integrity: HMAC-SHA256(server_key, user_id||text||at) per comment; verify on read; (unverified) badge on tampered comments")
+  (acceptance "TEST-020-066 passes; tampered comment shows unverified badge")
+  (phase "8")
+  (reqs "REQ-020-066"))
+
+(given task-tls-warning)
+(meta task-tls-warning
+  (description "Implement TLS enforcement: refuse --collab on non-loopback without ZETL_INSECURE_COLLAB=1; WARN on startup; no warning on localhost")
+  (acceptance "TEST-020-067 passes; non-loopback without env var exits with error; localhost works")
+  (phase "8")
+  (reqs "REQ-020-067"))
+
+;; Phase 8 readiness — security tasks depend on the features they harden
+(normally r-ready-mnemonic-security
+  (and task-mnemonic-security completed-recovery-ux)
+  ready-mnemonic-security)
+
+(normally r-ready-server-key-protection
+  (and task-server-key-protection completed-invitation-gen)
+  ready-server-key-protection)
+
+(normally r-ready-owner-hardening
+  (and task-owner-hardening completed-acl-pipeline)
+  ready-owner-hardening)
+
+(normally r-ready-spl-sandbox
+  (and task-spl-sandbox completed-acl-pipeline completed-spl-rehash)
+  ready-spl-sandbox)
+
+(normally r-ready-rate-limiting
+  (and task-rate-limiting completed-passkey-auth completed-bip39-recovery completed-agent-token)
+  ready-rate-limiting)
+
+(normally r-ready-ws-ticket
+  (and task-ws-ticket completed-ws-protocol completed-agent-token)
+  ready-ws-ticket)
+
+(normally r-ready-challenge-expiry
+  (and task-challenge-expiry completed-bip39-recovery)
+  ready-challenge-expiry)
+
+(normally r-ready-csp-headers
+  (and task-csp-headers completed-collab-gate)
+  ready-csp-headers)
+
+(normally r-ready-csrf
+  (and task-csrf completed-session-mgmt completed-agent-token)
+  ready-csrf)
+
+(normally r-ready-admin-hardcode
+  (and task-admin-hardcode completed-permission-ui completed-web-invite)
+  ready-admin-hardcode)
+
+(normally r-ready-comment-integrity
+  (and task-comment-integrity completed-page-comments)
+  ready-comment-integrity)
+
+(normally r-ready-tls-warning
+  (and task-tls-warning completed-collab-gate)
+  ready-tls-warning)
+
+;; Phase 8 assignments — security agent preferred for security-sensitive tasks
+(normally r-assign-rate-limiting-security
+  (and ready-rate-limiting security-sensitive-rate-limiting agent-security-available)
+  assign-to-rate-limiting-security)
+
+(normally r-assign-rate-limiting-backend
+  (and ready-rate-limiting agent-backend-available)
+  assign-to-rate-limiting-backend)
+
+(prefer r-assign-rate-limiting-security r-assign-rate-limiting-backend)
+
+(normally r-assign-mnemonic-security
+  (and ready-mnemonic-security agent-security-available)
+  assign-to-mnemonic-security-security)
+
+(normally r-assign-server-key-protection
+  (and ready-server-key-protection agent-backend-available)
+  assign-to-server-key-protection-backend)
+
+(normally r-assign-owner-hardening
+  (and ready-owner-hardening agent-security-available)
+  assign-to-owner-hardening-security)
+
+(normally r-assign-spl-sandbox
+  (and ready-spl-sandbox agent-security-available)
+  assign-to-spl-sandbox-security)
+
+(normally r-assign-ws-ticket
+  (and ready-ws-ticket agent-security-available)
+  assign-to-ws-ticket-security)
+
+(normally r-assign-challenge-expiry
+  (and ready-challenge-expiry agent-backend-available)
+  assign-to-challenge-expiry-backend)
+
+(normally r-assign-csp-headers
+  (and ready-csp-headers agent-security-available)
+  assign-to-csp-headers-security)
+
+(normally r-assign-csrf
+  (and ready-csrf agent-security-available)
+  assign-to-csrf-security)
+
+(normally r-assign-admin-hardcode
+  (and ready-admin-hardcode agent-security-available)
+  assign-to-admin-hardcode-security)
+
+(normally r-assign-comment-integrity
+  (and ready-comment-integrity agent-security-available)
+  assign-to-comment-integrity-security)
+
+(normally r-assign-tls-warning
+  (and ready-tls-warning agent-backend-available)
+  assign-to-tls-warning-backend)
