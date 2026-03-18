@@ -4386,6 +4386,190 @@ fn fire_access_request_hook(
     }
 }
 
+// ── GET /api/comments/{slug} — list comments for a page (REQ-020-051) ────
+
+pub async fn api_comments_get_handler(
+    State(state): State<WebState>,
+    _session: crate::web::session::SessionUser,
+    Path(slug): Path<String>,
+) -> Response {
+    let slug = urldecode(&slug);
+    let slug = slug.trim_end_matches('/');
+
+    // ACL: user must be able to read the page
+    #[cfg(feature = "reason")]
+    if state.collab {
+        if let Err(resp) = check_page_acl_read(&state, &_session.user_id, slug) {
+            return resp;
+        }
+    }
+
+    match crate::user::comment::load_comments(&state.vault_root, slug) {
+        Ok(comments) => ApiResponse::ok(serde_json::json!({ "comments": comments })).into_response(),
+        Err(e) => {
+            eprintln!("error loading comments for {slug}: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "failed to load comments").into_response()
+        }
+    }
+}
+
+// ── POST /api/comments/{slug} — add a comment to a page (REQ-020-051) ───
+
+#[derive(Deserialize)]
+pub struct AddCommentBody {
+    pub text: String,
+}
+
+pub async fn api_comments_post_handler(
+    State(state): State<WebState>,
+    session: crate::web::session::SessionUser,
+    Path(slug): Path<String>,
+    Json(body): Json<AddCommentBody>,
+) -> Response {
+    let slug = urldecode(&slug);
+    let slug = slug.trim_end_matches('/');
+
+    // Validate: non-empty text, max 4096 chars
+    let text = body.text.trim();
+    if text.is_empty() {
+        return ApiResponse::err(StatusCode::BAD_REQUEST, "EMPTY_COMMENT", "comment text is required").into_response();
+    }
+    if text.len() > 4096 {
+        return ApiResponse::err(StatusCode::BAD_REQUEST, "COMMENT_TOO_LONG", "comment must be 4096 characters or fewer").into_response();
+    }
+
+    // ACL: user must be able to edit the page to post comments
+    #[cfg(feature = "reason")]
+    if state.collab {
+        if let Err(resp) = check_page_acl_edit(&state, &session.user_id, slug) {
+            return resp;
+        }
+    }
+
+    match crate::user::comment::append_comment(&state.vault_root, slug, &session.user_id, text) {
+        Ok(comment) => {
+            // Broadcast to all connected WebSocket clients viewing this page
+            let room = state.ws_hub.room(slug);
+            let _ = room.tx.send(crate::web::ws::ServerMsg::Comment {
+                slug: slug.to_string(),
+                user: comment.user.clone(),
+                text: comment.text.clone(),
+                at: comment.at.clone(),
+            });
+
+            ApiResponse::ok(serde_json::json!({ "comment": comment })).into_response()
+        }
+        Err(e) => {
+            eprintln!("error posting comment on {slug}: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "failed to post comment").into_response()
+        }
+    }
+}
+
+/// Check that a user can read a page (used by comment GET).
+#[cfg(feature = "reason")]
+fn check_page_acl_read(
+    state: &WebState,
+    user_id: &str,
+    page_slug: &str,
+) -> Result<(), Response> {
+    let data = state.data.read().unwrap();
+    let file = data.files.iter().find(|f| {
+        crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
+    });
+    let spl_blocks = file.map(|f| f.spl_blocks.as_slice()).unwrap_or(&[]);
+    let all_slugs: Vec<String> = data.files.iter().map(|f| crate::scanner::page_slug_from_path(&f.path)).collect();
+    drop(data);
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let query = crate::acl::AclQuery {
+        user_id: user_id.to_string(),
+        page_slug: page_slug.to_string(),
+        action: crate::acl::Action::Read,
+        is_agent: false,
+        now_epoch_ms: now_ms,
+    };
+    let decision = {
+        let cache = state.acl_cache.lock().unwrap();
+        if let Some(cached) = cache.lookup(user_id, page_slug, crate::acl::Action::Read) {
+            cached.clone()
+        } else {
+            drop(cache);
+            match crate::acl::evaluate(&state.vault_root, &query, spl_blocks, &all_slugs) {
+                Ok(d) => {
+                    let mut cache = state.acl_cache.lock().unwrap();
+                    cache.insert(user_id.to_string(), page_slug.to_string(), crate::acl::Action::Read, d.clone());
+                    d
+                }
+                Err(_) => crate::acl::AclDecision::Denied {
+                    tag: crate::acl::ConclusionTag::DefeasiblyNotProvable,
+                    rule_trace: vec![],
+                },
+            }
+        }
+    };
+    if decision.is_allowed() {
+        Ok(())
+    } else {
+        Err(ApiResponse::err(StatusCode::FORBIDDEN, "ACL_DENIED", "you do not have read access to this page"))
+    }
+}
+
+/// Check that a user can edit a page (used by comment POST).
+#[cfg(feature = "reason")]
+fn check_page_acl_edit(
+    state: &WebState,
+    user_id: &str,
+    page_slug: &str,
+) -> Result<(), Response> {
+    let data = state.data.read().unwrap();
+    let file = data.files.iter().find(|f| {
+        crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
+    });
+    let spl_blocks = file.map(|f| f.spl_blocks.as_slice()).unwrap_or(&[]);
+    let all_slugs: Vec<String> = data.files.iter().map(|f| crate::scanner::page_slug_from_path(&f.path)).collect();
+    drop(data);
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let query = crate::acl::AclQuery {
+        user_id: user_id.to_string(),
+        page_slug: page_slug.to_string(),
+        action: crate::acl::Action::Edit,
+        is_agent: false,
+        now_epoch_ms: now_ms,
+    };
+    let decision = {
+        let cache = state.acl_cache.lock().unwrap();
+        if let Some(cached) = cache.lookup(user_id, page_slug, crate::acl::Action::Edit) {
+            cached.clone()
+        } else {
+            drop(cache);
+            match crate::acl::evaluate(&state.vault_root, &query, spl_blocks, &all_slugs) {
+                Ok(d) => {
+                    let mut cache = state.acl_cache.lock().unwrap();
+                    cache.insert(user_id.to_string(), page_slug.to_string(), crate::acl::Action::Edit, d.clone());
+                    d
+                }
+                Err(_) => crate::acl::AclDecision::Denied {
+                    tag: crate::acl::ConclusionTag::DefeasiblyNotProvable,
+                    rule_trace: vec![],
+                },
+            }
+        }
+    };
+    if decision.is_allowed() {
+        Ok(())
+    } else {
+        Err(ApiResponse::err(StatusCode::FORBIDDEN, "ACL_DENIED", "you do not have edit access to this page"))
+    }
+}
+
 // ── POST /api/reason — run SPL query (REQ-020-018) ───────────────────────
 
 #[cfg(feature = "reason")]

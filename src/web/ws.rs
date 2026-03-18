@@ -79,6 +79,13 @@ pub enum ServerMsg {
         new_mode: String,
         changed_by: String,
     },
+    /// A new comment was posted on a page (REQ-020-051).
+    Comment {
+        slug: String,
+        user: String,
+        text: String,
+        at: String,
+    },
 }
 
 /// A single edit operation (splice text or mark).
