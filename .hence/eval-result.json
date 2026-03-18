@@ -3,31 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 333,
-    "deletions": 6,
+    "files_changed": 2,
+    "insertions": 168,
+    "deletions": 9,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/main.rs",
-      "src/web/mod.rs",
-      "src/web/rate_limit.rs",
-      "src/web/routes.rs",
-      "src/web/session.rs",
-      "tests/history_integration.rs",
-      "tests/web_integration.rs"
+      "src/acl.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-rate-limiting-changes",
-      "content": "Modified 8 files (+333, -6): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/rate_limit.rs, src/web/routes.rs and 3 more",
+      "key": "task-owner-hardening-changes",
+      "content": "Modified 2 files (+168, -9): .hence/context-manifest.json, src/acl.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/rate-limiting-v1",
-  "evaluated_at": "2026-03-18T09:13:27Z",
+  "branch_name": "hence/owner-hardening-v1",
+  "evaluated_at": "2026-03-18T09:19:01Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
