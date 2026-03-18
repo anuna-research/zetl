@@ -1,12 +1,12 @@
 {
-  "task_id": "bip39-recovery",
+  "task_id": "challenge-expiry",
   "token_budget": 8000,
-  "tokens_used": 152,
+  "tokens_used": 177,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement BIP39 mnemonic generation (128-bit), SLIP-0010 ed25519 derivation, recovery challenge-response flow per CON-020-002",
-      "token_cost": 31,
+      "content": "Implement recovery challenge expiry: 5-minute TTL, max 3 active per user, lazy pruning, 410 Gone on expired",
+      "token_cost": 26,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 7 files (+253, -5): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs, src/web/session.rs and 2 more",
       "token_cost": 34,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-bip39-recovery-changes",
+      "content": "Modified 10 files (+733, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/main.rs, src/user/mod.rs and 5 more",
+      "token_cost": 30,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T06:51:07Z"
+  "constructed_at": "2026-03-18T07:03:10Z"
 }
