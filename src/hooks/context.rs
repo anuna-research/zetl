@@ -48,6 +48,21 @@ pub struct HookContext {
     /// Saved file info (only present for on-save).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub saved: Option<HookSaved>,
+    /// Authenticated user identity; `null` for unauthenticated CLI operations.
+    pub user: Option<HookUser>,
+}
+
+/// User identity attached to hook context when an authenticated session exists.
+#[derive(Debug, Clone, Serialize)]
+pub struct HookUser {
+    /// User ID (e.g. `"alice-a1b2c3d4"`).
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Whether this identity represents an agent token rather than a human.
+    pub is_agent: bool,
+    /// Roles assigned to this user (e.g. `["admin"]`).
+    pub roles: Vec<String>,
 }
 
 /// Payload describing the file that was just saved (on-save hooks).
@@ -98,6 +113,19 @@ pub struct HookStats {
     pub total_links: usize,
     pub dead_links: usize,
     pub orphans: usize,
+}
+
+impl HookUser {
+    /// Create a `HookUser` from a `UserProfile`.
+    pub fn from_profile(profile: &crate::user::UserProfile, is_agent: bool) -> Self {
+        let role = crate::user::Role::for_profile(profile);
+        HookUser {
+            id: profile.id.clone(),
+            name: profile.name.clone(),
+            is_agent,
+            roles: vec![role.to_string()],
+        }
+    }
 }
 
 /// Build the base hook context JSON (CON-016-001).
@@ -178,6 +206,7 @@ pub fn build_hook_context(
         port: None,
         diagnostics: None,
         saved: None,
+        user: None,
     }
 }
 
@@ -512,5 +541,87 @@ mod tests {
         assert!(se.is_array());
         assert_eq!(se.as_array().unwrap().len(), 1);
         assert_eq!(se[0]["message"], "bad syntax");
+    }
+
+    #[test]
+    fn user_null_by_default() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let ctx = build_hook_context("post-build", tmp.path(), "", "0.1.0", &files, &graph);
+        assert!(ctx.user.is_none());
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(val["user"].is_null());
+    }
+
+    #[test]
+    fn user_serialises_when_set() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx = build_hook_context("on-save", tmp.path(), "", "0.1.0", &files, &graph);
+        ctx.user = Some(HookUser {
+            id: "alice-a1b2c3d4".to_string(),
+            name: "Alice".to_string(),
+            is_agent: false,
+            roles: vec!["admin".to_string()],
+        });
+
+        let json = serde_json::to_string_pretty(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let user = &val["user"];
+        assert!(user.is_object());
+        assert_eq!(user["id"], "alice-a1b2c3d4");
+        assert_eq!(user["name"], "Alice");
+        assert_eq!(user["is_agent"], false);
+        assert!(user["roles"].is_array());
+        assert_eq!(user["roles"][0], "admin");
+    }
+
+    #[test]
+    fn hook_user_from_profile_owner() {
+        let profile = crate::user::UserProfile {
+            id: "alice-a1b2c3d4".to_string(),
+            name: "Alice".to_string(),
+            created_at: "2026-03-18T10:00:00Z".to_string(),
+            invited_by: None,
+            owner: true,
+            credentials: vec![],
+            recovery_pubkey: "dGVzdA".to_string(),
+            agent_token_generation: 0,
+        };
+
+        let hook_user = HookUser::from_profile(&profile, false);
+        assert_eq!(hook_user.id, "alice-a1b2c3d4");
+        assert_eq!(hook_user.name, "Alice");
+        assert!(!hook_user.is_agent);
+        assert_eq!(hook_user.roles, vec!["admin"]);
+    }
+
+    #[test]
+    fn hook_user_from_profile_editor() {
+        let profile = crate::user::UserProfile {
+            id: "bob-12345678".to_string(),
+            name: "Bob".to_string(),
+            created_at: "2026-03-18T10:00:00Z".to_string(),
+            invited_by: Some("alice-a1b2c3d4".to_string()),
+            owner: false,
+            credentials: vec![],
+            recovery_pubkey: "dGVzdA".to_string(),
+            agent_token_generation: 0,
+        };
+
+        let hook_user = HookUser::from_profile(&profile, true);
+        assert_eq!(hook_user.id, "bob-12345678");
+        assert_eq!(hook_user.name, "Bob");
+        assert!(hook_user.is_agent);
+        assert_eq!(hook_user.roles, vec!["editor"]);
     }
 }

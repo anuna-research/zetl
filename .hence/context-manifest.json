@@ -1,12 +1,12 @@
 {
-  "task_id": "invitation-gen",
+  "task_id": "hook-user-context",
   "token_budget": 8000,
-  "tokens_used": 327,
+  "tokens_used": 325,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement zetl invite CLI: JWT generation with EdDSA signature, server.key creation, nonce tracking, expiry, URL output",
-      "token_cost": 29,
+      "content": "Extend HookContext with user identity field: id, name, is_agent, roles; null for unauthenticated CLI operations",
+      "token_cost": 27,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T07:31:55Z"
+  "constructed_at": "2026-03-18T07:39:18Z"
 }
