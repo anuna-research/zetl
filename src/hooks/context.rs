@@ -75,6 +75,10 @@ pub struct HookUser {
     pub is_agent: bool,
     /// Roles assigned to this user (e.g. `["admin"]`).
     pub roles: Vec<String>,
+    /// Whether this edit originated outside zetl (REQ-020-042).
+    /// `true` for git commit authors and filesystem-detected edits.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_external: bool,
 }
 
 /// Payload describing the file that was just saved (on-save hooks).
@@ -86,6 +90,9 @@ pub struct HookSaved {
     pub page: String,
     /// Length of the saved content in bytes.
     pub content_length: usize,
+    /// Whether this save was detected as an external edit (REQ-020-042).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_external: bool,
 }
 
 /// Agent task context for on-agent hooks (REQ-020-023).
@@ -172,6 +179,28 @@ pub struct HookStats {
 }
 
 impl HookUser {
+    /// Create a `HookUser` for an external git commit author (REQ-020-042).
+    pub fn external_git(name: &str, email: &str) -> Self {
+        HookUser {
+            id: format!("external:{email}"),
+            name: name.to_string(),
+            is_agent: false,
+            roles: vec![],
+            is_external: true,
+        }
+    }
+
+    /// Create a `HookUser` for an external filesystem edit (REQ-020-042).
+    pub fn external_filesystem() -> Self {
+        HookUser {
+            id: "external:filesystem".to_string(),
+            name: "(external)".to_string(),
+            is_agent: false,
+            roles: vec![],
+            is_external: true,
+        }
+    }
+
     /// Create a `HookUser` from a `UserProfile`.
     pub fn from_profile(profile: &crate::user::UserProfile, is_agent: bool) -> Self {
         let role = crate::user::Role::for_profile(profile);
@@ -180,6 +209,7 @@ impl HookUser {
             name: profile.name.clone(),
             is_agent,
             roles: vec![role.to_string()],
+            is_external: false,
         }
     }
 }
@@ -631,6 +661,7 @@ mod tests {
             name: "Alice".to_string(),
             is_agent: false,
             roles: vec!["admin".to_string()],
+            is_external: false,
         });
 
         let json = serde_json::to_string_pretty(&ctx).unwrap();
@@ -832,5 +863,67 @@ mod tests {
         assert_eq!(entries[0]["user_id"], "bob-12345678");
         assert_eq!(entries[0]["action"], "edit");
         assert_eq!(entries[0]["reason"], "policy denied");
+    }
+
+    #[test]
+    fn hook_user_external_git() {
+        let user = HookUser::external_git("Bot", "bot@ci.example.com");
+        assert_eq!(user.id, "external:bot@ci.example.com");
+        assert_eq!(user.name, "Bot");
+        assert!(!user.is_agent);
+        assert!(user.roles.is_empty());
+        assert!(user.is_external);
+
+        let json = serde_json::to_string(&user).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["is_external"], true);
+    }
+
+    #[test]
+    fn hook_user_external_filesystem() {
+        let user = HookUser::external_filesystem();
+        assert_eq!(user.id, "external:filesystem");
+        assert_eq!(user.name, "(external)");
+        assert!(user.is_external);
+
+        let json = serde_json::to_string(&user).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["is_external"], true);
+    }
+
+    #[test]
+    fn is_external_skipped_when_false() {
+        let user = HookUser {
+            id: "alice".to_string(),
+            name: "Alice".to_string(),
+            is_agent: false,
+            roles: vec![],
+            is_external: false,
+        };
+        let json = serde_json::to_string(&user).unwrap();
+        assert!(!json.contains("is_external"));
+    }
+
+    #[test]
+    fn hook_saved_is_external_serialisation() {
+        let saved = HookSaved {
+            file: "notes/page.md".to_string(),
+            page: "page".to_string(),
+            content_length: 42,
+            is_external: true,
+        };
+        let json = serde_json::to_string(&saved).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["is_external"], true);
+
+        // When false, is_external should be absent.
+        let saved_internal = HookSaved {
+            file: "notes/page.md".to_string(),
+            page: "page".to_string(),
+            content_length: 42,
+            is_external: false,
+        };
+        let json_internal = serde_json::to_string(&saved_internal).unwrap();
+        assert!(!json_internal.contains("is_external"));
     }
 }

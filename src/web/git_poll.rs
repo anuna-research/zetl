@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::fs_watch::reconcile_external_edits;
+use super::fs_watch::{reconcile_external_edits, ExternalSource};
 use super::git_commit::GitCommitLock;
 use super::WebState;
 
@@ -49,7 +49,7 @@ pub fn spawn_git_poller(
         loop {
             tokio::time::sleep(interval).await;
 
-            let (new_head, changed_paths) = {
+            let (new_head, changed_paths, source) = {
                 let repo = git_lock.lock().unwrap();
                 let current = read_head_oid(&repo);
 
@@ -58,7 +58,10 @@ pub fn spawn_git_poller(
                 }
 
                 let paths = diff_trees(&repo, last_head.as_ref(), current.as_ref(), &state.vault_root);
-                (current, paths)
+                let source = current
+                    .and_then(|oid| extract_commit_author(&repo, oid))
+                    .unwrap_or(ExternalSource::Filesystem);
+                (current, paths, source)
             };
 
             if changed_paths.is_empty() {
@@ -88,11 +91,20 @@ pub fn spawn_git_poller(
             // Run reconciliation on a blocking thread (it does I/O-heavy re-indexing).
             let state_clone = state.clone();
             let _ = tokio::task::spawn_blocking(move || {
-                reconcile_external_edits(&state_clone, &changed_paths);
+                reconcile_external_edits(&state_clone, &changed_paths, &source);
             })
             .await;
         }
     }))
+}
+
+/// Extract author name and email from a commit (REQ-020-042).
+fn extract_commit_author(repo: &git2::Repository, oid: git2::Oid) -> Option<ExternalSource> {
+    let commit = repo.find_commit(oid).ok()?;
+    let author = commit.author();
+    let name = author.name().unwrap_or("(unknown)").to_string();
+    let email = author.email().unwrap_or("unknown").to_string();
+    Some(ExternalSource::GitCommit { author: name, email })
 }
 
 /// Read the OID of the current HEAD commit, or `None` for an unborn branch.
@@ -303,5 +315,34 @@ mod tests {
             .collect();
         assert!(names.contains(&"a.md".to_string()));
         assert!(names.contains(&"b.md".to_string()));
+    }
+
+    /// TEST-020-042: External git commit attributed to correct author.
+    #[test]
+    fn extract_commit_author_returns_git_commit_source() {
+        let (dir, repo) = init_test_repo();
+
+        // Create a commit with a specific author.
+        let sig = git2::Signature::now("Bot", "bot@ci.example.com").unwrap();
+        fs::write(dir.path().join("hello.md"), "# Updated by bot").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("hello.md")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        let oid = repo
+            .commit(Some("HEAD"), &sig, &sig, "bot edit", &tree, &[&parent])
+            .unwrap();
+
+        let source = extract_commit_author(&repo, oid);
+        assert!(source.is_some());
+        match source.unwrap() {
+            ExternalSource::GitCommit { author, email } => {
+                assert_eq!(author, "Bot");
+                assert_eq!(email, "bot@ci.example.com");
+            }
+            ExternalSource::Filesystem => panic!("expected GitCommit source"),
+        }
     }
 }
