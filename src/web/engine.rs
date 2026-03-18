@@ -217,6 +217,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "base.html",
     "index.html",
     "page.html",
+    "editor.html",
     "folder.html",
     "passkey_register.html",
     "recovery_show.html",
@@ -358,6 +359,41 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("page.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the collaborative editor page.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_editor(
+        &self,
+        vault_ctx: &VaultContext,
+        page_title: &str,
+        page_slug: &str,
+        breadcrumbs: &[super::context::BreadcrumbEntry],
+        editor_json: &str,
+    ) -> Result<String, TemplateError> {
+        let search_index = build_search_index(vault_ctx);
+        let ctx = context! {
+            vault => vault_ctx,
+            page_title => page_title,
+            page_slug => page_slug,
+            breadcrumbs => breadcrumbs,
+            editor_json => editor_json,
+            mode => "serve",
+            search_index => search_index,
+            theme => &self.theme,
+            active_slug => page_slug,
+            root_path => "/",
+            index_file => "",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("editor.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("editor.html"));
         }
         Ok(html)
     }

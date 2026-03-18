@@ -691,6 +691,95 @@ pub async fn page_handler(
     }
 }
 
+/// GET /edit/{*slug} — Serve the collaborative editor page.
+pub async fn edit_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Path(slug): Path<String>,
+) -> Response {
+    let slug = urldecode(&slug);
+    let slug = slug.trim_end_matches('/');
+    let data = state.data.read().unwrap();
+
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    // Find the file by matching slug
+    let file = data
+        .files
+        .iter()
+        .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
+
+    // Read raw content
+    let (page_name, raw_content, file_slug) = if let Some(file) = file {
+        let full_path = state.vault_root.join(&file.path);
+        let content = std::fs::read_to_string(&full_path).unwrap_or_default();
+        let file_slug = page_slug_from_path(&file.path);
+        (file.page_name.clone(), content, file_slug)
+    } else {
+        // New page — start with empty content
+        let name = slug
+            .rsplit('/')
+            .next()
+            .unwrap_or(slug)
+            .replace('-', " ");
+        let capitalized = if let Some(first) = name.chars().next() {
+            first.to_uppercase().to_string() + &name[first.len_utf8()..]
+        } else {
+            name.clone()
+        };
+        (capitalized, String::new(), slug.to_string())
+    };
+
+    // Issue a WS ticket for this user
+    let user_name = if state.collab {
+        extract_session_user_id(&state, &headers).unwrap_or_else(|| "anonymous".to_string())
+    } else {
+        "anonymous".to_string()
+    };
+    let ticket = state.ticket_store.issue(&user_name);
+
+    // Build breadcrumbs
+    let breadcrumbs = crate::web::context::build_breadcrumbs(&file_slug);
+
+    // Build editor JSON data
+    let editor_json = serde_json::json!({
+        "slug": file_slug,
+        "ticket": ticket,
+        "content": raw_content,
+        "user_name": user_name,
+    })
+    .to_string();
+
+    let vault_ctx = build_vault_context(&data, &vault_name);
+
+    match state
+        .engine
+        .render_editor(&vault_ctx, &page_name, &file_slug, &breadcrumbs, &editor_json)
+    {
+        Ok(html) => {
+            let mut resp = Html(html).into_response();
+            // Editor CSP: allow esm.sh CDN for CodeMirror 6 modules
+            resp.headers_mut().insert(
+                HeaderName::from_static("content-security-policy"),
+                "default-src 'self'; \
+                 script-src 'self' 'unsafe-inline' https://esm.sh; \
+                 style-src 'self' 'unsafe-inline' https://esm.sh https://cdn.jsdelivr.net; \
+                 connect-src 'self' ws: wss:; \
+                 font-src 'self' https://cdn.jsdelivr.net; \
+                 frame-ancestors 'none'"
+                    .parse()
+                    .unwrap(),
+            );
+            resp
+        }
+        Err(e) => render_error_response(e),
+    }
+}
+
 /// PUT /{*path} — Save edited markdown back to the vault file, then re-index.
 pub async fn save_handler(
     State(state): State<WebState>,

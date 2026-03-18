@@ -1,12 +1,12 @@
 {
-  "task_id": "visibility-ux",
+  "task_id": "editor-frontend",
   "token_budget": 8000,
-  "tokens_used": 339,
+  "tokens_used": 326,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement visibility explanations: lock icon tooltips with admin contact, 403 page with admin names, hidden-mode collision warning, visibility mode switch notification",
-      "token_cost": 41,
+      "content": "Build browser editor component: ProseMirror or CodeMirror 6 with CRDT client, cursor rendering, presence indicators",
+      "token_cost": 28,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T11:25:17Z"
+  "constructed_at": "2026-03-18T11:42:10Z"
 }

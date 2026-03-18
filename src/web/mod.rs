@@ -314,6 +314,7 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
         .route("/_me", get(routes::dashboard_handler))
         .route("/api/access-request", post(routes::access_request_handler))
         .route("/_print", get(routes::print_handler))
+        .route("/edit/{*slug}", get(routes::edit_handler))
         .route("/_static/{*path}", get(routes::static_handler))
         .merge(admin_routes)
         .route("/preview/{*path}", get(routes::preview_handler))
@@ -370,7 +371,11 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
         .layer(middleware::map_response(|mut resp: axum::response::Response| async {
             resp.headers_mut().insert(
                 header::CONTENT_SECURITY_POLICY,
-                "script-src 'self'; frame-ancestors 'none'; connect-src 'self' ws: wss:"
+                "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://esm.sh; \
+                 style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://esm.sh; \
+                 connect-src 'self' ws: wss: https://esm.sh; \
+                 font-src 'self' https://cdn.jsdelivr.net; \
+                 frame-ancestors 'none'"
                     .parse()
                     .unwrap(),
             );
