@@ -100,6 +100,168 @@ pub fn jj_git_import(vault_root: &Path) {
     }
 }
 
+/// A single entry in the git log for a specific file.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GitLogEntry {
+    /// Abbreviated commit hash (7 chars).
+    pub commit_id: String,
+    /// Full commit hash (for restore operations).
+    pub full_oid: String,
+    /// Author display name.
+    pub author: String,
+    /// Author email.
+    pub email: String,
+    /// Unix timestamp (seconds since epoch).
+    pub timestamp: i64,
+    /// Commit message summary (first line).
+    pub summary: String,
+    /// Full commit message.
+    pub message: String,
+}
+
+/// Walk git history for a specific file path, returning up to `limit` entries.
+///
+/// `file_path` is relative to the repository root (e.g. `"notes/My Page.md"`).
+/// Returns entries in newest-first order.
+pub fn file_log(
+    repo: &git2::Repository,
+    file_path: &Path,
+    limit: usize,
+) -> Vec<GitLogEntry> {
+    let Ok(mut revwalk) = repo.revwalk() else {
+        return Vec::new();
+    };
+    let _ = revwalk.push_head();
+    revwalk.set_sorting(git2::Sort::TIME).ok();
+
+    let file_path_str = file_path.to_string_lossy();
+    let mut entries = Vec::new();
+
+    for oid in revwalk.flatten() {
+        if entries.len() >= limit {
+            break;
+        }
+        let Ok(commit) = repo.find_commit(oid) else {
+            continue;
+        };
+
+        // Check if this commit touched the file by diffing with parent.
+        let touched = if let Ok(parent) = commit.parent(0) {
+            let old_tree = parent.tree().ok();
+            let new_tree = commit.tree().ok();
+            repo.diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), None)
+                .map(|diff| {
+                    diff.deltas().any(|d| {
+                        d.new_file()
+                            .path()
+                            .map(|p| p.to_string_lossy() == file_path_str)
+                            .unwrap_or(false)
+                            || d.old_file()
+                                .path()
+                                .map(|p| p.to_string_lossy() == file_path_str)
+                                .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false)
+        } else {
+            // Initial commit — check if the file exists in its tree.
+            commit
+                .tree()
+                .ok()
+                .and_then(|t| t.get_path(file_path).ok())
+                .is_some()
+        };
+
+        if !touched {
+            continue;
+        }
+
+        let oid_str = oid.to_string();
+        entries.push(GitLogEntry {
+            commit_id: oid_str[..7.min(oid_str.len())].to_string(),
+            full_oid: oid_str,
+            author: commit
+                .author()
+                .name()
+                .unwrap_or("unknown")
+                .to_string(),
+            email: commit
+                .author()
+                .email()
+                .unwrap_or("")
+                .to_string(),
+            timestamp: commit.time().seconds(),
+            summary: commit.summary().unwrap_or("").to_string(),
+            message: commit.message().unwrap_or("").to_string(),
+        });
+    }
+
+    entries
+}
+
+/// Retrieve the content of a file at a specific commit.
+///
+/// Returns `None` if the commit or file cannot be found.
+pub fn file_at_commit(
+    repo: &git2::Repository,
+    commit_oid: &str,
+    file_path: &Path,
+) -> Option<String> {
+    let oid = git2::Oid::from_str(commit_oid).ok()?;
+    let commit = repo.find_commit(oid).ok()?;
+    let tree = commit.tree().ok()?;
+    let entry = tree.get_path(file_path).ok()?;
+    let blob = repo.find_blob(entry.id()).ok()?;
+    std::str::from_utf8(blob.content()).ok().map(|s| s.to_string())
+}
+
+/// Generate a unified diff of a file between a commit and its parent.
+///
+/// Returns the diff as a string, or an empty string if unavailable.
+pub fn file_diff_at_commit(
+    repo: &git2::Repository,
+    commit_oid: &str,
+    file_path: &Path,
+) -> String {
+    let oid = match git2::Oid::from_str(commit_oid) {
+        Ok(o) => o,
+        Err(_) => return String::new(),
+    };
+    let commit = match repo.find_commit(oid) {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+    let new_tree = match commit.tree() {
+        Ok(t) => t,
+        Err(_) => return String::new(),
+    };
+    let old_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(file_path.to_string_lossy().as_ref());
+
+    let diff = match repo.diff_tree_to_tree(old_tree.as_ref(), Some(&new_tree), Some(&mut opts)) {
+        Ok(d) => d,
+        Err(_) => return String::new(),
+    };
+
+    let mut output = String::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let origin = line.origin();
+        match origin {
+            '+' | '-' | ' ' => output.push(origin),
+            _ => {}
+        }
+        if let Ok(content) = std::str::from_utf8(line.content()) {
+            output.push_str(content);
+        }
+        true
+    })
+    .ok();
+
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

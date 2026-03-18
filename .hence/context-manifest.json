@@ -1,12 +1,12 @@
 {
-  "task_id": "page-comments",
+  "task_id": "page-history-ui",
   "token_budget": 8000,
-  "tokens_used": 332,
+  "tokens_used": 335,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement page comments: sidecar storage in .zetl/comments/<slug>.json, comment sidebar, WebSocket broadcast, ACL-gated, 30-day auto-prune",
-      "token_cost": 34,
+      "content": "Implement /{slug}/_history: chronological edit list from git log, author/timestamp/message, diff view, restore button, draft indicator for active CRDT",
+      "token_cost": 37,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T12:25:58Z"
+  "constructed_at": "2026-03-18T12:34:14Z"
 }

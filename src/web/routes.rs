@@ -290,6 +290,12 @@ pub async fn page_handler(
 ) -> Response {
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
+
+    // Intercept /_history suffix → render page history UI.
+    if let Some(page_slug) = slug.strip_suffix("/_history") {
+        return page_history_handler_inner(State(state), page_slug.to_string()).await;
+    }
+
     let data = state.data.read().unwrap();
 
     let vault_name = state
@@ -1824,6 +1830,233 @@ fn build_sidebar_denied_map(
     }
 
     denied
+}
+
+// ── Page history UI /{slug}/_history ─────────────────────────────────────
+
+/// Inner handler for `/{slug}/_history` — renders chronological edit list.
+async fn page_history_handler_inner(
+    State(state): State<WebState>,
+    page_slug: String,
+) -> Response {
+    let data = state.data.read().unwrap();
+
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    // Find the file by matching slug.
+    let file = data
+        .files
+        .iter()
+        .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&page_slug));
+
+    let Some(file) = file else {
+        return (
+            StatusCode::NOT_FOUND,
+            Html(format!(
+                "<html><body><h1>404 — Not Found</h1><p>The page <code>/{}</code> does not exist.</p></body></html>",
+                html_escape(&page_slug),
+            )),
+        ).into_response();
+    };
+
+    let page_name = file.page_name.clone();
+    let file_path = file.path.clone();
+    let current_slug = page_slug_from_path(&file.path);
+
+    // Check for active CRDT draft (non-empty WAL file).
+    let has_draft = {
+        let wal_path = state.wal_store.wal_path(&current_slug);
+        std::fs::metadata(&wal_path)
+            .map(|m| m.len() > 0)
+            .unwrap_or(false)
+    };
+
+    // Collect git log entries for this file.
+    let git_entries = if let Some(ref lock) = state.git_commit_lock {
+        let repo = lock.lock().unwrap();
+        crate::web::git_commit::file_log(&repo, &file_path, 100)
+    } else {
+        Vec::new()
+    };
+
+    let vault_ctx = build_vault_context(&data, &vault_name);
+    let breadcrumbs: Vec<crate::web::context::BreadcrumbEntry> = {
+        let parts: Vec<&str> = current_slug.split('/').collect();
+        let mut crumbs = Vec::new();
+        for i in 0..parts.len().saturating_sub(1) {
+            let slug = parts[..=i].join("/");
+            crumbs.push(crate::web::context::BreadcrumbEntry {
+                title: parts[i].to_string(),
+                slug,
+            });
+        }
+        crumbs
+    };
+
+    let history_json = serde_json::to_string(&git_entries).unwrap_or_else(|_| "[]".to_string());
+
+    match state.engine.render_page_history(
+        &vault_ctx,
+        &page_name,
+        &current_slug,
+        &breadcrumbs,
+        &history_json,
+        has_draft,
+    ) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => render_error_response(e),
+    }
+}
+
+/// GET /api/history/file-diff — unified diff of a file at a specific commit.
+///
+/// Query params: `commit` (required), `slug` (required).
+pub async fn api_file_diff_handler(
+    State(state): State<WebState>,
+    Query(params): Query<FileDiffParams>,
+) -> Response {
+    let commit = match params.commit.as_deref() {
+        Some(s) if !s.trim().is_empty() => s.to_owned(),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "missing required parameter 'commit'" })),
+            )
+                .into_response();
+        }
+    };
+    let slug = match params.slug.as_deref() {
+        Some(s) if !s.trim().is_empty() => urldecode(s),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "missing required parameter 'slug'" })),
+            )
+                .into_response();
+        }
+    };
+
+    let data = state.data.read().unwrap();
+    let file = data
+        .files
+        .iter()
+        .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug));
+
+    let Some(file) = file else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "page not found" }))).into_response();
+    };
+
+    let file_path = file.path.clone();
+    drop(data);
+
+    let Some(ref lock) = state.git_commit_lock else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "git not available" }))).into_response();
+    };
+
+    let repo = lock.lock().unwrap();
+    let diff = crate::web::git_commit::file_diff_at_commit(&repo, &commit, &file_path);
+
+    Json(serde_json::json!({ "diff": diff })).into_response()
+}
+
+/// POST /api/history/restore — restore a page to the content from a specific commit.
+///
+/// JSON body: `{ "commit": "...", "slug": "..." }`.
+pub async fn api_restore_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<RestoreBody>,
+) -> Response {
+    let commit = body.commit.trim();
+    let slug = urldecode(body.slug.trim());
+
+    if commit.is_empty() || slug.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "commit and slug are required" })),
+        )
+            .into_response();
+    }
+
+    let data = state.data.read().unwrap();
+    let file = data
+        .files
+        .iter()
+        .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug));
+
+    let Some(file) = file else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "page not found" }))).into_response();
+    };
+
+    let file_path = file.path.clone();
+    drop(data);
+
+    let Some(ref lock) = state.git_commit_lock else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "git not available" }))).into_response();
+    };
+
+    // Read the file content at the specified commit.
+    let content = {
+        let repo = lock.lock().unwrap();
+        crate::web::git_commit::file_at_commit(&repo, commit, &file_path)
+    };
+
+    let Some(content) = content else {
+        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "file not found at commit" }))).into_response();
+    };
+
+    // Write the content back to disk.
+    let full_path = state.vault_root.join(&file_path);
+    if let Err(e) = std::fs::write(&full_path, &content) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("write failed: {e}") })),
+        )
+            .into_response();
+    }
+
+    // Auto-commit the restore.
+    {
+        let repo = lock.lock().unwrap();
+        let user_name = extract_session_user_id(&state, &headers)
+            .unwrap_or_else(|| "system".to_string());
+        let msg = format!("restore: {} to {}", slug, &commit[..7.min(commit.len())]);
+        let _ = crate::web::git_commit::auto_commit(
+            &repo,
+            &file_path,
+            &user_name,
+            &user_name,
+            Some(&msg),
+        );
+        crate::web::git_commit::jj_git_import(&state.vault_root);
+    }
+
+    // Re-index the vault.
+    match reindex(&state.vault_root) {
+        Ok(new_data) => {
+            let _ = SearchIndex::build(&state.vault_root, &new_data.files);
+            *state.data.write().unwrap() = new_data;
+        }
+        Err(e) => eprintln!("reindex error after restore: {e}"),
+    }
+
+    Json(serde_json::json!({ "ok": true })).into_response()
+}
+
+#[derive(Deserialize)]
+pub struct FileDiffParams {
+    pub commit: Option<String>,
+    pub slug: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct RestoreBody {
+    pub commit: String,
+    pub slug: String,
 }
 
 fn render_error_response(err: TemplateError) -> Response {

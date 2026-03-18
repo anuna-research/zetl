@@ -225,6 +225,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "admin_invite.html",
     "admin_permissions.html",
     "dashboard.html",
+    "page_history.html",
 ];
 
 /// Build a minijinja Environment with the three-tier template loader.
@@ -589,6 +590,43 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("dashboard.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the page history UI (/{slug}/_history).
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_page_history(
+        &self,
+        vault_ctx: &VaultContext,
+        page_title: &str,
+        page_slug: &str,
+        breadcrumbs: &[super::context::BreadcrumbEntry],
+        history_json: &str,
+        has_draft: bool,
+    ) -> Result<String, TemplateError> {
+        let search_index = build_search_index(vault_ctx);
+        let ctx = context! {
+            vault => vault_ctx,
+            page_title => page_title,
+            page_slug => page_slug,
+            breadcrumbs => breadcrumbs,
+            history_json => history_json,
+            has_draft => has_draft,
+            mode => "serve",
+            search_index => search_index,
+            theme => &self.theme,
+            active_slug => page_slug,
+            root_path => "/",
+            index_file => "",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("page_history.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("page_history.html"));
         }
         Ok(html)
     }

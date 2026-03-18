@@ -337,6 +337,14 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
             get(routes::api_comments_get_handler).post(routes::api_comments_post_handler),
         )
         .route("/_print", get(routes::print_handler))
+        .route(
+            "/api/history/file-diff",
+            get(routes::api_file_diff_handler),
+        )
+        .route(
+            "/api/history/restore",
+            post(routes::api_restore_handler),
+        )
         .route("/edit/{*slug}", get(routes::edit_handler))
         .route("/_static/{*path}", get(routes::static_handler))
         .merge(admin_routes)
