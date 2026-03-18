@@ -60,6 +60,9 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         theme: theme.to_string(),
         verbose: false,
         sessions: zetl::web::session::SessionStore::new(),
+        recovery_challenges: Arc::new(
+            zetl::user::recovery::RecoveryChallengeStore::new(),
+        ),
         #[cfg(feature = "semantic")]
         vector_index: None,
     }

@@ -4,6 +4,7 @@
 //! the CON-020-001 schema.
 
 pub mod passkey;
+pub mod recovery;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -105,7 +106,7 @@ fn rand_byte() -> u8 {
     buf[0]
 }
 
-fn getrandom(buf: &mut [u8]) {
+pub(crate) fn getrandom(buf: &mut [u8]) {
     use std::io::Read;
     let mut f = std::fs::File::open("/dev/urandom").expect("open /dev/urandom");
     f.read_exact(buf).expect("read /dev/urandom");

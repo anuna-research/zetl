@@ -1,12 +1,12 @@
 {
-  "task_id": "session-mgmt",
+  "task_id": "bip39-recovery",
   "token_budget": 8000,
-  "tokens_used": 121,
+  "tokens_used": 152,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement session middleware for Axum: opaque token generation, HttpOnly/SameSite=Strict cookies, idle/max timeout, in-memory HashMap store",
-      "token_cost": 34,
+      "content": "Implement BIP39 mnemonic generation (128-bit), SLIP-0010 ed25519 derivation, recovery challenge-response flow per CON-020-002",
+      "token_cost": 31,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 5 files (+625, -7): .hence/context-manifest.json, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs, themes/default/passkey_register.html",
       "token_cost": 37,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-session-mgmt-changes",
+      "content": "Modified 7 files (+253, -5): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs, src/web/session.rs and 2 more",
+      "token_cost": 34,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T06:46:57Z"
+  "constructed_at": "2026-03-18T06:51:07Z"
 }

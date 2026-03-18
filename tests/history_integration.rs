@@ -1388,6 +1388,9 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
         theme: "default".to_string(),
         verbose: false,
         sessions: zetl::web::session::SessionStore::new(),
+        recovery_challenges: Arc::new(
+            zetl::user::recovery::RecoveryChallengeStore::new(),
+        ),
     }
 }
 
