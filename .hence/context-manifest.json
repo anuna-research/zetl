@@ -1,12 +1,12 @@
 {
-  "task_id": "csrf",
+  "task_id": "tls-warning",
   "token_budget": 8000,
-  "tokens_used": 331,
+  "tokens_used": 330,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement CSRF protection: issue token with session, require X-CSRF-Token header on PUT/POST/DELETE, exempt Bearer auth and WebSocket",
-      "token_cost": 33,
+      "content": "Implement TLS enforcement: refuse --collab on non-loopback without ZETL_INSECURE_COLLAB=1; WARN on startup; no warning on localhost",
+      "token_cost": 32,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T07:51:34Z"
+  "constructed_at": "2026-03-18T07:57:26Z"
 }

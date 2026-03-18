@@ -157,7 +157,7 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
     (page_slug_map, collision_names)
 }
 
-pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
+pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<()> {
     // ── Auth routes (always public, even in --collab mode) ───────────
     let auth_routes = Router::new()
         .route("/auth/bootstrap", get(routes::bootstrap_handler))
@@ -218,7 +218,7 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
         .merge(content_routes)
         .with_state(state);
 
-    let addr = format!("0.0.0.0:{port}");
+    let addr = format!("{bind_addr}:{port}");
     eprintln!("zetl serve  →  http://localhost:{port}");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
