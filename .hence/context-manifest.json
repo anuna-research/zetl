@@ -1,12 +1,12 @@
 {
-  "task_id": "crdt-state-mgmt",
+  "task_id": "crdt-flush-pipeline",
   "token_budget": 8000,
-  "tokens_used": 327,
+  "tokens_used": 340,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement CrdtDocument lifecycle: load on first WS connection, eviction TTL, memory bound (50 docs), quiescence flush",
-      "token_cost": 29,
+      "content": "Implement unified flush pipeline: serialize → write → re-scan → merkle → ACL invalidate → search → git commit → jj import → jj snapshot → graph → hooks",
+      "token_cost": 42,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T11:52:29Z"
+  "constructed_at": "2026-03-18T12:03:07Z"
 }

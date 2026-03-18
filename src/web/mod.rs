@@ -1,6 +1,7 @@
 pub mod build;
 pub mod context;
 pub mod engine;
+pub mod flush;
 pub mod git_commit;
 pub mod html;
 pub mod markdown;
@@ -254,6 +255,10 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
 }
 
 pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<()> {
+    // Spawn the CRDT flush lifecycle task (REQ-020-034).
+    // Runs the unified 10-step pipeline on quiescence and handles TTL evictions.
+    let _flush_handle = flush::spawn_flush_lifecycle_task(state.clone());
+
     // ── Auth routes (always public, even in --collab mode) ───────────
     let auth_routes = Router::new()
         .route("/auth/bootstrap", get(routes::bootstrap_handler))
