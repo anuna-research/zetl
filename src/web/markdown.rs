@@ -442,9 +442,9 @@ fn replace_wikilinks_visibility_segment(
                     )
                 }
                 DeniedLinkStyle::Locked => {
-                    // mixed mode: lock icon, title visible, click → 403
+                    // mixed mode: lock icon, title visible, click → 403 (REQ-020-054)
                     format!(
-                        "<a href=\"{root_path}{href}/{index_file}\" class=\"wikilink wikilink-denied-locked\" title=\"Restricted page\">\u{1f512} {display}</a>",
+                        "<a href=\"{root_path}{href}/{index_file}\" class=\"wikilink wikilink-denied-locked\" title=\"This page is restricted. Click to request access.\">\u{1f512} {display}</a>",
                         root_path = root_path,
                         href = urlencoding(href_slug),
                         index_file = index_file,
@@ -667,7 +667,7 @@ mod tests {
 
         let html = render_to_html_with_visibility(content, &slug_map, &denied, "/", "");
         assert!(html.contains("wikilink-denied-locked"));
-        assert!(html.contains("Restricted page"));
+        assert!(html.contains("This page is restricted. Click to request access."));
         assert!(html.contains("\u{1f512}")); // lock emoji
         assert!(html.contains("Secret Project"));
     }

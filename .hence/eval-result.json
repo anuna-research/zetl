@@ -3,24 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 5,
-    "deletions": 5,
+    "files_changed": 5,
+    "insertions": 114,
+    "deletions": 18,
     "file_list": [
-      ".hence/context-manifest.json"
+      ".hence/context-manifest.json",
+      "src/user/mod.rs",
+      "src/web/markdown.rs",
+      "src/web/routes.rs",
+      "src/web/ws.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-ws-ticket-changes",
-      "content": "Modified 1 files (+5, -5): .hence/context-manifest.json",
+      "key": "task-visibility-ux-changes",
+      "content": "Modified 5 files (+114, -18): .hence/context-manifest.json, src/user/mod.rs, src/web/markdown.rs, src/web/routes.rs, src/web/ws.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/ws-ticket-v1",
-  "evaluated_at": "2026-03-18T11:25:11Z",
+  "branch_name": "hence/visibility-ux-v1",
+  "evaluated_at": "2026-03-18T11:42:03Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

@@ -243,6 +243,21 @@ pub fn list_profiles(vault_root: &Path) -> Result<Vec<UserProfile>> {
     Ok(profiles)
 }
 
+/// Return display names of all admin/owner users in the vault (REQ-020-054).
+///
+/// Admins are users whose profile has `owner: true` or whose role resolves to `Admin`.
+pub fn admin_names(vault_root: &Path) -> Vec<String> {
+    let profiles = match list_profiles(vault_root) {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
+    profiles
+        .into_iter()
+        .filter(|p| p.owner || Role::for_profile(p) == Role::Admin)
+        .map(|p| p.name)
+        .collect()
+}
+
 /// Delete a user profile and its directory.
 pub fn delete_profile(vault_root: &Path, user_id: &str) -> Result<()> {
     let dir = user_dir(vault_root, user_id);

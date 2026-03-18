@@ -1,12 +1,12 @@
 {
-  "task_id": "ws-ticket",
+  "task_id": "visibility-ux",
   "token_budget": 8000,
-  "tokens_used": 333,
+  "tokens_used": 339,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement WebSocket ticket auth: POST /auth/ws-ticket issues 30s one-time ticket; WS validates and invalidates; prevents bearer tokens in logs",
-      "token_cost": 35,
+      "content": "Implement visibility explanations: lock icon tooltips with admin contact, 403 page with admin names, hidden-mode collision warning, visibility mode switch notification",
+      "token_cost": 41,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T11:21:48Z"
+  "constructed_at": "2026-03-18T11:25:17Z"
 }
