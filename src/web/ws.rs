@@ -28,6 +28,7 @@ use tokio::sync::broadcast;
 
 use crate::crdt::CrdtDocument;
 
+use super::wal::WalStore;
 use super::WebState;
 
 // ── Protocol messages ────────────────────────────────────────────────
@@ -515,6 +516,16 @@ impl CrdtDocStore {
         Ok(())
     }
 
+    /// Return all currently loaded slugs.
+    pub fn loaded_slugs(&self) -> Vec<String> {
+        self.docs
+            .lock()
+            .expect("crdt store lock")
+            .keys()
+            .cloned()
+            .collect()
+    }
+
     /// Check if a document is loaded.
     pub fn is_loaded(&self, slug: &str) -> bool {
         self.docs.lock().expect("crdt store lock").contains_key(slug)
@@ -753,7 +764,7 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
             ws_msg = socket.recv() => {
                 match ws_msg {
                     Some(Ok(Message::Text(text))) => {
-                        if let Err(e) = process_client_msg(text.as_str(), &user_id, &slug, &room, &state.crdt_store) {
+                        if let Err(e) = process_client_msg(text.as_str(), &user_id, &slug, &room, &state.crdt_store, &state.wal_store) {
                             eprintln!("ws error for {user_id} on {slug}: {e}");
                             let err_json = serde_json::to_string(&ServerMsg::Error {
                                 message: e.to_string(),
@@ -780,6 +791,7 @@ fn process_client_msg(
     slug: &str,
     room: &EditRoom,
     crdt_store: &CrdtDocStore,
+    wal_store: &WalStore,
 ) -> Result<(), anyhow::Error> {
     let msg: ClientMsg =
         serde_json::from_str(text).map_err(|e| anyhow::anyhow!("invalid message: {e}"))?;
@@ -797,6 +809,10 @@ fn process_client_msg(
             let _ = room.tx.send(ServerMsg::Sync { doc });
         }
         ClientMsg::Op { ops } => {
+            // Append to WAL before applying (REQ-020-044)
+            if let Err(e) = wal_store.append_ops(slug, &ops) {
+                eprintln!("warning: WAL append failed for {slug}: {e}");
+            }
             // Apply operations to the server-side CRDT document
             if let Err(e) = crdt_store.apply_ops(slug, &ops) {
                 eprintln!("warning: CRDT op apply failed for {slug}: {e}");
@@ -950,10 +966,17 @@ mod tests {
         CrdtDocStore::new(Arc::new(tmp.into_path()))
     }
 
+    fn test_wal_store() -> (tempfile::TempDir, WalStore) {
+        let tmp = tempfile::tempdir().unwrap();
+        let wal = WalStore::new(tmp.path());
+        (tmp, wal)
+    }
+
     #[test]
     fn process_sync_stores_doc() {
         let room = EditRoom::new();
         let store = test_crdt_store();
+        let (_wal_dir, wal) = test_wal_store();
         store.load_or_get("test").unwrap();
         process_client_msg(
             r#"{"type":"sync","doc":"AQID"}"#,
@@ -961,6 +984,7 @@ mod tests {
             "test",
             &room,
             &store,
+            &wal,
         )
         .unwrap();
         let doc = room.doc_state.lock().unwrap();
@@ -972,6 +996,7 @@ mod tests {
         let room = EditRoom::new();
         let mut rx = room.tx.subscribe();
         let store = test_crdt_store();
+        let (_wal_dir, wal) = test_wal_store();
         store.load_or_get("test").unwrap();
         process_client_msg(
             r#"{"type":"op","ops":[{"action":"splice","pos":0,"del":0,"text":"hi"}]}"#,
@@ -979,6 +1004,7 @@ mod tests {
             "test",
             &room,
             &store,
+            &wal,
         )
         .unwrap();
         let msg = rx.try_recv().unwrap();
@@ -990,12 +1016,14 @@ mod tests {
         let room = EditRoom::new();
         let mut rx = room.tx.subscribe();
         let store = test_crdt_store();
+        let (_wal_dir, wal) = test_wal_store();
         process_client_msg(
             r#"{"type":"presence","cursor":{"index":5,"head":5},"name":"Alice"}"#,
             "alice",
             "test",
             &room,
             &store,
+            &wal,
         )
         .unwrap();
         let msg = rx.try_recv().unwrap();
@@ -1008,7 +1036,8 @@ mod tests {
     fn process_invalid_json_returns_error() {
         let room = EditRoom::new();
         let store = test_crdt_store();
-        let result = process_client_msg("not json", "alice", "test", &room, &store);
+        let (_wal_dir, wal) = test_wal_store();
+        let result = process_client_msg("not json", "alice", "test", &room, &store, &wal);
         assert!(result.is_err());
     }
 

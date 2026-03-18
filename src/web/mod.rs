@@ -9,6 +9,7 @@ pub mod routes;
 pub mod rate_limit;
 pub mod session;
 pub mod theme;
+pub mod wal;
 pub mod ws;
 
 use std::collections::{HashMap, HashSet};
@@ -165,6 +166,8 @@ pub struct WebState {
     pub ticket_store: ws::TicketStore,
     /// CRDT document store — manages lifecycle: load, eviction, flush (REQ-020-029).
     pub crdt_store: ws::CrdtDocStore,
+    /// CRDT write-ahead log for crash recovery (REQ-020-044).
+    pub wal_store: Arc<wal::WalStore>,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]
@@ -255,6 +258,11 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
 }
 
 pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<()> {
+    // ── WAL replay on startup (REQ-020-044) ─────────────────────────────
+    // If the server crashed with dirty CRDT state, the WAL contains the
+    // operations that were not yet flushed. Replay them now.
+    wal::replay_pending_wals(&state);
+
     // Spawn the CRDT flush lifecycle task (REQ-020-034).
     // Runs the unified 10-step pipeline on quiescence and handles TTL evictions.
     let _flush_handle = flush::spawn_flush_lifecycle_task(state.clone());

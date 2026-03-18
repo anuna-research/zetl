@@ -3,26 +3,31 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 471,
-    "deletions": 5,
+    "files_changed": 8,
+    "insertions": 478,
+    "deletions": 8,
     "file_list": [
       ".hence/context-manifest.json",
+      "src/main.rs",
       "src/web/flush.rs",
-      "src/web/mod.rs"
+      "src/web/mod.rs",
+      "src/web/routes.rs",
+      "src/web/session.rs",
+      "src/web/wal.rs",
+      "src/web/ws.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-crdt-flush-pipeline-changes",
-      "content": "Modified 3 files (+471, -5): .hence/context-manifest.json, src/web/flush.rs, src/web/mod.rs",
+      "key": "task-crdt-wal-changes",
+      "content": "Modified 8 files (+478, -8): .hence/context-manifest.json, src/main.rs, src/web/flush.rs, src/web/mod.rs, src/web/routes.rs and 3 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/crdt-flush-pipeline-v1",
-  "evaluated_at": "2026-03-18T12:12:16Z",
+  "branch_name": "hence/crdt-wal-v1",
+  "evaluated_at": "2026-03-18T12:22:00Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
