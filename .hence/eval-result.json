@@ -3,12 +3,15 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 459,
-    "deletions": 6,
+    "files_changed": 7,
+    "insertions": 1111,
+    "deletions": 15,
     "file_list": [
       ".hence/context-manifest.json",
       "src/acl.rs",
+      "src/web/build.rs",
+      "src/web/context.rs",
+      "src/web/markdown.rs",
       "src/web/mod.rs",
       "src/web/routes.rs"
     ],
@@ -16,14 +19,14 @@
   },
   "learnings": [
     {
-      "key": "task-acl-explain-changes",
-      "content": "Modified 4 files (+459, -6): .hence/context-manifest.json, src/acl.rs, src/web/mod.rs, src/web/routes.rs",
+      "key": "task-visibility-changes",
+      "content": "Modified 7 files (+1111, -15): .hence/context-manifest.json, src/acl.rs, src/web/build.rs, src/web/context.rs, src/web/markdown.rs and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/acl-explain-v1",
-  "evaluated_at": "2026-03-18T10:05:53Z",
+  "branch_name": "hence/visibility-v1",
+  "evaluated_at": "2026-03-18T10:28:22Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

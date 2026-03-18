@@ -18,7 +18,7 @@ use crate::acl::{AclDecision, Action};
 
 use axum::http::header;
 use axum::middleware;
-use axum::routing::{delete, get, post, put};
+use axum::routing::{get, post};
 use axum::Router;
 
 use crate::graph::LinkGraph;

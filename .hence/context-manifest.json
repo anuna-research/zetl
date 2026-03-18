@@ -1,12 +1,12 @@
 {
-  "task_id": "acl-explain",
+  "task_id": "visibility",
   "token_budget": 8000,
-  "tokens_used": 325,
+  "tokens_used": 337,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement /api/acl/explain endpoint using spindle why_not() for denied decisions and proof tracing for allowed",
-      "token_cost": 27,
+      "content": "Implement three visibility modes (transparent/mixed/hidden): sidebar filtering, wikilink rendering, 403/404 responses, per-page overrides, link graph filtering",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T09:58:45Z"
+  "constructed_at": "2026-03-18T10:05:59Z"
 }
