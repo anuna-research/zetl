@@ -3549,6 +3549,301 @@ pub async fn api_reason_handler(
     }
 }
 
+// ── GET /api/acl/explain — explain ACL decision (REQ-020-014) ─────────────
+
+#[cfg(feature = "reason")]
+#[derive(Deserialize)]
+pub struct AclExplainParams {
+    pub page: String,
+    pub action: Option<String>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct AclExplainResponse {
+    decision: String,
+    tag: String,
+    user_id: String,
+    page: String,
+    action: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    proof_trace: Vec<AclExplainProofEntry>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    why_not: Vec<AclExplainWhyNotRule>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct AclExplainProofEntry {
+    rule_label: Option<String>,
+    source_file: String,
+    source_line: u32,
+    contribution: String,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct AclExplainWhyNotRule {
+    rule_label: String,
+    rule_type: String,
+    blockers: Vec<AclExplainBlocker>,
+}
+
+#[cfg(feature = "reason")]
+#[derive(Serialize)]
+struct AclExplainBlocker {
+    blocker_type: String,
+    literal: String,
+    explanation: String,
+}
+
+#[cfg(feature = "reason")]
+pub async fn api_acl_explain_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Query(params): Query<AclExplainParams>,
+) -> Response {
+    // Requires authentication
+    let (user_id, is_agent) = match require_auth(&state, &headers) {
+        Ok(auth) => auth,
+        Err(resp) => return resp,
+    };
+
+    let action = match params.action.as_deref().unwrap_or("read") {
+        "read" => crate::acl::Action::Read,
+        "edit" => crate::acl::Action::Edit,
+        other => {
+            return ApiResponse::err(
+                StatusCode::BAD_REQUEST,
+                "INVALID_ACTION",
+                format!("action must be 'read' or 'edit', got '{other}'"),
+            );
+        }
+    };
+
+    let page_slug = params.page.clone();
+
+    // Collect page-level SPL blocks and all page slugs
+    let (page_spl_blocks, all_page_slugs) = {
+        let data = state.data.read().unwrap();
+        let page_spl: Vec<crate::types::SplBlock> = data
+            .files
+            .iter()
+            .filter(|f| {
+                crate::scanner::page_slug_from_path(&f.path) == page_slug
+            })
+            .flat_map(|f| f.spl_blocks.iter().cloned())
+            .collect();
+        let slugs: Vec<String> = data
+            .files
+            .iter()
+            .map(|f| crate::scanner::page_slug_from_path(&f.path))
+            .collect();
+        (page_spl, slugs)
+    };
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+
+    let query = crate::acl::AclQuery {
+        user_id: user_id.clone(),
+        page_slug: page_slug.clone(),
+        action,
+        is_agent,
+        now_epoch_ms: now_ms,
+    };
+
+    let (decision, theory_result) = match crate::acl::evaluate_with_theory(
+        &state.vault_root,
+        &query,
+        &page_spl_blocks,
+        &all_page_slugs,
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                format!("ACL evaluation failed: {e}"),
+            );
+        }
+    };
+
+    let (decision_str, tag, rule_trace) = match &decision {
+        crate::acl::AclDecision::Allowed { tag, rule_trace } => {
+            ("allowed", format_tag(*tag), rule_trace.clone())
+        }
+        crate::acl::AclDecision::Denied { tag, rule_trace } => {
+            ("denied", format_tag(*tag), rule_trace.clone())
+        }
+    };
+
+    let proof_trace: Vec<AclExplainProofEntry> = if decision.is_allowed() {
+        rule_trace
+            .iter()
+            .map(|r| AclExplainProofEntry {
+                rule_label: r.label.clone(),
+                source_file: r.source_file.to_string_lossy().to_string(),
+                source_line: r.source_line,
+                contribution: r.contribution.clone(),
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+
+    // For denied decisions, build why-not analysis
+    let why_not: Vec<AclExplainWhyNotRule> = if !decision.is_allowed() {
+        build_why_not_for_acl(&query, &theory_result)
+    } else {
+        vec![]
+    };
+
+    ApiResponse::ok(AclExplainResponse {
+        decision: decision_str.to_string(),
+        tag,
+        user_id,
+        page: page_slug,
+        action: action.to_string(),
+        proof_trace,
+        why_not,
+    })
+    .into_response()
+}
+
+#[cfg(feature = "reason")]
+fn format_tag(tag: crate::acl::ConclusionTag) -> String {
+    match tag {
+        crate::acl::ConclusionTag::DefinitelyProvable => "+D".to_string(),
+        crate::acl::ConclusionTag::DefeasiblyProvable => "+d".to_string(),
+        crate::acl::ConclusionTag::DefinitelyNotProvable => "-D".to_string(),
+        crate::acl::ConclusionTag::DefeasiblyNotProvable => "-d".to_string(),
+    }
+}
+
+/// Build why-not analysis for a denied ACL decision (REQ-020-014).
+///
+/// Examines candidate rules that could prove the target literal, identifies
+/// which body literals are missing (failed preconditions) and which defeaters
+/// are active, mirroring the CLI `reason why-not` logic.
+#[cfg(feature = "reason")]
+fn build_why_not_for_acl(
+    query: &crate::acl::AclQuery,
+    result: &crate::reason::types::TheoryResult,
+) -> Vec<AclExplainWhyNotRule> {
+    use crate::reason::types::{ConclusionType, RuleType};
+
+    let target_literal = match query.action {
+        crate::acl::Action::Read => {
+            format!("can-read({}, {})", query.user_id, query.page_slug)
+        }
+        crate::acl::Action::Edit => {
+            format!("can-edit({}, {})", query.user_id, query.page_slug)
+        }
+    };
+
+    // Set of all provable literals
+    let provable_set: std::collections::HashSet<String> = result
+        .conclusions
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.conclusion_type,
+                ConclusionType::DefinitelyProvable | ConclusionType::DefeasiblyProvable
+            )
+        })
+        .map(|c| c.literal.clone())
+        .collect();
+
+    // Find candidate rules whose head matches
+    let candidate_rules: Vec<_> = result
+        .rules
+        .iter()
+        .filter(|r| r.head.to_string() == target_literal)
+        .collect();
+
+    let negated_literal = format!("~{}", target_literal);
+
+    let mut analyses = Vec::new();
+    for rule in &candidate_rules {
+        let mut blockers = Vec::new();
+
+        // Check each body literal
+        for body_lit in &rule.body {
+            let body_str = body_lit.to_string();
+            if !provable_set.contains(&body_str) {
+                blockers.push(AclExplainBlocker {
+                    blocker_type: "failed_body".to_string(),
+                    literal: body_str,
+                    explanation: "precondition not provable".to_string(),
+                });
+            }
+        }
+
+        // Check for active defeaters
+        for def_rule in &result.rules {
+            if def_rule.rule_type == RuleType::Defeater
+                && def_rule.head.to_string() == negated_literal
+            {
+                let body_satisfied = def_rule
+                    .body
+                    .iter()
+                    .all(|b| provable_set.contains(&b.to_string()));
+                if body_satisfied {
+                    blockers.push(AclExplainBlocker {
+                        blocker_type: "defeated".to_string(),
+                        literal: negated_literal.clone(),
+                        explanation: format!(
+                            "blocked by defeater '{}'",
+                            def_rule.label
+                        ),
+                    });
+                }
+            }
+        }
+
+        // Check for superior competing rules
+        for other_rule in &result.rules {
+            if other_rule.head.to_string() == negated_literal
+                && other_rule.rule_type != RuleType::Defeater
+            {
+                let other_superior = result
+                    .theory
+                    .superiorities()
+                    .iter()
+                    .any(|s| s.superior == other_rule.label && s.inferior == rule.label);
+
+                if other_superior {
+                    let body_satisfied = other_rule
+                        .body
+                        .iter()
+                        .all(|b| provable_set.contains(&b.to_string()));
+                    if body_satisfied {
+                        blockers.push(AclExplainBlocker {
+                            blocker_type: "defeated".to_string(),
+                            literal: negated_literal.clone(),
+                            explanation: format!(
+                                "defeated by superior rule '{}'",
+                                other_rule.label
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+
+        analyses.push(AclExplainWhyNotRule {
+            rule_label: rule.label.clone(),
+            rule_type: format!("{:?}", rule.rule_type),
+            blockers,
+        });
+    }
+
+    analyses
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
