@@ -3,32 +3,24 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 9,
-    "insertions": 481,
-    "deletions": 11,
+    "files_changed": 1,
+    "insertions": 5,
+    "deletions": 5,
     "file_list": [
-      ".hence/context-manifest.json",
-      "src/hooks/context.rs",
-      "src/hooks/mod.rs",
-      "src/user/access_request.rs",
-      "src/user/mod.rs",
-      "src/web/mod.rs",
-      "src/web/routes.rs",
-      "src/web/ws.rs",
-      "themes/default/dashboard.html"
+      ".hence/context-manifest.json"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-access-request-changes",
-      "content": "Modified 9 files (+481, -11): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs, src/user/access_request.rs, src/user/mod.rs and 4 more",
+      "key": "task-ws-ticket-changes",
+      "content": "Modified 1 files (+5, -5): .hence/context-manifest.json",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/access-request-v1",
-  "evaluated_at": "2026-03-18T11:21:42Z",
+  "branch_name": "hence/ws-ticket-v1",
+  "evaluated_at": "2026-03-18T11:25:11Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
