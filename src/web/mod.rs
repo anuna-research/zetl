@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
+use axum::http::header;
 use axum::middleware;
 use axum::routing::{get, post};
 use axum::Router;
@@ -220,7 +221,16 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
     let app = Router::new()
         .merge(auth_routes)
         .merge(content_routes)
-        .with_state(state);
+        .with_state(state)
+        .layer(middleware::map_response(|mut resp: axum::response::Response| async {
+            resp.headers_mut().insert(
+                header::CONTENT_SECURITY_POLICY,
+                "script-src 'self'; frame-ancestors 'none'; connect-src 'self' wss:"
+                    .parse()
+                    .unwrap(),
+            );
+            resp
+        }));
 
     let addr = format!("{bind_addr}:{port}");
     eprintln!("zetl serve  →  http://localhost:{port}");
