@@ -185,12 +185,8 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
             get(routes::accept_invite_handler).post(routes::accept_invite_submit_handler),
         );
 
-    // ── Content routes (gated by collab_gate when --collab is active) ─
-    let content_routes = Router::new()
-        .route("/", get(routes::index_handler))
-        .route("/api/search", get(routes::api_search_handler))
-        .route("/_print", get(routes::print_handler))
-        .route("/_static/{*path}", get(routes::static_handler))
+    // ── Admin routes (hardcoded owner/admin gate — not defeatable by SPL) ──
+    let admin_routes = Router::new()
         .route(
             "/_admin/invite",
             get(routes::admin_invite_handler).post(routes::admin_invite_create_handler),
@@ -203,6 +199,18 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
             "/_admin/permissions",
             get(routes::admin_permissions_handler).post(routes::admin_permissions_save_handler),
         )
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            session::admin_gate,
+        ));
+
+    // ── Content routes (gated by collab_gate when --collab is active) ─
+    let content_routes = Router::new()
+        .route("/", get(routes::index_handler))
+        .route("/api/search", get(routes::api_search_handler))
+        .route("/_print", get(routes::print_handler))
+        .route("/_static/{*path}", get(routes::static_handler))
+        .merge(admin_routes)
         .route("/preview/{*path}", get(routes::preview_handler))
         .route(
             "/{*path}",

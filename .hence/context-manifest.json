@@ -1,12 +1,12 @@
 {
-  "task_id": "permission-ui",
+  "task_id": "admin-hardcode",
   "token_budget": 8000,
-  "tokens_used": 337,
+  "tokens_used": 331,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement /_admin/permissions: user list with roles/scopes, change role dropdown, change scope field, revoke button, SPL preview, save through normal pipeline",
-      "token_cost": 39,
+      "content": "Implement hardcoded admin check on /_admin/* routes: profile-based owner||admin check before SPL evaluation; not defeatable by policy",
+      "token_cost": 33,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T08:53:49Z"
+  "constructed_at": "2026-03-18T09:00:24Z"
 }

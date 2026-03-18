@@ -419,6 +419,44 @@ where
     }
 }
 
+/// Middleware that gates `/_admin/*` routes behind a hardcoded owner-or-admin check.
+///
+/// This runs *before* any SPL policy evaluation and cannot be overridden by access rules.
+/// Requires the user to be authenticated (session cookie or Bearer token) and their
+/// profile to have `owner == true` (which maps to `Role::Admin` via `Role::for_profile`).
+///
+/// Returns 401 if unauthenticated, 403 if the user is not an owner/admin.
+pub async fn admin_gate(
+    State(state): State<super::WebState>,
+    request: axum::http::Request<Body>,
+    next: Next,
+) -> Response {
+    // Resolve user_id from session cookie or Bearer token
+    let user_id = token_from_cookies(request.headers())
+        .and_then(|t| state.sessions.validate(&t))
+        .or_else(|| {
+            bearer_token_from_headers(request.headers())
+                .and_then(|t| verify_bearer_token(&state.vault_root, &t))
+        });
+
+    let user_id = match user_id {
+        Some(id) => id,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+
+    // Load profile and check owner/admin — hardcoded, not SPL-driven
+    let profile = crate::user::load_profile(&state.vault_root, &user_id)
+        .ok()
+        .flatten();
+
+    match profile {
+        Some(p) if p.owner || crate::user::Role::for_profile(&p) >= crate::user::Role::Admin => {
+            next.run(request).await
+        }
+        _ => StatusCode::FORBIDDEN.into_response(),
+    }
+}
+
 /// Check that a session role meets the minimum required level.
 ///
 /// Returns `Err(403 Forbidden)` if the role is insufficient.
@@ -667,5 +705,132 @@ mod tests {
         let token = store.create("alice");
         store.destroy(&token);
         assert!(store.csrf_token(&token).is_none());
+    }
+
+    /// Helper to build a minimal WebState backed by a temp dir for admin_gate tests.
+    fn test_web_state(tmp: &std::path::Path) -> crate::web::WebState {
+        use std::sync::{Arc, Mutex, RwLock};
+        let data = crate::web::VaultData {
+            files: vec![],
+            graph: crate::graph::LinkGraph::build(&[], &std::collections::HashMap::new()),
+            page_names: vec![],
+            resolved: std::collections::HashSet::new(),
+            page_slug_map: std::collections::HashMap::new(),
+            collision_names: std::collections::HashSet::new(),
+        };
+        let search_index = crate::search_index::SearchIndex::build(tmp, &[]).unwrap();
+        crate::web::WebState {
+            data: Arc::new(RwLock::new(data)),
+            vault_root: Arc::new(tmp.to_path_buf()),
+            search_index: Arc::new(search_index),
+            engine: Arc::new(crate::web::engine::TemplateEngine::new(tmp, "default", false, false)),
+            theme: "default".to_string(),
+            verbose: false,
+            collab: true,
+            sessions: SessionStore::new(),
+            recovery_challenges: Arc::new(crate::user::recovery::RecoveryChallengeStore::new()),
+            mnemonic_shown: Arc::new(Mutex::new(std::collections::HashSet::new())),
+            git_commit_lock: None,
+        }
+    }
+
+    /// Create a user profile in the temp vault and return its ID.
+    fn create_test_user(tmp: &std::path::Path, name: &str, owner: bool) -> String {
+        let id = crate::user::generate_user_id(name);
+        let profile = crate::user::UserProfile {
+            id: id.clone(),
+            name: name.to_string(),
+            created_at: "2026-03-18T10:00:00Z".to_string(),
+            invited_by: None,
+            owner,
+            credentials: vec![],
+            recovery_pubkey: "dGVzdC1wdWJrZXk".to_string(),
+            agent_token_generation: 0,
+        };
+        crate::user::save_profile(tmp, &profile).unwrap();
+        id
+    }
+
+    #[tokio::test]
+    async fn admin_gate_allows_owner() {
+        use axum::{middleware, routing::get, Router};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state = test_web_state(tmp.path());
+        let user_id = create_test_user(tmp.path(), "Owner", true);
+        let session_token = state.sessions.create(&user_id);
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
+            .with_state(state);
+
+        let resp = app
+            .oneshot(
+                Request::get("/test")
+                    .header("Cookie", format!("zetl_session={session_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn admin_gate_blocks_non_owner() {
+        use axum::{middleware, routing::get, Router};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state = test_web_state(tmp.path());
+        let user_id = create_test_user(tmp.path(), "Editor", false);
+        let session_token = state.sessions.create(&user_id);
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
+            .with_state(state);
+
+        let resp = app
+            .oneshot(
+                Request::get("/test")
+                    .header("Cookie", format!("zetl_session={session_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn admin_gate_returns_401_without_session() {
+        use axum::{middleware, routing::get, Router};
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state = test_web_state(tmp.path());
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .route_layer(middleware::from_fn_with_state(state.clone(), admin_gate))
+            .with_state(state);
+
+        let resp = app
+            .oneshot(Request::get("/test").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }
