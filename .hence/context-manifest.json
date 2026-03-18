@@ -1,12 +1,12 @@
 {
-  "task_id": "rate-limiting",
+  "task_id": "owner-hardening",
   "token_budget": 8000,
-  "tokens_used": 337,
+  "tokens_used": 334,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement authentication rate limiting: per-user and per-IP limits on login, recovery, invitation, and agent token endpoints; in-memory counters; 429 responses",
-      "token_cost": 39,
+      "content": "Implement owner fact stripping: strip (given (owner ...)) from access.spl and page SPL; inject owner only from profile.json; WARN on stripped facts",
+      "token_cost": 36,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T09:05:17Z"
+  "constructed_at": "2026-03-18T09:13:33Z"
 }

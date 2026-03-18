@@ -9,12 +9,19 @@
 //! 6. Check conclusion for `(can-<action> "<user_id>" "<page_slug>")`
 
 use anyhow::{Context, Result};
+use regex::Regex;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use crate::reason::build_theory;
 use crate::reason::types::{ConclusionType, ProofSource};
 use crate::types::SplBlock;
 use crate::user;
+
+/// Regex matching `(given (owner ...))` facts — these must only be injected
+/// from profile.json, never from user-editable SPL (REQ-020-058).
+static OWNER_FACT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*\(given\s+\(owner\s[^)]*\)\s*\)").unwrap());
 
 /// An access control action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,13 +184,18 @@ pub fn evaluate(
         content: defaults,
     });
 
-    // 1b. Vault policy: access.spl
-    if let Some(access_block) = load_access_spl(vault_root)? {
+    // 1b. Vault policy: access.spl (strip owner facts — REQ-020-058)
+    if let Some(mut access_block) = load_access_spl(vault_root)? {
+        strip_owner_facts(&mut access_block);
         spl_blocks.push(access_block);
     }
 
-    // 1c. Page-level overrides (highest priority)
-    spl_blocks.extend_from_slice(page_spl_blocks);
+    // 1c. Page-level overrides (highest priority, strip owner facts — REQ-020-058)
+    for block in page_spl_blocks {
+        let mut sanitized = block.clone();
+        strip_owner_facts(&mut sanitized);
+        spl_blocks.push(sanitized);
+    }
 
     // ── Step 2: Inject runtime facts ─────────────────────────────────────
 
@@ -331,6 +343,41 @@ pub fn evaluate(
         tag: ConclusionTag::DefeasiblyNotProvable,
         rule_trace: vec![],
     })
+}
+
+/// Strip `(given (owner ...))` facts from SPL content (REQ-020-058).
+///
+/// Owner status must only be injected from profile.json at runtime.
+/// Any `(given (owner ...))` found in user-editable SPL (access.spl or
+/// page-level blocks) is removed and a warning is emitted.
+fn strip_owner_facts(block: &mut SplBlock) {
+    let mut stripped = Vec::new();
+    let mut new_lines = Vec::new();
+
+    for (i, line) in block.content.lines().enumerate() {
+        if OWNER_FACT_RE.is_match(line) {
+            let source_line = block.start_line + i as u32;
+            stripped.push((source_line, line.trim().to_string()));
+        } else {
+            new_lines.push(line);
+        }
+    }
+
+    if !stripped.is_empty() {
+        for (line_no, fact) in &stripped {
+            eprintln!(
+                "warning: stripped owner fact from {} line {}: {} (owner is set via profile.json only)",
+                block.source_file.display(),
+                line_no,
+                fact,
+            );
+        }
+        block.content = new_lines.join("\n");
+        // Preserve trailing newline if original had one
+        if !block.content.is_empty() && !block.content.ends_with('\n') {
+            block.content.push('\n');
+        }
+    }
 }
 
 /// Load `.zetl/collab/access.spl` as a single SPL block.
@@ -703,5 +750,117 @@ mod tests {
             rule_trace: vec![],
         };
         assert!(!denied.is_allowed());
+    }
+
+    // ── Owner hardening tests (REQ-020-058) ─────────────────────────────
+
+    #[test]
+    fn strip_owner_facts_removes_owner_from_content() {
+        let mut block = SplBlock {
+            source_file: PathBuf::from("access.spl"),
+            source_page: "<access-policy>".to_string(),
+            start_line: 1,
+            end_line: 3,
+            content: "(given (role \"bob\" editor))\n(given (owner \"bob\"))\n(given (scope \"bob\" \"*\"))\n".to_string(),
+        };
+
+        strip_owner_facts(&mut block);
+
+        assert!(!block.content.contains("owner"), "owner fact should be stripped");
+        assert!(block.content.contains("role"), "non-owner facts should remain");
+        assert!(block.content.contains("scope"), "non-owner facts should remain");
+    }
+
+    #[test]
+    fn strip_owner_facts_handles_various_formats() {
+        let mut block = SplBlock {
+            source_file: PathBuf::from("page.md"),
+            source_page: "page".to_string(),
+            start_line: 10,
+            end_line: 14,
+            content: "  (given (owner \"alice\"))\n(given (owner \"bob-123\"))\n(given (admin \"carol\"))\n".to_string(),
+        };
+
+        strip_owner_facts(&mut block);
+
+        assert!(!block.content.contains("owner"), "all owner facts should be stripped");
+        assert!(block.content.contains("admin"), "admin facts should remain");
+    }
+
+    #[test]
+    fn strip_owner_facts_noop_when_no_owner() {
+        let original = "(given (role \"bob\" editor))\n(given (scope \"bob\" \"*\"))\n";
+        let mut block = SplBlock {
+            source_file: PathBuf::from("access.spl"),
+            source_page: "<access-policy>".to_string(),
+            start_line: 1,
+            end_line: 2,
+            content: original.to_string(),
+        };
+
+        strip_owner_facts(&mut block);
+
+        assert_eq!(block.content, original, "content should be unchanged");
+    }
+
+    #[test]
+    fn owner_fact_in_access_spl_is_stripped_during_evaluate() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Malicious access.spl tries to grant Bob owner status
+        let access_spl = format!(
+            "(given (owner \"{}\"))\n(given (role \"{}\" reader))\n",
+            bob_id, bob_id,
+        );
+        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+
+        // Bob should NOT be able to edit (owner fact was stripped)
+        let q = AclQuery {
+            user_id: bob_id,
+            page_slug: "secret".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+
+        let decision = evaluate(&vault, &q, &[], &["secret".to_string()]).unwrap();
+        assert!(
+            !decision.is_allowed(),
+            "injected owner fact in access.spl should be stripped — Bob must not get owner privileges"
+        );
+    }
+
+    #[test]
+    fn owner_fact_in_page_spl_is_stripped_during_evaluate() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Malicious page SPL tries to grant Bob owner status
+        let page_block = SplBlock {
+            source_file: PathBuf::from("evil.md"),
+            source_page: "evil".to_string(),
+            start_line: 5,
+            end_line: 6,
+            content: format!("(given (owner \"{}\"))\n", bob_id),
+        };
+
+        let q = AclQuery {
+            user_id: bob_id,
+            page_slug: "evil".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+
+        let decision = evaluate(&vault, &q, &[page_block], &["evil".to_string()]).unwrap();
+        assert!(
+            !decision.is_allowed(),
+            "injected owner fact in page SPL should be stripped — Bob must not get owner privileges"
+        );
     }
 }
