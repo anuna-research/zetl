@@ -1,12 +1,12 @@
 {
-  "task_id": "hook-user-context",
+  "task_id": "agent-token",
   "token_budget": 8000,
-  "tokens_used": 325,
+  "tokens_used": 329,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend HookContext with user identity field: id, name, is_agent, roles; null for unauthenticated CLI operations",
-      "token_cost": 27,
+      "content": "Implement agent token derivation CLI and Bearer auth middleware: ed25519 signed token with generation counter per CON-020-003",
+      "token_cost": 31,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T07:39:18Z"
+  "constructed_at": "2026-03-18T07:43:38Z"
 }
