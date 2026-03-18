@@ -3,28 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 351,
-    "deletions": 8,
+    "files_changed": 6,
+    "insertions": 254,
+    "deletions": 10,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
-      "src/main.rs",
+      "src/hooks/context.rs",
+      "src/web/flush.rs",
+      "src/web/fs_watch.rs",
       "src/web/git_poll.rs",
-      "src/web/mod.rs"
+      "src/web/routes.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-git-poll-changes",
-      "content": "Modified 5 files (+351, -8): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/git_poll.rs, src/web/mod.rs",
+      "key": "task-external-attribution-changes",
+      "content": "Modified 6 files (+254, -10): .hence/context-manifest.json, src/hooks/context.rs, src/web/flush.rs, src/web/fs_watch.rs, src/web/git_poll.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/git-poll-v1",
-  "evaluated_at": "2026-03-18T13:45:56Z",
+  "branch_name": "hence/external-attribution-v1",
+  "evaluated_at": "2026-03-18T13:55:17Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
