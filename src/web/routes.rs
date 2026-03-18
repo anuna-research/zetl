@@ -212,7 +212,10 @@ pub async fn dashboard_handler(
 }
 
 /// GET / — Landing page with vault stats and page grid.
-pub async fn index_handler(State(state): State<WebState>) -> Response {
+pub async fn index_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
     let data = state.data.read().unwrap();
     let vault_name = state
         .vault_root
@@ -221,6 +224,21 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
         .unwrap_or_else(|| "vault".to_string());
 
     let mut vault_ctx = build_vault_context(&data, &vault_name);
+
+    // ── Visibility filtering for sidebar (REQ-020-031) ────────────────
+    #[cfg(feature = "reason")]
+    if state.collab {
+        if let Some(ref uid) = extract_session_user_id(&state, &headers) {
+            let sidebar_denied = build_sidebar_denied_map(&state, &data, uid);
+            if !sidebar_denied.is_empty() {
+                crate::web::context::filter_vault_context_for_visibility(
+                    &mut vault_ctx,
+                    &sidebar_denied,
+                );
+            }
+        }
+    }
+
     #[cfg(feature = "history")]
     {
         // OBS-013: time vault history context build.
@@ -249,7 +267,11 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
 }
 
 /// GET /{*path} — Rendered markdown page with backlinks, or folder index.
-pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String>) -> Response {
+pub async fn page_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Path(slug): Path<String>,
+) -> Response {
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
     let data = state.data.read().unwrap();
@@ -266,6 +288,103 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
         .iter()
         .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
 
+    // ── ACL check for collab mode (REQ-020-030, REQ-020-033) ──────────
+    #[cfg(feature = "reason")]
+    if state.collab && file.is_some() {
+        if let Some(user_id) = extract_session_user_id(&state, &headers) {
+            let page_slug_str = file.map(|f| page_slug_from_path(&f.path)).unwrap_or_default();
+            let page_spl: Vec<crate::types::SplBlock> = data
+                .files
+                .iter()
+                .filter(|f| page_slug_from_path(&f.path) == page_slug_str)
+                .flat_map(|f| f.spl_blocks.iter().cloned())
+                .collect();
+            let all_slugs: Vec<String> = data
+                .files
+                .iter()
+                .map(|f| page_slug_from_path(&f.path))
+                .collect();
+
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64;
+
+            let is_agent = crate::web::session::bearer_token_from_headers(&headers)
+                .and_then(|t| crate::web::session::verify_bearer_token(&state.vault_root, &t))
+                .is_some();
+
+            let query = crate::acl::AclQuery {
+                user_id: user_id.clone(),
+                page_slug: page_slug_str.clone(),
+                action: crate::acl::Action::Read,
+                is_agent,
+                now_epoch_ms: now_ms,
+            };
+
+            // Check ACL cache first, then evaluate
+            let decision = {
+                let cache = state.acl_cache.lock().unwrap();
+                if let Some(cached) = cache.lookup(&user_id, &page_slug_str, crate::acl::Action::Read) {
+                    cached.clone()
+                } else {
+                    drop(cache);
+                    match crate::acl::evaluate(&state.vault_root, &query, &page_spl, &all_slugs) {
+                        Ok(d) => {
+                            let mut cache = state.acl_cache.lock().unwrap();
+                            cache.insert(user_id.clone(), page_slug_str.clone(), crate::acl::Action::Read, d.clone());
+                            d
+                        }
+                        Err(_) => {
+                            // On error, default to denied
+                            crate::acl::AclDecision::Denied {
+                                tag: crate::acl::ConclusionTag::DefeasiblyNotProvable,
+                                rule_trace: vec![],
+                            }
+                        }
+                    }
+                }
+            };
+
+            if !decision.is_allowed() {
+                let vis_mode = crate::acl::query_visibility_mode(&state.vault_root);
+                let page_override = crate::acl::query_page_visibility_override(
+                    &state.vault_root,
+                    &user_id,
+                    &page_slug_str,
+                    &page_spl,
+                    &all_slugs,
+                );
+                let effective = crate::acl::effective_visibility(vis_mode, page_override);
+
+                let page_name = file.map(|f| f.page_name.clone()).unwrap_or_default();
+                drop(data);
+
+                return match effective {
+                    crate::acl::VisibilityMode::Hidden => {
+                        // REQ-020-033: Return 404 identical to nonexistent page
+                        (StatusCode::NOT_FOUND, Html(format!(
+                            "<html><body><h1>404 — Not Found</h1><p>The page <code>/{slug}</code> does not exist.</p></body></html>",
+                            slug = crate::web::html::html_escape(slug),
+                        ))).into_response()
+                    }
+                    _ => {
+                        // REQ-020-033: Return 403 with page title, lock icon, access denied message
+                        (StatusCode::FORBIDDEN, Html(format!(
+                            "<html><body>\
+                            <h1>\u{1f512} {title}</h1>\
+                            <p>You don't have access to this page.</p>\
+                            <p><a href=\"/api/acl/explain?page={slug_encoded}&amp;action=read\">Why?</a></p>\
+                            </body></html>",
+                            title = crate::web::html::html_escape(&page_name),
+                            slug_encoded = crate::web::html::urlencoding(&page_slug_str),
+                        ))).into_response()
+                    }
+                };
+            }
+        }
+    }
+
     // If no page matches, check if slug is a folder prefix → render folder index
     if file.is_none() {
         let folder_prefix = format!("{}/", slug.to_lowercase());
@@ -276,7 +395,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
 
         if has_pages {
             let folder_name = slug.rsplit('/').next().unwrap_or(slug);
-            let mut vault_ctx = build_vault_context(&data, &vault_name);
+            let vault_ctx = build_vault_context(&data, &vault_name);
             #[cfg(feature = "history")]
             {
                 // OBS-013: time vault history context build.
@@ -312,6 +431,19 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
         }
     }
 
+    // Build denied-pages map for visibility-aware wikilink rendering (REQ-020-032).
+    #[cfg(feature = "reason")]
+    let denied_pages_map: std::collections::HashMap<String, markdown::DeniedLinkStyle> =
+        if state.collab {
+            if let Some(ref uid) = extract_session_user_id(&state, &headers) {
+                build_denied_pages_map(&state, &data, uid)
+            } else {
+                std::collections::HashMap::new()
+            }
+        } else {
+            std::collections::HashMap::new()
+        };
+
     let (rendered, page_name, current_slug, raw_content) = if let Some(file) = file {
         let full_path = state.vault_root.join(&file.path);
         let file_slug = page_slug_from_path(&file.path);
@@ -325,7 +457,24 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
                         html_escape(&body)
                     )
                 } else {
-                    markdown::render_to_html(&content, &data.page_slug_map, "/", "")
+                    #[cfg(feature = "reason")]
+                    {
+                        if denied_pages_map.is_empty() {
+                            markdown::render_to_html(&content, &data.page_slug_map, "/", "")
+                        } else {
+                            markdown::render_to_html_with_visibility(
+                                &content,
+                                &data.page_slug_map,
+                                &denied_pages_map,
+                                "/",
+                                "",
+                            )
+                        }
+                    }
+                    #[cfg(not(feature = "reason"))]
+                    {
+                        markdown::render_to_html(&content, &data.page_slug_map, "/", "")
+                    }
                 };
                 (html, file.page_name.clone(), file_slug, Some(content))
             }
@@ -428,7 +577,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
         }
     }
 
-    let mut vault_ctx = build_vault_context(&data, &vault_name);
+    let vault_ctx = build_vault_context(&data, &vault_name);
     #[cfg(feature = "history")]
     {
         // OBS-013: time vault history context build.
@@ -744,6 +893,7 @@ pub struct SearchParams {
 /// REQ-013-012, REQ-100, CON-013-003.
 pub async fn api_search_handler(
     State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
     Query(params): Query<SearchParams>,
 ) -> Response {
     let q = match params.q.as_deref() {
@@ -755,6 +905,26 @@ pub async fn api_search_handler(
 
     let limit = params.limit.unwrap_or(20).max(1);
     let mode = params.mode.as_deref().unwrap_or("bm25");
+
+    // Build set of denied page slugs for search filtering (REQ-020-031).
+    // Search MUST NEVER return content snippets for pages the user cannot read.
+    #[cfg(feature = "reason")]
+    let denied_page_slugs: HashSet<String> = if state.collab {
+        if let Some(ref uid) = extract_session_user_id(&state, &headers) {
+            let data = state.data.read().unwrap();
+            let denied = build_denied_pages_map(&state, &data, uid);
+            drop(data);
+            denied.keys().cloned().collect()
+        } else {
+            HashSet::new()
+        }
+    } else {
+        HashSet::new()
+    };
+
+    #[cfg(not(feature = "reason"))]
+    let denied_page_slugs: HashSet<String> = HashSet::new();
+    let _ = &headers; // suppress unused warning when reason feature is off
 
     // When the semantic feature is not compiled, reject semantic/hybrid modes immediately.
     #[cfg(not(feature = "semantic"))]
@@ -805,6 +975,15 @@ pub async fn api_search_handler(
                     return (StatusCode::INTERNAL_SERVER_ERROR, "Semantic search failed")
                         .into_response();
                 }
+            };
+
+            // Filter out denied pages from semantic results (REQ-020-031)
+            let hits: Vec<_> = if denied_page_slugs.is_empty() {
+                hits
+            } else {
+                hits.into_iter()
+                    .filter(|h| !denied_page_slugs.contains(&h.page_name))
+                    .collect()
             };
 
             let total = hits.len();
@@ -945,6 +1124,11 @@ pub async fn api_search_handler(
             }
         }
 
+        // Filter out denied pages from hybrid search results (REQ-020-031)
+        if !denied_page_slugs.is_empty() {
+            all_matches.retain(|m| !denied_page_slugs.contains(&m.page));
+        }
+
         all_matches.sort_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)
@@ -1020,6 +1204,11 @@ pub async fn api_search_handler(
                 });
             }
         }
+    }
+
+    // Filter out denied pages from search results (REQ-020-031)
+    if !denied_page_slugs.is_empty() {
+        all_matches.retain(|m| !denied_page_slugs.contains(&m.page));
     }
 
     all_matches.sort_by(|a, b| {
@@ -1307,6 +1496,164 @@ fn mime_from_ext(path: &str) -> &'static str {
 }
 
 /// Convert a TemplateError into a 500 response with a styled HTML error page.
+/// Build a map of page names → denied link styles for the current user (REQ-020-032).
+///
+/// For each page in the vault, checks if the user can read it. For denied pages,
+/// determines the appropriate link rendering style based on visibility mode and
+/// per-page overrides.
+#[cfg(feature = "reason")]
+fn build_denied_pages_map(
+    state: &WebState,
+    data: &crate::web::VaultData,
+    user_id: &str,
+) -> std::collections::HashMap<String, markdown::DeniedLinkStyle> {
+    use crate::acl::{self, VisibilityMode};
+
+    let vis_mode = acl::query_visibility_mode(&state.vault_root);
+    let all_slugs: Vec<String> = data
+        .files
+        .iter()
+        .map(|f| page_slug_from_path(&f.path))
+        .collect();
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+
+    let mut denied = std::collections::HashMap::new();
+
+    for file in &data.files {
+        let slug = page_slug_from_path(&file.path);
+        let query = acl::AclQuery {
+            user_id: user_id.to_string(),
+            page_slug: slug.clone(),
+            action: acl::Action::Read,
+            is_agent: false,
+            now_epoch_ms: now_ms,
+        };
+
+        // Check cache first
+        let decision = {
+            let cache = state.acl_cache.lock().unwrap();
+            if let Some(cached) = cache.lookup(user_id, &slug, acl::Action::Read) {
+                cached.clone()
+            } else {
+                drop(cache);
+                let page_spl: Vec<crate::types::SplBlock> = file.spl_blocks.clone();
+                match acl::evaluate(&state.vault_root, &query, &page_spl, &all_slugs) {
+                    Ok(d) => {
+                        let mut cache = state.acl_cache.lock().unwrap();
+                        cache.insert(user_id.to_string(), slug.clone(), acl::Action::Read, d.clone());
+                        d
+                    }
+                    Err(_) => continue,
+                }
+            }
+        };
+
+        if !decision.is_allowed() {
+            let page_override = acl::query_page_visibility_override(
+                &state.vault_root,
+                user_id,
+                &slug,
+                &file.spl_blocks,
+                &all_slugs,
+            );
+            let effective = acl::effective_visibility(vis_mode, page_override);
+            let style = match effective {
+                VisibilityMode::Transparent => markdown::DeniedLinkStyle::GrayedOut,
+                VisibilityMode::Mixed => markdown::DeniedLinkStyle::Locked,
+                VisibilityMode::Hidden => markdown::DeniedLinkStyle::DeadLink,
+            };
+            denied.insert(file.page_name.clone(), style);
+        }
+    }
+
+    denied
+}
+
+/// Build a map of page slug → sidebar denied style for the current user (REQ-020-031).
+///
+/// Determines which pages should be hidden, grayed-out, or locked in the sidebar
+/// based on the vault's visibility mode and per-page overrides.
+#[cfg(feature = "reason")]
+fn build_sidebar_denied_map(
+    state: &WebState,
+    data: &crate::web::VaultData,
+    user_id: &str,
+) -> std::collections::HashMap<String, crate::web::context::SidebarDeniedStyle> {
+    use crate::acl::{self, VisibilityMode};
+    use crate::web::context::SidebarDeniedStyle;
+
+    let vis_mode = acl::query_visibility_mode(&state.vault_root);
+    let all_slugs: Vec<String> = data
+        .files
+        .iter()
+        .map(|f| page_slug_from_path(&f.path))
+        .collect();
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+
+    let mut denied = std::collections::HashMap::new();
+
+    for file in &data.files {
+        let slug = page_slug_from_path(&file.path);
+        let query = acl::AclQuery {
+            user_id: user_id.to_string(),
+            page_slug: slug.clone(),
+            action: acl::Action::Read,
+            is_agent: false,
+            now_epoch_ms: now_ms,
+        };
+
+        let decision = {
+            let cache = state.acl_cache.lock().unwrap();
+            if let Some(cached) = cache.lookup(user_id, &slug, acl::Action::Read) {
+                cached.clone()
+            } else {
+                drop(cache);
+                let page_spl: Vec<crate::types::SplBlock> = file.spl_blocks.clone();
+                match acl::evaluate(&state.vault_root, &query, &page_spl, &all_slugs) {
+                    Ok(d) => {
+                        let mut cache = state.acl_cache.lock().unwrap();
+                        cache.insert(user_id.to_string(), slug.clone(), acl::Action::Read, d.clone());
+                        d
+                    }
+                    Err(_) => continue,
+                }
+            }
+        };
+
+        if !decision.is_allowed() {
+            let page_override = acl::query_page_visibility_override(
+                &state.vault_root,
+                user_id,
+                &slug,
+                &file.spl_blocks,
+                &all_slugs,
+            );
+            let effective = acl::effective_visibility(vis_mode, page_override);
+            let style = match effective {
+                VisibilityMode::Transparent => SidebarDeniedStyle::GrayedOut,
+                VisibilityMode::Mixed => SidebarDeniedStyle::Hidden,
+                VisibilityMode::Hidden => SidebarDeniedStyle::Hidden,
+            };
+            // ForceVisible override → show with lock, even in mixed/hidden
+            if page_override == acl::PageVisibilityOverride::ForceVisible {
+                denied.insert(slug, SidebarDeniedStyle::Locked);
+            } else {
+                denied.insert(slug, style);
+            }
+        }
+    }
+
+    denied
+}
+
 fn render_error_response(err: TemplateError) -> Response {
     eprintln!("template error: {err}");
     (StatusCode::INTERNAL_SERVER_ERROR, Html(err.to_error_html())).into_response()
@@ -3014,6 +3361,28 @@ impl ApiResponse<()> {
 
 /// Resolve the authenticated user ID from an `AuthUser` extractor result,
 /// returning an API error response if authentication fails.
+/// Extract the session user_id from cookies or bearer token (non-failing).
+///
+/// Returns `None` if no valid session is found. Used by page_handler and
+/// other HTML-serving routes that need the user_id for ACL checks without
+/// returning an API error.
+fn extract_session_user_id(state: &WebState, headers: &axum::http::HeaderMap) -> Option<String> {
+    // Try session cookie first
+    if let Some(token) = crate::web::session::token_from_cookies(headers) {
+        if let Some(user_id) = state.sessions.validate(&token) {
+            return Some(user_id);
+        }
+    }
+    // Try Bearer token
+    if let Some(token) = crate::web::session::bearer_token_from_headers(headers) {
+        if let Some(user_id) = crate::web::session::verify_bearer_token(&state.vault_root, &token)
+        {
+            return Some(user_id);
+        }
+    }
+    None
+}
+
 fn require_auth(
     state: &WebState,
     headers: &axum::http::HeaderMap,
@@ -3057,9 +3426,34 @@ pub async fn api_pages_list_handler(
     }
 
     let data = state.data.read().unwrap();
+
+    // Build denied page set for filtering (REQ-020-031)
+    #[cfg(feature = "reason")]
+    let denied_names: HashSet<String> = if state.collab {
+        if let Some(ref uid) = extract_session_user_id(&state, &headers) {
+            let denied = build_denied_pages_map(&state, &data, uid);
+            denied.keys().cloned().collect()
+        } else {
+            HashSet::new()
+        }
+    } else {
+        HashSet::new()
+    };
+
     let pages: Vec<ApiPageEntry> = data
         .page_names
         .iter()
+        .filter(|name| {
+            #[cfg(feature = "reason")]
+            {
+                !denied_names.contains(name.as_str())
+            }
+            #[cfg(not(feature = "reason"))]
+            {
+                let _ = name;
+                true
+            }
+        })
         .map(|name| {
             let slug = data.slug_for_page(name);
             ApiPageEntry {
@@ -3102,6 +3496,54 @@ pub async fn api_pages_get_handler(
         .files
         .iter()
         .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
+
+    // ACL check for API page access (REQ-020-030, REQ-020-033)
+    #[cfg(feature = "reason")]
+    if state.collab {
+        if let (Some(f), Some(ref uid)) = (file, extract_session_user_id(&state, &headers)) {
+            let page_slug_str = page_slug_from_path(&f.path);
+            let is_agent = crate::web::session::bearer_token_from_headers(&headers)
+                .and_then(|t| crate::web::session::verify_bearer_token(&state.vault_root, &t))
+                .is_some();
+            let all_slugs: Vec<String> = data.files.iter().map(|f2| page_slug_from_path(&f2.path)).collect();
+            let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+            let query = crate::acl::AclQuery {
+                user_id: uid.clone(),
+                page_slug: page_slug_str.clone(),
+                action: crate::acl::Action::Read,
+                is_agent,
+                now_epoch_ms: now_ms,
+            };
+            let decision = {
+                let cache = state.acl_cache.lock().unwrap();
+                if let Some(cached) = cache.lookup(uid, &page_slug_str, crate::acl::Action::Read) {
+                    cached.clone()
+                } else {
+                    drop(cache);
+                    match crate::acl::evaluate(&state.vault_root, &query, &f.spl_blocks, &all_slugs) {
+                        Ok(d) => {
+                            let mut cache = state.acl_cache.lock().unwrap();
+                            cache.insert(uid.clone(), page_slug_str.clone(), crate::acl::Action::Read, d.clone());
+                            d
+                        }
+                        Err(_) => crate::acl::AclDecision::Denied {
+                            tag: crate::acl::ConclusionTag::DefeasiblyNotProvable,
+                            rule_trace: vec![],
+                        },
+                    }
+                }
+            };
+            if !decision.is_allowed() {
+                let vis_mode = crate::acl::query_visibility_mode(&state.vault_root);
+                let effective = crate::acl::effective_visibility(vis_mode, crate::acl::PageVisibilityOverride::None);
+                return if effective == crate::acl::VisibilityMode::Hidden {
+                    ApiResponse::err(StatusCode::NOT_FOUND, "NOT_FOUND", format!("page not found: {slug}"))
+                } else {
+                    ApiResponse::err(StatusCode::FORBIDDEN, "ACL_DENIED", "you don't have access to this page")
+                };
+            }
+        }
+    }
 
     let file = match file {
         Some(f) => f,
@@ -3364,6 +3806,9 @@ struct ApiGraphNode {
     name: String,
     slug: String,
     is_real: bool,
+    /// Whether this node represents a restricted page (REQ-020-032).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    locked: bool,
 }
 
 #[derive(Serialize)]
@@ -3395,19 +3840,56 @@ pub async fn api_graph_handler(
     let data = state.data.read().unwrap();
     let graph = &data.graph;
 
+    // Build denied pages map for graph filtering (REQ-020-032).
+    #[cfg(feature = "reason")]
+    let (denied_pages, vis_mode) = if state.collab {
+        if let Some(ref uid) = extract_session_user_id(&state, &headers) {
+            let denied = build_denied_pages_map(&state, &data, uid);
+            let mode = crate::acl::query_visibility_mode(&state.vault_root);
+            (denied, mode)
+        } else {
+            (std::collections::HashMap::new(), crate::acl::VisibilityMode::Mixed)
+        }
+    } else {
+        (std::collections::HashMap::new(), crate::acl::VisibilityMode::Mixed)
+    };
+
     let nodes: Vec<ApiGraphNode> = graph
         .node_map
         .iter()
-        .map(|(name, _idx)| {
+        .filter_map(|(name, _idx)| {
             let slug = data.slug_for_page(name);
             let is_real = graph.resolved.contains(name);
-            ApiGraphNode {
+
+            #[cfg(feature = "reason")]
+            {
+                if let Some(_style) = denied_pages.get(name) {
+                    // In hidden mode: omit denied nodes entirely
+                    if vis_mode == crate::acl::VisibilityMode::Hidden {
+                        return None;
+                    }
+                    // In mixed/transparent mode: show as "(restricted)" with locked flag
+                    return Some(ApiGraphNode {
+                        name: "(restricted)".to_string(),
+                        slug,
+                        is_real,
+                        locked: true,
+                    });
+                }
+            }
+
+            Some(ApiGraphNode {
                 name: name.clone(),
                 slug,
                 is_real,
-            }
+                locked: false,
+            })
         })
         .collect();
+
+    // Collect denied page names for edge filtering
+    #[cfg(feature = "reason")]
+    let denied_set: HashSet<&str> = denied_pages.keys().map(|s| s.as_str()).collect();
 
     let edges: Vec<ApiGraphEdge> = graph
         .graph
@@ -3417,6 +3899,15 @@ pub async fn api_graph_handler(
             let src_name = graph.graph.node_weight(src_idx)?;
             let tgt_name = graph.graph.node_weight(tgt_idx)?;
             let meta = graph.graph.edge_weight(ei)?;
+
+            // In hidden mode: omit edges to/from denied nodes (REQ-020-032)
+            #[cfg(feature = "reason")]
+            if vis_mode == crate::acl::VisibilityMode::Hidden {
+                if denied_set.contains(src_name.as_str()) || denied_set.contains(tgt_name.as_str()) {
+                    return None;
+                }
+            }
+
             Some(ApiGraphEdge {
                 source: src_name.clone(),
                 target: tgt_name.clone(),

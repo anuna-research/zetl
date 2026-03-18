@@ -18,6 +18,34 @@ use crate::reason::types::{ConclusionType, ProofSource};
 use crate::types::SplBlock;
 use crate::user;
 
+/// Visibility mode controlling how denied pages appear to users (REQ-020-030).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VisibilityMode {
+    /// Denied pages visible (grayed) in sidebar; 403 on direct access; grayed-out wikilinks.
+    Transparent,
+    /// Denied pages hidden from sidebar/search; 403 on direct access; lock icon on wikilinks.
+    Mixed,
+    /// Denied pages fully hidden; 404 on direct access; dead-link wikilinks.
+    Hidden,
+}
+
+impl Default for VisibilityMode {
+    fn default() -> Self {
+        VisibilityMode::Mixed
+    }
+}
+
+/// Per-page visibility override for a specific user (REQ-020-030).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageVisibilityOverride {
+    /// `(hidden-from ?user ?page)` — force hide regardless of mode.
+    ForceHidden,
+    /// `(visible-title ?user ?page)` — force show title with lock even in hidden mode.
+    ForceVisible,
+    /// No override — use vault's visibility-mode setting.
+    None,
+}
+
 /// Regex matching `(given (owner ...))` facts — these must only be injected
 /// from profile.json, never from user-editable SPL (REQ-020-058).
 static OWNER_FACT_RE: LazyLock<Regex> =
@@ -720,6 +748,113 @@ fn build_scope_glob(scope: &str) -> globset::GlobMatcher {
     globset::Glob::new(scope)
         .unwrap_or_else(|_| globset::Glob::new("**").unwrap())
         .compile_matcher()
+}
+
+/// Query the vault's visibility mode from SPL theory (REQ-020-030).
+///
+/// Loads built-in defaults + access.spl and checks which `(visibility-mode X)` fact
+/// is concluded. Returns `Mixed` if no explicit mode is found.
+pub fn query_visibility_mode(vault_root: &Path) -> VisibilityMode {
+    let mut spl_blocks: Vec<SplBlock> = Vec::new();
+
+    // Built-in defaults include `(given (visibility-mode mixed))`
+    let defaults = r#"(given (visibility-mode mixed))"#.to_string();
+    spl_blocks.push(SplBlock {
+        source_file: PathBuf::from("<built-in>"),
+        source_page: String::from("<visibility-defaults>"),
+        start_line: 1,
+        end_line: 1,
+        content: defaults,
+    });
+
+    // access.spl may override with `(given (visibility-mode hidden))` etc.
+    if let Ok(Some(access_block)) = load_access_spl(vault_root) {
+        spl_blocks.push(access_block);
+    }
+
+    // Check the last `(given (visibility-mode ...))` fact — last wins.
+    let mut mode = VisibilityMode::Mixed;
+    for block in &spl_blocks {
+        for line in block.content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("(given (visibility-mode ") {
+                let val = rest.trim_end_matches("))").trim();
+                match val {
+                    "transparent" => mode = VisibilityMode::Transparent,
+                    "hidden" => mode = VisibilityMode::Hidden,
+                    "mixed" => mode = VisibilityMode::Mixed,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    mode
+}
+
+/// Check per-page visibility overrides for a specific user (REQ-020-030).
+///
+/// Evaluates `(hidden-from ?user ?page)` and `(visible-title ?user ?page)` predicates
+/// by running the ACL theory. Returns `ForceHidden`, `ForceVisible`, or `None`.
+pub fn query_page_visibility_override(
+    vault_root: &Path,
+    user_id: &str,
+    page_slug: &str,
+    page_spl_blocks: &[SplBlock],
+    all_page_slugs: &[String],
+) -> PageVisibilityOverride {
+    // Build a minimal ACL query to evaluate the theory
+    let query = AclQuery {
+        user_id: user_id.to_string(),
+        page_slug: page_slug.to_string(),
+        action: Action::Read,
+        is_agent: false,
+        now_epoch_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64,
+    };
+
+    let result = match evaluate_with_theory(vault_root, &query, page_spl_blocks, all_page_slugs) {
+        Ok((_decision, theory)) => theory,
+        Err(_) => return PageVisibilityOverride::None,
+    };
+
+    // Check for hidden-from conclusion
+    let hidden_pred = format!("hidden-from({user_id}, {page_slug})");
+    let visible_pred = format!("visible-title({user_id}, {page_slug})");
+
+    for conclusion in &result.conclusions {
+        let lit = &conclusion.literal;
+        let is_positive = matches!(
+            conclusion.conclusion_type,
+            ConclusionType::DefinitelyProvable | ConclusionType::DefeasiblyProvable
+        );
+
+        if is_positive && lit == &hidden_pred {
+            return PageVisibilityOverride::ForceHidden;
+        }
+        if is_positive && lit == &visible_pred {
+            return PageVisibilityOverride::ForceVisible;
+        }
+    }
+
+    PageVisibilityOverride::None
+}
+
+/// Determine effective visibility for a denied page.
+///
+/// Combines the vault-level visibility mode with any per-page override.
+/// Returns the effective mode to use for rendering.
+pub fn effective_visibility(
+    mode: VisibilityMode,
+    page_override: PageVisibilityOverride,
+) -> VisibilityMode {
+    match page_override {
+        PageVisibilityOverride::ForceHidden => VisibilityMode::Hidden,
+        PageVisibilityOverride::ForceVisible => VisibilityMode::Transparent,
+        PageVisibilityOverride::None => mode,
+    }
 }
 
 /// Check if a rendered literal string matches the target predicate with the given args.
@@ -1439,6 +1574,72 @@ mod tests {
         assert!(
             !decision2.is_allowed(),
             "(now-within ...) should not be present after interval"
+        );
+    }
+
+    // ── Visibility mode tests (TEST-020-030) ─────────────────────────
+
+    #[test]
+    fn default_visibility_mode_is_mixed() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let mode = query_visibility_mode(&vault);
+        assert_eq!(mode, VisibilityMode::Mixed);
+    }
+
+    #[test]
+    fn visibility_mode_override_to_hidden() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        std::fs::write(
+            vault.join(".zetl/collab/access.spl"),
+            "(given (visibility-mode hidden))\n",
+        )
+        .unwrap();
+        let mode = query_visibility_mode(&vault);
+        assert_eq!(mode, VisibilityMode::Hidden);
+    }
+
+    #[test]
+    fn visibility_mode_override_to_transparent() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        std::fs::write(
+            vault.join(".zetl/collab/access.spl"),
+            "(given (visibility-mode transparent))\n",
+        )
+        .unwrap();
+        let mode = query_visibility_mode(&vault);
+        assert_eq!(mode, VisibilityMode::Transparent);
+    }
+
+    #[test]
+    fn effective_visibility_force_hidden_overrides_transparent() {
+        let result = effective_visibility(
+            VisibilityMode::Transparent,
+            PageVisibilityOverride::ForceHidden,
+        );
+        assert_eq!(result, VisibilityMode::Hidden);
+    }
+
+    #[test]
+    fn effective_visibility_force_visible_overrides_hidden() {
+        let result = effective_visibility(
+            VisibilityMode::Hidden,
+            PageVisibilityOverride::ForceVisible,
+        );
+        assert_eq!(result, VisibilityMode::Transparent);
+    }
+
+    #[test]
+    fn effective_visibility_no_override_uses_mode() {
+        assert_eq!(
+            effective_visibility(VisibilityMode::Mixed, PageVisibilityOverride::None),
+            VisibilityMode::Mixed
+        );
+        assert_eq!(
+            effective_visibility(VisibilityMode::Hidden, PageVisibilityOverride::None),
+            VisibilityMode::Hidden
         );
     }
 }
