@@ -72,6 +72,7 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         ws_hub: zetl::web::ws::WsHub::new(),
         ticket_store: zetl::web::ws::TicketStore::new(),
         crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
+        wal_store: Arc::new(zetl::web::wal::WalStore::new(vault_root)),
         #[cfg(feature = "semantic")]
         vector_index: None,
     }
