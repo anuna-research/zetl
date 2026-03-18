@@ -29,6 +29,7 @@ pub const HOOK_NAMES: &[&str] = &[
     "on-save",
     "pre-serve",
     "on-agent",
+    "on-access-request",
 ];
 
 /// Where a discovered hook originated.

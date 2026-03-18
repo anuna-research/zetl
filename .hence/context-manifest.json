@@ -1,12 +1,12 @@
 {
-  "task_id": "ws-protocol",
+  "task_id": "access-request",
   "token_budget": 8000,
-  "tokens_used": 328,
+  "tokens_used": 335,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement WebSocket /ws/edit/{slug} endpoint: sync, op, presence messages; session cookie or ticket auth; cursor broadcast",
-      "token_cost": 30,
+      "content": "Implement access request flow: button on 403, request record in .zetl/collab/access-requests.json, admin WebSocket notification, on-access-request hook",
+      "token_cost": 37,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T11:01:32Z"
+  "constructed_at": "2026-03-18T11:11:45Z"
 }

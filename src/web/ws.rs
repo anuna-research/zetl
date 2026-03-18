@@ -63,6 +63,11 @@ pub enum ServerMsg {
     Error {
         message: String,
     },
+    /// Admin notification when a user requests access to a page (REQ-020-047).
+    AccessRequest {
+        user: String,
+        page: String,
+    },
 }
 
 /// A single edit operation (splice text or mark).
@@ -135,6 +140,15 @@ impl WsHub {
             .entry(slug.to_string())
             .or_insert_with(|| Arc::new(EditRoom::new()))
             .clone()
+    }
+
+    /// Broadcast a message to all rooms (e.g. admin notifications).
+    /// This sends to every active editing room so all connected users see it.
+    pub fn broadcast_all(&self, msg: ServerMsg) {
+        let rooms = self.rooms.lock().expect("ws hub lock");
+        for room in rooms.values() {
+            let _ = room.tx.send(msg.clone());
+        }
     }
 
     /// Remove a room when the last subscriber leaves (optional cleanup).

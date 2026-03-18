@@ -218,13 +218,18 @@
       {% endif %}
     </div>
 
-    <!-- Access Requests (admin) -->
+    <!-- Access Requests (admin, REQ-020-047) -->
     <div class="db-card">
       <h3>Access Requests</h3>
       {% if access_requests %}
       <ul class="db-list">
         {% for req in access_requests %}
-        <li>{{ req.name }} — {{ req.requested_role }}</li>
+        <li>
+          <span class="db-edit-summary">{{ req.name }}</span>
+          <span style="font-size:0.85rem; color:oklch(var(--bc)/0.6);"> requests access to </span>
+          <a class="db-link" href="{{ root_path }}{{ req.page }}/">{{ req.page }}</a>
+          <div class="db-edit-meta">{{ req.requested_at }}</div>
+        </li>
         {% endfor %}
       </ul>
       {% else %}

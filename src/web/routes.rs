@@ -176,8 +176,24 @@ pub async fn dashboard_handler(
         Vec::new()
     };
 
-    // Access requests — not yet implemented, placeholder empty list
-    let access_requests: Vec<serde_json::Value> = Vec::new();
+    // Access requests (admin only, REQ-020-047)
+    let access_requests: Vec<serde_json::Value> = if is_admin {
+        crate::user::access_request::load_access_requests(vault_root)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|r| r.status == "pending")
+            .map(|r| {
+                serde_json::json!({
+                    "name": r.name,
+                    "user": r.user,
+                    "page": r.page,
+                    "requested_at": r.requested_at,
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     // Active session count
     let active_sessions = state.sessions.active_session_count(&session.user_id);
@@ -369,15 +385,71 @@ pub async fn page_handler(
                         ))).into_response()
                     }
                     _ => {
-                        // REQ-020-033: Return 403 with page title, lock icon, access denied message
+                        // REQ-020-033/REQ-020-047: Return 403 with page title, lock icon,
+                        // access denied message, and "Request Access" button.
                         (StatusCode::FORBIDDEN, Html(format!(
-                            "<html><body>\
+                            "<html><head>\
+                            <meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+                            <title>Access Denied</title>\
+                            <style>\
+                            body {{ font-family: system-ui, -apple-system, sans-serif; background: #1a1b26; color: #a9b1d6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }}\
+                            .box {{ text-align: center; max-width: 420px; padding: 2rem; }}\
+                            h1 {{ font-size: 1.5rem; margin-bottom: 0.5rem; }}\
+                            p {{ color: #565f89; font-size: 0.9rem; }}\
+                            a {{ color: #7aa2f7; text-decoration: none; }}\
+                            a:hover {{ text-decoration: underline; }}\
+                            .btn {{ display: inline-block; margin-top: 1rem; padding: 0.6rem 1.5rem; background: #7aa2f7; color: #1a1b26; border: none; border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }}\
+                            .btn:hover {{ background: #89b4fa; }}\
+                            .btn:disabled {{ opacity: 0.5; cursor: default; }}\
+                            #ar-status {{ margin-top: 0.75rem; font-size: 0.85rem; min-height: 1.2em; }}\
+                            </style>\
+                            </head><body>\
+                            <div class=\"box\">\
                             <h1>\u{1f512} {title}</h1>\
                             <p>You don't have access to this page.</p>\
                             <p><a href=\"/api/acl/explain?page={slug_encoded}&amp;action=read\">Why?</a></p>\
+                            <button class=\"btn\" id=\"ar-btn\" onclick=\"requestAccess()\">Request Access</button>\
+                            <div id=\"ar-status\"></div>\
+                            </div>\
+                            <script>\
+                            async function requestAccess() {{\
+                              var btn = document.getElementById('ar-btn');\
+                              var st = document.getElementById('ar-status');\
+                              btn.disabled = true;\
+                              btn.textContent = 'Requesting...';\
+                              try {{\
+                                var csrf = document.cookie.split(';').map(function(c){{return c.trim();}}).find(function(c){{return c.startsWith('zetl_csrf=');}});\
+                                var csrfVal = csrf ? csrf.split('=')[1] : '';\
+                                var r = await fetch('/api/access-request', {{\
+                                  method: 'POST',\
+                                  headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': csrfVal}},\
+                                  body: JSON.stringify({{page: '{page_slug}'}})\
+                                }});\
+                                var d = await r.json();\
+                                if (d.data && d.data.status === 'already_pending') {{\
+                                  st.textContent = 'Request already pending.';\
+                                  st.style.color = '#e0af68';\
+                                }} else if (r.ok) {{\
+                                  st.textContent = 'Request sent! An admin will review it.';\
+                                  st.style.color = '#9ece6a';\
+                                }} else {{\
+                                  st.textContent = 'Failed to send request.';\
+                                  st.style.color = '#f7768e';\
+                                  btn.disabled = false;\
+                                  btn.textContent = 'Request Access';\
+                                }}\
+                              }} catch(e) {{\
+                                st.textContent = 'Network error.';\
+                                st.style.color = '#f7768e';\
+                                btn.disabled = false;\
+                                btn.textContent = 'Request Access';\
+                              }}\
+                            }}\
+                            </script>\
                             </body></html>",
                             title = crate::web::html::html_escape(&page_name),
                             slug_encoded = crate::web::html::urlencoding(&page_slug_str),
+                            page_slug = crate::web::html::html_escape(&page_slug_str),
                         ))).into_response()
                     }
                 };
@@ -3976,6 +4048,177 @@ pub async fn ws_ticket_handler(
     } else {
         let ticket = state.ticket_store.issue("anonymous");
         ApiResponse::ok(serde_json::json!({ "ticket": ticket })).into_response()
+    }
+}
+
+// ── POST /api/access-request — request access to a denied page (REQ-020-047) ──
+
+#[derive(Deserialize)]
+pub struct AccessRequestBody {
+    pub page: String,
+}
+
+/// POST /api/access-request — authenticated user requests access to a page.
+pub async fn access_request_handler(
+    State(state): State<WebState>,
+    session: crate::web::session::SessionUser,
+    Json(body): Json<AccessRequestBody>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+    let page_slug = body.page;
+
+    // Load requesting user's profile
+    let profile = match crate::user::load_profile(vault_root, &session.user_id) {
+        Ok(Some(p)) => p,
+        _ => {
+            return (StatusCode::BAD_REQUEST, "user profile not found").into_response();
+        }
+    };
+
+    // Append the access request
+    match crate::user::access_request::append_access_request(
+        vault_root,
+        &session.user_id,
+        &profile.name,
+        &page_slug,
+    ) {
+        Ok(true) => {
+            // Broadcast to all connected WebSocket clients (admins will see it)
+            state.ws_hub.broadcast_all(crate::web::ws::ServerMsg::AccessRequest {
+                user: profile.name.clone(),
+                page: page_slug.clone(),
+            });
+
+            // Fire on-access-request hook asynchronously
+            let vault_root_owned = state.vault_root.clone();
+            let theme = state.theme.clone();
+            let user_id = session.user_id.clone();
+            let user_name = profile.name.clone();
+            let page = page_slug.clone();
+            tokio::task::spawn_blocking(move || {
+                fire_access_request_hook(
+                    &vault_root_owned,
+                    &theme,
+                    &user_id,
+                    &user_name,
+                    &page,
+                );
+            });
+
+            ApiResponse::ok(serde_json::json!({ "status": "requested" })).into_response()
+        }
+        Ok(false) => {
+            // Already pending
+            ApiResponse::ok(serde_json::json!({ "status": "already_pending" })).into_response()
+        }
+        Err(e) => {
+            eprintln!("access-request error: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "failed to record request").into_response()
+        }
+    }
+}
+
+/// Fire the on-access-request hook (blocking, called from spawn_blocking).
+fn fire_access_request_hook(
+    vault_root: &std::path::Path,
+    theme: &str,
+    user_id: &str,
+    user_name: &str,
+    page_slug: &str,
+) {
+    let theme_hooks = hooks::resolve_theme_hooks(vault_root, theme);
+    let manifest = hooks::discover_hooks(vault_root, theme_hooks.path());
+
+    if hooks::hooks_for(&manifest, "on-access-request").is_empty() {
+        return;
+    }
+
+    let files = match crate::scanner::scan_vault(vault_root, &[]) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("on-access-request hook: scan error: {e}");
+            return;
+        }
+    };
+    let file_index: Vec<(String, std::path::PathBuf)> = files
+        .iter()
+        .map(|f| (f.page_name.clone(), f.path.clone()))
+        .collect();
+    let mut resolved = std::collections::HashMap::new();
+    for file in &files {
+        for link in &file.links {
+            let key = link.raw_target.clone();
+            if !resolved.contains_key(&key) {
+                if let Some(r) =
+                    crate::scanner::resolve_page_name(&link.target_page, &file_index)
+                {
+                    resolved.insert(key, r);
+                }
+            }
+        }
+    }
+    let graph = crate::graph::LinkGraph::build(&files, &resolved);
+
+    let mut ctx = build_hook_context(
+        "on-access-request",
+        vault_root,
+        theme,
+        env!("CARGO_PKG_VERSION"),
+        &files,
+        &graph,
+    );
+
+    // Attach requesting user identity
+    if let Ok(Some(profile)) = crate::user::load_profile(vault_root, user_id) {
+        ctx.user = Some(crate::hooks::context::HookUser::from_profile(&profile, false));
+    }
+
+    // Attach access request context
+    ctx.access_request = Some(crate::hooks::context::HookAccessRequest {
+        user_id: user_id.to_string(),
+        user_name: user_name.to_string(),
+        page: page_slug.to_string(),
+        requested_at: crate::user::access_request::now_iso8601(),
+    });
+
+    let context_json = match serde_json::to_vec(&ctx) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("on-access-request hook: json error: {e}");
+            return;
+        }
+    };
+
+    let hook_env = hooks::HookEnv {
+        vault_root: vault_root.to_path_buf(),
+        theme: theme.to_string(),
+        zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+        extra_vars: vec![
+            ("ZETL_ACCESS_REQUEST_USER".into(), user_id.to_string()),
+            ("ZETL_ACCESS_REQUEST_PAGE".into(), page_slug.to_string()),
+            ("ZETL_HOOK_DEPTH".into(), "0".into()),
+        ],
+    };
+
+    let results = hooks::run_hooks(&manifest, "on-access-request", &context_json, &hook_env);
+    for result in results {
+        match result {
+            Ok(output) if !output.success() => {
+                eprintln!(
+                    "warning: on-access-request hook '{}' ({}) exited with code {}",
+                    output.path.display(),
+                    output.source,
+                    output.exit_code.unwrap_or(-1),
+                );
+                if !output.stderr.is_empty() {
+                    eprintln!("  stderr: {}", output.stderr.trim_end());
+                }
+            }
+            Err(e) => {
+                eprintln!("warning: on-access-request hook failed to execute: {e}");
+            }
+            _ => {}
+        }
     }
 }
 
