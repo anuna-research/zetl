@@ -1,12 +1,12 @@
 {
-  "task_id": "collab-gate",
+  "task_id": "invitation-gen",
   "token_budget": 8000,
-  "tokens_used": 301,
+  "tokens_used": 327,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Gate all existing routes behind session check when --collab is active; add basic hardcoded role check (admin/editor/reader) as placeholder for SPL",
-      "token_cost": 36,
+      "content": "Implement zetl invite CLI: JWT generation with EdDSA signature, server.key creation, nonce tracking, expiry, URL output",
+      "token_cost": 29,
       "priority": "PlanMeta"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 5 files (+155, -7): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/mod.rs, src/web/routes.rs",
       "token_cost": 29,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-collab-gate-changes",
+      "content": "Modified 6 files (+204, -20): .hence/context-manifest.json, src/main.rs, src/user/mod.rs, src/web/mod.rs, src/web/routes.rs and 1 more",
+      "token_cost": 33,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T07:25:27Z"
+  "constructed_at": "2026-03-18T07:31:55Z"
 }

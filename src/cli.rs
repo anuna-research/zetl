@@ -224,6 +224,29 @@ pub enum Command {
         owner_name: String,
     },
 
+    /// Generate an invitation token for a new collaborator
+    #[command(after_help = "Examples:\n  zetl invite --as alice --role editor\n  zetl invite --as alice --role reader --pages \"projects/*\"\n  zetl invite --as alice --role editor --expires 24h")]
+    Invite {
+        /// Your username (inviter)
+        #[arg(long = "as")]
+        as_user: String,
+        /// Role for the invitee (reader, editor, admin)
+        #[arg(long)]
+        role: String,
+        /// Optional page scope glob pattern
+        #[arg(long)]
+        pages: Option<String>,
+        /// Expiry duration (e.g. "72h", "24h", "7d"; default: 72h)
+        #[arg(long)]
+        expires: Option<String>,
+        /// Port the server is running on (for URL generation)
+        #[arg(long, default_value = "3000")]
+        port: u16,
+        /// Host for the invitation URL
+        #[arg(long, default_value = "localhost")]
+        host: String,
+    },
+
     /// Generate a static HTML site from the vault
     Build {
         /// Output directory

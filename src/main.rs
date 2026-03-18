@@ -2402,7 +2402,7 @@ fn cmd_search(
         );
         match cli.format {
             OutputFormat::Json => exit_json_error(&msg, 1),
-            OutputFormat::Table => {
+            OutputFormat::Table | OutputFormat::Auto => {
                 eprintln!("Error: {msg}");
                 std::process::exit(1);
             }
@@ -4663,6 +4663,94 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     (y, m, d)
+}
+
+fn cmd_invite(
+    cli: &Cli,
+    as_user: &str,
+    role: &str,
+    pages: Option<&str>,
+    expires: Option<&str>,
+    port: u16,
+    host: &str,
+) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // Validate the role
+    let _role: zetl::user::Role = role
+        .parse()
+        .context("invalid --role value")?;
+
+    // Resolve inviter: look up by name (case-insensitive), fall back to user ID
+    let inviter = zetl::user::find_by_name(&vault_root, as_user)?
+        .or_else(|| zetl::user::load_profile(&vault_root, as_user).ok().flatten());
+
+    let inviter = inviter.ok_or_else(|| {
+        anyhow::anyhow!("user '{}' not found in this vault", as_user)
+    })?;
+
+    // Parse expiry duration
+    let expires_secs = match expires {
+        Some(s) => Some(parse_duration_secs(s)?),
+        None => None,
+    };
+
+    let (token, _nonce) = zetl::user::invite::generate_invitation(
+        &vault_root,
+        &inviter.id,
+        role,
+        pages,
+        expires_secs,
+    )?;
+
+    let url = zetl::user::invite::invitation_url(host, port, &token);
+
+    // Output depends on format
+    if cli.format == zetl::cli::OutputFormat::Json || cli.json {
+        let output = serde_json::json!({
+            "token": token,
+            "url": url,
+            "inviter": inviter.id,
+            "role": role,
+            "pages": pages,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        eprintln!("Invitation created by {} ({})", inviter.name, inviter.id);
+        if let Some(p) = pages {
+            eprintln!("  role: {}  pages: {}", role, p);
+        } else {
+            eprintln!("  role: {}  pages: (vault-wide)", role);
+        }
+        eprintln!();
+        println!("{url}");
+    }
+
+    Ok(())
+}
+
+/// Parse a human-friendly duration string into seconds.
+/// Supports: "72h", "24h", "7d", "30m", "3600" (plain seconds).
+fn parse_duration_secs(s: &str) -> Result<u64> {
+    let s = s.trim();
+    if s.is_empty() {
+        anyhow::bail!("empty duration string");
+    }
+
+    if let Some(h) = s.strip_suffix('h') {
+        let hours: u64 = h.parse().context("invalid hours in duration")?;
+        Ok(hours * 3600)
+    } else if let Some(d) = s.strip_suffix('d') {
+        let days: u64 = d.parse().context("invalid days in duration")?;
+        Ok(days * 86400)
+    } else if let Some(m) = s.strip_suffix('m') {
+        let mins: u64 = m.parse().context("invalid minutes in duration")?;
+        Ok(mins * 60)
+    } else {
+        let secs: u64 = s.parse().context("invalid duration: expected a number or suffix (h/d/m)")?;
+        Ok(secs)
+    }
 }
 
 fn cmd_serve(
@@ -9560,6 +9648,14 @@ fn main() -> anyhow::Result<()> {
             init_owner,
             owner_name,
         } => cmd_serve(&cli, *port, theme, *collab, *init_owner, owner_name),
+        Command::Invite {
+            as_user,
+            role,
+            pages,
+            expires,
+            port,
+            host,
+        } => cmd_invite(&cli, as_user, role, pages.as_deref(), expires.as_deref(), *port, host),
         Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
