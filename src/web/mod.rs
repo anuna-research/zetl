@@ -318,7 +318,9 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
 
     // Reason API — only available with `--features reason` (REQ-020-018).
     #[cfg(feature = "reason")]
-    let content_routes = content_routes.route("/api/reason", post(routes::api_reason_handler));
+    let content_routes = content_routes
+        .route("/api/reason", post(routes::api_reason_handler))
+        .route("/api/acl/explain", get(routes::api_acl_explain_handler));
 
     // History API routes — only available with `--features history` (REQ-087, CON-027, ADR-050).
     #[cfg(feature = "history")]

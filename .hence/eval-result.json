@@ -4,26 +4,26 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 4,
-    "insertions": 623,
-    "deletions": 8,
+    "insertions": 459,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
+      "src/acl.rs",
       "src/web/mod.rs",
-      "src/web/routes.rs",
-      "src/web/session.rs"
+      "src/web/routes.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-agent-api-changes",
-      "content": "Modified 4 files (+623, -8): .hence/context-manifest.json, src/web/mod.rs, src/web/routes.rs, src/web/session.rs",
+      "key": "task-acl-explain-changes",
+      "content": "Modified 4 files (+459, -6): .hence/context-manifest.json, src/acl.rs, src/web/mod.rs, src/web/routes.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/agent-api-v1",
-  "evaluated_at": "2026-03-18T09:58:39Z",
+  "branch_name": "hence/acl-explain-v1",
+  "evaluated_at": "2026-03-18T10:05:53Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

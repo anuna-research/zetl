@@ -498,6 +498,162 @@ fn strip_owner_facts(block: &mut SplBlock) {
     }
 }
 
+/// Evaluate an ACL query and return both the decision and the full `TheoryResult`.
+///
+/// This is the same as [`evaluate`] but also returns the reasoner output,
+/// enabling proof-trace / why-not explanation in the `/api/acl/explain` endpoint
+/// (REQ-020-014).
+pub fn evaluate_with_theory(
+    vault_root: &Path,
+    query: &AclQuery,
+    page_spl_blocks: &[SplBlock],
+    all_page_slugs: &[String],
+) -> Result<(AclDecision, crate::reason::types::TheoryResult)> {
+    let mut spl_blocks: Vec<SplBlock> = Vec::new();
+
+    // ── Step 1: Load SPL sources ─────────────────────────────────────────
+    let defaults = built_in_defaults(&query.user_id, &query.page_slug);
+    spl_blocks.push(SplBlock {
+        source_file: PathBuf::from("<built-in>"),
+        source_page: String::from("<acl-defaults>"),
+        start_line: 1,
+        end_line: defaults.lines().count() as u32,
+        content: defaults,
+    });
+
+    if let Some(mut access_block) = load_access_spl(vault_root)? {
+        strip_owner_facts(&mut access_block);
+        spl_blocks.push(access_block);
+    }
+
+    for block in page_spl_blocks {
+        let mut sanitized = block.clone();
+        strip_owner_facts(&mut sanitized);
+        spl_blocks.push(sanitized);
+    }
+
+    // ── Step 2–4: Runtime facts (same as evaluate) ───────────────────────
+    let mut runtime_facts = String::new();
+    runtime_facts.push_str(&format!(
+        "(given (authenticated \"{}\"))\n",
+        query.user_id
+    ));
+    runtime_facts.push_str(&format!(
+        "(given (requesting \"{}\" \"{}\" \"{}\"))\n",
+        query.user_id, query.page_slug, query.action
+    ));
+    runtime_facts.push_str(&format!("(given (now {}))\n", query.now_epoch_ms));
+
+    if query.is_agent {
+        runtime_facts.push_str(&format!(
+            "(given (is-agent \"{}\"))\n",
+            query.user_id
+        ));
+    }
+
+    if let Some(profile) = user::load_profile(vault_root, &query.user_id)? {
+        if profile.owner {
+            runtime_facts.push_str(&format!("(given (owner \"{}\"))\n", query.user_id));
+            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", query.user_id));
+        }
+        let role = user::Role::for_profile(&profile);
+        runtime_facts.push_str(&format!("(given (role \"{}\" {}))\n", query.user_id, role));
+        if role == user::Role::Admin {
+            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", query.user_id));
+        }
+    }
+
+    let scopes = extract_scopes_from_access_spl(vault_root);
+    let page_in_scope = scopes.iter().any(|s| {
+        let glob = build_scope_glob(s);
+        glob.is_match(&query.page_slug)
+    });
+    if page_in_scope {
+        runtime_facts.push_str(&format!(
+            "(given (in-scope \"{}\" \"{}\"))\n",
+            query.page_slug, query.user_id
+        ));
+    }
+    for page in all_page_slugs {
+        if page == &query.page_slug {
+            continue;
+        }
+        let in_scope = scopes.iter().any(|s| {
+            let glob = build_scope_glob(s);
+            glob.is_match(page.as_str())
+        });
+        if in_scope {
+            runtime_facts.push_str(&format!(
+                "(given (in-scope \"{}\" \"{}\"))\n",
+                page, query.user_id
+            ));
+        }
+    }
+
+    let temporal_facts = ground_temporal_facts(&spl_blocks, query.now_epoch_ms);
+    if !temporal_facts.is_empty() {
+        runtime_facts.push_str(&temporal_facts);
+    }
+
+    spl_blocks.push(SplBlock {
+        source_file: PathBuf::from("<runtime>"),
+        source_page: String::from("<acl-runtime>"),
+        start_line: 1,
+        end_line: runtime_facts.lines().count() as u32,
+        content: runtime_facts,
+    });
+
+    // ── Step 5: Combine, ground, reason ──────────────────────────────────
+    let result = build_theory(&spl_blocks)
+        .context("ACL pipeline: failed to build and reason over access theory")?;
+
+    // ── Step 6: Check conclusion ─────────────────────────────────────────
+    let target_predicate = match query.action {
+        Action::Read => "can-read",
+        Action::Edit => "can-edit",
+    };
+
+    for conclusion in &result.conclusions {
+        let lit = &conclusion.literal;
+        if !lit.contains(target_predicate) {
+            continue;
+        }
+        let matches = literal_matches(lit, target_predicate, &query.user_id, &query.page_slug);
+        if !matches {
+            continue;
+        }
+
+        let rule_trace: Vec<RuleRef> =
+            conclusion.proof_sources.iter().map(RuleRef::from).collect();
+
+        let (tag, allowed) = match conclusion.conclusion_type {
+            ConclusionType::DefinitelyProvable => (ConclusionTag::DefinitelyProvable, true),
+            ConclusionType::DefeasiblyProvable => (ConclusionTag::DefeasiblyProvable, true),
+            ConclusionType::DefinitelyNotProvable => {
+                (ConclusionTag::DefinitelyNotProvable, false)
+            }
+            ConclusionType::DefeasiblyNotProvable => {
+                (ConclusionTag::DefeasiblyNotProvable, false)
+            }
+        };
+
+        let decision = if allowed {
+            AclDecision::Allowed { tag, rule_trace }
+        } else {
+            AclDecision::Denied { tag, rule_trace }
+        };
+        return Ok((decision, result));
+    }
+
+    Ok((
+        AclDecision::Denied {
+            tag: ConclusionTag::DefeasiblyNotProvable,
+            rule_trace: vec![],
+        },
+        result,
+    ))
+}
+
 /// Load `.zetl/collab/access.spl` as a single SPL block.
 fn load_access_spl(vault_root: &Path) -> Result<Option<SplBlock>> {
     let path = vault_root.join(".zetl/collab/access.spl");
