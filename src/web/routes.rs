@@ -273,6 +273,7 @@ pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String
 /// PUT /{*path} — Save edited markdown back to the vault file, then re-index.
 pub async fn save_handler(
     State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
     Path(slug): Path<String>,
     body: String,
 ) -> Response {
@@ -323,6 +324,10 @@ pub async fn save_handler(
         }
     }
 
+    // Resolve authenticated user (if any) for hook context.
+    let session_user_id: Option<String> = crate::web::session::token_from_cookies(&headers)
+        .and_then(|token| state.sessions.validate(&token));
+
     // Fire on-save hooks asynchronously so the response returns immediately.
     {
         let vault_root = state.vault_root.clone();
@@ -338,6 +343,7 @@ pub async fn save_handler(
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
 
+        let hook_user_id = session_user_id.clone();
         tokio::task::spawn_blocking(move || {
             let theme_hooks = hooks::resolve_theme_hooks(&vault_root, &theme);
             let manifest = hooks::discover_hooks(&vault_root, theme_hooks.path());
@@ -386,6 +392,13 @@ pub async fn save_handler(
                 page: page_name.clone(),
                 content_length,
             });
+
+            // Attach authenticated user identity if a session was present.
+            if let Some(ref uid) = hook_user_id {
+                if let Ok(Some(profile)) = crate::user::load_profile(&vault_root, uid) {
+                    ctx.user = Some(crate::hooks::context::HookUser::from_profile(&profile, false));
+                }
+            }
 
             let context_json = match serde_json::to_vec(&ctx) {
                 Ok(j) => j,
