@@ -54,9 +54,7 @@ impl CrdtDocument {
         for (line_idx, line) in lines.iter().enumerate() {
             // Add newline between lines (not before the first)
             if line_idx > 0 {
-                self.doc
-                    .splice_text(&self.text_id, pos, 0, "\n")
-                    .context("splice newline")?;
+                self.insert_structural_newline(pos)?;
                 pos += 1;
             }
 
@@ -128,9 +126,43 @@ impl CrdtDocument {
         // Ensure trailing newline
         let text = self.text()?;
         if !text.is_empty() && !text.ends_with('\n') {
+            self.insert_structural_newline(pos)?;
+        }
+
+        Ok(())
+    }
+
+    /// Insert a newline that won't be absorbed by inclusive marks.
+    ///
+    /// Inclusive marks (Bold, Italic, etc.) use `ExpandMark::Both`, which causes
+    /// text inserted at mark boundaries to inherit the mark. Structural newlines
+    /// (between lines, trailing) must not inherit formatting, so we unmark any
+    /// inclusive marks that grew to absorb the newline.
+    fn insert_structural_newline(&mut self, pos: usize) -> Result<()> {
+        self.doc
+            .splice_text(&self.text_id, pos, 0, "\n")
+            .context("splice structural newline")?;
+
+        // Collect marks that absorbed the newline (to avoid borrow conflict)
+        let to_unmark: Vec<(String, ExpandMark)> = {
+            let marks = self.doc.marks(&self.text_id)?;
+            marks
+                .iter()
+                .filter_map(|m| {
+                    let mt = MarkType::from_mark(m.name(), m.value())?;
+                    if mt.is_inclusive() && m.end == pos + 1 && m.start <= pos {
+                        Some((m.name().to_string(), mt.expand()))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
+
+        for (name, expand) in &to_unmark {
             self.doc
-                .splice_text(&self.text_id, pos, 0, "\n")
-                .context("splice trailing newline")?;
+                .unmark(&self.text_id, name, pos, pos + 1, *expand)
+                .context("unmark structural newline")?;
         }
 
         Ok(())
@@ -662,7 +694,7 @@ fn write_mark_close(mark: &MarkType, out: &mut String) {
 
 /// Normalize whitespace per REQ-020-027.
 fn normalize_whitespace(text: &str) -> String {
-    let mut lines: Vec<&str> = text.lines().collect();
+    let lines: Vec<&str> = text.lines().collect();
 
     // Remove trailing whitespace from each line
     let trimmed: Vec<String> = lines.iter().map(|l| l.trim_end().to_string()).collect();
@@ -950,5 +982,78 @@ mod tests {
         let doc = CrdtDocument::from_markdown(md).unwrap();
         let out = doc.to_markdown().unwrap();
         assert_eq!(out, md);
+    }
+
+    /// TEST-020-027: Canonical serialization after concurrent edits.
+    /// Alice and Bob both edit → serialization is deterministic + byte-identical.
+    #[test]
+    fn test_020_027_canonical_serialization_after_concurrent_edits() {
+        // CRDT text: "Hello world\n\nSome text here\n"
+        //             0123456789012 3456789012345678
+        // "Some" = 13..17, "text" = 18..22
+        let md = "Hello world\n\nSome text here\n";
+        let mut doc = CrdtDocument::from_markdown(md).unwrap();
+        let mut fork = doc.fork();
+
+        // Alice bolds "Hello" (0..5)
+        doc.mark(&MarkType::Bold, 0, 5).unwrap();
+
+        // Bob italicizes "text" (18..22) and strikethroughs "Some" (13..17)
+        fork.mark(&MarkType::Italic, 18, 22).unwrap();
+        fork.mark(&MarkType::Strikethrough, 13, 17).unwrap();
+
+        // Merge both directions
+        doc.merge(&mut fork).unwrap();
+
+        // Serialize twice — must be byte-identical (deterministic)
+        let out1 = doc.to_markdown().unwrap();
+        let out2 = doc.to_markdown().unwrap();
+        assert_eq!(out1, out2, "serialization must be deterministic");
+
+        // Verify marks survived the merge
+        assert!(out1.contains("**Hello**"));
+        assert!(out1.contains("*text*"));
+        assert!(out1.contains("~~Some~~"));
+    }
+
+    /// Acceptance: parse(serialize(state)) round-trips to equivalent state.
+    #[test]
+    fn parse_serialize_round_trip_equivalence() {
+        let md = "## Heading\n\n**bold** and *italic* with [[Link]] and `code`\n\n- list ~~item~~\n";
+        let doc = CrdtDocument::from_markdown(md).unwrap();
+
+        // serialize → parse → serialize must be identical
+        let serialized = doc.to_markdown().unwrap();
+        let doc2 = CrdtDocument::from_markdown(&serialized).unwrap();
+        let serialized2 = doc2.to_markdown().unwrap();
+        assert_eq!(serialized, serialized2, "parse(serialize(state)) must round-trip");
+    }
+
+    /// Frontmatter round-trip preserves YAML content.
+    #[test]
+    fn frontmatter_round_trip() {
+        let md = "---\ntitle: Test\ntags: [a, b]\n---\n\n## Content\n";
+        let doc = CrdtDocument::from_markdown(md).unwrap();
+        let out = doc.to_markdown().unwrap();
+        assert_eq!(out, md);
+    }
+
+    /// Ordered list items preserve numbering.
+    #[test]
+    fn ordered_list_round_trip() {
+        let md = "1. first\n2. second\n3. third\n";
+        let doc = CrdtDocument::from_markdown(md).unwrap();
+        let out = doc.to_markdown().unwrap();
+        assert_eq!(out, md);
+    }
+
+    /// Nested marks serialize in canonical nesting order.
+    #[test]
+    fn nested_marks_canonical_order() {
+        // strikethrough > bold > italic (outermost → innermost)
+        let md = "~~**text**~~\n";
+        let doc = CrdtDocument::from_markdown(md).unwrap();
+        let out = doc.to_markdown().unwrap();
+        assert_eq!(out, md, "nested marks must use canonical order");
     }
 }
