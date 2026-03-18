@@ -109,6 +109,15 @@ pub enum ServerMsg {
         user_id: String,
         reason: String,
     },
+    /// External edit merged with dirty CRDT — editors see merged state (REQ-020-040 Case 2).
+    ExternalMerge {
+        slug: String,
+        doc: String,
+    },
+    /// File deleted externally — editors should close (REQ-020-040 Case 3).
+    Deleted {
+        page: String,
+    },
 }
 
 /// A single edit operation (splice text or mark).
@@ -347,7 +356,7 @@ impl CrdtDocStore {
     }
 
     /// Resolve a slug to its `.md` file path.
-    fn md_path_for_slug(&self, slug: &str) -> PathBuf {
+    pub fn md_path_for_slug(&self, slug: &str) -> PathBuf {
         self.vault_root.join(format!("{slug}.md"))
     }
 
@@ -607,6 +616,125 @@ impl CrdtDocStore {
             }
         }
         docs.clear();
+    }
+
+    /// Reconcile external edits against loaded CRDT documents (REQ-020-040).
+    ///
+    /// For each changed slug, checks whether a CRDT session is active and handles:
+    /// - **Case 1 (clean):** Discard in-memory CRDT, reload from disk.
+    /// - **Case 2 (dirty):** Parse external file into CRDT, merge with live CRDT.
+    /// - **Case 3 (deleted):** If file no longer exists and CRDT was dirty, write
+    ///   recovery file to `.zetl/recovery/<slug>.md`, then evict.
+    ///
+    /// Returns a list of `ServerMsg` to broadcast per slug.
+    pub fn reconcile_crdt(
+        &self,
+        slug: &str,
+        file_exists: bool,
+    ) -> Vec<ServerMsg> {
+        let mut msgs = Vec::new();
+        let mut docs = self.docs.lock().expect("crdt store lock");
+
+        let entry = match docs.get_mut(slug) {
+            Some(e) => e,
+            None => return msgs, // No active CRDT session for this slug
+        };
+
+        if !file_exists {
+            // ── Case 3: File deleted externally ──────────────────────────
+            if entry.dirty {
+                // Write recovery file with unflushed edits.
+                if let Ok(md) = entry.doc.to_markdown() {
+                    let recovery_dir = self.vault_root.join(".zetl").join("recovery");
+                    if let Err(e) = std::fs::create_dir_all(&recovery_dir) {
+                        eprintln!("crdt-reconcile: failed to create recovery dir: {e}");
+                    } else {
+                        let flat_slug = slug.replace('/', "--");
+                        let recovery_path = recovery_dir.join(format!("{flat_slug}.md"));
+                        match std::fs::write(&recovery_path, &md) {
+                            Ok(()) => {
+                                eprintln!(
+                                    "warning: file deleted externally with unflushed CRDT edits — \
+                                     recovery written to {}",
+                                    recovery_path.display()
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "crdt-reconcile: failed to write recovery file {}: {e}",
+                                    recovery_path.display()
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            // Evict the CRDT session.
+            docs.remove(slug);
+            msgs.push(ServerMsg::Deleted {
+                page: slug.to_string(),
+            });
+            return msgs;
+        }
+
+        if !entry.dirty {
+            // ── Case 1: Clean CRDT — reload from disk ────────────────────
+            let md_path = self.md_path_for_slug(slug);
+            match std::fs::read_to_string(&md_path) {
+                Ok(markdown) => match CrdtDocument::from_markdown(&markdown) {
+                    Ok(new_doc) => {
+                        entry.doc = new_doc;
+                        entry.last_access = Instant::now();
+                        entry.last_flush = Instant::now();
+                        // Send fresh sync to all connected editors.
+                        let bytes = entry.doc.save();
+                        let b64 = base64::Engine::encode(
+                            &base64::engine::general_purpose::STANDARD,
+                            &bytes,
+                        );
+                        msgs.push(ServerMsg::Sync { doc: b64 });
+                    }
+                    Err(e) => {
+                        eprintln!("crdt-reconcile: reload parse error for {slug}: {e}");
+                    }
+                },
+                Err(e) => {
+                    eprintln!("crdt-reconcile: reload read error for {slug}: {e}");
+                }
+            }
+        } else {
+            // ── Case 2: Dirty CRDT — merge external with live ────────────
+            let md_path = self.md_path_for_slug(slug);
+            match std::fs::read_to_string(&md_path) {
+                Ok(markdown) => match CrdtDocument::from_markdown(&markdown) {
+                    Ok(mut external_doc) => {
+                        if let Err(e) = entry.doc.merge(&mut external_doc) {
+                            eprintln!("crdt-reconcile: merge error for {slug}: {e}");
+                        } else {
+                            entry.last_access = Instant::now();
+                            // Stays dirty — merged state will flush on quiescence.
+                            let bytes = entry.doc.save();
+                            let b64 = base64::Engine::encode(
+                                &base64::engine::general_purpose::STANDARD,
+                                &bytes,
+                            );
+                            msgs.push(ServerMsg::ExternalMerge {
+                                slug: slug.to_string(),
+                                doc: b64,
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("crdt-reconcile: merge parse error for {slug}: {e}");
+                    }
+                },
+                Err(e) => {
+                    eprintln!("crdt-reconcile: merge read error for {slug}: {e}");
+                }
+            }
+        }
+
+        msgs
     }
 }
 
