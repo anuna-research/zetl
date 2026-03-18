@@ -1,15 +1,21 @@
 {
-  "task_id": "user-profiles",
+  "task_id": "passkey-auth",
   "token_budget": 8000,
-  "tokens_used": 28,
+  "tokens_used": 53,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement user profile storage in .zetl/users/<id>/profile.json with WebAuthn credential and recovery pubkey fields",
-      "token_cost": 28,
+      "content": "Implement WebAuthn passkey registration and authentication via webauthn-rs: challenge generation, credential storage, verification",
+      "token_cost": 32,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-user-profiles-changes",
+      "content": "Modified 3 files (+466, -65): .hence/context-manifest.json, src/lib.rs, src/user/mod.rs",
+      "token_cost": 21,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T06:17:11Z"
+  "constructed_at": "2026-03-18T06:28:30Z"
 }
