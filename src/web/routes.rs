@@ -4846,6 +4846,7 @@ mod tests {
             git_commit_lock: None,
             ws_hub: crate::web::ws::WsHub::new(),
             ticket_store: crate::web::ws::TicketStore::new(),
+            crdt_store: crate::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

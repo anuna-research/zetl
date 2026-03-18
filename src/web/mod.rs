@@ -162,6 +162,8 @@ pub struct WebState {
     pub ws_hub: ws::WsHub,
     /// One-time ticket store for WebSocket auth (agents can't send cookies).
     pub ticket_store: ws::TicketStore,
+    /// CRDT document store — manages lifecycle: load, eviction, flush (REQ-020-029).
+    pub crdt_store: ws::CrdtDocStore,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]

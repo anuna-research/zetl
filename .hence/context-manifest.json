@@ -1,12 +1,12 @@
 {
-  "task_id": "editor-frontend",
+  "task_id": "crdt-state-mgmt",
   "token_budget": 8000,
-  "tokens_used": 326,
+  "tokens_used": 327,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Build browser editor component: ProseMirror or CodeMirror 6 with CRDT client, cursor rendering, presence indicators",
-      "token_cost": 28,
+      "content": "Implement CrdtDocument lifecycle: load on first WS connection, eviction TTL, memory bound (50 docs), quiescence flush",
+      "token_cost": 29,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T11:42:10Z"
+  "constructed_at": "2026-03-18T11:52:29Z"
 }
