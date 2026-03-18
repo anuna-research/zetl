@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
+use axum::middleware;
 use axum::routing::{get, post};
 use axum::Router;
 
@@ -59,6 +60,8 @@ pub struct WebState {
     pub theme: String,
     /// Whether --verbose was set; controls history-context timing output (OBS-013).
     pub verbose: bool,
+    /// Whether --collab mode is active (multi-user authentication required).
+    pub collab: bool,
     /// In-memory session store for authenticated users.
     pub sessions: SessionStore,
     /// In-memory recovery challenge store (CON-020-002).
@@ -155,12 +158,13 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
 }
 
 pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
-    let app = Router::new()
-        .route("/", get(routes::index_handler))
-        .route("/api/search", get(routes::api_search_handler))
-        .route("/_print", get(routes::print_handler))
-        .route("/_static/{*path}", get(routes::static_handler))
-        .route("/preview/{*path}", get(routes::preview_handler))
+    // ── Auth routes (always public, even in --collab mode) ───────────
+    let auth_routes = Router::new()
+        .route("/auth/bootstrap", get(routes::bootstrap_handler))
+        .route(
+            "/auth/recover",
+            get(routes::recover_challenge_handler).post(routes::recover_verify_handler),
+        )
         .route("/recovery/show", get(routes::recovery_show_handler))
         .route("/passkey/register", get(routes::passkey_register_handler))
         .route(
@@ -170,12 +174,15 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
         .route(
             "/api/passkey/register/finish",
             post(routes::passkey_register_finish_handler),
-        )
-        .route("/auth/bootstrap", get(routes::bootstrap_handler))
-        .route(
-            "/auth/recover",
-            get(routes::recover_challenge_handler).post(routes::recover_verify_handler),
-        )
+        );
+
+    // ── Content routes (gated by collab_gate when --collab is active) ─
+    let content_routes = Router::new()
+        .route("/", get(routes::index_handler))
+        .route("/api/search", get(routes::api_search_handler))
+        .route("/_print", get(routes::print_handler))
+        .route("/_static/{*path}", get(routes::static_handler))
+        .route("/preview/{*path}", get(routes::preview_handler))
         .route(
             "/{*path}",
             get(routes::page_handler).put(routes::save_handler),
@@ -183,7 +190,7 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
 
     // History API routes — only available with `--features history` (REQ-087, CON-027, ADR-050).
     #[cfg(feature = "history")]
-    let app = app
+    let content_routes = content_routes
         .route("/api/history", get(routes::api_history_log_handler))
         .route(
             "/api/history/page/{name}",
@@ -192,7 +199,13 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
         .route("/api/history/at", get(routes::api_history_at_handler))
         .route("/api/history/diff", get(routes::api_history_diff_handler));
 
-    let app = app.with_state(state);
+    let content_routes = content_routes
+        .route_layer(middleware::from_fn_with_state(state.clone(), session::collab_gate));
+
+    let app = Router::new()
+        .merge(auth_routes)
+        .merge(content_routes)
+        .with_state(state);
 
     let addr = format!("0.0.0.0:{port}");
     eprintln!("zetl serve  →  http://localhost:{port}");

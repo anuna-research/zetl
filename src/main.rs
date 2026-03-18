@@ -4669,7 +4669,7 @@ fn cmd_serve(
     cli: &Cli,
     port: u16,
     theme: &str,
-    _collab: bool,
+    collab: bool,
     init_owner: bool,
     owner_name: &str,
 ) -> Result<()> {
@@ -4866,6 +4866,7 @@ fn cmd_serve(
         engine: std::sync::Arc::new(engine),
         theme: theme.to_string(),
         verbose: cli.verbose > 0,
+        collab,
         sessions: zetl::web::session::SessionStore::new(),
         recovery_challenges: std::sync::Arc::new(
             zetl::user::recovery::RecoveryChallengeStore::new(),

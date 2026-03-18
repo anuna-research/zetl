@@ -1949,6 +1949,7 @@ mod tests {
             engine: Arc::new(TemplateEngine::new(vault_root, theme, false, false)),
             theme: theme.to_string(),
             verbose: false,
+            collab: false,
             sessions: crate::web::session::SessionStore::new(),
             recovery_challenges: Arc::new(
                 crate::user::recovery::RecoveryChallengeStore::new(),
