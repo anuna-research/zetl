@@ -9,7 +9,7 @@ pub mod theme;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use axum::routing::{get, post};
 use axum::Router;
@@ -63,6 +63,8 @@ pub struct WebState {
     pub sessions: SessionStore,
     /// In-memory recovery challenge store (CON-020-002).
     pub recovery_challenges: Arc<RecoveryChallengeStore>,
+    /// Tracks user_ids whose mnemonic has already been displayed (one-time serve).
+    pub mnemonic_shown: Arc<Mutex<HashSet<String>>>,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]

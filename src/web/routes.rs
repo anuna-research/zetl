@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use axum::extract::{Path, Query, State};
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderName, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
@@ -1645,6 +1645,19 @@ pub async fn recovery_show_handler(
         return (StatusCode::BAD_REQUEST, "missing user_id parameter").into_response();
     }
 
+    // One-time serve: reject if mnemonic was already shown for this user (REQ-020-056).
+    {
+        let mut shown = state.mnemonic_shown.lock().unwrap();
+        if shown.contains(user_id) {
+            return (
+                StatusCode::GONE,
+                "recovery phrase has already been displayed",
+            )
+                .into_response();
+        }
+        shown.insert(user_id.to_string());
+    }
+
     // Load profile to confirm user exists
     let mut profile = match crate::user::load_profile(vault_root, user_id) {
         Ok(Some(p)) => p,
@@ -1685,11 +1698,25 @@ pub async fn recovery_show_handler(
     let words: Vec<&str> = keypair.mnemonic.split_whitespace().collect();
     let continue_url = format!("/passkey/register?user_id={}", user_id);
 
+    // CSP header for mnemonic display page (REQ-020-056, REQ-020-063).
+    let csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; \
+               style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
+               connect-src 'self' wss:; frame-ancestors 'none'";
+
     match state
         .engine
         .render_recovery_show(&vault_name, &keypair.mnemonic, &words, &continue_url)
     {
-        Ok(html) => Html(html).into_response(),
+        Ok(html) => {
+            let mut resp = Html(html).into_response();
+            let hdrs = resp.headers_mut();
+            hdrs.insert(
+                HeaderName::from_static("content-security-policy"),
+                csp.parse().unwrap(),
+            );
+            hdrs.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+            resp
+        }
         Err(e) => {
             eprintln!("{}", e.stderr_line("recovery/show"));
             (StatusCode::INTERNAL_SERVER_ERROR, Html(e.to_error_html())).into_response()
@@ -1888,6 +1915,7 @@ mod tests {
             recovery_challenges: Arc::new(
                 crate::user::recovery::RecoveryChallengeStore::new(),
             ),
+            mnemonic_shown: Arc::new(std::sync::Mutex::new(HashSet::new())),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

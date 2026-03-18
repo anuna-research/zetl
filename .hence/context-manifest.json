@@ -1,11 +1,11 @@
 {
-  "task_id": "recovery-ux",
+  "task_id": "mnemonic-security",
   "token_budget": 8000,
-  "tokens_used": 198,
+  "tokens_used": 234,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement mnemonic display UX: plain-language explanation, numbered word list, confirmation checkbox, copy-to-clipboard with warning",
+      "content": "Implement mnemonic display security: CSP header, user-select:none, auto-clear DOM after 5min, one-time serve, clipboard clear after 60s",
       "token_cost": 33,
       "priority": "PlanMeta"
     },
@@ -44,8 +44,14 @@
       "content": "Modified 1 files (+11, -5): .hence/context-manifest.json",
       "token_cost": 14,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-recovery-ux-changes",
+      "content": "Modified 5 files (+409, -5): .hence/context-manifest.json, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs, themes/default/recovery_show.html",
+      "token_cost": 36,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T07:05:55Z"
+  "constructed_at": "2026-03-18T07:13:19Z"
 }

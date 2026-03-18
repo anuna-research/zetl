@@ -4782,6 +4782,9 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         recovery_challenges: std::sync::Arc::new(
             zetl::user::recovery::RecoveryChallengeStore::new(),
         ),
+        mnemonic_shown: std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashSet::new(),
+        )),
         #[cfg(feature = "semantic")]
         vector_index,
     };
