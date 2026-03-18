@@ -1,12 +1,12 @@
 {
-  "task_id": "challenge-expiry",
+  "task_id": "recovery-ux",
   "token_budget": 8000,
-  "tokens_used": 177,
+  "tokens_used": 198,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement recovery challenge expiry: 5-minute TTL, max 3 active per user, lazy pruning, 410 Gone on expired",
-      "token_cost": 26,
+      "content": "Implement mnemonic display UX: plain-language explanation, numbered word list, confirmation checkbox, copy-to-clipboard with warning",
+      "token_cost": 33,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 10 files (+733, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/main.rs, src/user/mod.rs and 5 more",
       "token_cost": 30,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-challenge-expiry-changes",
+      "content": "Modified 1 files (+11, -5): .hence/context-manifest.json",
+      "token_cost": 14,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T07:03:10Z"
+  "constructed_at": "2026-03-18T07:05:55Z"
 }

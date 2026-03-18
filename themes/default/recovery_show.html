@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Recovery Phrase — {{ vault_name }}{% endblock %}
+
+{% block styles %}
+  .rc-container {
+    max-width: 36rem;
+    margin: 3rem auto;
+    padding: 2rem;
+  }
+  .rc-icon {
+    width: 4rem;
+    height: 4rem;
+    margin: 0 auto 1.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: oklch(var(--wa) / 0.12);
+    color: oklch(var(--wa));
+  }
+  .rc-icon svg { width: 2rem; height: 2rem; }
+  .rc-explain {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: oklch(var(--bc) / 0.85);
+    margin-bottom: 1.5rem;
+  }
+  .rc-warn {
+    background: oklch(var(--wa) / 0.08);
+    border-left: 3px solid oklch(var(--wa));
+    border-radius: 0 0.375rem 0.375rem 0;
+    padding: 0.75rem 1rem;
+    font-size: 0.8rem;
+    color: oklch(var(--bc) / 0.8);
+    margin-bottom: 1.5rem;
+  }
+  .rc-word-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .rc-word {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: oklch(var(--b2));
+    border: 1px solid oklch(var(--bc) / 0.1);
+    border-radius: 0.375rem;
+    font-size: 0.85rem;
+    font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+  }
+  .rc-word-num {
+    color: oklch(var(--bc) / 0.4);
+    font-size: 0.7rem;
+    min-width: 1.25rem;
+    text-align: right;
+  }
+  .rc-word-text {
+    color: oklch(var(--bc));
+    font-weight: 500;
+  }
+  .rc-copy-section {
+    margin-bottom: 1.5rem;
+  }
+  .rc-copy-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.625rem 1rem;
+    background: oklch(var(--b2));
+    border: 1px solid oklch(var(--bc) / 0.15);
+    border-radius: 0.375rem;
+    color: oklch(var(--bc) / 0.8);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .rc-copy-btn:hover {
+    background: oklch(var(--bc) / 0.08);
+  }
+  .rc-copy-btn svg { width: 1rem; height: 1rem; flex-shrink: 0; }
+  .rc-copy-warn {
+    font-size: 0.75rem;
+    color: oklch(var(--wa));
+    margin-top: 0.375rem;
+  }
+  .rc-confirm {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: oklch(var(--b2));
+    border: 1px solid oklch(var(--bc) / 0.1);
+    border-radius: 0.375rem;
+    margin-bottom: 1.5rem;
+    cursor: pointer;
+  }
+  .rc-confirm input[type="checkbox"] {
+    margin-top: 0.15rem;
+    accent-color: oklch(var(--p));
+    width: 1.1rem;
+    height: 1.1rem;
+    flex-shrink: 0;
+  }
+  .rc-confirm label {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: oklch(var(--bc) / 0.85);
+    cursor: pointer;
+  }
+  .rc-continue-btn {
+    width: 100%;
+    padding: 0.75rem;
+    background: oklch(var(--p));
+    color: oklch(var(--pc));
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .rc-continue-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .rc-continue-btn:not(:disabled):hover {
+    opacity: 0.9;
+  }
+{% endblock %}
+
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+<div class="rc-container">
+  <div class="rc-icon">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/>
+    </svg>
+  </div>
+
+  <h2 class="text-xl font-bold text-center mb-2">Your Recovery Phrase</h2>
+
+  <div class="rc-explain">
+    <p>This 12-word phrase is the <strong>only way</strong> to recover access to your
+    vault if you lose all your passkeys. Write it down on paper and store it
+    somewhere safe — a locked drawer, a safe, or another secure location you
+    control.</p>
+  </div>
+
+  <div class="rc-warn">
+    <strong>This phrase will only be shown once.</strong> It is not stored on the
+    server. If you lose it and all your passkeys, your account cannot be recovered.
+  </div>
+
+  <div id="rc-words" class="rc-word-grid">
+    {% for word in words %}
+    <div class="rc-word">
+      <span class="rc-word-num">{{ loop.index }}</span>
+      <span class="rc-word-text">{{ word }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="rc-copy-section">
+    <button id="rc-copy-btn" class="rc-copy-btn" onclick="copyPhrase()">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184"/>
+      </svg>
+      <span id="rc-copy-label">Copy to clipboard</span>
+    </button>
+    <div class="rc-copy-warn">Your clipboard may be accessible to other apps. Clear it after pasting.</div>
+  </div>
+
+  <div class="rc-confirm" onclick="document.getElementById('rc-check').click()">
+    <input type="checkbox" id="rc-check" onchange="toggleContinue()" onclick="event.stopPropagation()">
+    <label for="rc-check" onclick="event.stopPropagation()">I have written down my recovery phrase and stored it in a safe place.</label>
+  </div>
+
+  <a id="rc-continue" href="{{ continue_url }}">
+    <button class="rc-continue-btn" disabled>Continue</button>
+  </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var phrase = '{{ mnemonic | safe }}';
+
+  window.copyPhrase = function() {
+    if (!navigator.clipboard) {
+      // Fallback for non-HTTPS contexts
+      var ta = document.createElement('textarea');
+      ta.value = phrase;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showCopied();
+      return;
+    }
+    navigator.clipboard.writeText(phrase).then(function() {
+      showCopied();
+    });
+  };
+
+  function showCopied() {
+    var label = document.getElementById('rc-copy-label');
+    label.textContent = 'Copied!';
+    setTimeout(function(){ label.textContent = 'Copy to clipboard'; }, 2000);
+  }
+
+  window.toggleContinue = function() {
+    var checked = document.getElementById('rc-check').checked;
+    var btn = document.querySelector('.rc-continue-btn');
+    btn.disabled = !checked;
+  };
+})();
+</script>
+{% endblock %}

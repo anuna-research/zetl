@@ -1619,6 +1619,84 @@ pub struct PasskeyApiRequest {
     pub user_id: String,
 }
 
+// -- Recovery display (CON-020-002) --
+
+#[derive(Debug, Deserialize)]
+pub struct RecoveryShowParams {
+    pub user_id: Option<String>,
+}
+
+/// GET /recovery/show?user_id=<id> — generate and display the 12-word recovery
+/// phrase.  The mnemonic is generated fresh, the derived public key is saved to
+/// the user profile, and the phrase is rendered once (never stored server-side).
+pub async fn recovery_show_handler(
+    State(state): State<WebState>,
+    Query(params): Query<RecoveryShowParams>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    let user_id = params.user_id.as_deref().unwrap_or("");
+    if user_id.is_empty() {
+        return (StatusCode::BAD_REQUEST, "missing user_id parameter").into_response();
+    }
+
+    // Load profile to confirm user exists
+    let mut profile = match crate::user::load_profile(vault_root, user_id) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return (StatusCode::NOT_FOUND, "user not found").into_response();
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to load profile: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    // Generate the recovery keypair
+    let keypair = match crate::user::recovery::generate_recovery_keypair() {
+        Ok(kp) => kp,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to generate recovery phrase: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    // Persist the recovery public key to the user profile
+    profile.recovery_pubkey = keypair.recovery_pubkey;
+    if let Err(e) = crate::user::save_profile(vault_root, &profile) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to save profile: {e}"),
+        )
+            .into_response();
+    }
+
+    let words: Vec<&str> = keypair.mnemonic.split_whitespace().collect();
+    let continue_url = format!("/passkey/register?user_id={}", user_id);
+
+    match state
+        .engine
+        .render_recovery_show(&vault_name, &keypair.mnemonic, &words, &continue_url)
+    {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => {
+            eprintln!("{}", e.stderr_line("recovery/show"));
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(e.to_error_html())).into_response()
+        }
+    }
+}
+
 // -- Recovery endpoints (CON-020-002, REQ-020-002) --
 
 #[derive(Debug, Deserialize)]
