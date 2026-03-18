@@ -76,6 +76,25 @@ pub fn load_or_create_server_key(vault_root: &Path) -> Result<SigningKey> {
     let path = server_key_path(vault_root);
 
     if path.exists() {
+        // Verify file permissions are not too permissive (REQ-020 server key protection)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = fs::metadata(&path)
+                .with_context(|| format!("failed to read metadata: {}", path.display()))?
+                .permissions();
+            let mode = perms.mode() & 0o777;
+            if mode & 0o077 != 0 {
+                anyhow::bail!(
+                    "server key {} has insecure permissions {:04o} (expected 0600). \
+                     Fix with: chmod 600 {}",
+                    path.display(),
+                    mode,
+                    path.display()
+                );
+            }
+        }
+
         let bytes = fs::read(&path)
             .with_context(|| format!("failed to read server key: {}", path.display()))?;
         if bytes.len() != 32 {
@@ -444,6 +463,28 @@ mod tests {
             let perms = fs::metadata(&path).unwrap().permissions();
             assert_eq!(perms.mode() & 0o777, 0o600);
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_server_key_rejects_insecure_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = TempDir::new().unwrap();
+        // Create the key first with correct permissions
+        load_or_create_server_key(tmp.path()).unwrap();
+
+        // Widen permissions to group-readable
+        let path = server_key_path(tmp.path());
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let result = load_or_create_server_key(tmp.path());
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("insecure permissions"),
+            "expected insecure permissions error, got: {err}"
+        );
     }
 
     #[test]

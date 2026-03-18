@@ -4805,6 +4805,25 @@ fn cmd_serve(
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
+    // ── Server key protection (REQ-020) ─────────────────────────────────
+    // When --collab is active, ensure sensitive dirs are in .gitignore and
+    // verify server key permissions if the key already exists.
+    if collab {
+        zetl::user::ensure_gitignore(&pipeline.vault_root)
+            .context("failed to update .gitignore for collab secrets")?;
+
+        // Eagerly verify server key permissions (if key exists) so we fail
+        // fast on startup rather than on first invitation.
+        let key_path = pipeline
+            .vault_root
+            .join(".zetl/collab/server.key");
+        if key_path.exists() {
+            // load_or_create_server_key checks permissions and bails if insecure
+            zetl::user::invite::load_or_create_server_key(&pipeline.vault_root)
+                .context("server key permission check failed")?;
+        }
+    }
+
     // ── Bootstrap owner (REQ-020-005) ────────────────────────────────────
     if init_owner {
         let vault_root = &pipeline.vault_root;
