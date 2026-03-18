@@ -289,6 +289,12 @@ pub enum Command {
         command: HookCommand,
     },
 
+    /// Agent lifecycle integration
+    Agent {
+        #[command(subcommand)]
+        command: AgentCommand,
+    },
+
     /// Defeasible reasoning over vault-wide SPL
     #[cfg(feature = "reason")]
     Reason {
@@ -386,6 +392,28 @@ pub enum HookCommand {
         /// Theme name (looks in .zetl/themes/<name>/hooks/)
         #[arg(long, default_value = "default")]
         theme: String,
+        /// Extra JSON fields merged into the context (after --)
+        #[arg(last = true)]
+        extra: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AgentCommand {
+    /// Run an on-agent hook with task context (REQ-020-023)
+    #[command(after_help = "Examples:\n  zetl agent run link-checker\n  zetl agent run summariser --pages \"Note A\" \"Note B\" --budget 4000")]
+    Run {
+        /// Agent task name
+        name: String,
+        /// Theme name (looks in .zetl/themes/<name>/hooks/)
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Target pages for the agent (empty = vault-wide)
+        #[arg(long = "pages", num_args = 0..)]
+        target_pages: Vec<String>,
+        /// Token budget for the agent action (0 = unlimited)
+        #[arg(long, default_value = "0")]
+        budget: u32,
         /// Extra JSON fields merged into the context (after --)
         #[arg(last = true)]
         extra: Vec<String>,

@@ -13,7 +13,8 @@ use zetl::cache::{
     files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache,
 };
 use zetl::cli::{
-    BlockTypeFilter, Cli, Command, FailLevel, HookCommand, OutputFormat, ThemeCommand,
+    AgentCommand, BlockTypeFilter, Cli, Command, FailLevel, HookCommand, OutputFormat,
+    ThemeCommand,
 };
 use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::graph::LinkGraph;
@@ -4637,6 +4638,124 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
             }
             Err(e) => {
                 eprintln!("error: hook failed to execute: {e}");
+                if worst_exit_code == 0 {
+                    worst_exit_code = 1;
+                }
+            }
+        }
+    }
+
+    if worst_exit_code != 0 {
+        std::process::exit(worst_exit_code);
+    }
+
+    Ok(())
+}
+
+fn cmd_agent_run(
+    cli: &Cli,
+    name: &str,
+    theme: &str,
+    target_pages: &[String],
+    budget: u32,
+    extra: &[String],
+) -> Result<()> {
+    let verbose = cli.verbose > 0;
+
+    let pipeline = run_pipeline(cli)?;
+
+    // Discover hooks for the on-agent lifecycle point.
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let manifest =
+        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    let matching = zetl::hooks::hooks_for(&manifest, "on-agent");
+    if matching.is_empty() {
+        anyhow::bail!("no executable on-agent hook found");
+    }
+
+    // Build context JSON with agent-specific fields.
+    let mut ctx = zetl::hooks::context::build_hook_context(
+        "on-agent",
+        &pipeline.vault_root,
+        theme,
+        env!("CARGO_PKG_VERSION"),
+        &pipeline.files,
+        &pipeline.graph,
+    );
+
+    ctx.agent = Some(zetl::hooks::context::HookAgent {
+        task: name.to_string(),
+        target_pages: target_pages.to_vec(),
+        budget_tokens: budget,
+    });
+
+    let mut context_value = serde_json::to_value(&ctx)?;
+
+    // Merge extra JSON fields from -- arguments.
+    if !extra.is_empty() {
+        let extra_str = extra.join(" ");
+        let extra_value: serde_json::Value = serde_json::from_str(&extra_str)
+            .with_context(|| format!("invalid JSON after --: {extra_str}"))?;
+        if let (Some(base), Some(overlay)) =
+            (context_value.as_object_mut(), extra_value.as_object())
+        {
+            for (k, v) in overlay {
+                base.insert(k.clone(), v.clone());
+            }
+        } else {
+            anyhow::bail!("extra JSON after -- must be an object, got: {extra_str}");
+        }
+    }
+
+    let context_json = serde_json::to_vec(&context_value)?;
+
+    let hook_env = zetl::hooks::HookEnv {
+        vault_root: pipeline.vault_root.clone(),
+        theme: theme.to_string(),
+        zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+        extra_vars: vec![("ZETL_AGENT_TASK".to_string(), name.to_string())],
+    };
+
+    let results =
+        zetl::hooks::run_hooks_verbose(&manifest, "on-agent", &context_json, &hook_env, verbose);
+
+    let mut worst_exit_code: i32 = 0;
+
+    for result in results {
+        match result {
+            Ok(output) => {
+                if !output.stdout.is_empty() {
+                    print!("{}", output.stdout);
+                }
+                if !output.stderr.is_empty() {
+                    eprint!("{}", output.stderr);
+                }
+                let code = if output.timed_out {
+                    eprintln!("error: on-agent hook '{}' timed out", output.path.display());
+                    124
+                } else {
+                    output.exit_code.unwrap_or(1)
+                };
+                if code != 0 {
+                    if verbose {
+                        eprintln!(
+                            "warning: agent action rejected by hook '{}' (exit {})",
+                            output.path.display(),
+                            code
+                        );
+                    }
+                    if worst_exit_code == 0 {
+                        worst_exit_code = code;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("error: on-agent hook failed to execute: {e}");
                 if worst_exit_code == 0 {
                     worst_exit_code = 1;
                 }
@@ -9732,6 +9851,15 @@ fn main() -> anyhow::Result<()> {
         Command::Hook { command } => match command {
             HookCommand::List { theme } => cmd_hook_list(&cli, theme),
             HookCommand::Run { name, theme, extra } => cmd_hook_run(&cli, name, theme, extra),
+        },
+        Command::Agent { command } => match command {
+            AgentCommand::Run {
+                name,
+                theme,
+                target_pages,
+                budget,
+                extra,
+            } => cmd_agent_run(&cli, name, theme, target_pages, *budget, extra),
         },
         Command::Serve {
             port,
