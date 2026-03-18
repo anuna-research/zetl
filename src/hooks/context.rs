@@ -56,6 +56,9 @@ pub struct HookContext {
     /// Agent task context (only present for on-agent hooks, REQ-020-023).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<HookAgent>,
+    /// Access request context (only present for on-access-request hooks, REQ-020-047).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_request: Option<HookAccessRequest>,
 }
 
 /// User identity attached to hook context when an authenticated session exists.
@@ -91,6 +94,19 @@ pub struct HookAgent {
     pub target_pages: Vec<String>,
     /// Token budget for the agent action (0 = unlimited).
     pub budget_tokens: u32,
+}
+
+/// Access request context for on-access-request hooks (REQ-020-047).
+#[derive(Debug, Serialize)]
+pub struct HookAccessRequest {
+    /// User ID of the requester.
+    pub user_id: String,
+    /// Display name of the requester.
+    pub user_name: String,
+    /// Page slug that was requested.
+    pub page: String,
+    /// ISO-8601 timestamp of the request.
+    pub requested_at: String,
 }
 
 /// Diagnostics payload for post-check hooks.
@@ -226,6 +242,7 @@ pub fn build_hook_context(
         user: None,
         hook_depth: 0,
         agent: None,
+        access_request: None,
     }
 }
 
