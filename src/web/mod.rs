@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 
 use crate::graph::LinkGraph;
@@ -152,6 +152,15 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
         .route("/_print", get(routes::print_handler))
         .route("/_static/{*path}", get(routes::static_handler))
         .route("/preview/{*path}", get(routes::preview_handler))
+        .route("/passkey/register", get(routes::passkey_register_handler))
+        .route(
+            "/api/passkey/register/start",
+            post(routes::passkey_register_start_handler),
+        )
+        .route(
+            "/api/passkey/register/finish",
+            post(routes::passkey_register_finish_handler),
+        )
         .route(
             "/{*path}",
             get(routes::page_handler).put(routes::save_handler),

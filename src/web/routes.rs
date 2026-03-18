@@ -1085,6 +1085,22 @@ fn hex_nibble(b: u8) -> u8 {
     }
 }
 
+/// Convert days since Unix epoch to (year, month, day).
+fn days_to_ymd(days: u64) -> (u64, u64, u64) {
+    // Algorithm from Howard Hinnant's chrono-compatible date math
+    let z = days + 719468;
+    let era = z / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
 // ─── History API handlers (REQ-087, CON-027, ADR-050) ─────────────────────────
 //
 // All four handlers are compiled only with `--features history`.
@@ -1429,6 +1445,179 @@ pub async fn api_history_diff_handler(
     }
 }
 
+// ── Passkey registration guidance routes (REQ-020-046) ──────────────────
+
+/// GET /passkey/register — Passkey registration guidance screen.
+pub async fn passkey_register_handler(
+    State(state): State<WebState>,
+    Query(params): Query<PasskeyRegisterParams>,
+) -> Response {
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    let user_id = params.user_id.as_deref().unwrap_or("");
+
+    match state.engine.render_passkey_register(&vault_name, user_id) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => {
+            eprintln!("{}", e.stderr_line("passkey/register"));
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(e.to_error_html())).into_response()
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PasskeyRegisterParams {
+    pub user_id: Option<String>,
+}
+
+/// POST /api/passkey/register/start — Begin passkey registration ceremony.
+pub async fn passkey_register_start_handler(
+    State(state): State<WebState>,
+    Json(body): Json<PasskeyApiRequest>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+
+    let passkey_mgr = match crate::user::passkey::PasskeyManager::new(
+        "localhost",
+        "http://localhost:3000",
+        "zetl vault",
+    ) {
+        Ok(mgr) => mgr,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to initialize passkey manager: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    let profile = match crate::user::load_profile(vault_root, &body.user_id) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                format!("user not found: {}", body.user_id),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to load profile: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    let existing =
+        crate::user::passkey::load_passkeys(vault_root, &body.user_id).unwrap_or_default();
+
+    match passkey_mgr.start_registration(&body.user_id, &profile.name, &existing) {
+        Ok(ccr) => Json(ccr).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("registration start failed: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /api/passkey/register/finish — Complete passkey registration ceremony.
+pub async fn passkey_register_finish_handler(
+    State(state): State<WebState>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+
+    let user_id = match body.get("user_id").and_then(|v| v.as_str()) {
+        Some(id) => id.to_string(),
+        None => {
+            return (StatusCode::BAD_REQUEST, "missing user_id").into_response();
+        }
+    };
+
+    let passkey_mgr = match crate::user::passkey::PasskeyManager::new(
+        "localhost",
+        "http://localhost:3000",
+        "zetl vault",
+    ) {
+        Ok(mgr) => mgr,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to initialize passkey manager: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    let reg_cred: webauthn_rs::prelude::RegisterPublicKeyCredential =
+        match serde_json::from_value(body.clone()) {
+            Ok(c) => c,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    format!("invalid credential response: {e}"),
+                )
+                    .into_response();
+            }
+        };
+
+    match passkey_mgr.finish_registration(&user_id, &reg_cred) {
+        Ok(passkey) => {
+            let mut passkeys =
+                crate::user::passkey::load_passkeys(vault_root, &user_id).unwrap_or_default();
+            passkeys.push(passkey.clone());
+            if let Err(e) = crate::user::passkey::save_passkeys(vault_root, &user_id, &passkeys) {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("failed to save passkey: {e}"),
+                )
+                    .into_response();
+            }
+
+            // Update the profile credentials list
+            let now = {
+                let d = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default();
+                let secs = d.as_secs();
+                // Simple UTC ISO-8601 without chrono dependency
+                let days = secs / 86400;
+                let day_secs = secs % 86400;
+                let h = day_secs / 3600;
+                let m = (day_secs % 3600) / 60;
+                let s = day_secs % 60;
+                // Days since 1970-01-01 → Y/M/D (good enough for timestamps)
+                let (y, mo, d) = days_to_ymd(days);
+                format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+            };
+            let cred = crate::user::passkey::passkey_to_credential(&passkey, None, &now);
+            if let Ok(Some(mut profile)) = crate::user::load_profile(vault_root, &user_id) {
+                profile.credentials.push(cred);
+                let _ = crate::user::save_profile(vault_root, &profile);
+            }
+
+            (StatusCode::OK, "passkey registered").into_response()
+        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            format!("registration failed: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PasskeyApiRequest {
+    pub user_id: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1623,5 +1812,71 @@ mod tests {
 
         let status = get_status(&app, "/_static/anything.js").await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    // ── days_to_ymd tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_days_to_ymd_epoch() {
+        // 1970-01-01
+        assert_eq!(days_to_ymd(0), (1970, 1, 1));
+    }
+
+    #[test]
+    fn test_days_to_ymd_known_date() {
+        // 2026-03-18 is day 20530 since epoch
+        assert_eq!(days_to_ymd(20530), (2026, 3, 18));
+    }
+
+    #[test]
+    fn test_days_to_ymd_leap_year() {
+        // 2024-02-29 is day 19782
+        assert_eq!(days_to_ymd(19782), (2024, 2, 29));
+    }
+
+    // ── Passkey register handler tests ───────────────────────────────────
+
+    #[tokio::test]
+    async fn passkey_register_page_renders() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+
+        let app = Router::new()
+            .route("/passkey/register", axum::routing::get(passkey_register_handler))
+            .with_state(state);
+
+        let (status, body, _ct) = get_body(&app, "/passkey/register?user_id=alice-a1b2c3d4").await;
+        assert_eq!(status, StatusCode::OK);
+        let html = std::str::from_utf8(&body).unwrap();
+        assert!(html.contains("Register a Passkey"));
+        assert!(html.contains("alice-a1b2c3d4"));
+        assert!(html.contains("pk-spinner"));
+        assert!(html.contains("Try Again"));
+        assert!(html.contains("recovery"));
+    }
+
+    #[tokio::test]
+    async fn passkey_register_start_no_user() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+
+        let app = Router::new()
+            .route(
+                "/api/passkey/register/start",
+                axum::routing::post(passkey_register_start_handler),
+            )
+            .with_state(state);
+
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/passkey/register/start")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(
+                r#"{"user_id":"nonexistent-12345678"}"#,
+            ))
+            .unwrap();
+
+        let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 }
