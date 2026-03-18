@@ -1,0 +1,485 @@
+{% extends "base.html" %}
+
+{% block title %}Edit: {{ page_title }} — zetl{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://esm.sh/@codemirror/view@6/dist/style/editor.css">
+{% endblock %}
+
+{% block styles %}
+/* ── CodeMirror editor ───────────────────────────────────────── */
+.cm-editor {
+  height: calc(100vh - 10rem);
+  border: 1px solid oklch(var(--b3));
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  overflow: hidden;
+}
+.cm-editor .cm-scroller {
+  overflow: auto;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+}
+.cm-editor .cm-content {
+  padding: 0.75rem 0;
+}
+.cm-editor .cm-line {
+  padding: 0 1rem;
+}
+.cm-editor.cm-focused {
+  outline: 2px solid oklch(var(--p) / 0.4);
+  outline-offset: -1px;
+}
+
+/* ── Remote cursors ──────────────────────────────────────────── */
+.remote-cursor {
+  position: relative;
+  border-left: 2px solid var(--cursor-color, #f472b6);
+  margin-left: -1px;
+}
+.remote-cursor::after {
+  content: attr(data-name);
+  position: absolute;
+  left: -1px;
+  top: -1.4em;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  color: #fff;
+  background: var(--cursor-color, #f472b6);
+  pointer-events: none;
+  z-index: 10;
+}
+.remote-selection {
+  background: var(--cursor-color, #f472b6);
+  opacity: 0.18;
+}
+
+/* ── Presence bar ────────────────────────────────────────────── */
+.presence-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+  flex-wrap: wrap;
+}
+.presence-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  border: 1.5px solid var(--chip-color, #888);
+  color: var(--chip-color, #888);
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+.presence-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chip-color, #888);
+}
+
+/* ── Editor toolbar ──────────────────────────────────────────── */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.editor-status {
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+.editor-status.connected { color: oklch(var(--su)); opacity: 0.8; }
+.editor-status.disconnected { color: oklch(var(--er)); opacity: 0.8; }
+.editor-status.connecting { color: oklch(var(--wa)); opacity: 0.8; }
+{% endblock %}
+
+{% block content %}
+<main class="flex-1 p-4 sm:p-6 flex flex-col gap-3 min-w-0">
+  {# Breadcrumbs #}
+  <nav class="text-sm breadcrumbs">
+    <ul>
+      <li><a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a></li>
+      {%- for crumb in breadcrumbs %}
+      <li><a href="{{ root_path }}{{ crumb.slug | safe }}/{{ index_file }}">{{ crumb.title }}</a></li>
+      {%- endfor %}
+      <li><a href="{{ root_path }}{{ page_slug | safe }}/">{{ page_title }}</a></li>
+      <li>Edit</li>
+    </ul>
+  </nav>
+
+  {# Toolbar #}
+  <div class="editor-toolbar">
+    <a href="{{ root_path }}{{ page_slug | safe }}/" class="btn btn-sm btn-outline btn-ghost">&larr; Back</a>
+    <button id="save-btn" class="btn btn-sm btn-primary" onclick="saveDoc()">Save</button>
+    <span id="ws-status" class="editor-status connecting">connecting&hellip;</span>
+    <div class="flex-1"></div>
+    <div id="presence-bar" class="presence-bar"></div>
+  </div>
+
+  {# Editor container #}
+  <div id="editor-mount" class="flex-1"></div>
+</main>
+
+{# Pass page data to JS safely via JSON #}
+<script type="application/json" id="editor-data">{{ editor_json | safe }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+// ── Imports from esm.sh CDN ────────────────────────────────────────────
+import {EditorView, keymap, lineNumbers, highlightActiveLineGutter, drawSelection,
+        highlightActiveLine, Decoration, ViewPlugin, WidgetType
+       } from "https://esm.sh/@codemirror/view@6.36.5";
+import {EditorState, StateField, StateEffect, Compartment
+       } from "https://esm.sh/@codemirror/state@6.5.2";
+import {markdown} from "https://esm.sh/@codemirror/lang-markdown@6.3.2";
+import {defaultKeymap, history, historyKeymap, indentWithTab
+       } from "https://esm.sh/@codemirror/commands@6.8.0";
+import {syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatching
+       } from "https://esm.sh/@codemirror/language@6.10.8";
+import {closeBrackets, closeBracketsKeymap
+       } from "https://esm.sh/@codemirror/autocomplete@6.18.6";
+import {searchKeymap, highlightSelectionMatches
+       } from "https://esm.sh/@codemirror/search@6.5.10";
+
+// ── Config ─────────────────────────────────────────────────────────────
+const DATA = JSON.parse(document.getElementById("editor-data").textContent);
+const PAGE_SLUG = DATA.slug;
+const WS_TICKET = DATA.ticket;
+const INITIAL_CONTENT = DATA.content;
+const USER_NAME = DATA.user_name;
+const CURSOR_COLORS = [
+  "#f472b6","#60a5fa","#34d399","#fbbf24","#a78bfa",
+  "#fb923c","#2dd4bf","#f87171","#818cf8","#4ade80"
+];
+
+// ── Remote presence state ──────────────────────────────────────────────
+const remotePeers = new Map(); // user_id → {name, cursor, color}
+let colorIdx = 0;
+function peerColor(userId) {
+  let peer = remotePeers.get(userId);
+  if (peer) return peer.color;
+  return CURSOR_COLORS[colorIdx++ % CURSOR_COLORS.length];
+}
+
+// ── Remote cursor decorations ──────────────────────────────────────────
+const setRemoteCursors = StateEffect.define();
+
+class CursorWidget extends WidgetType {
+  constructor(name, color) { super(); this.name = name; this.color = color; }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = "remote-cursor";
+    el.style.setProperty("--cursor-color", this.color);
+    el.setAttribute("data-name", this.name);
+    return el;
+  }
+  eq(other) { return this.name === other.name && this.color === other.color; }
+}
+
+const remoteCursorField = StateField.define({
+  create() { return Decoration.none; },
+  update(value, tr) {
+    for (let e of tr.effects) {
+      if (e.is(setRemoteCursors)) return e.value;
+    }
+    // Map decorations through document changes
+    return value.map(tr.changes);
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+function buildRemoteDecorations(state) {
+  const widgets = [];
+  for (const [userId, peer] of remotePeers) {
+    if (!peer.cursor) continue;
+    const docLen = state.doc.length;
+    const idx = Math.min(peer.cursor.index, docLen);
+    const head = Math.min(peer.cursor.head, docLen);
+
+    // Selection range
+    if (idx !== head) {
+      const from = Math.min(idx, head);
+      const to = Math.max(idx, head);
+      widgets.push(
+        Decoration.mark({
+          class: "remote-selection",
+          attributes: { style: "--cursor-color:" + peer.color }
+        }).range(from, to)
+      );
+    }
+
+    // Cursor widget at head position
+    widgets.push(
+      Decoration.widget({
+        widget: new CursorWidget(peer.name || userId, peer.color),
+        side: 1,
+      }).range(head)
+    );
+  }
+  // Sort by from position (required by RangeSet)
+  widgets.sort((a, b) => a.from - b.from || a.value.startSide - b.value.startSide);
+  return Decoration.set(widgets);
+}
+
+// ── Presence bar UI ────────────────────────────────────────────────────
+const presenceBar = document.getElementById("presence-bar");
+function updatePresenceBar() {
+  presenceBar.innerHTML = "";
+  for (const [userId, peer] of remotePeers) {
+    const chip = document.createElement("span");
+    chip.className = "presence-chip";
+    chip.style.setProperty("--chip-color", peer.color);
+    chip.innerHTML =
+      '<span class="presence-dot"></span>' +
+      (peer.name || userId).replace(/</g, "&lt;");
+    presenceBar.appendChild(chip);
+  }
+}
+
+// ── Status indicator ───────────────────────────────────────────────────
+const statusEl = document.getElementById("ws-status");
+function setStatus(state, text) {
+  statusEl.className = "editor-status " + state;
+  statusEl.textContent = text;
+}
+
+// ── CodeMirror setup ───────────────────────────────────────────────────
+let suppressRemote = false; // true while applying remote ops
+
+const view = new EditorView({
+  parent: document.getElementById("editor-mount"),
+  state: EditorState.create({
+    doc: INITIAL_CONTENT,
+    extensions: [
+      lineNumbers(),
+      highlightActiveLineGutter(),
+      history(),
+      drawSelection(),
+      indentOnInput(),
+      bracketMatching(),
+      closeBrackets(),
+      highlightActiveLine(),
+      highlightSelectionMatches(),
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      markdown(),
+      remoteCursorField,
+      keymap.of([
+        ...closeBracketsKeymap,
+        ...defaultKeymap,
+        ...searchKeymap,
+        ...historyKeymap,
+        indentWithTab,
+        { key: "Mod-s", run: () => { saveDoc(); return true; } },
+      ]),
+      EditorView.updateListener.of(update => {
+        if (suppressRemote) return;
+        // Send ops for document changes
+        if (update.docChanged) {
+          const ops = [];
+          update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+            ops.push({
+              action: "splice",
+              pos: fromA,
+              del: toA - fromA,
+              text: inserted.toString(),
+            });
+          });
+          if (ops.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "op", ops }));
+          }
+        }
+        // Send presence on selection change
+        if (update.selectionSet || update.docChanged) {
+          sendPresence();
+        }
+      }),
+      EditorView.theme({
+        "&": { flex: "1", display: "flex", flexDirection: "column" },
+        ".cm-scroller": { flex: "1" },
+      }),
+    ],
+  }),
+});
+
+// ── WebSocket connection ───────────────────────────────────────────────
+let ws = null;
+let reconnectTimer = null;
+let presenceTimer = null;
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = proto + "//" + location.host + "/ws/edit/" + PAGE_SLUG + "?ticket=" + WS_TICKET;
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    setStatus("connected", "connected");
+    // Send initial content as sync if this is a new session
+    sendPresence();
+    // Heartbeat presence every 10s
+    clearInterval(presenceTimer);
+    presenceTimer = setInterval(sendPresence, 10000);
+  };
+
+  ws.onclose = () => {
+    setStatus("disconnected", "disconnected");
+    clearInterval(presenceTimer);
+    // Remove all remote peers on disconnect
+    remotePeers.clear();
+    updatePresenceBar();
+    view.dispatch({ effects: setRemoteCursors.of(Decoration.none) });
+    // Reconnect after delay (tickets are single-use, so we need a new one)
+    scheduleReconnect();
+  };
+
+  ws.onerror = () => {
+    setStatus("disconnected", "error");
+  };
+
+  ws.onmessage = (event) => {
+    let msg;
+    try { msg = JSON.parse(event.data); } catch { return; }
+
+    switch (msg.type) {
+      case "sync":
+        // Full doc state from server — not used for CM text sync currently
+        // (we load content from the page data; sync is for CRDT state)
+        break;
+
+      case "op":
+        applyRemoteOps(msg.ops, msg.user_id);
+        break;
+
+      case "presence":
+        handleRemotePresence(msg);
+        break;
+
+      case "error":
+        console.error("[zetl ws]", msg.message);
+        break;
+    }
+  };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    setStatus("connecting", "reconnecting\u2026");
+    try {
+      const resp = await fetch("/api/ws/ticket", { method: "POST" });
+      if (!resp.ok) throw new Error("ticket " + resp.status);
+      const data = await resp.json();
+      // Update ticket and reconnect
+      DATA.ticket = data.ticket;
+      connect();
+    } catch (e) {
+      console.error("[zetl ws] reconnect failed:", e);
+      setStatus("disconnected", "disconnected");
+      scheduleReconnect(); // retry
+    }
+  }, 3000);
+}
+
+// ── Apply remote operations ────────────────────────────────────────────
+function applyRemoteOps(ops, userId) {
+  suppressRemote = true;
+  try {
+    const changes = [];
+    let offset = 0; // track cumulative position shift from prior ops
+
+    for (const op of ops) {
+      if (op.action === "splice") {
+        const from = op.pos + offset;
+        const to = from + op.del;
+        changes.push({ from, to, insert: op.text });
+        offset += op.text.length - op.del;
+      }
+      // mark/unmark ops: handled by CRDT engine on server side;
+      // client applies them as syntax highlighting via the markdown mode
+    }
+
+    if (changes.length > 0) {
+      view.dispatch({ changes, annotations: [] });
+    }
+  } finally {
+    suppressRemote = false;
+  }
+}
+
+// ── Presence ───────────────────────────────────────────────────────────
+function sendPresence() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const sel = view.state.selection.main;
+  ws.send(JSON.stringify({
+    type: "presence",
+    cursor: { index: sel.anchor, head: sel.head },
+    name: USER_NAME,
+  }));
+}
+
+function handleRemotePresence(msg) {
+  const userId = msg.user_id;
+  if (!remotePeers.has(userId)) {
+    remotePeers.set(userId, {
+      name: msg.name || userId,
+      cursor: msg.cursor,
+      color: peerColor(userId),
+    });
+  } else {
+    const peer = remotePeers.get(userId);
+    peer.cursor = msg.cursor;
+    if (msg.name) peer.name = msg.name;
+  }
+  // Update decorations
+  const decos = buildRemoteDecorations(view.state);
+  view.dispatch({ effects: setRemoteCursors.of(decos) });
+  updatePresenceBar();
+}
+
+// ── Save ───────────────────────────────────────────────────────────────
+window.saveDoc = async function() {
+  const content = view.state.doc.toString();
+  const saveBtn = document.getElementById("save-btn");
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving\u2026";
+  try {
+    const slugPath = "/" + PAGE_SLUG + "/";
+    const resp = await fetch(slugPath, {
+      method: "PUT",
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      body: content,
+    });
+    if (resp.ok) {
+      saveBtn.textContent = "Saved";
+      setTimeout(() => { saveBtn.textContent = "Save"; saveBtn.disabled = false; }, 1500);
+    } else {
+      alert("Save failed: " + resp.status);
+      saveBtn.textContent = "Save";
+      saveBtn.disabled = false;
+    }
+  } catch (e) {
+    alert("Save failed: " + e.message);
+    saveBtn.textContent = "Save";
+    saveBtn.disabled = false;
+  }
+};
+
+// ── Init ───────────────────────────────────────────────────────────────
+connect();
+
+// Clean up on navigation
+window.addEventListener("beforeunload", () => {
+  if (ws) ws.close();
+  clearInterval(presenceTimer);
+});
+</script>
+{% endblock %}
