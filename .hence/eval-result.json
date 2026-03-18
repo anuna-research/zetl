@@ -4,26 +4,26 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 4,
-    "insertions": 154,
-    "deletions": 5,
+    "insertions": 715,
+    "deletions": 10,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/main.rs",
-      "src/user/invite.rs",
-      "src/user/mod.rs"
+      "src/acl.rs",
+      "src/lib.rs",
+      "src/reason/mod.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-server-key-protection-changes",
-      "content": "Modified 4 files (+154, -5): .hence/context-manifest.json, src/main.rs, src/user/invite.rs, src/user/mod.rs",
+      "key": "task-acl-pipeline-changes",
+      "content": "Modified 4 files (+715, -10): .hence/context-manifest.json, src/acl.rs, src/lib.rs, src/reason/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/server-key-protection-v1",
-  "evaluated_at": "2026-03-18T08:37:42Z",
+  "branch_name": "hence/acl-pipeline-v1",
+  "evaluated_at": "2026-03-18T08:53:44Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
