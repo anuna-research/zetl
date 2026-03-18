@@ -3,33 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 10,
+    "files_changed": 6,
     "insertions": 485,
-    "deletions": 5,
+    "deletions": 35,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/main.rs",
-      "src/web/flush.rs",
+      "src/hooks/context.rs",
+      "src/hooks/mod.rs",
       "src/web/fs_watch.rs",
-      "src/web/mod.rs",
       "src/web/routes.rs",
-      "src/web/session.rs",
-      "src/web/ws.rs",
-      "tests/history_integration.rs",
-      "tests/web_integration.rs"
+      "src/web/ws.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-fs-watch-external-changes",
-      "content": "Modified 10 files (+485, -5): .hence/context-manifest.json, src/main.rs, src/web/flush.rs, src/web/fs_watch.rs, src/web/mod.rs and 5 more",
+      "key": "task-acl-violation-detect-changes",
+      "content": "Modified 6 files (+485, -35): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs, src/web/fs_watch.rs, src/web/routes.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/fs-watch-external-v1",
-  "evaluated_at": "2026-03-18T13:25:17Z",
+  "branch_name": "hence/acl-violation-detect-v1",
+  "evaluated_at": "2026-03-18T13:37:03Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

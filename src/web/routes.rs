@@ -4808,13 +4808,15 @@ fn check_page_acl_read(
     user_id: &str,
     page_slug: &str,
 ) -> Result<(), Response> {
-    let data = state.data.read().unwrap();
-    let file = data.files.iter().find(|f| {
-        crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
-    });
-    let spl_blocks = file.map(|f| f.spl_blocks.as_slice()).unwrap_or(&[]);
-    let all_slugs: Vec<String> = data.files.iter().map(|f| crate::scanner::page_slug_from_path(&f.path)).collect();
-    drop(data);
+    let (spl_blocks, all_slugs) = {
+        let data = state.data.read().unwrap();
+        let file = data.files.iter().find(|f| {
+            crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
+        });
+        let spl = file.map(|f| f.spl_blocks.clone()).unwrap_or_default();
+        let slugs: Vec<String> = data.files.iter().map(|f| crate::scanner::page_slug_from_path(&f.path)).collect();
+        (spl, slugs)
+    };
 
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -4833,7 +4835,7 @@ fn check_page_acl_read(
             cached.clone()
         } else {
             drop(cache);
-            match crate::acl::evaluate(&state.vault_root, &query, spl_blocks, &all_slugs) {
+            match crate::acl::evaluate(&state.vault_root, &query, &spl_blocks, &all_slugs) {
                 Ok(d) => {
                     let mut cache = state.acl_cache.lock().unwrap();
                     cache.insert(user_id.to_string(), page_slug.to_string(), crate::acl::Action::Read, d.clone());
@@ -4860,13 +4862,15 @@ fn check_page_acl_edit(
     user_id: &str,
     page_slug: &str,
 ) -> Result<(), Response> {
-    let data = state.data.read().unwrap();
-    let file = data.files.iter().find(|f| {
-        crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
-    });
-    let spl_blocks = file.map(|f| f.spl_blocks.as_slice()).unwrap_or(&[]);
-    let all_slugs: Vec<String> = data.files.iter().map(|f| crate::scanner::page_slug_from_path(&f.path)).collect();
-    drop(data);
+    let (spl_blocks, all_slugs) = {
+        let data = state.data.read().unwrap();
+        let file = data.files.iter().find(|f| {
+            crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
+        });
+        let spl = file.map(|f| f.spl_blocks.clone()).unwrap_or_default();
+        let slugs: Vec<String> = data.files.iter().map(|f| crate::scanner::page_slug_from_path(&f.path)).collect();
+        (spl, slugs)
+    };
 
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -4885,7 +4889,7 @@ fn check_page_acl_edit(
             cached.clone()
         } else {
             drop(cache);
-            match crate::acl::evaluate(&state.vault_root, &query, spl_blocks, &all_slugs) {
+            match crate::acl::evaluate(&state.vault_root, &query, &spl_blocks, &all_slugs) {
                 Ok(d) => {
                     let mut cache = state.acl_cache.lock().unwrap();
                     cache.insert(user_id.to_string(), page_slug.to_string(), crate::acl::Action::Edit, d.clone());

@@ -1,12 +1,12 @@
 {
-  "task_id": "fs-watch-external",
+  "task_id": "acl-violation-detect",
   "token_budget": 8000,
-  "tokens_used": 341,
+  "tokens_used": 331,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend filesystem watch to detect external edits via pending_writes set; debounce, re-scan, merkle recompute, ACL invalidate, search/graph rebuild, jj snapshot, notify editors",
-      "token_cost": 43,
+      "content": "Implement post-reconciliation ACL violation detection: evaluate changes against policy; WARN log; on-acl-violation hook; admin banner",
+      "token_cost": 33,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T13:15:56Z"
+  "constructed_at": "2026-03-18T13:25:24Z"
 }
