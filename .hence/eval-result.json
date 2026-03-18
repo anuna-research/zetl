@@ -4,25 +4,25 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 331,
-    "deletions": 7,
+    "insertions": 369,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/fs_watch.rs",
-      "src/web/ws.rs"
+      "src/web/ws.rs",
+      "themes/default/editor.html"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-crdt-reconcile-changes",
-      "content": "Modified 3 files (+331, -7): .hence/context-manifest.json, src/web/fs_watch.rs, src/web/ws.rs",
+      "key": "task-merge-notification-changes",
+      "content": "Modified 3 files (+369, -6): .hence/context-manifest.json, src/web/ws.rs, themes/default/editor.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/crdt-reconcile-v1",
-  "evaluated_at": "2026-03-18T14:12:41Z",
+  "branch_name": "hence/merge-notification-v1",
+  "evaluated_at": "2026-03-18T14:20:46Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
