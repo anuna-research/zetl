@@ -3,15 +3,18 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 253,
-    "deletions": 5,
+    "files_changed": 10,
+    "insertions": 733,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
+      "Cargo.lock",
+      "Cargo.toml",
       "src/main.rs",
+      "src/user/mod.rs",
+      "src/user/recovery.rs",
       "src/web/mod.rs",
       "src/web/routes.rs",
-      "src/web/session.rs",
       "tests/history_integration.rs",
       "tests/web_integration.rs"
     ],
@@ -19,14 +22,14 @@
   },
   "learnings": [
     {
-      "key": "task-session-mgmt-changes",
-      "content": "Modified 7 files (+253, -5): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs, src/web/session.rs and 2 more",
+      "key": "task-bip39-recovery-changes",
+      "content": "Modified 10 files (+733, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/main.rs, src/user/mod.rs and 5 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/session-mgmt-v1",
-  "evaluated_at": "2026-03-18T06:51:02Z",
+  "branch_name": "hence/bip39-recovery-v1",
+  "evaluated_at": "2026-03-18T07:03:04Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
