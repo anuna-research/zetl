@@ -4,29 +4,29 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 7,
-    "insertions": 1111,
-    "deletions": 15,
+    "insertions": 1412,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/acl.rs",
-      "src/web/build.rs",
-      "src/web/context.rs",
-      "src/web/markdown.rs",
-      "src/web/mod.rs",
-      "src/web/routes.rs"
+      "Cargo.lock",
+      "Cargo.toml",
+      "src/crdt/blocks.rs",
+      "src/crdt/marks.rs",
+      "src/crdt/mod.rs",
+      "src/lib.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-visibility-changes",
-      "content": "Modified 7 files (+1111, -15): .hence/context-manifest.json, src/acl.rs, src/web/build.rs, src/web/context.rs, src/web/markdown.rs and 2 more",
+      "key": "task-crdt-engine-changes",
+      "content": "Modified 7 files (+1412, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/blocks.rs, src/crdt/marks.rs and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/visibility-v1",
-  "evaluated_at": "2026-03-18T10:28:22Z",
+  "branch_name": "hence/crdt-engine-v1",
+  "evaluated_at": "2026-03-18T10:41:00Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
