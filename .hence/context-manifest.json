@@ -1,12 +1,12 @@
 {
-  "task_id": "crdt-reconcile",
+  "task_id": "merge-notification",
   "token_budget": 8000,
-  "tokens_used": 324,
+  "tokens_used": 337,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement CRDT reconciliation on external edit: clean (reload), dirty (CRDT merge), delete (recovery file)",
-      "token_cost": 26,
+      "content": "Implement agent merge notification in editor: external-merge WebSocket message, banner with summary, changed range highlighting, review button for large merges",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T14:05:30Z"
+  "constructed_at": "2026-03-18T14:12:47Z"
 }

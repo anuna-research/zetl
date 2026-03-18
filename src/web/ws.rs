@@ -109,15 +109,34 @@ pub enum ServerMsg {
         user_id: String,
         reason: String,
     },
-    /// External edit merged with dirty CRDT — editors see merged state (REQ-020-040 Case 2).
+    /// External edit merged with dirty CRDT — editors see merged state (REQ-020-040 Case 2,
+    /// REQ-020-052).
     ExternalMerge {
         slug: String,
         doc: String,
+        source: MergeSource,
+        summary: String,
+        changed_ranges: Vec<ChangedRange>,
     },
     /// File deleted externally — editors should close (REQ-020-040 Case 3).
     Deleted {
         page: String,
     },
+}
+
+/// Source attribution for an external merge (REQ-020-052).
+#[derive(Debug, Clone, Serialize)]
+pub struct MergeSource {
+    pub name: String,
+    pub id: String,
+    pub is_agent: bool,
+}
+
+/// A character range that changed during a merge (REQ-020-052).
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangedRange {
+    pub start: usize,
+    pub end: usize,
 }
 
 /// A single edit operation (splice text or mark).
@@ -147,6 +166,78 @@ pub enum OpEntry {
 pub struct CursorPos {
     pub index: usize,
     pub head: usize,
+}
+
+// ── Merge diff computation (REQ-020-052) ────────────────────────────
+
+/// Compare text before and after a merge to produce a human-readable summary
+/// and a list of character ranges that changed in the merged text.
+fn compute_merge_diff(before: &str, after: &str) -> (String, Vec<ChangedRange>) {
+    let paras_before: Vec<&str> = before.split("\n\n").collect();
+    let paras_after: Vec<&str> = after.split("\n\n").collect();
+
+    let mut added = 0usize;
+    let mut modified = 0usize;
+    let mut removed = 0usize;
+    let mut changed_ranges = Vec::new();
+
+    // Walk through the after-paragraphs, tracking character offset.
+    let mut char_offset = 0usize;
+    for (i, para) in paras_after.iter().enumerate() {
+        let para_start = char_offset;
+        let para_end = char_offset + para.len();
+
+        if i >= paras_before.len() {
+            // New paragraph added
+            added += 1;
+            changed_ranges.push(ChangedRange {
+                start: para_start,
+                end: para_end,
+            });
+        } else if *para != paras_before[i] {
+            // Existing paragraph modified
+            modified += 1;
+            changed_ranges.push(ChangedRange {
+                start: para_start,
+                end: para_end,
+            });
+        }
+
+        // Account for the "\n\n" separator (except after the last paragraph).
+        char_offset = para_end + if i + 1 < paras_after.len() { 2 } else { 0 };
+    }
+
+    if paras_before.len() > paras_after.len() {
+        removed = paras_before.len() - paras_after.len();
+    }
+
+    // Build human-readable summary.
+    let mut parts = Vec::new();
+    if added > 0 {
+        parts.push(format!(
+            "{added} paragraph{} added",
+            if added == 1 { "" } else { "s" }
+        ));
+    }
+    if modified > 0 {
+        parts.push(format!(
+            "{modified} paragraph{} modified",
+            if modified == 1 { "" } else { "s" }
+        ));
+    }
+    if removed > 0 {
+        parts.push(format!(
+            "{removed} paragraph{} removed",
+            if removed == 1 { "" } else { "s" }
+        ));
+    }
+    let summary = if parts.is_empty() {
+        "content updated".to_string()
+    } else {
+        parts.join(", ")
+    };
+
+    (summary, changed_ranges)
 }
 
 // ── Per-slug editing room ────────────────────────────────────────────
@@ -708,6 +799,9 @@ impl CrdtDocStore {
             match std::fs::read_to_string(&md_path) {
                 Ok(markdown) => match CrdtDocument::from_markdown(&markdown) {
                     Ok(mut external_doc) => {
+                        // Capture text before merge for diff computation (REQ-020-052).
+                        let text_before = entry.doc.text().unwrap_or_default();
+
                         if let Err(e) = entry.doc.merge(&mut external_doc) {
                             eprintln!("crdt-reconcile: merge error for {slug}: {e}");
                         } else {
@@ -718,9 +812,21 @@ impl CrdtDocStore {
                                 &base64::engine::general_purpose::STANDARD,
                                 &bytes,
                             );
+
+                            let text_after = entry.doc.text().unwrap_or_default();
+                            let (summary, changed_ranges) =
+                                compute_merge_diff(&text_before, &text_after);
+
                             msgs.push(ServerMsg::ExternalMerge {
                                 slug: slug.to_string(),
                                 doc: b64,
+                                source: MergeSource {
+                                    name: "External".to_string(),
+                                    id: "external:fs".to_string(),
+                                    is_agent: false,
+                                },
+                                summary,
+                                changed_ranges,
                             });
                         }
                     }
