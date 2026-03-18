@@ -222,6 +222,10 @@ pub enum Command {
         /// Display name for the vault owner (used with --init-owner)
         #[arg(long, default_value = "Owner", requires = "init_owner")]
         owner_name: String,
+        /// Git HEAD poll interval for detecting external commits (e.g. "30s", "1m").
+        /// Set to "0" to disable. Requires --collab.
+        #[arg(long, default_value = "30s", requires = "collab", value_parser = parse_duration)]
+        git_poll_interval: std::time::Duration,
     },
 
     /// Generate an invitation token for a new collaborator
@@ -583,4 +587,27 @@ pub enum HistoryCommand {
         #[arg(long, default_value = "20")]
         limit: usize,
     },
+}
+
+/// Parse a human-friendly duration string like "30s", "5m", "1h", or "0" (disabled).
+fn parse_duration(s: &str) -> Result<std::time::Duration, String> {
+    let s = s.trim();
+    if s == "0" {
+        return Ok(std::time::Duration::ZERO);
+    }
+    let (num_str, multiplier) = if let Some(n) = s.strip_suffix('s') {
+        (n, 1u64)
+    } else if let Some(n) = s.strip_suffix('m') {
+        (n, 60)
+    } else if let Some(n) = s.strip_suffix('h') {
+        (n, 3600)
+    } else {
+        // Assume seconds if no suffix.
+        (s, 1)
+    };
+    let value: u64 = num_str
+        .trim()
+        .parse()
+        .map_err(|_| format!("invalid duration: {s}"))?;
+    Ok(std::time::Duration::from_secs(value * multiplier))
 }

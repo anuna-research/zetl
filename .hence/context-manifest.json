@@ -1,12 +1,12 @@
 {
-  "task_id": "acl-violation-detect",
+  "task_id": "git-poll",
   "token_budget": 8000,
-  "tokens_used": 331,
+  "tokens_used": 333,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement post-reconciliation ACL violation detection: evaluate changes against policy; WARN log; on-acl-violation hook; admin banner",
-      "token_cost": 33,
+      "content": "Implement git HEAD polling (configurable, default 30s): detect external commits via git2, diff changed files, feed into reconciliation pipeline",
+      "token_cost": 35,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T13:25:24Z"
+  "constructed_at": "2026-03-18T13:37:10Z"
 }
