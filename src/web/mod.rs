@@ -159,6 +159,7 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
         .route("/_print", get(routes::print_handler))
         .route("/_static/{*path}", get(routes::static_handler))
         .route("/preview/{*path}", get(routes::preview_handler))
+        .route("/recovery/show", get(routes::recovery_show_handler))
         .route("/passkey/register", get(routes::passkey_register_handler))
         .route(
             "/api/passkey/register/start",

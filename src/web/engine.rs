@@ -219,6 +219,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "page.html",
     "folder.html",
     "passkey_register.html",
+    "recovery_show.html",
 ];
 
 /// Build a minijinja Environment with the three-tier template loader.
@@ -379,6 +380,36 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("passkey_register.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the recovery phrase display page.
+    pub fn render_recovery_show(
+        &self,
+        vault_name: &str,
+        mnemonic: &str,
+        words: &[&str],
+        continue_url: &str,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            mnemonic => mnemonic,
+            words => words,
+            continue_url => continue_url,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("recovery_show.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("recovery_show.html"));
         }
         Ok(html)
     }
@@ -903,5 +934,66 @@ mod tests {
             bundled_template("default", "passkey_register.html").is_some(),
             "passkey_register.html should be bundled in default theme"
         );
+    }
+
+    // ── Recovery show tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_bundled_recovery_show_template_exists() {
+        assert!(
+            bundled_template("default", "recovery_show.html").is_some(),
+            "recovery_show.html should be bundled in default theme"
+        );
+    }
+
+    #[test]
+    fn test_render_recovery_show() {
+        let engine = default_engine();
+        let words = vec![
+            "abandon", "ability", "able", "about", "above", "absent",
+            "absorb", "abstract", "absurd", "abuse", "access", "accident",
+        ];
+        let html = engine
+            .render_recovery_show(
+                "test-vault",
+                "abandon ability able about above absent absorb abstract absurd abuse access accident",
+                &words,
+                "/passkey/register?user_id=alice",
+            )
+            .unwrap();
+        // Explanation text
+        assert!(html.contains("Your Recovery Phrase"));
+        assert!(html.contains("only way"));
+        assert!(html.contains("only be shown once"));
+        // Numbered word grid
+        for (i, word) in words.iter().enumerate() {
+            assert!(html.contains(word), "missing word: {word}");
+            assert!(
+                html.contains(&format!("{}", i + 1)),
+                "missing number: {}",
+                i + 1
+            );
+        }
+        // Confirmation checkbox
+        assert!(html.contains("rc-check"));
+        assert!(html.contains("written down my recovery phrase"));
+        // Copy to clipboard
+        assert!(html.contains("Copy to clipboard"));
+        assert!(html.contains("clipboard may be accessible"));
+        // Continue button
+        // Continue link with user_id
+        assert!(html.contains("rc-continue"));
+        assert!(html.contains("user_id=alice"));
+        assert!(html.contains("disabled"));
+    }
+
+    #[test]
+    fn test_render_recovery_show_vault_name() {
+        let engine = default_engine();
+        let words = vec!["abandon"; 12];
+        let html = engine
+            .render_recovery_show("my-notes", "abandon ".repeat(12).trim(), &words, "/")
+            .unwrap();
+        assert!(html.contains("my-notes"));
     }
 }
