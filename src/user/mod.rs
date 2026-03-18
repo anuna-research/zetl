@@ -3,6 +3,7 @@
 //! Profiles are stored at `.zetl/users/<user-id>/profile.json` following
 //! the CON-020-001 schema.
 
+pub mod invite;
 pub mod passkey;
 pub mod recovery;
 
@@ -34,6 +35,22 @@ impl Role {
             Role::Admin
         } else {
             Role::Editor
+        }
+    }
+}
+
+impl std::str::FromStr for Role {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "reader" => Ok(Role::Reader),
+            "editor" => Ok(Role::Editor),
+            "admin" => Ok(Role::Admin),
+            _ => Err(anyhow::anyhow!(
+                "invalid role '{}': expected reader, editor, or admin",
+                s
+            )),
         }
     }
 }
