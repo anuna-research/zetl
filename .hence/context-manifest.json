@@ -1,12 +1,12 @@
 {
-  "task_id": "crdt-flush-pipeline",
+  "task_id": "crdt-wal",
   "token_budget": 8000,
-  "tokens_used": 340,
+  "tokens_used": 329,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement unified flush pipeline: serialize → write → re-scan → merkle → ACL invalidate → search → git commit → jj import → jj snapshot → graph → hooks",
-      "token_cost": 42,
+      "content": "Implement CRDT write-ahead log: append ops to .zetl/crdt/<slug>.wal; truncate on flush; replay on startup; 10MB max WAL size",
+      "token_cost": 31,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T12:03:07Z"
+  "constructed_at": "2026-03-18T12:12:23Z"
 }

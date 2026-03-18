@@ -4847,6 +4847,7 @@ mod tests {
             ws_hub: crate::web::ws::WsHub::new(),
             ticket_store: crate::web::ws::TicketStore::new(),
             crdt_store: crate::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
+            wal_store: Arc::new(crate::web::wal::WalStore::new(vault_root)),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

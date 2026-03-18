@@ -60,6 +60,11 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     }
     state.crdt_store.mark_flushed(slug);
 
+    // Truncate the WAL after successful write (REQ-020-044).
+    if let Err(e) = state.wal_store.truncate(slug) {
+        eprintln!("flush: WAL truncate error for {slug}: {e}");
+    }
+
     // ── Step 3: Re-scan ──────────────────────────────────────────────────
     let new_data = match super::reindex(&state.vault_root) {
         Ok(d) => d,
@@ -263,6 +268,23 @@ pub fn spawn_flush_lifecycle_task(state: WebState) -> tokio::task::JoinHandle<()
         loop {
             interval.tick().await;
 
+            // WAL size check: force-flush any doc whose WAL exceeds MAX_WAL_SIZE (REQ-020-044).
+            let loaded_slugs = state.crdt_store.loaded_slugs();
+            for slug in &loaded_slugs {
+                if state.wal_store.wal_size(slug) >= super::wal::MAX_WAL_SIZE {
+                    let state_clone = state.clone();
+                    let slug_clone = slug.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        if let Some(r) = flush_pipeline(&state_clone, &slug_clone) {
+                            for w in &r.warnings {
+                                eprintln!("WAL force-flush warning ({slug_clone}): {w}");
+                            }
+                        }
+                    })
+                    .await;
+                }
+            }
+
             // Quiescence flush: run the unified pipeline for dirty docs idle ≥ quiescence_delay.
             let to_flush = state.crdt_store.slugs_needing_flush();
             for slug in &to_flush {
@@ -337,7 +359,8 @@ mod tests {
             git_commit_lock: None,
             ws_hub: crate::web::ws::WsHub::new(),
             ticket_store: crate::web::ws::TicketStore::new(),
-            crdt_store: CrdtDocStore::new(vault_root),
+            crdt_store: CrdtDocStore::new(vault_root.clone()),
+            wal_store: Arc::new(crate::web::wal::WalStore::new(&vault_root)),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

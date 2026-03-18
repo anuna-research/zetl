@@ -5157,6 +5157,7 @@ fn cmd_serve(
         git_commit_lock,
         ws_hub: zetl::web::ws::WsHub::new(),
         ticket_store: zetl::web::ws::TicketStore::new(),
+        wal_store: std::sync::Arc::new(zetl::web::wal::WalStore::new(&vault_root)),
         #[cfg(feature = "semantic")]
         vector_index,
     };
