@@ -3,31 +3,24 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 382,
-    "deletions": 10,
+    "files_changed": 1,
+    "insertions": 11,
+    "deletions": 1,
     "file_list": [
-      ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml",
-      "src/main.rs",
-      "src/web/git_commit.rs",
-      "src/web/mod.rs",
-      "src/web/routes.rs",
-      "tests/web_integration.rs"
+      "src/web/mod.rs"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-git-autocommit-changes",
-      "content": "Modified 8 files (+382, -10): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/main.rs, src/web/git_commit.rs and 3 more",
+      "key": "task-csp-headers-changes",
+      "content": "Modified 1 files (+11, -1): src/web/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/git-autocommit-v1",
-  "evaluated_at": "2026-03-18T08:09:23Z",
+  "branch_name": "hence/csp-headers-v1",
+  "evaluated_at": "2026-03-18T08:10:57Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
