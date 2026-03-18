@@ -4,26 +4,26 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 4,
-    "insertions": 159,
-    "deletions": 7,
+    "insertions": 154,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/context.rs",
-      "src/hooks/mod.rs",
-      "src/web/routes.rs"
+      "src/main.rs",
+      "src/user/invite.rs",
+      "src/user/mod.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-agent-loop-prevention-changes",
-      "content": "Modified 4 files (+159, -7): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs, src/web/routes.rs",
+      "key": "task-server-key-protection-changes",
+      "content": "Modified 4 files (+154, -5): .hence/context-manifest.json, src/main.rs, src/user/invite.rs, src/user/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/agent-loop-prevention-v1",
-  "evaluated_at": "2026-03-18T08:33:01Z",
+  "branch_name": "hence/server-key-protection-v1",
+  "evaluated_at": "2026-03-18T08:37:42Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
