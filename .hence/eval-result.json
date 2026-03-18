@@ -4,25 +4,25 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 227,
-    "deletions": 9,
+    "insertions": 190,
+    "deletions": 16,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/routes.rs",
-      "src/web/ws.rs"
+      "src/user/comment.rs",
+      "src/web/routes.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-crdt-history-changes",
-      "content": "Modified 3 files (+227, -9): .hence/context-manifest.json, src/web/routes.rs, src/web/ws.rs",
+      "key": "task-comment-integrity-changes",
+      "content": "Modified 3 files (+190, -16): .hence/context-manifest.json, src/user/comment.rs, src/web/routes.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/crdt-history-v1",
-  "evaluated_at": "2026-03-18T12:57:23Z",
+  "branch_name": "hence/comment-integrity-v1",
+  "evaluated_at": "2026-03-18T13:05:39Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
