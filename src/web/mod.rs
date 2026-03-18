@@ -191,6 +191,14 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
         .route("/api/search", get(routes::api_search_handler))
         .route("/_print", get(routes::print_handler))
         .route("/_static/{*path}", get(routes::static_handler))
+        .route(
+            "/_admin/invite",
+            get(routes::admin_invite_handler).post(routes::admin_invite_create_handler),
+        )
+        .route(
+            "/_admin/invite/revoke",
+            post(routes::admin_invite_revoke_handler),
+        )
         .route("/preview/{*path}", get(routes::preview_handler))
         .route(
             "/{*path}",

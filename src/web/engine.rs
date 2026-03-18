@@ -221,6 +221,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "passkey_register.html",
     "recovery_show.html",
     "invite_accept.html",
+    "admin_invite.html",
 ];
 
 /// Build a minijinja Environment with the three-tier template loader.
@@ -443,6 +444,34 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("invite_accept.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the admin invitation management page.
+    pub fn render_admin_invite(
+        &self,
+        vault_name: &str,
+        csrf_token: &str,
+        invitations: &[serde_json::Value],
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            csrf_token => csrf_token,
+            invitations => invitations,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("admin_invite.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("admin_invite.html"));
         }
         Ok(html)
     }
