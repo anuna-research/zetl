@@ -2,6 +2,10 @@
 
 {% block title %}Recovery Phrase — {{ vault_name }}{% endblock %}
 
+{% block head %}
+  <meta name="robots" content="noindex">
+{% endblock %}
+
 {% block styles %}
   .rc-container {
     max-width: 36rem;
@@ -35,11 +39,23 @@
     color: oklch(var(--bc) / 0.8);
     margin-bottom: 1.5rem;
   }
+  .rc-warn-security {
+    background: oklch(var(--er) / 0.08);
+    border-left: 3px solid oklch(var(--er));
+    border-radius: 0 0.375rem 0.375rem 0;
+    padding: 0.75rem 1rem;
+    font-size: 0.8rem;
+    color: oklch(var(--bc) / 0.8);
+    margin-bottom: 1.5rem;
+    font-weight: 500;
+  }
   .rc-word-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 0.5rem;
     margin-bottom: 1.5rem;
+    user-select: none;
+    -webkit-user-select: none;
   }
   .rc-word {
     display: flex;
@@ -131,6 +147,13 @@
   .rc-continue-btn:not(:disabled):hover {
     opacity: 0.9;
   }
+  .rc-hidden-msg {
+    display: none;
+    text-align: center;
+    padding: 2rem 1rem;
+    color: oklch(var(--bc) / 0.6);
+    font-size: 0.9rem;
+  }
 {% endblock %}
 
 {% block sidebar %}{% endblock %}
@@ -152,28 +175,38 @@
     control.</p>
   </div>
 
+  <div class="rc-warn-security">
+    Do not screenshot this. Do not paste it into a chat. Write it on paper.
+  </div>
+
   <div class="rc-warn">
     <strong>This phrase will only be shown once.</strong> It is not stored on the
     server. If you lose it and all your passkeys, your account cannot be recovered.
   </div>
 
-  <div id="rc-words" class="rc-word-grid">
-    {% for word in words %}
-    <div class="rc-word">
-      <span class="rc-word-num">{{ loop.index }}</span>
-      <span class="rc-word-text">{{ word }}</span>
+  <div id="rc-mnemonic-area">
+    <div id="rc-words" class="rc-word-grid">
+      {% for word in words %}
+      <div class="rc-word">
+        <span class="rc-word-num">{{ loop.index }}</span>
+        <span class="rc-word-text">{{ word }}</span>
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
+
+    <div class="rc-copy-section">
+      <button id="rc-copy-btn" class="rc-copy-btn" onclick="copyPhrase()">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184"/>
+        </svg>
+        <span id="rc-copy-label">Copy to clipboard</span>
+      </button>
+      <div class="rc-copy-warn">Your clipboard may be accessible to other apps. It will be cleared automatically after 60 seconds.</div>
+    </div>
   </div>
 
-  <div class="rc-copy-section">
-    <button id="rc-copy-btn" class="rc-copy-btn" onclick="copyPhrase()">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184"/>
-      </svg>
-      <span id="rc-copy-label">Copy to clipboard</span>
-    </button>
-    <div class="rc-copy-warn">Your clipboard may be accessible to other apps. Clear it after pasting.</div>
+  <div id="rc-hidden-msg" class="rc-hidden-msg">
+    Recovery phrase hidden for security — reload to see it again.
   </div>
 
   <div class="rc-confirm" onclick="document.getElementById('rc-check').click()">
@@ -191,8 +224,20 @@
 <script>
 (function(){
   var phrase = '{{ mnemonic | safe }}';
+  var clipboardTimer = null;
+
+  // Auto-clear DOM after 5 minutes (REQ-020-056).
+  setTimeout(function() {
+    var area = document.getElementById('rc-mnemonic-area');
+    var msg = document.getElementById('rc-hidden-msg');
+    if (area) area.remove();
+    if (msg) msg.style.display = 'block';
+    phrase = '';
+  }, 5 * 60 * 1000);
 
   window.copyPhrase = function() {
+    if (!phrase) return;
+
     if (!navigator.clipboard) {
       // Fallback for non-HTTPS contexts
       var ta = document.createElement('textarea');
@@ -204,10 +249,12 @@
       document.execCommand('copy');
       document.body.removeChild(ta);
       showCopied();
+      scheduleClipboardClear();
       return;
     }
     navigator.clipboard.writeText(phrase).then(function() {
       showCopied();
+      scheduleClipboardClear();
     });
   };
 
@@ -215,6 +262,17 @@
     var label = document.getElementById('rc-copy-label');
     label.textContent = 'Copied!';
     setTimeout(function(){ label.textContent = 'Copy to clipboard'; }, 2000);
+  }
+
+  // Auto-clear clipboard 60s after copy (REQ-020-056).
+  function scheduleClipboardClear() {
+    if (clipboardTimer) clearTimeout(clipboardTimer);
+    clipboardTimer = setTimeout(function() {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText('').catch(function(){});
+      }
+      clipboardTimer = null;
+    }, 60 * 1000);
   }
 
   window.toggleContinue = function() {
