@@ -3,29 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 485,
-    "deletions": 35,
+    "files_changed": 5,
+    "insertions": 351,
+    "deletions": 8,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/context.rs",
-      "src/hooks/mod.rs",
-      "src/web/fs_watch.rs",
-      "src/web/routes.rs",
-      "src/web/ws.rs"
+      "src/cli.rs",
+      "src/main.rs",
+      "src/web/git_poll.rs",
+      "src/web/mod.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-acl-violation-detect-changes",
-      "content": "Modified 6 files (+485, -35): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs, src/web/fs_watch.rs, src/web/routes.rs and 1 more",
+      "key": "task-git-poll-changes",
+      "content": "Modified 5 files (+351, -8): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/git_poll.rs, src/web/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/acl-violation-detect-v1",
-  "evaluated_at": "2026-03-18T13:37:03Z",
+  "branch_name": "hence/git-poll-v1",
+  "evaluated_at": "2026-03-18T13:45:56Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
