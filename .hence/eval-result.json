@@ -3,29 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 254,
+    "files_changed": 3,
+    "insertions": 337,
     "deletions": 10,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/context.rs",
-      "src/web/flush.rs",
-      "src/web/fs_watch.rs",
-      "src/web/git_poll.rs",
-      "src/web/routes.rs"
+      "src/acl.rs",
+      "src/scanner.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-external-attribution-changes",
-      "content": "Modified 6 files (+254, -10): .hence/context-manifest.json, src/hooks/context.rs, src/web/flush.rs, src/web/fs_watch.rs, src/web/git_poll.rs and 1 more",
+      "key": "task-spl-sandbox-changes",
+      "content": "Modified 3 files (+337, -10): .hence/context-manifest.json, src/acl.rs, src/scanner.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/external-attribution-v1",
-  "evaluated_at": "2026-03-18T13:55:17Z",
+  "branch_name": "hence/spl-sandbox-v1",
+  "evaluated_at": "2026-03-18T14:05:23Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
