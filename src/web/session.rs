@@ -158,6 +158,84 @@ where
 /// Trait re-export so the extractor can pull `WebState` from composite state.
 use axum::extract::FromRef;
 
+use axum::body::Body;
+use axum::extract::State;
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
+
+/// Middleware that gates routes behind session authentication when `--collab` is active.
+///
+/// In non-collab mode, all requests pass through unchanged.
+/// In collab mode, unauthenticated requests receive 401 Unauthorized.
+pub async fn collab_gate(
+    State(state): State<super::WebState>,
+    request: axum::http::Request<Body>,
+    next: Next,
+) -> Response {
+    if !state.collab {
+        return next.run(request).await;
+    }
+
+    // Check for valid session
+    let has_session = token_from_cookies(request.headers())
+        .and_then(|t| state.sessions.validate(&t))
+        .is_some();
+
+    if has_session {
+        next.run(request).await
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
+    }
+}
+
+/// Extractor that yields the authenticated user's role from the session cookie.
+///
+/// Loads the user profile and computes the role. Returns 401 if no session,
+/// 403 if the user profile cannot be found.
+pub struct SessionRole {
+    pub user_id: String,
+    pub role: crate::user::Role,
+}
+
+impl<S> FromRequestParts<S> for SessionRole
+where
+    S: Send + Sync,
+    super::WebState: FromRef<S>,
+{
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let web_state = super::WebState::from_ref(state);
+        let token = token_from_cookies(&parts.headers).ok_or(StatusCode::UNAUTHORIZED)?;
+        let user_id = web_state
+            .sessions
+            .validate(&token)
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+
+        let profile = crate::user::load_profile(&web_state.vault_root, &user_id)
+            .ok()
+            .flatten()
+            .ok_or(StatusCode::FORBIDDEN)?;
+
+        let role = crate::user::Role::for_profile(&profile);
+        Ok(SessionRole { user_id, role })
+    }
+}
+
+/// Check that a session role meets the minimum required level.
+///
+/// Returns `Err(403 Forbidden)` if the role is insufficient.
+pub fn require_role(
+    actual: crate::user::Role,
+    minimum: crate::user::Role,
+) -> Result<(), StatusCode> {
+    if actual >= minimum {
+        Ok(())
+    } else {
+        Err(StatusCode::FORBIDDEN)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,5 +308,29 @@ mod tests {
         let token = store.create("eve");
         store.purge_expired();
         assert_eq!(store.validate(&token), Some("eve".to_string()));
+    }
+
+    #[test]
+    fn require_role_admin_passes_all() {
+        use crate::user::Role;
+        assert!(require_role(Role::Admin, Role::Reader).is_ok());
+        assert!(require_role(Role::Admin, Role::Editor).is_ok());
+        assert!(require_role(Role::Admin, Role::Admin).is_ok());
+    }
+
+    #[test]
+    fn require_role_editor_blocked_from_admin() {
+        use crate::user::Role;
+        assert!(require_role(Role::Editor, Role::Reader).is_ok());
+        assert!(require_role(Role::Editor, Role::Editor).is_ok());
+        assert!(require_role(Role::Editor, Role::Admin).is_err());
+    }
+
+    #[test]
+    fn require_role_reader_blocked_from_editor_and_admin() {
+        use crate::user::Role;
+        assert!(require_role(Role::Reader, Role::Reader).is_ok());
+        assert!(require_role(Role::Reader, Role::Editor).is_err());
+        assert!(require_role(Role::Reader, Role::Admin).is_err());
     }
 }

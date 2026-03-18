@@ -13,6 +13,41 @@ use std::path::{Path, PathBuf};
 
 const USERS_DIR: &str = ".zetl/users";
 
+/// Hardcoded role levels for collab authorization (placeholder for SPL rules).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Role {
+    /// Read-only access to vault content.
+    Reader,
+    /// Can read and edit pages.
+    Editor,
+    /// Full control: edit, manage users, configure vault.
+    Admin,
+}
+
+impl Role {
+    /// Determine the role for a user profile.
+    ///
+    /// Hardcoded placeholder: owner → Admin, invited users → Editor.
+    /// Will be replaced by SPL-driven authorization.
+    pub fn for_profile(profile: &UserProfile) -> Self {
+        if profile.owner {
+            Role::Admin
+        } else {
+            Role::Editor
+        }
+    }
+}
+
+impl std::fmt::Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Role::Reader => write!(f, "reader"),
+            Role::Editor => write!(f, "editor"),
+            Role::Admin => write!(f, "admin"),
+        }
+    }
+}
+
 /// A WebAuthn credential stored in the user profile (CON-020-001).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WebAuthnCredential {
@@ -459,5 +494,31 @@ mod tests {
         let expected_dir = tmp.path().join(".zetl/users").join(&profile.id);
         assert!(expected_dir.is_dir());
         assert!(expected_dir.join("profile.json").is_file());
+    }
+
+    #[test]
+    fn test_role_for_owner_is_admin() {
+        let profile = make_profile("Alice", true);
+        assert_eq!(Role::for_profile(&profile), Role::Admin);
+    }
+
+    #[test]
+    fn test_role_for_non_owner_is_editor() {
+        let profile = make_profile("Bob", false);
+        assert_eq!(Role::for_profile(&profile), Role::Editor);
+    }
+
+    #[test]
+    fn test_role_ordering() {
+        assert!(Role::Admin > Role::Editor);
+        assert!(Role::Editor > Role::Reader);
+        assert!(Role::Reader < Role::Admin);
+    }
+
+    #[test]
+    fn test_role_display() {
+        assert_eq!(Role::Admin.to_string(), "admin");
+        assert_eq!(Role::Editor.to_string(), "editor");
+        assert_eq!(Role::Reader.to_string(), "reader");
     }
 }

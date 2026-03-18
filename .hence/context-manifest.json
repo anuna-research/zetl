@@ -1,12 +1,12 @@
 {
-  "task_id": "bootstrap-owner",
+  "task_id": "collab-gate",
   "token_budget": 8000,
-  "tokens_used": 273,
+  "tokens_used": 301,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement --collab --init-owner CLI flow: generate passkey challenge at /auth/bootstrap, display BIP39 on stderr, create owner profile, one-time guard",
-      "token_cost": 37,
+      "content": "Gate all existing routes behind session check when --collab is active; add basic hardcoded role check (admin/editor/reader) as placeholder for SPL",
+      "token_cost": 36,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 5 files (+118, -21): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs, themes/default/recovery_show.html",
       "token_cost": 35,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-bootstrap-owner-changes",
+      "content": "Modified 5 files (+155, -7): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/mod.rs, src/web/routes.rs",
+      "token_cost": 29,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T07:19:23Z"
+  "constructed_at": "2026-03-18T07:25:27Z"
 }
