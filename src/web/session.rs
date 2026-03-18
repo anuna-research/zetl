@@ -163,10 +163,39 @@ use axum::extract::State;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
+/// Extract a Bearer token from the `Authorization` header.
+pub fn bearer_token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+    let auth_header = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
+    let token = auth_header.strip_prefix("Bearer ")?;
+    if token.is_empty() {
+        return None;
+    }
+    Some(token.to_string())
+}
+
+/// Verify a Bearer agent token against vault user profiles.
+///
+/// Returns the user_id if the token is valid, or `None` otherwise.
+fn verify_bearer_token(vault_root: &std::path::Path, token_b64: &str) -> Option<String> {
+    let user_id = crate::user::agent_token::extract_user_id(token_b64).ok()?;
+    let profile = crate::user::load_profile(vault_root, &user_id).ok()??;
+    crate::user::agent_token::verify_agent_token(
+        token_b64,
+        &profile.recovery_pubkey,
+        profile.agent_token_generation,
+    )
+    .ok()
+    .map(|claims| claims.user_id)
+}
+
 /// Middleware that gates routes behind session authentication when `--collab` is active.
 ///
 /// In non-collab mode, all requests pass through unchanged.
-/// In collab mode, unauthenticated requests receive 401 Unauthorized.
+/// In collab mode, accepts either a valid session cookie or a valid Bearer agent token.
+/// Unauthenticated requests receive 401 Unauthorized.
 pub async fn collab_gate(
     State(state): State<super::WebState>,
     request: axum::http::Request<Body>,
@@ -176,16 +205,25 @@ pub async fn collab_gate(
         return next.run(request).await;
     }
 
-    // Check for valid session
+    // Check for valid session cookie
     let has_session = token_from_cookies(request.headers())
         .and_then(|t| state.sessions.validate(&t))
         .is_some();
 
     if has_session {
-        next.run(request).await
-    } else {
-        StatusCode::UNAUTHORIZED.into_response()
+        return next.run(request).await;
     }
+
+    // Check for valid Bearer agent token
+    let has_bearer = bearer_token_from_headers(request.headers())
+        .and_then(|t| verify_bearer_token(&state.vault_root, &t))
+        .is_some();
+
+    if has_bearer {
+        return next.run(request).await;
+    }
+
+    StatusCode::UNAUTHORIZED.into_response()
 }
 
 /// Extractor that yields the authenticated user's role from the session cookie.
@@ -219,6 +257,72 @@ where
 
         let role = crate::user::Role::for_profile(&profile);
         Ok(SessionRole { user_id, role })
+    }
+}
+
+/// Extractor that yields the authenticated user's ID from a Bearer agent token.
+///
+/// Returns `401 Unauthorized` if no valid Bearer token is present.
+pub struct BearerUser {
+    pub user_id: String,
+}
+
+impl<S> FromRequestParts<S> for BearerUser
+where
+    S: Send + Sync,
+    super::WebState: FromRef<S>,
+{
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let web_state = super::WebState::from_ref(state);
+        let token = bearer_token_from_headers(&parts.headers).ok_or(StatusCode::UNAUTHORIZED)?;
+        let user_id =
+            verify_bearer_token(&web_state.vault_root, &token).ok_or(StatusCode::UNAUTHORIZED)?;
+        Ok(BearerUser { user_id })
+    }
+}
+
+/// Extractor that accepts either a session cookie or a Bearer agent token.
+///
+/// Tries session first, then Bearer. Returns `401 Unauthorized` if neither is valid.
+/// The `is_agent` field indicates which authentication method succeeded.
+pub struct AuthUser {
+    pub user_id: String,
+    pub is_agent: bool,
+}
+
+impl<S> FromRequestParts<S> for AuthUser
+where
+    S: Send + Sync,
+    super::WebState: FromRef<S>,
+{
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let web_state = super::WebState::from_ref(state);
+
+        // Try session cookie first
+        if let Some(token) = token_from_cookies(&parts.headers) {
+            if let Some(user_id) = web_state.sessions.validate(&token) {
+                return Ok(AuthUser {
+                    user_id,
+                    is_agent: false,
+                });
+            }
+        }
+
+        // Try Bearer token
+        if let Some(token) = bearer_token_from_headers(&parts.headers) {
+            if let Some(user_id) = verify_bearer_token(&web_state.vault_root, &token) {
+                return Ok(AuthUser {
+                    user_id,
+                    is_agent: true,
+                });
+            }
+        }
+
+        Err(StatusCode::UNAUTHORIZED)
     }
 }
 
@@ -332,5 +436,99 @@ mod tests {
         assert!(require_role(Role::Reader, Role::Reader).is_ok());
         assert!(require_role(Role::Reader, Role::Editor).is_err());
         assert!(require_role(Role::Reader, Role::Admin).is_err());
+    }
+
+    #[test]
+    fn parse_bearer_token_from_auth_header() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            "Bearer my-token-123".parse().unwrap(),
+        );
+        assert_eq!(
+            bearer_token_from_headers(&headers),
+            Some("my-token-123".to_string())
+        );
+    }
+
+    #[test]
+    fn bearer_token_missing_returns_none() {
+        let headers = axum::http::HeaderMap::new();
+        assert_eq!(bearer_token_from_headers(&headers), None);
+    }
+
+    #[test]
+    fn bearer_token_wrong_scheme_returns_none() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            "Basic abc123".parse().unwrap(),
+        );
+        assert_eq!(bearer_token_from_headers(&headers), None);
+    }
+
+    #[test]
+    fn bearer_token_empty_value_returns_none() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            "Bearer ".parse().unwrap(),
+        );
+        assert_eq!(bearer_token_from_headers(&headers), None);
+    }
+
+    #[test]
+    fn verify_bearer_with_real_profile() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let kp = crate::user::recovery::generate_recovery_keypair().unwrap();
+        let profile = crate::user::UserProfile {
+            id: "agent-test-a1b2c3d4".to_string(),
+            name: "Agent Test".to_string(),
+            created_at: "2026-03-18T10:00:00Z".to_string(),
+            invited_by: None,
+            owner: true,
+            credentials: vec![],
+            recovery_pubkey: kp.recovery_pubkey.clone(),
+            agent_token_generation: 0,
+        };
+        crate::user::save_profile(tmp.path(), &profile).unwrap();
+
+        let token = crate::user::agent_token::generate_agent_token(
+            &kp.mnemonic,
+            &profile.id,
+            0,
+        )
+        .unwrap();
+
+        let result = verify_bearer_token(tmp.path(), &token);
+        assert_eq!(result, Some("agent-test-a1b2c3d4".to_string()));
+    }
+
+    #[test]
+    fn verify_bearer_wrong_generation_fails() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let kp = crate::user::recovery::generate_recovery_keypair().unwrap();
+        let profile = crate::user::UserProfile {
+            id: "agent-test-a1b2c3d4".to_string(),
+            name: "Agent Test".to_string(),
+            created_at: "2026-03-18T10:00:00Z".to_string(),
+            invited_by: None,
+            owner: true,
+            credentials: vec![],
+            recovery_pubkey: kp.recovery_pubkey.clone(),
+            agent_token_generation: 1, // profile is at generation 1
+        };
+        crate::user::save_profile(tmp.path(), &profile).unwrap();
+
+        // Generate token at generation 0
+        let token = crate::user::agent_token::generate_agent_token(
+            &kp.mnemonic,
+            &profile.id,
+            0,
+        )
+        .unwrap();
+
+        let result = verify_bearer_token(tmp.path(), &token);
+        assert_eq!(result, None); // Should fail: generation mismatch
     }
 }

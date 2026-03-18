@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
+use base64::Engine as _;
 use clap::Parser;
 use comfy_table::{Cell, Table};
 use serde::Serialize;
@@ -4663,6 +4664,47 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     (y, m, d)
+}
+
+fn cmd_agent_token(cli: &Cli, mnemonic: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // Derive the public key from the mnemonic to find the matching user
+    let pubkey = zetl::user::recovery::derive_pubkey_from_mnemonic(mnemonic)
+        .context("invalid BIP39 mnemonic")?;
+    let pubkey_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(pubkey.as_bytes());
+
+    // Find the user profile whose recovery_pubkey matches
+    let profiles = zetl::user::list_profiles(&vault_root)?;
+    let profile = profiles
+        .iter()
+        .find(|p| p.recovery_pubkey == pubkey_b64)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "no user in this vault matches the provided mnemonic's public key"
+            )
+        })?;
+
+    let token = zetl::user::agent_token::generate_agent_token(
+        mnemonic,
+        &profile.id,
+        profile.agent_token_generation,
+    )?;
+
+    // Output depends on format
+    if cli.format == zetl::cli::OutputFormat::Json || cli.json {
+        let output = serde_json::json!({
+            "token": token,
+            "user_id": profile.id,
+            "generation": profile.agent_token_generation,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("{token}");
+    }
+
+    Ok(())
 }
 
 fn cmd_invite(
@@ -9656,6 +9698,7 @@ fn main() -> anyhow::Result<()> {
             port,
             host,
         } => cmd_invite(&cli, as_user, role, pages.as_deref(), expires.as_deref(), *port, host),
+        Command::AgentToken { mnemonic } => cmd_agent_token(&cli, mnemonic),
         Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {

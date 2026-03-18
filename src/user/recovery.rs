@@ -59,7 +59,7 @@ pub fn derive_pubkey_from_mnemonic(mnemonic_phrase: &str) -> Result<VerifyingKey
 
 /// Derive the ed25519 signing key from a BIP39 mnemonic via SLIP-0010
 /// at path `m/44'/0'/0'`.
-fn derive_signing_key_from_mnemonic(mnemonic_phrase: &str) -> Result<SigningKey> {
+pub(crate) fn derive_signing_key_from_mnemonic(mnemonic_phrase: &str) -> Result<SigningKey> {
     let mnemonic: bip39::Mnemonic = mnemonic_phrase
         .parse()
         .map_err(|e| anyhow!("invalid BIP39 mnemonic: {e}"))?;

@@ -3,6 +3,7 @@
 //! Profiles are stored at `.zetl/users/<user-id>/profile.json` following
 //! the CON-020-001 schema.
 
+pub mod agent_token;
 pub mod invite;
 pub mod passkey;
 pub mod recovery;

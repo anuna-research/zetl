@@ -247,6 +247,14 @@ pub enum Command {
         host: String,
     },
 
+    /// Derive an agent token from a BIP39 mnemonic for headless API authentication
+    #[command(after_help = "Examples:\n  zetl agent-token --mnemonic \"word1 word2 ... word12\"")]
+    AgentToken {
+        /// BIP39 mnemonic phrase (12 words)
+        #[arg(long)]
+        mnemonic: String,
+    },
+
     /// Generate a static HTML site from the vault
     Build {
         /// Output directory
