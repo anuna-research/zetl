@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
-use axum::http::StatusCode;
+use axum::http::{HeaderName, StatusCode};
 
 /// Cookie name for the session token.
 pub const SESSION_COOKIE_NAME: &str = "zetl_session";
@@ -20,6 +20,8 @@ pub struct Session {
     pub user_id: String,
     pub created_at: Instant,
     pub last_accessed: Instant,
+    /// Per-session CSRF token (REQ-020-064).
+    pub csrf_token: String,
 }
 
 /// In-memory session store backed by a `HashMap`.
@@ -38,11 +40,13 @@ impl SessionStore {
     /// Create a new session for `user_id`, returning the opaque token.
     pub fn create(&self, user_id: &str) -> String {
         let token = generate_token();
+        let csrf_token = generate_token();
         let now = Instant::now();
         let session = Session {
             user_id: user_id.to_string(),
             created_at: now,
             last_accessed: now,
+            csrf_token,
         };
         self.sessions
             .write()
@@ -77,6 +81,12 @@ impl SessionStore {
             .write()
             .expect("session lock poisoned")
             .remove(token);
+    }
+
+    /// Return the CSRF token for a given session token, if the session is valid.
+    pub fn csrf_token(&self, token: &str) -> Option<String> {
+        let sessions = self.sessions.read().expect("session lock poisoned");
+        sessions.get(token).map(|s| s.csrf_token.clone())
     }
 
     /// Remove all expired sessions (housekeeping).
@@ -224,6 +234,89 @@ pub async fn collab_gate(
     }
 
     StatusCode::UNAUTHORIZED.into_response()
+}
+
+/// Middleware that injects the `X-CSRF-Token` response header for authenticated sessions
+/// (REQ-020-064). Applied to page-serving routes so the client can read the token.
+pub async fn csrf_token_header(
+    State(state): State<super::WebState>,
+    request: axum::http::Request<Body>,
+    next: Next,
+) -> Response {
+    let csrf = token_from_cookies(request.headers())
+        .and_then(|t| state.sessions.csrf_token(&t));
+
+    let mut response = next.run(request).await;
+
+    if let Some(csrf) = csrf {
+        response.headers_mut().insert(
+            HeaderName::from_static("x-csrf-token"),
+            axum::http::HeaderValue::from_str(&csrf).unwrap(),
+        );
+    }
+
+    response
+}
+
+/// Middleware that enforces CSRF token validation on state-changing requests (REQ-020-064).
+///
+/// PUT, POST, and DELETE requests must include a valid `X-CSRF-Token` header matching
+/// the token issued with the session. Requests authenticated via Bearer token are exempt
+/// (agent tokens are not automatically attached by browsers). WebSocket upgrade requests
+/// are also exempt.
+pub async fn csrf_guard(
+    State(state): State<super::WebState>,
+    request: axum::http::Request<Body>,
+    next: Next,
+) -> Response {
+    let method = request.method().clone();
+
+    // Only check state-changing methods
+    if method != axum::http::Method::PUT
+        && method != axum::http::Method::POST
+        && method != axum::http::Method::DELETE
+    {
+        return next.run(request).await;
+    }
+
+    // Exempt Bearer-authenticated requests
+    if bearer_token_from_headers(request.headers()).is_some() {
+        return next.run(request).await;
+    }
+
+    // Exempt WebSocket upgrade requests
+    if request
+        .headers()
+        .get(axum::http::header::UPGRADE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("websocket"))
+        .unwrap_or(false)
+    {
+        return next.run(request).await;
+    }
+
+    // Require valid session + matching CSRF token
+    let session_token = match token_from_cookies(request.headers()) {
+        Some(t) => t,
+        None => return StatusCode::FORBIDDEN.into_response(),
+    };
+
+    let expected_csrf = match state.sessions.csrf_token(&session_token) {
+        Some(t) => t,
+        None => return StatusCode::FORBIDDEN.into_response(),
+    };
+
+    let provided_csrf = request
+        .headers()
+        .get("X-CSRF-Token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if provided_csrf != expected_csrf {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
+    next.run(request).await
 }
 
 /// Extractor that yields the authenticated user's role from the session cookie.
@@ -530,5 +623,49 @@ mod tests {
 
         let result = verify_bearer_token(tmp.path(), &token);
         assert_eq!(result, None); // Should fail: generation mismatch
+    }
+
+    #[test]
+    fn csrf_token_issued_with_session() {
+        let store = SessionStore::new();
+        let token = store.create("alice");
+        let csrf = store.csrf_token(&token);
+        assert!(csrf.is_some());
+        let csrf = csrf.unwrap();
+        assert_eq!(csrf.len(), 64);
+        assert!(csrf.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn csrf_token_stable_for_session() {
+        let store = SessionStore::new();
+        let token = store.create("alice");
+        let csrf1 = store.csrf_token(&token).unwrap();
+        let csrf2 = store.csrf_token(&token).unwrap();
+        assert_eq!(csrf1, csrf2);
+    }
+
+    #[test]
+    fn csrf_token_differs_between_sessions() {
+        let store = SessionStore::new();
+        let t1 = store.create("alice");
+        let t2 = store.create("alice");
+        let csrf1 = store.csrf_token(&t1).unwrap();
+        let csrf2 = store.csrf_token(&t2).unwrap();
+        assert_ne!(csrf1, csrf2);
+    }
+
+    #[test]
+    fn csrf_token_invalid_session_returns_none() {
+        let store = SessionStore::new();
+        assert!(store.csrf_token("bogus").is_none());
+    }
+
+    #[test]
+    fn csrf_token_destroyed_session_returns_none() {
+        let store = SessionStore::new();
+        let token = store.create("alice");
+        store.destroy(&token);
+        assert!(store.csrf_token(&token).is_none());
     }
 }

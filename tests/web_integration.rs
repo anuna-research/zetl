@@ -63,6 +63,8 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         recovery_challenges: Arc::new(
             zetl::user::recovery::RecoveryChallengeStore::new(),
         ),
+        mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
+        collab: false,
         #[cfg(feature = "semantic")]
         vector_index: None,
     }
