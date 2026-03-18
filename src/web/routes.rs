@@ -5,7 +5,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderName, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use base64::Engine as _;
 use crate::hooks;
@@ -2946,6 +2946,607 @@ pub async fn admin_permissions_save_handler(
         "spl_preview": spl_content,
     }))
     .into_response()
+}
+
+// ── Agent API (CON-020-007, REQ-020-017, REQ-020-018) ─────────────────────────
+
+/// Standard JSON envelope for all `/api/*` agent endpoints (CON-020-007).
+#[derive(Debug, Serialize)]
+pub struct ApiResponse<T: Serialize> {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<ApiError>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApiError {
+    pub code: &'static str,
+    pub message: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub proof: Vec<String>,
+}
+
+impl<T: Serialize> ApiResponse<T> {
+    pub fn ok(data: T) -> Json<ApiResponse<T>> {
+        Json(ApiResponse {
+            ok: true,
+            data: Some(data),
+            error: None,
+        })
+    }
+}
+
+impl ApiResponse<()> {
+    pub fn err(status: StatusCode, code: &'static str, message: impl Into<String>) -> Response {
+        let body: ApiResponse<()> = ApiResponse {
+            ok: false,
+            data: None,
+            error: Some(ApiError {
+                code,
+                message: message.into(),
+                proof: Vec::new(),
+            }),
+        };
+        (status, Json(body)).into_response()
+    }
+
+    #[cfg(feature = "reason")]
+    pub fn err_with_proof(
+        status: StatusCode,
+        code: &'static str,
+        message: impl Into<String>,
+        proof: Vec<String>,
+    ) -> Response {
+        let body: ApiResponse<()> = ApiResponse {
+            ok: false,
+            data: None,
+            error: Some(ApiError {
+                code,
+                message: message.into(),
+                proof,
+            }),
+        };
+        (status, Json(body)).into_response()
+    }
+}
+
+/// Resolve the authenticated user ID from an `AuthUser` extractor result,
+/// returning an API error response if authentication fails.
+fn require_auth(
+    state: &WebState,
+    headers: &axum::http::HeaderMap,
+) -> Result<(String, bool), Response> {
+    // Try session cookie first
+    if let Some(token) = crate::web::session::token_from_cookies(headers) {
+        if let Some(user_id) = state.sessions.validate(&token) {
+            return Ok((user_id, false));
+        }
+    }
+    // Try Bearer token
+    if let Some(token) = crate::web::session::bearer_token_from_headers(headers) {
+        if let Some(user_id) = crate::web::session::verify_bearer_token(&state.vault_root, &token)
+        {
+            return Ok((user_id, true));
+        }
+    }
+    Err(ApiResponse::err(
+        StatusCode::UNAUTHORIZED,
+        "INVALID_TOKEN",
+        "valid session or agent token required",
+    ))
+}
+
+// ── GET /api/pages — list all pages (REQ-020-018) ─────────────────────────
+
+#[derive(Serialize)]
+struct ApiPageEntry {
+    name: String,
+    slug: String,
+}
+
+pub async fn api_pages_list_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if state.collab {
+        if let Err(resp) = require_auth(&state, &headers) {
+            return resp;
+        }
+    }
+
+    let data = state.data.read().unwrap();
+    let pages: Vec<ApiPageEntry> = data
+        .page_names
+        .iter()
+        .map(|name| {
+            let slug = data.slug_for_page(name);
+            ApiPageEntry {
+                name: name.clone(),
+                slug,
+            }
+        })
+        .collect();
+
+    ApiResponse::ok(pages).into_response()
+}
+
+// ── GET /api/pages/{*slug} — get page content as markdown (REQ-020-018) ───
+
+#[derive(Serialize)]
+struct ApiPageContent {
+    name: String,
+    slug: String,
+    content: String,
+    forward_links: Vec<String>,
+    backlinks: Vec<String>,
+}
+
+pub async fn api_pages_get_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Path(slug): Path<String>,
+) -> Response {
+    if state.collab {
+        if let Err(resp) = require_auth(&state, &headers) {
+            return resp;
+        }
+    }
+
+    let slug = urldecode(&slug);
+    let slug = slug.trim_end_matches('/');
+    let data = state.data.read().unwrap();
+
+    let file = data
+        .files
+        .iter()
+        .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
+
+    let file = match file {
+        Some(f) => f,
+        None => {
+            return ApiResponse::err(
+                StatusCode::NOT_FOUND,
+                "NOT_FOUND",
+                format!("page not found: {slug}"),
+            );
+        }
+    };
+
+    let full_path = state.vault_root.join(&file.path);
+    let content = match std::fs::read_to_string(&full_path) {
+        Ok(c) => c,
+        Err(e) => {
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                format!("failed to read page: {e}"),
+            );
+        }
+    };
+
+    let page_name = &file.page_name;
+    let forward: Vec<String> = data
+        .graph
+        .forward_links(page_name)
+        .iter()
+        .map(|l| l.target.clone())
+        .collect();
+    let back: Vec<String> = data
+        .graph
+        .backlinks(page_name)
+        .iter()
+        .map(|b| b.source.clone())
+        .collect();
+
+    let file_slug = page_slug_from_path(&file.path);
+
+    ApiResponse::ok(ApiPageContent {
+        name: page_name.clone(),
+        slug: file_slug,
+        content,
+        forward_links: forward,
+        backlinks: back,
+    })
+    .into_response()
+}
+
+// ── PUT /api/pages/{*slug} — create or edit page (REQ-020-017) ────────────
+
+pub async fn api_pages_put_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Path(slug): Path<String>,
+    body: String,
+) -> Response {
+    let (user_id, _is_agent) = if state.collab {
+        match require_auth(&state, &headers) {
+            Ok(auth) => auth,
+            Err(resp) => return resp,
+        }
+    } else {
+        ("zetl".to_string(), false)
+    };
+
+    let slug = urldecode(&slug);
+    let slug = slug.trim_end_matches('/');
+
+    // Resolve file path
+    let (full_path, is_new) = {
+        let data = state.data.read().unwrap();
+        let file = data
+            .files
+            .iter()
+            .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
+        if let Some(file) = file {
+            (state.vault_root.join(&file.path), false)
+        } else {
+            // X-Create header required for new page creation
+            let x_create = headers
+                .get("X-Create")
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                .unwrap_or(false);
+            if !x_create {
+                return ApiResponse::err(
+                    StatusCode::NOT_FOUND,
+                    "NOT_FOUND",
+                    format!(
+                        "page not found: {slug} (set X-Create: true header to create a new page)"
+                    ),
+                );
+            }
+            (state.vault_root.join(format!("{slug}.md")), true)
+        }
+    };
+
+    // Ensure parent directory exists
+    if let Some(parent) = full_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                format!("cannot create directory: {e}"),
+            );
+        }
+    }
+
+    if let Err(e) = std::fs::write(&full_path, &body) {
+        return ApiResponse::err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            format!("write failed: {e}"),
+        );
+    }
+
+    // Git auto-commit
+    if let Some(ref lock) = state.git_commit_lock {
+        let rel_path = full_path
+            .strip_prefix(state.vault_root.as_ref())
+            .unwrap_or(&full_path)
+            .to_path_buf();
+
+        let (author_name, author_id) =
+            match crate::user::load_profile(&state.vault_root, &user_id) {
+                Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
+                _ => ("zetl".to_string(), "zetl".to_string()),
+            };
+
+        let custom_message = headers
+            .get("X-Commit-Message")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        if let Ok(repo) = lock.lock() {
+            match super::git_commit::auto_commit(
+                &repo,
+                &rel_path,
+                &author_name,
+                &author_id,
+                custom_message.as_deref(),
+            ) {
+                Ok(_) => super::git_commit::jj_git_import(&state.vault_root),
+                Err(e) => eprintln!("warning: git auto-commit failed: {e}"),
+            }
+        }
+    }
+
+    // Re-index
+    match reindex(&state.vault_root) {
+        Ok(new_data) => {
+            let _ = SearchIndex::build(&state.vault_root, &new_data.files);
+            *state.data.write().unwrap() = new_data;
+        }
+        Err(e) => eprintln!("reindex error: {e}"),
+    }
+
+    let status = if is_new {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+
+    (status, ApiResponse::ok(serde_json::json!({ "slug": slug }))).into_response()
+}
+
+// ── DELETE /api/pages/{*slug} — delete page ───────────────────────────────
+
+pub async fn api_pages_delete_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Path(slug): Path<String>,
+) -> Response {
+    let (user_id, _is_agent) = if state.collab {
+        match require_auth(&state, &headers) {
+            Ok(auth) => auth,
+            Err(resp) => return resp,
+        }
+    } else {
+        ("zetl".to_string(), false)
+    };
+
+    let slug = urldecode(&slug);
+    let slug = slug.trim_end_matches('/');
+
+    let full_path = {
+        let data = state.data.read().unwrap();
+        let file = data
+            .files
+            .iter()
+            .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
+        match file {
+            Some(f) => state.vault_root.join(&f.path),
+            None => {
+                return ApiResponse::err(
+                    StatusCode::NOT_FOUND,
+                    "NOT_FOUND",
+                    format!("page not found: {slug}"),
+                );
+            }
+        }
+    };
+
+    if let Err(e) = std::fs::remove_file(&full_path) {
+        return ApiResponse::err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            format!("delete failed: {e}"),
+        );
+    }
+
+    // Git auto-commit the deletion
+    if let Some(ref lock) = state.git_commit_lock {
+        let rel_path = full_path
+            .strip_prefix(state.vault_root.as_ref())
+            .unwrap_or(&full_path)
+            .to_path_buf();
+
+        let (author_name, author_id) =
+            match crate::user::load_profile(&state.vault_root, &user_id) {
+                Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
+                _ => ("zetl".to_string(), "zetl".to_string()),
+            };
+
+        let page_name = slug.rsplit('/').next().unwrap_or(slug);
+        let commit_msg = format!("delete: {page_name}");
+
+        if let Ok(repo) = lock.lock() {
+            match super::git_commit::auto_commit(
+                &repo,
+                &rel_path,
+                &author_name,
+                &author_id,
+                Some(&commit_msg),
+            ) {
+                Ok(_) => super::git_commit::jj_git_import(&state.vault_root),
+                Err(e) => eprintln!("warning: git auto-commit failed: {e}"),
+            }
+        }
+    }
+
+    // Re-index
+    match reindex(&state.vault_root) {
+        Ok(new_data) => {
+            let _ = SearchIndex::build(&state.vault_root, &new_data.files);
+            *state.data.write().unwrap() = new_data;
+        }
+        Err(e) => eprintln!("reindex error: {e}"),
+    }
+
+    ApiResponse::ok(serde_json::json!({ "deleted": slug })).into_response()
+}
+
+// ── GET /api/graph — export link graph as JSON (REQ-020-018) ──────────────
+
+#[derive(Serialize)]
+struct ApiGraphNode {
+    name: String,
+    slug: String,
+    is_real: bool,
+}
+
+#[derive(Serialize)]
+struct ApiGraphEdge {
+    source: String,
+    target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alias: Option<String>,
+    is_embed: bool,
+}
+
+#[derive(Serialize)]
+struct ApiGraph {
+    nodes: Vec<ApiGraphNode>,
+    edges: Vec<ApiGraphEdge>,
+    stats: crate::graph::GraphStats,
+}
+
+pub async fn api_graph_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if state.collab {
+        if let Err(resp) = require_auth(&state, &headers) {
+            return resp;
+        }
+    }
+
+    let data = state.data.read().unwrap();
+    let graph = &data.graph;
+
+    let nodes: Vec<ApiGraphNode> = graph
+        .node_map
+        .iter()
+        .map(|(name, _idx)| {
+            let slug = data.slug_for_page(name);
+            let is_real = graph.resolved.contains(name);
+            ApiGraphNode {
+                name: name.clone(),
+                slug,
+                is_real,
+            }
+        })
+        .collect();
+
+    let edges: Vec<ApiGraphEdge> = graph
+        .graph
+        .edge_indices()
+        .filter_map(|ei| {
+            let (src_idx, tgt_idx) = graph.graph.edge_endpoints(ei)?;
+            let src_name = graph.graph.node_weight(src_idx)?;
+            let tgt_name = graph.graph.node_weight(tgt_idx)?;
+            let meta = graph.graph.edge_weight(ei)?;
+            Some(ApiGraphEdge {
+                source: src_name.clone(),
+                target: tgt_name.clone(),
+                alias: meta.alias.clone(),
+                is_embed: meta.is_embed,
+            })
+        })
+        .collect();
+
+    let stats = graph.stats(10);
+
+    ApiResponse::ok(ApiGraph {
+        nodes,
+        edges,
+        stats,
+    })
+    .into_response()
+}
+
+// ── POST /api/index — trigger re-index (REQ-020-018) ─────────────────────
+
+pub async fn api_index_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if state.collab {
+        if let Err(resp) = require_auth(&state, &headers) {
+            return resp;
+        }
+    }
+
+    match reindex(&state.vault_root) {
+        Ok(new_data) => {
+            let page_count = new_data.page_names.len();
+            let link_count = new_data.graph.graph.edge_count();
+            let _ = SearchIndex::build(&state.vault_root, &new_data.files);
+            *state.data.write().unwrap() = new_data;
+            ApiResponse::ok(serde_json::json!({
+                "pages": page_count,
+                "links": link_count,
+            }))
+            .into_response()
+        }
+        Err(e) => ApiResponse::err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            format!("reindex failed: {e}"),
+        ),
+    }
+}
+
+// ── POST /api/reason — run SPL query (REQ-020-018) ───────────────────────
+
+#[cfg(feature = "reason")]
+#[derive(Deserialize)]
+pub struct ApiReasonRequest {
+    pub query: Option<String>,
+}
+
+#[cfg(feature = "reason")]
+pub async fn api_reason_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<ApiReasonRequest>,
+) -> Response {
+    // Reason endpoint requires admin in collab mode
+    if state.collab {
+        let (user_id, _is_agent) = match require_auth(&state, &headers) {
+            Ok(auth) => auth,
+            Err(resp) => return resp,
+        };
+
+        // Check admin role
+        match crate::user::load_profile(&state.vault_root, &user_id) {
+            Ok(Some(profile)) => {
+                let role = crate::user::Role::for_profile(&profile);
+                if role < crate::user::Role::Admin {
+                    return ApiResponse::err(
+                        StatusCode::FORBIDDEN,
+                        "ACL_DENIED",
+                        "admin role required for /api/reason",
+                    );
+                }
+            }
+            _ => {
+                return ApiResponse::err(
+                    StatusCode::FORBIDDEN,
+                    "ACL_DENIED",
+                    "user profile not found",
+                );
+            }
+        }
+    }
+
+    let data = state.data.read().unwrap();
+
+    // Collect all SPL blocks from the vault
+    let mut spl_blocks: Vec<crate::types::SplBlock> = Vec::new();
+    for file in &data.files {
+        spl_blocks.extend(file.spl_blocks.iter().cloned());
+    }
+
+    // If an additional query is provided, inject it as an extra block
+    if let Some(ref query_spl) = body.query {
+        if !query_spl.trim().is_empty() {
+            spl_blocks.push(crate::types::SplBlock {
+                source_file: std::path::PathBuf::from("<api-query>"),
+                source_page: "<api-query>".to_string(),
+                start_line: 0,
+                end_line: 0,
+                content: query_spl.clone(),
+            });
+        }
+    }
+
+    drop(data);
+
+    match crate::reason::build_theory(&spl_blocks) {
+        Ok(result) => ApiResponse::ok(serde_json::json!({
+            "conclusions": result.conclusions,
+            "diagnostics": result.diagnostics,
+            "summary": result.summary,
+        }))
+        .into_response(),
+        Err(e) => ApiResponse::err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            format!("reasoning failed: {e}"),
+        ),
+    }
 }
 
 #[cfg(test)]

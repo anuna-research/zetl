@@ -203,7 +203,7 @@ pub fn bearer_token_from_headers(headers: &axum::http::HeaderMap) -> Option<Stri
 /// Verify a Bearer agent token against vault user profiles.
 ///
 /// Returns the user_id if the token is valid, or `None` otherwise.
-fn verify_bearer_token(vault_root: &std::path::Path, token_b64: &str) -> Option<String> {
+pub(crate) fn verify_bearer_token(vault_root: &std::path::Path, token_b64: &str) -> Option<String> {
     let user_id = crate::user::agent_token::extract_user_id(token_b64).ok()?;
     let profile = crate::user::load_profile(vault_root, &user_id).ok()??;
     crate::user::agent_token::verify_agent_token(
