@@ -3,24 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 1,
-    "insertions": 11,
-    "deletions": 1,
+    "files_changed": 5,
+    "insertions": 474,
+    "deletions": 5,
     "file_list": [
-      "src/web/mod.rs"
+      ".hence/context-manifest.json",
+      "src/web/engine.rs",
+      "src/web/mod.rs",
+      "src/web/routes.rs",
+      "themes/default/invite_accept.html"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-csp-headers-changes",
-      "content": "Modified 1 files (+11, -1): src/web/mod.rs",
+      "key": "task-invitation-accept-changes",
+      "content": "Modified 5 files (+474, -5): .hence/context-manifest.json, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs, themes/default/invite_accept.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/csp-headers-v1",
-  "evaluated_at": "2026-03-18T08:10:57Z",
+  "branch_name": "hence/invitation-accept-v1",
+  "evaluated_at": "2026-03-18T08:17:23Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
