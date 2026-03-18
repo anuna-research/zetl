@@ -168,7 +168,7 @@ pub fn reconcile_external_edits(
         }
     }
 
-    // ── Step 8: Notify connected editors ─────────────────────────────────
+    // ── Step 8: CRDT reconciliation (REQ-020-040) ─────────────────────────
     let changed_slugs: Vec<String> = changed_paths
         .iter()
         .filter_map(|p| {
@@ -182,6 +182,18 @@ pub fn reconcile_external_edits(
         })
         .collect();
 
+    for slug in &changed_slugs {
+        if state.crdt_store.is_loaded(slug) {
+            let file_exists = state.crdt_store.md_path_for_slug(slug).exists();
+            let msgs = state.crdt_store.reconcile_crdt(slug, file_exists);
+            let room = state.ws_hub.room(slug);
+            for msg in msgs {
+                let _ = room.tx.send(msg);
+            }
+        }
+    }
+
+    // ── Step 8b: Notify connected editors (ExternalEdit broadcast) ──────
     let msg = ServerMsg::ExternalEdit {
         files: changed_slugs.clone(),
     };
@@ -924,5 +936,189 @@ mod tests {
 
         // Should return immediately.
         detect_and_report_acl_violations(&state, &[]);
+    }
+
+    /// TEST-020-040 Case 1: Clean CRDT reloaded from disk on external edit.
+    #[test]
+    fn reconcile_clean_crdt_reloads_from_disk() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("note.md"), "# Note\n\nOriginal.\n").unwrap();
+
+        let state = make_test_state(dir.path());
+
+        // Load the CRDT (simulates a WS connection opening the document).
+        state.crdt_store.load_or_get("note").unwrap();
+        assert!(state.crdt_store.is_loaded("note"));
+
+        // CRDT is clean (no edits applied).
+        let meta = state.crdt_store.crdt_meta("note").unwrap();
+        assert!(!meta.dirty);
+
+        // Simulate external edit — rewrite the file on disk.
+        std::fs::write(dir.path().join("note.md"), "# Note\n\nEdited externally.\n").unwrap();
+
+        // Reconcile.
+        let msgs = state.crdt_store.reconcile_crdt("note", true);
+
+        // Should produce a Sync message (full reload).
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(&msgs[0], super::super::ws::ServerMsg::Sync { .. }));
+
+        // The in-memory CRDT should now reflect the external content.
+        let md = state.crdt_store.serialize_for_flush("note");
+        // After reload the doc is clean, so serialize_for_flush returns None.
+        assert!(md.is_none(), "reloaded doc should be clean (not dirty)");
+    }
+
+    /// TEST-020-040 Case 2: Dirty CRDT merged with external edit preserves both.
+    #[test]
+    fn reconcile_dirty_crdt_merges_external() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("note.md"), "# Note\n\nOriginal content.\n").unwrap();
+
+        let state = make_test_state(dir.path());
+
+        // Load CRDT and apply a local edit to make it dirty.
+        state.crdt_store.load_or_get("note").unwrap();
+        state
+            .crdt_store
+            .apply_ops(
+                "note",
+                &[super::super::ws::OpEntry::Splice {
+                    pos: 0,
+                    del: 0,
+                    text: "LOCAL ".to_string(),
+                }],
+            )
+            .unwrap();
+
+        let meta = state.crdt_store.crdt_meta("note").unwrap();
+        assert!(meta.dirty, "CRDT should be dirty after local edit");
+
+        // Simulate external edit — rewrite the file on disk.
+        std::fs::write(
+            dir.path().join("note.md"),
+            "# Note\n\nOriginal content. EXTERNAL ADDITION\n",
+        )
+        .unwrap();
+
+        // Reconcile.
+        let msgs = state.crdt_store.reconcile_crdt("note", true);
+
+        // Should produce an ExternalMerge message.
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(
+            &msgs[0],
+            super::super::ws::ServerMsg::ExternalMerge { .. }
+        ));
+
+        // The CRDT should still be dirty (merged state needs flushing).
+        let meta = state.crdt_store.crdt_meta("note").unwrap();
+        assert!(meta.dirty, "merged CRDT should remain dirty");
+    }
+
+    /// TEST-020-040 Case 3: Deleted file with dirty CRDT writes recovery file.
+    #[test]
+    fn reconcile_deleted_file_writes_recovery() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("note.md"), "# Note\n\nOriginal.\n").unwrap();
+        // Ensure .zetl dir exists for recovery subdir.
+        std::fs::create_dir_all(dir.path().join(".zetl")).unwrap();
+
+        let state = make_test_state(dir.path());
+
+        // Load CRDT and make it dirty.
+        state.crdt_store.load_or_get("note").unwrap();
+        state
+            .crdt_store
+            .apply_ops(
+                "note",
+                &[super::super::ws::OpEntry::Splice {
+                    pos: 0,
+                    del: 0,
+                    text: "UNFLUSHED ".to_string(),
+                }],
+            )
+            .unwrap();
+        assert!(state.crdt_store.crdt_meta("note").unwrap().dirty);
+
+        // Delete the file externally.
+        std::fs::remove_file(dir.path().join("note.md")).unwrap();
+
+        // Reconcile with file_exists=false.
+        let msgs = state.crdt_store.reconcile_crdt("note", false);
+
+        // Should produce a Deleted message.
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(
+            &msgs[0],
+            super::super::ws::ServerMsg::Deleted { page } if page == "note"
+        ));
+
+        // CRDT should be evicted.
+        assert!(
+            !state.crdt_store.is_loaded("note"),
+            "CRDT should be evicted after file deletion"
+        );
+
+        // Recovery file should exist.
+        let recovery_path = dir.path().join(".zetl").join("recovery").join("note.md");
+        assert!(
+            recovery_path.exists(),
+            "recovery file should be written at {}",
+            recovery_path.display()
+        );
+
+        let recovery_content = std::fs::read_to_string(&recovery_path).unwrap();
+        assert!(
+            recovery_content.contains("UNFLUSHED"),
+            "recovery file should contain unflushed edits"
+        );
+    }
+
+    /// TEST-020-040 Case 3: Deleted file with clean CRDT — no recovery file.
+    #[test]
+    fn reconcile_deleted_clean_crdt_no_recovery() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("note.md"), "# Note\n").unwrap();
+        std::fs::create_dir_all(dir.path().join(".zetl")).unwrap();
+
+        let state = make_test_state(dir.path());
+
+        // Load CRDT but keep it clean.
+        state.crdt_store.load_or_get("note").unwrap();
+        assert!(!state.crdt_store.crdt_meta("note").unwrap().dirty);
+
+        // Delete the file externally.
+        std::fs::remove_file(dir.path().join("note.md")).unwrap();
+
+        let msgs = state.crdt_store.reconcile_crdt("note", false);
+
+        // Should produce Deleted message.
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(&msgs[0], super::super::ws::ServerMsg::Deleted { .. }));
+
+        // CRDT evicted.
+        assert!(!state.crdt_store.is_loaded("note"));
+
+        // No recovery file since CRDT was clean.
+        let recovery_path = dir.path().join(".zetl").join("recovery").join("note.md");
+        assert!(
+            !recovery_path.exists(),
+            "no recovery file expected for clean CRDT"
+        );
+    }
+
+    /// TEST-020-040: No CRDT session — reconcile is a no-op.
+    #[test]
+    fn reconcile_no_crdt_session_is_noop() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("note.md"), "# Note\n").unwrap();
+
+        let state = make_test_state(dir.path());
+
+        // No CRDT loaded — reconcile should produce no messages.
+        let msgs = state.crdt_store.reconcile_crdt("note", true);
+        assert!(msgs.is_empty());
     }
 }

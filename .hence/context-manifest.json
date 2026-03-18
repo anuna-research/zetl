@@ -1,12 +1,12 @@
 {
-  "task_id": "spl-sandbox",
+  "task_id": "crdt-reconcile",
   "token_budget": 8000,
-  "tokens_used": 343,
+  "tokens_used": 324,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement page-level SPL sandboxing: validate on re-scan; allow only own-page access conclusions; strip global predicates (owner/admin/role/scope/visibility-mode/is-agent) with WARN",
-      "token_cost": 45,
+      "content": "Implement CRDT reconciliation on external edit: clean (reload), dirty (CRDT merge), delete (recovery file)",
+      "token_cost": 26,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T13:55:23Z"
+  "constructed_at": "2026-03-18T14:05:30Z"
 }
