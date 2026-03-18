@@ -3,25 +3,33 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 6,
+    "files_changed": 10,
+    "insertions": 485,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
+      "src/main.rs",
+      "src/web/flush.rs",
+      "src/web/fs_watch.rs",
+      "src/web/mod.rs",
+      "src/web/routes.rs",
+      "src/web/session.rs",
+      "src/web/ws.rs",
+      "tests/history_integration.rs",
       "tests/web_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-spl-rehash-changes",
-      "content": "Modified 2 files (+6, -5): .hence/context-manifest.json, tests/web_integration.rs",
+      "key": "task-fs-watch-external-changes",
+      "content": "Modified 10 files (+485, -5): .hence/context-manifest.json, src/main.rs, src/web/flush.rs, src/web/fs_watch.rs, src/web/mod.rs and 5 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/spl-rehash-v1",
-  "evaluated_at": "2026-03-18T13:15:49Z",
+  "branch_name": "hence/fs-watch-external-v1",
+  "evaluated_at": "2026-03-18T13:25:17Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
