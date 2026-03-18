@@ -1,12 +1,12 @@
 {
-  "task_id": "admin-hardcode",
+  "task_id": "rate-limiting",
   "token_budget": 8000,
-  "tokens_used": 331,
+  "tokens_used": 337,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement hardcoded admin check on /_admin/* routes: profile-based owner||admin check before SPL evaluation; not defeatable by policy",
-      "token_cost": 33,
+      "content": "Implement authentication rate limiting: per-user and per-IP limits on login, recovery, invitation, and agent token endpoints; in-memory counters; 429 responses",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T09:00:24Z"
+  "constructed_at": "2026-03-18T09:05:17Z"
 }

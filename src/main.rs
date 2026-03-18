@@ -5027,6 +5027,7 @@ fn cmd_serve(
         mnemonic_shown: std::sync::Arc::new(std::sync::Mutex::new(
             std::collections::HashSet::new(),
         )),
+        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
         git_commit_lock,
         #[cfg(feature = "semantic")]
         vector_index,
