@@ -5028,6 +5028,10 @@ fn cmd_serve(
             std::collections::HashSet::new(),
         )),
         rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
+        #[cfg(feature = "reason")]
+        acl_cache: std::sync::Arc::new(std::sync::Mutex::new(
+            zetl::web::AclCache::new(),
+        )),
         git_commit_lock,
         #[cfg(feature = "semantic")]
         vector_index,

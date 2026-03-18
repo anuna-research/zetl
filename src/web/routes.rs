@@ -2800,6 +2800,8 @@ mod tests {
             ),
             mnemonic_shown: Arc::new(std::sync::Mutex::new(HashSet::new())),
             rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
+            #[cfg(feature = "reason")]
+            acl_cache: Arc::new(std::sync::Mutex::new(crate::web::AclCache::new())),
             git_commit_lock: None,
             #[cfg(feature = "semantic")]
             vector_index: None,

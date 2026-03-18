@@ -1,13 +1,12 @@
 {
-  "task_id": "temporal-acl",
-  "status": "complete",
+  "task_id": "acl-cache",
   "token_budget": 8000,
-  "tokens_used": 325,
+  "tokens_used": 327,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement temporal access control: inject (now <epoch-ms>) fact, support Allen interval algebra in ACL rules",
-      "token_cost": 27,
+      "content": "Implement lazy ACL cache: HashMap<(user,page,action), AclDecision> in WebState, invalidated on vault_root_hash change",
+      "token_cost": 29,
       "priority": "PlanMeta"
     },
     {
@@ -72,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T09:19:07Z"
+  "constructed_at": "2026-03-18T09:29:06Z"
 }

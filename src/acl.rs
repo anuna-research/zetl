@@ -134,7 +134,7 @@ fn ground_temporal_facts(spl_blocks: &[SplBlock], now_epoch_ms: i64) -> String {
 }
 
 /// An access control action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Action {
     Read,
     Edit,
