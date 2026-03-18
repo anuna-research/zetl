@@ -1,75 +1,15 @@
 {
-  "task_id": "tests-integration",
+  "task_id": "user-profiles",
   "token_budget": 8000,
-  "tokens_used": 298,
+  "tokens_used": 28,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Write integration tests: TEST-114 (--semantic ranking), TEST-115 (missing index error), TEST-116 (--hybrid combining signals), TEST-117 (--hybrid --near scoping), TEST-118 (VectorIndex build/open round-trip), TEST-122 (feature gating), TEST-123 (incremental rebuild)",
-      "token_cost": 66,
+      "content": "Implement user profile storage in .zetl/users/<id>/profile.json with WebAuthn credential and recovery pubkey fields",
+      "token_cost": 28,
       "priority": "PlanMeta"
-    },
-    {
-      "source": "memory/episodic/task-observability-changes",
-      "content": "Modified 4 files (+47, -34): .hence/context-manifest.json, src/main.rs, src/semantic/mod.rs, src/web/routes.rs",
-      "token_cost": 27,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-feature-gating-changes",
-      "content": "Modified 9 files (+1362, -6): Cargo.lock, Cargo.toml, src/cli.rs, src/lib.rs, src/main.rs and 4 more",
-      "token_cost": 25,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-pure-core-changes",
-      "content": "Modified 3 files (+40, -55): Cargo.lock, Cargo.toml, src/semantic/mod.rs",
-      "token_cost": 18,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-chunking-changes",
-      "content": "Modified 1 files (+11, -5): .hence/context-manifest.json",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-model-acquisition-changes",
-      "content": "Modified 5 files (+286, -36): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/semantic/acquisition.rs, src/semantic/mod.rs",
-      "token_cost": 33,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-rrf-fusion-changes",
-      "content": "Modified 2 files (+176, -9): .hence/context-manifest.json, src/main.rs",
-      "token_cost": 17,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-tests-unit-changes",
-      "content": "Modified 3 files (+237, -10): src/semantic/core.rs, src/semantic/mod.rs, tests/semantic_integration.rs",
-      "token_cost": 25,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-onnx-embedding-shell-changes",
-      "content": "Modified 2 files (+19, -5): .hence/context-manifest.json, src/semantic/mod.rs",
-      "token_cost": 19,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-vector-index-storage-changes",
-      "content": "Modified 3 files (+317, -5): .hence/context-manifest.json, src/semantic/mod.rs, tests/semantic_integration.rs",
-      "token_cost": 27,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-semantic-cli-changes",
-      "content": "Modified 3 files (+64, -9): .hence/context-manifest.json, tests/integration.rs, tests/semantic_integration.rs",
-      "token_cost": 27,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-05T02:51:48Z"
+  "constructed_at": "2026-03-18T06:17:11Z"
 }
