@@ -199,6 +199,10 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
             "/_admin/invite/revoke",
             post(routes::admin_invite_revoke_handler),
         )
+        .route(
+            "/_admin/permissions",
+            get(routes::admin_permissions_handler).post(routes::admin_permissions_save_handler),
+        )
         .route("/preview/{*path}", get(routes::preview_handler))
         .route(
             "/{*path}",

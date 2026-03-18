@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+
+{% block title %}Permissions — {{ vault_name }}{% endblock %}
+
+{% block styles %}
+  .ai-container {
+    max-width: 52rem;
+    margin: 2rem auto;
+    padding: 2rem;
+  }
+  .ai-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  .ai-header-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: oklch(var(--p) / 0.12);
+    color: oklch(var(--p));
+    flex-shrink: 0;
+  }
+  .ai-header-icon svg { width: 1.25rem; height: 1.25rem; }
+  .ai-section {
+    background: oklch(var(--b2));
+    border: 1px solid oklch(var(--bc) / 0.1);
+    border-radius: 0.5rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .ai-section h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: oklch(var(--bc) / 0.7);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+  }
+  .ai-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .ai-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid oklch(var(--bc) / 0.12);
+    color: oklch(var(--bc) / 0.5);
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .ai-table td {
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid oklch(var(--bc) / 0.06);
+    color: oklch(var(--bc));
+    vertical-align: middle;
+  }
+  .ai-table tr:last-child td { border-bottom: none; }
+  .ai-role-badge {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+  .ai-role-reader { background: oklch(var(--in) / 0.15); color: oklch(var(--in)); }
+  .ai-role-editor { background: oklch(var(--su) / 0.15); color: oklch(var(--su)); }
+  .ai-role-admin  { background: oklch(var(--wa) / 0.15); color: oklch(var(--wa)); }
+
+  .ai-field select,
+  .ai-field input {
+    padding: 0.375rem 0.5rem;
+    background: oklch(var(--b1));
+    border: 1px solid oklch(var(--bc) / 0.15);
+    border-radius: 0.375rem;
+    color: oklch(var(--bc));
+    font-size: 0.8rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .ai-field select:focus,
+  .ai-field input:focus {
+    border-color: oklch(var(--p) / 0.5);
+  }
+  .ai-field input { width: 10rem; }
+  .ai-field select { min-width: 6rem; }
+
+  .ai-owner-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: oklch(var(--wa));
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .ai-revoke-btn {
+    padding: 0.25rem 0.5rem;
+    background: transparent;
+    border: 1px solid oklch(var(--er) / 0.3);
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    color: oklch(var(--er));
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .ai-revoke-btn:hover {
+    background: oklch(var(--er) / 0.08);
+  }
+
+  .ai-submit-btn {
+    padding: 0.625rem 1.25rem;
+    background: oklch(var(--p));
+    color: oklch(var(--pc));
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .ai-submit-btn:hover { opacity: 0.9; }
+  .ai-submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .ai-spl-preview {
+    background: oklch(var(--b1));
+    border: 1px solid oklch(var(--bc) / 0.1);
+    border-radius: 0.375rem;
+    padding: 0.75rem 1rem;
+    font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: oklch(var(--bc) / 0.8);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 20rem;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+  }
+
+  .ai-error {
+    background: oklch(var(--er) / 0.1);
+    border: 1px solid oklch(var(--er) / 0.3);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: oklch(var(--er));
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    display: none;
+  }
+  .ai-success {
+    background: oklch(var(--su) / 0.08);
+    border: 1px solid oklch(var(--su) / 0.25);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: oklch(var(--su));
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    display: none;
+  }
+  .ai-empty {
+    text-align: center;
+    padding: 1.5rem;
+    color: oklch(var(--bc) / 0.4);
+    font-size: 0.85rem;
+  }
+  .ai-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.85rem;
+    color: oklch(var(--bc) / 0.5);
+    text-decoration: none;
+    margin-top: 0.5rem;
+  }
+  .ai-back:hover { color: oklch(var(--bc) / 0.8); }
+  .ai-actions-cell {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .ai-dirty-indicator {
+    display: none;
+    font-size: 0.7rem;
+    color: oklch(var(--wa));
+    font-weight: 600;
+  }
+  .ai-dirty-indicator.visible { display: inline; }
+{% endblock %}
+
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+<div class="ai-container">
+  <div class="ai-header">
+    <div class="ai-header-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/>
+      </svg>
+    </div>
+    <div>
+      <h2 style="font-size: 1.25rem; font-weight: 700; margin: 0;">Permissions</h2>
+      <p style="font-size: 0.8rem; color: oklch(var(--bc) / 0.5); margin: 0;">Manage roles and scopes for {{ vault_name }}</p>
+    </div>
+  </div>
+
+  <div id="ap-error" class="ai-error"></div>
+  <div id="ap-success" class="ai-success"></div>
+
+  <div class="ai-section">
+    <h3>Users <span id="ap-dirty" class="ai-dirty-indicator">(unsaved changes)</span></h3>
+    {% if users | length > 0 %}
+    <table class="ai-table" id="ap-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Scope</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr data-user-id="{{ u.id }}">
+          <td>
+            {{ u.name }}
+            {% if u.owner %}<span class="ai-owner-label">owner</span>{% endif %}
+          </td>
+          <td class="ai-field">
+            {% if u.owner %}
+              <span class="ai-role-badge ai-role-admin">admin</span>
+            {% else %}
+              <select name="role" data-orig="{{ u.role }}" onchange="markDirty()">
+                <option value="reader" {% if u.role == "reader" %}selected{% endif %}>Reader</option>
+                <option value="editor" {% if u.role == "editor" %}selected{% endif %}>Editor</option>
+                <option value="admin" {% if u.role == "admin" %}selected{% endif %}>Admin</option>
+              </select>
+            {% endif %}
+          </td>
+          <td class="ai-field">
+            {% if u.owner %}
+              <span style="font-size: 0.8rem; color: oklch(var(--bc) / 0.4);">all pages</span>
+            {% else %}
+              <input type="text" name="scope" value="{{ u.scope if u.scope else '' }}" placeholder="e.g. projects/**" data-orig="{{ u.scope if u.scope else '' }}" onchange="markDirty()" oninput="markDirty()">
+            {% endif %}
+          </td>
+          <td>
+            {% if not u.owner %}
+            <div class="ai-actions-cell">
+              <button type="button" class="ai-revoke-btn" data-user-id="{{ u.id }}" data-user-name="{{ u.name }}" onclick="revokeUser(this)">Remove</button>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="ai-empty">No users in vault</div>
+    {% endif %}
+  </div>
+
+  <div class="ai-section">
+    <h3>SPL Preview</h3>
+    <p style="font-size: 0.8rem; color: oklch(var(--bc) / 0.5); margin: 0 0 0.5rem;">
+      This is the <code>access.spl</code> policy that will be saved.
+    </p>
+    <div class="ai-spl-preview" id="ap-spl-preview">{{ spl_preview }}</div>
+  </div>
+
+  <div style="display: flex; gap: 0.75rem; align-items: center;">
+    <button type="button" class="ai-submit-btn" id="ap-save-btn" onclick="savePermissions()">Save Permissions</button>
+    <span id="ap-save-status" style="font-size: 0.8rem; color: oklch(var(--bc) / 0.5);"></span>
+  </div>
+
+  <br>
+  <a class="ai-back" href="/">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+    Back to vault
+  </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var csrfToken = '{{ csrf_token }}';
+  var dirty = false;
+
+  window.markDirty = function() {
+    dirty = true;
+    document.getElementById('ap-dirty').classList.add('visible');
+    updateSplPreview();
+  };
+
+  function collectPermissions() {
+    var rows = document.querySelectorAll('#ap-table tbody tr');
+    var perms = [];
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var userId = row.getAttribute('data-user-id');
+      var roleEl = row.querySelector('select[name="role"]');
+      var scopeEl = row.querySelector('input[name="scope"]');
+      if (!roleEl) continue; // skip owner row
+      perms.push({
+        user_id: userId,
+        role: roleEl.value,
+        scope: scopeEl.value.trim() || null
+      });
+    }
+    return perms;
+  }
+
+  function updateSplPreview() {
+    var perms = collectPermissions();
+    var lines = ['; Vault access policy (access.spl)', '; Generated by /_admin/permissions', ''];
+    for (var i = 0; i < perms.length; i++) {
+      var p = perms[i];
+      lines.push('(given (role "' + p.user_id + '" ' + p.role + '))');
+      if (p.scope) {
+        lines.push('(given (scope "' + p.user_id + '" "' + p.scope + '"))');
+      }
+      if (p.role === 'admin') {
+        lines.push('(given (admin "' + p.user_id + '"))');
+      }
+    }
+    document.getElementById('ap-spl-preview').textContent = lines.join('\n');
+  }
+
+  window.savePermissions = function() {
+    var btn = document.getElementById('ap-save-btn');
+    var status = document.getElementById('ap-save-status');
+    var errorEl = document.getElementById('ap-error');
+    var successEl = document.getElementById('ap-success');
+    btn.disabled = true;
+    btn.textContent = 'Saving\u2026';
+    status.textContent = '';
+    errorEl.style.display = 'none';
+    successEl.style.display = 'none';
+
+    var perms = collectPermissions();
+
+    fetch('/_admin/permissions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
+      },
+      body: JSON.stringify({ permissions: perms })
+    })
+    .then(function(r) {
+      if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      return r.json();
+    })
+    .then(function(data) {
+      btn.disabled = false;
+      btn.textContent = 'Save Permissions';
+      dirty = false;
+      document.getElementById('ap-dirty').classList.remove('visible');
+      successEl.textContent = 'Permissions saved successfully.';
+      successEl.style.display = 'block';
+      if (data.spl_preview) {
+        document.getElementById('ap-spl-preview').textContent = data.spl_preview;
+      }
+    })
+    .catch(function(err) {
+      btn.disabled = false;
+      btn.textContent = 'Save Permissions';
+      errorEl.textContent = err.message || 'Failed to save permissions.';
+      errorEl.style.display = 'block';
+    });
+  };
+
+  window.revokeUser = function(el) {
+    var userId = el.getAttribute('data-user-id');
+    var userName = el.getAttribute('data-user-name');
+    if (!confirm('Remove user "' + userName + '"? This will delete their profile and revoke all access.')) return;
+
+    fetch('/_admin/permissions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
+      },
+      body: JSON.stringify({ remove_user: userId })
+    })
+    .then(function(r) {
+      if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      location.reload();
+    })
+    .catch(function(err) {
+      alert('Failed to remove user: ' + (err.message || 'unknown error'));
+    });
+  };
+})();
+</script>
+{% endblock %}
