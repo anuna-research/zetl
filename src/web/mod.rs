@@ -200,7 +200,18 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
         .route("/api/history/diff", get(routes::api_history_diff_handler));
 
     let content_routes = content_routes
-        .route_layer(middleware::from_fn_with_state(state.clone(), session::collab_gate));
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            session::csrf_guard,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            session::csrf_token_header,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            session::collab_gate,
+        ));
 
     let app = Router::new()
         .merge(auth_routes)
