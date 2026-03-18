@@ -3,29 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 765,
-    "deletions": 5,
+    "files_changed": 4,
+    "insertions": 159,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/user/invite.rs",
-      "src/web/engine.rs",
-      "src/web/mod.rs",
-      "src/web/routes.rs",
-      "themes/default/admin_invite.html"
+      "src/hooks/context.rs",
+      "src/hooks/mod.rs",
+      "src/web/routes.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-web-invite-changes",
-      "content": "Modified 6 files (+765, -5): .hence/context-manifest.json, src/user/invite.rs, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs and 1 more",
+      "key": "task-agent-loop-prevention-changes",
+      "content": "Modified 4 files (+159, -7): .hence/context-manifest.json, src/hooks/context.rs, src/hooks/mod.rs, src/web/routes.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/web-invite-v1",
-  "evaluated_at": "2026-03-18T08:27:01Z",
+  "branch_name": "hence/agent-loop-prevention-v1",
+  "evaluated_at": "2026-03-18T08:33:01Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

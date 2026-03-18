@@ -50,6 +50,9 @@ pub struct HookContext {
     pub saved: Option<HookSaved>,
     /// Authenticated user identity; `null` for unauthenticated CLI operations.
     pub user: Option<HookUser>,
+    /// Hook invocation depth for loop prevention (REQ-020-020).
+    /// Starts at 0 for the initial event; incremented on each hook invocation.
+    pub hook_depth: u32,
 }
 
 /// User identity attached to hook context when an authenticated session exists.
@@ -207,6 +210,7 @@ pub fn build_hook_context(
         diagnostics: None,
         saved: None,
         user: None,
+        hook_depth: 0,
     }
 }
 
@@ -583,6 +587,36 @@ mod tests {
         assert_eq!(user["is_agent"], false);
         assert!(user["roles"].is_array());
         assert_eq!(user["roles"][0], "admin");
+    }
+
+    #[test]
+    fn hook_depth_defaults_to_zero() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let ctx = build_hook_context("on-save", tmp.path(), "", "0.1.0", &files, &graph);
+        assert_eq!(ctx.hook_depth, 0);
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["hook_depth"], 0);
+    }
+
+    #[test]
+    fn hook_depth_serialises_when_set() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx = build_hook_context("on-save", tmp.path(), "", "0.1.0", &files, &graph);
+        ctx.hook_depth = 3;
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["hook_depth"], 3);
     }
 
     #[test]

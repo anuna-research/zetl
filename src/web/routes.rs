@@ -374,8 +374,17 @@ pub async fn save_handler(
         }
     }
 
+    // REQ-020-020: X-No-Hooks suppression — skip on-save hooks when the header
+    // is present and the request is authenticated.
+    let no_hooks = headers
+        .get("X-No-Hooks")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+        && session_user_id.is_some();
+
     // Fire on-save hooks asynchronously so the response returns immediately.
-    {
+    if !no_hooks {
         let vault_root = state.vault_root.clone();
         let theme = state.theme.clone();
         let content_length = body.len();
@@ -461,6 +470,7 @@ pub async fn save_handler(
                 extra_vars: vec![
                     ("ZETL_SAVED_FILE".into(), rel_path),
                     ("ZETL_SAVED_PAGE".into(), page_name),
+                    ("ZETL_HOOK_DEPTH".into(), "0".into()),
                 ],
             };
 
