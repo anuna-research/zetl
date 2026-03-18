@@ -4778,6 +4778,7 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         engine: std::sync::Arc::new(engine),
         theme: theme.to_string(),
         verbose: cli.verbose > 0,
+        sessions: zetl::web::session::SessionStore::new(),
         #[cfg(feature = "semantic")]
         vector_index,
     };

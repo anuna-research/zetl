@@ -4,6 +4,7 @@ pub mod engine;
 pub mod html;
 pub mod markdown;
 pub mod routes;
+pub mod session;
 pub mod theme;
 
 use std::collections::{HashMap, HashSet};
@@ -19,6 +20,7 @@ use crate::search_index::SearchIndex;
 use crate::types::ParsedFile;
 
 use self::engine::TemplateEngine;
+use self::session::SessionStore;
 
 /// Snapshot of vault data that can be swapped after re-indexing.
 pub struct VaultData {
@@ -56,6 +58,8 @@ pub struct WebState {
     pub theme: String,
     /// Whether --verbose was set; controls history-context timing output (OBS-013).
     pub verbose: bool,
+    /// In-memory session store for authenticated users.
+    pub sessions: SessionStore,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]

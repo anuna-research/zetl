@@ -1,12 +1,12 @@
 {
-  "task_id": "passkey-guidance",
+  "task_id": "session-mgmt",
   "token_budget": 8000,
-  "tokens_used": 81,
+  "tokens_used": 121,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement passkey registration guidance screen: explanation text, visual indicator, failure handling with retry, fallback note",
-      "token_cost": 31,
+      "content": "Implement session middleware for Axum: opaque token generation, HttpOnly/SameSite=Strict cookies, idle/max timeout, in-memory HashMap store",
+      "token_cost": 34,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 5 files (+711, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/user/mod.rs, src/user/passkey.rs",
       "token_cost": 29,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-passkey-guidance-changes",
+      "content": "Modified 5 files (+625, -7): .hence/context-manifest.json, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs, themes/default/passkey_register.html",
+      "token_cost": 37,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T06:37:58Z"
+  "constructed_at": "2026-03-18T06:46:57Z"
 }
