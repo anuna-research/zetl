@@ -213,6 +213,15 @@ pub enum Command {
         /// Theme name (looks in .zetl/themes/<name>/)
         #[arg(long, default_value = "default")]
         theme: String,
+        /// Enable multi-user collaborative editing mode
+        #[arg(long)]
+        collab: bool,
+        /// Bootstrap the vault owner (first-time setup, requires --collab)
+        #[arg(long, requires = "collab")]
+        init_owner: bool,
+        /// Display name for the vault owner (used with --init-owner)
+        #[arg(long, default_value = "Owner", requires = "init_owner")]
+        owner_name: String,
     },
 
     /// Generate a static HTML site from the vault

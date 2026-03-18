@@ -4,27 +4,27 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 5,
-    "insertions": 118,
-    "deletions": 21,
+    "insertions": 155,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
+      "src/cli.rs",
       "src/main.rs",
       "src/web/mod.rs",
-      "src/web/routes.rs",
-      "themes/default/recovery_show.html"
+      "src/web/routes.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-mnemonic-security-changes",
-      "content": "Modified 5 files (+118, -21): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs, themes/default/recovery_show.html",
+      "key": "task-bootstrap-owner-changes",
+      "content": "Modified 5 files (+155, -7): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/mod.rs, src/web/routes.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/mnemonic-security-v1",
-  "evaluated_at": "2026-03-18T07:19:18Z",
+  "branch_name": "hence/bootstrap-owner-v1",
+  "evaluated_at": "2026-03-18T07:25:21Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
