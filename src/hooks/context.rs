@@ -53,6 +53,9 @@ pub struct HookContext {
     /// Hook invocation depth for loop prevention (REQ-020-020).
     /// Starts at 0 for the initial event; incremented on each hook invocation.
     pub hook_depth: u32,
+    /// Agent task context (only present for on-agent hooks, REQ-020-023).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<HookAgent>,
 }
 
 /// User identity attached to hook context when an authenticated session exists.
@@ -77,6 +80,17 @@ pub struct HookSaved {
     pub page: String,
     /// Length of the saved content in bytes.
     pub content_length: usize,
+}
+
+/// Agent task context for on-agent hooks (REQ-020-023).
+#[derive(Debug, Serialize)]
+pub struct HookAgent {
+    /// Agent task name (the `<name>` from `zetl agent run <name>`).
+    pub task: String,
+    /// Pages the agent should operate on (empty = vault-wide).
+    pub target_pages: Vec<String>,
+    /// Token budget for the agent action (0 = unlimited).
+    pub budget_tokens: u32,
 }
 
 /// Diagnostics payload for post-check hooks.
@@ -211,6 +225,7 @@ pub fn build_hook_context(
         saved: None,
         user: None,
         hook_depth: 0,
+        agent: None,
     }
 }
 
@@ -657,5 +672,69 @@ mod tests {
         assert_eq!(hook_user.name, "Bob");
         assert!(hook_user.is_agent);
         assert_eq!(hook_user.roles, vec!["editor"]);
+    }
+
+    #[test]
+    fn agent_absent_by_default() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let ctx = build_hook_context("post-build", tmp.path(), "", "0.1.0", &files, &graph);
+        assert!(ctx.agent.is_none());
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(val.get("agent").is_none());
+    }
+
+    #[test]
+    fn agent_serialises_when_set() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx = build_hook_context("on-agent", tmp.path(), "", "0.1.0", &files, &graph);
+        ctx.agent = Some(HookAgent {
+            task: "link-checker".to_string(),
+            target_pages: vec!["Note A".to_string(), "Note B".to_string()],
+            budget_tokens: 4000,
+        });
+
+        let json = serde_json::to_string_pretty(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let agent = &val["agent"];
+        assert!(agent.is_object());
+        assert_eq!(agent["task"], "link-checker");
+        assert_eq!(agent["target_pages"].as_array().unwrap().len(), 2);
+        assert_eq!(agent["target_pages"][0], "Note A");
+        assert_eq!(agent["target_pages"][1], "Note B");
+        assert_eq!(agent["budget_tokens"], 4000);
+    }
+
+    #[test]
+    fn agent_empty_target_pages() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx = build_hook_context("on-agent", tmp.path(), "", "0.1.0", &files, &graph);
+        ctx.agent = Some(HookAgent {
+            task: "summariser".to_string(),
+            target_pages: vec![],
+            budget_tokens: 0,
+        });
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let agent = &val["agent"];
+        assert_eq!(agent["task"], "summariser");
+        assert!(agent["target_pages"].as_array().unwrap().is_empty());
+        assert_eq!(agent["budget_tokens"], 0);
     }
 }
