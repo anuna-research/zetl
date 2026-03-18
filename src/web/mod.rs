@@ -171,6 +171,7 @@ pub async fn run(state: WebState, port: u16) -> anyhow::Result<()> {
             "/api/passkey/register/finish",
             post(routes::passkey_register_finish_handler),
         )
+        .route("/auth/bootstrap", get(routes::bootstrap_handler))
         .route(
             "/auth/recover",
             get(routes::recover_challenge_handler).post(routes::recover_verify_handler),

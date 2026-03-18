@@ -1877,6 +1877,44 @@ pub async fn recover_verify_handler(
     }
 }
 
+// ── Bootstrap owner flow (REQ-020-005) ──────────────────────────────────
+
+/// GET /auth/bootstrap — entry point for owner bootstrap.
+///
+/// Redirects to `/recovery/show?user_id=<owner_id>` so the owner can view
+/// their BIP39 mnemonic and then proceed to passkey registration.  The owner
+/// profile must already exist (created by `--init-owner` before the server
+/// starts).  Returns 409 Conflict if no owner profile is found (the CLI
+/// guard should prevent this, but we check defensively).
+pub async fn bootstrap_handler(State(state): State<WebState>) -> Response {
+    let vault_root = &*state.vault_root;
+
+    // Find the owner profile
+    let profiles = match crate::user::list_profiles(vault_root) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to list profiles: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    let owner = profiles.iter().find(|p| p.owner);
+    match owner {
+        Some(profile) => {
+            let location = format!("/recovery/show?user_id={}", profile.id);
+            (StatusCode::FOUND, [(header::LOCATION, location)]).into_response()
+        }
+        None => (
+            StatusCode::CONFLICT,
+            "no owner profile found — run with --collab --init-owner first",
+        )
+            .into_response(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

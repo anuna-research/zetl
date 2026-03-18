@@ -4650,8 +4650,96 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
     Ok(())
 }
 
-fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
+/// Convert days since Unix epoch to (year, month, day).
+fn days_to_ymd(days: u64) -> (u64, u64, u64) {
+    let z = days + 719468;
+    let era = z / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+fn cmd_serve(
+    cli: &Cli,
+    port: u16,
+    theme: &str,
+    _collab: bool,
+    init_owner: bool,
+    owner_name: &str,
+) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
+
+    // ── Bootstrap owner (REQ-020-005) ────────────────────────────────────
+    if init_owner {
+        let vault_root = &pipeline.vault_root;
+
+        // One-time guard: fail if an owner already exists
+        if zetl::user::owner_exists(vault_root)? {
+            anyhow::bail!(
+                "vault already has an owner — --init-owner can only be run once"
+            );
+        }
+
+        // Generate user ID and recovery keypair
+        let user_id = zetl::user::generate_user_id(owner_name);
+        let keypair = zetl::user::recovery::generate_recovery_keypair()
+            .context("failed to generate recovery keypair")?;
+
+        // Create owner profile
+        let now = {
+            let d = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let secs = d.as_secs();
+            let days = secs / 86400;
+            let day_secs = secs % 86400;
+            let h = day_secs / 3600;
+            let m = (day_secs % 3600) / 60;
+            let s = day_secs % 60;
+            let (y, mo, d) = days_to_ymd(days);
+            format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+        };
+
+        let profile = zetl::user::UserProfile {
+            id: user_id.clone(),
+            name: owner_name.to_string(),
+            created_at: now,
+            invited_by: None,
+            owner: true,
+            credentials: vec![],
+            recovery_pubkey: keypair.recovery_pubkey,
+            agent_token_generation: 0,
+        };
+
+        zetl::user::save_profile(vault_root, &profile)
+            .context("failed to save owner profile")?;
+
+        // Display BIP39 mnemonic on stderr (never stdout, never stored)
+        eprintln!();
+        eprintln!("╔══════════════════════════════════════════════════════╗");
+        eprintln!("║          RECOVERY PHRASE — WRITE THIS DOWN          ║");
+        eprintln!("╠══════════════════════════════════════════════════════╣");
+        let words: Vec<&str> = keypair.mnemonic.split_whitespace().collect();
+        for (i, word) in words.iter().enumerate() {
+            eprintln!("║  {:>2}. {:<48}║", i + 1, word);
+        }
+        eprintln!("╠══════════════════════════════════════════════════════╣");
+        eprintln!("║  This phrase is your ONLY recovery method.          ║");
+        eprintln!("║  It will NOT be shown again.                        ║");
+        eprintln!("╚══════════════════════════════════════════════════════╝");
+        eprintln!();
+        eprintln!("Owner created: {} ({})", profile.name, profile.id);
+        eprintln!(
+            "Register a passkey at: http://localhost:{port}/auth/bootstrap"
+        );
+        eprintln!();
+    }
 
     validate_theme(theme, &pipeline.vault_root)?;
 
@@ -9464,7 +9552,13 @@ fn main() -> anyhow::Result<()> {
             HookCommand::List { theme } => cmd_hook_list(&cli, theme),
             HookCommand::Run { name, theme, extra } => cmd_hook_run(&cli, name, theme, extra),
         },
-        Command::Serve { port, theme } => cmd_serve(&cli, *port, theme),
+        Command::Serve {
+            port,
+            theme,
+            collab,
+            init_owner,
+            owner_name,
+        } => cmd_serve(&cli, *port, theme, *collab, *init_owner, owner_name),
         Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
