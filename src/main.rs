@@ -5008,8 +5008,29 @@ fn cmd_serve(
         vector_index,
     };
 
+    // ── TLS enforcement (REQ-020-067) ──────────────────────────────────
+    // When --collab is active, default to loopback-only binding.
+    // Non-loopback binding requires ZETL_INSECURE_COLLAB=1 and emits a
+    // warning.  Without the env var, refuse to start on non-loopback.
+    let bind_addr = if collab {
+        let insecure = std::env::var("ZETL_INSECURE_COLLAB")
+            .map(|v| v == "1")
+            .unwrap_or(false);
+        if insecure {
+            eprintln!(
+                "warning: --collab is active on all interfaces without TLS. \
+                 Set up a TLS reverse-proxy for production use."
+            );
+            "0.0.0.0"
+        } else {
+            "127.0.0.1"
+        }
+    } else {
+        "0.0.0.0"
+    };
+
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(zetl::web::run(state, port))?;
+    rt.block_on(zetl::web::run(state, port, bind_addr))?;
     Ok(())
 }
 
