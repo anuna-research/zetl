@@ -18,7 +18,7 @@ use crate::acl::{AclDecision, Action};
 
 use axum::http::header;
 use axum::middleware;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 
 use crate::graph::LinkGraph;
@@ -296,6 +296,16 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
     let content_routes = Router::new()
         .route("/", get(routes::index_handler))
         .route("/api/search", get(routes::api_search_handler))
+        // Agent API (CON-020-007, REQ-020-017, REQ-020-018)
+        .route("/api/pages", get(routes::api_pages_list_handler))
+        .route(
+            "/api/pages/{*slug}",
+            get(routes::api_pages_get_handler)
+                .put(routes::api_pages_put_handler)
+                .delete(routes::api_pages_delete_handler),
+        )
+        .route("/api/graph", get(routes::api_graph_handler))
+        .route("/api/index", post(routes::api_index_handler))
         .route("/_me", get(routes::dashboard_handler))
         .route("/_print", get(routes::print_handler))
         .route("/_static/{*path}", get(routes::static_handler))
@@ -305,6 +315,10 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
             "/{*path}",
             get(routes::page_handler).put(routes::save_handler),
         );
+
+    // Reason API — only available with `--features reason` (REQ-020-018).
+    #[cfg(feature = "reason")]
+    let content_routes = content_routes.route("/api/reason", post(routes::api_reason_handler));
 
     // History API routes — only available with `--features history` (REQ-087, CON-027, ADR-050).
     #[cfg(feature = "history")]

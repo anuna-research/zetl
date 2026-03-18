@@ -1,12 +1,12 @@
 {
-  "task_id": "dashboard",
+  "task_id": "agent-api",
   "token_budget": 8000,
-  "tokens_used": 336,
+  "tokens_used": 327,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement /_me dashboard: recent edits (git log), accessible pages, pending reviews, access requests (admin), role summary, active sessions, recovery link",
-      "token_cost": 38,
+      "content": "Implement /api/* JSON endpoints: pages list/get/put, index, build, graph, reason; consistent envelope per CON-020-007",
+      "token_cost": 29,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T09:43:17Z"
+  "constructed_at": "2026-03-18T09:51:06Z"
 }
