@@ -4921,6 +4921,7 @@ fn cmd_serve(
     collab: bool,
     init_owner: bool,
     owner_name: &str,
+    git_poll_interval: std::time::Duration,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -5185,7 +5186,7 @@ fn cmd_serve(
     };
 
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(zetl::web::run(state, port, bind_addr))?;
+    rt.block_on(zetl::web::run(state, port, bind_addr, git_poll_interval))?;
     Ok(())
 }
 
@@ -9874,7 +9875,8 @@ fn main() -> anyhow::Result<()> {
             collab,
             init_owner,
             owner_name,
-        } => cmd_serve(&cli, *port, theme, *collab, *init_owner, owner_name),
+            git_poll_interval,
+        } => cmd_serve(&cli, *port, theme, *collab, *init_owner, owner_name, *git_poll_interval),
         Command::Invite {
             as_user,
             role,

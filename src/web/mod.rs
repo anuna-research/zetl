@@ -4,6 +4,7 @@ pub mod engine;
 pub mod flush;
 pub mod fs_watch;
 pub mod git_commit;
+pub mod git_poll;
 pub mod html;
 pub mod markdown;
 pub mod routes;
@@ -260,7 +261,7 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
     (page_slug_map, collision_names)
 }
 
-pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<()> {
+pub async fn run(state: WebState, port: u16, bind_addr: &str, git_poll_interval: std::time::Duration) -> anyhow::Result<()> {
     // ── WAL replay on startup (REQ-020-044) ─────────────────────────────
     // If the server crashed with dirty CRDT state, the WAL contains the
     // operations that were not yet flushed. Replay them now.
@@ -272,6 +273,12 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
 
     // Spawn filesystem watcher for external edit detection (REQ-020-039).
     let _fs_watch_handle = fs_watch::spawn_fs_watcher(state.clone());
+
+    // Spawn git HEAD poller for external commit detection (REQ-020-041).
+    let _git_poll_handle = state
+        .git_commit_lock
+        .clone()
+        .and_then(|lock| git_poll::spawn_git_poller(state.clone(), git_poll_interval, lock));
 
     // Spawn comment auto-prune task (REQ-020-051).
     // Runs once per hour, removes comments older than 30 days.
