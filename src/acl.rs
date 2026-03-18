@@ -58,6 +58,23 @@ pub enum PageVisibilityOverride {
 static OWNER_FACT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*\(given\s+\(owner\s[^)]*\)\s*\)").unwrap());
 
+/// Regex matching global identity predicates that must only be injected at runtime,
+/// never from page-level SPL (REQ-020-059). Covers: admin, role, scope,
+/// visibility-mode, is-agent.  Owner is already handled by `OWNER_FACT_RE`.
+static GLOBAL_PREDICATE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?m)^\s*\(given\s+\((admin|role|scope|visibility-mode|is-agent)\s[^)]*\)\s*\)",
+    )
+    .unwrap()
+});
+
+/// Regex matching `can-read` / `can-edit` with a quoted page slug:
+///   `can-read "user" "page-slug"` or `can-edit "user" "page-slug"`
+/// Captures the page slug in group 1.
+static ACCESS_CONCLUSION_PAGE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"can-(?:read|edit)\s+"[^"]*"\s+"([^"]*)""#).unwrap()
+});
+
 /// Regex matching `(given (during <name> <start-ms> <end-ms>))` temporal interval
 /// declarations (REQ-020-011).
 static INTERVAL_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -486,11 +503,14 @@ pub fn evaluate(
         spl_blocks.push(access_block);
     }
 
-    // 1c. Page-level overrides (highest priority, strip owner facts — REQ-020-058)
+    // 1c. Page-level overrides (highest priority, sandboxed — REQ-020-058/059)
     for block in page_spl_blocks {
         let mut sanitized = block.clone();
         strip_owner_facts(&mut sanitized);
-        spl_blocks.push(sanitized);
+        sandbox_page_spl(&mut sanitized);
+        if !sanitized.content.trim().is_empty() {
+            spl_blocks.push(sanitized);
+        }
     }
 
     // ── Step 2: Inject runtime facts ─────────────────────────────────────
@@ -715,6 +735,78 @@ fn strip_owner_facts(block: &mut SplBlock) {
     }
 }
 
+/// Sandbox page-level SPL: strip global predicates and cross-page access conclusions (REQ-020-059).
+///
+/// Page-level SPL may only:
+/// - Declare facts/rules that reference its own page slug in `can-read`/`can-edit` conclusions
+/// - Use defeaters and superiority relations within its own page
+///
+/// Any global identity predicates (`admin`, `role`, `scope`, `visibility-mode`, `is-agent`)
+/// are stripped with a warning. If any `can-read`/`can-edit` reference targets a page
+/// other than `source_page`, the entire block is rejected (emptied) with a warning.
+///
+/// Owner facts are handled separately by [`strip_owner_facts`].
+pub fn sandbox_page_spl(block: &mut SplBlock) {
+    // Phase 1: Strip global identity predicates (line-by-line)
+    let mut global_stripped = Vec::new();
+    let mut surviving_lines = Vec::new();
+
+    for (i, line) in block.content.lines().enumerate() {
+        if GLOBAL_PREDICATE_RE.is_match(line) {
+            let source_line = block.start_line + i as u32;
+            global_stripped.push((source_line, line.trim().to_string()));
+        } else {
+            surviving_lines.push(line);
+        }
+    }
+
+    if !global_stripped.is_empty() {
+        for (line_no, fact) in &global_stripped {
+            eprintln!(
+                "warning: stripped global predicate from {} (page \"{}\") line {}: {} \
+                 (global predicates are set via profile/runtime only)",
+                block.source_file.display(),
+                block.source_page,
+                line_no,
+                fact,
+            );
+        }
+        block.content = surviving_lines.join("\n");
+        if !block.content.is_empty() && !block.content.ends_with('\n') {
+            block.content.push('\n');
+        }
+    }
+
+    // Phase 2: Reject cross-page access conclusions
+    let source_page = &block.source_page;
+    let mut cross_page_refs: Vec<String> = Vec::new();
+
+    for cap in ACCESS_CONCLUSION_PAGE_RE.captures_iter(&block.content) {
+        let referenced_page = &cap[1];
+        if referenced_page != source_page {
+            cross_page_refs.push(referenced_page.to_string());
+        }
+    }
+
+    if !cross_page_refs.is_empty() {
+        let unique_pages: Vec<String> = {
+            let mut v = cross_page_refs;
+            v.sort();
+            v.dedup();
+            v
+        };
+        eprintln!(
+            "warning: rejected page SPL block from {} (page \"{}\"): \
+             cross-page access conclusions targeting {:?} — \
+             page-level SPL may only affect its own page",
+            block.source_file.display(),
+            block.source_page,
+            unique_pages,
+        );
+        block.content = String::new();
+    }
+}
+
 /// Evaluate an ACL query and return the decision, deontic overlay, and full `TheoryResult`.
 ///
 /// This is the same as [`evaluate`] but also returns the reasoner output and
@@ -746,7 +838,10 @@ pub fn evaluate_with_theory(
     for block in page_spl_blocks {
         let mut sanitized = block.clone();
         strip_owner_facts(&mut sanitized);
-        spl_blocks.push(sanitized);
+        sandbox_page_spl(&mut sanitized);
+        if !sanitized.content.trim().is_empty() {
+            spl_blocks.push(sanitized);
+        }
     }
 
     // ── Step 2–4: Runtime facts (same as evaluate) ───────────────────────
@@ -2097,6 +2192,227 @@ mod tests {
         assert!(
             !overlay.has_active_forbidden(),
             "not-provable [F] should not count as active"
+        );
+    }
+
+    // ── Page-level SPL sandbox tests (REQ-020-059) ────────────────────────
+
+    #[test]
+    fn sandbox_strips_admin_fact() {
+        let mut block = SplBlock {
+            source_file: PathBuf::from("evil.md"),
+            source_page: "evil".to_string(),
+            start_line: 1,
+            end_line: 2,
+            content: "(given (admin \"bob\"))\n(given (authenticated \"bob\"))\n".to_string(),
+        };
+        sandbox_page_spl(&mut block);
+        assert!(!block.content.contains("admin"), "admin fact should be stripped");
+        assert!(
+            block.content.contains("authenticated"),
+            "non-global facts should remain"
+        );
+    }
+
+    #[test]
+    fn sandbox_strips_role_fact() {
+        let mut block = SplBlock {
+            source_file: PathBuf::from("page.md"),
+            source_page: "page".to_string(),
+            start_line: 1,
+            end_line: 1,
+            content: "(given (role \"bob\" admin))\n".to_string(),
+        };
+        sandbox_page_spl(&mut block);
+        assert!(!block.content.contains("role"), "role fact should be stripped");
+    }
+
+    #[test]
+    fn sandbox_strips_scope_fact() {
+        let mut block = SplBlock {
+            source_file: PathBuf::from("page.md"),
+            source_page: "page".to_string(),
+            start_line: 1,
+            end_line: 1,
+            content: "(given (scope \"bob\" \"**\"))\n".to_string(),
+        };
+        sandbox_page_spl(&mut block);
+        assert!(!block.content.contains("scope"), "scope fact should be stripped");
+    }
+
+    #[test]
+    fn sandbox_strips_visibility_mode_fact() {
+        let mut block = SplBlock {
+            source_file: PathBuf::from("page.md"),
+            source_page: "page".to_string(),
+            start_line: 1,
+            end_line: 1,
+            content: "(given (visibility-mode transparent))\n".to_string(),
+        };
+        sandbox_page_spl(&mut block);
+        assert!(
+            !block.content.contains("visibility-mode"),
+            "visibility-mode fact should be stripped"
+        );
+    }
+
+    #[test]
+    fn sandbox_strips_is_agent_fact() {
+        let mut block = SplBlock {
+            source_file: PathBuf::from("page.md"),
+            source_page: "page".to_string(),
+            start_line: 1,
+            end_line: 1,
+            content: "(given (is-agent \"bot-123\"))\n".to_string(),
+        };
+        sandbox_page_spl(&mut block);
+        assert!(
+            !block.content.contains("is-agent"),
+            "is-agent fact should be stripped"
+        );
+    }
+
+    #[test]
+    fn sandbox_strips_all_global_predicates_at_once() {
+        let mut block = SplBlock {
+            source_file: PathBuf::from("evil.md"),
+            source_page: "evil".to_string(),
+            start_line: 1,
+            end_line: 6,
+            content: "(given (admin \"bob\"))\n\
+                      (given (role \"bob\" admin))\n\
+                      (given (scope \"bob\" \"**\"))\n\
+                      (given (visibility-mode hidden))\n\
+                      (given (is-agent \"bob\"))\n\
+                      (given (authenticated \"bob\"))\n"
+                .to_string(),
+        };
+        sandbox_page_spl(&mut block);
+        assert!(!block.content.contains("admin"));
+        assert!(!block.content.contains("role"));
+        assert!(!block.content.contains("scope"));
+        assert!(!block.content.contains("visibility-mode"));
+        assert!(!block.content.contains("is-agent"));
+        assert!(block.content.contains("authenticated"), "non-global facts survive");
+    }
+
+    #[test]
+    fn sandbox_rejects_cross_page_access_conclusion() {
+        let mut block = SplBlock {
+            source_file: PathBuf::from("evil.md"),
+            source_page: "evil".to_string(),
+            start_line: 1,
+            end_line: 3,
+            content: "(normally r-steal\n  (authenticated \"bob\")\n  (can-edit \"bob\" \"secret\"))\n"
+                .to_string(),
+        };
+        sandbox_page_spl(&mut block);
+        assert!(
+            block.content.is_empty(),
+            "block with cross-page conclusion should be fully rejected"
+        );
+    }
+
+    #[test]
+    fn sandbox_allows_own_page_access_conclusion() {
+        let content =
+            "(normally r-local\n  (authenticated \"bob\")\n  (can-read \"bob\" \"my-page\"))\n"
+                .to_string();
+        let mut block = SplBlock {
+            source_file: PathBuf::from("my-page.md"),
+            source_page: "my-page".to_string(),
+            start_line: 1,
+            end_line: 3,
+            content: content.clone(),
+        };
+        sandbox_page_spl(&mut block);
+        assert_eq!(block.content, content, "own-page conclusion should survive sandbox");
+    }
+
+    #[test]
+    fn sandbox_noop_when_clean() {
+        let content = "(except d-block\n  (authenticated \"bob\")\n  (not (can-read \"bob\" \"notes\")))\n\
+                       (prefer d-block r-default-read)\n"
+            .to_string();
+        let mut block = SplBlock {
+            source_file: PathBuf::from("notes.md"),
+            source_page: "notes".to_string(),
+            start_line: 5,
+            end_line: 8,
+            content: content.clone(),
+        };
+        sandbox_page_spl(&mut block);
+        assert_eq!(block.content, content, "clean block should be unchanged");
+    }
+
+    #[test]
+    fn sandbox_global_predicate_in_page_spl_denied_during_evaluate() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Malicious page SPL tries to grant Bob admin status
+        let page_block = SplBlock {
+            source_file: PathBuf::from("evil.md"),
+            source_page: "evil".to_string(),
+            start_line: 1,
+            end_line: 2,
+            content: format!("(given (admin \"{}\"))\n(given (role \"{}\" admin))\n", bob_id, bob_id),
+        };
+
+        let q = AclQuery {
+            user_id: bob_id,
+            page_slug: "evil".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+
+        let decision = evaluate(&vault, &q, &[page_block], &["evil".to_string()]).unwrap();
+        assert!(
+            !decision.is_allowed(),
+            "admin/role facts in page SPL should be stripped — Bob must not get admin privileges"
+        );
+    }
+
+    #[test]
+    fn sandbox_cross_page_conclusion_denied_during_evaluate() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Malicious page SPL tries to grant Bob edit on "secret" from page "evil"
+        let page_block = SplBlock {
+            source_file: PathBuf::from("evil.md"),
+            source_page: "evil".to_string(),
+            start_line: 1,
+            end_line: 3,
+            content: format!(
+                "(normally r-steal\n  (authenticated \"{}\")\n  (can-edit \"{}\" \"secret\"))\n",
+                bob_id, bob_id
+            ),
+        };
+
+        let q = AclQuery {
+            user_id: bob_id,
+            page_slug: "secret".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: now_ms(),
+        };
+
+        let decision = evaluate(
+            &vault,
+            &q,
+            &[page_block],
+            &["evil".to_string(), "secret".to_string()],
+        )
+        .unwrap();
+        assert!(
+            !decision.is_allowed(),
+            "cross-page conclusion should be rejected — evil.md cannot grant access to secret"
         );
     }
 }

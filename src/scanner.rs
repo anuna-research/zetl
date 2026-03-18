@@ -147,8 +147,19 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
         })
         .collect();
 
-    // Extract SPL blocks
-    let spl_blocks = extract_spl_blocks(path, content, page_name);
+    // Extract SPL blocks and apply page-level sandbox (REQ-020-059)
+    let spl_blocks = {
+        let mut blocks = extract_spl_blocks(path, content, page_name);
+        #[cfg(feature = "reason")]
+        {
+            for block in &mut blocks {
+                crate::acl::sandbox_page_spl(block);
+            }
+            // Drop blocks that were fully rejected (emptied by sandbox)
+            blocks.retain(|b| !b.content.trim().is_empty());
+        }
+        blocks
+    };
 
     // Collect events once for Merkle leaf construction (§6.4: same parse pass).
     // Enable GFM-compatible extensions so that tables and strikethrough are parsed.

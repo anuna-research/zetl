@@ -1,12 +1,12 @@
 {
-  "task_id": "external-attribution",
+  "task_id": "spl-sandbox",
   "token_budget": 8000,
-  "tokens_used": 333,
+  "tokens_used": 343,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement external edit attribution: git commit author → is_external:true; uncommitted → external:filesystem; on-save hooks fire with flag",
-      "token_cost": 35,
+      "content": "Implement page-level SPL sandboxing: validate on re-scan; allow only own-page access conclusions; strip global predicates (owner/admin/role/scope/visibility-mode/is-agent) with WARN",
+      "token_cost": 45,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T13:46:02Z"
+  "constructed_at": "2026-03-18T13:55:23Z"
 }
