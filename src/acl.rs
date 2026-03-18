@@ -23,6 +23,116 @@ use crate::user;
 static OWNER_FACT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*\(given\s+\(owner\s[^)]*\)\s*\)").unwrap());
 
+/// Regex matching `(given (during <name> <start-ms> <end-ms>))` temporal interval
+/// declarations (REQ-020-011).
+static INTERVAL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\(given\s+\(during\s+\((\S+)\)\s+(\d+)\s+(\d+)\s*\)\s*\)").unwrap()
+});
+
+/// A named temporal interval parsed from SPL `(given (during ...))` facts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TemporalInterval {
+    name: String,
+    start_ms: i64,
+    end_ms: i64,
+}
+
+/// Allen interval algebra relation between a point (`now`) and an interval (REQ-020-011).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TemporalRelation {
+    /// now < start
+    Before,
+    /// now == start
+    Meets,
+    /// start < now < end
+    Within,
+    /// now == end
+    Finishes,
+    /// now > end
+    After,
+}
+
+/// Parse all `(given (during <name> <start> <end>))` declarations from SPL content.
+fn parse_temporal_intervals(spl_content: &str) -> Vec<TemporalInterval> {
+    INTERVAL_RE
+        .captures_iter(spl_content)
+        .filter_map(|cap| {
+            let name = cap[1].to_string();
+            let start_ms: i64 = cap[2].parse().ok()?;
+            let end_ms: i64 = cap[3].parse().ok()?;
+            Some(TemporalInterval {
+                name,
+                start_ms,
+                end_ms,
+            })
+        })
+        .collect()
+}
+
+/// Compute the Allen relation between a point (`now`) and an interval.
+fn temporal_relation(now: i64, interval: &TemporalInterval) -> TemporalRelation {
+    if now < interval.start_ms {
+        TemporalRelation::Before
+    } else if now == interval.start_ms {
+        TemporalRelation::Meets
+    } else if now < interval.end_ms {
+        TemporalRelation::Within
+    } else if now == interval.end_ms {
+        TemporalRelation::Finishes
+    } else {
+        TemporalRelation::After
+    }
+}
+
+/// Inject grounded temporal relation facts for all declared intervals (REQ-020-011).
+///
+/// For each `(given (during <name> <start> <end>))` found in the SPL blocks,
+/// computes the Allen relation between `now` and the interval and injects
+/// grounded facts:
+/// - `(given (now-before <name>))` if now < start
+/// - `(given (now-meets <name>))` if now == start
+/// - `(given (now-within <name>))` if start < now < end  (also injects `active`)
+/// - `(given (now-finishes <name>))` if now == end  (also injects `active`)
+/// - `(given (now-after <name>))` if now > end
+/// - `(given (active <name>))` if within or meets or finishes (now is in [start, end])
+fn ground_temporal_facts(spl_blocks: &[SplBlock], now_epoch_ms: i64) -> String {
+    let mut intervals = Vec::new();
+    for block in spl_blocks {
+        intervals.extend(parse_temporal_intervals(&block.content));
+    }
+
+    let mut facts = String::new();
+    for interval in &intervals {
+        let relation = temporal_relation(now_epoch_ms, interval);
+        let name = &interval.name;
+
+        match relation {
+            TemporalRelation::Before => {
+                facts.push_str(&format!("(given (now-before {name}))\n"));
+            }
+            TemporalRelation::Meets => {
+                facts.push_str(&format!("(given (now-meets {name}))\n"));
+                facts.push_str(&format!("(given (active {name}))\n"));
+                facts.push_str(&format!("(given (now-within {name}))\n"));
+            }
+            TemporalRelation::Within => {
+                facts.push_str(&format!("(given (now-within {name}))\n"));
+                facts.push_str(&format!("(given (active {name}))\n"));
+            }
+            TemporalRelation::Finishes => {
+                facts.push_str(&format!("(given (now-finishes {name}))\n"));
+                facts.push_str(&format!("(given (active {name}))\n"));
+                facts.push_str(&format!("(given (now-within {name}))\n"));
+            }
+            TemporalRelation::After => {
+                facts.push_str(&format!("(given (now-after {name}))\n"));
+            }
+        }
+    }
+
+    facts
+}
+
 /// An access control action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -282,6 +392,14 @@ pub fn evaluate(
                 page, query.user_id
             ));
         }
+    }
+
+    // ── Step 4c: Ground temporal interval facts (REQ-020-011) ─────────────
+    // Parse (given (during <name> <start> <end>)) from all SPL blocks so far,
+    // evaluate Allen relations against `now`, and inject grounded facts.
+    let temporal_facts = ground_temporal_facts(&spl_blocks, query.now_epoch_ms);
+    if !temporal_facts.is_empty() {
+        runtime_facts.push_str(&temporal_facts);
     }
 
     spl_blocks.push(SplBlock {
@@ -861,6 +979,310 @@ mod tests {
         assert!(
             !decision.is_allowed(),
             "injected owner fact in page SPL should be stripped — Bob must not get owner privileges"
+        );
+    }
+
+    // ── Temporal interval parsing tests ──────────────────────────────────
+
+    #[test]
+    fn parse_temporal_intervals_extracts_declarations() {
+        let spl = r#"
+(given (during (conference-access) 1742428800000 1742688000000))
+(given (during (sprint-review) 1000 2000))
+(given (role "bob" editor))
+"#;
+        let intervals = parse_temporal_intervals(spl);
+        assert_eq!(intervals.len(), 2);
+        assert_eq!(intervals[0].name, "conference-access");
+        assert_eq!(intervals[0].start_ms, 1742428800000);
+        assert_eq!(intervals[0].end_ms, 1742688000000);
+        assert_eq!(intervals[1].name, "sprint-review");
+        assert_eq!(intervals[1].start_ms, 1000);
+        assert_eq!(intervals[1].end_ms, 2000);
+    }
+
+    #[test]
+    fn parse_temporal_intervals_empty_when_none() {
+        let spl = "(given (role \"bob\" editor))\n";
+        let intervals = parse_temporal_intervals(spl);
+        assert!(intervals.is_empty());
+    }
+
+    #[test]
+    fn temporal_relation_before() {
+        let interval = TemporalInterval {
+            name: "test".into(),
+            start_ms: 1000,
+            end_ms: 2000,
+        };
+        assert_eq!(temporal_relation(500, &interval), TemporalRelation::Before);
+    }
+
+    #[test]
+    fn temporal_relation_meets() {
+        let interval = TemporalInterval {
+            name: "test".into(),
+            start_ms: 1000,
+            end_ms: 2000,
+        };
+        assert_eq!(temporal_relation(1000, &interval), TemporalRelation::Meets);
+    }
+
+    #[test]
+    fn temporal_relation_within() {
+        let interval = TemporalInterval {
+            name: "test".into(),
+            start_ms: 1000,
+            end_ms: 2000,
+        };
+        assert_eq!(
+            temporal_relation(1500, &interval),
+            TemporalRelation::Within
+        );
+    }
+
+    #[test]
+    fn temporal_relation_finishes() {
+        let interval = TemporalInterval {
+            name: "test".into(),
+            start_ms: 1000,
+            end_ms: 2000,
+        };
+        assert_eq!(
+            temporal_relation(2000, &interval),
+            TemporalRelation::Finishes
+        );
+    }
+
+    #[test]
+    fn temporal_relation_after() {
+        let interval = TemporalInterval {
+            name: "test".into(),
+            start_ms: 1000,
+            end_ms: 2000,
+        };
+        assert_eq!(temporal_relation(2500, &interval), TemporalRelation::After);
+    }
+
+    #[test]
+    fn ground_temporal_facts_injects_within_when_active() {
+        let blocks = vec![SplBlock {
+            source_file: PathBuf::from("access.spl"),
+            source_page: "<test>".into(),
+            start_line: 1,
+            end_line: 1,
+            content: "(given (during (conf) 1000 2000))\n".into(),
+        }];
+        let facts = ground_temporal_facts(&blocks, 1500);
+        assert!(facts.contains("(given (now-within conf))"));
+        assert!(facts.contains("(given (active conf))"));
+        assert!(!facts.contains("now-before"));
+        assert!(!facts.contains("now-after"));
+    }
+
+    #[test]
+    fn ground_temporal_facts_injects_before_when_early() {
+        let blocks = vec![SplBlock {
+            source_file: PathBuf::from("access.spl"),
+            source_page: "<test>".into(),
+            start_line: 1,
+            end_line: 1,
+            content: "(given (during (conf) 1000 2000))\n".into(),
+        }];
+        let facts = ground_temporal_facts(&blocks, 500);
+        assert!(facts.contains("(given (now-before conf))"));
+        assert!(!facts.contains("active"));
+        assert!(!facts.contains("now-within"));
+    }
+
+    #[test]
+    fn ground_temporal_facts_injects_after_when_expired() {
+        let blocks = vec![SplBlock {
+            source_file: PathBuf::from("access.spl"),
+            source_page: "<test>".into(),
+            start_line: 1,
+            end_line: 1,
+            content: "(given (during (conf) 1000 2000))\n".into(),
+        }];
+        let facts = ground_temporal_facts(&blocks, 3000);
+        assert!(facts.contains("(given (now-after conf))"));
+        assert!(!facts.contains("active"));
+        assert!(!facts.contains("now-within"));
+    }
+
+    #[test]
+    fn ground_temporal_facts_meets_boundary() {
+        let blocks = vec![SplBlock {
+            source_file: PathBuf::from("access.spl"),
+            source_page: "<test>".into(),
+            start_line: 1,
+            end_line: 1,
+            content: "(given (during (conf) 1000 2000))\n".into(),
+        }];
+        // At start boundary: meets + active + within
+        let facts = ground_temporal_facts(&blocks, 1000);
+        assert!(facts.contains("(given (now-meets conf))"));
+        assert!(facts.contains("(given (active conf))"));
+        assert!(facts.contains("(given (now-within conf))"));
+    }
+
+    #[test]
+    fn ground_temporal_facts_finishes_boundary() {
+        let blocks = vec![SplBlock {
+            source_file: PathBuf::from("access.spl"),
+            source_page: "<test>".into(),
+            start_line: 1,
+            end_line: 1,
+            content: "(given (during (conf) 1000 2000))\n".into(),
+        }];
+        // At end boundary: finishes + active + within
+        let facts = ground_temporal_facts(&blocks, 2000);
+        assert!(facts.contains("(given (now-finishes conf))"));
+        assert!(facts.contains("(given (active conf))"));
+        assert!(facts.contains("(given (now-within conf))"));
+    }
+
+    // ── Temporal ACL integration tests (TEST-020-011) ────────────────────
+
+    #[test]
+    fn temporal_access_allowed_during_interval() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Grant Bob reader role + temporal read access during interval [1000, 2000]
+        let access_spl = format!(
+            r#"(given (role "{bob_id}" reader))
+(given (during (temp-grant) 1000 2000))
+(normally r-temp-read
+  (and (role "{bob_id}" reader) (active temp-grant))
+  (can-edit "{bob_id}" "notes"))
+"#
+        );
+        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+
+        // At time 1500 (within interval) → allowed
+        let q = AclQuery {
+            user_id: bob_id.clone(),
+            page_slug: "notes".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: 1500,
+        };
+        let decision = evaluate(&vault, &q, &[], &["notes".to_string()]).unwrap();
+        assert!(
+            decision.is_allowed(),
+            "temporal access should be allowed during the interval"
+        );
+    }
+
+    #[test]
+    fn temporal_access_denied_after_interval() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Grant Bob reader role + temporal edit access during interval [1000, 2000]
+        let access_spl = format!(
+            r#"(given (role "{bob_id}" reader))
+(given (during (temp-grant) 1000 2000))
+(normally r-temp-edit
+  (and (role "{bob_id}" reader) (active temp-grant))
+  (can-edit "{bob_id}" "notes"))
+"#
+        );
+        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+
+        // At time 2001 (after interval) → denied
+        let q = AclQuery {
+            user_id: bob_id.clone(),
+            page_slug: "notes".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: 2001,
+        };
+        let decision = evaluate(&vault, &q, &[], &["notes".to_string()]).unwrap();
+        assert!(
+            !decision.is_allowed(),
+            "temporal access should be denied after the interval expires"
+        );
+    }
+
+    #[test]
+    fn temporal_access_denied_before_interval() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        let access_spl = format!(
+            r#"(given (role "{bob_id}" reader))
+(given (during (temp-grant) 1000 2000))
+(normally r-temp-edit
+  (and (role "{bob_id}" reader) (active temp-grant))
+  (can-edit "{bob_id}" "notes"))
+"#
+        );
+        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+
+        // At time 500 (before interval) → denied
+        let q = AclQuery {
+            user_id: bob_id.clone(),
+            page_slug: "notes".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: 500,
+        };
+        let decision = evaluate(&vault, &q, &[], &["notes".to_string()]).unwrap();
+        assert!(
+            !decision.is_allowed(),
+            "temporal access should be denied before the interval starts"
+        );
+    }
+
+    #[test]
+    fn temporal_within_fact_usable_in_rules() {
+        let tmp = TempDir::new().unwrap();
+        let vault = setup_vault(&tmp);
+        let owner_id = create_owner(&vault, "Alice");
+        let bob_id = create_user(&vault, "Bob", &owner_id);
+
+        // Use (now-within ...) directly in rule body
+        let access_spl = format!(
+            r#"(given (role "{bob_id}" reader))
+(given (during (review-window) 5000 10000))
+(normally r-review-edit
+  (and (role "{bob_id}" reader) (now-within review-window))
+  (can-edit "{bob_id}" "review"))
+"#
+        );
+        std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
+
+        // Within interval → allowed
+        let q = AclQuery {
+            user_id: bob_id.clone(),
+            page_slug: "review".to_string(),
+            action: Action::Edit,
+            is_agent: false,
+            now_epoch_ms: 7500,
+        };
+        let decision = evaluate(&vault, &q, &[], &["review".to_string()]).unwrap();
+        assert!(
+            decision.is_allowed(),
+            "(now-within ...) fact should enable temporal rule"
+        );
+
+        // After interval → denied
+        let q2 = AclQuery {
+            now_epoch_ms: 10001,
+            ..q
+        };
+        let decision2 = evaluate(&vault, &q2, &[], &["review".to_string()]).unwrap();
+        assert!(
+            !decision2.is_allowed(),
+            "(now-within ...) should not be present after interval"
         );
     }
 }

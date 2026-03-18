@@ -1,12 +1,13 @@
 {
-  "task_id": "owner-hardening",
+  "task_id": "temporal-acl",
+  "status": "complete",
   "token_budget": 8000,
-  "tokens_used": 334,
+  "tokens_used": 325,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement owner fact stripping: strip (given (owner ...)) from access.spl and page SPL; inject owner only from profile.json; WARN on stripped facts",
-      "token_cost": 36,
+      "content": "Implement temporal access control: inject (now <epoch-ms>) fact, support Allen interval algebra in ACL rules",
+      "token_cost": 27,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +72,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T09:13:33Z"
+  "constructed_at": "2026-03-18T09:19:07Z"
 }
