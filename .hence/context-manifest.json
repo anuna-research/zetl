@@ -1,12 +1,12 @@
 {
-  "task_id": "tls-warning",
+  "task_id": "git-autocommit",
   "token_budget": 8000,
-  "tokens_used": 330,
+  "tokens_used": 333,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement TLS enforcement: refuse --collab on non-loopback without ZETL_INSECURE_COLLAB=1; WARN on startup; no warning on localhost",
-      "token_cost": 32,
+      "content": "Implement git2-based auto-commit in save handler: git add, git commit with user attribution, Mutex serialization, jj git import after commit",
+      "token_cost": 35,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T07:57:26Z"
+  "constructed_at": "2026-03-18T08:01:06Z"
 }

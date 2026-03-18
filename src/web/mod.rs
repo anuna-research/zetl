@@ -1,6 +1,7 @@
 pub mod build;
 pub mod context;
 pub mod engine;
+pub mod git_commit;
 pub mod html;
 pub mod markdown;
 pub mod routes;
@@ -68,6 +69,9 @@ pub struct WebState {
     pub recovery_challenges: Arc<RecoveryChallengeStore>,
     /// Tracks user_ids whose mnemonic has already been displayed (one-time serve).
     pub mnemonic_shown: Arc<Mutex<HashSet<String>>>,
+    /// Git repository lock for serializing auto-commits on save (REQ-020-015, CON-020-006).
+    /// `None` when the vault is not inside a git repository.
+    pub git_commit_lock: Option<Arc<git_commit::GitCommitLock>>,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]
