@@ -2,6 +2,7 @@ pub mod build;
 pub mod context;
 pub mod engine;
 pub mod flush;
+pub mod fs_watch;
 pub mod git_commit;
 pub mod html;
 pub mod markdown;
@@ -168,6 +169,8 @@ pub struct WebState {
     pub crdt_store: ws::CrdtDocStore,
     /// CRDT write-ahead log for crash recovery (REQ-020-044).
     pub wal_store: Arc<wal::WalStore>,
+    /// Tracks files zetl is currently writing, for external edit detection (REQ-020-039).
+    pub pending_writes: fs_watch::PendingWrites,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]
@@ -266,6 +269,9 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
     // Spawn the CRDT flush lifecycle task (REQ-020-034).
     // Runs the unified 10-step pipeline on quiescence and handles TTL evictions.
     let _flush_handle = flush::spawn_flush_lifecycle_task(state.clone());
+
+    // Spawn filesystem watcher for external edit detection (REQ-020-039).
+    let _fs_watch_handle = fs_watch::spawn_fs_watcher(state.clone());
 
     // Spawn comment auto-prune task (REQ-020-051).
     // Runs once per hour, removes comments older than 30 days.

@@ -1400,6 +1400,8 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
         ws_hub: zetl::web::ws::WsHub::new(),
         ticket_store: zetl::web::ws::TicketStore::new(),
         crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
+        wal_store: Arc::new(zetl::web::wal::WalStore::new(vault_root)),
+        pending_writes: zetl::web::fs_watch::PendingWrites::new(),
     }
 }
 

@@ -5158,6 +5158,7 @@ fn cmd_serve(
         ws_hub: zetl::web::ws::WsHub::new(),
         ticket_store: zetl::web::ws::TicketStore::new(),
         wal_store: std::sync::Arc::new(zetl::web::wal::WalStore::new(&vault_root)),
+        pending_writes: zetl::web::fs_watch::PendingWrites::new(),
         #[cfg(feature = "semantic")]
         vector_index,
     };
