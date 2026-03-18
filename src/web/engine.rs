@@ -220,6 +220,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "folder.html",
     "passkey_register.html",
     "recovery_show.html",
+    "invite_accept.html",
 ];
 
 /// Build a minijinja Environment with the three-tier template loader.
@@ -410,6 +411,38 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("recovery_show.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the invitation acceptance page.
+    pub fn render_invite_accept(
+        &self,
+        vault_name: &str,
+        token: &str,
+        inviter: &str,
+        role: &str,
+        pages: Option<&str>,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            token => token,
+            inviter => inviter,
+            role => role,
+            pages => pages,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("invite_accept.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("invite_accept.html"));
         }
         Ok(html)
     }

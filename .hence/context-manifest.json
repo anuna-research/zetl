@@ -1,12 +1,12 @@
 {
-  "task_id": "csp-headers",
+  "task_id": "invitation-accept",
   "token_budget": 8000,
-  "tokens_used": 330,
+  "tokens_used": 335,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement Content-Security-Policy header on all HTML responses: script-src 'self', frame-ancestors 'none', connect-src 'self' wss:",
-      "token_cost": 32,
+      "content": "Implement /auth/accept endpoint: JWT validation, registration page, passkey setup, BIP39 display, SPL fact injection into access.spl, session issuance",
+      "token_cost": 37,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T08:09:29Z"
+  "constructed_at": "2026-03-18T08:11:03Z"
 }
