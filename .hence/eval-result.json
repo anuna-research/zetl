@@ -4,27 +4,27 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 5,
-    "insertions": 711,
-    "deletions": 5,
+    "insertions": 625,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml",
-      "src/user/mod.rs",
-      "src/user/passkey.rs"
+      "src/web/engine.rs",
+      "src/web/mod.rs",
+      "src/web/routes.rs",
+      "themes/default/passkey_register.html"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-passkey-auth-changes",
-      "content": "Modified 5 files (+711, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/user/mod.rs, src/user/passkey.rs",
+      "key": "task-passkey-guidance-changes",
+      "content": "Modified 5 files (+625, -7): .hence/context-manifest.json, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs, themes/default/passkey_register.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/passkey-auth-v1",
-  "evaluated_at": "2026-03-18T06:37:52Z",
+  "branch_name": "hence/passkey-guidance-v1",
+  "evaluated_at": "2026-03-18T06:46:51Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
