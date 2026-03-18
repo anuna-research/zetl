@@ -3,28 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 474,
+    "files_changed": 6,
+    "insertions": 765,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
+      "src/user/invite.rs",
       "src/web/engine.rs",
       "src/web/mod.rs",
       "src/web/routes.rs",
-      "themes/default/invite_accept.html"
+      "themes/default/admin_invite.html"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-invitation-accept-changes",
-      "content": "Modified 5 files (+474, -5): .hence/context-manifest.json, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs, themes/default/invite_accept.html",
+      "key": "task-web-invite-changes",
+      "content": "Modified 6 files (+765, -5): .hence/context-manifest.json, src/user/invite.rs, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/invitation-accept-v1",
-  "evaluated_at": "2026-03-18T08:17:23Z",
+  "branch_name": "hence/web-invite-v1",
+  "evaluated_at": "2026-03-18T08:27:01Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
