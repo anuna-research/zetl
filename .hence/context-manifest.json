@@ -1,12 +1,12 @@
 {
-  "task_id": "page-history-ui",
+  "task_id": "crdt-history",
   "token_budget": 8000,
-  "tokens_used": 335,
+  "tokens_used": 329,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement /{slug}/_history: chronological edit list from git log, author/timestamp/message, diff view, restore button, draft indicator for active CRDT",
-      "token_cost": 37,
+      "content": "Implement CRDT-aware history: X-CRDT-Dirty/X-CRDT-Last-Flush headers, merkle hash for API conflict detection with active CRDT",
+      "token_cost": 31,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T12:34:14Z"
+  "constructed_at": "2026-03-18T12:47:53Z"
 }

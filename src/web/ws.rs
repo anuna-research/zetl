@@ -31,6 +31,19 @@ use crate::crdt::CrdtDocument;
 use super::wal::WalStore;
 use super::WebState;
 
+/// CRDT document metadata returned by [`CrdtDocStore::crdt_meta`].
+#[derive(Debug, Clone)]
+pub struct CrdtMeta {
+    /// Whether the CRDT state has diverged from the on-disk markdown.
+    pub dirty: bool,
+    /// Seconds elapsed since the last flush to disk.
+    pub secs_since_flush: u64,
+    /// Number of currently connected WebSocket clients.
+    pub client_count: usize,
+    /// BLAKE3 hex digest of the live CRDT markdown (for conflict detection).
+    pub content_hash: Option<String>,
+}
+
 // ── Protocol messages ────────────────────────────────────────────────
 
 /// Inbound message from a client.
@@ -536,6 +549,33 @@ impl CrdtDocStore {
     /// Check if a document is loaded.
     pub fn is_loaded(&self, slug: &str) -> bool {
         self.docs.lock().expect("crdt store lock").contains_key(slug)
+    }
+
+    /// Return CRDT metadata for a loaded document: `(dirty, secs_since_flush, content_hash)`.
+    ///
+    /// `content_hash` is a BLAKE3 hex digest of the live CRDT markdown.  When
+    /// the document is dirty, this hash differs from the on-disk merkle hash,
+    /// enabling API clients to detect conflicts with active CRDT sessions.
+    ///
+    /// Returns `None` if the document is not loaded.
+    pub fn crdt_meta(&self, slug: &str) -> Option<CrdtMeta> {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        let entry = docs.get_mut(slug)?;
+        let secs_since_flush = entry.last_flush.elapsed().as_secs();
+        let dirty = entry.dirty;
+        let client_count = entry.client_count;
+        // Compute BLAKE3 hash of the live CRDT markdown content.
+        let content_hash = entry
+            .doc
+            .to_markdown()
+            .ok()
+            .map(|md| blake3::hash(md.as_bytes()).to_hex().to_string());
+        Some(CrdtMeta {
+            dirty,
+            secs_since_flush,
+            client_count,
+            content_hash,
+        })
     }
 
     /// Number of currently loaded documents.
@@ -1235,5 +1275,102 @@ mod tests {
         let content = std::fs::read_to_string(tmp.path().join("readme.md")).unwrap();
         assert!(content.contains("Hello"));
         assert_eq!(store.doc_count(), 0);
+    }
+
+    // ── CrdtMeta tests (TEST-020-CRDT-HISTORY) ─────────────────────────
+
+    #[test]
+    fn crdt_meta_none_for_unloaded_doc() {
+        let store = test_crdt_store();
+        assert!(store.crdt_meta("nonexistent").is_none());
+    }
+
+    #[test]
+    fn crdt_meta_clean_doc() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("page.md"), "# Hello\n").unwrap();
+        let store = CrdtDocStore::new(Arc::new(tmp.path().to_path_buf()));
+        store.load_or_get("page").unwrap();
+
+        let meta = store.crdt_meta("page").unwrap();
+        assert!(!meta.dirty);
+        assert_eq!(meta.client_count, 0);
+        assert!(meta.content_hash.is_some());
+        // Hash should be 64 hex chars (BLAKE3)
+        let hash = meta.content_hash.unwrap();
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn crdt_meta_dirty_after_edit() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("page.md"), "# Hello\n").unwrap();
+        let store = CrdtDocStore::new(Arc::new(tmp.path().to_path_buf()));
+        store.load_or_get("page").unwrap();
+
+        let before = store.crdt_meta("page").unwrap();
+        assert!(!before.dirty);
+
+        store.record_edit("page");
+
+        let after = store.crdt_meta("page").unwrap();
+        assert!(after.dirty);
+    }
+
+    #[test]
+    fn crdt_meta_hash_changes_after_splice() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("page.md"), "# Hello\n").unwrap();
+        let store = CrdtDocStore::new(Arc::new(tmp.path().to_path_buf()));
+        store.load_or_get("page").unwrap();
+
+        let hash_before = store.crdt_meta("page").unwrap().content_hash.unwrap();
+
+        // Apply a splice operation
+        let ops = vec![OpEntry::Splice {
+            pos: 0,
+            del: 0,
+            text: "NEW ".to_string(),
+        }];
+        store.apply_ops("page", &ops).unwrap();
+
+        let hash_after = store.crdt_meta("page").unwrap().content_hash.unwrap();
+        assert_ne!(hash_before, hash_after, "hash should change after edit");
+    }
+
+    #[test]
+    fn crdt_meta_tracks_client_count() {
+        let store = test_crdt_store();
+        store.load_or_get("page").unwrap();
+
+        assert_eq!(store.crdt_meta("page").unwrap().client_count, 0);
+
+        store.client_connected("page");
+        assert_eq!(store.crdt_meta("page").unwrap().client_count, 1);
+
+        store.client_connected("page");
+        assert_eq!(store.crdt_meta("page").unwrap().client_count, 2);
+
+        store.client_disconnected("page");
+        assert_eq!(store.crdt_meta("page").unwrap().client_count, 1);
+    }
+
+    #[test]
+    fn crdt_meta_flush_resets_dirty() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("page.md"), "# Hello\n").unwrap();
+        let store = CrdtDocStore::new(Arc::new(tmp.path().to_path_buf()));
+        store.load_or_get("page").unwrap();
+        store.record_edit("page");
+
+        assert!(store.crdt_meta("page").unwrap().dirty);
+
+        store.mark_flushed("page");
+
+        let meta = store.crdt_meta("page").unwrap();
+        assert!(!meta.dirty);
+        // secs_since_flush should be very small (just marked)
+        assert!(meta.secs_since_flush < 2);
     }
 }

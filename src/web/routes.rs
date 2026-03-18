@@ -4021,14 +4021,39 @@ pub async fn api_pages_get_handler(
 
     let file_slug = page_slug_from_path(&file.path);
 
-    ApiResponse::ok(ApiPageContent {
+    let mut resp = ApiResponse::ok(ApiPageContent {
         name: page_name.clone(),
-        slug: file_slug,
+        slug: file_slug.clone(),
         content,
         forward_links: forward,
         backlinks: back,
     })
-    .into_response()
+    .into_response();
+
+    // Inject CRDT-aware headers when the document is loaded in the CRDT store.
+    if let Some(meta) = state.crdt_store.crdt_meta(&file_slug) {
+        let hdrs = resp.headers_mut();
+        hdrs.insert(
+            HeaderName::from_static("x-crdt-dirty"),
+            meta.dirty.to_string().parse().unwrap(),
+        );
+        hdrs.insert(
+            HeaderName::from_static("x-crdt-last-flush"),
+            meta.secs_since_flush.to_string().parse().unwrap(),
+        );
+        hdrs.insert(
+            HeaderName::from_static("x-crdt-clients"),
+            meta.client_count.to_string().parse().unwrap(),
+        );
+        if let Some(ref hash) = meta.content_hash {
+            hdrs.insert(
+                HeaderName::from_static("x-crdt-hash"),
+                hash.parse().unwrap(),
+            );
+        }
+    }
+
+    resp
 }
 
 // ── PUT /api/pages/{*slug} — create or edit page (REQ-020-017) ────────────
@@ -4112,6 +4137,37 @@ pub async fn api_pages_put_handler(
         }
     };
 
+    // ── CRDT conflict detection (If-Match / X-CRDT-Hash) ───────────────
+    // When the document has an active CRDT session with dirty edits, an API
+    // PUT must prove it has seen the latest CRDT state.  The client passes
+    // the `X-CRDT-Hash` (or `If-Match`) header received from a prior GET;
+    // if it doesn't match the live CRDT hash, the write is rejected with 409.
+    if let Some(meta) = state.crdt_store.crdt_meta(slug) {
+        if meta.dirty {
+            let client_hash = headers
+                .get("if-match")
+                .or_else(|| headers.get("x-crdt-hash"))
+                .and_then(|v| v.to_str().ok());
+            match (client_hash, &meta.content_hash) {
+                (Some(client), Some(live)) if client == live => { /* match — proceed */ }
+                (None, _) => {
+                    return ApiResponse::err(
+                        StatusCode::CONFLICT,
+                        "CRDT_CONFLICT",
+                        "page has active CRDT edits; include X-CRDT-Hash or If-Match header from GET",
+                    );
+                }
+                (Some(_), _) => {
+                    return ApiResponse::err(
+                        StatusCode::CONFLICT,
+                        "CRDT_CONFLICT",
+                        "CRDT content has changed since your last read; re-GET to obtain the latest hash",
+                    );
+                }
+            }
+        }
+    }
+
     // Ensure parent directory exists
     if let Some(parent) = full_path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
@@ -4178,7 +4234,32 @@ pub async fn api_pages_put_handler(
         StatusCode::OK
     };
 
-    (status, ApiResponse::ok(serde_json::json!({ "slug": slug }))).into_response()
+    let mut resp = (status, ApiResponse::ok(serde_json::json!({ "slug": slug }))).into_response();
+
+    // Inject CRDT headers on the response so clients can track state.
+    if let Some(meta) = state.crdt_store.crdt_meta(slug) {
+        let hdrs = resp.headers_mut();
+        hdrs.insert(
+            HeaderName::from_static("x-crdt-dirty"),
+            meta.dirty.to_string().parse().unwrap(),
+        );
+        hdrs.insert(
+            HeaderName::from_static("x-crdt-last-flush"),
+            meta.secs_since_flush.to_string().parse().unwrap(),
+        );
+        hdrs.insert(
+            HeaderName::from_static("x-crdt-clients"),
+            meta.client_count.to_string().parse().unwrap(),
+        );
+        if let Some(ref hash) = meta.content_hash {
+            hdrs.insert(
+                HeaderName::from_static("x-crdt-hash"),
+                hash.parse().unwrap(),
+            );
+        }
+    }
+
+    resp
 }
 
 // ── DELETE /api/pages/{*slug} — delete page ───────────────────────────────
