@@ -962,6 +962,7 @@ pub async fn save_handler(
                 file: rel_path.clone(),
                 page: page_name.clone(),
                 content_length,
+                is_external: false,
             });
 
             // Attach authenticated user identity if a session was present.

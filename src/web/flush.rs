@@ -208,6 +208,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
             file: rel_path_str.clone(),
             page: page_name.clone(),
             content_length,
+            is_external: false,
         });
 
         let context_json = match serde_json::to_vec(&ctx) {

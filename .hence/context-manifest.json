@@ -1,11 +1,11 @@
 {
-  "task_id": "git-poll",
+  "task_id": "external-attribution",
   "token_budget": 8000,
   "tokens_used": 333,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement git HEAD polling (configurable, default 30s): detect external commits via git2, diff changed files, feed into reconciliation pipeline",
+      "content": "Implement external edit attribution: git commit author → is_external:true; uncommitted → external:filesystem; on-save hooks fire with flag",
       "token_cost": 35,
       "priority": "PlanMeta"
     },
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T13:37:10Z"
+  "constructed_at": "2026-03-18T13:46:02Z"
 }

@@ -22,6 +22,8 @@ use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
+use crate::hooks;
+use crate::hooks::context::{build_hook_context, HookSaved, HookUser};
 use crate::merkle::{compute_file_root, compute_vault_root};
 use crate::search_index::SearchIndex;
 use crate::types::ContentHash;
@@ -31,6 +33,15 @@ use crate::hooks::context::HookAclViolationEntry;
 
 use super::ws::ServerMsg;
 use super::WebState;
+
+/// Source of an external edit, used for attribution (REQ-020-042).
+#[derive(Debug, Clone)]
+pub enum ExternalSource {
+    /// Edit detected via filesystem watcher (unknown author).
+    Filesystem,
+    /// Edit arrived via a git commit with known author.
+    GitCommit { author: String, email: String },
+}
 
 /// Debounce window for batching filesystem events (REQ-020-039 step 1).
 const DEBOUNCE_MS: u64 = 500;
@@ -86,6 +97,7 @@ impl PendingWrites {
 pub fn reconcile_external_edits(
     state: &WebState,
     changed_paths: &[PathBuf],
+    source: &ExternalSource,
 ) -> Option<String> {
     // ── Step 2: Re-scan ──────────────────────────────────────────────────
     let new_data = match super::reindex(&state.vault_root) {
@@ -181,7 +193,103 @@ pub fn reconcile_external_edits(
         detect_and_report_acl_violations(state, &changed_slugs);
     }
 
+    // ── Step 10: Fire on-save hooks with external attribution (REQ-020-042) ─
+    fire_external_save_hooks(state, changed_paths, source);
+
     Some(vault_root_hash)
+}
+
+/// Fire on-save hooks for each externally-changed file (REQ-020-042).
+///
+/// Builds a `HookUser` from the `ExternalSource` and fires the on-save hook
+/// once per changed file, with `is_external: true` on both `HookSaved` and
+/// `HookUser`.
+fn fire_external_save_hooks(
+    state: &WebState,
+    changed_paths: &[PathBuf],
+    source: &ExternalSource,
+) {
+    let theme_hooks = hooks::resolve_theme_hooks(&state.vault_root, &state.theme);
+    let manifest = hooks::discover_hooks(&state.vault_root, theme_hooks.path());
+
+    if hooks::hooks_for(&manifest, "on-save").is_empty() {
+        return;
+    }
+
+    let data = state.data.read().unwrap();
+    let mut ctx = build_hook_context(
+        "on-save",
+        &state.vault_root,
+        &state.theme,
+        env!("CARGO_PKG_VERSION"),
+        &data.files,
+        &data.graph,
+    );
+
+    let external_user = match source {
+        ExternalSource::GitCommit { author, email } => HookUser::external_git(author, email),
+        ExternalSource::Filesystem => HookUser::external_filesystem(),
+    };
+    ctx.user = Some(external_user);
+
+    for path in changed_paths {
+        let rel_path = path
+            .strip_prefix(state.vault_root.as_ref())
+            .unwrap_or(path);
+        let rel_str = rel_path.to_string_lossy().into_owned();
+        let page_name = rel_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let content_length = std::fs::metadata(path).map(|m| m.len() as usize).unwrap_or(0);
+
+        ctx.saved = Some(HookSaved {
+            file: rel_str.clone(),
+            page: page_name.clone(),
+            content_length,
+            is_external: true,
+        });
+
+        let context_json = match serde_json::to_vec(&ctx) {
+            Ok(j) => j,
+            Err(e) => {
+                eprintln!("external on-save hook: json error: {e}");
+                continue;
+            }
+        };
+
+        let hook_env = hooks::HookEnv {
+            vault_root: state.vault_root.as_ref().clone(),
+            theme: state.theme.clone(),
+            zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+            extra_vars: vec![
+                ("ZETL_SAVED_FILE".into(), rel_str),
+                ("ZETL_SAVED_PAGE".into(), page_name),
+                ("ZETL_HOOK_DEPTH".into(), "0".into()),
+            ],
+        };
+
+        let results = hooks::run_hooks(&manifest, "on-save", &context_json, &hook_env);
+        for result in results {
+            match result {
+                Ok(output) if !output.success() => {
+                    eprintln!(
+                        "warning: external on-save hook '{}' ({}) exited with code {}",
+                        output.path.display(),
+                        output.source,
+                        output.exit_code.unwrap_or(-1),
+                    );
+                    if !output.stderr.is_empty() {
+                        eprintln!("  stderr: {}", output.stderr.trim_end());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("warning: external on-save hook failed to execute: {e}");
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Detect ACL violations for externally-edited pages (REQ-020-043).
@@ -440,7 +548,7 @@ pub fn spawn_fs_watcher(state: WebState) -> tokio::task::JoinHandle<()> {
         while let Some(changed_paths) = rx.recv().await {
             let state_clone = state.clone();
             let _ = tokio::task::spawn_blocking(move || {
-                reconcile_external_edits(&state_clone, &changed_paths);
+                reconcile_external_edits(&state_clone, &changed_paths, &ExternalSource::Filesystem);
             })
             .await;
         }
@@ -635,7 +743,7 @@ mod tests {
         let new_file = dir.path().join("external.md");
         std::fs::write(&new_file, "# External\n\nAdded by editor\n").unwrap();
 
-        let result = reconcile_external_edits(&state, &[new_file]);
+        let result = reconcile_external_edits(&state, &[new_file], &ExternalSource::Filesystem);
         assert!(result.is_some(), "vault_root_hash should change after external edit");
 
         // Verify VaultData was updated to include the new file.
@@ -700,7 +808,7 @@ mod tests {
         .unwrap();
 
         let new_file = dir.path().join("secret.md");
-        let result = reconcile_external_edits(&state, &[new_file]);
+        let result = reconcile_external_edits(&state, &[new_file], &ExternalSource::Filesystem);
         assert!(result.is_some(), "vault_root_hash should change");
 
         // Verify file was NOT reverted (REQ-020-043: file NOT reverted).
