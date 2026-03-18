@@ -3,26 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 190,
-    "deletions": 16,
+    "files_changed": 2,
+    "insertions": 6,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/user/comment.rs",
-      "src/web/routes.rs"
+      "tests/web_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-comment-integrity-changes",
-      "content": "Modified 3 files (+190, -16): .hence/context-manifest.json, src/user/comment.rs, src/web/routes.rs",
+      "key": "task-spl-rehash-changes",
+      "content": "Modified 2 files (+6, -5): .hence/context-manifest.json, tests/web_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/comment-integrity-v1",
-  "evaluated_at": "2026-03-18T13:05:39Z",
+  "branch_name": "hence/spl-rehash-v1",
+  "evaluated_at": "2026-03-18T13:15:49Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
