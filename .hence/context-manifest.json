@@ -1,12 +1,12 @@
 {
-  "task_id": "visibility",
+  "task_id": "crdt-engine",
   "token_budget": 8000,
-  "tokens_used": 337,
+  "tokens_used": 334,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement three visibility modes (transparent/mixed/hidden): sidebar filtering, wikilink rendering, 403/404 responses, per-page overrides, link graph filtering",
-      "token_cost": 39,
+      "content": "Implement Peritext CRDT engine: automerge-rs RichText integration, mark types for markdown + wikilinks, block-level atomic tokens, growth behavior",
+      "token_cost": 36,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T10:05:59Z"
+  "constructed_at": "2026-03-18T10:28:28Z"
 }
