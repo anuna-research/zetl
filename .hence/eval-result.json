@@ -3,26 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 523,
-    "deletions": 28,
+    "files_changed": 2,
+    "insertions": 116,
+    "deletions": 11,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/acl.rs",
-      "src/web/routes.rs"
+      "src/crdt/mod.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-deontic-acl-changes",
-      "content": "Modified 3 files (+523, -28): .hence/context-manifest.json, src/acl.rs, src/web/routes.rs",
+      "key": "task-md-crdt-roundtrip-changes",
+      "content": "Modified 2 files (+116, -11): .hence/context-manifest.json, src/crdt/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/deontic-acl-v1",
-  "evaluated_at": "2026-03-18T10:53:35Z",
+  "branch_name": "hence/md-crdt-roundtrip-v1",
+  "evaluated_at": "2026-03-18T11:01:26Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
