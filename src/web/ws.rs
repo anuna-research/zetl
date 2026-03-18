@@ -103,6 +103,12 @@ pub enum ServerMsg {
     ExternalEdit {
         files: Vec<String>,
     },
+    /// ACL violation detected during post-reconciliation — admin banner (REQ-020-043).
+    AclViolation {
+        page: String,
+        user_id: String,
+        reason: String,
+    },
 }
 
 /// A single edit operation (splice text or mark).

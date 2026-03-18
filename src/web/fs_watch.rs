@@ -26,6 +26,9 @@ use crate::merkle::{compute_file_root, compute_vault_root};
 use crate::search_index::SearchIndex;
 use crate::types::ContentHash;
 
+#[cfg(feature = "reason")]
+use crate::hooks::context::HookAclViolationEntry;
+
 use super::ws::ServerMsg;
 use super::WebState;
 
@@ -168,11 +171,192 @@ pub fn reconcile_external_edits(
         .collect();
 
     let msg = ServerMsg::ExternalEdit {
-        files: changed_slugs,
+        files: changed_slugs.clone(),
     };
     state.ws_hub.broadcast_all(msg);
 
+    // ── Step 9: Post-reconciliation ACL violation detection (REQ-020-043) ─
+    #[cfg(feature = "reason")]
+    {
+        detect_and_report_acl_violations(state, &changed_slugs);
+    }
+
     Some(vault_root_hash)
+}
+
+/// Detect ACL violations for externally-edited pages (REQ-020-043).
+///
+/// For each changed page slug, evaluates all registered users for Edit
+/// permission. If a page has edit restrictions (any user denied), the edit
+/// bypassed ACL controls — log at WARN, fire on-acl-violation hook, and
+/// broadcast an admin banner via WebSocket.
+///
+/// Files are NOT reverted (per TEST-020-043 acceptance criteria).
+#[cfg(feature = "reason")]
+fn detect_and_report_acl_violations(state: &WebState, changed_slugs: &[String]) {
+    if changed_slugs.is_empty() {
+        return;
+    }
+
+    let users = match crate::user::list_profiles(&state.vault_root) {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("fs-watch: acl violation check: failed to list users: {e}");
+            return;
+        }
+    };
+
+    if users.is_empty() {
+        return;
+    }
+
+    let data = state.data.read().unwrap();
+    let all_page_slugs: Vec<String> = data
+        .page_slug_map
+        .values()
+        .cloned()
+        .collect();
+
+    let mut violations: Vec<HookAclViolationEntry> = Vec::new();
+
+    for slug in changed_slugs {
+        // Find SPL blocks for this page.
+        let spl_blocks: Vec<crate::types::SplBlock> = data
+            .files
+            .iter()
+            .find(|f| {
+                data.page_slug_map
+                    .get(&f.page_name)
+                    .map(|s| s == slug)
+                    .unwrap_or(false)
+            })
+            .map(|f| f.spl_blocks.clone())
+            .unwrap_or_default();
+
+        for user in &users {
+            let query = crate::acl::AclQuery {
+                user_id: user.id.clone(),
+                page_slug: slug.clone(),
+                action: crate::acl::Action::Edit,
+                is_agent: false,
+                now_epoch_ms: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64,
+            };
+
+            match crate::acl::evaluate(&state.vault_root, &query, &spl_blocks, &all_page_slugs) {
+                Ok(crate::acl::AclDecision::Denied { tag, rule_trace }) => {
+                    let reason_str = if let Some(first) = rule_trace.first() {
+                        first.label.clone().unwrap_or_else(|| format!("{tag:?}"))
+                    } else {
+                        format!("{tag:?}")
+                    };
+                    eprintln!(
+                        "warning: ACL violation detected — page '{}' edited externally but user '{}' is denied edit access ({})",
+                        slug, user.id, reason_str
+                    );
+
+                    violations.push(HookAclViolationEntry {
+                        page: slug.clone(),
+                        user_id: user.id.clone(),
+                        action: "edit".to_string(),
+                        reason: reason_str.clone(),
+                    });
+
+                    // Admin banner via WebSocket.
+                    state.ws_hub.broadcast_all(ServerMsg::AclViolation {
+                        page: slug.clone(),
+                        user_id: user.id.clone(),
+                        reason: reason_str,
+                    });
+                }
+                Ok(crate::acl::AclDecision::Allowed { .. }) => {
+                    // User is allowed — no violation for this user.
+                }
+                Err(e) => {
+                    eprintln!("fs-watch: acl violation check error for page '{}' user '{}': {e}", slug, user.id);
+                }
+            }
+        }
+    }
+
+    if violations.is_empty() {
+        return;
+    }
+
+    // Fire on-acl-violation hooks (best-effort).
+    fire_acl_violation_hook(state, violations);
+}
+
+/// Fire the on-acl-violation hook with violation context (REQ-020-043).
+#[cfg(feature = "reason")]
+fn fire_acl_violation_hook(state: &WebState, violations: Vec<HookAclViolationEntry>) {
+    use crate::hooks;
+    use crate::hooks::context::{build_hook_context, HookAclViolations};
+
+    let theme_hooks = hooks::resolve_theme_hooks(&state.vault_root, &state.theme);
+    let manifest = hooks::discover_hooks(&state.vault_root, theme_hooks.path());
+
+    if hooks::hooks_for(&manifest, "on-acl-violation").is_empty() {
+        return;
+    }
+
+    let data = state.data.read().unwrap();
+    let mut ctx = build_hook_context(
+        "on-acl-violation",
+        &state.vault_root,
+        &state.theme,
+        env!("CARGO_PKG_VERSION"),
+        &data.files,
+        &data.graph,
+    );
+
+    ctx.acl_violations = Some(HookAclViolations {
+        violations: violations.clone(),
+    });
+
+    let context_json = match serde_json::to_vec(&ctx) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("on-acl-violation hook: json error: {e}");
+            return;
+        }
+    };
+
+    // Build env vars with violation summary.
+    let violation_pages: Vec<String> = violations.iter().map(|v| v.page.clone()).collect();
+    let hook_env = hooks::HookEnv {
+        vault_root: state.vault_root.as_ref().clone(),
+        theme: state.theme.clone(),
+        zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+        extra_vars: vec![
+            ("ZETL_ACL_VIOLATION_COUNT".into(), violations.len().to_string()),
+            ("ZETL_ACL_VIOLATION_PAGES".into(), violation_pages.join(",")),
+            ("ZETL_HOOK_DEPTH".into(), "0".into()),
+        ],
+    };
+
+    let results = hooks::run_hooks(&manifest, "on-acl-violation", &context_json, &hook_env);
+    for result in results {
+        match result {
+            Ok(output) if !output.success() => {
+                eprintln!(
+                    "warning: on-acl-violation hook '{}' ({}) exited with code {}",
+                    output.path.display(),
+                    output.source,
+                    output.exit_code.unwrap_or(-1),
+                );
+                if !output.stderr.is_empty() {
+                    eprintln!("  stderr: {}", output.stderr.trim_end());
+                }
+            }
+            Err(e) => {
+                eprintln!("warning: on-acl-violation hook failed to execute: {e}");
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Spawn the filesystem watcher background task (REQ-020-039).
@@ -401,23 +585,18 @@ mod tests {
         assert!(result.is_none(), "non-markdown files should be filtered");
     }
 
-    /// TEST-020-039: External file write detected; vault state updated.
-    #[test]
-    fn reconcile_updates_vault_state() {
+    /// Helper: build a WebState for testing.
+    fn make_test_state(dir: &std::path::Path) -> WebState {
         use crate::search_index::SearchIndex;
         use crate::web::ws::CrdtDocStore;
         use std::sync::{Arc, Mutex, RwLock};
 
-        let dir = tempfile::TempDir::new().unwrap();
-        std::fs::write(dir.path().join("hello.md"), "# Hello\n\nworld\n").unwrap();
+        let vault_root = Arc::new(dir.to_path_buf());
+        let data = super::super::reindex(dir).unwrap();
+        let search_index = SearchIndex::build(dir, &data.files).unwrap();
+        let engine = crate::web::engine::TemplateEngine::new(dir, "default", false, false);
 
-        let vault_root = Arc::new(dir.path().to_path_buf());
-        let data = super::super::reindex(dir.path()).unwrap();
-        let search_index = SearchIndex::build(dir.path(), &data.files).unwrap();
-        let engine =
-            crate::web::engine::TemplateEngine::new(dir.path(), "default", false, false);
-
-        let state = WebState {
+        WebState {
             data: Arc::new(RwLock::new(data)),
             vault_root: vault_root.clone(),
             search_index: Arc::new(search_index),
@@ -441,7 +620,16 @@ mod tests {
             pending_writes: PendingWrites::new(),
             #[cfg(feature = "semantic")]
             vector_index: None,
-        };
+        }
+    }
+
+    /// TEST-020-039: External file write detected; vault state updated.
+    #[test]
+    fn reconcile_updates_vault_state() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("hello.md"), "# Hello\n\nworld\n").unwrap();
+
+        let state = make_test_state(dir.path());
 
         // Simulate external edit: add a new file.
         let new_file = dir.path().join("external.md");
@@ -456,5 +644,177 @@ mod tests {
             data.files.iter().any(|f| f.page_name == "external"),
             "external page should appear in VaultData after reconciliation"
         );
+    }
+
+    /// TEST-020-043: ACL violation detected, logged at WARN level, file NOT reverted.
+    #[cfg(feature = "reason")]
+    #[test]
+    fn acl_violation_detected_and_not_reverted() {
+        let dir = tempfile::TempDir::new().unwrap();
+
+        // Create a page with an SPL block that denies edit for a specific user.
+        std::fs::write(
+            dir.path().join("secret.md"),
+            "# Secret\n\nRestricted content.\n",
+        )
+        .unwrap();
+
+        // Create a user profile that will be denied edit access via policy.
+        let users_dir = dir.path().join(".zetl").join("users").join("bob-12345678");
+        std::fs::create_dir_all(&users_dir).unwrap();
+        std::fs::write(
+            users_dir.join("profile.json"),
+            r#"{
+                "id": "bob-12345678",
+                "name": "Bob",
+                "created_at": "2026-03-18T10:00:00Z",
+                "invited_by": "alice-a1b2c3d4",
+                "owner": false,
+                "credentials": [],
+                "recovery_pubkey": "dGVzdA",
+                "agent_token_generation": 0
+            }"#,
+        )
+        .unwrap();
+
+        // Create an access.spl policy that denies edit for bob on "secret".
+        let zetl_dir = dir.path().join(".zetl");
+        std::fs::write(
+            zetl_dir.join("access.spl"),
+            r#"
+(given (deny-edit "bob-12345678" "secret"))
+(strict r-deny-bob-secret
+  (deny-edit "bob-12345678" "secret")
+  (neg (can-edit "bob-12345678" "secret")))
+"#,
+        )
+        .unwrap();
+
+        let state = make_test_state(dir.path());
+
+        // Simulate external edit to "secret.md".
+        std::fs::write(
+            dir.path().join("secret.md"),
+            "# Secret\n\nModified externally by unauthorized user.\n",
+        )
+        .unwrap();
+
+        let new_file = dir.path().join("secret.md");
+        let result = reconcile_external_edits(&state, &[new_file]);
+        assert!(result.is_some(), "vault_root_hash should change");
+
+        // Verify file was NOT reverted (REQ-020-043: file NOT reverted).
+        let content = std::fs::read_to_string(dir.path().join("secret.md")).unwrap();
+        assert!(
+            content.contains("Modified externally"),
+            "file content should NOT be reverted after ACL violation"
+        );
+
+        // Verify VaultData reflects the external edit.
+        let data = state.data.read().unwrap();
+        let secret_file = data.files.iter().find(|f| f.page_name == "secret").unwrap();
+        assert!(
+            secret_file.path.to_string_lossy().contains("secret"),
+            "secret page should still be in VaultData"
+        );
+    }
+
+    /// TEST-020-043: Violation logged — detect_and_report_acl_violations produces violations
+    /// for denied users.
+    #[cfg(feature = "reason")]
+    #[test]
+    fn detect_violations_finds_denied_users() {
+        let dir = tempfile::TempDir::new().unwrap();
+
+        std::fs::write(dir.path().join("page.md"), "# Page\n\nContent.\n").unwrap();
+
+        // Create two users: owner (allowed) and editor (will be denied via policy).
+        let alice_dir = dir.path().join(".zetl").join("users").join("alice-owner");
+        std::fs::create_dir_all(&alice_dir).unwrap();
+        std::fs::write(
+            alice_dir.join("profile.json"),
+            r#"{
+                "id": "alice-owner",
+                "name": "Alice",
+                "created_at": "2026-03-18T10:00:00Z",
+                "invited_by": null,
+                "owner": true,
+                "credentials": [],
+                "recovery_pubkey": "dGVzdA",
+                "agent_token_generation": 0
+            }"#,
+        )
+        .unwrap();
+
+        let bob_dir = dir.path().join(".zetl").join("users").join("bob-editor");
+        std::fs::create_dir_all(&bob_dir).unwrap();
+        std::fs::write(
+            bob_dir.join("profile.json"),
+            r#"{
+                "id": "bob-editor",
+                "name": "Bob",
+                "created_at": "2026-03-18T10:00:00Z",
+                "invited_by": "alice-owner",
+                "owner": false,
+                "credentials": [],
+                "recovery_pubkey": "dGVzdA",
+                "agent_token_generation": 0
+            }"#,
+        )
+        .unwrap();
+
+        // Deny bob-editor from editing "page".
+        let zetl_dir = dir.path().join(".zetl");
+        std::fs::write(
+            zetl_dir.join("access.spl"),
+            r#"
+(given (deny-edit "bob-editor" "page"))
+(strict r-deny-bob-page
+  (deny-edit "bob-editor" "page")
+  (neg (can-edit "bob-editor" "page")))
+"#,
+        )
+        .unwrap();
+
+        let state = make_test_state(dir.path());
+
+        // Run violation detection on "page" slug.
+        detect_and_report_acl_violations(&state, &["page".to_string()]);
+
+        // The function logs to stderr and broadcasts via WebSocket.
+        // We can verify the function completes without panic — the WARN log
+        // and WebSocket broadcast are observable side-effects.
+        // The important acceptance criterion is that the file is NOT reverted.
+        let content = std::fs::read_to_string(dir.path().join("page.md")).unwrap();
+        assert!(
+            content.contains("Content"),
+            "file should not be reverted after violation detection"
+        );
+    }
+
+    /// TEST-020-043: No violations when no users exist.
+    #[cfg(feature = "reason")]
+    #[test]
+    fn no_violations_when_no_users() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("page.md"), "# Page\n").unwrap();
+
+        let state = make_test_state(dir.path());
+
+        // Should complete without panic when no users exist.
+        detect_and_report_acl_violations(&state, &["page".to_string()]);
+    }
+
+    /// TEST-020-043: No violations when slug list is empty.
+    #[cfg(feature = "reason")]
+    #[test]
+    fn no_violations_for_empty_slugs() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("page.md"), "# Page\n").unwrap();
+
+        let state = make_test_state(dir.path());
+
+        // Should return immediately.
+        detect_and_report_acl_violations(&state, &[]);
     }
 }

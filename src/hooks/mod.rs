@@ -30,6 +30,7 @@ pub const HOOK_NAMES: &[&str] = &[
     "pre-serve",
     "on-agent",
     "on-access-request",
+    "on-acl-violation",
 ];
 
 /// Where a discovered hook originated.

@@ -59,6 +59,9 @@ pub struct HookContext {
     /// Access request context (only present for on-access-request hooks, REQ-020-047).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_request: Option<HookAccessRequest>,
+    /// ACL violations detected during post-reconciliation (only present for on-acl-violation hooks, REQ-020-043).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acl_violations: Option<HookAclViolations>,
 }
 
 /// User identity attached to hook context when an authenticated session exists.
@@ -107,6 +110,26 @@ pub struct HookAccessRequest {
     pub page: String,
     /// ISO-8601 timestamp of the request.
     pub requested_at: String,
+}
+
+/// A single ACL violation detected during post-reconciliation (REQ-020-043).
+#[derive(Debug, Clone, Serialize)]
+pub struct HookAclViolationEntry {
+    /// Page slug that was edited in violation of policy.
+    pub page: String,
+    /// User ID that made the edit (empty string if unknown/unattributable).
+    pub user_id: String,
+    /// The action that was denied (`"edit"`).
+    pub action: String,
+    /// Human-readable reason from the ACL decision.
+    pub reason: String,
+}
+
+/// ACL violation context for on-acl-violation hooks (REQ-020-043).
+#[derive(Debug, Clone, Serialize)]
+pub struct HookAclViolations {
+    /// The violations detected in this reconciliation pass.
+    pub violations: Vec<HookAclViolationEntry>,
 }
 
 /// Diagnostics payload for post-check hooks.
@@ -243,6 +266,7 @@ pub fn build_hook_context(
         hook_depth: 0,
         agent: None,
         access_request: None,
+        acl_violations: None,
     }
 }
 
@@ -753,5 +777,60 @@ mod tests {
         assert_eq!(agent["task"], "summariser");
         assert!(agent["target_pages"].as_array().unwrap().is_empty());
         assert_eq!(agent["budget_tokens"], 0);
+    }
+
+    #[test]
+    fn acl_violations_absent_by_default() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let ctx = build_hook_context("post-build", tmp.path(), "", "0.1.0", &files, &graph);
+        assert!(ctx.acl_violations.is_none());
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(val.get("acl_violations").is_none());
+    }
+
+    #[test]
+    fn acl_violations_serialises_when_set() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx = build_hook_context(
+            "on-acl-violation",
+            tmp.path(),
+            "",
+            "0.1.0",
+            &files,
+            &graph,
+        );
+        ctx.acl_violations = Some(HookAclViolations {
+            violations: vec![
+                HookAclViolationEntry {
+                    page: "secret".to_string(),
+                    user_id: "bob-12345678".to_string(),
+                    action: "edit".to_string(),
+                    reason: "policy denied".to_string(),
+                },
+            ],
+        });
+
+        let json = serde_json::to_string_pretty(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let violations = &val["acl_violations"];
+        assert!(violations.is_object());
+
+        let entries = violations["violations"].as_array().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["page"], "secret");
+        assert_eq!(entries[0]["user_id"], "bob-12345678");
+        assert_eq!(entries[0]["action"], "edit");
+        assert_eq!(entries[0]["reason"], "policy denied");
     }
 }
