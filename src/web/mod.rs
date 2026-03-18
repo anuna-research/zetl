@@ -8,6 +8,7 @@ pub mod routes;
 pub mod rate_limit;
 pub mod session;
 pub mod theme;
+pub mod ws;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -157,6 +158,10 @@ pub struct WebState {
     /// Git repository lock for serializing auto-commits on save (REQ-020-015, CON-020-006).
     /// `None` when the vault is not inside a git repository.
     pub git_commit_lock: Option<Arc<git_commit::GitCommitLock>>,
+    /// WebSocket editing hub — manages per-slug broadcast rooms (REQ-020-028).
+    pub ws_hub: ws::WsHub,
+    /// One-time ticket store for WebSocket auth (agents can't send cookies).
+    pub ticket_store: ws::TicketStore,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]
@@ -347,14 +352,24 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
             session::collab_gate,
         ));
 
+    // ── WebSocket routes (auth handled inside the handler) ───────────
+    let ws_routes = Router::new()
+        .route("/ws/edit/{*slug}", get(ws::ws_edit_handler))
+        .route("/api/ws/ticket", post(routes::ws_ticket_handler))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            session::collab_gate,
+        ));
+
     let app = Router::new()
         .merge(auth_routes)
+        .merge(ws_routes)
         .merge(content_routes)
         .with_state(state)
         .layer(middleware::map_response(|mut resp: axum::response::Response| async {
             resp.headers_mut().insert(
                 header::CONTENT_SECURITY_POLICY,
-                "script-src 'self'; frame-ancestors 'none'; connect-src 'self' wss:"
+                "script-src 'self'; frame-ancestors 'none'; connect-src 'self' ws: wss:"
                     .parse()
                     .unwrap(),
             );

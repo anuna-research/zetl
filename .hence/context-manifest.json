@@ -1,12 +1,12 @@
 {
-  "task_id": "md-crdt-roundtrip",
+  "task_id": "ws-protocol",
   "token_budget": 8000,
-  "tokens_used": 331,
+  "tokens_used": 328,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement markdown→CRDT parser and CRDT→canonical markdown serializer per CON-020-008; deterministic output, fixed nesting order",
-      "token_cost": 33,
+      "content": "Implement WebSocket /ws/edit/{slug} endpoint: sync, op, presence messages; session cookie or ticket auth; cursor broadcast",
+      "token_cost": 30,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T10:53:41Z"
+  "constructed_at": "2026-03-18T11:01:32Z"
 }

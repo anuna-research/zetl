@@ -748,6 +748,8 @@ mod tests {
             #[cfg(feature = "reason")]
             acl_cache: Arc::new(Mutex::new(crate::web::AclCache::new())),
             git_commit_lock: None,
+            ws_hub: crate::web::ws::WsHub::new(),
+            ticket_store: crate::web::ws::TicketStore::new(),
         }
     }
 
