@@ -1399,6 +1399,7 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
         git_commit_lock: None,
         ws_hub: zetl::web::ws::WsHub::new(),
         ticket_store: zetl::web::ws::TicketStore::new(),
+        crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
     }
 }
 

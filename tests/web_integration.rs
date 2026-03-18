@@ -71,6 +71,7 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         git_commit_lock: None,
         ws_hub: zetl::web::ws::WsHub::new(),
         ticket_store: zetl::web::ws::TicketStore::new(),
+        crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(vault_root.to_path_buf())),
         #[cfg(feature = "semantic")]
         vector_index: None,
     }

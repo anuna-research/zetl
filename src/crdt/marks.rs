@@ -104,6 +104,20 @@ impl MarkType {
         }
     }
 
+    /// Reconstruct a simple (non-parameterized) MarkType from just a name.
+    /// Used for `unmark` operations where no value is provided.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "bold" => Some(Self::Bold),
+            "italic" => Some(Self::Italic),
+            "code" => Some(Self::Code),
+            "strikethrough" => Some(Self::Strikethrough),
+            "highlight" => Some(Self::Highlight),
+            "comment" => Some(Self::Comment),
+            _ => None,
+        }
+    }
+
     /// Conflict resolution strategy.
     ///
     /// Returns `true` if this mark type uses last-write-wins (exclusive),

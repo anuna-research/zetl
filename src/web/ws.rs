@@ -16,13 +16,17 @@
 //! **Auth:** session cookie (`zetl_session`) or one-time ticket (`?ticket=<token>`).
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::extract::ws::{Message, WebSocket};
-use axum::extract::{Path, Query, State, WebSocketUpgrade};
+use axum::extract::{Path as AxumPath, Query, State, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
+
+use crate::crdt::CrdtDocument;
 
 use super::WebState;
 
@@ -168,6 +172,417 @@ impl WsHub {
     }
 }
 
+// ── CRDT document store (REQ-020-029) ────────────────────────────────
+
+/// Convert a `serde_json::Value` to an automerge `ScalarValue`.
+fn json_to_scalar(v: &serde_json::Value) -> automerge::ScalarValue {
+    match v {
+        serde_json::Value::Bool(b) => automerge::ScalarValue::from(*b),
+        serde_json::Value::String(s) => automerge::ScalarValue::from(s.clone()),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                automerge::ScalarValue::from(i)
+            } else if let Some(f) = n.as_f64() {
+                automerge::ScalarValue::from(f)
+            } else {
+                automerge::ScalarValue::from(true)
+            }
+        }
+        _ => automerge::ScalarValue::from(true),
+    }
+}
+
+/// Default eviction TTL: 10 minutes after last client disconnects.
+const DEFAULT_EVICTION_TTL: Duration = Duration::from_secs(10 * 60);
+
+/// Default quiescence delay: 5 seconds of no edits triggers a flush.
+const DEFAULT_QUIESCENCE_DELAY: Duration = Duration::from_secs(5);
+
+/// Default maximum number of concurrently loaded CRDT documents.
+const DEFAULT_MAX_DOCS: usize = 50;
+
+/// A loaded CRDT document with lifecycle metadata.
+pub struct CrdtDocEntry {
+    pub doc: CrdtDocument,
+    /// Last time any edit was received.
+    pub last_edit: Instant,
+    /// Last time the document was flushed to disk.
+    pub last_flush: Instant,
+    /// Whether the CRDT state has diverged from the on-disk markdown.
+    pub dirty: bool,
+    /// Number of currently connected WebSocket clients.
+    pub client_count: usize,
+    /// When the last client disconnected (None if clients are still connected).
+    pub disconnected_at: Option<Instant>,
+    /// Last time this document was accessed (for LRU eviction).
+    pub last_access: Instant,
+}
+
+impl CrdtDocEntry {
+    fn new(doc: CrdtDocument) -> Self {
+        let now = Instant::now();
+        Self {
+            doc,
+            last_edit: now,
+            last_flush: now,
+            dirty: false,
+            client_count: 0,
+            disconnected_at: None,
+            last_access: now,
+        }
+    }
+
+    /// Mark that an edit was received.
+    pub fn touch_edit(&mut self) {
+        let now = Instant::now();
+        self.last_edit = now;
+        self.last_access = now;
+        self.dirty = true;
+    }
+
+    /// Mark that the document was flushed to disk.
+    pub fn mark_flushed(&mut self) {
+        self.last_flush = Instant::now();
+        self.dirty = false;
+    }
+}
+
+/// Manages CRDT document lifecycle: load, eviction, memory bounds (REQ-020-029).
+///
+/// Documents are loaded from disk on first WebSocket connection and held in
+/// memory. After all clients disconnect, the document remains cached for
+/// `eviction_ttl` before being flushed (if dirty) and evicted. A memory
+/// bound (`max_docs`) enforces LRU eviction when capacity is reached.
+#[derive(Clone)]
+pub struct CrdtDocStore {
+    docs: Arc<Mutex<HashMap<String, CrdtDocEntry>>>,
+    vault_root: Arc<PathBuf>,
+    pub max_docs: usize,
+    pub eviction_ttl: Duration,
+    pub quiescence_delay: Duration,
+}
+
+impl CrdtDocStore {
+    pub fn new(vault_root: Arc<PathBuf>) -> Self {
+        Self {
+            docs: Arc::new(Mutex::new(HashMap::new())),
+            vault_root,
+            max_docs: DEFAULT_MAX_DOCS,
+            eviction_ttl: DEFAULT_EVICTION_TTL,
+            quiescence_delay: DEFAULT_QUIESCENCE_DELAY,
+        }
+    }
+
+    /// Get or load a CRDT document for the given slug.
+    ///
+    /// If the document is already in memory, returns the existing entry.
+    /// Otherwise, reads the `.md` file from disk and parses it into a
+    /// `CrdtDocument`. If the file doesn't exist, creates an empty document.
+    ///
+    /// Enforces the memory bound by evicting the least-recently-used
+    /// document (that has no active clients) when at capacity.
+    pub fn load_or_get(
+        &self,
+        slug: &str,
+    ) -> Result<(), anyhow::Error> {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+
+        if let Some(entry) = docs.get_mut(slug) {
+            entry.last_access = Instant::now();
+            return Ok(());
+        }
+
+        // Enforce memory bound before inserting
+        if docs.len() >= self.max_docs {
+            self.evict_lru(&mut docs)?;
+        }
+
+        // Load from disk
+        let doc = self.load_from_disk(slug)?;
+        docs.insert(slug.to_string(), CrdtDocEntry::new(doc));
+        Ok(())
+    }
+
+    /// Read a page's markdown file and parse it into a `CrdtDocument`.
+    fn load_from_disk(&self, slug: &str) -> Result<CrdtDocument, anyhow::Error> {
+        let md_path = self.md_path_for_slug(slug);
+        if md_path.exists() {
+            let markdown = std::fs::read_to_string(&md_path)
+                .map_err(|e| anyhow::anyhow!("read {}: {e}", md_path.display()))?;
+            CrdtDocument::from_markdown(&markdown)
+        } else {
+            CrdtDocument::new()
+        }
+    }
+
+    /// Resolve a slug to its `.md` file path.
+    fn md_path_for_slug(&self, slug: &str) -> PathBuf {
+        self.vault_root.join(format!("{slug}.md"))
+    }
+
+    /// Increment client count for a document. Must be loaded first.
+    pub fn client_connected(&self, slug: &str) {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        if let Some(entry) = docs.get_mut(slug) {
+            entry.client_count += 1;
+            entry.disconnected_at = None;
+            entry.last_access = Instant::now();
+        }
+    }
+
+    /// Decrement client count. When it reaches 0, records the disconnect time
+    /// for eviction TTL tracking.
+    pub fn client_disconnected(&self, slug: &str) {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        if let Some(entry) = docs.get_mut(slug) {
+            entry.client_count = entry.client_count.saturating_sub(1);
+            if entry.client_count == 0 {
+                entry.disconnected_at = Some(Instant::now());
+            }
+        }
+    }
+
+    /// Record an edit on the document (marks dirty, updates timestamps).
+    pub fn record_edit(&self, slug: &str) {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        if let Some(entry) = docs.get_mut(slug) {
+            entry.touch_edit();
+        }
+    }
+
+    /// Get the serialized CRDT state (automerge bytes, base64-encoded) for a slug.
+    pub fn get_doc_state_b64(&self, slug: &str) -> Option<String> {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        if let Some(entry) = docs.get_mut(slug) {
+            entry.last_access = Instant::now();
+            let bytes = entry.doc.save();
+            Some(base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                &bytes,
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Apply a sync message (full CRDT state from a client) to the stored doc.
+    pub fn apply_sync(&self, slug: &str, doc_b64: &str) -> Result<(), anyhow::Error> {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(doc_b64)
+            .map_err(|e| anyhow::anyhow!("invalid base64: {e}"))?;
+        let incoming = CrdtDocument::load(&bytes)?;
+
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        if let Some(entry) = docs.get_mut(slug) {
+            // Replace with the incoming state (client push)
+            entry.doc = incoming;
+            entry.touch_edit();
+        }
+        Ok(())
+    }
+
+    /// Apply incremental operations to the stored CRDT document.
+    pub fn apply_ops(&self, slug: &str, ops: &[OpEntry]) -> Result<(), anyhow::Error> {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        if let Some(entry) = docs.get_mut(slug) {
+            for op in ops {
+                match op {
+                    OpEntry::Splice { pos, del, text } => {
+                        entry.doc.splice_text(*pos, *del as isize, text)?;
+                    }
+                    OpEntry::Mark {
+                        name,
+                        value,
+                        start,
+                        end,
+                    } => {
+                        let sv = json_to_scalar(value);
+                        if let Some(mt) =
+                            crate::crdt::marks::MarkType::from_mark(name, &sv)
+                        {
+                            entry.doc.mark(&mt, *start, *end)?;
+                        }
+                    }
+                    OpEntry::Unmark { name, start, end } => {
+                        if let Some(mt) = crate::crdt::marks::MarkType::from_name(name) {
+                            entry.doc.unmark(&mt, *start, *end)?;
+                        }
+                    }
+                }
+            }
+            entry.touch_edit();
+        }
+        Ok(())
+    }
+
+    /// Collect slugs that need quiescence flush (dirty + idle for >= quiescence_delay).
+    pub fn slugs_needing_flush(&self) -> Vec<String> {
+        let docs = self.docs.lock().expect("crdt store lock");
+        let now = Instant::now();
+        docs.iter()
+            .filter(|(_, entry)| {
+                entry.dirty && now.duration_since(entry.last_edit) >= self.quiescence_delay
+            })
+            .map(|(slug, _)| slug.clone())
+            .collect()
+    }
+
+    /// Serialize a document to markdown for flushing. Returns None if not loaded or not dirty.
+    pub fn serialize_for_flush(&self, slug: &str) -> Option<String> {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        let entry = docs.get_mut(slug)?;
+        if !entry.dirty {
+            return None;
+        }
+        entry.doc.to_markdown().ok()
+    }
+
+    /// Mark a document as flushed after successfully writing to disk.
+    pub fn mark_flushed(&self, slug: &str) {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        if let Some(entry) = docs.get_mut(slug) {
+            entry.mark_flushed();
+        }
+    }
+
+    /// Collect slugs eligible for eviction (no clients + past eviction TTL).
+    pub fn slugs_for_eviction(&self) -> Vec<String> {
+        let docs = self.docs.lock().expect("crdt store lock");
+        let now = Instant::now();
+        docs.iter()
+            .filter(|(_, entry)| {
+                entry.client_count == 0
+                    && entry
+                        .disconnected_at
+                        .map_or(false, |t| now.duration_since(t) >= self.eviction_ttl)
+            })
+            .map(|(slug, _)| slug.clone())
+            .collect()
+    }
+
+    /// Evict a document from the store. If dirty, serializes it first and
+    /// returns the markdown for the caller to flush to disk.
+    pub fn evict(&self, slug: &str) -> Option<String> {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        if let Some(entry) = docs.get(slug) {
+            let markdown = if entry.dirty {
+                entry.doc.to_markdown().ok()
+            } else {
+                None
+            };
+            docs.remove(slug);
+            markdown
+        } else {
+            None
+        }
+    }
+
+    /// Evict the least-recently-used document that has no active clients.
+    /// If the evicted doc is dirty, returns its slug and markdown for flushing.
+    fn evict_lru(
+        &self,
+        docs: &mut HashMap<String, CrdtDocEntry>,
+    ) -> Result<(), anyhow::Error> {
+        // Find the LRU entry with no active clients
+        let lru_slug = docs
+            .iter()
+            .filter(|(_, entry)| entry.client_count == 0)
+            .min_by_key(|(_, entry)| entry.last_access)
+            .map(|(slug, _)| slug.clone());
+
+        if let Some(slug) = lru_slug {
+            if let Some(entry) = docs.get(&slug) {
+                if entry.dirty {
+                    // Flush before evicting
+                    if let Ok(md) = entry.doc.to_markdown() {
+                        let path = self.md_path_for_slug(&slug);
+                        std::fs::write(&path, &md).map_err(|e| {
+                            anyhow::anyhow!("flush on evict {}: {e}", path.display())
+                        })?;
+                    }
+                }
+            }
+            docs.remove(&slug);
+        } else {
+            // All docs have active clients — cannot evict, allow over-capacity
+            eprintln!(
+                "warning: CRDT store at capacity ({}) with all docs active",
+                self.max_docs
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Check if a document is loaded.
+    pub fn is_loaded(&self, slug: &str) -> bool {
+        self.docs.lock().expect("crdt store lock").contains_key(slug)
+    }
+
+    /// Number of currently loaded documents.
+    pub fn doc_count(&self) -> usize {
+        self.docs.lock().expect("crdt store lock").len()
+    }
+
+    /// Flush all dirty documents and clear the store (for shutdown).
+    pub fn flush_all(&self) {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        for (slug, entry) in docs.iter() {
+            if entry.dirty {
+                if let Ok(md) = entry.doc.to_markdown() {
+                    let path = self.md_path_for_slug(slug);
+                    if let Err(e) = std::fs::write(&path, &md) {
+                        eprintln!("error flushing {slug} on shutdown: {e}");
+                    }
+                }
+            }
+        }
+        docs.clear();
+    }
+}
+
+/// Spawn a background task that periodically checks for quiescence flushes
+/// and TTL evictions. Returns a `JoinHandle` that can be aborted on shutdown.
+pub fn spawn_crdt_lifecycle_task(
+    store: CrdtDocStore,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
+        loop {
+            interval.tick().await;
+
+            // Quiescence flush: serialize dirty docs that have been idle
+            let to_flush = store.slugs_needing_flush();
+            for slug in &to_flush {
+                if let Some(md) = store.serialize_for_flush(slug) {
+                    let path = store.md_path_for_slug(slug);
+                    match std::fs::write(&path, &md) {
+                        Ok(()) => {
+                            store.mark_flushed(slug);
+                        }
+                        Err(e) => {
+                            eprintln!("error: quiescence flush for {slug}: {e}");
+                        }
+                    }
+                }
+            }
+
+            // TTL eviction: remove docs where all clients left > eviction_ttl ago
+            let to_evict = store.slugs_for_eviction();
+            for slug in &to_evict {
+                if let Some(md) = store.evict(slug) {
+                    // Dirty doc was evicted — write it out
+                    let path = store.md_path_for_slug(slug);
+                    if let Err(e) = std::fs::write(&path, &md) {
+                        eprintln!("error: eviction flush for {slug}: {e}");
+                    }
+                }
+            }
+        }
+    })
+}
+
 // ── Ticket auth ──────────────────────────────────────────────────────
 
 /// One-time ticket store for WebSocket auth (agents can't send cookies).
@@ -227,7 +642,7 @@ pub struct WsQuery {
 /// Axum handler for `GET /ws/edit/{slug}` — upgrades to WebSocket.
 pub async fn ws_edit_handler(
     ws: WebSocketUpgrade,
-    Path(slug): Path<String>,
+    AxumPath(slug): AxumPath<String>,
     Query(query): Query<WsQuery>,
     State(state): State<WebState>,
 ) -> impl IntoResponse {
@@ -260,18 +675,34 @@ fn authenticate(state: &WebState, query: &WsQuery) -> Option<String> {
 
 /// Handle an authenticated WebSocket connection.
 async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, state: WebState) {
+    // Load CRDT document on first connection (REQ-020-029)
+    if let Err(e) = state.crdt_store.load_or_get(&slug) {
+        eprintln!("error loading CRDT for {slug}: {e}");
+        let err_json = serde_json::to_string(&ServerMsg::Error {
+            message: format!("failed to load document: {e}"),
+        })
+        .unwrap_or_default();
+        let _ = socket.send(Message::Text(err_json.into())).await;
+        return;
+    }
+
+    // Track client connection
+    state.crdt_store.client_connected(&slug);
+
     let room = state.ws_hub.room(&slug);
     let mut rx = room.tx.subscribe();
 
-    // Send current doc state to joiner (if any previous state exists)
-    let initial_doc = {
-        let doc = room.doc_state.lock().expect("doc lock");
-        doc.clone()
-    };
+    // Send current CRDT state to joiner from the doc store
+    let initial_doc = state.crdt_store.get_doc_state_b64(&slug)
+        .or_else(|| {
+            let doc = room.doc_state.lock().expect("doc lock");
+            doc.clone()
+        });
     if let Some(doc_b64) = initial_doc {
         let msg = ServerMsg::Sync { doc: doc_b64 };
         if let Ok(json) = serde_json::to_string(&msg) {
             if socket.send(Message::Text(json.into())).await.is_err() {
+                state.crdt_store.client_disconnected(&slug);
                 return;
             }
         }
@@ -322,7 +753,7 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
             ws_msg = socket.recv() => {
                 match ws_msg {
                     Some(Ok(Message::Text(text))) => {
-                        if let Err(e) = process_client_msg(text.as_str(), &user_id, &room) {
+                        if let Err(e) = process_client_msg(text.as_str(), &user_id, &slug, &room, &state.crdt_store) {
                             eprintln!("ws error for {user_id} on {slug}: {e}");
                             let err_json = serde_json::to_string(&ServerMsg::Error {
                                 message: e.to_string(),
@@ -338,6 +769,7 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
     }
 
     relay_task.abort();
+    state.crdt_store.client_disconnected(&slug);
     state.ws_hub.remove_if_empty(&slug);
 }
 
@@ -345,14 +777,19 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
 fn process_client_msg(
     text: &str,
     user_id: &str,
+    slug: &str,
     room: &EditRoom,
+    crdt_store: &CrdtDocStore,
 ) -> Result<(), anyhow::Error> {
     let msg: ClientMsg =
         serde_json::from_str(text).map_err(|e| anyhow::anyhow!("invalid message: {e}"))?;
 
     match msg {
         ClientMsg::Sync { doc } => {
-            // Client pushes full doc state — store it and broadcast
+            // Client pushes full doc state — apply to CRDT store and broadcast
+            if let Err(e) = crdt_store.apply_sync(slug, &doc) {
+                eprintln!("warning: CRDT sync apply failed for {slug}: {e}");
+            }
             {
                 let mut state = room.doc_state.lock().expect("doc lock");
                 *state = Some(doc.clone());
@@ -360,6 +797,11 @@ fn process_client_msg(
             let _ = room.tx.send(ServerMsg::Sync { doc });
         }
         ClientMsg::Op { ops } => {
+            // Apply operations to the server-side CRDT document
+            if let Err(e) = crdt_store.apply_ops(slug, &ops) {
+                eprintln!("warning: CRDT op apply failed for {slug}: {e}");
+            }
+            crdt_store.record_edit(slug);
             let _ = room.tx.send(ServerMsg::Op {
                 ops,
                 user_id: user_id.to_string(),
@@ -503,13 +945,22 @@ mod tests {
         assert!(store.redeem("bogus").is_none());
     }
 
+    fn test_crdt_store() -> CrdtDocStore {
+        let tmp = tempfile::tempdir().unwrap();
+        CrdtDocStore::new(Arc::new(tmp.into_path()))
+    }
+
     #[test]
     fn process_sync_stores_doc() {
         let room = EditRoom::new();
+        let store = test_crdt_store();
+        store.load_or_get("test").unwrap();
         process_client_msg(
             r#"{"type":"sync","doc":"AQID"}"#,
             "alice",
+            "test",
             &room,
+            &store,
         )
         .unwrap();
         let doc = room.doc_state.lock().unwrap();
@@ -520,10 +971,14 @@ mod tests {
     fn process_op_broadcasts() {
         let room = EditRoom::new();
         let mut rx = room.tx.subscribe();
+        let store = test_crdt_store();
+        store.load_or_get("test").unwrap();
         process_client_msg(
             r#"{"type":"op","ops":[{"action":"splice","pos":0,"del":0,"text":"hi"}]}"#,
             "alice",
+            "test",
             &room,
+            &store,
         )
         .unwrap();
         let msg = rx.try_recv().unwrap();
@@ -534,10 +989,13 @@ mod tests {
     fn process_presence_broadcasts() {
         let room = EditRoom::new();
         let mut rx = room.tx.subscribe();
+        let store = test_crdt_store();
         process_client_msg(
             r#"{"type":"presence","cursor":{"index":5,"head":5},"name":"Alice"}"#,
             "alice",
+            "test",
             &room,
+            &store,
         )
         .unwrap();
         let msg = rx.try_recv().unwrap();
@@ -549,7 +1007,197 @@ mod tests {
     #[test]
     fn process_invalid_json_returns_error() {
         let room = EditRoom::new();
-        let result = process_client_msg("not json", "alice", &room);
+        let store = test_crdt_store();
+        let result = process_client_msg("not json", "alice", "test", &room, &store);
         assert!(result.is_err());
+    }
+
+    // ── CrdtDocStore lifecycle tests (TEST-020-029) ──────────────────
+
+    #[test]
+    fn crdt_store_load_from_disk() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("readme.md"), "# Hello\n").unwrap();
+        let store = CrdtDocStore::new(Arc::new(tmp.path().to_path_buf()));
+
+        store.load_or_get("readme").unwrap();
+        assert!(store.is_loaded("readme"));
+        assert_eq!(store.doc_count(), 1);
+    }
+
+    #[test]
+    fn crdt_store_load_missing_file_creates_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrdtDocStore::new(Arc::new(tmp.path().to_path_buf()));
+
+        store.load_or_get("nonexistent").unwrap();
+        assert!(store.is_loaded("nonexistent"));
+    }
+
+    #[test]
+    fn crdt_store_client_tracking() {
+        let store = test_crdt_store();
+        store.load_or_get("page").unwrap();
+
+        store.client_connected("page");
+        store.client_connected("page");
+        {
+            let docs = store.docs.lock().unwrap();
+            assert_eq!(docs["page"].client_count, 2);
+            assert!(docs["page"].disconnected_at.is_none());
+        }
+
+        store.client_disconnected("page");
+        {
+            let docs = store.docs.lock().unwrap();
+            assert_eq!(docs["page"].client_count, 1);
+            assert!(docs["page"].disconnected_at.is_none());
+        }
+
+        store.client_disconnected("page");
+        {
+            let docs = store.docs.lock().unwrap();
+            assert_eq!(docs["page"].client_count, 0);
+            assert!(docs["page"].disconnected_at.is_some());
+        }
+    }
+
+    #[test]
+    fn crdt_store_dirty_after_edit() {
+        let store = test_crdt_store();
+        store.load_or_get("page").unwrap();
+
+        {
+            let docs = store.docs.lock().unwrap();
+            assert!(!docs["page"].dirty);
+        }
+
+        store.record_edit("page");
+
+        {
+            let docs = store.docs.lock().unwrap();
+            assert!(docs["page"].dirty);
+        }
+    }
+
+    #[test]
+    fn crdt_store_quiescence_flush_detection() {
+        let store = test_crdt_store();
+        store.load_or_get("page").unwrap();
+        store.record_edit("page");
+
+        // Just recorded edit — should not need flush yet (quiescence_delay = 5s)
+        assert!(store.slugs_needing_flush().is_empty());
+
+        // Manually set last_edit to past to simulate quiescence
+        {
+            let mut docs = store.docs.lock().unwrap();
+            docs.get_mut("page").unwrap().last_edit =
+                Instant::now() - Duration::from_secs(10);
+        }
+
+        let to_flush = store.slugs_needing_flush();
+        assert_eq!(to_flush, vec!["page".to_string()]);
+    }
+
+    #[test]
+    fn crdt_store_eviction_ttl() {
+        let mut store = test_crdt_store();
+        store.eviction_ttl = Duration::from_millis(1);
+        store.load_or_get("page").unwrap();
+        store.client_connected("page");
+        store.client_disconnected("page");
+
+        // Should not evict immediately (ttl is very short but let's just test the logic)
+        std::thread::sleep(Duration::from_millis(5));
+
+        let to_evict = store.slugs_for_eviction();
+        assert_eq!(to_evict, vec!["page".to_string()]);
+
+        store.evict("page");
+        assert!(!store.is_loaded("page"));
+    }
+
+    #[test]
+    fn crdt_store_memory_bound_lru_eviction() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut store = CrdtDocStore::new(Arc::new(tmp.path().to_path_buf()));
+        store.max_docs = 3;
+
+        // Load 3 docs
+        for i in 0..3 {
+            let slug = format!("page{i}");
+            std::fs::write(tmp.path().join(format!("{slug}.md")), "# Page\n").unwrap();
+            store.load_or_get(&slug).unwrap();
+        }
+        assert_eq!(store.doc_count(), 3);
+
+        // Give page1 an older last_access
+        {
+            let mut docs = store.docs.lock().unwrap();
+            docs.get_mut("page0").unwrap().last_access =
+                Instant::now() - Duration::from_secs(100);
+        }
+
+        // Load 4th doc — should evict page0 (oldest LRU with no clients)
+        std::fs::write(tmp.path().join("page3.md"), "# Page 3\n").unwrap();
+        store.load_or_get("page3").unwrap();
+
+        assert_eq!(store.doc_count(), 3);
+        assert!(!store.is_loaded("page0"));
+        assert!(store.is_loaded("page3"));
+    }
+
+    #[test]
+    fn crdt_store_lru_skips_active_clients() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut store = CrdtDocStore::new(Arc::new(tmp.path().to_path_buf()));
+        store.max_docs = 2;
+
+        for i in 0..2 {
+            let slug = format!("page{i}");
+            std::fs::write(tmp.path().join(format!("{slug}.md")), "text\n").unwrap();
+            store.load_or_get(&slug).unwrap();
+        }
+
+        // page0 has active clients — should not be evicted
+        store.client_connected("page0");
+        // page1 is the only one eligible
+        {
+            let mut docs = store.docs.lock().unwrap();
+            docs.get_mut("page1").unwrap().last_access =
+                Instant::now() - Duration::from_secs(100);
+        }
+
+        std::fs::write(tmp.path().join("page2.md"), "new\n").unwrap();
+        store.load_or_get("page2").unwrap();
+
+        assert!(store.is_loaded("page0")); // active client — kept
+        assert!(!store.is_loaded("page1")); // evicted
+        assert!(store.is_loaded("page2")); // newly loaded
+    }
+
+    #[test]
+    fn crdt_store_flush_all_on_shutdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("readme.md"), "# Old\n").unwrap();
+        let store = CrdtDocStore::new(Arc::new(tmp.path().to_path_buf()));
+
+        store.load_or_get("readme").unwrap();
+
+        // Apply an edit to make it dirty
+        let ops = vec![OpEntry::Splice {
+            pos: 0,
+            del: 0,
+            text: "Hello ".to_string(),
+        }];
+        store.apply_ops("readme", &ops).unwrap();
+
+        store.flush_all();
+
+        // Verify flushed to disk
+        let content = std::fs::read_to_string(tmp.path().join("readme.md")).unwrap();
+        assert!(content.contains("Hello"));
+        assert_eq!(store.doc_count(), 0);
     }
 }

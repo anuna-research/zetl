@@ -5131,9 +5131,12 @@ fn cmd_serve(
     let git_commit_lock = zetl::web::git_commit::open_repo(&pipeline.vault_root)
         .map(|lock| std::sync::Arc::new(lock));
 
+    let vault_root = std::sync::Arc::new(pipeline.vault_root);
+
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
-        vault_root: std::sync::Arc::new(pipeline.vault_root),
+        crdt_store: zetl::web::ws::CrdtDocStore::new(vault_root.clone()),
+        vault_root: vault_root.clone(),
         search_index: std::sync::Arc::new(search_index),
         engine: std::sync::Arc::new(engine),
         theme: theme.to_string(),
