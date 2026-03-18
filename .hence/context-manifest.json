@@ -1,12 +1,12 @@
 {
-  "task_id": "server-key-protection",
+  "task_id": "acl-pipeline",
   "token_budget": 8000,
-  "tokens_used": 337,
+  "tokens_used": 340,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement server key protection: 0600 permissions on creation, auto-add .zetl/collab/, .zetl/users/, .zetl/sessions/ to .gitignore, permission check on startup",
-      "token_cost": 39,
+      "content": "Implement ACL evaluation: load built-in defaults + access.spl + page SPL, inject runtime facts, combine theory, reason, check can-read/can-edit conclusions per CON-020-005",
+      "token_cost": 42,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T08:33:07Z"
+  "constructed_at": "2026-03-18T08:37:48Z"
 }
