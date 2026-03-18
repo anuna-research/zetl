@@ -179,6 +179,10 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
         .route(
             "/api/passkey/register/finish",
             post(routes::passkey_register_finish_handler),
+        )
+        .route(
+            "/auth/accept",
+            get(routes::accept_invite_handler).post(routes::accept_invite_submit_handler),
         );
 
     // ── Content routes (gated by collab_gate when --collab is active) ─

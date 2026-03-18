@@ -1936,6 +1936,232 @@ pub async fn recover_verify_handler(
     }
 }
 
+// ── Invitation acceptance flow (REQ-020-007) ────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct AcceptQuery {
+    pub token: Option<String>,
+}
+
+/// GET /auth/accept?token=<JWT> — validate invitation and show registration form.
+pub async fn accept_invite_handler(
+    State(state): State<WebState>,
+    Query(query): Query<AcceptQuery>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    let token = match query.token.as_deref() {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            return (StatusCode::BAD_REQUEST, "missing token parameter").into_response();
+        }
+    };
+
+    // Decode and verify the JWT
+    let claims = match crate::user::invite::decode_jwt(vault_root, token) {
+        Ok(c) => c,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("expired") {
+                return (StatusCode::GONE, "invitation has expired").into_response();
+            }
+            return (StatusCode::BAD_REQUEST, format!("invalid invitation: {msg}"))
+                .into_response();
+        }
+    };
+
+    // Check if nonce has already been consumed (replay → 410 Gone)
+    match crate::user::invite::is_nonce_used(vault_root, &claims.nonce) {
+        Ok(true) => {
+            return (StatusCode::GONE, "invitation has already been used").into_response();
+        }
+        Ok(false) => {} // good — nonce is fresh
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to check nonce: {e}"),
+            )
+                .into_response();
+        }
+    }
+
+    // Look up inviter name for display
+    let inviter_display = match crate::user::load_profile(vault_root, &claims.iss) {
+        Ok(Some(p)) => p.name,
+        _ => claims.iss.clone(),
+    };
+
+    match state.engine.render_invite_accept(
+        &vault_name,
+        token,
+        &inviter_display,
+        &claims.role,
+        claims.pages.as_deref(),
+    ) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => {
+            eprintln!("{}", e.stderr_line("auth/accept"));
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(e.to_error_html())).into_response()
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AcceptForm {
+    pub token: String,
+    pub name: String,
+}
+
+/// POST /auth/accept — create user profile, inject SPL facts, redirect to recovery flow.
+pub async fn accept_invite_submit_handler(
+    State(state): State<WebState>,
+    axum::Form(form): axum::Form<AcceptForm>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+
+    let name = form.name.trim();
+    if name.is_empty() || name.len() > 64 {
+        return (StatusCode::BAD_REQUEST, "name must be 1-64 characters").into_response();
+    }
+
+    // Re-validate JWT (it could have expired between GET and POST)
+    let claims = match crate::user::invite::decode_jwt(vault_root, &form.token) {
+        Ok(c) => c,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("expired") {
+                return (StatusCode::GONE, "invitation has expired").into_response();
+            }
+            return (StatusCode::BAD_REQUEST, format!("invalid invitation: {msg}"))
+                .into_response();
+        }
+    };
+
+    // Consume the nonce (single-use enforcement)
+    match crate::user::invite::is_nonce_used(vault_root, &claims.nonce) {
+        Ok(true) => {
+            return (StatusCode::GONE, "invitation has already been used").into_response();
+        }
+        Ok(false) => {}
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to check nonce: {e}"),
+            )
+                .into_response();
+        }
+    }
+
+    // Create the user profile
+    let user_id = crate::user::generate_user_id(name);
+    let now = {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let days = secs / 86400;
+        let day_secs = secs % 86400;
+        let h = day_secs / 3600;
+        let m = (day_secs % 3600) / 60;
+        let s = day_secs % 60;
+        let (y, mo, d) = days_to_ymd(days);
+        format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+    };
+
+    let profile = crate::user::UserProfile {
+        id: user_id.clone(),
+        name: name.to_string(),
+        created_at: now,
+        invited_by: Some(claims.iss.clone()),
+        owner: false,
+        credentials: vec![],
+        recovery_pubkey: String::new(),
+        agent_token_generation: 0,
+    };
+
+    if let Err(e) = crate::user::save_profile(vault_root, &profile) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to create profile: {e}"),
+        )
+            .into_response();
+    }
+
+    // Inject SPL facts into .zetl/collab/access.spl
+    if let Err(e) = inject_access_spl(vault_root, &user_id, &claims.role, claims.pages.as_deref())
+    {
+        eprintln!("warning: failed to write access.spl: {e}");
+    }
+
+    // Mark nonce as used (after successful user creation to avoid partial state)
+    if let Err(e) = crate::user::invite::mark_nonce_used(vault_root, &claims.nonce, claims.exp) {
+        eprintln!("warning: failed to mark nonce as used: {e}");
+    }
+
+    // Issue a session for the new user
+    let token = state.sessions.create(&user_id);
+    let cookie = crate::web::session::session_cookie(&token);
+
+    // Redirect to recovery phrase display (which then chains to passkey registration)
+    let location = format!("/recovery/show?user_id={user_id}");
+    (
+        StatusCode::FOUND,
+        [
+            (header::SET_COOKIE, cookie),
+            (header::LOCATION, location),
+        ],
+    )
+        .into_response()
+}
+
+/// Append SPL access facts for an invited user to `.zetl/collab/access.spl`.
+fn inject_access_spl(
+    vault_root: &std::path::Path,
+    user_id: &str,
+    role: &str,
+    pages: Option<&str>,
+) -> anyhow::Result<()> {
+    use std::io::Write;
+
+    let collab_dir = vault_root.join(".zetl/collab");
+    std::fs::create_dir_all(&collab_dir)?;
+    let spl_path = collab_dir.join("access.spl");
+
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&spl_path)?;
+
+    // Write a comment header for this user's facts
+    writeln!(file)?;
+    writeln!(file, ";; access granted to {user_id} (role: {role})")?;
+
+    let scope = pages.unwrap_or("**");
+
+    match role {
+        "admin" => {
+            writeln!(file, "(given (can-read {user_id} \"{scope}\"))")?;
+            writeln!(file, "(given (can-edit {user_id} \"{scope}\"))")?;
+            writeln!(file, "(given (can-admin {user_id} \"{scope}\"))")?;
+        }
+        "editor" => {
+            writeln!(file, "(given (can-read {user_id} \"{scope}\"))")?;
+            writeln!(file, "(given (can-edit {user_id} \"{scope}\"))")?;
+        }
+        _ => {
+            // reader or unknown → read-only
+            writeln!(file, "(given (can-read {user_id} \"{scope}\"))")?;
+        }
+    }
+
+    Ok(())
+}
+
 // ── Bootstrap owner flow (REQ-020-005) ──────────────────────────────────
 
 /// GET /auth/bootstrap — entry point for owner bootstrap.

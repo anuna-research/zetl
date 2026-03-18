@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Accept Invitation — {{ vault_name }}{% endblock %}
+
+{% block styles %}
+  .ia-container {
+    max-width: 32rem;
+    margin: 3rem auto;
+    padding: 2rem;
+  }
+  .ia-icon {
+    width: 4rem;
+    height: 4rem;
+    margin: 0 auto 1.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: oklch(var(--su) / 0.12);
+    color: oklch(var(--su));
+  }
+  .ia-icon svg { width: 2rem; height: 2rem; }
+  .ia-details {
+    background: oklch(var(--b2));
+    border: 1px solid oklch(var(--bc) / 0.1);
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+  }
+  .ia-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.375rem 0;
+  }
+  .ia-detail-row + .ia-detail-row {
+    border-top: 1px solid oklch(var(--bc) / 0.06);
+  }
+  .ia-detail-label {
+    color: oklch(var(--bc) / 0.5);
+    font-size: 0.8rem;
+  }
+  .ia-detail-value {
+    font-weight: 500;
+    color: oklch(var(--bc));
+  }
+  .ia-role-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+  .ia-role-reader { background: oklch(var(--in) / 0.15); color: oklch(var(--in)); }
+  .ia-role-editor { background: oklch(var(--su) / 0.15); color: oklch(var(--su)); }
+  .ia-role-admin  { background: oklch(var(--wa) / 0.15); color: oklch(var(--wa)); }
+  .ia-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .ia-field label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: oklch(var(--bc) / 0.7);
+    margin-bottom: 0.375rem;
+  }
+  .ia-field input {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    background: oklch(var(--b2));
+    border: 1px solid oklch(var(--bc) / 0.15);
+    border-radius: 0.375rem;
+    color: oklch(var(--bc));
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .ia-field input:focus {
+    border-color: oklch(var(--p) / 0.5);
+  }
+  .ia-submit-btn {
+    width: 100%;
+    padding: 0.75rem;
+    background: oklch(var(--p));
+    color: oklch(var(--pc));
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .ia-submit-btn:hover {
+    opacity: 0.9;
+  }
+  .ia-submit-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .ia-error {
+    background: oklch(var(--er) / 0.1);
+    border: 1px solid oklch(var(--er) / 0.3);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: oklch(var(--er));
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    display: none;
+  }
+{% endblock %}
+
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+<div class="ia-container">
+  <div class="ia-icon">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z"/>
+    </svg>
+  </div>
+
+  <h2 class="text-xl font-bold text-center mb-2">You're Invited</h2>
+  <p class="text-center text-sm opacity-70 mb-4">
+    You've been invited to collaborate on <strong>{{ vault_name }}</strong>.
+    Choose a display name to create your account.
+  </p>
+
+  <div class="ia-details">
+    <div class="ia-detail-row">
+      <span class="ia-detail-label">Invited by</span>
+      <span class="ia-detail-value">{{ inviter }}</span>
+    </div>
+    <div class="ia-detail-row">
+      <span class="ia-detail-label">Role</span>
+      <span class="ia-detail-value">
+        <span class="ia-role-badge ia-role-{{ role }}">{{ role }}</span>
+      </span>
+    </div>
+    {% if pages %}
+    <div class="ia-detail-row">
+      <span class="ia-detail-label">Pages</span>
+      <span class="ia-detail-value" style="font-family: ui-monospace, monospace; font-size: 0.8rem;">{{ pages }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div id="ia-error" class="ia-error"></div>
+
+  <form id="ia-form" class="ia-form" method="POST" action="/auth/accept">
+    <input type="hidden" name="token" value="{{ token }}">
+    <div class="ia-field">
+      <label for="ia-name">Display Name</label>
+      <input type="text" id="ia-name" name="name" placeholder="e.g. Alice"
+             required minlength="1" maxlength="64" autocomplete="name" autofocus>
+    </div>
+    <button type="submit" class="ia-submit-btn" id="ia-submit">
+      Create Account
+    </button>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var form = document.getElementById('ia-form');
+  var btn = document.getElementById('ia-submit');
+  var errorEl = document.getElementById('ia-error');
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    btn.disabled = true;
+    btn.textContent = 'Creating account…';
+    errorEl.style.display = 'none';
+
+    var data = new URLSearchParams(new FormData(form));
+    fetch('/auth/accept', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: data.toString(),
+      redirect: 'follow'
+    })
+    .then(function(r) {
+      if (r.redirected) {
+        window.location.href = r.url;
+        return;
+      }
+      if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      // If response contains a Location-style redirect in body
+      return r.text().then(function(t) {
+        if (t.startsWith('/')) window.location.href = t;
+      });
+    })
+    .catch(function(err) {
+      errorEl.textContent = err.message || 'An error occurred. Please try again.';
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Create Account';
+    });
+  });
+})();
+</script>
+{% endblock %}
