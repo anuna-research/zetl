@@ -54,7 +54,10 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
             return None;
         }
     }
+    // Mark as pending write so the fs watcher ignores this event (REQ-020-039).
+    state.pending_writes.insert(&path);
     if let Err(e) = std::fs::write(&path, &md) {
+        state.pending_writes.remove(&path);
         eprintln!("flush: write error for {slug}: {e}");
         return None;
     }
@@ -361,6 +364,7 @@ mod tests {
             ticket_store: crate::web::ws::TicketStore::new(),
             crdt_store: CrdtDocStore::new(vault_root.clone()),
             wal_store: Arc::new(crate::web::wal::WalStore::new(&vault_root)),
+            pending_writes: crate::web::fs_watch::PendingWrites::new(),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

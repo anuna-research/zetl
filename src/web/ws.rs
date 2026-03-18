@@ -99,6 +99,10 @@ pub enum ServerMsg {
         text: String,
         at: String,
     },
+    /// External edit detected — files changed outside of zetl's pipeline (REQ-020-039).
+    ExternalEdit {
+        files: Vec<String>,
+    },
 }
 
 /// A single edit operation (splice text or mark).
