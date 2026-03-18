@@ -5,6 +5,7 @@
 
 pub mod access_request;
 pub mod agent_token;
+pub mod comment;
 pub mod invite;
 pub mod passkey;
 pub mod recovery;

@@ -1,12 +1,12 @@
 {
-  "task_id": "crdt-wal",
+  "task_id": "page-comments",
   "token_budget": 8000,
-  "tokens_used": 329,
+  "tokens_used": 332,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement CRDT write-ahead log: append ops to .zetl/crdt/<slug>.wal; truncate on flush; replay on startup; 10MB max WAL size",
-      "token_cost": 31,
+      "content": "Implement page comments: sidecar storage in .zetl/comments/<slug>.json, comment sidebar, WebSocket broadcast, ACL-gated, 30-day auto-prune",
+      "token_cost": 34,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T12:12:23Z"
+  "constructed_at": "2026-03-18T12:25:58Z"
 }

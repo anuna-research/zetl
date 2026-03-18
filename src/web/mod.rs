@@ -267,6 +267,10 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
     // Runs the unified 10-step pipeline on quiescence and handles TTL evictions.
     let _flush_handle = flush::spawn_flush_lifecycle_task(state.clone());
 
+    // Spawn comment auto-prune task (REQ-020-051).
+    // Runs once per hour, removes comments older than 30 days.
+    let _prune_handle = spawn_comment_prune_task(state.vault_root.clone());
+
     // ── Auth routes (always public, even in --collab mode) ───────────
     let auth_routes = Router::new()
         .route("/auth/bootstrap", get(routes::bootstrap_handler))
@@ -328,6 +332,10 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
         .route("/api/index", post(routes::api_index_handler))
         .route("/_me", get(routes::dashboard_handler))
         .route("/api/access-request", post(routes::access_request_handler))
+        .route(
+            "/api/comments/{*slug}",
+            get(routes::api_comments_get_handler).post(routes::api_comments_post_handler),
+        )
         .route("/_print", get(routes::print_handler))
         .route("/edit/{*slug}", get(routes::edit_handler))
         .route("/_static/{*path}", get(routes::static_handler))
@@ -403,6 +411,25 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+/// Spawn a background task that prunes comments older than 30 days once per hour.
+fn spawn_comment_prune_task(vault_root: Arc<PathBuf>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+        loop {
+            interval.tick().await;
+            let vr = vault_root.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                match crate::user::comment::prune_all_comments(&vr) {
+                    Ok(0) => {}
+                    Ok(n) => eprintln!("comment prune: removed {n} expired comments"),
+                    Err(e) => eprintln!("comment prune error: {e}"),
+                }
+            })
+            .await;
+        }
+    })
 }
 
 #[cfg(all(test, feature = "reason"))]
