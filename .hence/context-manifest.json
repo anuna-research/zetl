@@ -1,12 +1,12 @@
 {
-  "task_id": "access-request",
+  "task_id": "ws-ticket",
   "token_budget": 8000,
-  "tokens_used": 335,
+  "tokens_used": 333,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement access request flow: button on 403, request record in .zetl/collab/access-requests.json, admin WebSocket notification, on-access-request hook",
-      "token_cost": 37,
+      "content": "Implement WebSocket ticket auth: POST /auth/ws-ticket issues 30s one-time ticket; WS validates and invalidates; prevents bearer tokens in logs",
+      "token_cost": 35,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T11:11:45Z"
+  "constructed_at": "2026-03-18T11:21:48Z"
 }
