@@ -1,12 +1,12 @@
 {
-  "task_id": "agent-hook",
+  "task_id": "dashboard",
   "token_budget": 8000,
-  "tokens_used": 327,
+  "tokens_used": 336,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement on-agent hook lifecycle point: manual trigger via zetl agent run, context with task/target_pages/user/budget",
-      "token_cost": 29,
+      "content": "Implement /_me dashboard: recent edits (git log), accessible pages, pending reviews, access requests (admin), role summary, active sessions, recovery link",
+      "token_cost": 38,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T09:36:18Z"
+  "constructed_at": "2026-03-18T09:43:17Z"
 }

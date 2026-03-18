@@ -89,6 +89,20 @@ impl SessionStore {
         sessions.get(token).map(|s| s.csrf_token.clone())
     }
 
+    /// Count active (non-expired) sessions for a given user.
+    pub fn active_session_count(&self, user_id: &str) -> usize {
+        let sessions = self.sessions.read().expect("session lock poisoned");
+        let now = Instant::now();
+        sessions
+            .values()
+            .filter(|s| {
+                s.user_id == user_id
+                    && now.duration_since(s.created_at) <= MAX_TIMEOUT
+                    && now.duration_since(s.last_accessed) <= IDLE_TIMEOUT
+            })
+            .count()
+    }
+
     /// Remove all expired sessions (housekeeping).
     pub fn purge_expired(&self) {
         let now = Instant::now();

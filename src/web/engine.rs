@@ -223,6 +223,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "invite_accept.html",
     "admin_invite.html",
     "admin_permissions.html",
+    "dashboard.html",
 ];
 
 /// Build a minijinja Environment with the three-tier template loader.
@@ -503,6 +504,55 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("admin_permissions.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the user dashboard page (/_me).
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_dashboard(
+        &self,
+        vault_name: &str,
+        csrf_token: &str,
+        user_name: &str,
+        user_id: &str,
+        role: &str,
+        is_admin: bool,
+        recent_edits: &[serde_json::Value],
+        accessible_pages: &[serde_json::Value],
+        page_count: usize,
+        pending_invites: &[serde_json::Value],
+        access_requests: &[serde_json::Value],
+        active_sessions: usize,
+        passkey_count: usize,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            csrf_token => csrf_token,
+            user_name => user_name,
+            user_id => user_id,
+            role => role,
+            is_admin => is_admin,
+            recent_edits => recent_edits,
+            accessible_pages => accessible_pages,
+            page_count => page_count,
+            pending_invites => pending_invites,
+            access_requests => access_requests,
+            active_sessions => active_sessions,
+            passkey_count => passkey_count,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("dashboard.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("dashboard.html"));
         }
         Ok(html)
     }

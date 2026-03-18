@@ -296,6 +296,7 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
     let content_routes = Router::new()
         .route("/", get(routes::index_handler))
         .route("/api/search", get(routes::api_search_handler))
+        .route("/_me", get(routes::dashboard_handler))
         .route("/_print", get(routes::print_handler))
         .route("/_static/{*path}", get(routes::static_handler))
         .merge(admin_routes)

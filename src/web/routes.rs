@@ -22,6 +22,195 @@ use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::{reindex, WebState};
 
+/// Collect recent git edits (up to `limit`) from the vault's git log.
+///
+/// Returns `Vec<(summary, author_name, ISO-8601 time, files_changed)>`.
+fn recent_git_edits(
+    git_lock: &Option<std::sync::Arc<crate::web::git_commit::GitCommitLock>>,
+    limit: usize,
+) -> Vec<serde_json::Value> {
+    let Some(lock) = git_lock else {
+        return Vec::new();
+    };
+    let repo = match lock.lock() {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    let Ok(mut revwalk) = repo.revwalk() else {
+        return Vec::new();
+    };
+    let _ = revwalk.push_head();
+    revwalk.set_sorting(git2::Sort::TIME).ok();
+
+    let mut edits = Vec::new();
+    for oid in revwalk.flatten().take(limit) {
+        let Ok(commit) = repo.find_commit(oid) else {
+            continue;
+        };
+        let summary = commit
+            .summary()
+            .unwrap_or("")
+            .to_string();
+        let author = commit
+            .author()
+            .name()
+            .unwrap_or("unknown")
+            .to_string();
+        let time = commit.time();
+        let secs = time.seconds();
+        // Format as a simple relative/absolute time string
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let age = now.saturating_sub(secs);
+        let dt = if age < 60 {
+            "just now".to_string()
+        } else if age < 3600 {
+            format!("{} min ago", age / 60)
+        } else if age < 86400 {
+            format!("{} hours ago", age / 3600)
+        } else {
+            format!("{} days ago", age / 86400)
+        };
+
+        // Count changed files by diffing with parent
+        let file_count = if let Ok(parent) = commit.parent(0) {
+            let old_tree = parent.tree().ok();
+            let new_tree = commit.tree().ok();
+            repo.diff_tree_to_tree(old_tree.as_ref(), new_tree.as_ref(), None)
+                .map(|d| d.deltas().count())
+                .unwrap_or(0)
+        } else {
+            // Initial commit — count all files in tree
+            commit
+                .tree()
+                .ok()
+                .map(|t| {
+                    let mut n = 0usize;
+                    t.walk(git2::TreeWalkMode::PreOrder, |_, _| {
+                        n += 1;
+                        git2::TreeWalkResult::Ok
+                    })
+                    .ok();
+                    n
+                })
+                .unwrap_or(0)
+        };
+
+        edits.push(serde_json::json!({
+            "summary": summary,
+            "author": author,
+            "time": dt,
+            "file_count": file_count,
+        }));
+    }
+    edits
+}
+
+/// GET /_me — User dashboard with recent edits, accessible pages, role summary, etc.
+pub async fn dashboard_handler(
+    State(state): State<WebState>,
+    session: crate::web::session::SessionUser,
+) -> Response {
+    let vault_root = &*state.vault_root;
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    // Load user profile
+    let profile = match crate::user::load_profile(vault_root, &session.user_id) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return (StatusCode::NOT_FOUND, "user profile not found").into_response()
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to load profile: {e}"),
+            )
+                .into_response()
+        }
+    };
+
+    let role = crate::user::Role::for_profile(&profile);
+    let is_admin = role >= crate::user::Role::Admin;
+
+    // Recent git edits (last 20 commits)
+    let recent_edits = recent_git_edits(&state.git_commit_lock, 20);
+
+    // Accessible pages
+    let data = state.data.read().unwrap();
+    let accessible_pages: Vec<serde_json::Value> = data
+        .page_names
+        .iter()
+        .map(|name| {
+            let slug = data.slug_for_page(name);
+            serde_json::json!({ "name": name, "slug": slug })
+        })
+        .collect();
+    let page_count = accessible_pages.len();
+    drop(data);
+
+    // Pending invitations (admin only)
+    let pending_invites: Vec<serde_json::Value> = if is_admin {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        crate::user::invite::load_pending_invitations(vault_root)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|i| i.exp > now && !i.revoked)
+            .map(|i| {
+                serde_json::json!({
+                    "role": i.role,
+                    "pages": i.pages,
+                    "nonce": &i.nonce[..8],
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Access requests — not yet implemented, placeholder empty list
+    let access_requests: Vec<serde_json::Value> = Vec::new();
+
+    // Active session count
+    let active_sessions = state.sessions.active_session_count(&session.user_id);
+
+    // CSRF token for the session
+    let csrf_token = state
+        .sessions
+        .csrf_token(&session.token)
+        .unwrap_or_default();
+
+    // Passkey count
+    let passkey_count = profile.credentials.len();
+
+    match state.engine.render_dashboard(
+        &vault_name,
+        &csrf_token,
+        &profile.name,
+        &profile.id,
+        &role.to_string(),
+        is_admin,
+        &recent_edits,
+        &accessible_pages,
+        page_count,
+        &pending_invites,
+        &access_requests,
+        active_sessions,
+        passkey_count,
+    ) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => render_error_response(e),
+    }
+}
+
 /// GET / — Landing page with vault stats and page grid.
 pub async fn index_handler(State(state): State<WebState>) -> Response {
     let data = state.data.read().unwrap();

@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — {{ vault_name }}{% endblock %}
+
+{% block styles %}
+  .db-container {
+    max-width: 64rem;
+    margin: 2rem auto;
+    padding: 1rem 2rem;
+  }
+  .db-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  .db-avatar {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: oklch(var(--p) / 0.12);
+    color: oklch(var(--p));
+    font-weight: 700;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+  }
+  .db-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  @media (min-width: 768px) {
+    .db-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .db-card {
+    background: oklch(var(--b2));
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+  }
+  .db-card h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: oklch(var(--bc) / 0.5);
+    margin-bottom: 0.75rem;
+  }
+  .db-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+  .db-stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: oklch(var(--p));
+  }
+  .db-stat-label {
+    font-size: 0.85rem;
+    color: oklch(var(--bc) / 0.6);
+  }
+  .db-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 16rem;
+    overflow-y: auto;
+  }
+  .db-list li {
+    padding: 0.4rem 0;
+    border-bottom: 1px solid oklch(var(--b3) / 0.5);
+    font-size: 0.85rem;
+  }
+  .db-list li:last-child { border-bottom: none; }
+  .db-edit-summary {
+    font-weight: 500;
+    color: oklch(var(--bc));
+  }
+  .db-edit-meta {
+    font-size: 0.75rem;
+    color: oklch(var(--bc) / 0.5);
+  }
+  .db-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: capitalize;
+  }
+  .db-badge-admin {
+    background: oklch(var(--su) / 0.15);
+    color: oklch(var(--su));
+  }
+  .db-badge-editor {
+    background: oklch(var(--in) / 0.15);
+    color: oklch(var(--in));
+  }
+  .db-badge-reader {
+    background: oklch(var(--wa) / 0.15);
+    color: oklch(var(--wa));
+  }
+  .db-link {
+    color: oklch(var(--p));
+    text-decoration: none;
+  }
+  .db-link:hover {
+    text-decoration: underline;
+  }
+  .db-full-width {
+    grid-column: 1 / -1;
+  }
+{% endblock %}
+
+{% block content %}
+<div class="db-container">
+  <!-- Header -->
+  <div class="db-header">
+    <div class="db-avatar">{{ user_name[0] | upper }}</div>
+    <div>
+      <h1 style="font-size:1.5rem; font-weight:700; margin:0;">{{ user_name }}</h1>
+      <div style="font-size:0.85rem; color:oklch(var(--bc)/0.5);">
+        <span class="db-badge db-badge-{{ role }}">{{ role }}</span>
+        &middot; {{ user_id }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary stats row -->
+  <div class="db-grid" style="margin-bottom:1rem;">
+    <div class="db-card">
+      <h3>Role Summary</h3>
+      <div class="db-stat">
+        <span class="db-stat-value">{{ role | capitalize }}</span>
+      </div>
+      <div style="font-size:0.85rem; color:oklch(var(--bc)/0.6); margin-top:0.5rem;">
+        {{ passkey_count }} passkey{{ passkey_count | pluralize }} registered
+      </div>
+    </div>
+    <div class="db-card">
+      <h3>Active Sessions</h3>
+      <div class="db-stat">
+        <span class="db-stat-value">{{ active_sessions }}</span>
+        <span class="db-stat-label">active session{{ active_sessions | pluralize }}</span>
+      </div>
+      <div style="font-size:0.85rem; color:oklch(var(--bc)/0.6); margin-top:0.5rem;">
+        {{ page_count }} accessible page{{ page_count | pluralize }}
+      </div>
+    </div>
+  </div>
+
+  <div class="db-grid">
+    <!-- Recent Edits -->
+    <div class="db-card db-full-width">
+      <h3>Recent Edits</h3>
+      {% if recent_edits %}
+      <ul class="db-list">
+        {% for edit in recent_edits %}
+        <li>
+          <span class="db-edit-summary">{{ edit.summary }}</span>
+          <div class="db-edit-meta">{{ edit.author }} &middot; {{ edit.time }} &middot; {{ edit.file_count }} file{{ edit.file_count | pluralize }}</div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p style="font-size:0.85rem; color:oklch(var(--bc)/0.5);">No recent edits.</p>
+      {% endif %}
+    </div>
+
+    <!-- Accessible Pages -->
+    <div class="db-card">
+      <h3>Accessible Pages ({{ page_count }})</h3>
+      {% if accessible_pages %}
+      <ul class="db-list">
+        {% for page in accessible_pages %}
+        <li><a class="db-link" href="{{ root_path }}{{ page.slug }}/">{{ page.name }}</a></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p style="font-size:0.85rem; color:oklch(var(--bc)/0.5);">No pages accessible.</p>
+      {% endif %}
+    </div>
+
+    <!-- Quick Links -->
+    <div class="db-card">
+      <h3>Quick Links</h3>
+      <ul class="db-list">
+        <li><a class="db-link" href="{{ root_path }}auth/recover">Recovery Phrase Challenge</a></li>
+        <li><a class="db-link" href="{{ root_path }}passkey/register">Register a Passkey</a></li>
+        {% if is_admin %}
+        <li><a class="db-link" href="{{ root_path }}_admin/invite">Manage Invitations</a></li>
+        <li><a class="db-link" href="{{ root_path }}_admin/permissions">Manage Permissions</a></li>
+        {% endif %}
+        <li><a class="db-link" href="{{ root_path }}">Back to Vault</a></li>
+      </ul>
+    </div>
+
+    {% if is_admin %}
+    <!-- Pending Invitations (admin) -->
+    <div class="db-card">
+      <h3>Pending Invitations</h3>
+      {% if pending_invites %}
+      <ul class="db-list">
+        {% for inv in pending_invites %}
+        <li>
+          <span class="db-badge db-badge-{{ inv.role }}">{{ inv.role }}</span>
+          {% if inv.pages %}<span style="font-size:0.75rem; color:oklch(var(--bc)/0.5);"> scope: {{ inv.pages }}</span>{% endif %}
+          <span style="font-size:0.75rem; color:oklch(var(--bc)/0.4);"> ({{ inv.nonce }}…)</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p style="font-size:0.85rem; color:oklch(var(--bc)/0.5);">No pending invitations.</p>
+      {% endif %}
+    </div>
+
+    <!-- Access Requests (admin) -->
+    <div class="db-card">
+      <h3>Access Requests</h3>
+      {% if access_requests %}
+      <ul class="db-list">
+        {% for req in access_requests %}
+        <li>{{ req.name }} — {{ req.requested_role }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p style="font-size:0.85rem; color:oklch(var(--bc)/0.5);">No pending access requests.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
