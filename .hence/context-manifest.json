@@ -1,12 +1,12 @@
 {
-  "task_id": "passkey-auth",
+  "task_id": "passkey-guidance",
   "token_budget": 8000,
-  "tokens_used": 53,
+  "tokens_used": 81,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement WebAuthn passkey registration and authentication via webauthn-rs: challenge generation, credential storage, verification",
-      "token_cost": 32,
+      "content": "Implement passkey registration guidance screen: explanation text, visual indicator, failure handling with retry, fallback note",
+      "token_cost": 31,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 3 files (+466, -65): .hence/context-manifest.json, src/lib.rs, src/user/mod.rs",
       "token_cost": 21,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-passkey-auth-changes",
+      "content": "Modified 5 files (+711, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/user/mod.rs, src/user/passkey.rs",
+      "token_cost": 29,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T06:28:30Z"
+  "constructed_at": "2026-03-18T06:37:58Z"
 }

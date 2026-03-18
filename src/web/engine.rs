@@ -213,7 +213,13 @@ pub struct TemplateEngine {
     reload: bool,
 }
 
-const KNOWN_TEMPLATES: &[&str] = &["base.html", "index.html", "page.html", "folder.html"];
+const KNOWN_TEMPLATES: &[&str] = &[
+    "base.html",
+    "index.html",
+    "page.html",
+    "folder.html",
+    "passkey_register.html",
+];
 
 /// Build a minijinja Environment with the three-tier template loader.
 fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
@@ -347,6 +353,32 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("page.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the passkey registration guidance page.
+    pub fn render_passkey_register(
+        &self,
+        vault_name: &str,
+        user_id: &str,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            user_id => user_id,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("passkey_register.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("passkey_register.html"));
         }
         Ok(html)
     }
@@ -808,5 +840,68 @@ mod tests {
         // so this should return an empty vec.
         let hooks = bundled_theme_hook_files("default");
         assert!(hooks.is_empty());
+    }
+
+    // ── Passkey registration guidance tests ──────────────────────────────
+
+    #[test]
+    fn test_render_passkey_register() {
+        let engine = default_engine();
+        let html = engine
+            .render_passkey_register("test-vault", "alice-a1b2c3d4")
+            .unwrap();
+        // Explanation text
+        assert!(html.contains("Register a Passkey"));
+        assert!(html.contains("phishing-resistant"));
+        // Steps
+        assert!(html.contains("Touch ID"));
+        assert!(html.contains("Face ID"));
+        // Visual indicator (spinner class)
+        assert!(html.contains("pk-spinner"));
+        // Retry button
+        assert!(html.contains("Try Again"));
+        // Fallback note
+        assert!(html.contains("No passkey support"));
+        assert!(html.contains("recovery"));
+        // User ID passed through
+        assert!(html.contains("alice-a1b2c3d4"));
+    }
+
+    #[test]
+    fn test_render_passkey_register_empty_user() {
+        let engine = default_engine();
+        let html = engine.render_passkey_register("my-vault", "").unwrap();
+        assert!(html.contains("Register a Passkey"));
+        assert!(html.contains("my-vault"));
+    }
+
+    #[test]
+    fn test_passkey_register_has_error_state() {
+        let engine = default_engine();
+        let html = engine
+            .render_passkey_register("vault", "test-user")
+            .unwrap();
+        // Error state UI
+        assert!(html.contains("Registration failed"));
+        assert!(html.contains("pk-error"));
+        assert!(html.contains("Back to instructions"));
+    }
+
+    #[test]
+    fn test_passkey_register_has_success_state() {
+        let engine = default_engine();
+        let html = engine
+            .render_passkey_register("vault", "test-user")
+            .unwrap();
+        assert!(html.contains("Passkey Registered"));
+        assert!(html.contains("Continue to Vault"));
+    }
+
+    #[test]
+    fn test_bundled_passkey_register_template_exists() {
+        assert!(
+            bundled_template("default", "passkey_register.html").is_some(),
+            "passkey_register.html should be bundled in default theme"
+        );
     }
 }
