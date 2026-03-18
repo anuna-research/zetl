@@ -66,6 +66,8 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
         collab: false,
+        #[cfg(feature = "reason")]
+        acl_cache: Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
         git_commit_lock: None,
         #[cfg(feature = "semantic")]
         vector_index: None,

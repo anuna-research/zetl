@@ -13,6 +13,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
+#[cfg(feature = "reason")]
+use crate::acl::{AclDecision, Action};
+
 use axum::http::header;
 use axum::middleware;
 use axum::routing::{get, post};
@@ -51,6 +54,80 @@ impl VaultData {
     }
 }
 
+/// Lazy ACL decision cache keyed by `(user_id, page_slug, action)` (REQ-020-013).
+///
+/// The cache is invalidated (cleared) whenever the vault's `vault_root_hash`
+/// changes — i.e. on any file save or re-index — because policy files or
+/// page-level SPL blocks may have been modified.
+#[cfg(feature = "reason")]
+#[derive(Debug, Default)]
+pub struct AclCache {
+    /// The vault_root_hash that was current when entries were inserted.
+    vault_root_hash: Option<String>,
+    /// Cached decisions: `(user_id, page_slug, action) → AclDecision`.
+    entries: HashMap<(String, String, Action), AclDecision>,
+}
+
+#[cfg(feature = "reason")]
+impl AclCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Look up a cached decision.  Returns `None` on cache miss.
+    pub fn lookup(
+        &self,
+        user_id: &str,
+        page_slug: &str,
+        action: Action,
+    ) -> Option<&AclDecision> {
+        self.entries.get(&(
+            user_id.to_owned(),
+            page_slug.to_owned(),
+            action,
+        ))
+    }
+
+    /// Insert a decision into the cache.
+    pub fn insert(
+        &mut self,
+        user_id: String,
+        page_slug: String,
+        action: Action,
+        decision: AclDecision,
+    ) {
+        self.entries.insert((user_id, page_slug, action), decision);
+    }
+
+    /// If the `vault_root_hash` has changed, clear all cached decisions and
+    /// store the new hash.  Returns `true` when the cache was invalidated.
+    pub fn invalidate_if_changed(&mut self, current_hash: Option<&str>) -> bool {
+        if self.vault_root_hash.as_deref() != current_hash {
+            self.entries.clear();
+            self.vault_root_hash = current_hash.map(|s| s.to_owned());
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Unconditionally clear every cached entry (e.g. after a save).
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.vault_root_hash = None;
+    }
+
+    /// Number of cached entries (useful for diagnostics / testing).
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the cache is empty.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
 /// Shared state passed to all handlers via axum State.
 ///
 /// `search_index` is thread-safe and shared across requests via Arc.
@@ -74,6 +151,9 @@ pub struct WebState {
     pub mnemonic_shown: Arc<Mutex<HashSet<String>>>,
     /// Authentication rate limiters (per-user and per-IP).
     pub rate_limiters: AuthRateLimiters,
+    /// Lazy ACL decision cache, invalidated on vault_root_hash change (REQ-020-013).
+    #[cfg(feature = "reason")]
+    pub acl_cache: Arc<Mutex<AclCache>>,
     /// Git repository lock for serializing auto-commits on save (REQ-020-015, CON-020-006).
     /// `None` when the vault is not inside a git repository.
     pub git_commit_lock: Option<Arc<git_commit::GitCommitLock>>,
@@ -270,4 +350,79 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str) -> anyhow::Result<
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+#[cfg(all(test, feature = "reason"))]
+mod tests {
+    use super::*;
+    use crate::acl::{AclDecision, Action, ConclusionTag};
+
+    #[test]
+    fn acl_cache_lookup_miss() {
+        let cache = AclCache::new();
+        assert!(cache.lookup("alice", "readme", Action::Read).is_none());
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn acl_cache_insert_and_hit() {
+        let mut cache = AclCache::new();
+        let decision = AclDecision::Allowed {
+            tag: ConclusionTag::DefeasiblyProvable,
+            rule_trace: vec![],
+        };
+        cache.insert("alice".into(), "readme".into(), Action::Read, decision);
+        assert_eq!(cache.len(), 1);
+
+        let hit = cache.lookup("alice", "readme", Action::Read);
+        assert!(hit.is_some());
+        assert!(hit.unwrap().is_allowed());
+
+        // Different action → miss
+        assert!(cache.lookup("alice", "readme", Action::Edit).is_none());
+        // Different user → miss
+        assert!(cache.lookup("bob", "readme", Action::Read).is_none());
+    }
+
+    #[test]
+    fn acl_cache_invalidate_on_hash_change() {
+        let mut cache = AclCache::new();
+        cache.vault_root_hash = Some("aaa".into());
+        cache.insert(
+            "alice".into(),
+            "readme".into(),
+            Action::Read,
+            AclDecision::Allowed {
+                tag: ConclusionTag::DefeasiblyProvable,
+                rule_trace: vec![],
+            },
+        );
+        assert_eq!(cache.len(), 1);
+
+        // Same hash → no invalidation
+        assert!(!cache.invalidate_if_changed(Some("aaa")));
+        assert_eq!(cache.len(), 1);
+
+        // Different hash → invalidated
+        assert!(cache.invalidate_if_changed(Some("bbb")));
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn acl_cache_clear() {
+        let mut cache = AclCache::new();
+        cache.vault_root_hash = Some("hash".into());
+        cache.insert(
+            "alice".into(),
+            "readme".into(),
+            Action::Read,
+            AclDecision::Denied {
+                tag: ConclusionTag::DefeasiblyNotProvable,
+                rule_trace: vec![],
+            },
+        );
+        cache.clear();
+        assert!(cache.is_empty());
+        assert!(cache.vault_root_hash.is_none());
+    }
 }
