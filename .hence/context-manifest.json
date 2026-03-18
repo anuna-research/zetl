@@ -1,12 +1,12 @@
 {
-  "task_id": "acl-pipeline",
+  "task_id": "permission-ui",
   "token_budget": 8000,
-  "tokens_used": 340,
+  "tokens_used": 337,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement ACL evaluation: load built-in defaults + access.spl + page SPL, inject runtime facts, combine theory, reason, check can-read/can-edit conclusions per CON-020-005",
-      "token_cost": 42,
+      "content": "Implement /_admin/permissions: user list with roles/scopes, change role dropdown, change scope field, revoke button, SPL preview, save through normal pipeline",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T08:37:48Z"
+  "constructed_at": "2026-03-18T08:53:49Z"
 }

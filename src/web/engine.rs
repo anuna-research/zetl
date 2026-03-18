@@ -222,6 +222,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "recovery_show.html",
     "invite_accept.html",
     "admin_invite.html",
+    "admin_permissions.html",
 ];
 
 /// Build a minijinja Environment with the three-tier template loader.
@@ -472,6 +473,36 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("admin_invite.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the admin permissions management page (REQ-020-048).
+    pub fn render_admin_permissions(
+        &self,
+        vault_name: &str,
+        csrf_token: &str,
+        users: &[serde_json::Value],
+        spl_preview: &str,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            csrf_token => csrf_token,
+            users => users,
+            spl_preview => spl_preview,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("admin_permissions.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("admin_permissions.html"));
         }
         Ok(html)
     }
