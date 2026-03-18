@@ -4,8 +4,8 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 168,
-    "deletions": 9,
+    "insertions": 429,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
       "src/acl.rs"
@@ -14,14 +14,14 @@
   },
   "learnings": [
     {
-      "key": "task-owner-hardening-changes",
-      "content": "Modified 2 files (+168, -9): .hence/context-manifest.json, src/acl.rs",
+      "key": "task-temporal-acl-changes",
+      "content": "Modified 2 files (+429, -6): .hence/context-manifest.json, src/acl.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/owner-hardening-v1",
-  "evaluated_at": "2026-03-18T09:19:01Z",
+  "branch_name": "hence/temporal-acl-v1",
+  "evaluated_at": "2026-03-18T09:29:00Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
