@@ -3,25 +3,33 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 116,
-    "deletions": 11,
+    "files_changed": 10,
+    "insertions": 619,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/crdt/mod.rs"
+      "Cargo.lock",
+      "Cargo.toml",
+      "src/main.rs",
+      "src/web/mod.rs",
+      "src/web/routes.rs",
+      "src/web/session.rs",
+      "src/web/ws.rs",
+      "tests/history_integration.rs",
+      "tests/web_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-md-crdt-roundtrip-changes",
-      "content": "Modified 2 files (+116, -11): .hence/context-manifest.json, src/crdt/mod.rs",
+      "key": "task-ws-protocol-changes",
+      "content": "Modified 10 files (+619, -7): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/main.rs, src/web/mod.rs and 5 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/md-crdt-roundtrip-v1",
-  "evaluated_at": "2026-03-18T11:01:26Z",
+  "branch_name": "hence/ws-protocol-v1",
+  "evaluated_at": "2026-03-18T11:11:39Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

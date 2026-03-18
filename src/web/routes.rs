@@ -3959,6 +3959,26 @@ pub async fn api_index_handler(
     }
 }
 
+// ── POST /api/ws/ticket — issue a one-time WS auth ticket (REQ-020-028) ──
+
+pub async fn ws_ticket_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if state.collab {
+        match require_auth(&state, &headers) {
+            Ok((user_id, _)) => {
+                let ticket = state.ticket_store.issue(&user_id);
+                ApiResponse::ok(serde_json::json!({ "ticket": ticket })).into_response()
+            }
+            Err(resp) => resp,
+        }
+    } else {
+        let ticket = state.ticket_store.issue("anonymous");
+        ApiResponse::ok(serde_json::json!({ "ticket": ticket })).into_response()
+    }
+}
+
 // ── POST /api/reason — run SPL query (REQ-020-018) ───────────────────────
 
 #[cfg(feature = "reason")]
@@ -4417,6 +4437,8 @@ mod tests {
             #[cfg(feature = "reason")]
             acl_cache: Arc::new(std::sync::Mutex::new(crate::web::AclCache::new())),
             git_commit_lock: None,
+            ws_hub: crate::web::ws::WsHub::new(),
+            ticket_store: crate::web::ws::TicketStore::new(),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

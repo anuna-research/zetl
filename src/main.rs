@@ -5152,6 +5152,8 @@ fn cmd_serve(
             zetl::web::AclCache::new(),
         )),
         git_commit_lock,
+        ws_hub: zetl::web::ws::WsHub::new(),
+        ticket_store: zetl::web::ws::TicketStore::new(),
         #[cfg(feature = "semantic")]
         vector_index,
     };
