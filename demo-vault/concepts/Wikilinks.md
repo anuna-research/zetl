@@ -32,3 +32,8 @@ When reasoning is enabled, `--with-conclusions` annotates link results with the 
 ## Compatibility
 
 zetl supports the wikilink conventions used by Obsidian, Logseq, Foam, and Dendron. See [[Local-first Design]] for the principle that zetl never modifies your files.
+
+
+## Added by ar-crawl
+
+This section was added during automated testing.
