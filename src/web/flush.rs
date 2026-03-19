@@ -47,7 +47,19 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     let md = state.crdt_store.serialize_for_flush(slug)?;
 
     // ── Step 2: Write ────────────────────────────────────────────────────
-    let path = crdt_md_path(&state.vault_root, slug);
+    // Resolve the real on-disk path from VaultData (preserves original
+    // filename casing/spaces).  Falls back to slug-derived path for new pages.
+    let path = {
+        let data = state.data.read().unwrap();
+        let file = data.files.iter().find(|f| {
+            crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(slug)
+        });
+        if let Some(file) = file {
+            state.vault_root.join(&file.path)
+        } else {
+            crdt_md_path(&state.vault_root, slug)
+        }
+    };
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             eprintln!("flush: mkdir error for {slug}: {e}");

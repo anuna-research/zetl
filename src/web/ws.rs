@@ -388,6 +388,8 @@ impl CrdtDocEntry {
 pub struct CrdtDocStore {
     docs: Arc<Mutex<HashMap<String, CrdtDocEntry>>>,
     vault_root: Arc<PathBuf>,
+    /// Cached slug → real on-disk file path (preserves original case/spaces).
+    file_paths: Arc<Mutex<HashMap<String, PathBuf>>>,
     pub max_docs: usize,
     pub eviction_ttl: Duration,
     pub quiescence_delay: Duration,
@@ -398,6 +400,7 @@ impl CrdtDocStore {
         Self {
             docs: Arc::new(Mutex::new(HashMap::new())),
             vault_root,
+            file_paths: Arc::new(Mutex::new(HashMap::new())),
             max_docs: DEFAULT_MAX_DOCS,
             eviction_ttl: DEFAULT_EVICTION_TTL,
             quiescence_delay: DEFAULT_QUIESCENCE_DELAY,
@@ -446,8 +449,23 @@ impl CrdtDocStore {
         }
     }
 
+    /// Register the real on-disk file path for a slug so that writes
+    /// preserve the original filename (case, spaces, etc.).
+    pub fn register_path(&self, slug: &str, path: PathBuf) {
+        self.file_paths
+            .lock()
+            .expect("file_paths lock")
+            .insert(slug.to_string(), path);
+    }
+
     /// Resolve a slug to its `.md` file path.
+    ///
+    /// Returns the registered real path if available, otherwise falls
+    /// back to `{vault_root}/{slug}.md` for new pages.
     pub fn md_path_for_slug(&self, slug: &str) -> PathBuf {
+        if let Some(path) = self.file_paths.lock().expect("file_paths lock").get(slug) {
+            return path.clone();
+        }
         self.vault_root.join(format!("{slug}.md"))
     }
 
@@ -1042,6 +1060,19 @@ fn authenticate(state: &WebState, query: &WsQuery) -> Option<String> {
 
 /// Handle an authenticated WebSocket connection.
 async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, state: WebState) {
+    // Register the real on-disk path for this slug so that CRDT
+    // flush/load preserves the original filename (case, spaces, etc.).
+    {
+        let data = state.data.read().unwrap();
+        if let Some(file) = data.files.iter().find(|f| {
+            crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug)
+        }) {
+            state
+                .crdt_store
+                .register_path(&slug, state.vault_root.join(&file.path));
+        }
+    }
+
     // Load CRDT document on first connection (REQ-020-029)
     if let Err(e) = state.crdt_store.load_or_get(&slug) {
         eprintln!("error loading CRDT for {slug}: {e}");

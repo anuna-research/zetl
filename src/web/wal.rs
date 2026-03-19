@@ -153,6 +153,18 @@ pub fn replay_pending_wals(state: &super::WebState) {
     eprintln!("[zetl] WAL recovery: found {} pending WAL(s)", slugs.len());
 
     for slug in &slugs {
+        // Register the real file path for this slug before loading.
+        {
+            let data = state.data.read().unwrap();
+            if let Some(file) = data.files.iter().find(|f| {
+                crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(slug)
+            }) {
+                state
+                    .crdt_store
+                    .register_path(slug, state.vault_root.join(&file.path));
+            }
+        }
+
         // Step 1: Load page markdown into CRDT store
         if let Err(e) = state.crdt_store.load_or_get(slug) {
             eprintln!("[zetl] WAL recovery: failed to load {slug}: {e}");
