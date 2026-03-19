@@ -154,6 +154,8 @@ pub struct WebState {
     pub recovery_challenges: Arc<RecoveryChallengeStore>,
     /// Tracks user_ids whose mnemonic has already been displayed (one-time serve).
     pub mnemonic_shown: Arc<Mutex<HashSet<String>>>,
+    /// One-time flag: /auth/bootstrap has already been consumed this process.
+    pub bootstrap_used: Arc<std::sync::atomic::AtomicBool>,
     /// Authentication rate limiters (per-user and per-IP).
     pub rate_limiters: AuthRateLimiters,
     /// Lazy ACL decision cache, invalidated on vault_root_hash change (REQ-020-013).

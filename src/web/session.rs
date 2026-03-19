@@ -744,6 +744,7 @@ mod tests {
             sessions: SessionStore::new(),
             recovery_challenges: Arc::new(crate::user::recovery::RecoveryChallengeStore::new()),
             mnemonic_shown: Arc::new(Mutex::new(std::collections::HashSet::new())),
+            bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
             #[cfg(feature = "reason")]
             acl_cache: Arc::new(Mutex::new(crate::web::AclCache::new())),

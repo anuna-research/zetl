@@ -2516,9 +2516,32 @@ pub struct PasskeyRegisterParams {
 /// POST /api/passkey/register/start — Begin passkey registration ceremony.
 pub async fn passkey_register_start_handler(
     State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<PasskeyApiRequest>,
 ) -> Response {
     let vault_root = &*state.vault_root;
+
+    // In collab mode, require an authenticated session and verify the caller
+    // is registering a passkey for their own account.
+    if state.collab {
+        match extract_session_user_id(&state, &headers) {
+            Some(session_uid) if session_uid == body.user_id => { /* ok */ }
+            Some(_) => {
+                return (
+                    StatusCode::FORBIDDEN,
+                    "cannot register a passkey for another user".to_string(),
+                )
+                    .into_response();
+            }
+            None => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    "authentication required".to_string(),
+                )
+                    .into_response();
+            }
+        }
+    }
 
     // Per-user rate limit on passkey registration attempts
     if let Err(retry_after) = state.rate_limiters.passkey_per_user.check(&body.user_id) {
@@ -2570,6 +2593,7 @@ pub async fn passkey_register_start_handler(
 /// POST /api/passkey/register/finish — Complete passkey registration ceremony.
 pub async fn passkey_register_finish_handler(
     State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Response {
     let vault_root = &*state.vault_root;
@@ -2580,6 +2604,27 @@ pub async fn passkey_register_finish_handler(
             return (StatusCode::BAD_REQUEST, "missing user_id").into_response();
         }
     };
+
+    // In collab mode, require an authenticated session matching the target user.
+    if state.collab {
+        match extract_session_user_id(&state, &headers) {
+            Some(session_uid) if session_uid == user_id => { /* ok */ }
+            Some(_) => {
+                return (
+                    StatusCode::FORBIDDEN,
+                    "cannot register a passkey for another user".to_string(),
+                )
+                    .into_response();
+            }
+            None => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    "authentication required".to_string(),
+                )
+                    .into_response();
+            }
+        }
+    }
 
     // Per-user rate limit on passkey registration finish attempts
     if let Err(retry_after) = state.rate_limiters.passkey_per_user.check(&user_id) {
@@ -2728,6 +2773,17 @@ pub async fn recovery_show_handler(
                 .into_response();
         }
     };
+
+    // Refuse to regenerate if the user already has a recovery pubkey persisted
+    // on disk.  The in-memory mnemonic_shown guard only survives one process
+    // lifetime; this check is durable across restarts.
+    if !profile.recovery_pubkey.is_empty() {
+        return (
+            StatusCode::GONE,
+            "recovery phrase has already been generated for this user",
+        )
+            .into_response();
+    }
 
     // Generate the recovery keypair
     let keypair = match crate::user::recovery::generate_recovery_keypair() {
@@ -2928,7 +2984,7 @@ pub async fn recover_verify_handler(
                 ],
                 serde_json::json!({
                     "status": "ok",
-                    "redirect": "/passkey/register"
+                    "redirect": format!("/passkey/register?user_id={}", body.user_id)
                 })
                 .to_string(),
             )
@@ -3202,6 +3258,14 @@ pub async fn bootstrap_handler(State(state): State<WebState>) -> Response {
         }
     };
 
+    // One-time guard: reject if bootstrap has already been consumed.
+    if state
+        .bootstrap_used
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
+        return (StatusCode::GONE, "bootstrap has already been used").into_response();
+    }
+
     let owner = profiles.iter().find(|p| p.owner);
     match owner {
         Some(profile) => {
@@ -3211,7 +3275,7 @@ pub async fn bootstrap_handler(State(state): State<WebState>) -> Response {
             let cookie = format!(
                 "zetl_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400"
             );
-            let location = format!("/auth/passkey/register?user_id={}", profile.id);
+            let location = format!("/passkey/register?user_id={}", profile.id);
             (
                 StatusCode::FOUND,
                 [
@@ -5429,6 +5493,7 @@ mod tests {
                 crate::user::recovery::RecoveryChallengeStore::new(),
             ),
             mnemonic_shown: Arc::new(std::sync::Mutex::new(HashSet::new())),
+            bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
             #[cfg(feature = "reason")]
             acl_cache: Arc::new(std::sync::Mutex::new(crate::web::AclCache::new())),

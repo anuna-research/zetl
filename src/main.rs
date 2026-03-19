@@ -5150,6 +5150,7 @@ fn cmd_serve(
         mnemonic_shown: std::sync::Arc::new(std::sync::Mutex::new(
             std::collections::HashSet::new(),
         )),
+        bootstrap_used: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
         #[cfg(feature = "reason")]
         acl_cache: std::sync::Arc::new(std::sync::Mutex::new(

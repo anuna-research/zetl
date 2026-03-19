@@ -1392,6 +1392,7 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
             zetl::user::recovery::RecoveryChallengeStore::new(),
         ),
         mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
+        bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
         collab: false,
         #[cfg(feature = "reason")]
