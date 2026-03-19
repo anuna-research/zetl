@@ -107,18 +107,13 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     }
 
     // ── Step 7: Git commit ───────────────────────────────────────────────
-    let rel_path = path
-        .strip_prefix(state.vault_root.as_ref())
-        .unwrap_or(&path)
-        .to_path_buf();
-
     if let Some(ref lock) = state.git_commit_lock {
         match lock.lock() {
             Ok(repo) => {
                 let msg = format!("edit: {slug} (crdt flush)");
                 match super::git_commit::auto_commit(
                     &repo,
-                    &rel_path,
+                    &path,
                     "zetl-crdt",
                     "zetl-crdt",
                     Some(&msg),
@@ -159,7 +154,11 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     let vault_root = state.vault_root.clone();
     let theme = state.theme.clone();
     let content_length = md.len();
-    let rel_path_str = rel_path.to_string_lossy().into_owned();
+    let rel_path_str = path
+        .strip_prefix(state.vault_root.as_ref())
+        .unwrap_or(&path)
+        .to_string_lossy()
+        .into_owned();
     let page_name = slug.rsplit('/').next().unwrap_or(slug).to_string();
 
     std::thread::spawn(move || {
