@@ -202,8 +202,8 @@ impl HookUser {
     }
 
     /// Create a `HookUser` from a `UserProfile`.
-    pub fn from_profile(profile: &crate::user::UserProfile, is_agent: bool) -> Self {
-        let role = crate::user::Role::for_profile(profile);
+    pub fn from_profile(profile: &crate::user::UserProfile, is_agent: bool, vault_root: &std::path::Path) -> Self {
+        let role = crate::user::Role::for_profile_with_vault(profile, vault_root);
         HookUser {
             id: profile.id.clone(),
             name: profile.name.clone(),
@@ -719,7 +719,8 @@ mod tests {
             agent_token_generation: 0,
         };
 
-        let hook_user = HookUser::from_profile(&profile, false);
+        let tmp = TempDir::new().unwrap();
+        let hook_user = HookUser::from_profile(&profile, false, tmp.path());
         assert_eq!(hook_user.id, "alice-a1b2c3d4");
         assert_eq!(hook_user.name, "Alice");
         assert!(!hook_user.is_agent);
@@ -739,7 +740,8 @@ mod tests {
             agent_token_generation: 0,
         };
 
-        let hook_user = HookUser::from_profile(&profile, true);
+        let tmp = TempDir::new().unwrap();
+        let hook_user = HookUser::from_profile(&profile, true, tmp.path());
         assert_eq!(hook_user.id, "bob-12345678");
         assert_eq!(hook_user.name, "Bob");
         assert!(hook_user.is_agent);

@@ -5162,7 +5162,7 @@ fn cmd_serve(
         pending_writes: zetl::web::fs_watch::PendingWrites::new(),
         passkey_mgr: zetl::user::passkey::PasskeyManager::new(
             "localhost",
-            "http://localhost:3000",
+            &format!("http://localhost:{port}"),
             "zetl vault",
         )
         .ok()

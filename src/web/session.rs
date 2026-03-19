@@ -362,7 +362,7 @@ where
             .flatten()
             .ok_or(StatusCode::FORBIDDEN)?;
 
-        let role = crate::user::Role::for_profile(&profile);
+        let role = crate::user::Role::for_profile_with_vault(&profile, &web_state.vault_root);
         Ok(SessionRole { user_id, role })
     }
 }
@@ -464,7 +464,7 @@ pub async fn admin_gate(
         .flatten();
 
     match profile {
-        Some(p) if p.owner || crate::user::Role::for_profile(&p) >= crate::user::Role::Admin => {
+        Some(p) if p.owner || crate::user::Role::for_profile_with_vault(&p, &state.vault_root) >= crate::user::Role::Admin => {
             next.run(request).await
         }
         _ => StatusCode::FORBIDDEN.into_response(),

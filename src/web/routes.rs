@@ -135,17 +135,25 @@ pub async fn dashboard_handler(
         }
     };
 
-    let role = crate::user::Role::for_profile(&profile);
+    let role = crate::user::Role::for_profile_with_vault(&profile, vault_root);
     let is_admin = role >= crate::user::Role::Admin;
 
     // Recent git edits (last 20 commits)
     let recent_edits = recent_git_edits(&state.git_commit_lock, 20);
 
-    // Accessible pages
+    // Accessible pages — filter by read ACL in collab mode (REQ-020-031).
     let data = state.data.read().unwrap();
     let accessible_pages: Vec<serde_json::Value> = data
         .page_names
         .iter()
+        .filter(|name| {
+            #[cfg(feature = "reason")]
+            if state.collab {
+                let slug = data.slug_for_page(name);
+                return check_page_acl_read(&state, &session.user_id, &slug).is_ok();
+            }
+            true
+        })
         .map(|name| {
             let slug = data.slug_for_page(name);
             serde_json::json!({ "name": name, "slug": slug })
@@ -968,7 +976,7 @@ pub async fn save_handler(
             // Attach authenticated user identity if a session was present.
             if let Some(ref uid) = hook_user_id {
                 if let Ok(Some(profile)) = crate::user::load_profile(&vault_root, uid) {
-                    ctx.user = Some(crate::hooks::context::HookUser::from_profile(&profile, false));
+                    ctx.user = Some(crate::hooks::context::HookUser::from_profile(&profile, false, &vault_root));
                 }
             }
 
@@ -3173,11 +3181,12 @@ fn inject_access_spl(
 
 /// GET /auth/bootstrap — entry point for owner bootstrap.
 ///
-/// Redirects to `/recovery/show?user_id=<owner_id>` so the owner can view
-/// their BIP39 mnemonic and then proceed to passkey registration.  The owner
-/// profile must already exist (created by `--init-owner` before the server
-/// starts).  Returns 409 Conflict if no owner profile is found (the CLI
-/// guard should prevent this, but we check defensively).
+/// Creates a session for the bootstrap owner and redirects to passkey
+/// registration.  The recovery mnemonic is already printed to stderr by the
+/// CLI at startup, so this route should NOT redirect to `/recovery/show`
+/// (which requires an authenticated session and would regenerate a different
+/// key).  The owner profile must already exist (created by `--init-owner`
+/// before the server starts).
 pub async fn bootstrap_handler(State(state): State<WebState>) -> Response {
     let vault_root = &*state.vault_root;
 
@@ -3196,8 +3205,21 @@ pub async fn bootstrap_handler(State(state): State<WebState>) -> Response {
     let owner = profiles.iter().find(|p| p.owner);
     match owner {
         Some(profile) => {
-            let location = format!("/recovery/show?user_id={}", profile.id);
-            (StatusCode::FOUND, [(header::LOCATION, location)]).into_response()
+            // Create a bootstrap session so the owner is authenticated for
+            // subsequent flows (passkey registration, recovery, etc.).
+            let token = state.sessions.create(&profile.id);
+            let cookie = format!(
+                "zetl_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400"
+            );
+            let location = format!("/auth/passkey/register?user_id={}", profile.id);
+            (
+                StatusCode::FOUND,
+                [
+                    (header::LOCATION, location),
+                    (header::SET_COOKIE, cookie),
+                ],
+            )
+                .into_response()
         }
         None => (
             StatusCode::CONFLICT,
@@ -4104,6 +4126,14 @@ pub async fn api_pages_put_handler(
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
 
+    // In collab mode, verify the user has edit permission on this page.
+    #[cfg(feature = "reason")]
+    if state.collab {
+        if let Err(resp) = check_page_acl_edit(&state, &user_id, slug) {
+            return resp;
+        }
+    }
+
     let x_create = headers
         .get("X-Create")
         .and_then(|v| v.to_str().ok())
@@ -4308,6 +4338,14 @@ pub async fn api_pages_delete_handler(
 
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
+
+    // In collab mode, verify the user has edit permission on this page.
+    #[cfg(feature = "reason")]
+    if state.collab {
+        if let Err(resp) = check_page_acl_edit(&state, &user_id, slug) {
+            return resp;
+        }
+    }
 
     let full_path = {
         let data = state.data.read().unwrap();
@@ -4676,7 +4714,7 @@ fn fire_access_request_hook(
 
     // Attach requesting user identity
     if let Ok(Some(profile)) = crate::user::load_profile(vault_root, user_id) {
-        ctx.user = Some(crate::hooks::context::HookUser::from_profile(&profile, false));
+        ctx.user = Some(crate::hooks::context::HookUser::from_profile(&profile, false, vault_root));
     }
 
     // Attach access request context
@@ -4961,7 +4999,7 @@ pub async fn api_reason_handler(
         // Check admin role
         match crate::user::load_profile(&state.vault_root, &user_id) {
             Ok(Some(profile)) => {
-                let role = crate::user::Role::for_profile(&profile);
+                let role = crate::user::Role::for_profile_with_vault(&profile, &state.vault_root);
                 if role < crate::user::Role::Admin {
                     return ApiResponse::err(
                         StatusCode::FORBIDDEN,

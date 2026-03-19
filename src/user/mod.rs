@@ -289,7 +289,7 @@ pub fn admin_names(vault_root: &Path) -> Vec<String> {
     };
     profiles
         .into_iter()
-        .filter(|p| p.owner || Role::for_profile(p) == Role::Admin)
+        .filter(|p| p.owner || Role::for_profile_with_vault(p, vault_root) == Role::Admin)
         .map(|p| p.name)
         .collect()
 }
