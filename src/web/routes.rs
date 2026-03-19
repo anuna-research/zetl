@@ -2492,8 +2492,15 @@ pub async fn api_history_diff_handler(
 /// GET /passkey/register — Passkey registration guidance screen.
 pub async fn passkey_register_handler(
     State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
     Query(params): Query<PasskeyRegisterParams>,
 ) -> Response {
+    // In collab mode, redirect to bootstrap if no valid session exists.
+    // This handles stale cookies after a server restart.
+    if state.collab && extract_session_user_id(&state, &headers).is_none() {
+        return axum::response::Redirect::temporary("/auth/bootstrap").into_response();
+    }
+
     let vault_name = state
         .vault_root
         .file_name()
