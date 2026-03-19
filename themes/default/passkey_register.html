@@ -204,7 +204,15 @@
       return r.json();
     })
     .then(function(options) {
-      return navigator.credentials.create({ publicKey: options.publicKey });
+      // WebAuthn API requires ArrayBuffer for challenge, user.id, and excludeCredentials[].id,
+      // but webauthn-rs serializes these as base64url strings.
+      var pk = options.publicKey;
+      pk.challenge = b64ToBuf(pk.challenge);
+      pk.user.id = b64ToBuf(pk.user.id);
+      if (pk.excludeCredentials) {
+        pk.excludeCredentials.forEach(function(c) { c.id = b64ToBuf(c.id); });
+      }
+      return navigator.credentials.create({ publicKey: pk });
     })
     .then(function(credential) {
       // Encode ArrayBuffer fields to base64url for JSON transport
@@ -241,6 +249,15 @@
       showState('pk-error');
     });
   };
+
+  function b64ToBuf(str) {
+    str = str.replace(/-/g,'+').replace(/_/g,'/');
+    while (str.length % 4) str += '=';
+    var binary = atob(str);
+    var buf = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) buf[i] = binary.charCodeAt(i);
+    return buf.buffer;
+  }
 
   function bufToB64(buf) {
     var bytes = new Uint8Array(buf);
