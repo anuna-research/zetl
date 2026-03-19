@@ -26,8 +26,7 @@ pub fn open_repo(vault_root: &Path) -> Option<GitCommitLock> {
 
 /// Commit a single file change to the vault's git repository (CON-020-006).
 ///
-/// - `file_path`: absolute path to the file, or relative to the git repo workdir.
-///   Absolute paths are automatically resolved relative to the repo workdir.
+/// - `file_path`: path relative to the vault root (e.g. `"notes/My Page.md"`)
 /// - `user_name`: display name for the git author
 /// - `user_id`: user identifier (used as `<user_id>@vault` in author email)
 /// - `message`: optional custom commit message (from `X-Commit-Message` header);
@@ -42,36 +41,8 @@ pub fn auto_commit(
     message: Option<&str>,
 ) -> Result<git2::Oid, git2::Error> {
     // 1. Stage the file via the index.
-    //    Resolve absolute paths to repo-relative. This handles the case where
-    //    the vault is a subdirectory of the git repo (e.g. `zetl -d demo-vault`).
-    let git_path_buf;
-    let git_path = if file_path.is_absolute() {
-        if let Some(wd) = repo.workdir() {
-            if let Ok(rel) = file_path.strip_prefix(wd) {
-                rel
-            } else {
-                file_path
-            }
-        } else {
-            file_path
-        }
-    } else if repo.workdir().map_or(true, |wd| wd.join(file_path).exists()) {
-        // Already repo-relative and the file exists there.
-        file_path
-    } else {
-        // file_path may be vault-relative when vault != repo root.
-        // Try to canonicalize through the filesystem.
-        git_path_buf = std::env::current_dir()
-            .ok()
-            .and_then(|cwd| {
-                let abs = cwd.join(file_path);
-                let wd = repo.workdir()?;
-                abs.strip_prefix(wd).ok().map(|p| p.to_path_buf())
-            });
-        git_path_buf.as_deref().unwrap_or(file_path)
-    };
     let mut index = repo.index()?;
-    index.add_path(git_path)?;
+    index.add_path(file_path)?;
     index.write()?;
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;

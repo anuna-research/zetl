@@ -847,6 +847,11 @@ pub async fn save_handler(
         .and_then(|token| state.sessions.validate(&token));
 
     if let Some(ref lock) = state.git_commit_lock {
+        let rel_path_for_git = full_path
+            .strip_prefix(state.vault_root.as_ref())
+            .unwrap_or(&full_path)
+            .to_path_buf();
+
         // Resolve author from authenticated session, fallback to "zetl".
         let (author_name, author_id) = if let Some(ref uid) = session_user_id {
             match crate::user::load_profile(&state.vault_root, uid) {
@@ -866,7 +871,7 @@ pub async fn save_handler(
             Ok(repo) => {
                 match super::git_commit::auto_commit(
                     &repo,
-                    &full_path,
+                    &rel_path_for_git,
                     &author_name,
                     &author_id,
                     custom_message.as_deref(),
@@ -2059,7 +2064,7 @@ pub async fn api_restore_handler(
         let msg = format!("restore: {} to {}", slug, &commit[..7.min(commit.len())]);
         let _ = crate::web::git_commit::auto_commit(
             &repo,
-            &full_path,
+            &file_path,
             &user_name,
             &user_name,
             Some(&msg),
@@ -3756,7 +3761,7 @@ pub async fn admin_permissions_save_handler(
         // Auto-commit
         if let Some(ref lock) = state.git_commit_lock {
             if let Ok(repo) = lock.lock() {
-                let acl_path = vault_root.join(".zetl/collab/access.spl");
+                let rel_path = std::path::Path::new(".zetl/collab/access.spl");
                 let user_name = crate::user::load_profile(vault_root, &session.user_id)
                     .ok()
                     .flatten()
@@ -3764,7 +3769,7 @@ pub async fn admin_permissions_save_handler(
                     .unwrap_or_else(|| session.user_id.clone());
                 let _ = crate::web::git_commit::auto_commit(
                     &repo,
-                    &acl_path,
+                    rel_path,
                     &user_name,
                     &session.user_id,
                     Some(&format!("permissions: remove user {}", user_id)),
@@ -4322,6 +4327,11 @@ pub async fn api_pages_put_handler(
 
     // Git auto-commit
     if let Some(ref lock) = state.git_commit_lock {
+        let rel_path = full_path
+            .strip_prefix(state.vault_root.as_ref())
+            .unwrap_or(&full_path)
+            .to_path_buf();
+
         let (author_name, author_id) =
             match crate::user::load_profile(&state.vault_root, &user_id) {
                 Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
@@ -4336,7 +4346,7 @@ pub async fn api_pages_put_handler(
         if let Ok(repo) = lock.lock() {
             match super::git_commit::auto_commit(
                 &repo,
-                &full_path,
+                &rel_path,
                 &author_name,
                 &author_id,
                 custom_message.as_deref(),
@@ -4445,6 +4455,11 @@ pub async fn api_pages_delete_handler(
 
     // Git auto-commit the deletion
     if let Some(ref lock) = state.git_commit_lock {
+        let rel_path = full_path
+            .strip_prefix(state.vault_root.as_ref())
+            .unwrap_or(&full_path)
+            .to_path_buf();
+
         let (author_name, author_id) =
             match crate::user::load_profile(&state.vault_root, &user_id) {
                 Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
@@ -4457,7 +4472,7 @@ pub async fn api_pages_delete_handler(
         if let Ok(repo) = lock.lock() {
             match super::git_commit::auto_commit(
                 &repo,
-                &full_path,
+                &rel_path,
                 &author_name,
                 &author_id,
                 Some(&commit_msg),

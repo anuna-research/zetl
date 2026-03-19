@@ -2,11 +2,12 @@
 title: Search
 ---
 
-# Search
+# Searchs
 
 `zetl search` provides full-text content search across all Markdown files in the vault. [[search-history]]
 
 ```spl
+(given hello)
 (given fulltext-search-done)
 (given regex-support)
 ```
