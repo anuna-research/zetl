@@ -762,12 +762,18 @@ pub async fn edit_handler(
     // Build breadcrumbs
     let breadcrumbs = crate::web::context::build_breadcrumbs(&file_slug);
 
+    // CSRF token for save requests in collab mode
+    let csrf_token = crate::web::session::token_from_cookies(&headers)
+        .and_then(|t| state.sessions.csrf_token(&t))
+        .unwrap_or_default();
+
     // Build editor JSON data
     let editor_json = serde_json::json!({
         "slug": file_slug,
         "ticket": ticket,
         "content": raw_content,
         "user_name": user_name,
+        "csrf_token": csrf_token,
     })
     .to_string();
 

@@ -558,6 +558,9 @@ function handleRemotePresence(msg) {
   updatePresenceBar();
 }
 
+// ── CSRF token (embedded in editor data for collab mode saves) ──────
+const CSRF_TOKEN = DATA.csrf_token || "";
+
 // ── Save ───────────────────────────────────────────────────────────────
 window.saveDoc = async function() {
   const content = view.state.doc.toString();
@@ -566,9 +569,11 @@ window.saveDoc = async function() {
   saveBtn.textContent = "Saving\u2026";
   try {
     const slugPath = "/" + PAGE_SLUG + "/";
+    const headers = { "Content-Type": "text/plain; charset=utf-8" };
+    if (CSRF_TOKEN) headers["X-CSRF-Token"] = CSRF_TOKEN;
     const resp = await fetch(slugPath, {
       method: "PUT",
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      headers,
       body: content,
     });
     if (resp.ok) {
