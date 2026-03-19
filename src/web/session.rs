@@ -247,7 +247,18 @@ pub async fn collab_gate(
         return next.run(request).await;
     }
 
-    StatusCode::UNAUTHORIZED.into_response()
+    // Browsers get a redirect to the bootstrap/login page; API clients get 401.
+    let accepts_html = request
+        .headers()
+        .get("accept")
+        .and_then(|v| v.to_str().ok())
+        .map_or(false, |v| v.contains("text/html"));
+
+    if accepts_html {
+        axum::response::Redirect::temporary("/auth/bootstrap").into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
+    }
 }
 
 /// Middleware that injects the `X-CSRF-Token` response header for authenticated sessions
