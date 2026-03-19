@@ -227,20 +227,22 @@
 {% block scripts %}
 <script type="module">
 // ── Imports from esm.sh CDN ────────────────────────────────────────────
+// Pin @codemirror/state via ?deps on all CM packages to avoid duplicate
+// module instances (which break instanceof checks in CodeMirror).
 import {EditorView, keymap, lineNumbers, highlightActiveLineGutter, drawSelection,
         highlightActiveLine, Decoration, ViewPlugin, WidgetType
-       } from "https://esm.sh/@codemirror/view@6.36.5";
+       } from "https://esm.sh/@codemirror/view@6.36.5?deps=@codemirror/state@6.6.0";
 import {EditorState, StateField, StateEffect, Compartment
-       } from "https://esm.sh/@codemirror/state@6.5.2";
-import {markdown} from "https://esm.sh/@codemirror/lang-markdown@6.3.2";
+       } from "https://esm.sh/@codemirror/state@6.6.0";
+import {markdown} from "https://esm.sh/@codemirror/lang-markdown@6.3.2?deps=@codemirror/state@6.6.0";
 import {defaultKeymap, history, historyKeymap, indentWithTab
-       } from "https://esm.sh/@codemirror/commands@6.8.0";
+       } from "https://esm.sh/@codemirror/commands@6.8.0?deps=@codemirror/state@6.6.0";
 import {syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatching
-       } from "https://esm.sh/@codemirror/language@6.10.8";
+       } from "https://esm.sh/@codemirror/language@6.10.8?deps=@codemirror/state@6.6.0";
 import {closeBrackets, closeBracketsKeymap
-       } from "https://esm.sh/@codemirror/autocomplete@6.18.6";
+       } from "https://esm.sh/@codemirror/autocomplete@6.18.6?deps=@codemirror/state@6.6.0";
 import {searchKeymap, highlightSelectionMatches
-       } from "https://esm.sh/@codemirror/search@6.5.10";
+       } from "https://esm.sh/@codemirror/search@6.5.10?deps=@codemirror/state@6.6.0";
 
 // ── Config ─────────────────────────────────────────────────────────────
 const DATA = JSON.parse(document.getElementById("editor-data").textContent);
@@ -321,6 +323,20 @@ function buildRemoteDecorations(state) {
   widgets.sort((a, b) => a.from - b.from || a.value.startSide - b.value.startSide);
   return Decoration.set(widgets);
 }
+
+// ── Merge highlight field (must be defined before EditorView creation) ──
+const setMergeHighlights = StateEffect.define();
+
+const mergeHighlightField = StateField.define({
+  create() { return Decoration.none; },
+  update(value, tr) {
+    for (let e of tr.effects) {
+      if (e.is(setMergeHighlights)) return e.value;
+    }
+    return value.map(tr.changes);
+  },
+  provide: f => EditorView.decorations.from(f),
+});
 
 // ── Presence bar UI ────────────────────────────────────────────────────
 const presenceBar = document.getElementById("presence-bar");
@@ -571,19 +587,6 @@ window.saveDoc = async function() {
 };
 
 // ── Merge notification (REQ-020-052) ────────────────────────────────
-
-const setMergeHighlights = StateEffect.define();
-
-const mergeHighlightField = StateField.define({
-  create() { return Decoration.none; },
-  update(value, tr) {
-    for (let e of tr.effects) {
-      if (e.is(setMergeHighlights)) return e.value;
-    }
-    return value.map(tr.changes);
-  },
-  provide: f => EditorView.decorations.from(f),
-});
 
 function handleExternalMerge(msg) {
   const oldText = view.state.doc.toString();

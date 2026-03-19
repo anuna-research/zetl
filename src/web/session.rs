@@ -296,6 +296,11 @@ pub async fn csrf_guard(
 ) -> Response {
     let method = request.method().clone();
 
+    // Skip CSRF checks in non-collab mode — there are no sessions.
+    if !state.collab {
+        return next.run(request).await;
+    }
+
     // Only check state-changing methods
     if method != axum::http::Method::PUT
         && method != axum::http::Method::POST
