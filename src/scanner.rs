@@ -149,6 +149,7 @@ pub fn parse_file(path: &Path, content: &str, page_name: &str) -> ParsedFile {
 
     // Extract SPL blocks and apply page-level sandbox (REQ-020-059)
     let spl_blocks = {
+        #[allow(unused_mut)]
         let mut blocks = extract_spl_blocks(path, content, page_name);
         #[cfg(feature = "reason")]
         {

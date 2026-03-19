@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand, ValueEnum};
     name = "zetl",
     version,
     about = "Bi-directional wikilink graph CLI for personal knowledge management",
-    after_help = "Examples:\n  zetl list                    List all pages\n  zetl links \"My Page\"         Show forward links\n  zetl search \"query\"          Search vault contents\n  zetl check                   Validate vault health\n  zetl serve                   Start local web server\n\nLearn more: https://github.com/anuna/zetl"
+    after_help = "Examples:\n  zetl list                    List all pages\n  zetl links \"My Page\"         Show forward links\n  zetl search \"query\"          Search vault contents\n  zetl check                   Validate vault health\n  zetl serve                   Start local web server\n  zetl serve --collab          Start with multi-user auth\n\nLearn more: https://github.com/anuna/zetl"
 )]
 pub struct Cli {
     /// Vault root directory
@@ -206,6 +206,7 @@ pub enum Command {
     Tui,
 
     /// Start local web server to browse the vault
+    #[command(after_help = "Examples:\n  zetl serve                                        Single-user web UI\n  zetl serve --collab --init-owner --owner-name Jo   First-time collab setup\n  zetl serve --collab                                Multi-user mode\n  zetl serve --port 8080 --theme dark                Custom port and theme")]
     Serve {
         /// Port to listen on
         #[arg(short, long, default_value = "3000")]

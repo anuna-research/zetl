@@ -109,6 +109,7 @@ fn recent_git_edits(
 }
 
 /// GET /_me — User dashboard with recent edits, accessible pages, role summary, etc.
+#[allow(unused_variables)]
 pub async fn dashboard_handler(
     State(state): State<WebState>,
     session: crate::web::session::SessionUser,
@@ -236,6 +237,7 @@ pub async fn dashboard_handler(
 }
 
 /// GET / — Landing page with vault stats and page grid.
+#[allow(unused_variables, unused_mut)]
 pub async fn index_handler(
     State(state): State<WebState>,
     headers: axum::http::HeaderMap,
@@ -291,6 +293,7 @@ pub async fn index_handler(
 }
 
 /// GET /{*path} — Rendered markdown page with backlinks, or folder index.
+#[allow(unused_variables)]
 pub async fn page_handler(
     State(state): State<WebState>,
     headers: axum::http::HeaderMap,
