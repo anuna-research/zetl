@@ -403,14 +403,13 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str, git_poll_interval:
             session::collab_gate,
         ));
 
-    // ── WebSocket routes (auth handled inside the handler) ───────────
+    // ── WebSocket routes (auth handled inside the handler via tickets) ──
+    // No collab_gate here: WS auth uses single-use tickets issued by the
+    // edit handler (which IS behind collab_gate). The ticket endpoint
+    // validates session cookies internally when in collab mode.
     let ws_routes = Router::new()
         .route("/ws/edit/{*slug}", get(ws::ws_edit_handler))
-        .route("/api/ws/ticket", post(routes::ws_ticket_handler))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            session::collab_gate,
-        ));
+        .route("/api/ws/ticket", post(routes::ws_ticket_handler));
 
     let app = Router::new()
         .merge(auth_routes)
@@ -418,11 +417,11 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str, git_poll_interval:
         .merge(content_routes)
         .with_state(state)
         .layer(middleware::map_response(|mut resp: axum::response::Response| async {
-            resp.headers_mut().insert(
-                header::CONTENT_SECURITY_POLICY,
+            // Only set CSP if the handler didn't already set one (e.g. the editor).
+            resp.headers_mut().entry(header::CONTENT_SECURITY_POLICY).or_insert(
                 "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://esm.sh; \
                  style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://esm.sh; \
-                 connect-src 'self' ws: wss: https://esm.sh; \
+                 connect-src 'self' ws: wss: https://esm.sh https://cdn.jsdelivr.net; \
                  font-src 'self' https://cdn.jsdelivr.net; \
                  frame-ancestors 'none'"
                     .parse()
