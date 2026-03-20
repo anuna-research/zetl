@@ -820,11 +820,21 @@ pub async fn save_handler(
         let file = data
             .files
             .iter()
-            .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug));
+            .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
         if let Some(file) = file {
             state.vault_root.join(&file.path)
         } else {
-            state.vault_root.join(format!("{slug}.md"))
+            // Index miss — check the filesystem before creating a new file.
+            // This prevents creating duplicates like "foo-bar.md" when
+            // "Foo Bar.md" already exists but the index hasn't refreshed.
+            let slug_path = state.vault_root.join(format!("{slug}.md"));
+            if slug_path.exists() {
+                slug_path
+            } else {
+                // Try to find a file whose slug matches (handles spaces/casing).
+                find_file_by_slug(&state.vault_root, slug)
+                    .unwrap_or(slug_path)
+            }
         }
     };
 
@@ -2097,6 +2107,29 @@ fn render_error_response(err: TemplateError) -> Response {
 }
 
 /// Decode %20-style URL encoding.
+/// Walk the vault directory to find a `.md` file whose slug matches the given slug.
+/// This handles the case where the file has spaces/casing that differs from the slug
+/// (e.g. slug "concepts/defeasible-reasoning" matches "concepts/Defeasible Reasoning.md").
+fn find_file_by_slug(vault_root: &std::path::Path, slug: &str) -> Option<std::path::PathBuf> {
+    // Split slug into directory and filename parts
+    let slug_dir = std::path::Path::new(slug).parent();
+    let search_dir = match slug_dir {
+        Some(d) if !d.as_os_str().is_empty() => vault_root.join(d),
+        _ => vault_root.to_path_buf(),
+    };
+    let entries = std::fs::read_dir(&search_dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map_or(false, |e| e == "md") {
+            let rel = path.strip_prefix(vault_root).ok()?;
+            if page_slug_from_path(rel).eq_ignore_ascii_case(slug) {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
 fn urldecode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.bytes();

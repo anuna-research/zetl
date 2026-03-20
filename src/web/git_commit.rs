@@ -43,10 +43,16 @@ pub fn auto_commit(
     // 1. Stage the file via the index.
     //    Resolve absolute paths to repo-relative (required by git2).
     //    This handles vaults that are subdirectories of the git repo.
+    //    Canonicalize both paths to handle macOS /var vs /private/var symlinks.
     let resolved;
     let git_path = if file_path.is_absolute() {
         if let Some(wd) = repo.workdir() {
-            resolved = file_path.strip_prefix(wd).unwrap_or(file_path).to_path_buf();
+            let canon_file = std::fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
+            let canon_wd = std::fs::canonicalize(wd).unwrap_or_else(|_| wd.to_path_buf());
+            resolved = canon_file
+                .strip_prefix(&canon_wd)
+                .unwrap_or(file_path)
+                .to_path_buf();
             &resolved
         } else {
             file_path

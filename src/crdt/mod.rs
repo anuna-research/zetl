@@ -65,7 +65,7 @@ impl CrdtDocument {
                     self.doc
                         .splice_text(&self.text_id, pos, 0, line)
                         .context("splice frontmatter")?;
-                    pos += line.len();
+                    pos += line.chars().count();
                     in_frontmatter = is_first_line;
                     is_first_line = false;
                     continue;
@@ -78,7 +78,7 @@ impl CrdtDocument {
                 self.doc
                     .splice_text(&self.text_id, pos, 0, line)
                     .context("splice frontmatter content")?;
-                pos += line.len();
+                pos += line.chars().count();
                 continue;
             }
 
@@ -87,7 +87,7 @@ impl CrdtDocument {
                 self.doc
                     .splice_text(&self.text_id, pos, 0, line)
                     .context("splice code fence")?;
-                pos += line.len();
+                pos += line.chars().count();
                 in_code_fence = !in_code_fence;
                 continue;
             }
@@ -97,7 +97,7 @@ impl CrdtDocument {
                 self.doc
                     .splice_text(&self.text_id, pos, 0, line)
                     .context("splice code content")?;
-                pos += line.len();
+                pos += line.chars().count();
                 continue;
             }
 
@@ -113,7 +113,7 @@ impl CrdtDocument {
                 self.doc
                     .splice_text(&self.text_id, pos, 0, &prefix)
                     .context("splice block prefix")?;
-                pos += prefix.len();
+                pos += prefix.chars().count();
 
                 // Insert inline content with formatting marks
                 pos = self.insert_inline_with_marks(content, pos)?;
@@ -199,7 +199,7 @@ impl CrdtDocument {
             }
         }
 
-        Ok(start_pos + parsed.plain_text.len())
+        Ok(start_pos + parsed.plain_text.chars().count())
     }
 
     /// Get the raw text content of the document.
@@ -321,12 +321,12 @@ fn parse_inline_marks(text: &str) -> ParsedInline {
         // Wikilinks: [[target]] or [[target|alias]]
         if i + 1 < len && chars[i] == '[' && chars[i + 1] == '[' {
             if let Some((target, alias, end_idx)) = parse_wikilink(&chars, i) {
-                let start = plain.len();
+                let start = plain.chars().count();
                 let display = alias.as_deref().unwrap_or(&target);
                 plain.push_str(display);
                 marks.push(InlineMark {
                     start,
-                    end: plain.len(),
+                    end: plain.chars().count(),
                     mark_type: MarkType::Wikilink { target, alias },
                 });
                 i = end_idx;
@@ -337,11 +337,11 @@ fn parse_inline_marks(text: &str) -> ParsedInline {
         // Markdown links: [text](url)
         if chars[i] == '[' {
             if let Some((link_text, url, end_idx)) = parse_md_link(&chars, i) {
-                let start = plain.len();
+                let start = plain.chars().count();
                 plain.push_str(&link_text);
                 marks.push(InlineMark {
                     start,
-                    end: plain.len(),
+                    end: plain.chars().count(),
                     mark_type: MarkType::Link { url },
                 });
                 i = end_idx;
@@ -425,14 +425,14 @@ fn parse_inline_marks(text: &str) -> ParsedInline {
                 let (_, start) = open_marks.remove(pos);
                 marks.push(InlineMark {
                     start,
-                    end: plain.len(),
+                    end: plain.chars().count(),
                     mark_type: MarkType::Italic,
                 });
                 i += 1;
                 continue;
             } else {
                 // Opening
-                open_marks.push((MarkType::Italic, plain.len()));
+                open_marks.push((MarkType::Italic, plain.chars().count()));
                 i += 1;
                 continue;
             }
@@ -441,13 +441,13 @@ fn parse_inline_marks(text: &str) -> ParsedInline {
         // Code: `text`
         if chars[i] == '`' {
             if let Some(close_idx) = find_single_closing(&chars, i + 1, '`') {
-                let start = plain.len();
+                let start = plain.chars().count();
                 for &c in &chars[i + 1..close_idx] {
                     plain.push(c);
                 }
                 marks.push(InlineMark {
                     start,
-                    end: plain.len(),
+                    end: plain.chars().count(),
                     mark_type: MarkType::Code,
                 });
                 i = close_idx + 1;
@@ -481,10 +481,10 @@ fn handle_delimited_mark(
     marks: &mut Vec<InlineMark>,
 ) {
     let inner: String = chars[inner_start..inner_end].iter().collect();
-    let outer_start = plain.len();
+    let outer_start = plain.chars().count();
     let inner_parsed = parse_inline_marks(&inner);
     plain.push_str(&inner_parsed.plain_text);
-    let outer_end = plain.len();
+    let outer_end = plain.chars().count();
 
     // Offset inner marks
     for mut m in inner_parsed.marks {
@@ -1055,5 +1055,17 @@ mod tests {
         let doc = CrdtDocument::from_markdown(md).unwrap();
         let out = doc.to_markdown().unwrap();
         assert_eq!(out, md, "nested marks must use canonical order");
+    }
+}
+
+#[cfg(test)]
+mod cache_repro {
+    use super::*;
+    
+    #[test]
+    fn cache_md_loads_with_multibyte_chars() {
+        let content = std::fs::read_to_string("demo-vault/architecture/Cache.md").unwrap();
+        let doc = CrdtDocument::from_markdown(&content);
+        assert!(doc.is_ok(), "Cache.md should load (has em-dash): {:?}", doc.err());
     }
 }
