@@ -3254,7 +3254,23 @@ fn inject_access_spl(
 /// (which requires an authenticated session and would regenerate a different
 /// key).  The owner profile must already exist (created by `--init-owner`
 /// before the server starts).
-pub async fn bootstrap_handler(State(state): State<WebState>) -> Response {
+pub async fn bootstrap_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    // Already authenticated — redirect to vault if they have a passkey,
+    // otherwise send them to register one.
+    if let Some(uid) = extract_session_user_id(&state, &headers) {
+        let has_passkey = crate::user::passkey::load_passkeys(&state.vault_root, &uid)
+            .map(|pks| !pks.is_empty())
+            .unwrap_or(false);
+        if has_passkey {
+            return axum::response::Redirect::temporary("/").into_response();
+        }
+        let location = format!("/passkey/register?user_id={uid}");
+        return axum::response::Redirect::temporary(&location).into_response();
+    }
+
     let vault_root = &*state.vault_root;
 
     // Find the owner profile
