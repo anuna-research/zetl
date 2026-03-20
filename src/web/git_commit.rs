@@ -41,8 +41,21 @@ pub fn auto_commit(
     message: Option<&str>,
 ) -> Result<git2::Oid, git2::Error> {
     // 1. Stage the file via the index.
+    //    Resolve absolute paths to repo-relative (required by git2).
+    //    This handles vaults that are subdirectories of the git repo.
+    let resolved;
+    let git_path = if file_path.is_absolute() {
+        if let Some(wd) = repo.workdir() {
+            resolved = file_path.strip_prefix(wd).unwrap_or(file_path).to_path_buf();
+            &resolved
+        } else {
+            file_path
+        }
+    } else {
+        file_path
+    };
     let mut index = repo.index()?;
-    index.add_path(file_path)?;
+    index.add_path(git_path)?;
     index.write()?;
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
