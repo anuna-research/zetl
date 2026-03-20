@@ -576,8 +576,15 @@ window.saveDoc = async function() {
       body: content,
     });
     if (resp.ok) {
-      saveBtn.textContent = "Saved";
-      setTimeout(() => { saveBtn.textContent = "Save"; saveBtn.disabled = false; }, 1500);
+      saveBtn.textContent = "\u2713 Saved";
+      saveBtn.classList.remove("btn-primary");
+      saveBtn.classList.add("btn-success");
+      setTimeout(() => {
+        saveBtn.textContent = "Save";
+        saveBtn.disabled = false;
+        saveBtn.classList.remove("btn-success");
+        saveBtn.classList.add("btn-primary");
+      }, 2000);
     } else {
       alert("Save failed: " + resp.status);
       saveBtn.textContent = "Save";
