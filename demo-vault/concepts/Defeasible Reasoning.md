@@ -21,7 +21,7 @@ Decision documents, architecture records, and project plans all contain reasonin
 
 ## Superiority
 
-When two rules conflict, a superiority relation resolves the tie:
+When two rules conflict a superiority relation resolves the tie:
 
 ```
 (prefer stronger-rule weaker-rule)
