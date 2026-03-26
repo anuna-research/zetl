@@ -174,6 +174,8 @@ pub struct WebState {
     pub passkey_mgr: Option<Arc<crate::user::passkey::PasskeyManager>>,
     /// Tracks files zetl is currently writing, for external edit detection (REQ-020-039).
     pub pending_writes: fs_watch::PendingWrites,
+    /// Public directory whose files override generated pages in serve mode.
+    pub public_dir: Option<PathBuf>,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]

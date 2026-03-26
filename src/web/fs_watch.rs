@@ -747,6 +747,7 @@ mod tests {
             wal_store: Arc::new(crate::web::wal::WalStore::new(&vault_root)),
             pending_writes: PendingWrites::new(),
             passkey_mgr: None,
+            public_dir: None,
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

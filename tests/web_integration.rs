@@ -76,6 +76,7 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         wal_store: Arc::new(zetl::web::wal::WalStore::new(vault_root)),
         pending_writes: zetl::web::fs_watch::PendingWrites::new(),
         passkey_mgr: None,
+        public_dir: None,
         #[cfg(feature = "semantic")]
         vector_index: None,
     }

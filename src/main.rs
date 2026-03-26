@@ -4660,7 +4660,6 @@ fn cmd_agent_run(
     extra: &[String],
 ) -> Result<()> {
     let verbose = cli.verbose > 0;
-
     let pipeline = run_pipeline(cli)?;
 
     // Discover hooks for the on-agent lifecycle point.
@@ -4949,6 +4948,7 @@ fn cmd_serve(
     cli: &Cli,
     port: u16,
     theme: &str,
+    public: Option<&str>,
     collab: bool,
     init_owner: bool,
     owner_name: &str,
@@ -5161,6 +5161,16 @@ fn cmd_serve(
     let git_commit_lock =
         zetl::web::git_commit::open_repo(&pipeline.vault_root).map(std::sync::Arc::new);
 
+    let public_dir = public.map(|p| {
+        let path = std::path::PathBuf::from(p);
+        if path.is_dir() {
+            eprintln!("zetl serve  →  public overlay: {p}");
+        } else {
+            eprintln!("warning: --public directory does not exist: {p}");
+        }
+        path
+    });
+
     let vault_root = std::sync::Arc::new(pipeline.vault_root);
 
     let state = zetl::web::WebState {
@@ -5197,6 +5207,7 @@ fn cmd_serve(
         )
         .ok()
         .map(std::sync::Arc::new),
+        public_dir,
         #[cfg(feature = "semantic")]
         vector_index,
     };
@@ -5227,7 +5238,7 @@ fn cmd_serve(
     Ok(())
 }
 
-fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
+fn cmd_build(cli: &Cli, out_dir: &str, theme: &str, public: Option<&str>) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
     validate_theme(theme, &pipeline.vault_root)?;
@@ -5317,7 +5328,14 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
         }
     }
 
-    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme, cli.verbose > 0)?;
+    zetl::web::build::build_static(
+        &data,
+        &pipeline.vault_root,
+        out_dir,
+        theme,
+        cli.verbose > 0,
+        public,
+    )?;
 
     if !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(
@@ -9914,6 +9932,7 @@ fn main() -> anyhow::Result<()> {
         Command::Serve {
             port,
             theme,
+            public,
             collab,
             init_owner,
             owner_name,
@@ -9922,6 +9941,7 @@ fn main() -> anyhow::Result<()> {
             &cli,
             *port,
             theme,
+            public.as_deref(),
             *collab,
             *init_owner,
             owner_name,
@@ -9944,7 +9964,11 @@ fn main() -> anyhow::Result<()> {
             host,
         ),
         Command::AgentToken { mnemonic } => cmd_agent_token(&cli, mnemonic),
-        Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),
+        Command::Build {
+            out_dir,
+            theme,
+            public,
+        } => cmd_build(&cli, out_dir, theme, public.as_deref()),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;
