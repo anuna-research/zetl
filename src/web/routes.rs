@@ -21,8 +21,63 @@ use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::{reindex, WebState};
 
+/// Try to serve a file from the public directory. Returns `Some(Response)` if a
+/// matching file exists, `None` otherwise (fall through to zetl rendering).
+fn try_serve_public(state: &WebState, url_path: &str) -> Option<Response> {
+    let public_dir = state.public_dir.as_ref()?;
+
+    // Map URL path to file candidates: try exact path, then path/index.html
+    let clean = url_path.trim_start_matches('/').trim_end_matches('/');
+    let candidates: Vec<PathBuf> = if clean.is_empty() {
+        vec![public_dir.join("index.html")]
+    } else {
+        vec![
+            public_dir.join(clean),
+            public_dir.join(format!("{clean}/index.html")),
+            public_dir.join(format!("{clean}.html")),
+        ]
+    };
+
+    for candidate in candidates {
+        if candidate.is_file() {
+            if let Ok(bytes) = std::fs::read(&candidate) {
+                let content_type = mime_from_path(&candidate);
+                return Some(
+                    (StatusCode::OK, [(header::CONTENT_TYPE, content_type)], bytes).into_response(),
+                );
+            }
+        }
+    }
+    None
+}
+
+/// Guess a content-type from a file extension.
+fn mime_from_path(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("html" | "htm") => "text/html; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("js") => "application/javascript; charset=utf-8",
+        Some("json") => "application/json; charset=utf-8",
+        Some("svg") => "image/svg+xml",
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("ico") => "image/x-icon",
+        Some("woff2") => "font/woff2",
+        Some("woff") => "font/woff",
+        Some("ttf") => "font/ttf",
+        Some("xml") => "application/xml; charset=utf-8",
+        Some("txt") => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
+    }
+}
+
 /// GET / — Landing page with vault stats and page grid.
 pub async fn index_handler(State(state): State<WebState>) -> Response {
+    if let Some(resp) = try_serve_public(&state, "/") {
+        return resp;
+    }
     let data = state.data.read().unwrap();
     let vault_name = state
         .vault_root
@@ -60,6 +115,9 @@ pub async fn index_handler(State(state): State<WebState>) -> Response {
 
 /// GET /{*path} — Rendered markdown page with backlinks, or folder index.
 pub async fn page_handler(State(state): State<WebState>, Path(slug): Path<String>) -> Response {
+    if let Some(resp) = try_serve_public(&state, &slug) {
+        return resp;
+    }
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
     let data = state.data.read().unwrap();
@@ -1463,6 +1521,7 @@ mod tests {
             engine: Arc::new(TemplateEngine::new(vault_root, theme, false, false)),
             theme: theme.to_string(),
             verbose: false,
+            public_dir: None,
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

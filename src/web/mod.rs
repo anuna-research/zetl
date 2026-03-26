@@ -56,6 +56,8 @@ pub struct WebState {
     pub theme: String,
     /// Whether --verbose was set; controls history-context timing output (OBS-013).
     pub verbose: bool,
+    /// Public directory whose files override generated pages in serve mode.
+    pub public_dir: Option<PathBuf>,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]

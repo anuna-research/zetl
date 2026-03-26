@@ -2402,7 +2402,7 @@ fn cmd_search(
         );
         match cli.format {
             OutputFormat::Json => exit_json_error(&msg, 1),
-            OutputFormat::Table => {
+            OutputFormat::Table | OutputFormat::Auto => {
                 eprintln!("Error: {msg}");
                 std::process::exit(1);
             }
@@ -4650,7 +4650,7 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
     Ok(())
 }
 
-fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
+fn cmd_serve(cli: &Cli, port: u16, theme: &str, public: Option<&str>) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
     validate_theme(theme, &pipeline.vault_root)?;
@@ -4771,6 +4771,16 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         }
     };
 
+    let public_dir = public.map(|p| {
+        let path = std::path::PathBuf::from(p);
+        if path.is_dir() {
+            eprintln!("zetl serve  →  public overlay: {p}");
+        } else {
+            eprintln!("warning: --public directory does not exist: {p}");
+        }
+        path
+    });
+
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
         vault_root: std::sync::Arc::new(pipeline.vault_root),
@@ -4778,6 +4788,7 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
         engine: std::sync::Arc::new(engine),
         theme: theme.to_string(),
         verbose: cli.verbose > 0,
+        public_dir,
         #[cfg(feature = "semantic")]
         vector_index,
     };
@@ -4787,7 +4798,7 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
+fn cmd_build(cli: &Cli, out_dir: &str, theme: &str, public: Option<&str>) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
     validate_theme(theme, &pipeline.vault_root)?;
@@ -4872,7 +4883,7 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
         }
     }
 
-    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme, cli.verbose > 0)?;
+    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme, cli.verbose > 0, public)?;
 
     if !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(
@@ -9457,8 +9468,8 @@ fn main() -> anyhow::Result<()> {
             HookCommand::List { theme } => cmd_hook_list(&cli, theme),
             HookCommand::Run { name, theme, extra } => cmd_hook_run(&cli, name, theme, extra),
         },
-        Command::Serve { port, theme } => cmd_serve(&cli, *port, theme),
-        Command::Build { out_dir, theme } => cmd_build(&cli, out_dir, theme),
+        Command::Serve { port, theme, public } => cmd_serve(&cli, *port, theme, public.as_deref()),
+        Command::Build { out_dir, theme, public } => cmd_build(&cli, out_dir, theme, public.as_deref()),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

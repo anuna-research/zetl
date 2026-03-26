@@ -213,6 +213,9 @@ pub enum Command {
         /// Theme name (looks in .zetl/themes/<name>/)
         #[arg(long, default_value = "default")]
         theme: String,
+        /// Public directory whose files override generated pages (served first)
+        #[arg(long)]
+        public: Option<String>,
     },
 
     /// Generate a static HTML site from the vault
@@ -223,6 +226,9 @@ pub enum Command {
         /// Theme name (looks in .zetl/themes/<name>/)
         #[arg(long, default_value = "default")]
         theme: String,
+        /// Public directory whose contents are copied over the output root (overrides generated pages)
+        #[arg(long)]
+        public: Option<String>,
     },
 
     /// Launch the Xanadu-style two-pane view for a note

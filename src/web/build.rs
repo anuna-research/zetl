@@ -271,6 +271,7 @@ pub fn build_static(
     out_dir: &str,
     theme: &str,
     verbose: bool,
+    public: Option<&str>,
 ) -> Result<()> {
     let out = Path::new(out_dir);
     std::fs::create_dir_all(out)
@@ -300,8 +301,9 @@ pub fn build_static(
         }
     }
 
-    // ── search-index.json ────────────────────────────────────────────────
-    let bm25_json = write_search_index_json(data, vault_root, out)?;
+    // ── search-index.json (written as external file, not inlined into pages) ──
+    write_search_index_json(data, vault_root, out)?;
+    let bm25_json = String::new();
 
     // ── history-index.json ───────────────────────────────────────────────
     #[cfg(feature = "history")]
@@ -428,13 +430,31 @@ pub fn build_static(
     // ── static assets ─────────────────────────────────────────────────
     let static_copied = copy_static_assets(vault_root, out, theme)?;
 
-    eprintln!(
-        "zetl build  →  {count} pages + {folder_count} folder indexes written to {out_dir}/{}",
-        if static_copied {
-            " (static assets copied)"
+    // ── public overlay (copies over output root, overwriting generated pages) ──
+    let public_copied = if let Some(pub_dir) = public {
+        let pub_path = Path::new(pub_dir);
+        if pub_path.is_dir() {
+            copy_dir_recursive(pub_path, out)?;
+            if verbose {
+                eprintln!("[zetl] public overlay: copied {} → {}", pub_path.display(), out.display());
+            }
+            true
         } else {
-            ""
+            eprintln!("warning: --public directory does not exist: {pub_dir}");
+            false
         }
+    } else {
+        false
+    };
+
+    let suffix = match (static_copied, public_copied) {
+        (true, true) => " (static assets + public overlay copied)",
+        (true, false) => " (static assets copied)",
+        (false, true) => " (public overlay copied)",
+        (false, false) => "",
+    };
+    eprintln!(
+        "zetl build  →  {count} pages + {folder_count} folder indexes written to {out_dir}/{suffix}",
     );
     Ok(())
 }
