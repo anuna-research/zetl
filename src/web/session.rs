@@ -117,9 +117,13 @@ impl SessionStore {
 }
 
 /// Build the `Set-Cookie` header value for a session token.
-pub fn session_cookie(token: &str) -> String {
+///
+/// When `tls` is true, the `Secure` flag is included so the cookie is only
+/// sent over HTTPS connections.
+pub fn session_cookie(token: &str, tls: bool) -> String {
+    let secure = if tls { "; Secure" } else { "" };
     format!(
-        "{SESSION_COOKIE_NAME}={token}; HttpOnly; SameSite=Strict; Path=/",
+        "{SESSION_COOKIE_NAME}={token}; HttpOnly; SameSite=Strict; Path=/{secure}",
     )
 }
 
@@ -342,7 +346,7 @@ pub async fn csrf_guard(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    if provided_csrf != expected_csrf {
+    if !crate::user::constant_time_eq(provided_csrf.as_bytes(), expected_csrf.as_bytes()) {
         return StatusCode::FORBIDDEN.into_response();
     }
 
@@ -535,10 +539,20 @@ mod tests {
 
     #[test]
     fn cookie_format() {
-        let c = session_cookie("abc123");
+        let c = session_cookie("abc123", false);
         assert!(c.contains("HttpOnly"));
         assert!(c.contains("SameSite=Strict"));
         assert!(c.contains("Path=/"));
+        assert!(c.contains("zetl_session=abc123"));
+        assert!(!c.contains("Secure"));
+    }
+
+    #[test]
+    fn cookie_format_tls() {
+        let c = session_cookie("abc123", true);
+        assert!(c.contains("HttpOnly"));
+        assert!(c.contains("SameSite=Strict"));
+        assert!(c.contains("Secure"));
         assert!(c.contains("zetl_session=abc123"));
     }
 
@@ -746,6 +760,7 @@ mod tests {
             page_names: vec![],
             resolved: std::collections::HashSet::new(),
             page_slug_map: std::collections::HashMap::new(),
+            page_slug_map_lower: std::collections::HashMap::new(),
             collision_names: std::collections::HashSet::new(),
         };
         let search_index = crate::search_index::SearchIndex::build(tmp, &[]).unwrap();
@@ -757,6 +772,8 @@ mod tests {
             theme: "default".to_string(),
             verbose: false,
             collab: true,
+            tls: false,
+            trust_proxy: false,
             sessions: SessionStore::new(),
             recovery_challenges: Arc::new(crate::user::recovery::RecoveryChallengeStore::new()),
             mnemonic_shown: Arc::new(Mutex::new(std::collections::HashSet::new())),

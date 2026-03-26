@@ -206,7 +206,7 @@
   </div>
 
   <div id="rc-hidden-msg" class="rc-hidden-msg">
-    Recovery phrase hidden for security — reload to see it again.
+    Recovery phrase hidden for security. If you did not save it, you can still click Continue below.
   </div>
 
   <div class="rc-confirm" onclick="document.getElementById('rc-check').click()">
@@ -214,9 +214,12 @@
     <label for="rc-check" onclick="event.stopPropagation()">I have written down my recovery phrase and stored it in a safe place.</label>
   </div>
 
-  <a id="rc-continue" href="{{ continue_url }}">
-    <button class="rc-continue-btn" disabled>Continue</button>
-  </a>
+  <form id="rc-continue-form" method="POST" action="/recovery/confirm">
+    <input type="hidden" name="user_id" value="{{ user_id }}">
+    <input type="hidden" name="recovery_pubkey" value="{{ recovery_pubkey }}">
+    <input type="hidden" name="continue_url" value="{{ continue_url }}">
+    <button type="submit" class="rc-continue-btn" id="rc-continue-btn" disabled>Continue</button>
+  </form>
 </div>
 {% endblock %}
 

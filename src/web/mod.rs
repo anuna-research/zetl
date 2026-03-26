@@ -44,17 +44,18 @@ pub struct VaultData {
     pub resolved: HashSet<String>,
     /// Maps page_name → page_slug (relative path without extension, e.g. "architecture/Scanner")
     pub page_slug_map: HashMap<String, String>,
+    /// Maps lowercased page_name → slug for O(1) case-insensitive lookup.
+    pub page_slug_map_lower: HashMap<String, String>,
     /// Page names that appear in more than one folder (need disambiguation in display)
     pub collision_names: HashSet<String>,
 }
 
 impl VaultData {
-    /// Look up the slug for a page name (case-insensitive).
+    /// Look up the slug for a page name (case-insensitive). O(1) via pre-built lowercase map.
     pub fn slug_for_page(&self, page_name: &str) -> String {
-        self.page_slug_map
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(page_name))
-            .map(|(_, v)| v.clone())
+        self.page_slug_map_lower
+            .get(&page_name.to_ascii_lowercase())
+            .cloned()
             .unwrap_or_else(|| page_name.to_string())
     }
 }
@@ -148,6 +149,10 @@ pub struct WebState {
     pub verbose: bool,
     /// Whether --collab mode is active (multi-user authentication required).
     pub collab: bool,
+    /// Whether the server is behind a TLS-terminating proxy (enables Secure cookie flag).
+    pub tls: bool,
+    /// Whether to trust proxy headers (X-Forwarded-For, X-Real-IP) for client IP extraction.
+    pub trust_proxy: bool,
     /// In-memory session store for authenticated users.
     pub sessions: SessionStore,
     /// In-memory recovery challenge store (CON-020-002).
@@ -214,12 +219,19 @@ pub fn reindex(vault_root: &Path) -> anyhow::Result<VaultData> {
     // Build page_slug_map: page_name → slug (kebab-case relative path)
     let (page_slug_map, collision_names) = build_slug_map(&files);
 
+    // Build lowercased lookup map for O(1) case-insensitive slug_for_page.
+    let page_slug_map_lower: HashMap<String, String> = page_slug_map
+        .iter()
+        .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
+        .collect();
+
     Ok(VaultData {
         files,
         graph,
         page_names,
         resolved: graph_resolved,
         page_slug_map,
+        page_slug_map_lower,
         collision_names,
     })
 }
@@ -289,6 +301,18 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str, git_poll_interval:
     // Runs once per hour, removes comments older than 30 days.
     let _prune_handle = spawn_comment_prune_task(state.vault_root.clone());
 
+    // Spawn session purge task: remove expired sessions every 5 minutes.
+    let _session_purge_handle = {
+        let sessions = state.sessions.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300));
+            loop {
+                interval.tick().await;
+                sessions.purge_expired();
+            }
+        })
+    };
+
     // ── Auth routes (always public, even in --collab mode) ───────────
     let auth_routes = Router::new()
         .route("/auth/bootstrap", get(routes::bootstrap_handler))
@@ -297,6 +321,11 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str, git_poll_interval:
             get(routes::recover_challenge_handler).post(routes::recover_verify_handler),
         )
         .route("/recovery/show", get(routes::recovery_show_handler))
+        .route("/recovery/confirm", post(routes::recovery_confirm_handler))
+        .route(
+            "/auth/recovery",
+            get(routes::recovery_page_handler).post(routes::recovery_form_handler),
+        )
         .route("/passkey/register", get(routes::passkey_register_handler))
         .route(
             "/api/passkey/register/start",

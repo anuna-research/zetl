@@ -1,0 +1,393 @@
+;; Fix plan for IMPL-020 second code review
+(meta plan
+  (id "FIX-020-review-2")
+  (title "Fix IMPL-020 Second Code Review Issues")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-03-26")
+  (author "agent:claude")
+  (description "Address critical, important, and suggested fixes from second comprehensive code review"))
+
+;; Single agent
+(given agent-claude-available)
+
+;; ============================================================
+;; PHASE 1: Critical Fixes (no dependencies, parallel)
+;; ============================================================
+
+;; C1: save_handler has no ACL enforcement — privilege escalation
+(given task-acl-save-handler)
+(given no-deps-acl-save-handler)
+(meta task-acl-save-handler
+  (description "Add write ACL check to save_handler (PUT /{*path}) in routes.rs. Currently any authenticated user can overwrite any page.")
+  (acceptance "save_handler calls check_page_acl_edit before writing; returns 403 for users without edit permission"))
+
+;; C2: pending_writes never cleared on success path
+(given task-pending-writes-clear)
+(given no-deps-pending-writes-clear)
+(meta task-pending-writes-clear
+  (description "Remove path from pending_writes after successful flush write in flush.rs:70-76")
+  (acceptance "pending_writes.remove called after successful fs::write; no memory leak"))
+
+;; C3: Flush/mark_flushed race loses edits
+(given task-flush-atomicity)
+(given no-deps-flush-atomicity)
+(meta task-flush-atomicity
+  (description "Make serialize_for_flush and mark_flushed atomic — add generation counter or hold lock across both in flush.rs")
+  (acceptance "Edits arriving between serialize and mark_flushed are not silently lost"))
+
+;; C4: TTL eviction bypasses WAL, pending_writes, uses wrong path
+(given task-eviction-pipeline)
+(given no-deps-eviction-pipeline)
+(meta task-eviction-pipeline
+  (description "Fix spawn_flush_lifecycle_task eviction to use pending_writes, WAL truncation, and correct file path lookup")
+  (acceptance "Eviction writes go through proper pipeline; no duplicate files; no spurious reconciliation"))
+
+;; C5: WS ticket endpoint bypasses CSRF guard
+(given task-ws-csrf)
+(given no-deps-ws-csrf)
+(meta task-ws-csrf
+  (description "Move /api/ws/ticket behind csrf_guard middleware or add CSRF validation inside ws_ticket_handler")
+  (acceptance "Cross-origin POST to /api/ws/ticket is rejected without valid CSRF token"))
+
+;; ============================================================
+;; PHASE 2: Important Fixes (no dependencies, parallel)
+;; ============================================================
+
+;; I1: Session cookie missing Secure flag
+(given task-cookie-secure)
+(given no-deps-cookie-secure)
+(meta task-cookie-secure
+  (description "Add Secure flag to session cookie when TLS is active; fix bootstrap SameSite=Lax inconsistency")
+  (acceptance "Session cookie includes Secure when --tls is set; all cookies use SameSite=Strict"))
+
+;; I2: X-Forwarded-For trusted unconditionally
+(given task-ip-trust)
+(given no-deps-ip-trust)
+(meta task-ip-trust
+  (description "Default to peer address for rate limiting; only trust proxy headers when explicitly configured")
+  (acceptance "Rate limiter uses ConnectInfo peer address by default; X-Forwarded-For only used with --trust-proxy flag"))
+
+;; I3: Path traversal in save_handler
+(given task-path-traversal-save)
+(given no-deps-path-traversal-save)
+(meta task-path-traversal-save
+  (description "Canonicalize slug-to-path and verify result is inside vault_root in save_handler")
+  (acceptance "PUT with slug containing ../ returns 400; path never resolves outside vault"))
+
+;; I4: TOCTOU race in invitation nonce
+(given task-nonce-atomic)
+(given no-deps-nonce-atomic)
+(meta task-nonce-atomic
+  (description "Make invitation nonce check-and-mark atomic in accept_invite_submit_handler")
+  (acceptance "Concurrent invitation acceptance with same token cannot create duplicate users"))
+
+;; I5: Comment slug path traversal
+(given task-path-traversal-comments)
+(given no-deps-path-traversal-comments)
+(meta task-path-traversal-comments
+  (description "Sanitize slug in comments_path to prevent directory traversal")
+  (acceptance "Comment slug containing ../ is rejected or sanitized; path stays inside vault"))
+
+;; I6: serialize_for_flush holds global mutex during serialization
+(given task-flush-lock-scope)
+(given no-deps-flush-lock-scope)
+(meta task-flush-lock-scope
+  (description "Clone document data or compute markdown outside the docs lock in serialize_for_flush")
+  (acceptance "Docs mutex is not held during markdown serialization; other CRDT ops not blocked"))
+
+;; I7: WAL slug flattening ambiguity
+(given task-wal-slug-encoding)
+(given no-deps-wal-slug-encoding)
+(meta task-wal-slug-encoding
+  (description "Use percent-encoding for WAL slug-to-filename instead of replace('/', '--')")
+  (acceptance "Slugs a--b and a/b map to distinct WAL files; reverse mapping is correct"))
+
+;; I8: Duplicate lifecycle tasks
+(given task-dedup-lifecycle)
+(given no-deps-dedup-lifecycle)
+(meta task-dedup-lifecycle
+  (description "Remove spawn_crdt_lifecycle_task if superseded by spawn_flush_lifecycle_task, or gate so only one runs")
+  (acceptance "Only one flush/eviction lifecycle task runs in production"))
+
+;; I9: routes.rs god file (deferred — large refactor)
+;; Skipping for now — tracked but not blocking
+
+;; I10: slug_for_page O(n) scan
+(given task-slug-lookup-perf)
+(given no-deps-slug-lookup-perf)
+(meta task-slug-lookup-perf
+  (description "Use case-insensitive HashMap key (lowercased) for slug_for_page instead of linear scan")
+  (acceptance "slug_for_page is O(1) lookup; dashboard no longer O(n^2)"))
+
+;; ============================================================
+;; PHASE 3: Quick Suggestions (no dependencies, parallel)
+;; ============================================================
+
+;; S1: CSRF constant-time comparison
+(given task-csrf-constant-time)
+(given no-deps-csrf-constant-time)
+(meta task-csrf-constant-time
+  (description "Use constant_time_eq for CSRF token comparison in session.rs:345")
+  (acceptance "CSRF comparison uses constant_time_eq from user::constant_time_eq"))
+
+;; S3: Duplicate constant_time_eq
+(given task-dedup-constant-time-eq)
+(given no-deps-dedup-constant-time-eq)
+(meta task-dedup-constant-time-eq
+  (description "Remove private constant_time_eq from comment.rs; use super::constant_time_eq")
+  (acceptance "Only one constant_time_eq implementation in user module"))
+
+;; S5: No body size limit on save_handler
+(given task-body-limit)
+(given no-deps-body-limit)
+(meta task-body-limit
+  (description "Add DefaultBodyLimit layer or check body size in save_handler")
+  (acceptance "PUT with >10MB body is rejected"))
+
+;; S9: Session purge never called
+(given task-session-purge)
+(given no-deps-session-purge)
+(meta task-session-purge
+  (description "Add periodic timer calling SessionStore::purge_expired")
+  (acceptance "Expired sessions are cleaned up periodically; no unbounded memory growth"))
+
+;; S12: inject_access_spl doesn't escape pages scope
+(given task-escape-spl-scope)
+(given no-deps-escape-spl-scope)
+(meta task-escape-spl-scope
+  (description "Apply escape_spl to pages scope value in inject_access_spl")
+  (acceptance "Invitation with crafted pages glob cannot inject SPL"))
+
+;; ============================================================
+;; PHASE 4: Verification (depends on all fixes)
+;; ============================================================
+
+(given task-verify-fixes)
+(meta task-verify-fixes
+  (description "Run cargo build, cargo test, and cargo clippy to verify all fixes compile and pass")
+  (acceptance "No build errors, no test failures, no new clippy warnings"))
+
+;; ============================================================
+;; Readiness Rules
+;; ============================================================
+
+;; Phase 1 — all ready immediately
+(normally r-ready-acl-save (and task-acl-save-handler no-deps-acl-save-handler) ready-acl-save-handler)
+(normally r-ready-pending-writes (and task-pending-writes-clear no-deps-pending-writes-clear) ready-pending-writes-clear)
+(normally r-ready-flush-atom (and task-flush-atomicity no-deps-flush-atomicity) ready-flush-atomicity)
+(normally r-ready-eviction (and task-eviction-pipeline no-deps-eviction-pipeline) ready-eviction-pipeline)
+(normally r-ready-ws-csrf (and task-ws-csrf no-deps-ws-csrf) ready-ws-csrf)
+
+;; Phase 2 — all ready immediately
+(normally r-ready-cookie (and task-cookie-secure no-deps-cookie-secure) ready-cookie-secure)
+(normally r-ready-ip-trust (and task-ip-trust no-deps-ip-trust) ready-ip-trust)
+(normally r-ready-path-save (and task-path-traversal-save no-deps-path-traversal-save) ready-path-traversal-save)
+(normally r-ready-nonce (and task-nonce-atomic no-deps-nonce-atomic) ready-nonce-atomic)
+(normally r-ready-path-comments (and task-path-traversal-comments no-deps-path-traversal-comments) ready-path-traversal-comments)
+(normally r-ready-flush-lock (and task-flush-lock-scope no-deps-flush-lock-scope) ready-flush-lock-scope)
+(normally r-ready-wal-slug (and task-wal-slug-encoding no-deps-wal-slug-encoding) ready-wal-slug-encoding)
+(normally r-ready-dedup-lifecycle (and task-dedup-lifecycle no-deps-dedup-lifecycle) ready-dedup-lifecycle)
+(normally r-ready-slug-perf (and task-slug-lookup-perf no-deps-slug-lookup-perf) ready-slug-lookup-perf)
+
+;; Phase 3 — all ready immediately
+(normally r-ready-csrf-ct (and task-csrf-constant-time no-deps-csrf-constant-time) ready-csrf-constant-time)
+(normally r-ready-dedup-cteq (and task-dedup-constant-time-eq no-deps-dedup-constant-time-eq) ready-dedup-constant-time-eq)
+(normally r-ready-body-limit (and task-body-limit no-deps-body-limit) ready-body-limit)
+(normally r-ready-session-purge (and task-session-purge no-deps-session-purge) ready-session-purge)
+(normally r-ready-escape-spl (and task-escape-spl-scope no-deps-escape-spl-scope) ready-escape-spl-scope)
+
+;; Phase 4 — depends on all critical + important fixes
+(normally r-ready-verify
+  (and task-verify-fixes
+       completed-acl-save-handler completed-pending-writes-clear
+       completed-flush-atomicity completed-eviction-pipeline completed-ws-csrf
+       completed-cookie-secure completed-ip-trust completed-path-traversal-save
+       completed-nonce-atomic completed-path-traversal-comments
+       completed-flush-lock-scope completed-wal-slug-encoding
+       completed-dedup-lifecycle completed-slug-lookup-perf
+       completed-csrf-constant-time completed-dedup-constant-time-eq
+       completed-body-limit completed-session-purge completed-escape-spl-scope)
+  ready-verify-fixes)
+
+;; ============================================================
+;; Assignment Rules
+;; ============================================================
+
+(normally a-acl-save (and ready-acl-save-handler agent-claude-available) assign-to-acl-save-handler-claude)
+(normally a-pending-writes (and ready-pending-writes-clear agent-claude-available) assign-to-pending-writes-clear-claude)
+(normally a-flush-atom (and ready-flush-atomicity agent-claude-available) assign-to-flush-atomicity-claude)
+(normally a-eviction (and ready-eviction-pipeline agent-claude-available) assign-to-eviction-pipeline-claude)
+(normally a-ws-csrf (and ready-ws-csrf agent-claude-available) assign-to-ws-csrf-claude)
+(normally a-cookie (and ready-cookie-secure agent-claude-available) assign-to-cookie-secure-claude)
+(normally a-ip-trust (and ready-ip-trust agent-claude-available) assign-to-ip-trust-claude)
+(normally a-path-save (and ready-path-traversal-save agent-claude-available) assign-to-path-traversal-save-claude)
+(normally a-nonce (and ready-nonce-atomic agent-claude-available) assign-to-nonce-atomic-claude)
+(normally a-path-comments (and ready-path-traversal-comments agent-claude-available) assign-to-path-traversal-comments-claude)
+(normally a-flush-lock (and ready-flush-lock-scope agent-claude-available) assign-to-flush-lock-scope-claude)
+(normally a-wal-slug (and ready-wal-slug-encoding agent-claude-available) assign-to-wal-slug-encoding-claude)
+(normally a-dedup-lifecycle (and ready-dedup-lifecycle agent-claude-available) assign-to-dedup-lifecycle-claude)
+(normally a-slug-perf (and ready-slug-lookup-perf agent-claude-available) assign-to-slug-lookup-perf-claude)
+(normally a-csrf-ct (and ready-csrf-constant-time agent-claude-available) assign-to-csrf-constant-time-claude)
+(normally a-dedup-cteq (and ready-dedup-constant-time-eq agent-claude-available) assign-to-dedup-constant-time-eq-claude)
+(normally a-body-limit (and ready-body-limit agent-claude-available) assign-to-body-limit-claude)
+(normally a-session-purge (and ready-session-purge agent-claude-available) assign-to-session-purge-claude)
+(normally a-escape-spl (and ready-escape-spl-scope agent-claude-available) assign-to-escape-spl-scope-claude)
+(normally a-verify (and ready-verify-fixes agent-claude-available) assign-to-verify-fixes-claude)
+
+(claims agent:claude
+  :at "2026-03-26T03:14:10Z"
+  (given claim-v1-acl-save-handler)
+  (normally r-cl-state-v1-acl-save-handler claim-v1-acl-save-handler state-claimed-v1-acl-save-handler)
+  (normally r-cl-chain-v1-acl-save-handler state-claimed-v1-acl-save-handler claimed-acl-save-handler)
+)
+
+;; Propagation rules: failures in 'acl-save-handler' block downstream tasks
+(normally r-propagate-verify-fixes-from-acl-save-handler-failed failed-acl-save-handler upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-acl-save-handler-permanently-failed permanently-failed-acl-save-handler upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-acl-save-handler-stale-v1 stale-v1-acl-save-handler upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-acl-save-handler-timeout-v1 timeout-v1-acl-save-handler upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-acl-save-handler-blocked upstream-blocked-acl-save-handler upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T03:14:10Z"
+  (given claim-v1-pending-writes-clear)
+  (normally r-cl-state-v1-pending-writes-clear claim-v1-pending-writes-clear state-claimed-v1-pending-writes-clear)
+  (normally r-cl-chain-v1-pending-writes-clear state-claimed-v1-pending-writes-clear claimed-pending-writes-clear)
+)
+
+;; Propagation rules: failures in 'pending-writes-clear' block downstream tasks
+(normally r-propagate-verify-fixes-from-pending-writes-clear-failed failed-pending-writes-clear upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-pending-writes-clear-permanently-failed permanently-failed-pending-writes-clear upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-pending-writes-clear-stale-v1 stale-v1-pending-writes-clear upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-pending-writes-clear-timeout-v1 timeout-v1-pending-writes-clear upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-pending-writes-clear-blocked upstream-blocked-pending-writes-clear upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T03:14:10Z"
+  (given claim-v1-flush-atomicity)
+  (normally r-cl-state-v1-flush-atomicity claim-v1-flush-atomicity state-claimed-v1-flush-atomicity)
+  (normally r-cl-chain-v1-flush-atomicity state-claimed-v1-flush-atomicity claimed-flush-atomicity)
+)
+
+;; Propagation rules: failures in 'flush-atomicity' block downstream tasks
+(normally r-propagate-verify-fixes-from-flush-atomicity-failed failed-flush-atomicity upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-flush-atomicity-permanently-failed permanently-failed-flush-atomicity upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-flush-atomicity-stale-v1 stale-v1-flush-atomicity upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-flush-atomicity-timeout-v1 timeout-v1-flush-atomicity upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-flush-atomicity-blocked upstream-blocked-flush-atomicity upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T03:14:10Z"
+  (given claim-v1-eviction-pipeline)
+  (normally r-cl-state-v1-eviction-pipeline claim-v1-eviction-pipeline state-claimed-v1-eviction-pipeline)
+  (normally r-cl-chain-v1-eviction-pipeline state-claimed-v1-eviction-pipeline claimed-eviction-pipeline)
+)
+
+;; Propagation rules: failures in 'eviction-pipeline' block downstream tasks
+(normally r-propagate-verify-fixes-from-eviction-pipeline-failed failed-eviction-pipeline upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-eviction-pipeline-permanently-failed permanently-failed-eviction-pipeline upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-eviction-pipeline-stale-v1 stale-v1-eviction-pipeline upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-eviction-pipeline-timeout-v1 timeout-v1-eviction-pipeline upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-eviction-pipeline-blocked upstream-blocked-eviction-pipeline upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T03:14:10Z"
+  (given claim-v1-ws-csrf)
+  (normally r-cl-state-v1-ws-csrf claim-v1-ws-csrf state-claimed-v1-ws-csrf)
+  (normally r-cl-chain-v1-ws-csrf state-claimed-v1-ws-csrf claimed-ws-csrf)
+)
+
+;; Propagation rules: failures in 'ws-csrf' block downstream tasks
+(normally r-propagate-verify-fixes-from-ws-csrf-failed failed-ws-csrf upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-ws-csrf-permanently-failed permanently-failed-ws-csrf upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-ws-csrf-stale-v1 stale-v1-ws-csrf upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-ws-csrf-timeout-v1 timeout-v1-ws-csrf upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-ws-csrf-blocked upstream-blocked-ws-csrf upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T03:29:13Z"
+  (given completed-acl-save-handler))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:13Z"
+  (given completed-pending-writes-clear))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:13Z"
+  (given completed-flush-atomicity))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:13Z"
+  (given completed-eviction-pipeline))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:13Z"
+  (given completed-ws-csrf))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:13Z"
+  (given completed-cookie-secure))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:13Z"
+  (given completed-ip-trust))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:13Z"
+  (given completed-path-traversal-save))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-nonce-atomic))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-path-traversal-comments))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-flush-lock-scope))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-wal-slug-encoding))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-dedup-lifecycle))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-slug-lookup-perf))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-csrf-constant-time))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-dedup-constant-time-eq))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-body-limit))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-session-purge))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:14Z"
+  (given completed-escape-spl-scope))
+
+(claims agent:claude
+  :at "2026-03-26T03:29:18Z"
+  (given claim-v1-verify-fixes)
+  (normally r-cl-state-v1-verify-fixes claim-v1-verify-fixes state-claimed-v1-verify-fixes)
+  (normally r-cl-chain-v1-verify-fixes state-claimed-v1-verify-fixes claimed-verify-fixes)
+)
+
+(claims agent:claude
+  :at "2026-03-26T03:29:18Z"
+  (given completed-verify-fixes))

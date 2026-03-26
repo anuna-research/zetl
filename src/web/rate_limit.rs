@@ -149,7 +149,7 @@ pub async fn auth_ip_rate_limit(
     req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    let ip = extract_client_ip(&req);
+    let ip = extract_client_ip(&req, state.trust_proxy);
     if let Err(retry_after) = state.rate_limiters.auth_per_ip.check(&ip) {
         return too_many_requests(retry_after);
     }
@@ -158,33 +158,42 @@ pub async fn auth_ip_rate_limit(
 
 /// Extract the client IP from the request.
 ///
-/// Checks `X-Forwarded-For` first (takes the leftmost/client IP), then falls
-/// back to the `X-Real-IP` header, and finally to "unknown".
-fn extract_client_ip(req: &axum::http::Request<axum::body::Body>) -> String {
-    // X-Forwarded-For: client, proxy1, proxy2
-    if let Some(xff) = req
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-    {
-        if let Some(first) = xff.split(',').next() {
-            let ip = first.trim();
+/// When `trust_proxy` is true, checks `X-Forwarded-For` first (takes the
+/// leftmost/client IP), then `X-Real-IP`. When `trust_proxy` is false,
+/// proxy headers are ignored and only the peer address is used. Falls back
+/// to "unknown" if no address can be determined.
+fn extract_client_ip(req: &axum::http::Request<axum::body::Body>, trust_proxy: bool) -> String {
+    if trust_proxy {
+        // X-Forwarded-For: client, proxy1, proxy2
+        if let Some(xff) = req
+            .headers()
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+        {
+            if let Some(first) = xff.split(',').next() {
+                let ip = first.trim();
+                if !ip.is_empty() {
+                    return ip.to_string();
+                }
+            }
+        }
+
+        // X-Real-IP
+        if let Some(real_ip) = req
+            .headers()
+            .get("x-real-ip")
+            .and_then(|v| v.to_str().ok())
+        {
+            let ip = real_ip.trim();
             if !ip.is_empty() {
                 return ip.to_string();
             }
         }
     }
 
-    // X-Real-IP
-    if let Some(real_ip) = req
-        .headers()
-        .get("x-real-ip")
-        .and_then(|v| v.to_str().ok())
-    {
-        let ip = real_ip.trim();
-        if !ip.is_empty() {
-            return ip.to_string();
-        }
+    // Peer address from ConnectInfo (if available via axum extension)
+    if let Some(connect_info) = req.extensions().get::<axum::extract::ConnectInfo<std::net::SocketAddr>>() {
+        return connect_info.0.ip().to_string();
     }
 
     "unknown".to_string()

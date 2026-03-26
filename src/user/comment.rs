@@ -61,22 +61,10 @@ pub fn verify_comment(server_key: &[u8], comment: &Comment) -> bool {
     match &comment.hmac {
         Some(tag) => {
             let expected = compute_hmac(server_key, &comment.user, &comment.text, &comment.at);
-            constant_time_eq(tag.as_bytes(), expected.as_bytes())
+            super::constant_time_eq(tag.as_bytes(), expected.as_bytes())
         }
         None => false,
     }
-}
-
-/// Constant-time byte comparison to prevent timing side-channels.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
 }
 
 /// Verify all comments and return them with verification status.
@@ -218,9 +206,27 @@ fn cutoff_iso8601(max_age_secs: u64) -> String {
     format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
+/// Sanitize a slug to prevent path traversal.
+///
+/// Rejects slugs containing `..` path components and replaces `/` and `\`
+/// with `_` so the slug maps to a flat filename inside the comments directory.
+fn sanitize_slug(slug: &str) -> Option<String> {
+    for component in std::path::Path::new(slug).components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return None;
+        }
+    }
+    let safe = slug.replace('/', "_").replace('\\', "_");
+    if safe.is_empty() {
+        return None;
+    }
+    Some(safe)
+}
+
 /// Resolve the file path for a slug's comments.
 fn comments_path(vault_root: &Path, slug: &str) -> std::path::PathBuf {
-    vault_root.join(COMMENTS_DIR).join(format!("{slug}.json"))
+    let safe = sanitize_slug(slug).unwrap_or_else(|| "invalid".to_string());
+    vault_root.join(COMMENTS_DIR).join(format!("{safe}.json"))
 }
 
 #[cfg(test)]

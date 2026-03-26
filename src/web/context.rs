@@ -543,12 +543,17 @@ mod tests {
                 (f.page_name.clone(), slug)
             })
             .collect();
+        let page_slug_map_lower: HashMap<String, String> = page_slug_map
+            .iter()
+            .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
+            .collect();
         VaultData {
             files,
             graph,
             page_names,
             resolved,
             page_slug_map,
+            page_slug_map_lower,
             collision_names: std::collections::HashSet::new(),
         }
     }

@@ -30,7 +30,7 @@ use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, 
 // ── Common pipeline ────────────────────────────────────────────────────────
 
 /// Snapshot metadata included in JSON output when --at is used (REQ-077, CON-024).
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct SnapshotInfo {
     change_id: String,
     commit_id: String,
@@ -4886,6 +4886,38 @@ fn cmd_invite(
         }
         eprintln!();
         println!("{url}");
+
+        // Try to copy the URL to the system clipboard so it isn't lost
+        // if server log output scrolls the terminal.
+        let copied = std::process::Command::new("pbcopy")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+                if let Some(ref mut stdin) = child.stdin {
+                    stdin.write_all(url.as_bytes())?;
+                }
+                child.wait()
+            })
+            .ok()
+            .or_else(|| {
+                // Linux: try xclip, then xsel
+                std::process::Command::new("xclip")
+                    .args(["-selection", "clipboard"])
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                    .and_then(|mut child| {
+                        use std::io::Write;
+                        if let Some(ref mut stdin) = child.stdin {
+                            stdin.write_all(url.as_bytes())?;
+                        }
+                        child.wait()
+                    })
+                    .ok()
+            });
+        if copied.is_some() {
+            eprintln!("  (copied to clipboard)");
+        }
     }
 
     Ok(())
@@ -5016,6 +5048,10 @@ fn cmd_serve(
     page_names.sort_by_key(|a| a.to_lowercase());
 
     let (page_slug_map, collision_names) = zetl::web::build_slug_map(&pipeline.files);
+    let page_slug_map_lower: std::collections::HashMap<String, String> = page_slug_map
+        .iter()
+        .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
+        .collect();
 
     let data = zetl::web::VaultData {
         files: pipeline.files,
@@ -5023,6 +5059,7 @@ fn cmd_serve(
         page_names,
         resolved: pipeline.graph_resolved,
         page_slug_map,
+        page_slug_map_lower,
         collision_names,
     };
 
@@ -5143,6 +5180,8 @@ fn cmd_serve(
         theme: theme.to_string(),
         verbose: cli.verbose > 0,
         collab,
+        tls: false,
+        trust_proxy: false,
         sessions: zetl::web::session::SessionStore::new(),
         recovery_challenges: std::sync::Arc::new(
             zetl::user::recovery::RecoveryChallengeStore::new(),
@@ -5207,6 +5246,10 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
     page_names.sort_by_key(|a| a.to_lowercase());
 
     let (page_slug_map, collision_names) = zetl::web::build_slug_map(&pipeline.files);
+    let page_slug_map_lower: std::collections::HashMap<String, String> = page_slug_map
+        .iter()
+        .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
+        .collect();
 
     let data = zetl::web::VaultData {
         files: pipeline.files,
@@ -5214,6 +5257,7 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str) -> Result<()> {
         page_names,
         resolved: pipeline.graph_resolved,
         page_slug_map,
+        page_slug_map_lower,
         collision_names,
     };
 

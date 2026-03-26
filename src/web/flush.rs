@@ -44,7 +44,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     let mut warnings = Vec::new();
 
     // ── Step 1: Serialize ────────────────────────────────────────────────
-    let md = state.crdt_store.serialize_for_flush(slug)?;
+    let (md, generation) = state.crdt_store.serialize_for_flush(slug)?;
 
     // ── Step 2: Write ────────────────────────────────────────────────────
     // Resolve the real on-disk path from VaultData (preserves original
@@ -73,7 +73,8 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
         eprintln!("flush: write error for {slug}: {e}");
         return None;
     }
-    state.crdt_store.mark_flushed(slug);
+    state.pending_writes.remove(&path);
+    state.crdt_store.mark_flushed(slug, generation);
 
     // Truncate the WAL after successful write (REQ-020-044).
     if let Err(e) = state.wal_store.truncate(slug) {
@@ -333,9 +334,34 @@ pub fn spawn_flush_lifecycle_task(state: WebState) -> tokio::task::JoinHandle<()
             let to_evict = state.crdt_store.slugs_for_eviction();
             for slug in &to_evict {
                 if let Some(md) = state.crdt_store.evict(slug) {
-                    let path = crdt_md_path(&state.vault_root, slug);
+                    // Use the registered file path (preserves original casing/spaces),
+                    // falling back to the VaultData lookup, then slug-derived path.
+                    let path = {
+                        let fp = state.crdt_store.md_path_for_slug(slug);
+                        if fp.exists() {
+                            fp
+                        } else {
+                            let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+                            let file = data.files.iter().find(|f| {
+                                crate::scanner::page_slug_from_path(&f.path)
+                                    .eq_ignore_ascii_case(slug)
+                            });
+                            if let Some(file) = file {
+                                state.vault_root.join(&file.path)
+                            } else {
+                                crdt_md_path(&state.vault_root, slug)
+                            }
+                        }
+                    };
+                    state.pending_writes.insert(&path);
                     if let Err(e) = std::fs::write(&path, &md) {
+                        state.pending_writes.remove(&path);
                         eprintln!("error: eviction flush for {slug}: {e}");
+                    } else {
+                        state.pending_writes.remove(&path);
+                        if let Err(e) = state.wal_store.truncate(slug) {
+                            eprintln!("eviction: WAL truncate error for {slug}: {e}");
+                        }
                     }
                 }
             }
@@ -363,6 +389,8 @@ mod tests {
             theme: "default".to_string(),
             verbose: false,
             collab: false,
+            tls: false,
+            trust_proxy: false,
             sessions: crate::web::session::SessionStore::new(),
             recovery_challenges: Arc::new(
                 crate::user::recovery::RecoveryChallengeStore::new(),

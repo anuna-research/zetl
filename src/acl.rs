@@ -610,8 +610,7 @@ pub fn evaluate(
             continue; // already handled above
         }
         let in_scope = scopes.iter().any(|s| {
-            let glob = build_scope_glob(s);
-            glob.is_match(page.as_str())
+            build_scope_glob(s).map_or(false, |g| g.is_match(page.as_str()))
         });
         if in_scope {
             runtime_facts.push_str(&format!(
@@ -911,8 +910,7 @@ pub fn evaluate_with_theory(
             continue;
         }
         let in_scope = scopes.iter().any(|s| {
-            let glob = build_scope_glob(s);
-            glob.is_match(page.as_str())
+            build_scope_glob(s).map_or(false, |g| g.is_match(page.as_str()))
         });
         if in_scope {
             runtime_facts.push_str(&format!(

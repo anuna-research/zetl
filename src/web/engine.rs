@@ -432,12 +432,18 @@ impl TemplateEngine {
         mnemonic: &str,
         words: &[&str],
         continue_url: &str,
+        user_id: &str,
+        recovery_pubkey: &str,
+        csrf_token: &str,
     ) -> Result<String, TemplateError> {
         let ctx = context! {
             vault_name => vault_name,
             mnemonic => mnemonic,
             words => words,
             continue_url => continue_url,
+            user_id => user_id,
+            recovery_pubkey => recovery_pubkey,
+            csrf_token => csrf_token,
             mode => "serve",
             theme => &self.theme,
             root_path => "/",

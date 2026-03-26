@@ -67,6 +67,8 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
         collab: false,
+        tls: false,
+        trust_proxy: false,
         #[cfg(feature = "reason")]
         acl_cache: Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
         git_commit_lock: None,

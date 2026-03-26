@@ -724,6 +724,8 @@ mod tests {
             theme: "default".to_string(),
             verbose: false,
             collab: false,
+            tls: false,
+            trust_proxy: false,
             sessions: crate::web::session::SessionStore::new(),
             recovery_challenges: Arc::new(
                 crate::user::recovery::RecoveryChallengeStore::new(),

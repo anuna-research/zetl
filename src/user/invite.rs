@@ -289,6 +289,91 @@ pub fn mark_nonce_used(vault_root: &Path, nonce: &str, exp: u64) -> Result<()> {
     record_nonce(vault_root, nonce, exp)
 }
 
+/// Atomically check whether a nonce has been used and mark it as used if not.
+///
+/// Returns `Ok(true)` if the nonce was freshly marked (i.e. it was NOT already used).
+/// Returns `Ok(false)` if the nonce was already used (caller should reject).
+///
+/// Uses a file lock to prevent TOCTOU races between concurrent requests.
+pub fn try_consume_nonce(vault_root: &Path, nonce: &str, exp: u64) -> Result<bool> {
+    let dir = collab_dir(vault_root);
+    std::fs::create_dir_all(&dir)?;
+
+    // Acquire an advisory file lock on the nonces file to serialize access.
+    let lock_path = dir.join("used-nonces.lock");
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(&lock_path)
+        .with_context(|| format!("failed to open lock file: {}", lock_path.display()))?;
+    fs_lock(&lock_file)?;
+
+    // Under the lock: check + mark atomically.
+    let nonces = load_used_nonces(vault_root)?;
+    if nonces.iter().any(|n| super::constant_time_eq(n.nonce.as_bytes(), nonce.as_bytes())) {
+        // Already used — unlock and return false.
+        fs_unlock(&lock_file)?;
+        return Ok(false);
+    }
+
+    // Not used yet — record it.
+    let mut nonces = nonces;
+    nonces.push(UsedNonce {
+        nonce: nonce.to_string(),
+        exp,
+    });
+    let path = used_nonces_path(vault_root);
+    let json = serde_json::to_string_pretty(&nonces).context("failed to serialize nonces")?;
+    std::fs::write(&path, json)
+        .with_context(|| format!("failed to write nonces: {}", path.display()))?;
+
+    fs_unlock(&lock_file)?;
+    Ok(true)
+}
+
+/// Acquire an exclusive advisory lock on a file descriptor.
+fn fs_lock(file: &std::fs::File) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        extern "C" {
+            fn flock(fd: std::os::raw::c_int, operation: std::os::raw::c_int) -> std::os::raw::c_int;
+        }
+        const LOCK_EX: std::os::raw::c_int = 2;
+        let ret = unsafe { flock(file.as_raw_fd(), LOCK_EX) };
+        if ret != 0 {
+            anyhow::bail!("flock(LOCK_EX) failed: {}", std::io::Error::last_os_error());
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = file;
+    }
+    Ok(())
+}
+
+/// Release an advisory lock on a file descriptor.
+fn fs_unlock(file: &std::fs::File) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        extern "C" {
+            fn flock(fd: std::os::raw::c_int, operation: std::os::raw::c_int) -> std::os::raw::c_int;
+        }
+        const LOCK_UN: std::os::raw::c_int = 8;
+        let ret = unsafe { flock(file.as_raw_fd(), LOCK_UN) };
+        if ret != 0 {
+            anyhow::bail!("flock(LOCK_UN) failed: {}", std::io::Error::last_os_error());
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = file;
+    }
+    Ok(())
+}
+
 /// Load used nonces from disk, pruning expired entries (24h past expiry).
 fn load_used_nonces(vault_root: &Path) -> Result<Vec<UsedNonce>> {
     let path = used_nonces_path(vault_root);

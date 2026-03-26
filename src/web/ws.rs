@@ -357,6 +357,9 @@ pub struct CrdtDocEntry {
     pub disconnected_at: Option<Instant>,
     /// Last time this document was accessed (for LRU eviction).
     pub last_access: Instant,
+    /// Monotonically increasing counter, bumped on each edit. Used to detect
+    /// edits that arrive between serialize_for_flush and mark_flushed (C3).
+    pub generation: u64,
 }
 
 impl CrdtDocEntry {
@@ -370,6 +373,7 @@ impl CrdtDocEntry {
             client_count: 0,
             disconnected_at: None,
             last_access: now,
+            generation: 0,
         }
     }
 
@@ -379,6 +383,7 @@ impl CrdtDocEntry {
         self.last_edit = now;
         self.last_access = now;
         self.dirty = true;
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// Mark that the document was flushed to disk.
@@ -587,21 +592,34 @@ impl CrdtDocStore {
             .collect()
     }
 
-    /// Serialize a document to markdown for flushing. Returns None if not loaded or not dirty.
-    pub fn serialize_for_flush(&self, slug: &str) -> Option<String> {
-        let mut docs = self.docs.lock().expect("crdt store lock");
-        let entry = docs.get_mut(slug)?;
-        if !entry.dirty {
-            return None;
-        }
-        entry.doc.to_markdown().ok()
+    /// Serialize a document to markdown for flushing.
+    /// Returns `(markdown, generation)` or None if not loaded or not dirty.
+    /// The generation must be passed to [`mark_flushed`] to guard against
+    /// edits that arrive between serialize and mark (C3 race fix).
+    pub fn serialize_for_flush(&self, slug: &str) -> Option<(String, u64)> {
+        let (forked, gen) = {
+            let mut docs = self.docs.lock().expect("crdt store lock");
+            let entry = docs.get_mut(slug)?;
+            if !entry.dirty {
+                return None;
+            }
+            (entry.doc.fork(), entry.generation)
+        };
+        // Lock is released; serialize outside the critical section.
+        forked.to_markdown().ok().map(|md| (md, gen))
     }
 
     /// Mark a document as flushed after successfully writing to disk.
-    pub fn mark_flushed(&self, slug: &str) {
+    /// Only clears the dirty flag if the generation has not changed since
+    /// serialization — otherwise an edit arrived in between and the doc
+    /// must stay dirty for a subsequent flush (C3 race fix).
+    pub fn mark_flushed(&self, slug: &str, expected_generation: u64) {
         let mut docs = self.docs.lock().expect("crdt store lock");
         if let Some(entry) = docs.get_mut(slug) {
-            entry.mark_flushed();
+            if entry.generation == expected_generation {
+                entry.mark_flushed();
+            }
+            // else: an edit arrived after serialize; leave dirty for next flush
         }
     }
 
@@ -872,46 +890,8 @@ impl CrdtDocStore {
     }
 }
 
-/// Spawn a background task that periodically checks for quiescence flushes
-/// and TTL evictions. Returns a `JoinHandle` that can be aborted on shutdown.
-pub fn spawn_crdt_lifecycle_task(
-    store: CrdtDocStore,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
-        loop {
-            interval.tick().await;
-
-            // Quiescence flush: serialize dirty docs that have been idle
-            let to_flush = store.slugs_needing_flush();
-            for slug in &to_flush {
-                if let Some(md) = store.serialize_for_flush(slug) {
-                    let path = store.md_path_for_slug(slug);
-                    match std::fs::write(&path, &md) {
-                        Ok(()) => {
-                            store.mark_flushed(slug);
-                        }
-                        Err(e) => {
-                            eprintln!("error: quiescence flush for {slug}: {e}");
-                        }
-                    }
-                }
-            }
-
-            // TTL eviction: remove docs where all clients left > eviction_ttl ago
-            let to_evict = store.slugs_for_eviction();
-            for slug in &to_evict {
-                if let Some(md) = store.evict(slug) {
-                    // Dirty doc was evicted — write it out
-                    let path = store.md_path_for_slug(slug);
-                    if let Err(e) = std::fs::write(&path, &md) {
-                        eprintln!("error: eviction flush for {slug}: {e}");
-                    }
-                }
-            }
-        }
-    })
-}
+// NOTE: `spawn_crdt_lifecycle_task` was removed — it was dead code superseded
+// by `flush::spawn_flush_lifecycle_task` which runs the full 10-step pipeline.
 
 // ── Ticket auth ──────────────────────────────────────────────────────
 
@@ -1767,7 +1747,8 @@ mod tests {
 
         assert!(store.crdt_meta("page").unwrap().dirty);
 
-        store.mark_flushed("page");
+        // Use generation 1 (one edit was recorded above via record_edit).
+        store.mark_flushed("page", 1);
 
         let meta = store.crdt_meta("page").unwrap();
         assert!(!meta.dirty);

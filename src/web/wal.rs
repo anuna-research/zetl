@@ -34,9 +34,10 @@ impl WalStore {
     /// Resolve the WAL file path for a slug.
     ///
     /// Slugs may contain `/` for nested pages (e.g. `notes/daily`), so we
-    /// flatten them with `--` to keep all WAL files in a single directory.
+    /// percent-encode them to keep all WAL files in a single directory.
+    /// `%` is encoded as `%25` first, then `/` as `%2F`, to avoid ambiguity.
     pub fn wal_path(&self, slug: &str) -> PathBuf {
-        let safe_name = slug.replace('/', "--");
+        let safe_name = slug.replace('%', "%25").replace('/', "%2F");
         self.crdt_dir.join(format!("{safe_name}.wal"))
     }
 
@@ -96,8 +97,8 @@ impl WalStore {
                 // Check non-empty
                 if fs::metadata(&path).map(|m| m.len() > 0).unwrap_or(false) {
                     if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                        // Reverse the slug flattening
-                        let slug = stem.replace("--", "/");
+                        // Reverse the percent-encoding: `%2F` → `/`, then `%25` → `%`
+                        let slug = stem.replace("%2F", "/").replace("%25", "%");
                         slugs.push(slug);
                     }
                 }
@@ -358,14 +359,38 @@ mod tests {
             )
             .unwrap();
 
-        // WAL file should use -- separator
+        // WAL file should use %2F encoding
         let wal_path = store.wal_path("notes/daily");
-        assert!(wal_path.file_name().unwrap().to_str().unwrap().contains("--"));
+        assert!(wal_path.file_name().unwrap().to_str().unwrap().contains("%2F"));
         assert!(wal_path.exists());
 
         // Should appear in pending_slugs with original slug
         let slugs = store.pending_slugs();
         assert_eq!(slugs, vec!["notes/daily"]);
+    }
+
+    #[test]
+    fn slug_with_percent_roundtrips() {
+        let (_dir, store) = test_store();
+        store
+            .append_ops(
+                "100%/done",
+                &[OpEntry::Splice {
+                    pos: 0,
+                    del: 0,
+                    text: "x".into(),
+                }],
+            )
+            .unwrap();
+
+        // Verify percent is encoded before slash
+        let wal_path = store.wal_path("100%/done");
+        let name = wal_path.file_name().unwrap().to_str().unwrap();
+        assert!(name.contains("%25"), "percent should be encoded as %25");
+        assert!(name.contains("%2F"), "slash should be encoded as %2F");
+
+        let slugs = store.pending_slugs();
+        assert_eq!(slugs, vec!["100%/done"]);
     }
 
     #[test]

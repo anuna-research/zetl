@@ -810,8 +810,28 @@ pub async fn save_handler(
     Path(slug): Path<String>,
     body: String,
 ) -> Response {
+    // Reject oversized payloads (10 MB limit).
+    const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
+    if body.len() > MAX_BODY_SIZE {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
+
+    // In collab mode with reason feature, verify the user has edit permission.
+    #[cfg(feature = "reason")]
+    if state.collab {
+        let user_id = match extract_session_user_id(&state, &headers) {
+            Some(uid) => uid,
+            None => {
+                return (StatusCode::UNAUTHORIZED, "authentication required").into_response();
+            }
+        };
+        if let Err(resp) = check_page_acl_edit(&state, &user_id, slug) {
+            return resp;
+        }
+    }
 
     // Look up file path under read lock, then drop it before writing.
     // For new pages, create at vault_root/{slug}.md.
@@ -837,6 +857,42 @@ pub async fn save_handler(
             }
         }
     };
+
+    // ── Path traversal guard ────────────────────────────────────────────
+    // Canonicalize vault_root (which is guaranteed to exist) and verify the
+    // resolved path sits inside it. For new files that don't exist yet we
+    // canonicalize the nearest existing ancestor and append the remainder.
+    {
+        let canon_root = match std::fs::canonicalize(state.vault_root.as_ref()) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("canonicalize vault_root error: {e}");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+            }
+        };
+        // Walk up to find an existing ancestor, then append the rest.
+        let canon_target = if full_path.exists() {
+            std::fs::canonicalize(&full_path).unwrap_or_else(|_| full_path.clone())
+        } else {
+            // Canonicalize the longest existing prefix, then re-join the tail.
+            let mut base = full_path.clone();
+            let mut tail = std::path::PathBuf::new();
+            while !base.exists() {
+                if let Some(name) = base.file_name() {
+                    tail = std::path::PathBuf::from(name).join(&tail);
+                } else {
+                    break;
+                }
+                base = base.parent().unwrap_or(&base).to_path_buf();
+            }
+            std::fs::canonicalize(&base)
+                .unwrap_or(base)
+                .join(tail)
+        };
+        if !canon_target.starts_with(&canon_root) {
+            return (StatusCode::BAD_REQUEST, "path escapes vault").into_response();
+        }
+    }
 
     // Ensure parent directory exists for nested paths
     if let Some(parent) = full_path.parent() {
@@ -2790,19 +2846,6 @@ pub async fn recovery_show_handler(
         }
     }
 
-    // One-time serve: reject if mnemonic was already shown for this user (REQ-020-056).
-    {
-        let mut shown = state.mnemonic_shown.lock().unwrap_or_else(|e| e.into_inner());
-        if shown.contains(user_id) {
-            return (
-                StatusCode::GONE,
-                "recovery phrase has already been displayed",
-            )
-                .into_response();
-        }
-        shown.insert(user_id.to_string());
-    }
-
     // Load profile to confirm user exists
     let mut profile = match crate::user::load_profile(vault_root, user_id) {
         Ok(Some(p)) => p,
@@ -2819,8 +2862,7 @@ pub async fn recovery_show_handler(
     };
 
     // Refuse to regenerate if the user already has a recovery pubkey persisted
-    // on disk.  The in-memory mnemonic_shown guard only survives one process
-    // lifetime; this check is durable across restarts.
+    // on disk.  This is the durable guard that survives server restarts.
     if !profile.recovery_pubkey.is_empty() {
         return (
             StatusCode::GONE,
@@ -2830,6 +2872,9 @@ pub async fn recovery_show_handler(
     }
 
     // Generate the recovery keypair
+    // Note: the pubkey is NOT saved here — it's deferred until the user
+    // confirms via POST /recovery/confirm.  This means the page can be
+    // safely reloaded without losing the mnemonic.
     let keypair = match crate::user::recovery::generate_recovery_keypair() {
         Ok(kp) => kp,
         Err(e) => {
@@ -2841,27 +2886,41 @@ pub async fn recovery_show_handler(
         }
     };
 
-    // Persist the recovery public key to the user profile
-    profile.recovery_pubkey = keypair.recovery_pubkey.clone();
-    if let Err(e) = crate::user::save_profile(vault_root, &profile) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("failed to save profile: {e}"),
-        )
-            .into_response();
-    }
-
+    // Do NOT persist the pubkey yet — wait until the user confirms they've
+    // written the phrase down (POST /recovery/confirm).  Pass the pubkey to
+    // the template so it can be submitted with the confirmation form.
     let words: Vec<&str> = keypair.mnemonic.split_whitespace().collect();
     let continue_url = format!("/passkey/register?user_id={}", user_id);
 
     // CSP header for mnemonic display page (REQ-020-056, REQ-020-063).
-    let csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; \
-               style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
-               connect-src 'self' wss:; frame-ancestors 'none'";
+    // Must allow the CDN resources that base.html loads (Tailwind, DaisyUI).
+    let csp = "default-src 'self'; \
+               script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; \
+               style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; \
+               img-src 'self' data:; \
+               connect-src 'self' wss:; \
+               font-src 'self' https://cdn.jsdelivr.net; \
+               frame-ancestors 'none'";
+
+    // Get CSRF token for the confirmation form.
+    let csrf_token = extract_session_user_id(&state, &headers)
+        .and_then(|uid| {
+            let token = crate::web::session::token_from_cookies(&headers)?;
+            state.sessions.csrf_token(&token)
+        })
+        .unwrap_or_default();
 
     match state
         .engine
-        .render_recovery_show(&vault_name, &keypair.mnemonic, &words, &continue_url)
+        .render_recovery_show(
+            &vault_name,
+            &keypair.mnemonic,
+            &words,
+            &continue_url,
+            user_id,
+            &keypair.recovery_pubkey,
+            &csrf_token,
+        )
     {
         Ok(html) => {
             let mut resp = Html(html).into_response();
@@ -2880,7 +2939,220 @@ pub async fn recovery_show_handler(
     }
 }
 
-// -- Recovery endpoints (CON-020-002, REQ-020-002) --
+/// POST /recovery/confirm — persist the recovery pubkey after the user
+/// confirms they've written down the mnemonic.
+#[derive(Debug, Deserialize)]
+pub struct RecoveryConfirmForm {
+    pub user_id: String,
+    pub recovery_pubkey: String,
+    pub continue_url: String,
+}
+
+pub async fn recovery_confirm_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    axum::Form(form): axum::Form<RecoveryConfirmForm>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+
+    // Require authenticated session matching the user_id
+    if state.collab {
+        match extract_session_user_id(&state, &headers) {
+            Some(session_uid) if session_uid == form.user_id => {}
+            _ => {
+                return StatusCode::UNAUTHORIZED.into_response();
+            }
+        }
+    }
+
+    // Load profile and save the recovery pubkey
+    let mut profile = match crate::user::load_profile(vault_root, &form.user_id) {
+        Ok(Some(p)) => p,
+        _ => {
+            return (StatusCode::NOT_FOUND, "user not found").into_response();
+        }
+    };
+
+    // Build the redirect URL server-side (form values may be HTML-escaped).
+    let redirect_url = format!("/passkey/register?user_id={}", form.user_id);
+
+    // Don't overwrite if already set
+    if !profile.recovery_pubkey.is_empty() {
+        return axum::response::Redirect::to(&redirect_url).into_response();
+    }
+
+    profile.recovery_pubkey = form.recovery_pubkey.clone();
+    if let Err(e) = crate::user::save_profile(vault_root, &profile) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to save profile: {e}"),
+        )
+            .into_response();
+    }
+
+    // 303 See Other — browser converts POST to GET on redirect
+    axum::response::Redirect::to(&redirect_url).into_response()
+}
+
+// -- User-friendly recovery page ──────────────────────────────────────────
+
+/// GET /auth/recovery — render the recovery form (name + 12 words).
+pub async fn recovery_page_handler(State(state): State<WebState>) -> Response {
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    let html = format!(r#"<!DOCTYPE html>
+<html lang="en" data-theme="default">
+<head>
+  <meta charset="utf-8">
+  <title>Recover Account — {vault_name}</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+</head>
+<body class="min-h-screen bg-base-100 flex items-center justify-center p-4">
+  <div class="max-w-md w-full">
+    <h2 class="text-xl font-bold mb-1">Recover your account</h2>
+    <p class="text-sm opacity-60 mb-6">Enter your display name and 12-word recovery phrase.</p>
+    <div id="rc-error" class="alert alert-error mb-4" style="display:none"><span id="rc-error-text"></span></div>
+    <form id="rc-form" method="POST" action="/auth/recovery">
+      <div class="form-control mb-4">
+        <label class="label"><span class="label-text font-semibold">Display name</span></label>
+        <input type="text" name="name" id="rc-name" class="input input-bordered w-full" placeholder="e.g. Hugo" required autocomplete="off">
+      </div>
+      <div class="form-control mb-6">
+        <label class="label"><span class="label-text font-semibold">Recovery phrase</span></label>
+        <textarea name="mnemonic" id="rc-mnemonic" class="textarea textarea-bordered w-full font-mono text-sm" rows="3" placeholder="word1 word2 word3 ... word12" required></textarea>
+        <label class="label"><span class="label-text-alt opacity-50">12 words, separated by spaces</span></label>
+      </div>
+      <button type="submit" class="btn btn-primary w-full" id="rc-submit">Recover Account</button>
+    </form>
+    <div class="text-center mt-4">
+      <a href="/auth/bootstrap" class="link link-hover text-sm opacity-60">Back to login</a>
+    </div>
+  </div>
+</body>
+</html>"#);
+
+    Html(html).into_response()
+}
+
+/// POST /auth/recovery — verify name + mnemonic, issue session, redirect.
+#[derive(Debug, Deserialize)]
+pub struct RecoveryFormData {
+    pub name: String,
+    pub mnemonic: String,
+}
+
+pub async fn recovery_form_handler(
+    State(state): State<WebState>,
+    axum::Form(form): axum::Form<RecoveryFormData>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+    let name = form.name.trim();
+    let mnemonic = form.mnemonic.trim();
+
+    // Look up user by display name
+    let profile = match crate::user::find_by_name(vault_root, name) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return (StatusCode::BAD_REQUEST, Html(recovery_error_page("No account found with that name."))).into_response();
+        }
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+        }
+    };
+
+    if profile.recovery_pubkey.is_empty() {
+        return (StatusCode::BAD_REQUEST, Html(recovery_error_page("This account has no recovery key set up."))).into_response();
+    }
+
+    // Derive pubkey from mnemonic and compare
+    let derived_pubkey = match crate::user::recovery::derive_pubkey_from_mnemonic(mnemonic) {
+        Ok(pk) => pk,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Html(recovery_error_page("Invalid recovery phrase. Check your 12 words and try again."))).into_response();
+        }
+    };
+
+    let derived_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(derived_pubkey.as_bytes());
+    if !crate::user::constant_time_eq(derived_b64.as_bytes(), profile.recovery_pubkey.as_bytes()) {
+        return (StatusCode::UNAUTHORIZED, Html(recovery_error_page("Recovery phrase does not match this account."))).into_response();
+    }
+
+    // Success — issue session and show success page with redirect
+    let token = state.sessions.create(&profile.id);
+    let cookie = crate::web::session::session_cookie(&token, state.tls);
+    let redirect_url = format!("/passkey/register?user_id={}", profile.id);
+    let display_name = profile.name.replace('<', "&lt;").replace('>', "&gt;");
+
+    let mut html = String::from(r#"<!DOCTYPE html>
+<html lang="en" data-theme="default">
+<head>
+  <meta charset="utf-8">
+  <title>Recovery Successful</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+</head>
+<body class="min-h-screen bg-base-100 flex items-center justify-center p-4">
+  <div class="max-w-md w-full text-center">
+    <div class="text-4xl mb-4">&#x2705;</div>
+    <h2 class="text-xl font-bold mb-2">Welcome back, "#);
+    html.push_str(&display_name);
+    html.push_str(r#"!</h2>
+    <p class="text-sm opacity-60 mb-6">Your identity has been verified. You can now register a new passkey.</p>
+    <a href=""#);
+    html.push_str(&redirect_url);
+    html.push_str(r#"" class="btn btn-primary">Register Passkey</a>
+    <p class="text-xs opacity-40 mt-4">You will be redirected automatically in 3 seconds.</p>
+    <script>setTimeout(function(){ window.location.href = ""#);
+    html.push_str(&redirect_url);
+    html.push_str(r#""; }, 3000);</script>
+  </div>
+</body>
+</html>"#);
+
+    (
+        StatusCode::OK,
+        [(header::SET_COOKIE, cookie)],
+        Html(html),
+    )
+        .into_response()
+}
+
+fn recovery_error_page(msg: &str) -> String {
+    let mut html = String::from(r#"<!DOCTYPE html>
+<html lang="en" data-theme="default">
+<head>
+  <meta charset="utf-8">
+  <title>Recovery Failed</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+</head>
+<body class="min-h-screen bg-base-100 flex items-center justify-center p-4">
+  <div class="max-w-md w-full text-center">
+    <div class="alert alert-error mb-4"><span>"#);
+    // Escape HTML in msg
+    for c in msg.chars() {
+        match c {
+            '<' => html.push_str("&lt;"),
+            '>' => html.push_str("&gt;"),
+            '&' => html.push_str("&amp;"),
+            '"' => html.push_str("&quot;"),
+            _ => html.push(c),
+        }
+    }
+    html.push_str(r#"</span></div>
+    <a href="/auth/recovery" class="btn btn-primary">Try Again</a>
+  </div>
+</body>
+</html>"#);
+    html
+}
+
+// -- Recovery API endpoints (CON-020-002, REQ-020-002) --
 
 #[derive(Debug, Deserialize)]
 pub struct RecoverQuery {
@@ -3019,7 +3291,7 @@ pub async fn recover_verify_handler(
         Ok(true) => {
             // Issue session and redirect to passkey registration
             let token = state.sessions.create(&body.user_id);
-            let cookie = crate::web::session::session_cookie(&token);
+            let cookie = crate::web::session::session_cookie(&token, state.tls);
             (
                 StatusCode::OK,
                 [
@@ -3154,16 +3426,17 @@ pub async fn accept_invite_submit_handler(
         }
     };
 
-    // Consume the nonce (single-use enforcement)
-    match crate::user::invite::is_nonce_used(vault_root, &claims.nonce) {
-        Ok(true) => {
+    // Atomically consume the nonce (single-use enforcement).
+    // try_consume_nonce checks and marks in one locked operation to prevent TOCTOU races.
+    match crate::user::invite::try_consume_nonce(vault_root, &claims.nonce, claims.exp) {
+        Ok(true) => {} // freshly consumed — proceed
+        Ok(false) => {
             return (StatusCode::GONE, "invitation has already been used").into_response();
         }
-        Ok(false) => {}
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("failed to check nonce: {e}"),
+                format!("failed to consume nonce: {e}"),
             )
                 .into_response();
         }
@@ -3210,17 +3483,14 @@ pub async fn accept_invite_submit_handler(
         eprintln!("warning: failed to write access.spl: {e}");
     }
 
-    // Mark nonce as used (after successful user creation to avoid partial state)
-    if let Err(e) = crate::user::invite::mark_nonce_used(vault_root, &claims.nonce, claims.exp) {
-        eprintln!("warning: failed to mark nonce as used: {e}");
-    }
+    // Nonce was already atomically consumed by try_consume_nonce above.
 
     // Remove from pending invitations list
     let _ = crate::user::invite::mark_invitation_consumed(vault_root, &claims.nonce);
 
     // Issue a session for the new user
     let token = state.sessions.create(&user_id);
-    let cookie = crate::web::session::session_cookie(&token);
+    let cookie = crate::web::session::session_cookie(&token, state.tls);
 
     // Redirect to recovery phrase display (which then chains to passkey registration)
     let location = format!("/recovery/show?user_id={user_id}");
@@ -3232,6 +3502,22 @@ pub async fn accept_invite_submit_handler(
         ],
     )
         .into_response()
+}
+
+/// Escape a string for safe injection into SPL string literals.
+///
+/// Mirrors `acl::escape_spl` but is available without the `reason` feature.
+fn escape_spl_value(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '(' | ')' | '\n' | '\r' => {} // strip syntax-breaking chars
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// Append SPL access facts for an invited user to `.zetl/collab/access.spl`.
@@ -3256,7 +3542,7 @@ fn inject_access_spl(
     writeln!(file)?;
     writeln!(file, ";; access granted to {user_id} (role: {role})")?;
 
-    let scope = pages.unwrap_or("**");
+    let scope = escape_spl_value(pages.unwrap_or("**"));
 
     match role {
         "admin" => {
@@ -3318,22 +3604,24 @@ pub async fn bootstrap_handler(
         }
     };
 
-    // One-time guard: reject if bootstrap has already been consumed.
-    if state
-        .bootstrap_used
-        .swap(true, std::sync::atomic::Ordering::SeqCst)
-    {
-        return (StatusCode::GONE, "bootstrap has already been used").into_response();
-    }
-
     let owner = profiles.iter().find(|p| p.owner);
     match owner {
         Some(profile) => {
+            // Once the owner has at least one passkey registered, bootstrap
+            // is no longer needed — they should use normal passkey login.
+            let has_passkey = crate::user::passkey::load_passkeys(&state.vault_root, &profile.id)
+                .map(|pks| !pks.is_empty())
+                .unwrap_or(false);
+            if has_passkey {
+                return (StatusCode::GONE, "bootstrap has already been used").into_response();
+            }
+
             // Create a bootstrap session so the owner is authenticated for
             // subsequent flows (passkey registration, recovery, etc.).
             let token = state.sessions.create(&profile.id);
+            let secure = if state.tls { "; Secure" } else { "" };
             let cookie = format!(
-                "zetl_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400"
+                "zetl_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400{secure}"
             );
             let location = format!("/passkey/register?user_id={}", profile.id);
             (
@@ -4705,6 +4993,45 @@ pub async fn ws_ticket_handler(
     headers: axum::http::HeaderMap,
 ) -> Response {
     if state.collab {
+        // CSRF validation: this endpoint is outside the csrf_guard middleware,
+        // so we validate the CSRF token inline for session-authenticated requests (C5).
+        if crate::web::session::bearer_token_from_headers(&headers).is_none() {
+            // Not a Bearer-authed request — require session + CSRF token.
+            let session_token = match crate::web::session::token_from_cookies(&headers) {
+                Some(t) => t,
+                None => {
+                    return ApiResponse::err(
+                        StatusCode::FORBIDDEN,
+                        "CSRF_MISSING",
+                        "session required",
+                    )
+                    .into_response();
+                }
+            };
+            let expected_csrf = match state.sessions.csrf_token(&session_token) {
+                Some(t) => t,
+                None => {
+                    return ApiResponse::err(
+                        StatusCode::FORBIDDEN,
+                        "CSRF_MISSING",
+                        "invalid session",
+                    )
+                    .into_response();
+                }
+            };
+            let provided_csrf = headers
+                .get("X-CSRF-Token")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            if provided_csrf != expected_csrf {
+                return ApiResponse::err(
+                    StatusCode::FORBIDDEN,
+                    "CSRF_MISMATCH",
+                    "CSRF token mismatch",
+                )
+                .into_response();
+            }
+        }
         match require_auth(&state, &headers) {
             Ok((user_id, _)) => {
                 let ticket = state.ticket_store.issue(&user_id);
@@ -5536,6 +5863,7 @@ mod tests {
             page_names: vec![],
             resolved: HashSet::new(),
             page_slug_map: HashMap::new(),
+            page_slug_map_lower: HashMap::new(),
             collision_names: HashSet::new(),
         };
         let search_index = SearchIndex::build(vault_root, &[]).unwrap();
@@ -5547,6 +5875,8 @@ mod tests {
             theme: theme.to_string(),
             verbose: false,
             collab: false,
+            tls: false,
+            trust_proxy: false,
             sessions: crate::web::session::SessionStore::new(),
             recovery_challenges: Arc::new(
                 crate::user::recovery::RecoveryChallengeStore::new(),

@@ -367,8 +367,38 @@
       resultEl.style.display = 'block';
       btn.disabled = false;
       btn.textContent = 'Generate Invitation Link';
-      // Reload to show new invitation in the table
-      setTimeout(function(){ location.reload(); }, 100);
+      // Auto-copy to clipboard
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(data.invite_url).then(function() {
+          copyBtn.textContent = 'Copied!';
+          setTimeout(function(){ copyBtn.textContent = 'Copy'; }, 2000);
+        });
+      }
+      // Add the new invitation to the table without reloading
+      var tbody = document.getElementById('ai-invites-body');
+      var emptyEl = document.querySelector('.ai-empty');
+      if (emptyEl) {
+        // Replace "No pending invitations" with a table
+        var section = emptyEl.parentNode;
+        emptyEl.remove();
+        var table = document.createElement('table');
+        table.className = 'ai-table';
+        table.innerHTML = '<thead><tr><th>Role</th><th>Scope</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody id="ai-invites-body"></tbody>';
+        section.appendChild(table);
+        tbody = document.getElementById('ai-invites-body');
+      }
+      if (tbody) {
+        var role = form.role.value;
+        var pages = form.pages.value.trim() || 'all pages';
+        var expiry = form.expiry_hours.value + 'h';
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td><span class="ai-role-badge ai-role-' + role + '">' + role + '</span></td>'
+          + '<td style="font-family:ui-monospace,monospace;font-size:0.8rem;">' + pages + '</td>'
+          + '<td style="font-size:0.8rem;">' + expiry + '</td>'
+          + '<td><span class="ai-status-active">active</span></td>'
+          + '<td></td>';
+        tbody.appendChild(tr);
+      }
     })
     .catch(function(err) {
       errorEl.textContent = err.message || 'Failed to generate invitation.';
