@@ -25,6 +25,23 @@ use crate::reason::types::{ConclusionType, ProofSource};
 use crate::types::SplBlock;
 use crate::user;
 
+/// Escape a string for safe injection into SPL literals.
+///
+/// Prevents SPL injection by escaping backslashes and double quotes,
+/// and stripping characters that could break Datalog syntax (parens, newlines).
+fn escape_spl(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '(' | ')' | '\n' | '\r' => {} // strip syntax-breaking chars
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Visibility mode controlling how denied pages appear to users (REQ-020-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VisibilityMode {
@@ -333,6 +350,8 @@ impl AclDecision {
 /// so we ground the universal rules with the concrete user_id and page_slug
 /// from the query being evaluated.
 fn built_in_defaults(user_id: &str, page_slug: &str) -> String {
+    let user_id = escape_spl(user_id);
+    let page_slug = escape_spl(page_slug);
     format!(
         r#"; Built-in ACL defaults (REQ-020-010), grounded for query
 ; Default: authenticated users can read all pages
@@ -516,15 +535,17 @@ pub fn evaluate(
     // ── Step 2: Inject runtime facts ─────────────────────────────────────
 
     let mut runtime_facts = String::new();
+    let safe_user = escape_spl(&query.user_id);
+    let safe_page = escape_spl(&query.page_slug);
 
     // Core runtime facts
     runtime_facts.push_str(&format!(
         "(given (authenticated \"{}\"))\n",
-        query.user_id
+        safe_user
     ));
     runtime_facts.push_str(&format!(
         "(given (requesting \"{}\" \"{}\" \"{}\"))\n",
-        query.user_id, query.page_slug, query.action
+        safe_user, safe_page, query.action
     ));
     runtime_facts.push_str(&format!("(given (now {}))\n", query.now_epoch_ms));
 
@@ -533,7 +554,7 @@ pub fn evaluate(
     if query.is_agent {
         runtime_facts.push_str(&format!(
             "(given (is-agent \"{}\"))\n",
-            query.user_id
+            safe_user
         ));
     }
 
@@ -543,24 +564,24 @@ pub fn evaluate(
         if profile.owner {
             runtime_facts.push_str(&format!(
                 "(given (owner \"{}\"))\n",
-                query.user_id
+                safe_user
             ));
             runtime_facts.push_str(&format!(
                 "(given (admin \"{}\"))\n",
-                query.user_id
+                safe_user
             ));
         }
 
         let role = user::Role::for_profile_with_vault(&profile, vault_root);
         runtime_facts.push_str(&format!(
             "(given (role \"{}\" {}))\n",
-            query.user_id, role
+            safe_user, role
         ));
 
         if role == user::Role::Admin {
             runtime_facts.push_str(&format!(
                 "(given (admin \"{}\"))\n",
-                query.user_id
+                safe_user
             ));
         }
     }
@@ -571,14 +592,14 @@ pub fn evaluate(
 
     let scopes = extract_user_scopes_from_access_spl(vault_root, &query.user_id);
     let page_in_scope = scopes.iter().any(|s| {
-        let glob = build_scope_glob(s);
+        let glob = match build_scope_glob(s) { Some(g) => g, None => return false };
         glob.is_match(&query.page_slug)
     });
 
     if page_in_scope {
         runtime_facts.push_str(&format!(
             "(given (in-scope \"{}\" \"{}\"))\n",
-            query.page_slug, query.user_id
+            safe_page, safe_user
         ));
     }
 
@@ -595,7 +616,7 @@ pub fn evaluate(
         if in_scope {
             runtime_facts.push_str(&format!(
                 "(given (in-scope \"{}\" \"{}\"))\n",
-                page, query.user_id
+                escape_spl(page), safe_user
             ));
         }
     }
@@ -681,20 +702,17 @@ pub fn evaluate(
 
     if decision.is_allowed() && overlay.has_active_forbidden() {
         // [F] override: forbidden conclusion overrides base permission
-        let forbidden = overlay
-            .forbidden
-            .iter()
-            .find(|c| {
-                matches!(
-                    c.tag,
-                    ConclusionTag::DefinitelyProvable | ConclusionTag::DefeasiblyProvable
-                )
-            })
-            .unwrap();
-        return Ok(AclDecision::Denied {
-            tag: forbidden.tag,
-            rule_trace: forbidden.rule_trace.clone(),
-        });
+        if let Some(forbidden) = overlay.forbidden.iter().find(|c| {
+            matches!(
+                c.tag,
+                ConclusionTag::DefinitelyProvable | ConclusionTag::DefeasiblyProvable
+            )
+        }) {
+            return Ok(AclDecision::Denied {
+                tag: forbidden.tag,
+                rule_trace: forbidden.rule_trace.clone(),
+            });
+        }
     }
 
     Ok(decision)
@@ -846,44 +864,46 @@ pub fn evaluate_with_theory(
 
     // ── Step 2–4: Runtime facts (same as evaluate) ───────────────────────
     let mut runtime_facts = String::new();
+    let safe_user = escape_spl(&query.user_id);
+    let safe_page = escape_spl(&query.page_slug);
     runtime_facts.push_str(&format!(
         "(given (authenticated \"{}\"))\n",
-        query.user_id
+        safe_user
     ));
     runtime_facts.push_str(&format!(
         "(given (requesting \"{}\" \"{}\" \"{}\"))\n",
-        query.user_id, query.page_slug, query.action
+        safe_user, safe_page, query.action
     ));
     runtime_facts.push_str(&format!("(given (now {}))\n", query.now_epoch_ms));
 
     if query.is_agent {
         runtime_facts.push_str(&format!(
             "(given (is-agent \"{}\"))\n",
-            query.user_id
+            safe_user
         ));
     }
 
     if let Some(profile) = user::load_profile(vault_root, &query.user_id)? {
         if profile.owner {
-            runtime_facts.push_str(&format!("(given (owner \"{}\"))\n", query.user_id));
-            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", query.user_id));
+            runtime_facts.push_str(&format!("(given (owner \"{}\"))\n", safe_user));
+            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", safe_user));
         }
         let role = user::Role::for_profile_with_vault(&profile, vault_root);
-        runtime_facts.push_str(&format!("(given (role \"{}\" {}))\n", query.user_id, role));
+        runtime_facts.push_str(&format!("(given (role \"{}\" {}))\n", safe_user, role));
         if role == user::Role::Admin {
-            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", query.user_id));
+            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", safe_user));
         }
     }
 
     let scopes = extract_user_scopes_from_access_spl(vault_root, &query.user_id);
     let page_in_scope = scopes.iter().any(|s| {
-        let glob = build_scope_glob(s);
+        let glob = match build_scope_glob(s) { Some(g) => g, None => return false };
         glob.is_match(&query.page_slug)
     });
     if page_in_scope {
         runtime_facts.push_str(&format!(
             "(given (in-scope \"{}\" \"{}\"))\n",
-            query.page_slug, query.user_id
+            safe_page, safe_user
         ));
     }
     for page in all_page_slugs {
@@ -897,7 +917,7 @@ pub fn evaluate_with_theory(
         if in_scope {
             runtime_facts.push_str(&format!(
                 "(given (in-scope \"{}\" \"{}\"))\n",
-                page, query.user_id
+                escape_spl(page), safe_user
             ));
         }
     }
@@ -972,19 +992,18 @@ pub fn evaluate_with_theory(
     );
 
     let final_decision = if decision.is_allowed() && overlay.has_active_forbidden() {
-        let forbidden = overlay
-            .forbidden
-            .iter()
-            .find(|c| {
-                matches!(
-                    c.tag,
-                    ConclusionTag::DefinitelyProvable | ConclusionTag::DefeasiblyProvable
-                )
-            })
-            .unwrap();
-        AclDecision::Denied {
-            tag: forbidden.tag,
-            rule_trace: forbidden.rule_trace.clone(),
+        if let Some(forbidden) = overlay.forbidden.iter().find(|c| {
+            matches!(
+                c.tag,
+                ConclusionTag::DefinitelyProvable | ConclusionTag::DefeasiblyProvable
+            )
+        }) {
+            AclDecision::Denied {
+                tag: forbidden.tag,
+                rule_trace: forbidden.rule_trace.clone(),
+            }
+        } else {
+            decision
         }
     } else {
         decision
@@ -1064,10 +1083,17 @@ fn extract_user_scopes_from_access_spl(vault_root: &Path, user_id: &str) -> Vec<
 }
 
 /// Build a globset::GlobMatcher for a scope pattern.
-fn build_scope_glob(scope: &str) -> globset::GlobMatcher {
-    globset::Glob::new(scope)
-        .unwrap_or_else(|_| globset::Glob::new("**").unwrap())
-        .compile_matcher()
+///
+/// Returns `None` (and logs a warning) if the glob pattern is invalid,
+/// rather than falling back to a permissive `**` match.
+fn build_scope_glob(scope: &str) -> Option<globset::GlobMatcher> {
+    match globset::Glob::new(scope) {
+        Ok(g) => Some(g.compile_matcher()),
+        Err(e) => {
+            eprintln!("warning: invalid scope glob pattern {:?}: {} — skipping", scope, e);
+            None
+        }
+    }
 }
 
 /// Query the vault's visibility mode from SPL theory (REQ-020-030).
@@ -1181,18 +1207,13 @@ pub fn effective_visibility(
 ///
 /// Spindle renders predicate conclusions as `"functor(arg1, arg2)"` in Display form.
 fn literal_matches(rendered: &str, predicate: &str, user_id: &str, page_slug: &str) -> bool {
+    // Negated conclusions (starting with ~) are not positive matches
+    if rendered.starts_with('~') {
+        return false;
+    }
+
     let expected = format!("{predicate}({user_id}, {page_slug})");
-    if rendered == expected {
-        return true;
-    }
-
-    // Also match negated form
-    let neg_expected = format!("~{predicate}({user_id}, {page_slug})");
-    if rendered == neg_expected {
-        return true;
-    }
-
-    false
+    rendered == expected
 }
 
 #[cfg(test)]

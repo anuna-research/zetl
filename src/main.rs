@@ -4982,7 +4982,7 @@ fn cmd_serve(
             invited_by: None,
             owner: true,
             credentials: vec![],
-            recovery_pubkey: keypair.recovery_pubkey,
+            recovery_pubkey: keypair.recovery_pubkey.clone(),
             agent_token_generation: 0,
         };
 

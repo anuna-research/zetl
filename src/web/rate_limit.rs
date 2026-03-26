@@ -42,6 +42,9 @@ impl Counter {
     }
 }
 
+/// Maximum number of tracked keys before forced eviction.
+const MAX_TRACKED_KEYS: usize = 10_000;
+
 /// Thread-safe in-memory rate limiter.
 pub struct RateLimiter {
     config: RateLimitConfig,
@@ -63,6 +66,30 @@ impl RateLimiter {
     pub fn check(&self, key: &str) -> Result<(), u64> {
         let now = Instant::now();
         let mut counters = self.counters.lock().expect("rate limiter lock poisoned");
+
+        // Evict expired/oldest entries if the map has grown too large.
+        if counters.len() >= MAX_TRACKED_KEYS && !counters.contains_key(key) {
+            // First pass: remove entries with no active timestamps.
+            let window = self.config.window;
+            counters.retain(|_, counter| counter.prune_and_count(now, window) > 0);
+
+            // Still over limit — drop oldest entries by earliest remaining timestamp.
+            if counters.len() >= MAX_TRACKED_KEYS {
+                let mut by_oldest: Vec<(String, Instant)> = counters
+                    .iter()
+                    .map(|(k, c)| {
+                        let oldest = c.timestamps.first().copied().unwrap_or(now);
+                        (k.clone(), oldest)
+                    })
+                    .collect();
+                by_oldest.sort_by_key(|(_, t)| *t);
+                let to_remove = counters.len() - MAX_TRACKED_KEYS + 1;
+                for (k, _) in by_oldest.into_iter().take(to_remove) {
+                    counters.remove(&k);
+                }
+            }
+        }
+
         let counter = counters.entry(key.to_string()).or_insert_with(Counter::new);
 
         let count = counter.prune_and_count(now, self.config.window);

@@ -10,6 +10,18 @@ pub mod invite;
 pub mod passkey;
 pub mod recovery;
 
+/// Constant-time comparison for sensitive tokens/nonces to prevent timing attacks.
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -197,9 +209,7 @@ fn rand_byte() -> u8 {
 }
 
 pub(crate) fn getrandom(buf: &mut [u8]) {
-    use std::io::Read;
-    let mut f = std::fs::File::open("/dev/urandom").expect("open /dev/urandom");
-    f.read_exact(buf).expect("read /dev/urandom");
+    getrandom::getrandom(buf).expect("getrandom failed");
 }
 
 /// Return the users directory path for a vault root.

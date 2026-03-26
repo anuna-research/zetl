@@ -281,7 +281,7 @@ fn record_nonce(vault_root: &Path, nonce: &str, exp: u64) -> Result<()> {
 /// Check if a nonce has already been used.
 pub fn is_nonce_used(vault_root: &Path, nonce: &str) -> Result<bool> {
     let nonces = load_used_nonces(vault_root)?;
-    Ok(nonces.iter().any(|n| n.nonce == nonce))
+    Ok(nonces.iter().any(|n| super::constant_time_eq(n.nonce.as_bytes(), nonce.as_bytes())))
 }
 
 /// Mark a nonce as used (for invitation acceptance).
@@ -391,7 +391,7 @@ pub fn revoke_invitation(vault_root: &Path, nonce: &str) -> Result<bool> {
     let mut invites = load_pending_invitations(vault_root)?;
     let mut found = false;
     for invite in &mut invites {
-        if invite.nonce == nonce && !invite.revoked {
+        if super::constant_time_eq(invite.nonce.as_bytes(), nonce.as_bytes()) && !invite.revoked {
             invite.revoked = true;
             found = true;
             break;
@@ -402,7 +402,7 @@ pub fn revoke_invitation(vault_root: &Path, nonce: &str) -> Result<bool> {
         // Also mark the nonce as used so the token can't be accepted
         let exp = invites
             .iter()
-            .find(|i| i.nonce == nonce)
+            .find(|i| super::constant_time_eq(i.nonce.as_bytes(), nonce.as_bytes()))
             .map(|i| i.exp)
             .unwrap_or(0);
         mark_nonce_used(vault_root, nonce, exp)?;
@@ -413,7 +413,7 @@ pub fn revoke_invitation(vault_root: &Path, nonce: &str) -> Result<bool> {
 /// Mark a pending invitation as consumed (accepted). Returns true if found.
 pub fn mark_invitation_consumed(vault_root: &Path, nonce: &str) -> Result<bool> {
     let mut invites = load_pending_invitations(vault_root)?;
-    let pos = invites.iter().position(|i| i.nonce == nonce);
+    let pos = invites.iter().position(|i| super::constant_time_eq(i.nonce.as_bytes(), nonce.as_bytes()));
     if let Some(idx) = pos {
         invites.remove(idx);
         write_pending_invitations(vault_root, &invites)?;

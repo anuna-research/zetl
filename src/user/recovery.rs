@@ -35,6 +35,19 @@ pub struct RecoveryKeypair {
     pub recovery_pubkey: String,
 }
 
+impl Drop for RecoveryKeypair {
+    fn drop(&mut self) {
+        // Zeroize the mnemonic in-place to avoid leaving secrets in memory.
+        // SAFETY: we overwrite every byte of the String's buffer with zeros.
+        // The String is left in a valid (all-NUL) state before deallocation.
+        let bytes = unsafe { self.mnemonic.as_mut_vec() };
+        for b in bytes.iter_mut() {
+            // Use write_volatile to prevent the compiler from optimising this out.
+            unsafe { std::ptr::write_volatile(b, 0) };
+        }
+    }
+}
+
 /// Generate a 12-word BIP39 mnemonic and derive the ed25519 keypair via
 /// SLIP-0010 at path `m/44'/0'/0'`.
 pub fn generate_recovery_keypair() -> Result<RecoveryKeypair> {
@@ -247,7 +260,7 @@ impl RecoveryChallengeStore {
         };
 
         // Find matching challenge
-        let pos = challenges.iter().position(|c| &c.challenge == challenge);
+        let pos = challenges.iter().position(|c| super::constant_time_eq(&c.challenge, challenge));
         match pos {
             Some(idx) => {
                 let pending = challenges.remove(idx);

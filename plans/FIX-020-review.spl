@@ -1,0 +1,341 @@
+;; Fix plan for IMPL-020 code review findings
+(meta plan
+  (id "FIX-020-review")
+  (title "Fix IMPL-020 Code Review Issues")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-03-26")
+  (author "agent:claude")
+  (description "Address critical, high, and medium severity issues from code review of hence/plan-IMPL-020 branch"))
+
+;; Single agent
+(given agent-claude-available)
+
+;; ============================================================
+;; PHASE 1: Critical Security Fixes (no dependencies)
+;; ============================================================
+
+(given task-fix-ws-acl-gate)
+(given no-deps-fix-ws-acl-gate)
+(meta task-fix-ws-acl-gate
+  (description "Remove #[cfg(feature = reason)] gate from WS ACL check in ws.rs:975-980")
+  (acceptance "ACL check runs unconditionally in collab mode; compiles without reason feature"))
+
+(given task-fix-deontic-unwrap)
+(given no-deps-fix-deontic-unwrap)
+(meta task-fix-deontic-unwrap
+  (description "Replace .unwrap() with safe handling on deontic forbidden lookup in acl.rs:693,984")
+  (acceptance "No panic if has_active_forbidden() returns true but no matching tag found"))
+
+(given task-fix-glob-fallback)
+(given no-deps-fix-glob-fallback)
+(meta task-fix-glob-fallback
+  (description "Reject invalid glob patterns instead of silently falling back to ** in acl.rs:1069")
+  (acceptance "Invalid glob returns error or empty match set, not wildcard"))
+
+(given task-fix-negation-matching)
+(given no-deps-fix-negation-matching)
+(meta task-fix-negation-matching
+  (description "Fix literal_matches() to distinguish positive from negated conclusions in acl.rs:1189-1193")
+  (acceptance "~can-read returns false from literal_matches; only positive conclusions match"))
+
+(given task-fix-spl-injection)
+(given no-deps-fix-spl-injection)
+(meta task-fix-spl-injection
+  (description "Escape user_id and page_slug before injecting into SPL queries in acl.rs:335-382,521-529")
+  (acceptance "Special characters in user_id/page_slug cannot inject arbitrary Datalog facts"))
+
+;; ============================================================
+;; PHASE 2: High Severity Fixes (no dependencies)
+;; ============================================================
+
+(given task-fix-timing-attacks)
+(given no-deps-fix-timing-attacks)
+(meta task-fix-timing-attacks
+  (description "Use constant-time comparison for nonces in invite.rs:284,394 and challenges in recovery.rs:250")
+  (acceptance "All sensitive token comparisons use constant-time equality"))
+
+(given task-fix-jwt-unwrap)
+(given no-deps-fix-jwt-unwrap)
+(meta task-fix-jwt-unwrap
+  (description "Replace .unwrap() on JWT decode in routes.rs:3489 with proper error handling")
+  (acceptance "Invalid invite token returns HTTP error, not panic"))
+
+(given task-fix-unbounded-maps)
+(given no-deps-fix-unbounded-maps)
+(meta task-fix-unbounded-maps
+  (description "Add eviction/capacity limits to rate_limit HashMap and WsHub rooms HashMap")
+  (acceptance "Both maps have max capacity; oldest entries evicted when full"))
+
+(given task-fix-relay-leak)
+(given no-deps-fix-relay-leak)
+(meta task-fix-relay-leak
+  (description "Ensure relay task is aborted on all exit paths in ws.rs:1116-1169")
+  (acceptance "Relay task aborted via drop guard; no leaked tasks on panic"))
+
+(given task-fix-mnemonic-zeroize)
+(given no-deps-fix-mnemonic-zeroize)
+(meta task-fix-mnemonic-zeroize
+  (description "Zeroize BIP39 mnemonic and signing keys after use in recovery.rs")
+  (acceptance "RecoveryKeypair mnemonic is zeroized on drop"))
+
+;; ============================================================
+;; PHASE 3: Medium Severity (depends on Phase 1+2 complete)
+;; ============================================================
+
+(given task-fix-ws-hardening)
+(meta task-fix-ws-hardening
+  (description "Add WS message rate limiting, presence field validation, and lagged-client re-sync")
+  (acceptance "Presence name max 100 chars; rate limit per connection; lagged clients get Sync"))
+
+(given task-fix-lock-poisoning)
+(meta task-fix-lock-poisoning
+  (description "Replace .unwrap()/.expect() on RwLock/Mutex with graceful error handling in routes.rs and session.rs")
+  (acceptance "Poisoned locks return HTTP 500 instead of panicking"))
+
+(given task-fix-getrandom)
+(meta task-fix-getrandom
+  (description "Replace /dev/urandom with getrandom crate in user/mod.rs:199-203")
+  (acceptance "Crypto randomness uses getrandom crate with Result propagation"))
+
+(given task-fix-path-validation)
+(meta task-fix-path-validation
+  (description "Verify canonicalized paths are within vault root in git_commit.rs:48-62")
+  (acceptance "Paths outside vault root are rejected before git operations"))
+
+;; ============================================================
+;; PHASE 4: Verification (depends on all fixes)
+;; ============================================================
+
+(given task-verify-fixes)
+(meta task-verify-fixes
+  (description "Run cargo build, cargo test, and verify all fixes compile and pass")
+  (acceptance "cargo build succeeds; cargo test passes; no new warnings"))
+
+;; Readiness rules — Phase 1+2 have no deps, ready immediately
+(normally r-ready-ws-acl-gate (and task-fix-ws-acl-gate no-deps-fix-ws-acl-gate) ready-fix-ws-acl-gate)
+(normally r-ready-deontic-unwrap (and task-fix-deontic-unwrap no-deps-fix-deontic-unwrap) ready-fix-deontic-unwrap)
+(normally r-ready-glob-fallback (and task-fix-glob-fallback no-deps-fix-glob-fallback) ready-fix-glob-fallback)
+(normally r-ready-negation (and task-fix-negation-matching no-deps-fix-negation-matching) ready-fix-negation-matching)
+(normally r-ready-spl-injection (and task-fix-spl-injection no-deps-fix-spl-injection) ready-fix-spl-injection)
+(normally r-ready-timing (and task-fix-timing-attacks no-deps-fix-timing-attacks) ready-fix-timing-attacks)
+(normally r-ready-jwt-unwrap (and task-fix-jwt-unwrap no-deps-fix-jwt-unwrap) ready-fix-jwt-unwrap)
+(normally r-ready-unbounded (and task-fix-unbounded-maps no-deps-fix-unbounded-maps) ready-fix-unbounded-maps)
+(normally r-ready-relay (and task-fix-relay-leak no-deps-fix-relay-leak) ready-fix-relay-leak)
+(normally r-ready-zeroize (and task-fix-mnemonic-zeroize no-deps-fix-mnemonic-zeroize) ready-fix-mnemonic-zeroize)
+
+;; Phase 3 — depends on critical+high phases
+(normally r-ready-ws-harden
+  (and task-fix-ws-hardening completed-fix-ws-acl-gate completed-fix-relay-leak)
+  ready-fix-ws-hardening)
+(normally r-ready-lock-poison
+  (and task-fix-lock-poisoning completed-fix-jwt-unwrap)
+  ready-fix-lock-poisoning)
+(normally r-ready-getrandom
+  (and task-fix-getrandom completed-fix-mnemonic-zeroize)
+  ready-fix-getrandom)
+(normally r-ready-path-val
+  (and task-fix-path-validation completed-fix-spl-injection)
+  ready-fix-path-validation)
+
+;; Phase 4 — depends on all
+(normally r-ready-verify
+  (and task-verify-fixes
+       completed-fix-ws-hardening
+       completed-fix-lock-poisoning
+       completed-fix-getrandom
+       completed-fix-path-validation)
+  ready-verify-fixes)
+
+;; Assignment rules — all to claude
+(normally r-a1 (and ready-fix-ws-acl-gate agent-claude-available) assign-to-fix-ws-acl-gate-claude)
+(normally r-a2 (and ready-fix-deontic-unwrap agent-claude-available) assign-to-fix-deontic-unwrap-claude)
+(normally r-a3 (and ready-fix-glob-fallback agent-claude-available) assign-to-fix-glob-fallback-claude)
+(normally r-a4 (and ready-fix-negation-matching agent-claude-available) assign-to-fix-negation-matching-claude)
+(normally r-a5 (and ready-fix-spl-injection agent-claude-available) assign-to-fix-spl-injection-claude)
+(normally r-a6 (and ready-fix-timing-attacks agent-claude-available) assign-to-fix-timing-attacks-claude)
+(normally r-a7 (and ready-fix-jwt-unwrap agent-claude-available) assign-to-fix-jwt-unwrap-claude)
+(normally r-a8 (and ready-fix-unbounded-maps agent-claude-available) assign-to-fix-unbounded-maps-claude)
+(normally r-a9 (and ready-fix-relay-leak agent-claude-available) assign-to-fix-relay-leak-claude)
+(normally r-a10 (and ready-fix-mnemonic-zeroize agent-claude-available) assign-to-fix-mnemonic-zeroize-claude)
+(normally r-a11 (and ready-fix-ws-hardening agent-claude-available) assign-to-fix-ws-hardening-claude)
+(normally r-a12 (and ready-fix-lock-poisoning agent-claude-available) assign-to-fix-lock-poisoning-claude)
+(normally r-a13 (and ready-fix-getrandom agent-claude-available) assign-to-fix-getrandom-claude)
+(normally r-a14 (and ready-fix-path-validation agent-claude-available) assign-to-fix-path-validation-claude)
+(normally r-a15 (and ready-verify-fixes agent-claude-available) assign-to-verify-fixes-claude)
+
+(claims agent:claude
+  :at "2026-03-26T02:53:01Z"
+  (given claim-v1-fix-ws-acl-gate)
+  (normally r-cl-state-v1-fix-ws-acl-gate claim-v1-fix-ws-acl-gate state-claimed-v1-fix-ws-acl-gate)
+  (normally r-cl-chain-v1-fix-ws-acl-gate state-claimed-v1-fix-ws-acl-gate claimed-fix-ws-acl-gate)
+)
+
+;; Propagation rules: failures in 'fix-ws-acl-gate' block downstream tasks
+(normally r-propagate-fix-ws-hardening-from-fix-ws-acl-gate-failed failed-fix-ws-acl-gate upstream-blocked-fix-ws-hardening)
+(normally r-propagate-fix-ws-hardening-from-fix-ws-acl-gate-permanently-failed permanently-failed-fix-ws-acl-gate upstream-blocked-fix-ws-hardening)
+(normally r-propagate-fix-ws-hardening-from-fix-ws-acl-gate-stale-v1 stale-v1-fix-ws-acl-gate upstream-blocked-fix-ws-hardening)
+(normally r-propagate-fix-ws-hardening-from-fix-ws-acl-gate-timeout-v1 timeout-v1-fix-ws-acl-gate upstream-blocked-fix-ws-hardening)
+(normally r-propagate-fix-ws-hardening-from-fix-ws-acl-gate-blocked upstream-blocked-fix-ws-acl-gate upstream-blocked-fix-ws-hardening)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-verify-fixes-from-fix-ws-hardening-blocked upstream-blocked-fix-ws-hardening upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T02:53:01Z"
+  (given claim-v1-fix-deontic-unwrap)
+  (normally r-cl-state-v1-fix-deontic-unwrap claim-v1-fix-deontic-unwrap state-claimed-v1-fix-deontic-unwrap)
+  (normally r-cl-chain-v1-fix-deontic-unwrap state-claimed-v1-fix-deontic-unwrap claimed-fix-deontic-unwrap)
+)
+
+(claims agent:claude
+  :at "2026-03-26T02:53:01Z"
+  (given claim-v1-fix-glob-fallback)
+  (normally r-cl-state-v1-fix-glob-fallback claim-v1-fix-glob-fallback state-claimed-v1-fix-glob-fallback)
+  (normally r-cl-chain-v1-fix-glob-fallback state-claimed-v1-fix-glob-fallback claimed-fix-glob-fallback)
+)
+
+(claims agent:claude
+  :at "2026-03-26T02:53:01Z"
+  (given claim-v1-fix-negation-matching)
+  (normally r-cl-state-v1-fix-negation-matching claim-v1-fix-negation-matching state-claimed-v1-fix-negation-matching)
+  (normally r-cl-chain-v1-fix-negation-matching state-claimed-v1-fix-negation-matching claimed-fix-negation-matching)
+)
+
+(claims agent:claude
+  :at "2026-03-26T02:53:01Z"
+  (given claim-v1-fix-spl-injection)
+  (normally r-cl-state-v1-fix-spl-injection claim-v1-fix-spl-injection state-claimed-v1-fix-spl-injection)
+  (normally r-cl-chain-v1-fix-spl-injection state-claimed-v1-fix-spl-injection claimed-fix-spl-injection)
+)
+
+;; Propagation rules: failures in 'fix-spl-injection' block downstream tasks
+(normally r-propagate-fix-path-validation-from-fix-spl-injection-failed failed-fix-spl-injection upstream-blocked-fix-path-validation)
+(normally r-propagate-fix-path-validation-from-fix-spl-injection-permanently-failed permanently-failed-fix-spl-injection upstream-blocked-fix-path-validation)
+(normally r-propagate-fix-path-validation-from-fix-spl-injection-stale-v1 stale-v1-fix-spl-injection upstream-blocked-fix-path-validation)
+(normally r-propagate-fix-path-validation-from-fix-spl-injection-timeout-v1 timeout-v1-fix-spl-injection upstream-blocked-fix-path-validation)
+(normally r-propagate-fix-path-validation-from-fix-spl-injection-blocked upstream-blocked-fix-spl-injection upstream-blocked-fix-path-validation)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-verify-fixes-from-fix-path-validation-blocked upstream-blocked-fix-path-validation upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T02:57:58Z"
+  (given completed-fix-ws-acl-gate))
+
+(claims agent:claude
+  :at "2026-03-26T02:57:58Z"
+  (given completed-fix-deontic-unwrap))
+
+(claims agent:claude
+  :at "2026-03-26T02:57:58Z"
+  (given completed-fix-glob-fallback))
+
+(claims agent:claude
+  :at "2026-03-26T02:57:58Z"
+  (given completed-fix-negation-matching))
+
+(claims agent:claude
+  :at "2026-03-26T02:57:58Z"
+  (given completed-fix-spl-injection))
+
+(claims agent:claude
+  :at "2026-03-26T02:57:58Z"
+  (given completed-fix-timing-attacks))
+
+(claims agent:claude
+  :at "2026-03-26T02:57:58Z"
+  (given completed-fix-jwt-unwrap))
+
+(claims agent:claude
+  :at "2026-03-26T02:57:58Z"
+  (given completed-fix-unbounded-maps))
+
+(claims agent:claude
+  :at "2026-03-26T02:57:58Z"
+  (given completed-fix-relay-leak))
+
+(claims agent:claude
+  :at "2026-03-26T02:57:58Z"
+  (given completed-fix-mnemonic-zeroize))
+
+(claims agent:claude
+  :at "2026-03-26T02:58:26Z"
+  (given claim-v1-fix-ws-hardening)
+  (normally r-cl-state-v1-fix-ws-hardening claim-v1-fix-ws-hardening state-claimed-v1-fix-ws-hardening)
+  (normally r-cl-chain-v1-fix-ws-hardening state-claimed-v1-fix-ws-hardening claimed-fix-ws-hardening)
+)
+
+;; Propagation rules: failures in 'fix-ws-hardening' block downstream tasks
+(normally r-propagate-verify-fixes-from-fix-ws-hardening-failed failed-fix-ws-hardening upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-ws-hardening-permanently-failed permanently-failed-fix-ws-hardening upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-ws-hardening-stale-v1 stale-v1-fix-ws-hardening upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-ws-hardening-timeout-v1 timeout-v1-fix-ws-hardening upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T02:58:26Z"
+  (given claim-v1-fix-lock-poisoning)
+  (normally r-cl-state-v1-fix-lock-poisoning claim-v1-fix-lock-poisoning state-claimed-v1-fix-lock-poisoning)
+  (normally r-cl-chain-v1-fix-lock-poisoning state-claimed-v1-fix-lock-poisoning claimed-fix-lock-poisoning)
+)
+
+;; Propagation rules: failures in 'fix-lock-poisoning' block downstream tasks
+(normally r-propagate-verify-fixes-from-fix-lock-poisoning-failed failed-fix-lock-poisoning upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-lock-poisoning-permanently-failed permanently-failed-fix-lock-poisoning upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-lock-poisoning-stale-v1 stale-v1-fix-lock-poisoning upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-lock-poisoning-timeout-v1 timeout-v1-fix-lock-poisoning upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-lock-poisoning-blocked upstream-blocked-fix-lock-poisoning upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T02:58:26Z"
+  (given claim-v1-fix-getrandom)
+  (normally r-cl-state-v1-fix-getrandom claim-v1-fix-getrandom state-claimed-v1-fix-getrandom)
+  (normally r-cl-chain-v1-fix-getrandom state-claimed-v1-fix-getrandom claimed-fix-getrandom)
+)
+
+;; Propagation rules: failures in 'fix-getrandom' block downstream tasks
+(normally r-propagate-verify-fixes-from-fix-getrandom-failed failed-fix-getrandom upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-getrandom-permanently-failed permanently-failed-fix-getrandom upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-getrandom-stale-v1 stale-v1-fix-getrandom upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-getrandom-timeout-v1 timeout-v1-fix-getrandom upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-getrandom-blocked upstream-blocked-fix-getrandom upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T02:58:26Z"
+  (given claim-v1-fix-path-validation)
+  (normally r-cl-state-v1-fix-path-validation claim-v1-fix-path-validation state-claimed-v1-fix-path-validation)
+  (normally r-cl-chain-v1-fix-path-validation state-claimed-v1-fix-path-validation claimed-fix-path-validation)
+)
+
+;; Propagation rules: failures in 'fix-path-validation' block downstream tasks
+(normally r-propagate-verify-fixes-from-fix-path-validation-failed failed-fix-path-validation upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-path-validation-permanently-failed permanently-failed-fix-path-validation upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-path-validation-stale-v1 stale-v1-fix-path-validation upstream-blocked-verify-fixes)
+(normally r-propagate-verify-fixes-from-fix-path-validation-timeout-v1 timeout-v1-fix-path-validation upstream-blocked-verify-fixes)
+
+(claims agent:claude
+  :at "2026-03-26T03:00:13Z"
+  (given completed-fix-ws-hardening))
+
+(claims agent:claude
+  :at "2026-03-26T03:00:13Z"
+  (given completed-fix-lock-poisoning))
+
+(claims agent:claude
+  :at "2026-03-26T03:00:13Z"
+  (given completed-fix-getrandom))
+
+(claims agent:claude
+  :at "2026-03-26T03:00:13Z"
+  (given completed-fix-path-validation))
+
+(claims agent:claude
+  :at "2026-03-26T03:00:19Z"
+  (given claim-v1-verify-fixes)
+  (normally r-cl-state-v1-verify-fixes claim-v1-verify-fixes state-claimed-v1-verify-fixes)
+  (normally r-cl-chain-v1-verify-fixes state-claimed-v1-verify-fixes claimed-verify-fixes)
+)
+
+(claims agent:claude
+  :at "2026-03-26T03:01:10Z"
+  (given completed-verify-fixes))

@@ -244,6 +244,7 @@ fn compute_merge_diff(before: &str, after: &str) -> (String, Vec<ChangedRange>) 
 
 /// Broadcast channel capacity per room.
 const ROOM_CAPACITY: usize = 256;
+const WS_MSG_RATE_LIMIT: usize = 100; // messages per second
 
 /// A room for a single page slug — holds a broadcast channel for relaying
 /// ops and presence, plus the latest CRDT doc bytes for late joiners.
@@ -263,6 +264,9 @@ impl EditRoom {
     }
 }
 
+/// Maximum number of tracked rooms before forced cleanup.
+const MAX_ROOMS: usize = 1000;
+
 /// Hub managing all active editing rooms, keyed by page slug.
 #[derive(Clone, Default)]
 pub struct WsHub {
@@ -277,6 +281,12 @@ impl WsHub {
     /// Get or create a room for the given slug.
     pub fn room(&self, slug: &str) -> Arc<EditRoom> {
         let mut rooms = self.rooms.lock().expect("ws hub lock");
+
+        // Evict dead rooms when approaching the limit.
+        if rooms.len() >= MAX_ROOMS && !rooms.contains_key(slug) {
+            rooms.retain(|_, room| room.tx.receiver_count() > 0);
+        }
+
         rooms
             .entry(slug.to_string())
             .or_insert_with(|| Arc::new(EditRoom::new()))
@@ -972,7 +982,6 @@ pub async fn ws_edit_handler(
     match user_id {
         Some(uid) => {
             // In collab mode, enforce page ACL before upgrading the WebSocket.
-            #[cfg(feature = "reason")]
             if state.collab {
                 if let Err(_) = check_ws_page_acl(&state, &uid, &slug) {
                     return axum::http::StatusCode::FORBIDDEN.into_response();
@@ -982,6 +991,13 @@ pub async fn ws_edit_handler(
         }
         None => axum::http::StatusCode::UNAUTHORIZED.into_response(),
     }
+}
+
+/// Fallback: when the `reason` feature is not enabled, ACL checks are not available,
+/// so we allow all connections.
+#[cfg(not(feature = "reason"))]
+fn check_ws_page_acl(_state: &WebState, _user_id: &str, _page_slug: &str) -> Result<(), ()> {
+    Ok(())
 }
 
 /// Check that a user can edit a page (for WebSocket upgrade).
@@ -1059,6 +1075,15 @@ fn authenticate(state: &WebState, query: &WsQuery) -> Option<String> {
 }
 
 /// Handle an authenticated WebSocket connection.
+/// Drop guard that aborts a spawned task when dropped, preventing leaks on panic.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, state: WebState) {
     // Register the real on-disk path for this slug so that CRDT
     // flush/load preserves the original filename (case, spaces, etc.).
@@ -1113,7 +1138,7 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
     // Spawn task: relay broadcast messages to the outbound channel
     let relay_user_id = user_id.clone();
     let relay_tx = outbound_tx.clone();
-    let relay_task = tokio::spawn(async move {
+    let _relay_guard = AbortOnDrop(tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(server_msg) => {
@@ -1130,11 +1155,21 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
                         break;
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    eprintln!("warning: client {relay_user_id} lagged by {n} messages on broadcast");
+                    let _ = relay_tx.send(ServerMsg::Error {
+                        message: format!("lagged by {n} messages; some edits may be missing — consider re-syncing"),
+                    }).await;
+                    continue;
+                }
                 Err(broadcast::error::RecvError::Closed) => break,
             }
         }
-    });
+    }));
+
+    // Per-connection rate limiting state
+    let mut rate_count: usize = 0;
+    let mut rate_reset = Instant::now();
 
     // Main loop: multiplex inbound WS messages and outbound relay messages.
     loop {
@@ -1151,6 +1186,21 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
             ws_msg = socket.recv() => {
                 match ws_msg {
                     Some(Ok(Message::Text(text))) => {
+                        // Rate limiting: reset counter every second
+                        let now = Instant::now();
+                        if now.duration_since(rate_reset) >= Duration::from_secs(1) {
+                            rate_count = 0;
+                            rate_reset = now;
+                        }
+                        rate_count += 1;
+                        if rate_count > WS_MSG_RATE_LIMIT {
+                            let err_json = serde_json::to_string(&ServerMsg::Error {
+                                message: "rate limit exceeded (max 100 msg/s)".to_string(),
+                            }).unwrap_or_default();
+                            let _ = socket.send(Message::Text(err_json.into())).await;
+                            continue;
+                        }
+
                         if let Err(e) = process_client_msg(text.as_str(), &user_id, &slug, &room, &state.crdt_store, &state.wal_store) {
                             eprintln!("ws error for {user_id} on {slug}: {e}");
                             let err_json = serde_json::to_string(&ServerMsg::Error {
@@ -1166,7 +1216,8 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
         }
     }
 
-    relay_task.abort();
+    // _relay_guard dropped here (or on panic), aborting the relay task.
+    drop(_relay_guard);
     state.crdt_store.client_disconnected(&slug);
     state.ws_hub.remove_if_empty(&slug);
 }
@@ -1211,6 +1262,16 @@ fn process_client_msg(
             });
         }
         ClientMsg::Presence { cursor, name } => {
+            let name = name.map(|n| {
+                if n.len() > 100 {
+                    n.char_indices()
+                        .take_while(|&(i, _)| i < 100)
+                        .map(|(_, c)| c)
+                        .collect::<String>()
+                } else {
+                    n
+                }
+            });
             let _ = room.tx.send(ServerMsg::Presence {
                 user_id: user_id.to_string(),
                 cursor,

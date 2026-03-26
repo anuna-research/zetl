@@ -50,7 +50,7 @@ impl SessionStore {
         };
         self.sessions
             .write()
-            .expect("session lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .insert(token.clone(), session);
         token
     }
@@ -58,7 +58,7 @@ impl SessionStore {
     /// Validate the token: check idle/max timeouts, touch `last_accessed`.
     /// Returns the `user_id` if valid.
     pub fn validate(&self, token: &str) -> Option<String> {
-        let mut sessions = self.sessions.write().expect("session lock poisoned");
+        let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
         let session = sessions.get_mut(token)?;
         let now = Instant::now();
 
@@ -79,19 +79,19 @@ impl SessionStore {
     pub fn destroy(&self, token: &str) {
         self.sessions
             .write()
-            .expect("session lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .remove(token);
     }
 
     /// Return the CSRF token for a given session token, if the session is valid.
     pub fn csrf_token(&self, token: &str) -> Option<String> {
-        let sessions = self.sessions.read().expect("session lock poisoned");
+        let sessions = self.sessions.read().unwrap_or_else(|e| e.into_inner());
         sessions.get(token).map(|s| s.csrf_token.clone())
     }
 
     /// Count active (non-expired) sessions for a given user.
     pub fn active_session_count(&self, user_id: &str) -> usize {
-        let sessions = self.sessions.read().expect("session lock poisoned");
+        let sessions = self.sessions.read().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
         sessions
             .values()
@@ -108,7 +108,7 @@ impl SessionStore {
         let now = Instant::now();
         self.sessions
             .write()
-            .expect("session lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .retain(|_, s| {
                 now.duration_since(s.created_at) <= MAX_TIMEOUT
                     && now.duration_since(s.last_accessed) <= IDLE_TIMEOUT

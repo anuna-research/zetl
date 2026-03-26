@@ -143,7 +143,7 @@ pub async fn dashboard_handler(
     let recent_edits = recent_git_edits(&state.git_commit_lock, 20);
 
     // Accessible pages — filter by read ACL in collab mode (REQ-020-031).
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
     let accessible_pages: Vec<serde_json::Value> = data
         .page_names
         .iter()
@@ -242,7 +242,7 @@ pub async fn index_handler(
     State(state): State<WebState>,
     headers: axum::http::HeaderMap,
 ) -> Response {
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
     let vault_name = state
         .vault_root
         .file_name()
@@ -307,7 +307,7 @@ pub async fn page_handler(
         return page_history_handler_inner(State(state), page_slug.to_string()).await;
     }
 
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     let vault_name = state
         .vault_root
@@ -357,14 +357,14 @@ pub async fn page_handler(
 
             // Check ACL cache first, then evaluate
             let decision = {
-                let cache = state.acl_cache.lock().unwrap();
+                let cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(cached) = cache.lookup(&user_id, &page_slug_str, crate::acl::Action::Read) {
                     cached.clone()
                 } else {
                     drop(cache);
                     match crate::acl::evaluate(&state.vault_root, &query, &page_spl, &all_slugs) {
                         Ok(d) => {
-                            let mut cache = state.acl_cache.lock().unwrap();
+                            let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
                             cache.insert(user_id.clone(), page_slug_str.clone(), crate::acl::Action::Read, d.clone());
                             d
                         }
@@ -716,7 +716,7 @@ pub async fn edit_handler(
 ) -> Response {
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     let vault_name = state
         .vault_root
@@ -816,7 +816,7 @@ pub async fn save_handler(
     // Look up file path under read lock, then drop it before writing.
     // For new pages, create at vault_root/{slug}.md.
     let full_path = {
-        let data = state.data.read().unwrap();
+        let data = state.data.read().unwrap_or_else(|e| e.into_inner());
         let file = data
             .files
             .iter()
@@ -904,7 +904,7 @@ pub async fn save_handler(
             if let Err(e) = SearchIndex::build(&state.vault_root, &new_data.files) {
                 eprintln!("search index rebuild error: {e}");
             }
-            *state.data.write().unwrap() = new_data;
+            *state.data.write().unwrap_or_else(|e| e.into_inner()) = new_data;
         }
         Err(e) => {
             eprintln!("reindex error: {e}");
@@ -1045,7 +1045,7 @@ pub async fn preview_handler(
     Path(slug): Path<String>,
 ) -> Html<String> {
     let slug = urldecode(&slug);
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     let file = data
         .files
@@ -1112,7 +1112,7 @@ pub async fn api_search_handler(
     #[cfg(feature = "reason")]
     let denied_page_slugs: HashSet<String> = if state.collab {
         if let Some(ref uid) = extract_session_user_id(&state, &headers) {
-            let data = state.data.read().unwrap();
+            let data = state.data.read().unwrap_or_else(|e| e.into_inner());
             let denied = build_denied_pages_map(&state, &data, uid);
             drop(data);
             denied.keys().cloned().collect()
@@ -1437,7 +1437,7 @@ pub async fn api_search_handler(
 
 /// GET /_print — Combined print view of all pages for PDF export.
 pub async fn print_handler(State(state): State<WebState>) -> Response {
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     // Collect only fountain scenes, sorted alphabetically by title (sidebar order)
     let mut fountain_files: Vec<_> = data
@@ -1736,7 +1736,7 @@ fn build_denied_pages_map(
 
         // Check cache first
         let decision = {
-            let cache = state.acl_cache.lock().unwrap();
+            let cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(cached) = cache.lookup(user_id, &slug, acl::Action::Read) {
                 cached.clone()
             } else {
@@ -1744,7 +1744,7 @@ fn build_denied_pages_map(
                 let page_spl: Vec<crate::types::SplBlock> = file.spl_blocks.clone();
                 match acl::evaluate(&state.vault_root, &query, &page_spl, &all_slugs) {
                     Ok(d) => {
-                        let mut cache = state.acl_cache.lock().unwrap();
+                        let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
                         cache.insert(user_id.to_string(), slug.clone(), acl::Action::Read, d.clone());
                         d
                     }
@@ -1812,7 +1812,7 @@ fn build_sidebar_denied_map(
         };
 
         let decision = {
-            let cache = state.acl_cache.lock().unwrap();
+            let cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(cached) = cache.lookup(user_id, &slug, acl::Action::Read) {
                 cached.clone()
             } else {
@@ -1820,7 +1820,7 @@ fn build_sidebar_denied_map(
                 let page_spl: Vec<crate::types::SplBlock> = file.spl_blocks.clone();
                 match acl::evaluate(&state.vault_root, &query, &page_spl, &all_slugs) {
                     Ok(d) => {
-                        let mut cache = state.acl_cache.lock().unwrap();
+                        let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
                         cache.insert(user_id.to_string(), slug.clone(), acl::Action::Read, d.clone());
                         d
                     }
@@ -1862,7 +1862,7 @@ async fn page_history_handler_inner(
     State(state): State<WebState>,
     page_slug: String,
 ) -> Response {
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     let vault_name = state
         .vault_root
@@ -1900,7 +1900,7 @@ async fn page_history_handler_inner(
 
     // Collect git log entries for this file.
     let git_entries = if let Some(ref lock) = state.git_commit_lock {
-        let repo = lock.lock().unwrap();
+        let repo = lock.lock().unwrap_or_else(|e| e.into_inner());
         crate::web::git_commit::file_log(&repo, &file_path, 100)
     } else {
         Vec::new()
@@ -1963,7 +1963,7 @@ pub async fn api_file_diff_handler(
         }
     };
 
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
     let file = data
         .files
         .iter()
@@ -1980,7 +1980,7 @@ pub async fn api_file_diff_handler(
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "git not available" }))).into_response();
     };
 
-    let repo = lock.lock().unwrap();
+    let repo = lock.lock().unwrap_or_else(|e| e.into_inner());
     let diff = crate::web::git_commit::file_diff_at_commit(&repo, &commit, &file_path);
 
     Json(serde_json::json!({ "diff": diff })).into_response()
@@ -2005,7 +2005,7 @@ pub async fn api_restore_handler(
             .into_response();
     }
 
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
     let file = data
         .files
         .iter()
@@ -2043,7 +2043,7 @@ pub async fn api_restore_handler(
 
     // Read the file content at the specified commit.
     let content = {
-        let repo = lock.lock().unwrap();
+        let repo = lock.lock().unwrap_or_else(|e| e.into_inner());
         crate::web::git_commit::file_at_commit(&repo, commit, &file_path)
     };
 
@@ -2063,7 +2063,7 @@ pub async fn api_restore_handler(
 
     // Auto-commit the restore.
     {
-        let repo = lock.lock().unwrap();
+        let repo = lock.lock().unwrap_or_else(|e| e.into_inner());
         let user_name = extract_session_user_id(&state, &headers)
             .unwrap_or_else(|| "system".to_string());
         let msg = format!("restore: {} to {}", slug, &commit[..7.min(commit.len())]);
@@ -2081,7 +2081,7 @@ pub async fn api_restore_handler(
     match reindex(&state.vault_root) {
         Ok(new_data) => {
             let _ = SearchIndex::build(&state.vault_root, &new_data.files);
-            *state.data.write().unwrap() = new_data;
+            *state.data.write().unwrap_or_else(|e| e.into_inner()) = new_data;
         }
         Err(e) => eprintln!("reindex error after restore: {e}"),
     }
@@ -2792,7 +2792,7 @@ pub async fn recovery_show_handler(
 
     // One-time serve: reject if mnemonic was already shown for this user (REQ-020-056).
     {
-        let mut shown = state.mnemonic_shown.lock().unwrap();
+        let mut shown = state.mnemonic_shown.lock().unwrap_or_else(|e| e.into_inner());
         if shown.contains(user_id) {
             return (
                 StatusCode::GONE,
@@ -2842,7 +2842,7 @@ pub async fn recovery_show_handler(
     };
 
     // Persist the recovery public key to the user profile
-    profile.recovery_pubkey = keypair.recovery_pubkey;
+    profile.recovery_pubkey = keypair.recovery_pubkey.clone();
     if let Err(e) = crate::user::save_profile(vault_root, &profile) {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -3486,7 +3486,16 @@ pub async fn admin_invite_create_handler(
         .unwrap_or_else(|| session.user_id.clone());
 
     // Decode claims to get exp
-    let claims = crate::user::invite::decode_jwt(vault_root, &token).unwrap();
+    let claims = match crate::user::invite::decode_jwt(vault_root, &token) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("failed to decode invitation token: {e}"),
+            )
+                .into_response();
+        }
+    };
 
     // Save pending invitation record
     let pending = crate::user::invite::PendingInvitation {
@@ -4036,7 +4045,7 @@ pub async fn api_pages_list_handler(
         }
     }
 
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     // Build denied page set for filtering (REQ-020-031)
     #[cfg(feature = "reason")]
@@ -4101,7 +4110,7 @@ pub async fn api_pages_get_handler(
 
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     let file = data
         .files
@@ -4126,14 +4135,14 @@ pub async fn api_pages_get_handler(
                 now_epoch_ms: now_ms,
             };
             let decision = {
-                let cache = state.acl_cache.lock().unwrap();
+                let cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(cached) = cache.lookup(uid, &page_slug_str, crate::acl::Action::Read) {
                     cached.clone()
                 } else {
                     drop(cache);
                     match crate::acl::evaluate(&state.vault_root, &query, &f.spl_blocks, &all_slugs) {
                         Ok(d) => {
-                            let mut cache = state.acl_cache.lock().unwrap();
+                            let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
                             cache.insert(uid.clone(), page_slug_str.clone(), crate::acl::Action::Read, d.clone());
                             d
                         }
@@ -4266,7 +4275,7 @@ pub async fn api_pages_put_handler(
 
     // Resolve file path
     let (full_path, is_new) = {
-        let data = state.data.read().unwrap();
+        let data = state.data.read().unwrap_or_else(|e| e.into_inner());
         let file = data
             .files
             .iter()
@@ -4400,7 +4409,7 @@ pub async fn api_pages_put_handler(
     match reindex(&state.vault_root) {
         Ok(new_data) => {
             let _ = SearchIndex::build(&state.vault_root, &new_data.files);
-            *state.data.write().unwrap() = new_data;
+            *state.data.write().unwrap_or_else(|e| e.into_inner()) = new_data;
         }
         Err(e) => eprintln!("reindex error: {e}"),
     }
@@ -4467,7 +4476,7 @@ pub async fn api_pages_delete_handler(
     }
 
     let full_path = {
-        let data = state.data.read().unwrap();
+        let data = state.data.read().unwrap_or_else(|e| e.into_inner());
         let file = data
             .files
             .iter()
@@ -4521,7 +4530,7 @@ pub async fn api_pages_delete_handler(
     match reindex(&state.vault_root) {
         Ok(new_data) => {
             let _ = SearchIndex::build(&state.vault_root, &new_data.files);
-            *state.data.write().unwrap() = new_data;
+            *state.data.write().unwrap_or_else(|e| e.into_inner()) = new_data;
         }
         Err(e) => eprintln!("reindex error: {e}"),
     }
@@ -4567,7 +4576,7 @@ pub async fn api_graph_handler(
         }
     }
 
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
     let graph = &data.graph;
 
     // Build denied pages map for graph filtering (REQ-020-032).
@@ -4674,7 +4683,7 @@ pub async fn api_index_handler(
             let page_count = new_data.page_names.len();
             let link_count = new_data.graph.graph.edge_count();
             let _ = SearchIndex::build(&state.vault_root, &new_data.files);
-            *state.data.write().unwrap() = new_data;
+            *state.data.write().unwrap_or_else(|e| e.into_inner()) = new_data;
             ApiResponse::ok(serde_json::json!({
                 "pages": page_count,
                 "links": link_count,
@@ -4989,7 +4998,7 @@ fn check_page_acl_read(
     page_slug: &str,
 ) -> Result<(), Response> {
     let (spl_blocks, all_slugs) = {
-        let data = state.data.read().unwrap();
+        let data = state.data.read().unwrap_or_else(|e| e.into_inner());
         let file = data.files.iter().find(|f| {
             crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
         });
@@ -5010,14 +5019,14 @@ fn check_page_acl_read(
         now_epoch_ms: now_ms,
     };
     let decision = {
-        let cache = state.acl_cache.lock().unwrap();
+        let cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(cached) = cache.lookup(user_id, page_slug, crate::acl::Action::Read) {
             cached.clone()
         } else {
             drop(cache);
             match crate::acl::evaluate(&state.vault_root, &query, &spl_blocks, &all_slugs) {
                 Ok(d) => {
-                    let mut cache = state.acl_cache.lock().unwrap();
+                    let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
                     cache.insert(user_id.to_string(), page_slug.to_string(), crate::acl::Action::Read, d.clone());
                     d
                 }
@@ -5043,7 +5052,7 @@ fn check_page_acl_edit(
     page_slug: &str,
 ) -> Result<(), Response> {
     let (spl_blocks, all_slugs) = {
-        let data = state.data.read().unwrap();
+        let data = state.data.read().unwrap_or_else(|e| e.into_inner());
         let file = data.files.iter().find(|f| {
             crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
         });
@@ -5064,14 +5073,14 @@ fn check_page_acl_edit(
         now_epoch_ms: now_ms,
     };
     let decision = {
-        let cache = state.acl_cache.lock().unwrap();
+        let cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(cached) = cache.lookup(user_id, page_slug, crate::acl::Action::Edit) {
             cached.clone()
         } else {
             drop(cache);
             match crate::acl::evaluate(&state.vault_root, &query, &spl_blocks, &all_slugs) {
                 Ok(d) => {
-                    let mut cache = state.acl_cache.lock().unwrap();
+                    let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
                     cache.insert(user_id.to_string(), page_slug.to_string(), crate::acl::Action::Edit, d.clone());
                     d
                 }
@@ -5132,7 +5141,7 @@ pub async fn api_reason_handler(
         }
     }
 
-    let data = state.data.read().unwrap();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     // Collect all SPL blocks from the vault
     let mut spl_blocks: Vec<crate::types::SplBlock> = Vec::new();
@@ -5256,7 +5265,7 @@ pub async fn api_acl_explain_handler(
 
     // Collect page-level SPL blocks and all page slugs
     let (page_spl_blocks, all_page_slugs) = {
-        let data = state.data.read().unwrap();
+        let data = state.data.read().unwrap_or_else(|e| e.into_inner());
         let page_spl: Vec<crate::types::SplBlock> = data
             .files
             .iter()
