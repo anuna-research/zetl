@@ -1,5 +1,8 @@
+#[cfg(feature = "reason")]
+pub mod acl;
 pub mod cache;
 pub mod cli;
+pub mod crdt;
 pub mod drift;
 pub mod graph;
 #[cfg(feature = "history")]
@@ -16,6 +19,7 @@ pub mod semantic;
 pub mod simhash;
 pub mod tui;
 pub mod types;
+pub mod user;
 pub mod vcs;
 pub mod view;
 pub mod web;

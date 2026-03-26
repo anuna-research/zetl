@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
+use base64::Engine as _;
 use clap::Parser;
 use comfy_table::{Cell, Table};
 use serde::Serialize;
@@ -12,7 +13,7 @@ use zetl::cache::{
     files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache,
 };
 use zetl::cli::{
-    BlockTypeFilter, Cli, Command, FailLevel, HookCommand, OutputFormat, ThemeCommand,
+    AgentCommand, BlockTypeFilter, Cli, Command, FailLevel, HookCommand, OutputFormat, ThemeCommand,
 };
 use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::graph::LinkGraph;
@@ -28,7 +29,7 @@ use zetl::types::{ContentHash, DiagnosticLevel, DriftDiagnostic, DriftSeverity, 
 // ── Common pipeline ────────────────────────────────────────────────────────
 
 /// Snapshot metadata included in JSON output when --at is used (REQ-077, CON-024).
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct SnapshotInfo {
     change_id: String,
     commit_id: String,
@@ -494,7 +495,9 @@ fn exit_page_not_found(format: &OutputFormat, message: &str) -> ! {
         _ => {
             eprintln!("{message}");
             eprintln!();
-            eprintln!("Hint: run `zetl list` to see all pages, or use --fuzzy for approximate matching.");
+            eprintln!(
+                "Hint: run `zetl list` to see all pages, or use --fuzzy for approximate matching."
+            );
             std::process::exit(1);
         }
     }
@@ -2557,9 +2560,9 @@ fn cmd_search(
         Some(std::thread::spawn(move || {
             let idx = zetl::semantic::VectorIndex::open(&vault_root_vec)?;
             match idx {
-                None => anyhow::bail!(
-                    "Vector index not found. Run `zetl index` to build it first."
-                ),
+                None => {
+                    anyhow::bail!("Vector index not found. Run `zetl index` to build it first.")
+                }
                 Some(idx) => {
                     let start = std::time::Instant::now();
                     let hits = idx.query_text(&query_owned, vec_limit)?;
@@ -2664,30 +2667,29 @@ fn cmd_search(
         } else if hybrid {
             // --hybrid: join the pre-spawned vector thread (runs in parallel with BM25)
             // and fuse results via RRF (REQ-095, ADR-053).
-            let (vec_hits, vec_chunks_scanned, vec_ms) =
-                match hybrid_vec_thread.unwrap().join() {
-                    Err(_) => {
-                        let msg = "Vector search thread panicked";
-                        match cli.format {
-                            OutputFormat::Json => exit_json_error(msg, 1),
-                            OutputFormat::Table => {
-                                eprintln!("Error: {msg}");
-                                std::process::exit(1);
-                            }
+            let (vec_hits, vec_chunks_scanned, vec_ms) = match hybrid_vec_thread.unwrap().join() {
+                Err(_) => {
+                    let msg = "Vector search thread panicked";
+                    match cli.format {
+                        OutputFormat::Json => exit_json_error(msg, 1),
+                        OutputFormat::Table => {
+                            eprintln!("Error: {msg}");
+                            std::process::exit(1);
                         }
                     }
-                    Ok(Err(e)) => {
-                        let msg = format!("{e}");
-                        match cli.format {
-                            OutputFormat::Json => exit_json_error(&msg, 1),
-                            OutputFormat::Table => {
-                                eprintln!("Error: {msg}");
-                                std::process::exit(1);
-                            }
+                }
+                Ok(Err(e)) => {
+                    let msg = format!("{e}");
+                    match cli.format {
+                        OutputFormat::Json => exit_json_error(&msg, 1),
+                        OutputFormat::Table => {
+                            eprintln!("Error: {msg}");
+                            std::process::exit(1);
                         }
                     }
-                    Ok(Ok(tuple)) => tuple,
-                };
+                }
+                Ok(Ok(tuple)) => tuple,
+            };
 
             if cli.verbose > 0 {
                 eprintln!(
@@ -2744,8 +2746,7 @@ fn cmd_search(
             }
 
             // Build a score map from page_name → fused score.
-            let score_map: std::collections::HashMap<String, f64> =
-                fused.into_iter().collect();
+            let score_map: std::collections::HashMap<String, f64> = fused.into_iter().collect();
 
             // Collect all BM25 matches, re-scored by fused value.
             // Pages only in vector results get a placeholder match.
@@ -4650,8 +4651,388 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
     Ok(())
 }
 
-fn cmd_serve(cli: &Cli, port: u16, theme: &str, public: Option<&str>) -> Result<()> {
+fn cmd_agent_run(
+    cli: &Cli,
+    name: &str,
+    theme: &str,
+    target_pages: &[String],
+    budget: u32,
+    extra: &[String],
+) -> Result<()> {
+    let verbose = cli.verbose > 0;
     let pipeline = run_pipeline(cli)?;
+
+    // Discover hooks for the on-agent lifecycle point.
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&pipeline.vault_root, theme);
+    let manifest =
+        zetl::hooks::discover_hooks_verbose(&pipeline.vault_root, theme_hooks.path(), verbose);
+
+    for w in &manifest.warnings {
+        eprintln!("warning: {w}");
+    }
+
+    let matching = zetl::hooks::hooks_for(&manifest, "on-agent");
+    if matching.is_empty() {
+        anyhow::bail!("no executable on-agent hook found");
+    }
+
+    // Build context JSON with agent-specific fields.
+    let mut ctx = zetl::hooks::context::build_hook_context(
+        "on-agent",
+        &pipeline.vault_root,
+        theme,
+        env!("CARGO_PKG_VERSION"),
+        &pipeline.files,
+        &pipeline.graph,
+    );
+
+    ctx.agent = Some(zetl::hooks::context::HookAgent {
+        task: name.to_string(),
+        target_pages: target_pages.to_vec(),
+        budget_tokens: budget,
+    });
+
+    let mut context_value = serde_json::to_value(&ctx)?;
+
+    // Merge extra JSON fields from -- arguments.
+    if !extra.is_empty() {
+        let extra_str = extra.join(" ");
+        let extra_value: serde_json::Value = serde_json::from_str(&extra_str)
+            .with_context(|| format!("invalid JSON after --: {extra_str}"))?;
+        if let (Some(base), Some(overlay)) =
+            (context_value.as_object_mut(), extra_value.as_object())
+        {
+            for (k, v) in overlay {
+                base.insert(k.clone(), v.clone());
+            }
+        } else {
+            anyhow::bail!("extra JSON after -- must be an object, got: {extra_str}");
+        }
+    }
+
+    let context_json = serde_json::to_vec(&context_value)?;
+
+    let hook_env = zetl::hooks::HookEnv {
+        vault_root: pipeline.vault_root.clone(),
+        theme: theme.to_string(),
+        zetl_version: env!("CARGO_PKG_VERSION").to_string(),
+        extra_vars: vec![("ZETL_AGENT_TASK".to_string(), name.to_string())],
+    };
+
+    let results =
+        zetl::hooks::run_hooks_verbose(&manifest, "on-agent", &context_json, &hook_env, verbose);
+
+    let mut worst_exit_code: i32 = 0;
+
+    for result in results {
+        match result {
+            Ok(output) => {
+                if !output.stdout.is_empty() {
+                    print!("{}", output.stdout);
+                }
+                if !output.stderr.is_empty() {
+                    eprint!("{}", output.stderr);
+                }
+                let code = if output.timed_out {
+                    eprintln!("error: on-agent hook '{}' timed out", output.path.display());
+                    124
+                } else {
+                    output.exit_code.unwrap_or(1)
+                };
+                if code != 0 {
+                    if verbose {
+                        eprintln!(
+                            "warning: agent action rejected by hook '{}' (exit {})",
+                            output.path.display(),
+                            code
+                        );
+                    }
+                    if worst_exit_code == 0 {
+                        worst_exit_code = code;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("error: on-agent hook failed to execute: {e}");
+                if worst_exit_code == 0 {
+                    worst_exit_code = 1;
+                }
+            }
+        }
+    }
+
+    if worst_exit_code != 0 {
+        std::process::exit(worst_exit_code);
+    }
+
+    Ok(())
+}
+
+/// Convert days since Unix epoch to (year, month, day).
+fn days_to_ymd(days: u64) -> (u64, u64, u64) {
+    let z = days + 719468;
+    let era = z / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+fn cmd_agent_token(cli: &Cli, mnemonic: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // Derive the public key from the mnemonic to find the matching user
+    let pubkey = zetl::user::recovery::derive_pubkey_from_mnemonic(mnemonic)
+        .context("invalid BIP39 mnemonic")?;
+    let pubkey_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(pubkey.as_bytes());
+
+    // Find the user profile whose recovery_pubkey matches
+    let profiles = zetl::user::list_profiles(&vault_root)?;
+    let profile = profiles
+        .iter()
+        .find(|p| p.recovery_pubkey == pubkey_b64)
+        .ok_or_else(|| {
+            anyhow::anyhow!("no user in this vault matches the provided mnemonic's public key")
+        })?;
+
+    let token = zetl::user::agent_token::generate_agent_token(
+        mnemonic,
+        &profile.id,
+        profile.agent_token_generation,
+    )?;
+
+    // Output depends on format
+    if cli.format == zetl::cli::OutputFormat::Json || cli.json {
+        let output = serde_json::json!({
+            "token": token,
+            "user_id": profile.id,
+            "generation": profile.agent_token_generation,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("{token}");
+    }
+
+    Ok(())
+}
+
+fn cmd_invite(
+    cli: &Cli,
+    as_user: &str,
+    role: &str,
+    pages: Option<&str>,
+    expires: Option<&str>,
+    port: u16,
+    host: &str,
+) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // Validate the role
+    let _role: zetl::user::Role = role.parse().context("invalid --role value")?;
+
+    // Resolve inviter: look up by name (case-insensitive), fall back to user ID
+    let inviter = zetl::user::find_by_name(&vault_root, as_user)?.or_else(|| {
+        zetl::user::load_profile(&vault_root, as_user)
+            .ok()
+            .flatten()
+    });
+
+    let inviter =
+        inviter.ok_or_else(|| anyhow::anyhow!("user '{}' not found in this vault", as_user))?;
+
+    // Parse expiry duration
+    let expires_secs = match expires {
+        Some(s) => Some(parse_duration_secs(s)?),
+        None => None,
+    };
+
+    let (token, _nonce) = zetl::user::invite::generate_invitation(
+        &vault_root,
+        &inviter.id,
+        role,
+        pages,
+        expires_secs,
+    )?;
+
+    let url = zetl::user::invite::invitation_url(host, port, &token);
+
+    // Output depends on format
+    if cli.format == zetl::cli::OutputFormat::Json || cli.json {
+        let output = serde_json::json!({
+            "token": token,
+            "url": url,
+            "inviter": inviter.id,
+            "role": role,
+            "pages": pages,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        eprintln!("Invitation created by {} ({})", inviter.name, inviter.id);
+        if let Some(p) = pages {
+            eprintln!("  role: {}  pages: {}", role, p);
+        } else {
+            eprintln!("  role: {}  pages: (vault-wide)", role);
+        }
+        eprintln!();
+        println!("{url}");
+
+        // Try to copy the URL to the system clipboard so it isn't lost
+        // if server log output scrolls the terminal.
+        let copied = std::process::Command::new("pbcopy")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+                if let Some(ref mut stdin) = child.stdin {
+                    stdin.write_all(url.as_bytes())?;
+                }
+                child.wait()
+            })
+            .ok()
+            .or_else(|| {
+                // Linux: try xclip, then xsel
+                std::process::Command::new("xclip")
+                    .args(["-selection", "clipboard"])
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                    .and_then(|mut child| {
+                        use std::io::Write;
+                        if let Some(ref mut stdin) = child.stdin {
+                            stdin.write_all(url.as_bytes())?;
+                        }
+                        child.wait()
+                    })
+                    .ok()
+            });
+        if copied.is_some() {
+            eprintln!("  (copied to clipboard)");
+        }
+    }
+
+    Ok(())
+}
+
+/// Parse a human-friendly duration string into seconds.
+/// Supports: "72h", "24h", "7d", "30m", "3600" (plain seconds).
+fn parse_duration_secs(s: &str) -> Result<u64> {
+    let s = s.trim();
+    if s.is_empty() {
+        anyhow::bail!("empty duration string");
+    }
+
+    if let Some(h) = s.strip_suffix('h') {
+        let hours: u64 = h.parse().context("invalid hours in duration")?;
+        Ok(hours * 3600)
+    } else if let Some(d) = s.strip_suffix('d') {
+        let days: u64 = d.parse().context("invalid days in duration")?;
+        Ok(days * 86400)
+    } else if let Some(m) = s.strip_suffix('m') {
+        let mins: u64 = m.parse().context("invalid minutes in duration")?;
+        Ok(mins * 60)
+    } else {
+        let secs: u64 = s
+            .parse()
+            .context("invalid duration: expected a number or suffix (h/d/m)")?;
+        Ok(secs)
+    }
+}
+
+fn cmd_serve(
+    cli: &Cli,
+    port: u16,
+    theme: &str,
+    public: Option<&str>,
+    collab: bool,
+    init_owner: bool,
+    owner_name: &str,
+    git_poll_interval: std::time::Duration,
+) -> Result<()> {
+    let pipeline = run_pipeline(cli)?;
+
+    // ── Server key protection (REQ-020) ─────────────────────────────────
+    // When --collab is active, ensure sensitive dirs are in .gitignore and
+    // verify server key permissions if the key already exists.
+    if collab {
+        zetl::user::ensure_gitignore(&pipeline.vault_root)
+            .context("failed to update .gitignore for collab secrets")?;
+
+        // Eagerly verify server key permissions (if key exists) so we fail
+        // fast on startup rather than on first invitation.
+        let key_path = pipeline.vault_root.join(".zetl/collab/server.key");
+        if key_path.exists() {
+            // load_or_create_server_key checks permissions and bails if insecure
+            zetl::user::invite::load_or_create_server_key(&pipeline.vault_root)
+                .context("server key permission check failed")?;
+        }
+    }
+
+    // ── Bootstrap owner (REQ-020-005) ────────────────────────────────────
+    if init_owner {
+        let vault_root = &pipeline.vault_root;
+
+        // One-time guard: fail if an owner already exists
+        if zetl::user::owner_exists(vault_root)? {
+            anyhow::bail!("vault already has an owner — --init-owner can only be run once");
+        }
+
+        // Generate user ID and recovery keypair
+        let user_id = zetl::user::generate_user_id(owner_name);
+        let keypair = zetl::user::recovery::generate_recovery_keypair()
+            .context("failed to generate recovery keypair")?;
+
+        // Create owner profile
+        let now = {
+            let d = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let secs = d.as_secs();
+            let days = secs / 86400;
+            let day_secs = secs % 86400;
+            let h = day_secs / 3600;
+            let m = (day_secs % 3600) / 60;
+            let s = day_secs % 60;
+            let (y, mo, d) = days_to_ymd(days);
+            format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+        };
+
+        let profile = zetl::user::UserProfile {
+            id: user_id.clone(),
+            name: owner_name.to_string(),
+            created_at: now,
+            invited_by: None,
+            owner: true,
+            credentials: vec![],
+            recovery_pubkey: keypair.recovery_pubkey.clone(),
+            agent_token_generation: 0,
+        };
+
+        zetl::user::save_profile(vault_root, &profile).context("failed to save owner profile")?;
+
+        // Display BIP39 mnemonic on stderr (never stdout, never stored)
+        eprintln!();
+        eprintln!("╔══════════════════════════════════════════════════════╗");
+        eprintln!("║          RECOVERY PHRASE — WRITE THIS DOWN          ║");
+        eprintln!("╠══════════════════════════════════════════════════════╣");
+        let words: Vec<&str> = keypair.mnemonic.split_whitespace().collect();
+        for (i, word) in words.iter().enumerate() {
+            eprintln!("║  {:>2}. {:<48}║", i + 1, word);
+        }
+        eprintln!("╠══════════════════════════════════════════════════════╣");
+        eprintln!("║  This phrase is your ONLY recovery method.          ║");
+        eprintln!("║  It will NOT be shown again.                        ║");
+        eprintln!("╚══════════════════════════════════════════════════════╝");
+        eprintln!();
+        eprintln!("Owner created: {} ({})", profile.name, profile.id);
+        eprintln!("Register a passkey at: http://localhost:{port}/auth/bootstrap");
+        eprintln!();
+    }
 
     validate_theme(theme, &pipeline.vault_root)?;
 
@@ -4659,6 +5040,10 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str, public: Option<&str>) -> Result<
     page_names.sort_by_key(|a| a.to_lowercase());
 
     let (page_slug_map, collision_names) = zetl::web::build_slug_map(&pipeline.files);
+    let page_slug_map_lower: std::collections::HashMap<String, String> = page_slug_map
+        .iter()
+        .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
+        .collect();
 
     let data = zetl::web::VaultData {
         files: pipeline.files,
@@ -4666,6 +5051,7 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str, public: Option<&str>) -> Result<
         page_names,
         resolved: pipeline.graph_resolved,
         page_slug_map,
+        page_slug_map_lower,
         collision_names,
     };
 
@@ -4771,6 +5157,10 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str, public: Option<&str>) -> Result<
         }
     };
 
+    // Open git repository for auto-commit on save (REQ-020-015).
+    let git_commit_lock =
+        zetl::web::git_commit::open_repo(&pipeline.vault_root).map(std::sync::Arc::new);
+
     let public_dir = public.map(|p| {
         let path = std::path::PathBuf::from(p);
         if path.is_dir() {
@@ -4781,20 +5171,70 @@ fn cmd_serve(cli: &Cli, port: u16, theme: &str, public: Option<&str>) -> Result<
         path
     });
 
+    let vault_root = std::sync::Arc::new(pipeline.vault_root);
+
     let state = zetl::web::WebState {
         data: std::sync::Arc::new(std::sync::RwLock::new(data)),
-        vault_root: std::sync::Arc::new(pipeline.vault_root),
+        crdt_store: zetl::web::ws::CrdtDocStore::new(vault_root.clone()),
+        vault_root: vault_root.clone(),
         search_index: std::sync::Arc::new(search_index),
         engine: std::sync::Arc::new(engine),
         theme: theme.to_string(),
         verbose: cli.verbose > 0,
+        collab,
+        tls: false,
+        trust_proxy: false,
+        sessions: zetl::web::session::SessionStore::new(),
+        recovery_challenges: std::sync::Arc::new(
+            zetl::user::recovery::RecoveryChallengeStore::new(),
+        ),
+        mnemonic_shown: std::sync::Arc::new(
+            std::sync::Mutex::new(std::collections::HashSet::new()),
+        ),
+        bootstrap_used: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
+        #[cfg(feature = "reason")]
+        acl_cache: std::sync::Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
+        git_commit_lock,
+        ws_hub: zetl::web::ws::WsHub::new(),
+        ticket_store: zetl::web::ws::TicketStore::new(),
+        wal_store: std::sync::Arc::new(zetl::web::wal::WalStore::new(&vault_root)),
+        pending_writes: zetl::web::fs_watch::PendingWrites::new(),
+        passkey_mgr: zetl::user::passkey::PasskeyManager::new(
+            "localhost",
+            &format!("http://localhost:{port}"),
+            "zetl vault",
+        )
+        .ok()
+        .map(std::sync::Arc::new),
         public_dir,
         #[cfg(feature = "semantic")]
         vector_index,
     };
 
+    // ── TLS enforcement (REQ-020-067) ──────────────────────────────────
+    // When --collab is active, default to loopback-only binding.
+    // Non-loopback binding requires ZETL_INSECURE_COLLAB=1 and emits a
+    // warning.  Without the env var, refuse to start on non-loopback.
+    let bind_addr = if collab {
+        let insecure = std::env::var("ZETL_INSECURE_COLLAB")
+            .map(|v| v == "1")
+            .unwrap_or(false);
+        if insecure {
+            eprintln!(
+                "warning: --collab is active on all interfaces without TLS. \
+                 Set up a TLS reverse-proxy for production use."
+            );
+            "0.0.0.0"
+        } else {
+            "127.0.0.1"
+        }
+    } else {
+        "0.0.0.0"
+    };
+
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(zetl::web::run(state, port))?;
+    rt.block_on(zetl::web::run(state, port, bind_addr, git_poll_interval))?;
     Ok(())
 }
 
@@ -4807,6 +5247,10 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str, public: Option<&str>) -> Res
     page_names.sort_by_key(|a| a.to_lowercase());
 
     let (page_slug_map, collision_names) = zetl::web::build_slug_map(&pipeline.files);
+    let page_slug_map_lower: std::collections::HashMap<String, String> = page_slug_map
+        .iter()
+        .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
+        .collect();
 
     let data = zetl::web::VaultData {
         files: pipeline.files,
@@ -4814,6 +5258,7 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str, public: Option<&str>) -> Res
         page_names,
         resolved: pipeline.graph_resolved,
         page_slug_map,
+        page_slug_map_lower,
         collision_names,
     };
 
@@ -4883,7 +5328,14 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str, public: Option<&str>) -> Res
         }
     }
 
-    zetl::web::build::build_static(&data, &pipeline.vault_root, out_dir, theme, cli.verbose > 0, public)?;
+    zetl::web::build::build_static(
+        &data,
+        &pipeline.vault_root,
+        out_dir,
+        theme,
+        cli.verbose > 0,
+        public,
+    )?;
 
     if !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(
@@ -8787,11 +9239,11 @@ fn cmd_diff_git(
     for f in &baseline_files {
         for link in &f.links {
             let key = link.raw_target.clone();
-            if !baseline_resolved.contains_key(&key) {
+            if let std::collections::hash_map::Entry::Vacant(e) = baseline_resolved.entry(key) {
                 if let Some(r) =
                     zetl::scanner::resolve_page_name(&link.target_page, &baseline_file_index)
                 {
-                    baseline_resolved.insert(key, r);
+                    e.insert(r);
                 }
             }
         }
@@ -9468,8 +9920,55 @@ fn main() -> anyhow::Result<()> {
             HookCommand::List { theme } => cmd_hook_list(&cli, theme),
             HookCommand::Run { name, theme, extra } => cmd_hook_run(&cli, name, theme, extra),
         },
-        Command::Serve { port, theme, public } => cmd_serve(&cli, *port, theme, public.as_deref()),
-        Command::Build { out_dir, theme, public } => cmd_build(&cli, out_dir, theme, public.as_deref()),
+        Command::Agent { command } => match command {
+            AgentCommand::Run {
+                name,
+                theme,
+                target_pages,
+                budget,
+                extra,
+            } => cmd_agent_run(&cli, name, theme, target_pages, *budget, extra),
+        },
+        Command::Serve {
+            port,
+            theme,
+            public,
+            collab,
+            init_owner,
+            owner_name,
+            git_poll_interval,
+        } => cmd_serve(
+            &cli,
+            *port,
+            theme,
+            public.as_deref(),
+            *collab,
+            *init_owner,
+            owner_name,
+            *git_poll_interval,
+        ),
+        Command::Invite {
+            as_user,
+            role,
+            pages,
+            expires,
+            port,
+            host,
+        } => cmd_invite(
+            &cli,
+            as_user,
+            role,
+            pages.as_deref(),
+            expires.as_deref(),
+            *port,
+            host,
+        ),
+        Command::AgentToken { mnemonic } => cmd_agent_token(&cli, mnemonic),
+        Command::Build {
+            out_dir,
+            theme,
+            public,
+        } => cmd_build(&cli, out_dir, theme, public.as_deref()),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

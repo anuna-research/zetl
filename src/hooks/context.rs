@@ -48,6 +48,37 @@ pub struct HookContext {
     /// Saved file info (only present for on-save).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub saved: Option<HookSaved>,
+    /// Authenticated user identity; `null` for unauthenticated CLI operations.
+    pub user: Option<HookUser>,
+    /// Hook invocation depth for loop prevention (REQ-020-020).
+    /// Starts at 0 for the initial event; incremented on each hook invocation.
+    pub hook_depth: u32,
+    /// Agent task context (only present for on-agent hooks, REQ-020-023).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<HookAgent>,
+    /// Access request context (only present for on-access-request hooks, REQ-020-047).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_request: Option<HookAccessRequest>,
+    /// ACL violations detected during post-reconciliation (only present for on-acl-violation hooks, REQ-020-043).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acl_violations: Option<HookAclViolations>,
+}
+
+/// User identity attached to hook context when an authenticated session exists.
+#[derive(Debug, Clone, Serialize)]
+pub struct HookUser {
+    /// User ID (e.g. `"alice-a1b2c3d4"`).
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Whether this identity represents an agent token rather than a human.
+    pub is_agent: bool,
+    /// Roles assigned to this user (e.g. `["admin"]`).
+    pub roles: Vec<String>,
+    /// Whether this edit originated outside zetl (REQ-020-042).
+    /// `true` for git commit authors and filesystem-detected edits.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_external: bool,
 }
 
 /// Payload describing the file that was just saved (on-save hooks).
@@ -59,6 +90,53 @@ pub struct HookSaved {
     pub page: String,
     /// Length of the saved content in bytes.
     pub content_length: usize,
+    /// Whether this save was detected as an external edit (REQ-020-042).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_external: bool,
+}
+
+/// Agent task context for on-agent hooks (REQ-020-023).
+#[derive(Debug, Serialize)]
+pub struct HookAgent {
+    /// Agent task name (the `<name>` from `zetl agent run <name>`).
+    pub task: String,
+    /// Pages the agent should operate on (empty = vault-wide).
+    pub target_pages: Vec<String>,
+    /// Token budget for the agent action (0 = unlimited).
+    pub budget_tokens: u32,
+}
+
+/// Access request context for on-access-request hooks (REQ-020-047).
+#[derive(Debug, Serialize)]
+pub struct HookAccessRequest {
+    /// User ID of the requester.
+    pub user_id: String,
+    /// Display name of the requester.
+    pub user_name: String,
+    /// Page slug that was requested.
+    pub page: String,
+    /// ISO-8601 timestamp of the request.
+    pub requested_at: String,
+}
+
+/// A single ACL violation detected during post-reconciliation (REQ-020-043).
+#[derive(Debug, Clone, Serialize)]
+pub struct HookAclViolationEntry {
+    /// Page slug that was edited in violation of policy.
+    pub page: String,
+    /// User ID that made the edit (empty string if unknown/unattributable).
+    pub user_id: String,
+    /// The action that was denied (`"edit"`).
+    pub action: String,
+    /// Human-readable reason from the ACL decision.
+    pub reason: String,
+}
+
+/// ACL violation context for on-acl-violation hooks (REQ-020-043).
+#[derive(Debug, Clone, Serialize)]
+pub struct HookAclViolations {
+    /// The violations detected in this reconciliation pass.
+    pub violations: Vec<HookAclViolationEntry>,
 }
 
 /// Diagnostics payload for post-check hooks.
@@ -98,6 +176,46 @@ pub struct HookStats {
     pub total_links: usize,
     pub dead_links: usize,
     pub orphans: usize,
+}
+
+impl HookUser {
+    /// Create a `HookUser` for an external git commit author (REQ-020-042).
+    pub fn external_git(name: &str, email: &str) -> Self {
+        HookUser {
+            id: format!("external:{email}"),
+            name: name.to_string(),
+            is_agent: false,
+            roles: vec![],
+            is_external: true,
+        }
+    }
+
+    /// Create a `HookUser` for an external filesystem edit (REQ-020-042).
+    pub fn external_filesystem() -> Self {
+        HookUser {
+            id: "external:filesystem".to_string(),
+            name: "(external)".to_string(),
+            is_agent: false,
+            roles: vec![],
+            is_external: true,
+        }
+    }
+
+    /// Create a `HookUser` from a `UserProfile`.
+    pub fn from_profile(
+        profile: &crate::user::UserProfile,
+        is_agent: bool,
+        vault_root: &std::path::Path,
+    ) -> Self {
+        let role = crate::user::Role::for_profile_with_vault(profile, vault_root);
+        HookUser {
+            id: profile.id.clone(),
+            name: profile.name.clone(),
+            is_agent,
+            roles: vec![role.to_string()],
+            is_external: false,
+        }
+    }
 }
 
 /// Build the base hook context JSON (CON-016-001).
@@ -178,6 +296,11 @@ pub fn build_hook_context(
         port: None,
         diagnostics: None,
         saved: None,
+        user: None,
+        hook_depth: 0,
+        agent: None,
+        access_request: None,
+        acl_violations: None,
     }
 }
 
@@ -512,5 +635,293 @@ mod tests {
         assert!(se.is_array());
         assert_eq!(se.as_array().unwrap().len(), 1);
         assert_eq!(se[0]["message"], "bad syntax");
+    }
+
+    #[test]
+    fn user_null_by_default() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let ctx = build_hook_context("post-build", tmp.path(), "", "0.1.0", &files, &graph);
+        assert!(ctx.user.is_none());
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(val["user"].is_null());
+    }
+
+    #[test]
+    fn user_serialises_when_set() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx = build_hook_context("on-save", tmp.path(), "", "0.1.0", &files, &graph);
+        ctx.user = Some(HookUser {
+            id: "alice-a1b2c3d4".to_string(),
+            name: "Alice".to_string(),
+            is_agent: false,
+            roles: vec!["admin".to_string()],
+            is_external: false,
+        });
+
+        let json = serde_json::to_string_pretty(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let user = &val["user"];
+        assert!(user.is_object());
+        assert_eq!(user["id"], "alice-a1b2c3d4");
+        assert_eq!(user["name"], "Alice");
+        assert_eq!(user["is_agent"], false);
+        assert!(user["roles"].is_array());
+        assert_eq!(user["roles"][0], "admin");
+    }
+
+    #[test]
+    fn hook_depth_defaults_to_zero() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let ctx = build_hook_context("on-save", tmp.path(), "", "0.1.0", &files, &graph);
+        assert_eq!(ctx.hook_depth, 0);
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["hook_depth"], 0);
+    }
+
+    #[test]
+    fn hook_depth_serialises_when_set() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx = build_hook_context("on-save", tmp.path(), "", "0.1.0", &files, &graph);
+        ctx.hook_depth = 3;
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["hook_depth"], 3);
+    }
+
+    #[test]
+    fn hook_user_from_profile_owner() {
+        let profile = crate::user::UserProfile {
+            id: "alice-a1b2c3d4".to_string(),
+            name: "Alice".to_string(),
+            created_at: "2026-03-18T10:00:00Z".to_string(),
+            invited_by: None,
+            owner: true,
+            credentials: vec![],
+            recovery_pubkey: "dGVzdA".to_string(),
+            agent_token_generation: 0,
+        };
+
+        let tmp = TempDir::new().unwrap();
+        let hook_user = HookUser::from_profile(&profile, false, tmp.path());
+        assert_eq!(hook_user.id, "alice-a1b2c3d4");
+        assert_eq!(hook_user.name, "Alice");
+        assert!(!hook_user.is_agent);
+        assert_eq!(hook_user.roles, vec!["admin"]);
+    }
+
+    #[test]
+    fn hook_user_from_profile_editor() {
+        let profile = crate::user::UserProfile {
+            id: "bob-12345678".to_string(),
+            name: "Bob".to_string(),
+            created_at: "2026-03-18T10:00:00Z".to_string(),
+            invited_by: Some("alice-a1b2c3d4".to_string()),
+            owner: false,
+            credentials: vec![],
+            recovery_pubkey: "dGVzdA".to_string(),
+            agent_token_generation: 0,
+        };
+
+        let tmp = TempDir::new().unwrap();
+        let hook_user = HookUser::from_profile(&profile, true, tmp.path());
+        assert_eq!(hook_user.id, "bob-12345678");
+        assert_eq!(hook_user.name, "Bob");
+        assert!(hook_user.is_agent);
+        assert_eq!(hook_user.roles, vec!["reader"]);
+    }
+
+    #[test]
+    fn agent_absent_by_default() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let ctx = build_hook_context("post-build", tmp.path(), "", "0.1.0", &files, &graph);
+        assert!(ctx.agent.is_none());
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(val.get("agent").is_none());
+    }
+
+    #[test]
+    fn agent_serialises_when_set() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx = build_hook_context("on-agent", tmp.path(), "", "0.1.0", &files, &graph);
+        ctx.agent = Some(HookAgent {
+            task: "link-checker".to_string(),
+            target_pages: vec!["Note A".to_string(), "Note B".to_string()],
+            budget_tokens: 4000,
+        });
+
+        let json = serde_json::to_string_pretty(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let agent = &val["agent"];
+        assert!(agent.is_object());
+        assert_eq!(agent["task"], "link-checker");
+        assert_eq!(agent["target_pages"].as_array().unwrap().len(), 2);
+        assert_eq!(agent["target_pages"][0], "Note A");
+        assert_eq!(agent["target_pages"][1], "Note B");
+        assert_eq!(agent["budget_tokens"], 4000);
+    }
+
+    #[test]
+    fn agent_empty_target_pages() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx = build_hook_context("on-agent", tmp.path(), "", "0.1.0", &files, &graph);
+        ctx.agent = Some(HookAgent {
+            task: "summariser".to_string(),
+            target_pages: vec![],
+            budget_tokens: 0,
+        });
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let agent = &val["agent"];
+        assert_eq!(agent["task"], "summariser");
+        assert!(agent["target_pages"].as_array().unwrap().is_empty());
+        assert_eq!(agent["budget_tokens"], 0);
+    }
+
+    #[test]
+    fn acl_violations_absent_by_default() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let ctx = build_hook_context("post-build", tmp.path(), "", "0.1.0", &files, &graph);
+        assert!(ctx.acl_violations.is_none());
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(val.get("acl_violations").is_none());
+    }
+
+    #[test]
+    fn acl_violations_serialises_when_set() {
+        let tmp = TempDir::new().unwrap();
+        let files: Vec<ParsedFile> = vec![];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let mut ctx =
+            build_hook_context("on-acl-violation", tmp.path(), "", "0.1.0", &files, &graph);
+        ctx.acl_violations = Some(HookAclViolations {
+            violations: vec![HookAclViolationEntry {
+                page: "secret".to_string(),
+                user_id: "bob-12345678".to_string(),
+                action: "edit".to_string(),
+                reason: "policy denied".to_string(),
+            }],
+        });
+
+        let json = serde_json::to_string_pretty(&ctx).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let violations = &val["acl_violations"];
+        assert!(violations.is_object());
+
+        let entries = violations["violations"].as_array().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["page"], "secret");
+        assert_eq!(entries[0]["user_id"], "bob-12345678");
+        assert_eq!(entries[0]["action"], "edit");
+        assert_eq!(entries[0]["reason"], "policy denied");
+    }
+
+    #[test]
+    fn hook_user_external_git() {
+        let user = HookUser::external_git("Bot", "bot@ci.example.com");
+        assert_eq!(user.id, "external:bot@ci.example.com");
+        assert_eq!(user.name, "Bot");
+        assert!(!user.is_agent);
+        assert!(user.roles.is_empty());
+        assert!(user.is_external);
+
+        let json = serde_json::to_string(&user).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["is_external"], true);
+    }
+
+    #[test]
+    fn hook_user_external_filesystem() {
+        let user = HookUser::external_filesystem();
+        assert_eq!(user.id, "external:filesystem");
+        assert_eq!(user.name, "(external)");
+        assert!(user.is_external);
+
+        let json = serde_json::to_string(&user).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["is_external"], true);
+    }
+
+    #[test]
+    fn is_external_skipped_when_false() {
+        let user = HookUser {
+            id: "alice".to_string(),
+            name: "Alice".to_string(),
+            is_agent: false,
+            roles: vec![],
+            is_external: false,
+        };
+        let json = serde_json::to_string(&user).unwrap();
+        assert!(!json.contains("is_external"));
+    }
+
+    #[test]
+    fn hook_saved_is_external_serialisation() {
+        let saved = HookSaved {
+            file: "notes/page.md".to_string(),
+            page: "page".to_string(),
+            content_length: 42,
+            is_external: true,
+        };
+        let json = serde_json::to_string(&saved).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["is_external"], true);
+
+        // When false, is_external should be absent.
+        let saved_internal = HookSaved {
+            file: "notes/page.md".to_string(),
+            page: "page".to_string(),
+            content_length: 42,
+            is_external: false,
+        };
+        let json_internal = serde_json::to_string(&saved_internal).unwrap();
+        assert!(!json_internal.contains("is_external"));
     }
 }

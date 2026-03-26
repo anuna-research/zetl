@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand, ValueEnum};
     name = "zetl",
     version,
     about = "Bi-directional wikilink graph CLI for personal knowledge management",
-    after_help = "Examples:\n  zetl list                    List all pages\n  zetl links \"My Page\"         Show forward links\n  zetl search \"query\"          Search vault contents\n  zetl check                   Validate vault health\n  zetl serve                   Start local web server\n\nLearn more: https://github.com/anuna/zetl"
+    after_help = "Examples:\n  zetl list                    List all pages\n  zetl links \"My Page\"         Show forward links\n  zetl search \"query\"          Search vault contents\n  zetl check                   Validate vault health\n  zetl serve                   Start local web server\n  zetl serve --collab          Start with multi-user auth\n\nLearn more: https://github.com/anuna/zetl"
 )]
 pub struct Cli {
     /// Vault root directory
@@ -60,7 +60,9 @@ pub enum Command {
     Index,
 
     /// Query forward links from a page
-    #[command(after_help = "Examples:\n  zetl links \"My Page\"              Direct links\n  zetl links \"My Page\" --depth 2    Two hops deep")]
+    #[command(
+        after_help = "Examples:\n  zetl links \"My Page\"              Direct links\n  zetl links \"My Page\" --depth 2    Two hops deep"
+    )]
     Links {
         /// Page name (case-insensitive)
         page: String,
@@ -97,7 +99,9 @@ pub enum Command {
     },
 
     /// Validate: report dead links, orphans, syntax errors, and SPL diagnostics
-    #[command(after_help = "Examples:\n  zetl check                   Full vault health check\n  zetl check --dead-links      Show only broken links\n  zetl check --orphans          Show only unlinked pages")]
+    #[command(
+        after_help = "Examples:\n  zetl check                   Full vault health check\n  zetl check --dead-links      Show only broken links\n  zetl check --orphans          Show only unlinked pages"
+    )]
     Check {
         /// Show only dead links
         #[arg(long)]
@@ -135,7 +139,9 @@ pub enum Command {
     },
 
     /// Search vault file contents for text
-    #[command(after_help = "Examples:\n  zetl search \"wikilink\"                 Basic search\n  zetl search \"API\" --near \"Backend\"     Search near a page\n  zetl search \"TODO\" --case-sensitive    Exact case match")]
+    #[command(
+        after_help = "Examples:\n  zetl search \"wikilink\"                 Basic search\n  zetl search \"API\" --near \"Backend\"     Search near a page\n  zetl search \"TODO\" --case-sensitive    Exact case match"
+    )]
     Search {
         /// Search string
         query: String,
@@ -176,7 +182,9 @@ pub enum Command {
     },
 
     /// Find shortest link path between two pages
-    #[command(after_help = "Examples:\n  zetl path \"Page A\" \"Page B\"           Find shortest path\n  zetl path \"Page A\" \"Page B\" --max-depth 5")]
+    #[command(
+        after_help = "Examples:\n  zetl path \"Page A\" \"Page B\"           Find shortest path\n  zetl path \"Page A\" \"Page B\" --max-depth 5"
+    )]
     Path {
         /// Source page name
         from: String,
@@ -206,6 +214,9 @@ pub enum Command {
     Tui,
 
     /// Start local web server to browse the vault
+    #[command(
+        after_help = "Examples:\n  zetl serve                                        Single-user web UI\n  zetl serve --collab --init-owner --owner-name Jo   First-time collab setup\n  zetl serve --collab                                Multi-user mode\n  zetl serve --port 8080 --theme dark                Custom port and theme"
+    )]
     Serve {
         /// Port to listen on
         #[arg(short, long, default_value = "3000")]
@@ -216,6 +227,52 @@ pub enum Command {
         /// Public directory whose files override generated pages (served first)
         #[arg(long)]
         public: Option<String>,
+        /// Enable multi-user collaborative editing mode
+        #[arg(long)]
+        collab: bool,
+        /// Bootstrap the vault owner (first-time setup, requires --collab)
+        #[arg(long, requires = "collab")]
+        init_owner: bool,
+        /// Display name for the vault owner (used with --init-owner)
+        #[arg(long, default_value = "Owner", requires = "init_owner")]
+        owner_name: String,
+        /// Git HEAD poll interval for detecting external commits (e.g. "30s", "1m").
+        /// Set to "0" to disable. Requires --collab.
+        #[arg(long, default_value = "30s", requires = "collab", value_parser = parse_duration)]
+        git_poll_interval: std::time::Duration,
+    },
+
+    /// Generate an invitation token for a new collaborator
+    #[command(
+        after_help = "Examples:\n  zetl invite --as alice --role editor\n  zetl invite --as alice --role reader --pages \"projects/*\"\n  zetl invite --as alice --role editor --expires 24h"
+    )]
+    Invite {
+        /// Your username (inviter)
+        #[arg(long = "as")]
+        as_user: String,
+        /// Role for the invitee (reader, editor, admin)
+        #[arg(long)]
+        role: String,
+        /// Optional page scope glob pattern
+        #[arg(long)]
+        pages: Option<String>,
+        /// Expiry duration (e.g. "72h", "24h", "7d"; default: 72h)
+        #[arg(long)]
+        expires: Option<String>,
+        /// Port the server is running on (for URL generation)
+        #[arg(long, default_value = "3000")]
+        port: u16,
+        /// Host for the invitation URL
+        #[arg(long, default_value = "localhost")]
+        host: String,
+    },
+
+    /// Derive an agent token from a BIP39 mnemonic for headless API authentication
+    #[command(after_help = "Examples:\n  zetl agent-token --mnemonic \"word1 word2 ... word12\"")]
+    AgentToken {
+        /// BIP39 mnemonic phrase (12 words)
+        #[arg(long)]
+        mnemonic: String,
     },
 
     /// Generate a static HTML site from the vault
@@ -253,6 +310,12 @@ pub enum Command {
     Hook {
         #[command(subcommand)]
         command: HookCommand,
+    },
+
+    /// Agent lifecycle integration
+    Agent {
+        #[command(subcommand)]
+        command: AgentCommand,
     },
 
     /// Defeasible reasoning over vault-wide SPL
@@ -352,6 +415,30 @@ pub enum HookCommand {
         /// Theme name (looks in .zetl/themes/<name>/hooks/)
         #[arg(long, default_value = "default")]
         theme: String,
+        /// Extra JSON fields merged into the context (after --)
+        #[arg(last = true)]
+        extra: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AgentCommand {
+    /// Run an on-agent hook with task context (REQ-020-023)
+    #[command(
+        after_help = "Examples:\n  zetl agent run link-checker\n  zetl agent run summariser --pages \"Note A\" \"Note B\" --budget 4000"
+    )]
+    Run {
+        /// Agent task name
+        name: String,
+        /// Theme name (looks in .zetl/themes/<name>/hooks/)
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Target pages for the agent (empty = vault-wide)
+        #[arg(long = "pages", num_args = 0..)]
+        target_pages: Vec<String>,
+        /// Token budget for the agent action (0 = unlimited)
+        #[arg(long, default_value = "0")]
+        budget: u32,
         /// Extra JSON fields merged into the context (after --)
         #[arg(last = true)]
         extra: Vec<String>,
@@ -521,4 +608,27 @@ pub enum HistoryCommand {
         #[arg(long, default_value = "20")]
         limit: usize,
     },
+}
+
+/// Parse a human-friendly duration string like "30s", "5m", "1h", or "0" (disabled).
+fn parse_duration(s: &str) -> Result<std::time::Duration, String> {
+    let s = s.trim();
+    if s == "0" {
+        return Ok(std::time::Duration::ZERO);
+    }
+    let (num_str, multiplier) = if let Some(n) = s.strip_suffix('s') {
+        (n, 1u64)
+    } else if let Some(n) = s.strip_suffix('m') {
+        (n, 60)
+    } else if let Some(n) = s.strip_suffix('h') {
+        (n, 3600)
+    } else {
+        // Assume seconds if no suffix.
+        (s, 1)
+    };
+    let value: u64 = num_str
+        .trim()
+        .parse()
+        .map_err(|_| format!("invalid duration: {s}"))?;
+    Ok(std::time::Duration::from_secs(value * multiplier))
 }

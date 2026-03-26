@@ -1,0 +1,401 @@
+;; TEST-demo-vault.spl — User testing plan for demo-vault happy paths
+;; Tests all CLI commands, web UI, and collab features against demo-vault/
+
+(meta plan
+  (id "TEST-demo-vault")
+  (title "Demo vault user testing — happy paths")
+  (status "active")
+  (description "Systematically test every zetl feature against demo-vault, fix bugs"))
+
+;; ── Agent ──────────────────────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── CLI read-only commands ─────────────────────────────────────────────
+(given task-cli-list)
+(meta task-cli-list
+  (description "Test: zetl list, zetl list -f table, zetl list --json")
+  (acceptance "All output formats work, page count matches stats"))
+
+(given task-cli-links)
+(meta task-cli-links
+  (description "Test: zetl links for pages with known forward links")
+  (acceptance "Forward links listed correctly for Cache, Wikilinks"))
+
+(given task-cli-backlinks)
+(meta task-cli-backlinks
+  (description "Test: zetl backlinks for heavily-linked pages")
+  (acceptance "Backlinks match stats for Reasoning Engine, Link Graph"))
+
+(given task-cli-search)
+(meta task-cli-search
+  (description "Test: zetl search with various queries")
+  (acceptance "Finds expected results, handles no-match gracefully"))
+
+(given task-cli-check)
+(meta task-cli-check
+  (description "Test: zetl check reports dead links, orphans, diagnostics")
+  (acceptance "Dead links and orphans reported correctly"))
+
+(given task-cli-stats)
+(meta task-cli-stats
+  (description "Test: zetl stats output is consistent with list/check")
+  (acceptance "Page count, link count, dead links all consistent"))
+
+(given task-cli-path)
+(meta task-cli-path
+  (description "Test: zetl path between connected and disconnected pages")
+  (acceptance "Finds paths between connected pages, reports no-path for disconnected"))
+
+(given task-cli-similar)
+(meta task-cli-similar
+  (description "Test: zetl similar finds near-duplicate page names")
+  (acceptance "Finds similar pages without errors"))
+
+(given task-cli-export)
+(meta task-cli-export
+  (description "Test: zetl export produces valid graph JSON")
+  (acceptance "JSON parses, contains nodes and edges"))
+
+(given task-cli-blocks)
+(meta task-cli-blocks
+  (description "Test: zetl blocks lists Merkle blocks for a page")
+  (acceptance "Blocks listed with hashes, resolve by hash works"))
+
+(given task-cli-diff)
+(meta task-cli-diff
+  (description "Test: zetl diff against HEAD~1")
+  (acceptance "Diff output shows changes without errors"))
+
+;; ── Web UI ─────────────────────────────────────────────────────────────
+(given task-web-landing)
+(meta task-web-landing
+  (description "Test: landing page renders page grid with link counts")
+  (acceptance "All pages visible, link counts match CLI"))
+
+(given task-web-page-render)
+(meta task-web-page-render
+  (description "Test: page rendering with wikilinks, backlinks panel")
+  (acceptance "Wikilinks clickable, backlinks shown, breadcrumbs correct"))
+
+(given task-web-search)
+(meta task-web-search
+  (description "Test: search overlay finds pages")
+  (acceptance "Search returns results matching CLI search"))
+
+(given task-web-editor)
+(meta task-web-editor
+  (description "Test: editor loads, CodeMirror mounts, save works")
+  (acceptance "Editor connected, content editable, save persists to disk"))
+
+;; ── Collab mode ────────────────────────────────────────────────────────
+(given task-collab-bootstrap)
+(meta task-collab-bootstrap
+  (description "Test: --collab --init-owner bootstrap flow")
+  (acceptance "Owner created, bootstrap redirects to passkey register"))
+
+(given task-collab-auth-redirect)
+(meta task-collab-auth-redirect
+  (description "Test: unauthenticated browser redirects to /auth/bootstrap")
+  (acceptance "307 redirect for browsers, 401 for API"))
+
+(given task-collab-save)
+(meta task-collab-save
+  (description "Test: save with CSRF token in collab mode")
+  (acceptance "PUT with CSRF returns 200"))
+
+;; ── Dependencies ───────────────────────────────────────────────────────
+;; CLI tasks are independent (all ready immediately)
+;; Web tasks depend on CLI sanity
+(normally r-ready-web-landing (and task-web-landing completed-cli-stats) ready-web-landing)
+(normally r-ready-web-page (and task-web-page-render completed-cli-links) ready-web-page-render)
+(normally r-ready-web-search (and task-web-search completed-cli-search) ready-web-search)
+(normally r-ready-web-editor (and task-web-editor completed-web-landing) ready-web-editor)
+
+;; Collab depends on web working
+(normally r-ready-collab-bootstrap (and task-collab-bootstrap completed-web-editor) ready-collab-bootstrap)
+(normally r-ready-collab-redirect (and task-collab-auth-redirect completed-collab-bootstrap) ready-collab-auth-redirect)
+(normally r-ready-collab-save (and task-collab-save completed-collab-auth-redirect) ready-collab-save)
+
+;; ── CLI readiness (all ready immediately) ──────────────────────────────
+(normally r-ready-cli-list task-cli-list ready-cli-list)
+(normally r-ready-cli-links task-cli-links ready-cli-links)
+(normally r-ready-cli-backlinks task-cli-backlinks ready-cli-backlinks)
+(normally r-ready-cli-search task-cli-search ready-cli-search)
+(normally r-ready-cli-check task-cli-check ready-cli-check)
+(normally r-ready-cli-stats task-cli-stats ready-cli-stats)
+(normally r-ready-cli-path task-cli-path ready-cli-path)
+(normally r-ready-cli-similar task-cli-similar ready-cli-similar)
+(normally r-ready-cli-export task-cli-export ready-cli-export)
+(normally r-ready-cli-blocks task-cli-blocks ready-cli-blocks)
+(normally r-ready-cli-diff task-cli-diff ready-cli-diff)
+
+;; ── Assignment (all to claude) ─────────────────────────────────────────
+(normally r-assign-cli-list (and ready-cli-list agent-claude-available) assign-to-cli-list-claude)
+(normally r-assign-cli-links (and ready-cli-links agent-claude-available) assign-to-cli-links-claude)
+(normally r-assign-cli-backlinks (and ready-cli-backlinks agent-claude-available) assign-to-cli-backlinks-claude)
+(normally r-assign-cli-search (and ready-cli-search agent-claude-available) assign-to-cli-search-claude)
+(normally r-assign-cli-check (and ready-cli-check agent-claude-available) assign-to-cli-check-claude)
+(normally r-assign-cli-stats (and ready-cli-stats agent-claude-available) assign-to-cli-stats-claude)
+(normally r-assign-cli-path (and ready-cli-path agent-claude-available) assign-to-cli-path-claude)
+(normally r-assign-cli-similar (and ready-cli-similar agent-claude-available) assign-to-cli-similar-claude)
+(normally r-assign-cli-export (and ready-cli-export agent-claude-available) assign-to-cli-export-claude)
+(normally r-assign-cli-blocks (and ready-cli-blocks agent-claude-available) assign-to-cli-blocks-claude)
+(normally r-assign-cli-diff (and ready-cli-diff agent-claude-available) assign-to-cli-diff-claude)
+
+(normally r-assign-web-landing (and ready-web-landing agent-claude-available) assign-to-web-landing-claude)
+(normally r-assign-web-page (and ready-web-page-render agent-claude-available) assign-to-web-page-render-claude)
+(normally r-assign-web-search (and ready-web-search agent-claude-available) assign-to-web-search-claude)
+(normally r-assign-web-editor (and ready-web-editor agent-claude-available) assign-to-web-editor-claude)
+
+(normally r-assign-collab-bootstrap (and ready-collab-bootstrap agent-claude-available) assign-to-collab-bootstrap-claude)
+(normally r-assign-collab-redirect (and ready-collab-auth-redirect agent-claude-available) assign-to-collab-auth-redirect-claude)
+(normally r-assign-collab-save (and ready-collab-save agent-claude-available) assign-to-collab-save-claude)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-list)
+  (normally r-cl-state-v1-cli-list claim-v1-cli-list state-claimed-v1-cli-list)
+  (normally r-cl-chain-v1-cli-list state-claimed-v1-cli-list claimed-cli-list)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-links)
+  (normally r-cl-state-v1-cli-links claim-v1-cli-links state-claimed-v1-cli-links)
+  (normally r-cl-chain-v1-cli-links state-claimed-v1-cli-links claimed-cli-links)
+)
+
+;; Propagation rules: failures in 'cli-links' block downstream tasks
+(normally r-propagate-web-page-render-from-cli-links-failed failed-cli-links upstream-blocked-web-page-render)
+(normally r-propagate-web-page-render-from-cli-links-permanently-failed permanently-failed-cli-links upstream-blocked-web-page-render)
+(normally r-propagate-web-page-render-from-cli-links-stale-v1 stale-v1-cli-links upstream-blocked-web-page-render)
+(normally r-propagate-web-page-render-from-cli-links-timeout-v1 timeout-v1-cli-links upstream-blocked-web-page-render)
+(normally r-propagate-web-page-render-from-cli-links-blocked upstream-blocked-cli-links upstream-blocked-web-page-render)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-backlinks)
+  (normally r-cl-state-v1-cli-backlinks claim-v1-cli-backlinks state-claimed-v1-cli-backlinks)
+  (normally r-cl-chain-v1-cli-backlinks state-claimed-v1-cli-backlinks claimed-cli-backlinks)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-search)
+  (normally r-cl-state-v1-cli-search claim-v1-cli-search state-claimed-v1-cli-search)
+  (normally r-cl-chain-v1-cli-search state-claimed-v1-cli-search claimed-cli-search)
+)
+
+;; Propagation rules: failures in 'cli-search' block downstream tasks
+(normally r-propagate-web-search-from-cli-search-failed failed-cli-search upstream-blocked-web-search)
+(normally r-propagate-web-search-from-cli-search-permanently-failed permanently-failed-cli-search upstream-blocked-web-search)
+(normally r-propagate-web-search-from-cli-search-stale-v1 stale-v1-cli-search upstream-blocked-web-search)
+(normally r-propagate-web-search-from-cli-search-timeout-v1 timeout-v1-cli-search upstream-blocked-web-search)
+(normally r-propagate-web-search-from-cli-search-blocked upstream-blocked-cli-search upstream-blocked-web-search)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-check)
+  (normally r-cl-state-v1-cli-check claim-v1-cli-check state-claimed-v1-cli-check)
+  (normally r-cl-chain-v1-cli-check state-claimed-v1-cli-check claimed-cli-check)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-stats)
+  (normally r-cl-state-v1-cli-stats claim-v1-cli-stats state-claimed-v1-cli-stats)
+  (normally r-cl-chain-v1-cli-stats state-claimed-v1-cli-stats claimed-cli-stats)
+)
+
+;; Propagation rules: failures in 'cli-stats' block downstream tasks
+(normally r-propagate-web-landing-from-cli-stats-failed failed-cli-stats upstream-blocked-web-landing)
+(normally r-propagate-web-landing-from-cli-stats-permanently-failed permanently-failed-cli-stats upstream-blocked-web-landing)
+(normally r-propagate-web-landing-from-cli-stats-stale-v1 stale-v1-cli-stats upstream-blocked-web-landing)
+(normally r-propagate-web-landing-from-cli-stats-timeout-v1 timeout-v1-cli-stats upstream-blocked-web-landing)
+(normally r-propagate-web-landing-from-cli-stats-blocked upstream-blocked-cli-stats upstream-blocked-web-landing)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-web-editor-from-web-landing-blocked upstream-blocked-web-landing upstream-blocked-web-editor)
+(normally r-propagate-collab-bootstrap-from-web-editor-blocked upstream-blocked-web-editor upstream-blocked-collab-bootstrap)
+(normally r-propagate-collab-auth-redirect-from-collab-bootstrap-blocked upstream-blocked-collab-bootstrap upstream-blocked-collab-auth-redirect)
+(normally r-propagate-collab-save-from-collab-auth-redirect-blocked upstream-blocked-collab-auth-redirect upstream-blocked-collab-save)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-path)
+  (normally r-cl-state-v1-cli-path claim-v1-cli-path state-claimed-v1-cli-path)
+  (normally r-cl-chain-v1-cli-path state-claimed-v1-cli-path claimed-cli-path)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-similar)
+  (normally r-cl-state-v1-cli-similar claim-v1-cli-similar state-claimed-v1-cli-similar)
+  (normally r-cl-chain-v1-cli-similar state-claimed-v1-cli-similar claimed-cli-similar)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-export)
+  (normally r-cl-state-v1-cli-export claim-v1-cli-export state-claimed-v1-cli-export)
+  (normally r-cl-chain-v1-cli-export state-claimed-v1-cli-export claimed-cli-export)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-blocks)
+  (normally r-cl-state-v1-cli-blocks claim-v1-cli-blocks state-claimed-v1-cli-blocks)
+  (normally r-cl-chain-v1-cli-blocks state-claimed-v1-cli-blocks claimed-cli-blocks)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:00Z"
+  (given claim-v1-cli-diff)
+  (normally r-cl-state-v1-cli-diff claim-v1-cli-diff state-claimed-v1-cli-diff)
+  (normally r-cl-chain-v1-cli-diff state-claimed-v1-cli-diff claimed-cli-diff)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-list))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-links))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-backlinks))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-search))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-check))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-stats))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-path))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-similar))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-export))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-blocks))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:39Z"
+  (given completed-cli-diff))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:52Z"
+  (given claim-v1-web-landing)
+  (normally r-cl-state-v1-web-landing claim-v1-web-landing state-claimed-v1-web-landing)
+  (normally r-cl-chain-v1-web-landing state-claimed-v1-web-landing claimed-web-landing)
+)
+
+;; Propagation rules: failures in 'web-landing' block downstream tasks
+(normally r-propagate-web-editor-from-web-landing-failed failed-web-landing upstream-blocked-web-editor)
+(normally r-propagate-web-editor-from-web-landing-permanently-failed permanently-failed-web-landing upstream-blocked-web-editor)
+(normally r-propagate-web-editor-from-web-landing-stale-v1 stale-v1-web-landing upstream-blocked-web-editor)
+(normally r-propagate-web-editor-from-web-landing-timeout-v1 timeout-v1-web-landing upstream-blocked-web-editor)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:52Z"
+  (given claim-v1-web-page-render)
+  (normally r-cl-state-v1-web-page-render claim-v1-web-page-render state-claimed-v1-web-page-render)
+  (normally r-cl-chain-v1-web-page-render state-claimed-v1-web-page-render claimed-web-page-render)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:00:52Z"
+  (given claim-v1-web-search)
+  (normally r-cl-state-v1-web-search claim-v1-web-search state-claimed-v1-web-search)
+  (normally r-cl-chain-v1-web-search state-claimed-v1-web-search claimed-web-search)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:03Z"
+  (given completed-web-landing))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:03Z"
+  (given completed-web-page-render))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:03Z"
+  (given completed-web-search))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:03Z"
+  (given claim-v1-web-editor)
+  (normally r-cl-state-v1-web-editor claim-v1-web-editor state-claimed-v1-web-editor)
+  (normally r-cl-chain-v1-web-editor state-claimed-v1-web-editor claimed-web-editor)
+)
+
+;; Propagation rules: failures in 'web-editor' block downstream tasks
+(normally r-propagate-collab-bootstrap-from-web-editor-failed failed-web-editor upstream-blocked-collab-bootstrap)
+(normally r-propagate-collab-bootstrap-from-web-editor-permanently-failed permanently-failed-web-editor upstream-blocked-collab-bootstrap)
+(normally r-propagate-collab-bootstrap-from-web-editor-stale-v1 stale-v1-web-editor upstream-blocked-collab-bootstrap)
+(normally r-propagate-collab-bootstrap-from-web-editor-timeout-v1 timeout-v1-web-editor upstream-blocked-collab-bootstrap)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:03Z"
+  (given completed-web-editor))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:30Z"
+  (given claim-v1-collab-bootstrap)
+  (normally r-cl-state-v1-collab-bootstrap claim-v1-collab-bootstrap state-claimed-v1-collab-bootstrap)
+  (normally r-cl-chain-v1-collab-bootstrap state-claimed-v1-collab-bootstrap claimed-collab-bootstrap)
+)
+
+;; Propagation rules: failures in 'collab-bootstrap' block downstream tasks
+(normally r-propagate-collab-auth-redirect-from-collab-bootstrap-failed failed-collab-bootstrap upstream-blocked-collab-auth-redirect)
+(normally r-propagate-collab-auth-redirect-from-collab-bootstrap-permanently-failed permanently-failed-collab-bootstrap upstream-blocked-collab-auth-redirect)
+(normally r-propagate-collab-auth-redirect-from-collab-bootstrap-stale-v1 stale-v1-collab-bootstrap upstream-blocked-collab-auth-redirect)
+(normally r-propagate-collab-auth-redirect-from-collab-bootstrap-timeout-v1 timeout-v1-collab-bootstrap upstream-blocked-collab-auth-redirect)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:33Z"
+  (given completed-collab-bootstrap))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:33Z"
+  (given claim-v1-collab-auth-redirect)
+  (normally r-cl-state-v1-collab-auth-redirect claim-v1-collab-auth-redirect state-claimed-v1-collab-auth-redirect)
+  (normally r-cl-chain-v1-collab-auth-redirect state-claimed-v1-collab-auth-redirect claimed-collab-auth-redirect)
+)
+
+;; Propagation rules: failures in 'collab-auth-redirect' block downstream tasks
+(normally r-propagate-collab-save-from-collab-auth-redirect-failed failed-collab-auth-redirect upstream-blocked-collab-save)
+(normally r-propagate-collab-save-from-collab-auth-redirect-permanently-failed permanently-failed-collab-auth-redirect upstream-blocked-collab-save)
+(normally r-propagate-collab-save-from-collab-auth-redirect-stale-v1 stale-v1-collab-auth-redirect upstream-blocked-collab-save)
+(normally r-propagate-collab-save-from-collab-auth-redirect-timeout-v1 timeout-v1-collab-auth-redirect upstream-blocked-collab-save)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:33Z"
+  (given completed-collab-auth-redirect))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:33Z"
+  (given claim-v1-collab-save)
+  (normally r-cl-state-v1-collab-save claim-v1-collab-save state-claimed-v1-collab-save)
+  (normally r-cl-chain-v1-collab-save state-claimed-v1-collab-save claimed-collab-save)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-03-20T01:02:33Z"
+  (given completed-collab-save))

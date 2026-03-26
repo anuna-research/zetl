@@ -21,7 +21,7 @@ Decision documents, architecture records, and project plans all contain reasonin
 
 ## Superiority
 
-When two rules conflict, a superiority relation resolves the tie:
+When two rules conflict a superiority relation resolves the tie:
 
 ```
 (prefer stronger-rule weaker-rule)
@@ -40,4 +40,4 @@ Without a declared preference, the conflict remains unresolved — `zetl reason 
 
 ## In zetl
 
-The [[Reasoning Engine]] implements defeasible reasoning via `spindle-core`. See [[Reason Commands]] for the CLI interface and [[Provenance]] for how conclusions trace back to source files.
+The [[Reasoning Engine]] implements defeasible reasoning via `spindle-core`. See [[Reason  logicCommands]] for the CLI interface and [[Provenance]] for how conclusions trace back to source files.

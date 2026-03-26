@@ -38,6 +38,15 @@ zetl is a single binary with subcommands. All commands output JSON by default â€
 | `serve` | Local web server | [[Serve Command]] |
 | `build` | Static site export | [[Build Command]] |
 
+### Collaboration commands
+
+| Command | Description | Reference |
+|---------|-------------|-----------|
+| `serve --collab` | Start multi-user collab server | [[Serve Command]] |
+| `serve --collab --init-owner` | Bootstrap vault owner (first-time) | [[Serve Command]] |
+| `invite --as <user> --role <role>` | Generate an invitation link | [[Serve Command]] |
+| `agent-token --mnemonic "..."` | Derive a Bearer token for headless API access | [[Serve Command]] |
+
 ### History commands
 
 Require `--features history` at build time. See [[Feature Gates]].

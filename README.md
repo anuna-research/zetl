@@ -17,6 +17,7 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Static site export** — generate a deployable HTML site from your vault (same look, no server required)
 - **Vault history** — jj-backed temporal snapshots with time-travel queries (`--at "3 days ago"`), graph evolution timeline, and automatic snapshotting on index
 - **Lifecycle hooks** — git-style executable hooks at `pre-build`, `post-build`, `post-index`, `post-check`, `pre-serve`, and `on-save` lifecycle points; receive vault context as JSON on stdin
+- **Multi-user collaboration** — passkey (WebAuthn) authentication, role-based access control (reader/editor/admin), invitation links, CRDT-based real-time co-editing via WebSocket, BIP39 mnemonic account recovery
 - **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context; themes can bundle hooks
 - **Content-addressable blocks** — BLAKE3 Merkle leaves for headings, paragraphs, code blocks, and SPL
 - **Incremental caching** — two-tier (mtime + hash) index for both wikilinks and reasoning theories
@@ -44,9 +45,14 @@ cargo install --path . --features history
 
 # Both reasoning and history
 cargo install --path . --features "reason,history"
+
+# All features (reasoning + history + semantic search)
+cargo install --path . --features "reason,history,semantic"
 ```
 
-Without `--features reason`, running `zetl reason` prints a helpful error instead of failing silently. Without `--features history`, history-related template variables and API endpoints gracefully degrade to null.
+Collaboration mode (`--collab`) is always available — no feature flag needed. SPL-based access control requires `--features reason`.
+
+Without `--features reason`, `zetl reason` prints a helpful error instead of failing silently. Without `--features history`, history-related template variables and API endpoints gracefully degrade to null.
 
 ## Quick start
 
@@ -117,6 +123,12 @@ zetl -d ./my-vault view "Some Page" --context-lines 10   # taller context cards
 zetl -d ./my-vault serve                                 # http://localhost:3000
 zetl -d ./my-vault serve --port 8080
 zetl -d ./my-vault serve --theme paper                   # custom theme
+
+# Multi-user collaboration
+zetl -d ./my-vault serve --collab --init-owner --owner-name Alice  # first-time setup
+zetl -d ./my-vault serve --collab                                  # start collab server
+zetl -d ./my-vault invite --as Alice --role editor                 # invite a collaborator
+zetl -d ./my-vault invite --as Alice --role reader --pages "projects/*"
 
 # Static site export
 zetl -d ./my-vault build                                 # generates dist/
@@ -277,13 +289,32 @@ zetl view "Page Name" --context-lines 10 --main-width 60
 
 ### Live server (`zetl serve`)
 
-Local web UI for browsing the vault. Renders Markdown pages with a sidebar, backlink list, transclusion panel (forward-link excerpt cards with SVG bridge connectors), and inline edit mode with save-and-reindex. Pages are rendered through a Minijinja template engine with YAML frontmatter available in templates.
+Local web UI for browsing the vault. Renders Markdown pages with a sidebar, backlink list, transclusion panel (forward-link excerpt cards with SVG bridge connectors), and a CodeMirror 6 editor with save-and-reindex and page deletion. Pages are rendered through a Minijinja template engine with YAML frontmatter available in templates.
 
 ```bash
-zetl -d ./my-vault serve              # http://localhost:3000
-zetl -d ./my-vault serve --port 8080
-zetl -d ./my-vault serve --theme paper  # use a custom theme
+zetl -d ./my-vault serve                                        # single-user
+zetl -d ./my-vault serve --collab --init-owner --owner-name Jo  # first-time collab setup
+zetl -d ./my-vault serve --collab                                # multi-user mode
+zetl -d ./my-vault serve --port 8080 --theme dark                # custom port and theme
 ```
+
+### API endpoints
+
+The serve mode exposes JSON API endpoints (authenticated via session cookie or Bearer token in collab mode):
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/pages` | GET | List all pages |
+| `/api/pages/{slug}` | GET | Get page content and metadata |
+| `/api/pages/{slug}` | PUT | Update page content |
+| `/api/pages/{slug}` | DELETE | Delete a page |
+| `/api/search?q=...` | GET | Full-text search |
+| `/api/graph` | GET | Full link graph |
+| `/api/index` | POST | Trigger reindex |
+| `/api/comments/{slug}` | GET/POST | Page comments |
+| `/api/access-request` | POST | Request access to a page (collab mode) |
+| `/api/ws/ticket` | POST | Obtain a WebSocket ticket (collab mode) |
+| `/ws/edit/{slug}` | WS | Real-time collaborative editing (collab mode) |
 
 ### Static site (`zetl build`)
 
@@ -434,6 +465,8 @@ zetl -d ./my-vault hook run on-save -- '{"saved":{"file":"test.md","page":"Test"
 | `post-check` | After `zetl check` collects diagnostics | No |
 | `pre-serve` | Before `zetl serve` starts the server | Yes |
 | `on-save` | After a page is saved in `zetl serve` | No |
+| `on-agent` | When an agent API request is received | No |
+| `on-access-request` | When a user requests access to a page (collab mode) | No |
 
 #### Writing a hook
 
@@ -468,6 +501,70 @@ Themes can ship hooks in their `hooks/` subdirectory. When a theme is active (`-
   base.html
   page.html
 ```
+
+## Collaboration
+
+zetl supports multi-user collaborative editing with `--collab` mode. Authentication uses WebAuthn passkeys (Touch ID, security keys), with BIP39 mnemonic recovery phrases as a fallback.
+
+### Setup
+
+```bash
+# First-time: bootstrap the vault owner
+zetl -d ./my-vault serve --collab --init-owner --owner-name Alice
+# Save the 12-word recovery phrase printed to the terminal!
+
+# Subsequent starts (owner already exists)
+zetl -d ./my-vault serve --collab
+```
+
+On first start, register a passkey at `http://localhost:3000` when prompted.
+
+### Inviting collaborators
+
+```bash
+# Generate an invitation link (copies to clipboard)
+zetl -d ./my-vault invite --as Alice --role editor
+
+# Scoped to specific pages
+zetl -d ./my-vault invite --as Alice --role reader --pages "projects/*"
+
+# Custom expiry (default 72h)
+zetl -d ./my-vault invite --as Alice --role editor --expires 24h
+```
+
+Or use the web UI at `/_admin/invite` to create and manage invitations.
+
+Roles: `reader` (view only), `editor` (view + edit), `admin` (full control including invitations).
+
+### Real-time editing
+
+When multiple users open the same page, edits sync in real-time via WebSocket using a Peritext CRDT engine. Each save auto-commits to git with the author's name.
+
+### Account recovery
+
+If you lose access to your passkey, recover your account at `/auth/recovery` using your display name and 12-word recovery phrase. This issues a new session so you can re-register a passkey.
+
+### Agent tokens
+
+For headless API access (CI, scripts, bots):
+
+```bash
+zetl -d ./my-vault agent-token --mnemonic "word1 word2 ... word12"
+```
+
+Use the token as a Bearer token: `Authorization: Bearer <token>`.
+
+### Security features
+
+- WebAuthn passkey authentication (no passwords)
+- CSRF protection on all state-changing endpoints
+- Per-IP and per-user rate limiting on auth endpoints
+- Session idle and absolute timeouts
+- Ed25519-signed invitation tokens with single-use nonces
+- SPL-based access control with deontic modalities (when built with `--features reason`)
+- Git auto-commit on every save with author attribution
+- Write-ahead log for CRDT crash recovery
+- Server key file permission enforcement
 
 ## Compatibility
 

@@ -1,4 +1,6 @@
 # search-history
-this is an new entry
+this is an new entryaaaa
+
+  aaaaaaaaa
 
 see [[cache]]

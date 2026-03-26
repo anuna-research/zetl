@@ -28,6 +28,9 @@ pub const HOOK_NAMES: &[&str] = &[
     "post-check",
     "on-save",
     "pre-serve",
+    "on-agent",
+    "on-access-request",
+    "on-acl-violation",
 ];
 
 /// Where a discovered hook originated.
@@ -352,6 +355,17 @@ fn execute_hook_with_timeout(
     let start = Instant::now();
     let timeout_secs = timeout.as_secs();
 
+    // Compute hook depth: read current ZETL_HOOK_DEPTH from env (or extra_vars),
+    // default to 0, then increment for the child process (REQ-020-020).
+    let current_depth: u32 = env
+        .extra_vars
+        .iter()
+        .find(|(k, _)| k == "ZETL_HOOK_DEPTH")
+        .and_then(|(_, v)| v.parse().ok())
+        .or_else(|| std::env::var("ZETL_HOOK_DEPTH").ok()?.parse().ok())
+        .unwrap_or(0);
+    let child_depth = current_depth.saturating_add(1);
+
     let mut cmd = Command::new(&hook.path);
     cmd.current_dir(&env.vault_root)
         .stdin(Stdio::piped())
@@ -360,9 +374,13 @@ fn execute_hook_with_timeout(
         .env("ZETL_HOOK", &hook.name)
         .env("ZETL_VAULT_ROOT", &env.vault_root)
         .env("ZETL_THEME", &env.theme)
-        .env("ZETL_VERSION", &env.zetl_version);
+        .env("ZETL_VERSION", &env.zetl_version)
+        .env("ZETL_HOOK_DEPTH", child_depth.to_string());
 
     for (key, val) in &env.extra_vars {
+        if key == "ZETL_HOOK_DEPTH" {
+            continue; // Already set above with incremented value
+        }
         cmd.env(key, val);
     }
 
@@ -1546,5 +1564,98 @@ mod tests {
     #[test]
     fn default_timeout_constant_is_30() {
         assert_eq!(HOOK_TIMEOUT_SECS, 30);
+    }
+
+    // ── Hook depth (REQ-020-020) tests ───────────────────────────────────
+
+    #[test]
+    fn hook_receives_zetl_hook_depth_env_var() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        // Script that prints the ZETL_HOOK_DEPTH env var
+        create_script(
+            &hooks_dir,
+            "post-build",
+            "#!/bin/sh\necho \"depth=$ZETL_HOOK_DEPTH\"\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        // No ZETL_HOOK_DEPTH in extra_vars → inherits from process env (default 0),
+        // child gets depth 1
+        let result = execute_hook(hook, b"{}", &test_env(tmp.path())).unwrap();
+        assert!(result.success());
+        assert!(
+            result.stdout.contains("depth=1"),
+            "expected depth=1, got: {}",
+            result.stdout.trim()
+        );
+    }
+
+    #[test]
+    fn hook_depth_increments_from_extra_vars() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(
+            &hooks_dir,
+            "on-save",
+            "#!/bin/sh\necho \"depth=$ZETL_HOOK_DEPTH\"\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        // Pass ZETL_HOOK_DEPTH=2 in extra_vars → child should get 3
+        let env = HookEnv {
+            vault_root: tmp.path().to_path_buf(),
+            theme: "test".to_string(),
+            zetl_version: "0.1.0".to_string(),
+            extra_vars: vec![("ZETL_HOOK_DEPTH".into(), "2".into())],
+        };
+
+        let result = execute_hook(hook, b"{}", &env).unwrap();
+        assert!(result.success());
+        assert!(
+            result.stdout.contains("depth=3"),
+            "expected depth=3, got: {}",
+            result.stdout.trim()
+        );
+    }
+
+    #[test]
+    fn hook_depth_starts_at_one_from_zero_extra_var() {
+        let tmp = TempDir::new().unwrap();
+        let hooks_dir = tmp.path().join(".zetl").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        create_script(
+            &hooks_dir,
+            "on-save",
+            "#!/bin/sh\necho \"depth=$ZETL_HOOK_DEPTH\"\n",
+        );
+
+        let manifest = discover_hooks(tmp.path(), None);
+        let hook = &manifest.hooks[0];
+
+        // Pass ZETL_HOOK_DEPTH=0 (initial event) → child gets 1
+        let env = HookEnv {
+            vault_root: tmp.path().to_path_buf(),
+            theme: "test".to_string(),
+            zetl_version: "0.1.0".to_string(),
+            extra_vars: vec![("ZETL_HOOK_DEPTH".into(), "0".into())],
+        };
+
+        let result = execute_hook(hook, b"{}", &env).unwrap();
+        assert!(result.success());
+        assert!(
+            result.stdout.contains("depth=1"),
+            "expected depth=1, got: {}",
+            result.stdout.trim()
+        );
     }
 }

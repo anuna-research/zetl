@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Register Passkey — {{ vault_name }}{% endblock %}
+
+{% block styles %}
+  .pk-container {
+    max-width: 32rem;
+    margin: 3rem auto;
+    padding: 2rem;
+  }
+  .pk-icon {
+    width: 4rem;
+    height: 4rem;
+    margin: 0 auto 1.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: oklch(var(--p) / 0.12);
+    color: oklch(var(--p));
+  }
+  .pk-icon svg { width: 2rem; height: 2rem; }
+  .pk-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 1.5rem 0;
+  }
+  .pk-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+  .pk-step-num {
+    flex-shrink: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: oklch(var(--p) / 0.15);
+    color: oklch(var(--p));
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* Registration states */
+  .pk-state { display: none; }
+  .pk-state.active { display: block; }
+  /* Spinner */
+  .pk-spinner {
+    display: inline-block;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid oklch(var(--p) / 0.2);
+    border-top-color: oklch(var(--p));
+    border-radius: 50%;
+    animation: pk-spin 0.6s linear infinite;
+    vertical-align: middle;
+    margin-right: 0.5rem;
+  }
+  @keyframes pk-spin {
+    to { transform: rotate(360deg); }
+  }
+  /* Error alert */
+  .pk-error {
+    background: oklch(var(--er) / 0.1);
+    border: 1px solid oklch(var(--er) / 0.3);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: oklch(var(--er));
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+  }
+  .pk-error-detail {
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+    opacity: 0.8;
+  }
+  /* Success */
+  .pk-success-icon {
+    color: oklch(var(--su));
+    margin-right: 0.5rem;
+  }
+  .pk-fallback {
+    margin-top: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: oklch(var(--wa) / 0.08);
+    border-left: 3px solid oklch(var(--wa));
+    border-radius: 0 0.375rem 0.375rem 0;
+    font-size: 0.8rem;
+    color: oklch(var(--bc) / 0.8);
+  }
+{% endblock %}
+
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+<div class="pk-container">
+  <!-- Guidance state: shown initially -->
+  <div id="pk-guidance" class="pk-state active">
+    <div class="pk-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z"/>
+      </svg>
+    </div>
+    <h2 class="text-xl font-bold text-center mb-2">Register a Passkey</h2>
+    <p class="text-center text-sm opacity-70 mb-4">
+      Passkeys replace passwords with secure, phishing-resistant credentials
+      stored on your device.
+    </p>
+
+    <div class="pk-steps">
+      <div class="pk-step">
+        <span class="pk-step-num">1</span>
+        <span>Click <strong>Register</strong> below to start the process.</span>
+      </div>
+      <div class="pk-step">
+        <span class="pk-step-num">2</span>
+        <span>Your browser will prompt you to verify your identity — use
+          Touch ID, Face ID, a security key, or your device PIN.</span>
+      </div>
+      <div class="pk-step">
+        <span class="pk-step-num">3</span>
+        <span>Once confirmed, your passkey is saved and you can sign in
+          without a password.</span>
+      </div>
+    </div>
+
+    <button id="pk-register-btn" class="btn btn-primary w-full" onclick="startRegistration()">
+      Register Passkey
+    </button>
+
+    <div class="pk-fallback">
+      <strong>No passkey support?</strong> If your device or browser does not
+      support passkeys, you can still access your vault using the recovery
+      phrase provided during account setup.
+    </div>
+  </div>
+
+  <!-- Registering state: spinner -->
+  <div id="pk-registering" class="pk-state">
+    <div class="text-center py-8">
+      <span class="pk-spinner"></span>
+      <span class="text-sm">Waiting for authenticator…</span>
+    </div>
+    <p class="text-center text-xs opacity-50 mt-2">
+      Follow the prompt from your browser or device.
+    </p>
+  </div>
+
+  <!-- Error state: retry -->
+  <div id="pk-error" class="pk-state">
+    <div class="pk-error">
+      <strong>Registration failed</strong>
+      <div id="pk-error-msg" class="pk-error-detail"></div>
+    </div>
+    <button class="btn btn-primary w-full mb-2" onclick="startRegistration()">
+      Try Again
+    </button>
+    <button class="btn btn-ghost btn-sm w-full" onclick="showState('pk-guidance')">
+      Back to instructions
+    </button>
+  </div>
+
+  <!-- Success state -->
+  <div id="pk-success" class="pk-state">
+    <div class="text-center py-6">
+      <span class="pk-success-icon text-3xl">&#10003;</span>
+      <h3 class="text-lg font-bold mt-2">Passkey Registered</h3>
+      <p class="text-sm opacity-70 mt-1">
+        Your passkey has been saved. You can now sign in using your device.
+      </p>
+    </div>
+    <a href="/" class="btn btn-primary w-full">Continue to Vault</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var userId = '{{ user_id }}';
+  var ROOT = '{{ root_path | safe }}';
+
+  window.showState = function(id) {
+    ['pk-guidance','pk-registering','pk-error','pk-success'].forEach(function(s){
+      document.getElementById(s).classList.remove('active');
+    });
+    document.getElementById(id).classList.add('active');
+  };
+
+  window.startRegistration = function() {
+    showState('pk-registering');
+    fetch(ROOT + 'api/passkey/register/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ user_id: userId })
+    })
+    .then(function(r) {
+      if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      return r.json();
+    })
+    .then(function(options) {
+      // WebAuthn API requires ArrayBuffer for challenge, user.id, and excludeCredentials[].id,
+      // but webauthn-rs serializes these as base64url strings.
+      var pk = options.publicKey;
+      pk.challenge = b64ToBuf(pk.challenge);
+      pk.user.id = b64ToBuf(pk.user.id);
+      if (pk.excludeCredentials) {
+        pk.excludeCredentials.forEach(function(c) { c.id = b64ToBuf(c.id); });
+      }
+      return navigator.credentials.create({ publicKey: pk });
+    })
+    .then(function(credential) {
+      // Encode ArrayBuffer fields to base64url for JSON transport
+      var response = credential.response;
+      return fetch(ROOT + 'api/passkey/register/finish', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          user_id: userId,
+          id: credential.id,
+          rawId: bufToB64(credential.rawId),
+          type: credential.type,
+          response: {
+            attestationObject: bufToB64(response.attestationObject),
+            clientDataJSON: bufToB64(response.clientDataJSON)
+          }
+        })
+      });
+    })
+    .then(function(r) {
+      if (!r.ok) return r.text().then(function(t){ throw new Error(t); });
+      showState('pk-success');
+    })
+    .catch(function(err) {
+      var msg = err.message || 'An unknown error occurred.';
+      if (err.name === 'NotAllowedError') {
+        msg = 'The request was cancelled or timed out. Please try again.';
+      } else if (err.name === 'SecurityError') {
+        msg = 'The operation is not allowed in this context. Ensure you are using HTTPS.';
+      } else if (err.name === 'InvalidStateError') {
+        msg = 'This authenticator is already registered. Try a different device.';
+      }
+      document.getElementById('pk-error-msg').textContent = msg;
+      showState('pk-error');
+    });
+  };
+
+  function b64ToBuf(str) {
+    str = str.replace(/-/g,'+').replace(/_/g,'/');
+    while (str.length % 4) str += '=';
+    var binary = atob(str);
+    var buf = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) buf[i] = binary.charCodeAt(i);
+    return buf.buffer;
+  }
+
+  function bufToB64(buf) {
+    var bytes = new Uint8Array(buf);
+    var binary = '';
+    for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+})();
+</script>
+{% endblock %}

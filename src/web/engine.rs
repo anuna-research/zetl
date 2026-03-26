@@ -213,7 +213,20 @@ pub struct TemplateEngine {
     reload: bool,
 }
 
-const KNOWN_TEMPLATES: &[&str] = &["base.html", "index.html", "page.html", "folder.html"];
+const KNOWN_TEMPLATES: &[&str] = &[
+    "base.html",
+    "index.html",
+    "page.html",
+    "editor.html",
+    "folder.html",
+    "passkey_register.html",
+    "recovery_show.html",
+    "invite_accept.html",
+    "admin_invite.html",
+    "admin_permissions.html",
+    "dashboard.html",
+    "page_history.html",
+];
 
 /// Build a minijinja Environment with the three-tier template loader.
 fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
@@ -347,6 +360,279 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("page.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the collaborative editor page.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_editor(
+        &self,
+        vault_ctx: &VaultContext,
+        page_title: &str,
+        page_slug: &str,
+        breadcrumbs: &[super::context::BreadcrumbEntry],
+        editor_json: &str,
+    ) -> Result<String, TemplateError> {
+        let search_index = build_search_index(vault_ctx);
+        let ctx = context! {
+            vault => vault_ctx,
+            page_title => page_title,
+            page_slug => page_slug,
+            breadcrumbs => breadcrumbs,
+            editor_json => editor_json,
+            mode => "serve",
+            search_index => search_index,
+            theme => &self.theme,
+            active_slug => page_slug,
+            root_path => "/",
+            index_file => "",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("editor.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("editor.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the passkey registration guidance page.
+    pub fn render_passkey_register(
+        &self,
+        vault_name: &str,
+        user_id: &str,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            user_id => user_id,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("passkey_register.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("passkey_register.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the recovery phrase display page.
+    pub fn render_recovery_show(
+        &self,
+        vault_name: &str,
+        mnemonic: &str,
+        words: &[&str],
+        continue_url: &str,
+        user_id: &str,
+        recovery_pubkey: &str,
+        csrf_token: &str,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            mnemonic => mnemonic,
+            words => words,
+            continue_url => continue_url,
+            user_id => user_id,
+            recovery_pubkey => recovery_pubkey,
+            csrf_token => csrf_token,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("recovery_show.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("recovery_show.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the invitation acceptance page.
+    pub fn render_invite_accept(
+        &self,
+        vault_name: &str,
+        token: &str,
+        inviter: &str,
+        role: &str,
+        pages: Option<&str>,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            token => token,
+            inviter => inviter,
+            role => role,
+            pages => pages,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("invite_accept.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("invite_accept.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the admin invitation management page.
+    pub fn render_admin_invite(
+        &self,
+        vault_name: &str,
+        csrf_token: &str,
+        invitations: &[serde_json::Value],
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            csrf_token => csrf_token,
+            invitations => invitations,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("admin_invite.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("admin_invite.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the admin permissions management page (REQ-020-048).
+    pub fn render_admin_permissions(
+        &self,
+        vault_name: &str,
+        csrf_token: &str,
+        users: &[serde_json::Value],
+        spl_preview: &str,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            csrf_token => csrf_token,
+            users => users,
+            spl_preview => spl_preview,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("admin_permissions.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("admin_permissions.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the user dashboard page (/_me).
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_dashboard(
+        &self,
+        vault_name: &str,
+        csrf_token: &str,
+        user_name: &str,
+        user_id: &str,
+        role: &str,
+        is_admin: bool,
+        recent_edits: &[serde_json::Value],
+        accessible_pages: &[serde_json::Value],
+        page_count: usize,
+        pending_invites: &[serde_json::Value],
+        access_requests: &[serde_json::Value],
+        active_sessions: usize,
+        passkey_count: usize,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            csrf_token => csrf_token,
+            user_name => user_name,
+            user_id => user_id,
+            role => role,
+            is_admin => is_admin,
+            recent_edits => recent_edits,
+            accessible_pages => accessible_pages,
+            page_count => page_count,
+            pending_invites => pending_invites,
+            access_requests => access_requests,
+            active_sessions => active_sessions,
+            passkey_count => passkey_count,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("dashboard.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("dashboard.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the page history UI (/{slug}/_history).
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_page_history(
+        &self,
+        vault_ctx: &VaultContext,
+        page_title: &str,
+        page_slug: &str,
+        breadcrumbs: &[super::context::BreadcrumbEntry],
+        history_json: &str,
+        has_draft: bool,
+    ) -> Result<String, TemplateError> {
+        let search_index = build_search_index(vault_ctx);
+        let ctx = context! {
+            vault => vault_ctx,
+            page_title => page_title,
+            page_slug => page_slug,
+            breadcrumbs => breadcrumbs,
+            history_json => history_json,
+            has_draft => has_draft,
+            mode => "serve",
+            search_index => search_index,
+            theme => &self.theme,
+            active_slug => page_slug,
+            root_path => "/",
+            index_file => "",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("page_history.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("page_history.html"));
         }
         Ok(html)
     }
@@ -808,5 +1094,140 @@ mod tests {
         // so this should return an empty vec.
         let hooks = bundled_theme_hook_files("default");
         assert!(hooks.is_empty());
+    }
+
+    // ── Passkey registration guidance tests ──────────────────────────────
+
+    #[test]
+    fn test_render_passkey_register() {
+        let engine = default_engine();
+        let html = engine
+            .render_passkey_register("test-vault", "alice-a1b2c3d4")
+            .unwrap();
+        // Explanation text
+        assert!(html.contains("Register a Passkey"));
+        assert!(html.contains("phishing-resistant"));
+        // Steps
+        assert!(html.contains("Touch ID"));
+        assert!(html.contains("Face ID"));
+        // Visual indicator (spinner class)
+        assert!(html.contains("pk-spinner"));
+        // Retry button
+        assert!(html.contains("Try Again"));
+        // Fallback note
+        assert!(html.contains("No passkey support"));
+        assert!(html.contains("recovery"));
+        // User ID passed through
+        assert!(html.contains("alice-a1b2c3d4"));
+    }
+
+    #[test]
+    fn test_render_passkey_register_empty_user() {
+        let engine = default_engine();
+        let html = engine.render_passkey_register("my-vault", "").unwrap();
+        assert!(html.contains("Register a Passkey"));
+        assert!(html.contains("my-vault"));
+    }
+
+    #[test]
+    fn test_passkey_register_has_error_state() {
+        let engine = default_engine();
+        let html = engine
+            .render_passkey_register("vault", "test-user")
+            .unwrap();
+        // Error state UI
+        assert!(html.contains("Registration failed"));
+        assert!(html.contains("pk-error"));
+        assert!(html.contains("Back to instructions"));
+    }
+
+    #[test]
+    fn test_passkey_register_has_success_state() {
+        let engine = default_engine();
+        let html = engine
+            .render_passkey_register("vault", "test-user")
+            .unwrap();
+        assert!(html.contains("Passkey Registered"));
+        assert!(html.contains("Continue to Vault"));
+    }
+
+    #[test]
+    fn test_bundled_passkey_register_template_exists() {
+        assert!(
+            bundled_template("default", "passkey_register.html").is_some(),
+            "passkey_register.html should be bundled in default theme"
+        );
+    }
+
+    // ── Recovery show tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_bundled_recovery_show_template_exists() {
+        assert!(
+            bundled_template("default", "recovery_show.html").is_some(),
+            "recovery_show.html should be bundled in default theme"
+        );
+    }
+
+    #[test]
+    fn test_render_recovery_show() {
+        let engine = default_engine();
+        let words = vec![
+            "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
+            "absurd", "abuse", "access", "accident",
+        ];
+        let html = engine
+            .render_recovery_show(
+                "test-vault",
+                "abandon ability able about above absent absorb abstract absurd abuse access accident",
+                &words,
+                "/passkey/register?user_id=alice",
+                "alice-12345678",
+                "fakepubkey123",
+                "csrf-token-abc",
+            )
+            .unwrap();
+        // Explanation text
+        assert!(html.contains("Your Recovery Phrase"));
+        assert!(html.contains("only way"));
+        assert!(html.contains("only be shown once"));
+        // Numbered word grid
+        for (i, word) in words.iter().enumerate() {
+            assert!(html.contains(word), "missing word: {word}");
+            assert!(
+                html.contains(&format!("{}", i + 1)),
+                "missing number: {}",
+                i + 1
+            );
+        }
+        // Confirmation checkbox
+        assert!(html.contains("rc-check"));
+        assert!(html.contains("written down my recovery phrase"));
+        // Copy to clipboard
+        assert!(html.contains("Copy to clipboard"));
+        assert!(html.contains("clipboard may be accessible"));
+        // Continue button
+        // Continue link with user_id
+        assert!(html.contains("rc-continue"));
+        assert!(html.contains("user_id=alice"));
+        assert!(html.contains("disabled"));
+    }
+
+    #[test]
+    fn test_render_recovery_show_vault_name() {
+        let engine = default_engine();
+        let words = vec!["abandon"; 12];
+        let html = engine
+            .render_recovery_show(
+                "my-notes",
+                "abandon ".repeat(12).trim(),
+                &words,
+                "/",
+                "user-1",
+                "pk",
+                "csrf",
+            )
+            .unwrap();
+        assert!(html.contains("my-notes"));
     }
 }

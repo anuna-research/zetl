@@ -14,6 +14,9 @@ pub struct SidebarNode {
     pub slug: String,
     pub extension: String,
     pub children: Vec<SidebarNode>,
+    /// Whether this page is denied but visible (grayed/locked). REQ-020-031.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub denied_style: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -129,8 +132,8 @@ pub fn build_sidebar_tree(pages: &[PageEntry]) -> Vec<SidebarNode> {
         .collect();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-    fn build_level<'a>(
-        entries: &[(Vec<&'a str>, &PageEntry)],
+    fn build_level(
+        entries: &[(Vec<&str>, &PageEntry)],
         depth: usize,
         prefix: &str,
     ) -> Vec<SidebarNode> {
@@ -150,6 +153,7 @@ pub fn build_sidebar_tree(pages: &[PageEntry]) -> Vec<SidebarNode> {
                     slug: page.slug.clone(),
                     extension: page.extension.clone(),
                     children: vec![],
+                    denied_style: None,
                 });
                 i += 1;
             } else {
@@ -174,6 +178,7 @@ pub fn build_sidebar_tree(pages: &[PageEntry]) -> Vec<SidebarNode> {
                     slug: folder_slug,
                     extension: String::new(),
                     children,
+                    denied_style: None,
                 });
                 i = j;
             }
@@ -233,6 +238,55 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         history: serde_json::Value::Null,
         semantic_available: false,
     }
+}
+
+/// Visibility filtering style for a denied page in the sidebar (REQ-020-031).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidebarDeniedStyle {
+    /// Show page grayed-out (transparent mode).
+    GrayedOut,
+    /// Show page with lock icon (force-visible override).
+    Locked,
+    /// Hide page completely (mixed/hidden mode).
+    Hidden,
+}
+
+/// Filter a `VaultContext` for visibility, removing or marking denied pages (REQ-020-031).
+///
+/// `denied_pages` maps page slug → style. Pages with `Hidden` style are removed;
+/// pages with `GrayedOut` or `Locked` style are kept with `denied_style` set.
+pub fn filter_vault_context_for_visibility(
+    ctx: &mut VaultContext,
+    denied_pages: &HashMap<String, SidebarDeniedStyle>,
+) {
+    // Filter the pages list
+    ctx.pages.retain(|p| match denied_pages.get(&p.slug) {
+        Some(SidebarDeniedStyle::Hidden) => false,
+        _ => true,
+    });
+
+    // Rebuild sidebar tree from filtered pages
+    ctx.sidebar_tree = build_sidebar_tree(&ctx.pages);
+
+    // Apply denied_style to sidebar leaves
+    fn apply_denied_style(nodes: &mut [SidebarNode], denied: &HashMap<String, SidebarDeniedStyle>) {
+        for node in nodes.iter_mut() {
+            if node.is_folder {
+                apply_denied_style(&mut node.children, denied);
+            } else if let Some(style) = denied.get(&node.slug) {
+                match style {
+                    SidebarDeniedStyle::GrayedOut => {
+                        node.denied_style = Some("grayed".to_string());
+                    }
+                    SidebarDeniedStyle::Locked => {
+                        node.denied_style = Some("locked".to_string());
+                    }
+                    SidebarDeniedStyle::Hidden => {} // already filtered out
+                }
+            }
+        }
+    }
+    apply_denied_style(&mut ctx.sidebar_tree, denied_pages);
 }
 
 /// Build a `ZetlMeta` using the crate version from Cargo.toml.
@@ -484,12 +538,17 @@ mod tests {
                 (f.page_name.clone(), slug)
             })
             .collect();
+        let page_slug_map_lower: HashMap<String, String> = page_slug_map
+            .iter()
+            .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
+            .collect();
         VaultData {
             files,
             graph,
             page_names,
             resolved,
             page_slug_map,
+            page_slug_map_lower,
             collision_names: std::collections::HashSet::new(),
         }
     }
@@ -704,5 +763,69 @@ mod tests {
         assert!(!leaf[0].is_folder);
         assert_eq!(leaf[0].name, "Leaf");
         assert_eq!(leaf[0].slug, "a/b/c/Leaf");
+    }
+
+    // ── Visibility filtering tests (TEST-020-031) ────────────────────
+
+    #[test]
+    fn filter_vault_context_hides_denied_pages() {
+        let files = vec![
+            make_file("Alpha", vec![]),
+            make_file("Secret", vec![]),
+            make_file("Beta", vec![]),
+        ];
+        let data = make_vault_data(files);
+        let mut ctx = build_vault_context(&data, "vault");
+        assert_eq!(ctx.pages.len(), 3);
+
+        // Slugs are lowercased by page_slug_from_path
+        let mut denied = HashMap::new();
+        denied.insert("secret".to_string(), SidebarDeniedStyle::Hidden);
+        filter_vault_context_for_visibility(&mut ctx, &denied);
+
+        assert_eq!(ctx.pages.len(), 2);
+        assert!(ctx.pages.iter().all(|p| p.title != "Secret"));
+        // Sidebar tree should also not contain Secret
+        assert!(ctx.sidebar_tree.iter().all(|n| n.name != "Secret"));
+    }
+
+    #[test]
+    fn filter_vault_context_grays_out_denied_pages() {
+        let files = vec![make_file("Alpha", vec![]), make_file("Secret", vec![])];
+        let data = make_vault_data(files);
+        let mut ctx = build_vault_context(&data, "vault");
+
+        let mut denied = HashMap::new();
+        denied.insert("secret".to_string(), SidebarDeniedStyle::GrayedOut);
+        filter_vault_context_for_visibility(&mut ctx, &denied);
+
+        // Page should still be in the list (not hidden, just grayed)
+        assert_eq!(ctx.pages.len(), 2);
+        // But sidebar node should have denied_style set
+        let secret_node = ctx.sidebar_tree.iter().find(|n| n.name == "Secret");
+        assert!(secret_node.is_some());
+        assert_eq!(
+            secret_node.unwrap().denied_style,
+            Some("grayed".to_string())
+        );
+    }
+
+    #[test]
+    fn filter_vault_context_locks_denied_pages() {
+        let files = vec![make_file("Alpha", vec![]), make_file("Roadmap", vec![])];
+        let data = make_vault_data(files);
+        let mut ctx = build_vault_context(&data, "vault");
+
+        let mut denied = HashMap::new();
+        denied.insert("roadmap".to_string(), SidebarDeniedStyle::Locked);
+        filter_vault_context_for_visibility(&mut ctx, &denied);
+
+        assert_eq!(ctx.pages.len(), 2);
+        let roadmap_node = ctx.sidebar_tree.iter().find(|n| n.name == "Roadmap");
+        assert!(roadmap_node.is_some());
+        assert_eq!(
+            roadmap_node.unwrap().denied_style,
+            Some("locked".to_string())
+        );
     }
 }

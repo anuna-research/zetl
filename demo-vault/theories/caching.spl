@@ -2,6 +2,8 @@
 ; Reasoning about cache validity, backend selection, and performance acceptability.
 ; Run: zetl reason status --positive -d .
 
+; hello
+
 ; --- Base facts: grounded to specific vault blocks ---
 
 ; Cache is mtime-based (from architecture/Cache.md)

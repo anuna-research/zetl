@@ -1,0 +1,881 @@
+{% extends "base.html" %}
+
+{% block title %}Edit: {{ page_title }} — zetl{% endblock %}
+
+{% block head %}
+{% endblock %}
+
+{% block styles %}
+/* ── CodeMirror editor ───────────────────────────────────────── */
+.cm-editor {
+  height: calc(100vh - 10rem);
+  border: 1px solid oklch(var(--b3));
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  overflow: hidden;
+}
+.cm-editor .cm-scroller {
+  overflow: auto;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+}
+.cm-editor .cm-content {
+  padding: 0.75rem 0;
+}
+.cm-editor .cm-line {
+  padding: 0 1rem;
+}
+.cm-editor.cm-focused {
+  outline: 2px solid oklch(var(--p) / 0.4);
+  outline-offset: -1px;
+}
+
+/* ── Remote cursors ──────────────────────────────────────────── */
+.remote-cursor {
+  position: relative;
+  border-left: 2px solid var(--cursor-color, #f472b6);
+  margin-left: -1px;
+}
+.remote-cursor::after {
+  content: attr(data-name);
+  position: absolute;
+  left: -1px;
+  top: -1.4em;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  color: #fff;
+  background: var(--cursor-color, #f472b6);
+  pointer-events: none;
+  z-index: 10;
+}
+.remote-selection {
+  background: var(--cursor-color, #f472b6);
+  opacity: 0.18;
+}
+
+/* ── Presence bar ────────────────────────────────────────────── */
+.presence-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+  flex-wrap: wrap;
+}
+.presence-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  border: 1.5px solid var(--chip-color, #888);
+  color: var(--chip-color, #888);
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+.presence-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chip-color, #888);
+}
+
+/* ── Merge notification banner (REQ-020-052) ─────────────────── */
+.merge-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  background: oklch(var(--wa) / 0.12);
+  border: 1px solid oklch(var(--wa) / 0.3);
+  font-size: 0.8rem;
+  color: oklch(var(--bc));
+  animation: merge-banner-in 0.3s ease-out;
+}
+.merge-banner .merge-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+.merge-banner .merge-text { flex: 1; }
+.merge-banner .merge-review-btn {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.25rem;
+  background: oklch(var(--wa) / 0.2);
+  border: 1px solid oklch(var(--wa) / 0.4);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.merge-banner .merge-review-btn:hover {
+  background: oklch(var(--wa) / 0.35);
+}
+.merge-banner .merge-dismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  opacity: 0.5;
+  padding: 0 0.2rem;
+  color: oklch(var(--bc));
+}
+.merge-banner .merge-dismiss:hover { opacity: 1; }
+@keyframes merge-banner-in {
+  from { opacity: 0; transform: translateY(-0.5rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Highlight changed ranges after merge */
+.cm-merge-highlight {
+  background: oklch(var(--wa) / 0.18);
+  transition: background 1s ease-out 2s;
+}
+.cm-merge-highlight-fade {
+  background: transparent;
+}
+
+/* Merge diff overlay */
+.merge-diff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(0 0 0 / 0.4);
+}
+.merge-diff-panel {
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--b3));
+  border-radius: 0.5rem;
+  padding: 1rem;
+  max-width: 50rem;
+  width: 90vw;
+  max-height: 80vh;
+  overflow: auto;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+  font-size: 0.8rem;
+}
+.merge-diff-panel h3 { margin: 0 0 0.75rem; font-size: 0.9rem; }
+.merge-diff-panel pre { white-space: pre-wrap; margin: 0; }
+.merge-diff-added { background: oklch(var(--su) / 0.15); }
+.merge-diff-removed { background: oklch(var(--er) / 0.15); text-decoration: line-through; opacity: 0.7; }
+.merge-diff-close {
+  margin-top: 0.75rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.25rem;
+  border: 1px solid oklch(var(--b3));
+  background: oklch(var(--b2));
+  cursor: pointer;
+}
+
+/* ── Editor toolbar ──────────────────────────────────────────── */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.editor-status {
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+.editor-status.connected { color: oklch(var(--su)); opacity: 0.8; }
+.editor-status.disconnected { color: oklch(var(--er)); opacity: 0.8; }
+.editor-status.connecting { color: oklch(var(--wa)); opacity: 0.8; }
+
+/* ── Delete confirmation dialog ─────────────────────────────── */
+.delete-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(0 0 0 / 0.5);
+}
+.delete-panel {
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--er) / 0.3);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  max-width: 28rem;
+  width: 90vw;
+}
+.delete-panel h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: oklch(var(--er));
+}
+.delete-panel p {
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+  color: oklch(var(--bc) / 0.7);
+}
+.delete-panel code {
+  background: oklch(var(--b2));
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-size: 0.85rem;
+}
+.delete-confirm-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: oklch(var(--b2));
+  border: 1px solid oklch(var(--bc) / 0.15);
+  border-radius: 0.375rem;
+  color: oklch(var(--bc));
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+.delete-confirm-input:focus {
+  outline: none;
+  border-color: oklch(var(--er) / 0.5);
+}
+.delete-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+{% endblock %}
+
+{% block content %}
+<main class="flex-1 p-4 sm:p-6 flex flex-col gap-3 min-w-0">
+  {# Breadcrumbs #}
+  <nav class="text-sm breadcrumbs">
+    <ul>
+      <li><a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a></li>
+      {%- for crumb in breadcrumbs %}
+      <li><a href="{{ root_path }}{{ crumb.slug | safe }}/{{ index_file }}">{{ crumb.title }}</a></li>
+      {%- endfor %}
+      <li><a href="{{ root_path }}{{ page_slug | safe }}/">{{ page_title }}</a></li>
+      <li>Edit</li>
+    </ul>
+  </nav>
+
+  {# Toolbar #}
+  <div class="editor-toolbar">
+    <a href="{{ root_path }}{{ page_slug | safe }}/" class="btn btn-sm btn-outline btn-ghost">&larr; Back</a>
+    <button id="save-btn" class="btn btn-sm btn-primary" onclick="saveDoc()">Save</button>
+    <span id="ws-status" class="editor-status connecting">connecting&hellip;</span>
+    <div class="flex-1"></div>
+    <div id="presence-bar" class="presence-bar"></div>
+    <button id="delete-btn" class="btn btn-sm btn-outline btn-error" onclick="showDeleteDialog()">Delete</button>
+  </div>
+
+  {# Delete confirmation dialog #}
+  <div id="delete-overlay" class="delete-overlay" style="display:none">
+    <div class="delete-panel">
+      <h3>Delete this page?</h3>
+      <p>This will permanently remove <code>{{ page_slug }}</code>. Type the page name below to confirm.</p>
+      <input id="delete-confirm-input" class="delete-confirm-input" type="text" placeholder="{{ page_slug }}" autocomplete="off">
+      <div class="delete-actions">
+        <button class="btn btn-sm btn-ghost" onclick="hideDeleteDialog()">Cancel</button>
+        <button id="delete-confirm-btn" class="btn btn-sm btn-error" disabled onclick="deletePage()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  {# Merge notification area (REQ-020-052) #}
+  <div id="merge-notifications"></div>
+
+  {# Editor container #}
+  <div id="editor-mount" class="flex-1"></div>
+</main>
+
+{# Pass page data to JS safely via JSON #}
+<script type="application/json" id="editor-data">{{ editor_json | safe }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+// ── Imports from esm.sh CDN ────────────────────────────────────────────
+// Pin @codemirror/state via ?deps on all CM packages to avoid duplicate
+// module instances (which break instanceof checks in CodeMirror).
+import {EditorView, keymap, lineNumbers, highlightActiveLineGutter, drawSelection,
+        highlightActiveLine, Decoration, ViewPlugin, WidgetType
+       } from "https://esm.sh/@codemirror/view@6.36.5?deps=@codemirror/state@6.6.0";
+import {EditorState, StateField, StateEffect, Compartment
+       } from "https://esm.sh/@codemirror/state@6.6.0";
+import {markdown} from "https://esm.sh/@codemirror/lang-markdown@6.3.2?deps=@codemirror/state@6.6.0";
+import {defaultKeymap, history, historyKeymap, indentWithTab
+       } from "https://esm.sh/@codemirror/commands@6.8.0?deps=@codemirror/state@6.6.0";
+import {syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatching
+       } from "https://esm.sh/@codemirror/language@6.10.8?deps=@codemirror/state@6.6.0";
+import {closeBrackets, closeBracketsKeymap
+       } from "https://esm.sh/@codemirror/autocomplete@6.18.6?deps=@codemirror/state@6.6.0";
+import {searchKeymap, highlightSelectionMatches
+       } from "https://esm.sh/@codemirror/search@6.5.10?deps=@codemirror/state@6.6.0";
+
+// ── Config ─────────────────────────────────────────────────────────────
+const DATA = JSON.parse(document.getElementById("editor-data").textContent);
+const PAGE_SLUG = DATA.slug;
+const WS_TICKET = DATA.ticket;
+const INITIAL_CONTENT = DATA.content;
+const USER_NAME = DATA.user_name;
+const CURSOR_COLORS = [
+  "#f472b6","#60a5fa","#34d399","#fbbf24","#a78bfa",
+  "#fb923c","#2dd4bf","#f87171","#818cf8","#4ade80"
+];
+
+// ── Remote presence state ──────────────────────────────────────────────
+const remotePeers = new Map(); // user_id → {name, cursor, color}
+let colorIdx = 0;
+function peerColor(userId) {
+  let peer = remotePeers.get(userId);
+  if (peer) return peer.color;
+  return CURSOR_COLORS[colorIdx++ % CURSOR_COLORS.length];
+}
+
+// ── Remote cursor decorations ──────────────────────────────────────────
+const setRemoteCursors = StateEffect.define();
+
+class CursorWidget extends WidgetType {
+  constructor(name, color) { super(); this.name = name; this.color = color; }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = "remote-cursor";
+    el.style.setProperty("--cursor-color", this.color);
+    el.setAttribute("data-name", this.name);
+    return el;
+  }
+  eq(other) { return this.name === other.name && this.color === other.color; }
+}
+
+const remoteCursorField = StateField.define({
+  create() { return Decoration.none; },
+  update(value, tr) {
+    for (let e of tr.effects) {
+      if (e.is(setRemoteCursors)) return e.value;
+    }
+    // Map decorations through document changes
+    return value.map(tr.changes);
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+function buildRemoteDecorations(state) {
+  const widgets = [];
+  for (const [userId, peer] of remotePeers) {
+    if (!peer.cursor) continue;
+    const docLen = state.doc.length;
+    const idx = Math.min(peer.cursor.index, docLen);
+    const head = Math.min(peer.cursor.head, docLen);
+
+    // Selection range
+    if (idx !== head) {
+      const from = Math.min(idx, head);
+      const to = Math.max(idx, head);
+      widgets.push(
+        Decoration.mark({
+          class: "remote-selection",
+          attributes: { style: "--cursor-color:" + peer.color }
+        }).range(from, to)
+      );
+    }
+
+    // Cursor widget at head position
+    widgets.push(
+      Decoration.widget({
+        widget: new CursorWidget(peer.name || userId, peer.color),
+        side: 1,
+      }).range(head)
+    );
+  }
+  // Sort by from position (required by RangeSet)
+  widgets.sort((a, b) => a.from - b.from || a.value.startSide - b.value.startSide);
+  return Decoration.set(widgets);
+}
+
+// ── Merge highlight field (must be defined before EditorView creation) ──
+const setMergeHighlights = StateEffect.define();
+
+const mergeHighlightField = StateField.define({
+  create() { return Decoration.none; },
+  update(value, tr) {
+    for (let e of tr.effects) {
+      if (e.is(setMergeHighlights)) return e.value;
+    }
+    return value.map(tr.changes);
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+// ── Presence bar UI ────────────────────────────────────────────────────
+const presenceBar = document.getElementById("presence-bar");
+function updatePresenceBar() {
+  presenceBar.innerHTML = "";
+  for (const [userId, peer] of remotePeers) {
+    const chip = document.createElement("span");
+    chip.className = "presence-chip";
+    chip.style.setProperty("--chip-color", peer.color);
+    chip.innerHTML =
+      '<span class="presence-dot"></span>' +
+      (peer.name || userId).replace(/</g, "&lt;");
+    presenceBar.appendChild(chip);
+  }
+}
+
+// ── Status indicator ───────────────────────────────────────────────────
+const statusEl = document.getElementById("ws-status");
+function setStatus(state, text) {
+  statusEl.className = "editor-status " + state;
+  statusEl.textContent = text;
+}
+
+// ── CodeMirror setup ───────────────────────────────────────────────────
+let suppressRemote = false; // true while applying remote ops
+
+const view = new EditorView({
+  parent: document.getElementById("editor-mount"),
+  state: EditorState.create({
+    doc: INITIAL_CONTENT,
+    extensions: [
+      lineNumbers(),
+      highlightActiveLineGutter(),
+      history(),
+      drawSelection(),
+      indentOnInput(),
+      bracketMatching(),
+      closeBrackets(),
+      highlightActiveLine(),
+      highlightSelectionMatches(),
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      markdown(),
+      remoteCursorField,
+      mergeHighlightField,
+      keymap.of([
+        ...closeBracketsKeymap,
+        ...defaultKeymap,
+        ...searchKeymap,
+        ...historyKeymap,
+        indentWithTab,
+        { key: "Mod-s", run: () => { saveDoc(); return true; } },
+      ]),
+      EditorView.updateListener.of(update => {
+        if (suppressRemote) return;
+        // Send ops for document changes
+        if (update.docChanged) {
+          const ops = [];
+          update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+            ops.push({
+              action: "splice",
+              pos: fromA,
+              del: toA - fromA,
+              text: inserted.toString(),
+            });
+          });
+          if (ops.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "op", ops }));
+          }
+        }
+        // Send presence on selection change
+        if (update.selectionSet || update.docChanged) {
+          sendPresence();
+        }
+      }),
+      EditorView.theme({
+        "&": { flex: "1", display: "flex", flexDirection: "column" },
+        ".cm-scroller": { flex: "1" },
+      }),
+    ],
+  }),
+});
+
+// ── WebSocket connection ───────────────────────────────────────────────
+let ws = null;
+let reconnectTimer = null;
+let presenceTimer = null;
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = proto + "//" + location.host + "/ws/edit/" + PAGE_SLUG + "?ticket=" + WS_TICKET;
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    setStatus("connected", "connected");
+    // Send initial content as sync if this is a new session
+    sendPresence();
+    // Heartbeat presence every 10s
+    clearInterval(presenceTimer);
+    presenceTimer = setInterval(sendPresence, 10000);
+  };
+
+  ws.onclose = () => {
+    setStatus("disconnected", "disconnected");
+    clearInterval(presenceTimer);
+    // Remove all remote peers on disconnect
+    remotePeers.clear();
+    updatePresenceBar();
+    view.dispatch({ effects: setRemoteCursors.of(Decoration.none) });
+    // Reconnect after delay (tickets are single-use, so we need a new one)
+    scheduleReconnect();
+  };
+
+  ws.onerror = () => {
+    setStatus("disconnected", "error");
+  };
+
+  ws.onmessage = (event) => {
+    let msg;
+    try { msg = JSON.parse(event.data); } catch { return; }
+
+    switch (msg.type) {
+      case "sync":
+        // Full doc state from server — not used for CM text sync currently
+        // (we load content from the page data; sync is for CRDT state)
+        break;
+
+      case "op":
+        applyRemoteOps(msg.ops, msg.user_id);
+        break;
+
+      case "presence":
+        handleRemotePresence(msg);
+        break;
+
+      case "external_merge":
+        handleExternalMerge(msg);
+        break;
+
+      case "error":
+        console.error("[zetl ws]", msg.message);
+        break;
+    }
+  };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    setStatus("connecting", "reconnecting\u2026");
+    try {
+      const resp = await fetch("/api/ws/ticket", { method: "POST" });
+      if (!resp.ok) throw new Error("ticket " + resp.status);
+      const data = await resp.json();
+      // Update ticket and reconnect
+      DATA.ticket = data.ticket;
+      connect();
+    } catch (e) {
+      console.error("[zetl ws] reconnect failed:", e);
+      setStatus("disconnected", "disconnected");
+      scheduleReconnect(); // retry
+    }
+  }, 3000);
+}
+
+// ── Apply remote operations ────────────────────────────────────────────
+function applyRemoteOps(ops, userId) {
+  suppressRemote = true;
+  try {
+    const changes = [];
+    let offset = 0; // track cumulative position shift from prior ops
+
+    for (const op of ops) {
+      if (op.action === "splice") {
+        const from = op.pos + offset;
+        const to = from + op.del;
+        changes.push({ from, to, insert: op.text });
+        offset += op.text.length - op.del;
+      }
+      // mark/unmark ops: handled by CRDT engine on server side;
+      // client applies them as syntax highlighting via the markdown mode
+    }
+
+    if (changes.length > 0) {
+      view.dispatch({ changes, annotations: [] });
+    }
+  } finally {
+    suppressRemote = false;
+  }
+}
+
+// ── Presence ───────────────────────────────────────────────────────────
+function sendPresence() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const sel = view.state.selection.main;
+  ws.send(JSON.stringify({
+    type: "presence",
+    cursor: { index: sel.anchor, head: sel.head },
+    name: USER_NAME,
+  }));
+}
+
+function handleRemotePresence(msg) {
+  const userId = msg.user_id;
+  if (!remotePeers.has(userId)) {
+    remotePeers.set(userId, {
+      name: msg.name || userId,
+      cursor: msg.cursor,
+      color: peerColor(userId),
+    });
+  } else {
+    const peer = remotePeers.get(userId);
+    peer.cursor = msg.cursor;
+    if (msg.name) peer.name = msg.name;
+  }
+  // Update decorations
+  const decos = buildRemoteDecorations(view.state);
+  view.dispatch({ effects: setRemoteCursors.of(decos) });
+  updatePresenceBar();
+}
+
+// ── CSRF token (embedded in editor data for collab mode saves) ──────
+const CSRF_TOKEN = DATA.csrf_token || "";
+
+// ── Save ───────────────────────────────────────────────────────────────
+window.saveDoc = async function() {
+  const content = view.state.doc.toString();
+  const saveBtn = document.getElementById("save-btn");
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving\u2026";
+  try {
+    const slugPath = "/" + PAGE_SLUG + "/";
+    const headers = { "Content-Type": "text/plain; charset=utf-8" };
+    if (CSRF_TOKEN) headers["X-CSRF-Token"] = CSRF_TOKEN;
+    const resp = await fetch(slugPath, {
+      method: "PUT",
+      headers,
+      body: content,
+    });
+    if (resp.ok) {
+      saveBtn.textContent = "\u2713 Saved";
+      saveBtn.classList.remove("btn-primary");
+      saveBtn.classList.add("btn-success");
+      setTimeout(() => {
+        saveBtn.textContent = "Save";
+        saveBtn.disabled = false;
+        saveBtn.classList.remove("btn-success");
+        saveBtn.classList.add("btn-primary");
+      }, 2000);
+    } else {
+      alert("Save failed: " + resp.status);
+      saveBtn.textContent = "Save";
+      saveBtn.disabled = false;
+    }
+  } catch (e) {
+    alert("Save failed: " + e.message);
+    saveBtn.textContent = "Save";
+    saveBtn.disabled = false;
+  }
+};
+
+// ── Merge notification (REQ-020-052) ────────────────────────────────
+
+function handleExternalMerge(msg) {
+  const oldText = view.state.doc.toString();
+  const source = msg.source || { name: "External", id: "external:fs", is_agent: false };
+  const summary = msg.summary || "content updated";
+  const changedRanges = msg.changed_ranges || [];
+
+  // Apply the merged CRDT state — decode base64 doc is handled server-side;
+  // the message carries the full merged text as CRDT state. For the editor,
+  // we receive ops via the sync mechanism. Since ExternalMerge includes the
+  // full doc state, we need to reconstruct the text.
+  // Note: The CRDT doc field is base64-encoded automerge bytes which we can't
+  // decode client-side. The server should have already applied ops. The changed
+  // ranges are character positions in the current document post-merge.
+
+  // Show notification banner
+  showMergeBanner(source, summary, oldText, changedRanges);
+
+  // Highlight changed ranges in the editor
+  if (changedRanges.length > 0) {
+    highlightMergeRanges(changedRanges);
+  }
+}
+
+function showMergeBanner(source, summary, oldText, changedRanges) {
+  const area = document.getElementById("merge-notifications");
+  const banner = document.createElement("div");
+  banner.className = "merge-banner";
+
+  const icon = document.createElement("span");
+  icon.className = "merge-icon";
+  icon.textContent = source.is_agent ? "\u{1F916}" : "\u{1F4DD}";
+
+  const text = document.createElement("span");
+  text.className = "merge-text";
+  const name = source.name.replace(/</g, "&lt;");
+  text.innerHTML = "<strong>[" + name + "]</strong> made changes \u2014 " +
+    summary.replace(/</g, "&lt;");
+
+  banner.appendChild(icon);
+  banner.appendChild(text);
+
+  // "Review changes" button for large merges (> 500 chars changed)
+  const totalChanged = changedRanges.reduce((sum, r) => sum + (r.end - r.start), 0);
+  if (totalChanged > 500) {
+    const reviewBtn = document.createElement("button");
+    reviewBtn.className = "merge-review-btn";
+    reviewBtn.textContent = "Review changes";
+    reviewBtn.onclick = () => showMergeDiff(oldText, view.state.doc.toString());
+    banner.appendChild(reviewBtn);
+  }
+
+  const dismiss = document.createElement("button");
+  dismiss.className = "merge-dismiss";
+  dismiss.textContent = "\u00D7";
+  dismiss.onclick = () => banner.remove();
+  banner.appendChild(dismiss);
+
+  area.prepend(banner);
+
+  // Auto-dismiss after 10 seconds
+  setTimeout(() => {
+    if (banner.parentNode) banner.remove();
+  }, 10000);
+}
+
+function highlightMergeRanges(ranges) {
+  const docLen = view.state.doc.length;
+  const decos = [];
+  for (const r of ranges) {
+    const start = Math.min(r.start, docLen);
+    const end = Math.min(r.end, docLen);
+    if (start < end) {
+      decos.push(
+        Decoration.mark({ class: "cm-merge-highlight" }).range(start, end)
+      );
+    }
+  }
+  if (decos.length === 0) return;
+  decos.sort((a, b) => a.from - b.from);
+  view.dispatch({ effects: setMergeHighlights.of(Decoration.set(decos)) });
+
+  // Fade out after 3 seconds
+  setTimeout(() => {
+    // Add fade class to all highlight elements
+    for (const el of document.querySelectorAll(".cm-merge-highlight")) {
+      el.classList.add("cm-merge-highlight-fade");
+    }
+    // Clear decorations after transition completes
+    setTimeout(() => {
+      view.dispatch({ effects: setMergeHighlights.of(Decoration.none) });
+    }, 1000);
+  }, 3000);
+}
+
+function showMergeDiff(oldText, newText) {
+  const overlay = document.createElement("div");
+  overlay.className = "merge-diff-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  const panel = document.createElement("div");
+  panel.className = "merge-diff-panel";
+
+  const title = document.createElement("h3");
+  title.textContent = "Merge changes";
+  panel.appendChild(title);
+
+  const pre = document.createElement("pre");
+  // Simple line-level diff
+  const oldLines = oldText.split("\n");
+  const newLines = newText.split("\n");
+  const maxLen = Math.max(oldLines.length, newLines.length);
+  for (let i = 0; i < maxLen; i++) {
+    const ol = oldLines[i];
+    const nl = newLines[i];
+    if (ol === nl) {
+      const span = document.createElement("span");
+      span.textContent = " " + (nl ?? "") + "\n";
+      pre.appendChild(span);
+    } else {
+      if (ol !== undefined) {
+        const rem = document.createElement("span");
+        rem.className = "merge-diff-removed";
+        rem.textContent = "-" + ol + "\n";
+        pre.appendChild(rem);
+      }
+      if (nl !== undefined) {
+        const add = document.createElement("span");
+        add.className = "merge-diff-added";
+        add.textContent = "+" + nl + "\n";
+        pre.appendChild(add);
+      }
+    }
+  }
+  panel.appendChild(pre);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "merge-diff-close";
+  closeBtn.textContent = "Close";
+  closeBtn.onclick = () => overlay.remove();
+  panel.appendChild(closeBtn);
+
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────
+connect();
+
+// Clean up on navigation
+window.addEventListener("beforeunload", () => {
+  if (ws) ws.close();
+  clearInterval(presenceTimer);
+});
+
+// ── Delete page ──────────────────────────────────────────────────────────
+window.showDeleteDialog = function() {
+  var overlay = document.getElementById("delete-overlay");
+  var input = document.getElementById("delete-confirm-input");
+  var btn = document.getElementById("delete-confirm-btn");
+  overlay.style.display = "flex";
+  input.value = "";
+  btn.disabled = true;
+  input.focus();
+};
+
+window.hideDeleteDialog = function() {
+  document.getElementById("delete-overlay").style.display = "none";
+};
+
+(function() {
+  var input = document.getElementById("delete-confirm-input");
+  var btn = document.getElementById("delete-confirm-btn");
+  input.addEventListener("input", function() {
+    btn.disabled = input.value.trim() !== PAGE_SLUG;
+  });
+  input.addEventListener("keydown", function(e) {
+    if (e.key === "Escape") hideDeleteDialog();
+    if (e.key === "Enter" && !btn.disabled) deletePage();
+  });
+  document.getElementById("delete-overlay").addEventListener("click", function(e) {
+    if (e.target === this) hideDeleteDialog();
+  });
+})();
+
+window.deletePage = async function() {
+  var btn = document.getElementById("delete-confirm-btn");
+  btn.disabled = true;
+  btn.textContent = "Deleting\u2026";
+  try {
+    var headers = {};
+    if (CSRF_TOKEN) headers["X-CSRF-Token"] = CSRF_TOKEN;
+    var resp = await fetch("/api/pages/" + encodeURIComponent(PAGE_SLUG), {
+      method: "DELETE",
+      headers: headers,
+    });
+    if (resp.ok) {
+      window.location.href = "/";
+    } else {
+      var text = await resp.text();
+      alert("Delete failed: " + resp.status + " " + text);
+      btn.textContent = "Delete";
+      btn.disabled = false;
+    }
+  } catch (e) {
+    alert("Delete failed: " + e.message);
+    btn.textContent = "Delete";
+    btn.disabled = false;
+  }
+};
+</script>
+{% endblock %}
