@@ -40,4 +40,4 @@ Without a declared preference, the conflict remains unresolved — `zetl reason 
 
 ## In zetl
 
-The [[Reasoning Engine]] implements defeasible reasoning via `spindle-core`. See [[Reason Commands]] for the CLI interface and [[Provenance]] for how conclusions trace back to source files.
+The [[Reasoning Engine]] implements defeasible reasoning logic via `spindle-core`. See [[Reason Commands]] for the CLI interface and [[Provenance]] for how conclusions trace back to source files.
