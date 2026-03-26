@@ -8,7 +8,7 @@ PREFIX ?= $(HOME)/.local
 all: build
 
 build:
-	cargo build --release
+	cargo build --release --all-features
 
 test:
 	cargo test

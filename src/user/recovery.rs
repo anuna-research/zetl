@@ -13,7 +13,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
 use hmac::{Hmac, Mac};
-use sha2_crate::Sha512;
+use sha2::Sha512;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};

@@ -282,7 +282,7 @@ pub fn build_static(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
-    let vault_ctx = build_vault_context(data, &vault_name);
+    let mut vault_ctx = build_vault_context(data, &vault_name);
     #[cfg(feature = "history")]
     {
         // OBS-013: time vault history context build.

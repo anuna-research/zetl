@@ -11,7 +11,7 @@
 use anyhow::{Context, Result};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
-use sha2_crate::Sha256;
+use sha2::Sha256;
 use std::fs;
 use std::path::Path;
 

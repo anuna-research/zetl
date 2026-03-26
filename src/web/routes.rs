@@ -559,7 +559,7 @@ pub async fn page_handler(
 
         if has_pages {
             let folder_name = slug.rsplit('/').next().unwrap_or(slug);
-            let vault_ctx = build_vault_context(&data, &vault_name);
+            let mut vault_ctx = build_vault_context(&data, &vault_name);
             #[cfg(feature = "history")]
             {
                 // OBS-013: time vault history context build.
@@ -741,7 +741,7 @@ pub async fn page_handler(
         }
     }
 
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
     #[cfg(feature = "history")]
     {
         // OBS-013: time vault history context build.

@@ -2609,7 +2609,7 @@ fn cmd_search(
                     let msg = format!("Failed to load vector index: {e}. Run `zetl index` first.");
                     match cli.format {
                         OutputFormat::Json => exit_json_error(&msg, 1),
-                        OutputFormat::Table => {
+                        OutputFormat::Table | OutputFormat::Auto => {
                             eprintln!("Error: {msg}");
                             std::process::exit(1);
                         }
@@ -2619,7 +2619,7 @@ fn cmd_search(
                     let msg = "Vector index not found. Run `zetl index` to build it first.";
                     match cli.format {
                         OutputFormat::Json => exit_json_error(msg, 1),
-                        OutputFormat::Table => {
+                        OutputFormat::Table | OutputFormat::Auto => {
                             eprintln!("Error: {msg}");
                             std::process::exit(1);
                         }
@@ -2631,7 +2631,7 @@ fn cmd_search(
                             let msg = format!("Vector query failed: {e}");
                             match cli.format {
                                 OutputFormat::Json => exit_json_error(&msg, 1),
-                                OutputFormat::Table => {
+                                OutputFormat::Table | OutputFormat::Auto => {
                                     eprintln!("Error: {msg}");
                                     std::process::exit(1);
                                 }
@@ -2672,7 +2672,7 @@ fn cmd_search(
                     let msg = "Vector search thread panicked";
                     match cli.format {
                         OutputFormat::Json => exit_json_error(msg, 1),
-                        OutputFormat::Table => {
+                        OutputFormat::Table | OutputFormat::Auto => {
                             eprintln!("Error: {msg}");
                             std::process::exit(1);
                         }
@@ -2682,7 +2682,7 @@ fn cmd_search(
                     let msg = format!("{e}");
                     match cli.format {
                         OutputFormat::Json => exit_json_error(&msg, 1),
-                        OutputFormat::Table => {
+                        OutputFormat::Table | OutputFormat::Auto => {
                             eprintln!("Error: {msg}");
                             std::process::exit(1);
                         }
