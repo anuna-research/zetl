@@ -172,9 +172,7 @@ pub fn generate_user_id(name: &str) -> String {
     let slug = slug.trim_matches('-').to_string();
     let slug = collapse_dashes(&slug);
 
-    let hex: String = (0..4)
-        .map(|_| format!("{:02x}", rand_byte()))
-        .collect();
+    let hex: String = (0..4).map(|_| format!("{:02x}", rand_byte())).collect();
 
     if slug.is_empty() {
         hex
@@ -234,8 +232,7 @@ pub fn save_profile(vault_root: &Path, profile: &UserProfile) -> Result<()> {
         .with_context(|| format!("failed to create user directory: {}", dir.display()))?;
 
     let path = dir.join("profile.json");
-    let json = serde_json::to_string_pretty(profile)
-        .context("failed to serialize user profile")?;
+    let json = serde_json::to_string_pretty(profile).context("failed to serialize user profile")?;
     fs::write(&path, json)
         .with_context(|| format!("failed to write profile: {}", path.display()))?;
 
@@ -374,7 +371,9 @@ pub fn owner_exists(vault_root: &Path) -> Result<bool> {
 pub fn find_by_name(vault_root: &Path, name: &str) -> Result<Option<UserProfile>> {
     let profiles = list_profiles(vault_root)?;
     let lower = name.to_lowercase();
-    Ok(profiles.into_iter().find(|p| p.name.to_lowercase() == lower))
+    Ok(profiles
+        .into_iter()
+        .find(|p| p.name.to_lowercase() == lower))
 }
 
 /// Validate that a user ID matches the expected format.
@@ -386,7 +385,10 @@ pub fn validate_user_id(id: &str) -> bool {
     }
 
     // All chars must be lowercase alphanumeric or dash
-    if !id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
         return false;
     }
 

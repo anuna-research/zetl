@@ -51,8 +51,8 @@ impl Drop for RecoveryKeypair {
 /// Generate a 12-word BIP39 mnemonic and derive the ed25519 keypair via
 /// SLIP-0010 at path `m/44'/0'/0'`.
 pub fn generate_recovery_keypair() -> Result<RecoveryKeypair> {
-    let mnemonic = bip39::Mnemonic::generate(12)
-        .map_err(|e| anyhow!("BIP39 generation failed: {e}"))?;
+    let mnemonic =
+        bip39::Mnemonic::generate(12).map_err(|e| anyhow!("BIP39 generation failed: {e}"))?;
 
     let mnemonic_phrase = mnemonic.to_string();
     let pubkey = derive_pubkey_from_mnemonic(&mnemonic_phrase)?;
@@ -85,8 +85,8 @@ pub(crate) fn derive_signing_key_from_mnemonic(mnemonic_phrase: &str) -> Result<
 
     // Derive m/44'/0'/0' (three hardened children)
     let (key1, chain1) = slip0010_derive_child(&master_key, &master_chain, 44 + 0x80000000)?;
-    let (key2, chain2) = slip0010_derive_child(&key1, &chain1, 0 + 0x80000000)?;
-    let (key3, _) = slip0010_derive_child(&key2, &chain2, 0 + 0x80000000)?;
+    let (key2, chain2) = slip0010_derive_child(&key1, &chain1, 0x80000000)?;
+    let (key3, _) = slip0010_derive_child(&key2, &chain2, 0x80000000)?;
 
     let signing_key = SigningKey::from_bytes(&key3);
     Ok(signing_key)
@@ -97,8 +97,8 @@ pub(crate) fn derive_signing_key_from_mnemonic(mnemonic_phrase: &str) -> Result<
 /// `I = HMAC-SHA512(Key = "ed25519 seed", Data = seed)`
 /// Master secret key = I_L (left 32 bytes), chain code = I_R (right 32 bytes).
 fn slip0010_master_key(seed: &[u8]) -> Result<([u8; 32], [u8; 32])> {
-    let mut mac = HmacSha512::new_from_slice(b"ed25519 seed")
-        .map_err(|_| anyhow!("HMAC key error"))?;
+    let mut mac =
+        HmacSha512::new_from_slice(b"ed25519 seed").map_err(|_| anyhow!("HMAC key error"))?;
     mac.update(seed);
     let result = mac.finalize().into_bytes();
 
@@ -118,8 +118,7 @@ fn slip0010_derive_child(
     chain_code: &[u8; 32],
     index: u32,
 ) -> Result<([u8; 32], [u8; 32])> {
-    let mut mac = HmacSha512::new_from_slice(chain_code)
-        .map_err(|_| anyhow!("HMAC key error"))?;
+    let mut mac = HmacSha512::new_from_slice(chain_code).map_err(|_| anyhow!("HMAC key error"))?;
     mac.update(&[0x00]);
     mac.update(key);
     mac.update(&index.to_be_bytes());
@@ -196,6 +195,12 @@ pub struct RecoveryChallengeStore {
     challenges: Mutex<HashMap<String, Vec<PendingChallenge>>>,
 }
 
+impl Default for RecoveryChallengeStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RecoveryChallengeStore {
     pub fn new() -> Self {
         Self {
@@ -260,7 +265,9 @@ impl RecoveryChallengeStore {
         };
 
         // Find matching challenge
-        let pos = challenges.iter().position(|c| super::constant_time_eq(&c.challenge, challenge));
+        let pos = challenges
+            .iter()
+            .position(|c| super::constant_time_eq(&c.challenge, challenge));
         match pos {
             Some(idx) => {
                 let pending = challenges.remove(idx);
@@ -311,8 +318,7 @@ mod tests {
         let challenge = b"test-challenge-256-bits-padding!!";
 
         let signature = sign_challenge(&kp.mnemonic, challenge).unwrap();
-        let valid =
-            verify_challenge(&kp.recovery_pubkey, challenge, &signature).unwrap();
+        let valid = verify_challenge(&kp.recovery_pubkey, challenge, &signature).unwrap();
         assert!(valid, "signature should verify against recovery pubkey");
     }
 
@@ -324,7 +330,10 @@ mod tests {
 
         let signature = sign_challenge(&kp.mnemonic, challenge).unwrap();
         let valid = verify_challenge(&kp.recovery_pubkey, wrong, &signature).unwrap();
-        assert!(!valid, "signature should not verify against wrong challenge");
+        assert!(
+            !valid,
+            "signature should not verify against wrong challenge"
+        );
     }
 
     #[test]
@@ -334,8 +343,7 @@ mod tests {
         let challenge = b"test-challenge-256-bits-padding!!";
 
         let signature = sign_challenge(&kp1.mnemonic, challenge).unwrap();
-        let valid =
-            verify_challenge(&kp2.recovery_pubkey, challenge, &signature).unwrap();
+        let valid = verify_challenge(&kp2.recovery_pubkey, challenge, &signature).unwrap();
         assert!(!valid, "signature should not verify against different key");
     }
 

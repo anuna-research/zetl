@@ -121,9 +121,7 @@ impl RateLimiter {
     pub fn purge_expired(&self) {
         let now = Instant::now();
         let mut counters = self.counters.lock().expect("rate limiter lock poisoned");
-        counters.retain(|_, counter| {
-            counter.prune_and_count(now, self.config.window) > 0
-        });
+        counters.retain(|_, counter| counter.prune_and_count(now, self.config.window) > 0);
     }
 }
 
@@ -179,11 +177,7 @@ fn extract_client_ip(req: &axum::http::Request<axum::body::Body>, trust_proxy: b
         }
 
         // X-Real-IP
-        if let Some(real_ip) = req
-            .headers()
-            .get("x-real-ip")
-            .and_then(|v| v.to_str().ok())
-        {
+        if let Some(real_ip) = req.headers().get("x-real-ip").and_then(|v| v.to_str().ok()) {
             let ip = real_ip.trim();
             if !ip.is_empty() {
                 return ip.to_string();
@@ -192,7 +186,10 @@ fn extract_client_ip(req: &axum::http::Request<axum::body::Body>, trust_proxy: b
     }
 
     // Peer address from ConnectInfo (if available via axum extension)
-    if let Some(connect_info) = req.extensions().get::<axum::extract::ConnectInfo<std::net::SocketAddr>>() {
+    if let Some(connect_info) = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+    {
         return connect_info.0.ip().to_string();
     }
 

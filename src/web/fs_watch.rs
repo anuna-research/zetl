@@ -118,7 +118,10 @@ pub fn reconcile_external_edits(
         })
         .collect();
     let vault_root_bytes = compute_vault_root(&file_hashes);
-    let vault_root_hash: String = vault_root_bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let vault_root_hash: String = vault_root_bytes
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
 
     // Two-tier cache check (SPEC-006): if vault_root_hash unchanged, stop.
     {
@@ -132,7 +135,10 @@ pub fn reconcile_external_edits(
             })
             .collect();
         let current_root_bytes = compute_vault_root(&current_hashes);
-        let current_hash: String = current_root_bytes.iter().map(|b| format!("{b:02x}")).collect();
+        let current_hash: String = current_root_bytes
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         if current_hash == vault_root_hash {
             return None; // No actual change
         }
@@ -216,11 +222,7 @@ pub fn reconcile_external_edits(
 /// Builds a `HookUser` from the `ExternalSource` and fires the on-save hook
 /// once per changed file, with `is_external: true` on both `HookSaved` and
 /// `HookUser`.
-fn fire_external_save_hooks(
-    state: &WebState,
-    changed_paths: &[PathBuf],
-    source: &ExternalSource,
-) {
+fn fire_external_save_hooks(state: &WebState, changed_paths: &[PathBuf], source: &ExternalSource) {
     let theme_hooks = hooks::resolve_theme_hooks(&state.vault_root, &state.theme);
     let manifest = hooks::discover_hooks(&state.vault_root, theme_hooks.path());
 
@@ -245,15 +247,15 @@ fn fire_external_save_hooks(
     ctx.user = Some(external_user);
 
     for path in changed_paths {
-        let rel_path = path
-            .strip_prefix(state.vault_root.as_ref())
-            .unwrap_or(path);
+        let rel_path = path.strip_prefix(state.vault_root.as_ref()).unwrap_or(path);
         let rel_str = rel_path.to_string_lossy().into_owned();
         let page_name = rel_path
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let content_length = std::fs::metadata(path).map(|m| m.len() as usize).unwrap_or(0);
+        let content_length = std::fs::metadata(path)
+            .map(|m| m.len() as usize)
+            .unwrap_or(0);
 
         ctx.saved = Some(HookSaved {
             file: rel_str.clone(),
@@ -331,11 +333,7 @@ fn detect_and_report_acl_violations(state: &WebState, changed_slugs: &[String]) 
     }
 
     let data = state.data.read().unwrap();
-    let all_page_slugs: Vec<String> = data
-        .page_slug_map
-        .values()
-        .cloned()
-        .collect();
+    let all_page_slugs: Vec<String> = data.page_slug_map.values().cloned().collect();
 
     let mut violations: Vec<HookAclViolationEntry> = Vec::new();
 
@@ -395,7 +393,10 @@ fn detect_and_report_acl_violations(state: &WebState, changed_slugs: &[String]) 
                     // User is allowed — no violation for this user.
                 }
                 Err(e) => {
-                    eprintln!("fs-watch: acl violation check error for page '{}' user '{}': {e}", slug, user.id);
+                    eprintln!(
+                        "fs-watch: acl violation check error for page '{}' user '{}': {e}",
+                        slug, user.id
+                    );
                 }
             }
         }
@@ -451,7 +452,10 @@ fn fire_acl_violation_hook(state: &WebState, violations: Vec<HookAclViolationEnt
         theme: state.theme.clone(),
         zetl_version: env!("CARGO_PKG_VERSION").to_string(),
         extra_vars: vec![
-            ("ZETL_ACL_VIOLATION_COUNT".into(), violations.len().to_string()),
+            (
+                "ZETL_ACL_VIOLATION_COUNT".into(),
+                violations.len().to_string(),
+            ),
             ("ZETL_ACL_VIOLATION_PAGES".into(), violation_pages.join(",")),
             ("ZETL_HOOK_DEPTH".into(), "0".into()),
         ],
@@ -543,11 +547,14 @@ pub fn spawn_fs_watcher(state: WebState) -> tokio::task::JoinHandle<()> {
                 // Flush batch if debounce window has elapsed.
                 if let Some(ts) = last_event {
                     if ts.elapsed() >= debounce_duration && !batch.is_empty() {
-                        let paths: Vec<PathBuf> = batch.drain(..).collect();
+                        let paths: Vec<PathBuf> = std::mem::take(&mut batch);
                         // Deduplicate
                         let unique: Vec<PathBuf> = {
                             let mut seen = HashSet::new();
-                            paths.into_iter().filter(|p| seen.insert(p.clone())).collect()
+                            paths
+                                .into_iter()
+                                .filter(|p| seen.insert(p.clone()))
+                                .collect()
                         };
                         let _ = tx.send(unique);
                         last_event = None;
@@ -727,9 +734,7 @@ mod tests {
             tls: false,
             trust_proxy: false,
             sessions: crate::web::session::SessionStore::new(),
-            recovery_challenges: Arc::new(
-                crate::user::recovery::RecoveryChallengeStore::new(),
-            ),
+            recovery_challenges: Arc::new(crate::user::recovery::RecoveryChallengeStore::new()),
             mnemonic_shown: Arc::new(Mutex::new(std::collections::HashSet::new())),
             bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
@@ -760,7 +765,10 @@ mod tests {
         std::fs::write(&new_file, "# External\n\nAdded by editor\n").unwrap();
 
         let result = reconcile_external_edits(&state, &[new_file], &ExternalSource::Filesystem);
-        assert!(result.is_some(), "vault_root_hash should change after external edit");
+        assert!(
+            result.is_some(),
+            "vault_root_hash should change after external edit"
+        );
 
         // Verify VaultData was updated to include the new file.
         let data = state.data.read().unwrap();
@@ -1100,7 +1108,10 @@ mod tests {
 
         // Should produce Deleted message.
         assert_eq!(msgs.len(), 1);
-        assert!(matches!(&msgs[0], super::super::ws::ServerMsg::Deleted { .. }));
+        assert!(matches!(
+            &msgs[0],
+            super::super::ws::ServerMsg::Deleted { .. }
+        ));
 
         // CRDT evicted.
         assert!(!state.crdt_store.is_loaded("note"));

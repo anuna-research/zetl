@@ -1,8 +1,8 @@
 #[cfg(feature = "reason")]
 pub mod acl;
 pub mod cache;
-pub mod crdt;
 pub mod cli;
+pub mod crdt;
 pub mod drift;
 pub mod graph;
 #[cfg(feature = "history")]

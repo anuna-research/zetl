@@ -341,7 +341,14 @@ pub fn render_to_html_with_visibility(
     let mut html_output = String::new();
     pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
 
-    rewrite_wikilinks_with_visibility(&html_output, &wikilink_re, slug_map, denied_pages, root_path, index_file)
+    rewrite_wikilinks_with_visibility(
+        &html_output,
+        &wikilink_re,
+        slug_map,
+        denied_pages,
+        root_path,
+        index_file,
+    )
 }
 
 /// Replace [[wikilinks]] with visibility-aware <a> tags in HTML, skipping <code>/<pre>.
@@ -362,7 +369,12 @@ fn rewrite_wikilinks_with_visibility(
         if html[i..].starts_with("<code") || html[i..].starts_with("<pre") {
             if depth == 0 && i > segment_start {
                 result.push_str(&replace_wikilinks_visibility_segment(
-                    &html[segment_start..i], re, slug_map, denied_pages, root_path, index_file,
+                    &html[segment_start..i],
+                    re,
+                    slug_map,
+                    denied_pages,
+                    root_path,
+                    index_file,
                 ));
             } else if i > segment_start {
                 result.push_str(&html[segment_start..i]);
@@ -378,7 +390,9 @@ fn rewrite_wikilinks_with_visibility(
                 segment_start = tag_end;
             }
             while let Some(&(j, _)) = chars.peek() {
-                if j >= tag_end { break; }
+                if j >= tag_end {
+                    break;
+                }
                 chars.next();
             }
         } else {
@@ -389,7 +403,12 @@ fn rewrite_wikilinks_with_visibility(
     if segment_start < html.len() {
         if depth == 0 {
             result.push_str(&replace_wikilinks_visibility_segment(
-                &html[segment_start..], re, slug_map, denied_pages, root_path, index_file,
+                &html[segment_start..],
+                re,
+                slug_map,
+                denied_pages,
+                root_path,
+                index_file,
             ));
         } else {
             result.push_str(&html[segment_start..]);

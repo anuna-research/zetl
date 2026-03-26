@@ -430,10 +430,7 @@ impl CrdtDocStore {
     ///
     /// Enforces the memory bound by evicting the least-recently-used
     /// document (that has no active clients) when at capacity.
-    pub fn load_or_get(
-        &self,
-        slug: &str,
-    ) -> Result<(), anyhow::Error> {
+    pub fn load_or_get(&self, slug: &str) -> Result<(), anyhow::Error> {
         let mut docs = self.docs.lock().expect("crdt store lock");
 
         if let Some(entry) = docs.get_mut(slug) {
@@ -562,9 +559,7 @@ impl CrdtDocStore {
                         end,
                     } => {
                         let sv = json_to_scalar(value);
-                        if let Some(mt) =
-                            crate::crdt::marks::MarkType::from_mark(name, &sv)
-                        {
+                        if let Some(mt) = crate::crdt::marks::MarkType::from_mark(name, &sv) {
                             entry.doc.mark(&mt, *start, *end)?;
                         }
                     }
@@ -632,7 +627,7 @@ impl CrdtDocStore {
                 entry.client_count == 0
                     && entry
                         .disconnected_at
-                        .map_or(false, |t| now.duration_since(t) >= self.eviction_ttl)
+                        .is_some_and(|t| now.duration_since(t) >= self.eviction_ttl)
             })
             .map(|(slug, _)| slug.clone())
             .collect()
@@ -657,10 +652,7 @@ impl CrdtDocStore {
 
     /// Evict the least-recently-used document that has no active clients.
     /// If the evicted doc is dirty, returns its slug and markdown for flushing.
-    fn evict_lru(
-        &self,
-        docs: &mut HashMap<String, CrdtDocEntry>,
-    ) -> Result<(), anyhow::Error> {
+    fn evict_lru(&self, docs: &mut HashMap<String, CrdtDocEntry>) -> Result<(), anyhow::Error> {
         // Find the LRU entry with no active clients
         let lru_slug = docs
             .iter()
@@ -704,7 +696,10 @@ impl CrdtDocStore {
 
     /// Check if a document is loaded.
     pub fn is_loaded(&self, slug: &str) -> bool {
-        self.docs.lock().expect("crdt store lock").contains_key(slug)
+        self.docs
+            .lock()
+            .expect("crdt store lock")
+            .contains_key(slug)
     }
 
     /// Return CRDT metadata for a loaded document: `(dirty, secs_since_flush, content_hash)`.
@@ -764,11 +759,7 @@ impl CrdtDocStore {
     ///   recovery file to `.zetl/recovery/<slug>.md`, then evict.
     ///
     /// Returns a list of `ServerMsg` to broadcast per slug.
-    pub fn reconcile_crdt(
-        &self,
-        slug: &str,
-        file_exists: bool,
-    ) -> Vec<ServerMsg> {
+    pub fn reconcile_crdt(&self, slug: &str, file_exists: bool) -> Vec<ServerMsg> {
         let mut msgs = Vec::new();
         let mut docs = self.docs.lock().expect("crdt store lock");
 
@@ -962,10 +953,8 @@ pub async fn ws_edit_handler(
     match user_id {
         Some(uid) => {
             // In collab mode, enforce page ACL before upgrading the WebSocket.
-            if state.collab {
-                if let Err(_) = check_ws_page_acl(&state, &uid, &slug) {
-                    return axum::http::StatusCode::FORBIDDEN.into_response();
-                }
+            if state.collab && check_ws_page_acl(&state, &uid, &slug).is_err() {
+                return axum::http::StatusCode::FORBIDDEN.into_response();
             }
             ws.on_upgrade(move |socket| handle_socket(socket, slug, uid, state))
         }
@@ -985,9 +974,10 @@ fn check_ws_page_acl(_state: &WebState, _user_id: &str, _page_slug: &str) -> Res
 fn check_ws_page_acl(state: &WebState, user_id: &str, page_slug: &str) -> Result<(), ()> {
     let (spl_blocks, all_slugs) = {
         let data = state.data.read().unwrap();
-        let file = data.files.iter().find(|f| {
-            crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
-        });
+        let file = data
+            .files
+            .iter()
+            .find(|f| crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug));
         let spl = file.map(|f| f.spl_blocks.clone()).unwrap_or_default();
         let slugs: Vec<String> = data
             .files
@@ -1069,9 +1059,11 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
     // flush/load preserves the original filename (case, spaces, etc.).
     {
         let data = state.data.read().unwrap();
-        if let Some(file) = data.files.iter().find(|f| {
-            crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug)
-        }) {
+        if let Some(file) = data
+            .files
+            .iter()
+            .find(|f| crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug))
+        {
             state
                 .crdt_store
                 .register_path(&slug, state.vault_root.join(&file.path));
@@ -1096,11 +1088,10 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
     let mut rx = room.tx.subscribe();
 
     // Send current CRDT state to joiner from the doc store
-    let initial_doc = state.crdt_store.get_doc_state_b64(&slug)
-        .or_else(|| {
-            let doc = room.doc_state.lock().expect("doc lock");
-            doc.clone()
-        });
+    let initial_doc = state.crdt_store.get_doc_state_b64(&slug).or_else(|| {
+        let doc = room.doc_state.lock().expect("doc lock");
+        doc.clone()
+    });
     if let Some(doc_b64) = initial_doc {
         let msg = ServerMsg::Sync { doc: doc_b64 };
         if let Ok(json) = serde_json::to_string(&msg) {
@@ -1136,7 +1127,9 @@ async fn handle_socket(mut socket: WebSocket, slug: String, user_id: String, sta
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    eprintln!("warning: client {relay_user_id} lagged by {n} messages on broadcast");
+                    eprintln!(
+                        "warning: client {relay_user_id} lagged by {n} messages on broadcast"
+                    );
                     let _ = relay_tx.send(ServerMsg::Error {
                         message: format!("lagged by {n} messages; some edits may be missing — consider re-syncing"),
                     }).await;
@@ -1299,7 +1292,9 @@ mod tests {
     fn parse_presence_msg() {
         let json = r#"{"type":"presence","cursor":{"index":10,"head":15},"name":"Alice"}"#;
         let msg: ClientMsg = serde_json::from_str(json).unwrap();
-        assert!(matches!(msg, ClientMsg::Presence { cursor, name } if cursor.index == 10 && name == Some("Alice".into())));
+        assert!(
+            matches!(msg, ClientMsg::Presence { cursor, name } if cursor.index == 10 && name == Some("Alice".into()))
+        );
     }
 
     #[test]
@@ -1331,10 +1326,7 @@ mod tests {
     fn serialize_server_presence() {
         let msg = ServerMsg::Presence {
             user_id: "bob".into(),
-            cursor: CursorPos {
-                index: 5,
-                head: 10,
-            },
+            cursor: CursorPos { index: 5, head: 10 },
             name: Some("Bob".into()),
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -1549,8 +1541,7 @@ mod tests {
         // Manually set last_edit to past to simulate quiescence
         {
             let mut docs = store.docs.lock().unwrap();
-            docs.get_mut("page").unwrap().last_edit =
-                Instant::now() - Duration::from_secs(10);
+            docs.get_mut("page").unwrap().last_edit = Instant::now() - Duration::from_secs(10);
         }
 
         let to_flush = store.slugs_needing_flush();
@@ -1592,8 +1583,7 @@ mod tests {
         // Give page1 an older last_access
         {
             let mut docs = store.docs.lock().unwrap();
-            docs.get_mut("page0").unwrap().last_access =
-                Instant::now() - Duration::from_secs(100);
+            docs.get_mut("page0").unwrap().last_access = Instant::now() - Duration::from_secs(100);
         }
 
         // Load 4th doc — should evict page0 (oldest LRU with no clients)
@@ -1622,8 +1612,7 @@ mod tests {
         // page1 is the only one eligible
         {
             let mut docs = store.docs.lock().unwrap();
-            docs.get_mut("page1").unwrap().last_access =
-                Instant::now() - Duration::from_secs(100);
+            docs.get_mut("page1").unwrap().last_access = Instant::now() - Duration::from_secs(100);
         }
 
         std::fs::write(tmp.path().join("page2.md"), "new\n").unwrap();

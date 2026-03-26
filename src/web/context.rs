@@ -132,8 +132,8 @@ pub fn build_sidebar_tree(pages: &[PageEntry]) -> Vec<SidebarNode> {
         .collect();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-    fn build_level<'a>(
-        entries: &[(Vec<&'a str>, &PageEntry)],
+    fn build_level(
+        entries: &[(Vec<&str>, &PageEntry)],
         depth: usize,
         prefix: &str,
     ) -> Vec<SidebarNode> {
@@ -260,21 +260,16 @@ pub fn filter_vault_context_for_visibility(
     denied_pages: &HashMap<String, SidebarDeniedStyle>,
 ) {
     // Filter the pages list
-    ctx.pages.retain(|p| {
-        match denied_pages.get(&p.slug) {
-            Some(SidebarDeniedStyle::Hidden) => false,
-            _ => true,
-        }
+    ctx.pages.retain(|p| match denied_pages.get(&p.slug) {
+        Some(SidebarDeniedStyle::Hidden) => false,
+        _ => true,
     });
 
     // Rebuild sidebar tree from filtered pages
     ctx.sidebar_tree = build_sidebar_tree(&ctx.pages);
 
     // Apply denied_style to sidebar leaves
-    fn apply_denied_style(
-        nodes: &mut [SidebarNode],
-        denied: &HashMap<String, SidebarDeniedStyle>,
-    ) {
+    fn apply_denied_style(nodes: &mut [SidebarNode], denied: &HashMap<String, SidebarDeniedStyle>) {
         for node in nodes.iter_mut() {
             if node.is_folder {
                 apply_denied_style(&mut node.children, denied);
@@ -796,10 +791,7 @@ mod tests {
 
     #[test]
     fn filter_vault_context_grays_out_denied_pages() {
-        let files = vec![
-            make_file("Alpha", vec![]),
-            make_file("Secret", vec![]),
-        ];
+        let files = vec![make_file("Alpha", vec![]), make_file("Secret", vec![])];
         let data = make_vault_data(files);
         let mut ctx = build_vault_context(&data, "vault");
 
@@ -820,10 +812,7 @@ mod tests {
 
     #[test]
     fn filter_vault_context_locks_denied_pages() {
-        let files = vec![
-            make_file("Alpha", vec![]),
-            make_file("Roadmap", vec![]),
-        ];
+        let files = vec![make_file("Alpha", vec![]), make_file("Roadmap", vec![])];
         let data = make_vault_data(files);
         let mut ctx = build_vault_context(&data, "vault");
 

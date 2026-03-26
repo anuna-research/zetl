@@ -7,8 +7,8 @@ pub mod git_commit;
 pub mod git_poll;
 pub mod html;
 pub mod markdown;
-pub mod routes;
 pub mod rate_limit;
+pub mod routes;
 pub mod session;
 pub mod theme;
 pub mod wal;
@@ -81,17 +81,9 @@ impl AclCache {
     }
 
     /// Look up a cached decision.  Returns `None` on cache miss.
-    pub fn lookup(
-        &self,
-        user_id: &str,
-        page_slug: &str,
-        action: Action,
-    ) -> Option<&AclDecision> {
-        self.entries.get(&(
-            user_id.to_owned(),
-            page_slug.to_owned(),
-            action,
-        ))
+    pub fn lookup(&self, user_id: &str, page_slug: &str, action: Action) -> Option<&AclDecision> {
+        self.entries
+            .get(&(user_id.to_owned(), page_slug.to_owned(), action))
     }
 
     /// Insert a decision into the cache.
@@ -278,7 +270,12 @@ pub fn build_slug_map(files: &[ParsedFile]) -> (HashMap<String, String>, HashSet
     (page_slug_map, collision_names)
 }
 
-pub async fn run(state: WebState, port: u16, bind_addr: &str, git_poll_interval: std::time::Duration) -> anyhow::Result<()> {
+pub async fn run(
+    state: WebState,
+    port: u16,
+    bind_addr: &str,
+    git_poll_interval: std::time::Duration,
+) -> anyhow::Result<()> {
     // ── WAL replay on startup (REQ-020-044) ─────────────────────────────
     // If the server crashed with dirty CRDT state, the WAL contains the
     // operations that were not yet flushed. Replay them now.
@@ -384,14 +381,8 @@ pub async fn run(state: WebState, port: u16, bind_addr: &str, git_poll_interval:
             get(routes::api_comments_get_handler).post(routes::api_comments_post_handler),
         )
         .route("/_print", get(routes::print_handler))
-        .route(
-            "/api/history/file-diff",
-            get(routes::api_file_diff_handler),
-        )
-        .route(
-            "/api/history/restore",
-            post(routes::api_restore_handler),
-        )
+        .route("/api/history/file-diff", get(routes::api_file_diff_handler))
+        .route("/api/history/restore", post(routes::api_restore_handler))
         .route("/edit/{*slug}", get(routes::edit_handler))
         .route("/_static/{*path}", get(routes::static_handler))
         .merge(admin_routes)
@@ -474,14 +465,15 @@ fn spawn_comment_prune_task(vault_root: Arc<PathBuf>) -> tokio::task::JoinHandle
         loop {
             interval.tick().await;
             let vr = vault_root.clone();
-            let _ = tokio::task::spawn_blocking(move || {
-                match crate::user::comment::prune_all_comments(&vr) {
-                    Ok(0) => {}
-                    Ok(n) => eprintln!("comment prune: removed {n} expired comments"),
-                    Err(e) => eprintln!("comment prune error: {e}"),
-                }
-            })
-            .await;
+            let _ =
+                tokio::task::spawn_blocking(
+                    move || match crate::user::comment::prune_all_comments(&vr) {
+                        Ok(0) => {}
+                        Ok(n) => eprintln!("comment prune: removed {n} expired comments"),
+                        Err(e) => eprintln!("comment prune error: {e}"),
+                    },
+                )
+                .await;
         }
     })
 }

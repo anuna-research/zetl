@@ -60,7 +60,9 @@ pub enum Command {
     Index,
 
     /// Query forward links from a page
-    #[command(after_help = "Examples:\n  zetl links \"My Page\"              Direct links\n  zetl links \"My Page\" --depth 2    Two hops deep")]
+    #[command(
+        after_help = "Examples:\n  zetl links \"My Page\"              Direct links\n  zetl links \"My Page\" --depth 2    Two hops deep"
+    )]
     Links {
         /// Page name (case-insensitive)
         page: String,
@@ -97,7 +99,9 @@ pub enum Command {
     },
 
     /// Validate: report dead links, orphans, syntax errors, and SPL diagnostics
-    #[command(after_help = "Examples:\n  zetl check                   Full vault health check\n  zetl check --dead-links      Show only broken links\n  zetl check --orphans          Show only unlinked pages")]
+    #[command(
+        after_help = "Examples:\n  zetl check                   Full vault health check\n  zetl check --dead-links      Show only broken links\n  zetl check --orphans          Show only unlinked pages"
+    )]
     Check {
         /// Show only dead links
         #[arg(long)]
@@ -135,7 +139,9 @@ pub enum Command {
     },
 
     /// Search vault file contents for text
-    #[command(after_help = "Examples:\n  zetl search \"wikilink\"                 Basic search\n  zetl search \"API\" --near \"Backend\"     Search near a page\n  zetl search \"TODO\" --case-sensitive    Exact case match")]
+    #[command(
+        after_help = "Examples:\n  zetl search \"wikilink\"                 Basic search\n  zetl search \"API\" --near \"Backend\"     Search near a page\n  zetl search \"TODO\" --case-sensitive    Exact case match"
+    )]
     Search {
         /// Search string
         query: String,
@@ -176,7 +182,9 @@ pub enum Command {
     },
 
     /// Find shortest link path between two pages
-    #[command(after_help = "Examples:\n  zetl path \"Page A\" \"Page B\"           Find shortest path\n  zetl path \"Page A\" \"Page B\" --max-depth 5")]
+    #[command(
+        after_help = "Examples:\n  zetl path \"Page A\" \"Page B\"           Find shortest path\n  zetl path \"Page A\" \"Page B\" --max-depth 5"
+    )]
     Path {
         /// Source page name
         from: String,
@@ -206,7 +214,9 @@ pub enum Command {
     Tui,
 
     /// Start local web server to browse the vault
-    #[command(after_help = "Examples:\n  zetl serve                                        Single-user web UI\n  zetl serve --collab --init-owner --owner-name Jo   First-time collab setup\n  zetl serve --collab                                Multi-user mode\n  zetl serve --port 8080 --theme dark                Custom port and theme")]
+    #[command(
+        after_help = "Examples:\n  zetl serve                                        Single-user web UI\n  zetl serve --collab --init-owner --owner-name Jo   First-time collab setup\n  zetl serve --collab                                Multi-user mode\n  zetl serve --port 8080 --theme dark                Custom port and theme"
+    )]
     Serve {
         /// Port to listen on
         #[arg(short, long, default_value = "3000")]
@@ -230,7 +240,9 @@ pub enum Command {
     },
 
     /// Generate an invitation token for a new collaborator
-    #[command(after_help = "Examples:\n  zetl invite --as alice --role editor\n  zetl invite --as alice --role reader --pages \"projects/*\"\n  zetl invite --as alice --role editor --expires 24h")]
+    #[command(
+        after_help = "Examples:\n  zetl invite --as alice --role editor\n  zetl invite --as alice --role reader --pages \"projects/*\"\n  zetl invite --as alice --role editor --expires 24h"
+    )]
     Invite {
         /// Your username (inviter)
         #[arg(long = "as")]
@@ -406,7 +418,9 @@ pub enum HookCommand {
 #[derive(Subcommand)]
 pub enum AgentCommand {
     /// Run an on-agent hook with task context (REQ-020-023)
-    #[command(after_help = "Examples:\n  zetl agent run link-checker\n  zetl agent run summariser --pages \"Note A\" \"Note B\" --budget 4000")]
+    #[command(
+        after_help = "Examples:\n  zetl agent run link-checker\n  zetl agent run summariser --pages \"Note A\" \"Note B\" --budget 4000"
+    )]
     Run {
         /// Agent task name
         name: String,

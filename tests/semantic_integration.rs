@@ -33,7 +33,10 @@ fn test_chunk_page_roundtrip() {
     ];
     let chunks = chunk_page("p", "p.md", &body, &headings, 10);
     let rejoined: String = chunks.iter().map(|c| c.text.as_str()).collect();
-    assert_eq!(rejoined, body, "chunk texts must reconstruct the full input");
+    assert_eq!(
+        rejoined, body,
+        "chunk texts must reconstruct the full input"
+    );
 }
 
 // TEST-121: RRF — all pages from both input lists appear in the output.
@@ -44,13 +47,9 @@ fn test_rrf_completeness() {
         ("beta".to_string(), 2),
         ("gamma".to_string(), 3),
     ];
-    let b = vec![
-        ("beta".to_string(), 1),
-        ("delta".to_string(), 2),
-    ];
+    let b = vec![("beta".to_string(), 1), ("delta".to_string(), 2)];
     let fused = reciprocal_rank_fusion(&a, &b, 60);
-    let pages: std::collections::HashSet<&str> =
-        fused.iter().map(|(p, _)| p.as_str()).collect();
+    let pages: std::collections::HashSet<&str> = fused.iter().map(|(p, _)| p.as_str()).collect();
     for expected in &["alpha", "beta", "gamma", "delta"] {
         assert!(pages.contains(expected), "missing page: {expected}");
     }
@@ -147,31 +146,40 @@ fn test_chunk_page_roundtrip_various_configs() {
         // Long page, no headings → single chunk, roundtrip trivially holds.
         ("a".repeat(2048).leak(), vec![], 100),
         // Long page with one h2 at offset 512.
-        ({
-            let mut s = "a".repeat(512);
-            s.push_str("## Section\n");
-            s.push_str(&"b".repeat(512));
-            s.leak()
-        }, vec![(512, 2, "Section".to_string())], 100),
+        (
+            {
+                let mut s = "a".repeat(512);
+                s.push_str("## Section\n");
+                s.push_str(&"b".repeat(512));
+                s.leak()
+            },
+            vec![(512, 2, "Section".to_string())],
+            100,
+        ),
         // Long page with two h2s.
-        ({
-            let mut s = "intro ".repeat(20); // 120 bytes
-            s.push_str("## Alpha\n");
-            s.push_str(&"x".repeat(300));
-            s.push_str("## Beta\n");
-            s.push_str(&"y".repeat(300));
-            s.leak()
-        }, vec![
-            (120, 2, "Alpha".to_string()),
-            (120 + 9 + 300, 2, "Beta".to_string()),
-        ], 10),
+        (
+            {
+                let mut s = "intro ".repeat(20); // 120 bytes
+                s.push_str("## Alpha\n");
+                s.push_str(&"x".repeat(300));
+                s.push_str("## Beta\n");
+                s.push_str(&"y".repeat(300));
+                s.leak()
+            },
+            vec![
+                (120, 2, "Alpha".to_string()),
+                (120 + 9 + 300, 2, "Beta".to_string()),
+            ],
+            10,
+        ),
     ];
 
     for (content, headings, threshold) in cases {
         let chunks = chunk_page("p", "p.md", content, headings, *threshold);
         let rejoined: String = chunks.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(
-            &rejoined, content,
+            &rejoined,
+            content,
             "roundtrip failed for content of length {}",
             content.len()
         );
@@ -244,7 +252,9 @@ fn test_rrf_double_appearance_boosts_rank() {
 
 // ── Storage layout tests ────────────────────────────────────────────────────
 
-use zetl::semantic::{ChunkMeta, CHUNKS_FILE, EMBEDDING_DIM, INDEX_FILE, MODEL_FILE, MODEL_NAME, VECTORS_DIR};
+use zetl::semantic::{
+    ChunkMeta, CHUNKS_FILE, EMBEDDING_DIM, INDEX_FILE, MODEL_FILE, MODEL_NAME, VECTORS_DIR,
+};
 
 /// TEST-114: index.bin stores embeddings as a flat little-endian f32 array.
 /// The parsed chunk count matches the number of written embeddings.
@@ -345,7 +355,11 @@ fn test_storage_open_none_cases() {
     let vd3 = tmp3.path().join(VECTORS_DIR);
     fs::create_dir_all(&vd3).unwrap();
     let empty: Vec<ChunkMeta> = vec![];
-    fs::write(vd3.join(CHUNKS_FILE), serde_json::to_string(&empty).unwrap()).unwrap();
+    fs::write(
+        vd3.join(CHUNKS_FILE),
+        serde_json::to_string(&empty).unwrap(),
+    )
+    .unwrap();
     assert!(VectorIndex::open(tmp3.path()).unwrap().is_none());
 
     // Case 4: only index.bin present.
@@ -360,7 +374,10 @@ fn test_storage_open_none_cases() {
 /// Verifies the directory constant and file name constants align.
 #[test]
 fn test_storage_constants_alignment() {
-    assert!(VECTORS_DIR.contains("search/vectors"), "VECTORS_DIR should be under search/vectors");
+    assert!(
+        VECTORS_DIR.contains("search/vectors"),
+        "VECTORS_DIR should be under search/vectors"
+    );
     assert_eq!(INDEX_FILE, "index.bin");
     assert_eq!(CHUNKS_FILE, "chunks.json");
     assert_eq!(MODEL_FILE, "model.json");
@@ -404,8 +421,14 @@ fn test_incremental_rebuild_stale_detection() {
     let stale = detect_stale_chunks(&old_hashes, &new_hashes);
 
     // Only index 0 (page-a) is stale; index 1 (page-b) is fresh.
-    assert!(stale.contains(&0), "page-a (changed hash) must be detected as stale");
-    assert!(!stale.contains(&1), "page-b (unchanged hash) must NOT be stale");
+    assert!(
+        stale.contains(&0),
+        "page-a (changed hash) must be detected as stale"
+    );
+    assert!(
+        !stale.contains(&1),
+        "page-b (unchanged hash) must NOT be stale"
+    );
     assert_eq!(stale.len(), 1, "exactly one chunk should be stale");
 }
 
@@ -631,8 +654,7 @@ fn test_vector_index_build_open_roundtrip_cli() {
     );
 
     // chunks.json should agree with the in-memory chunk count.
-    let chunks_json =
-        fs::read_to_string(vectors_dir.join(CHUNKS_FILE)).expect("read chunks.json");
+    let chunks_json = fs::read_to_string(vectors_dir.join(CHUNKS_FILE)).expect("read chunks.json");
     let meta: Vec<zetl::semantic::ChunkMeta> =
         serde_json::from_str(&chunks_json).expect("parse chunks.json");
     assert_eq!(
@@ -678,14 +700,18 @@ fn test_semantic_ranking_by_cosine_similarity_cli() {
     let (ok, stderr) = run_zetl_index(tmp.path());
     assert!(ok, "zetl index failed:\n{stderr}");
 
-    let (ok, stdout, stderr) =
-        run_zetl_search(tmp.path(), &["--semantic", "feedback equilibrium control loop"]);
+    let (ok, stdout, stderr) = run_zetl_search(
+        tmp.path(),
+        &["--semantic", "feedback equilibrium control loop"],
+    );
     assert!(ok, "zetl search --semantic failed:\n{stderr}");
 
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse search output: {e}\nraw: {stdout}"));
 
-    let results = json["results"].as_array().expect("results must be an array");
+    let results = json["results"]
+        .as_array()
+        .expect("results must be an array");
     assert!(
         !results.is_empty(),
         "expected at least one semantic search result"
@@ -761,14 +787,15 @@ fn test_hybrid_combines_bm25_and_semantic_signals_cli() {
     let (ok, stderr) = run_zetl_index(tmp.path());
     assert!(ok, "zetl index failed:\n{stderr}");
 
-    let (ok, stdout, stderr) =
-        run_zetl_search(tmp.path(), &["--hybrid", "quantum computing"]);
+    let (ok, stdout, stderr) = run_zetl_search(tmp.path(), &["--hybrid", "quantum computing"]);
     assert!(ok, "zetl search --hybrid failed:\n{stderr}");
 
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse hybrid output: {e}\nraw: {stdout}"));
 
-    let results = json["results"].as_array().expect("results must be an array");
+    let results = json["results"]
+        .as_array()
+        .expect("results must be an array");
     assert!(
         !results.is_empty(),
         "expected at least one hybrid search result"
@@ -783,7 +810,10 @@ fn test_hybrid_combines_bm25_and_semantic_signals_cli() {
     );
 
     // All three pages should appear in the results (union of BM25 + vector candidates).
-    let pages: Vec<&str> = results.iter().map(|r| r["page"].as_str().unwrap_or("")).collect();
+    let pages: Vec<&str> = results
+        .iter()
+        .map(|r| r["page"].as_str().unwrap_or(""))
+        .collect();
     for expected in &["both", "keyword-only", "semantic-only"] {
         assert!(
             pages.contains(expected),
@@ -842,8 +872,13 @@ fn test_hybrid_near_restricts_to_neighbourhood_cli() {
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse output: {e}\nraw: {stdout}"));
 
-    let results = json["results"].as_array().expect("results must be an array");
-    let pages: Vec<&str> = results.iter().map(|r| r["page"].as_str().unwrap_or("")).collect();
+    let results = json["results"]
+        .as_array()
+        .expect("results must be an array");
+    let pages: Vec<&str> = results
+        .iter()
+        .map(|r| r["page"].as_str().unwrap_or(""))
+        .collect();
 
     // "unlinked" is outside the hub neighbourhood and must not appear.
     assert!(

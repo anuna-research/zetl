@@ -47,8 +47,7 @@ pub struct VerifiedComment {
 
 /// Compute HMAC-SHA256(key, user || text || at) and return hex-encoded tag.
 pub fn compute_hmac(server_key: &[u8], user: &str, text: &str, at: &str) -> String {
-    let mut mac = HmacSha256::new_from_slice(server_key)
-        .expect("HMAC accepts any key length");
+    let mut mac = HmacSha256::new_from_slice(server_key).expect("HMAC accepts any key length");
     mac.update(user.as_bytes());
     mac.update(text.as_bytes());
     mac.update(at.as_bytes());
@@ -88,8 +87,8 @@ pub fn load_comments(vault_root: &Path, slug: &str) -> Result<Vec<Comment>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     if content.trim().is_empty() {
         return Ok(Vec::new());
     }
@@ -101,8 +100,7 @@ pub fn load_comments(vault_root: &Path, slug: &str) -> Result<Vec<Comment>> {
 /// Save the full list of comments for a page slug.
 pub fn save_comments(vault_root: &Path, slug: &str, comments: &[Comment]) -> Result<()> {
     let dir = vault_root.join(COMMENTS_DIR);
-    fs::create_dir_all(&dir)
-        .with_context(|| format!("failed to create {}", dir.display()))?;
+    fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;
     let path = comments_path(vault_root, slug);
     if comments.is_empty() {
         // Remove the file if no comments remain after pruning
@@ -112,10 +110,8 @@ pub fn save_comments(vault_root: &Path, slug: &str, comments: &[Comment]) -> Res
         }
         return Ok(());
     }
-    let json = serde_json::to_string_pretty(comments)
-        .context("failed to serialize comments")?;
-    fs::write(&path, json)
-        .with_context(|| format!("failed to write {}", path.display()))?;
+    let json = serde_json::to_string_pretty(comments).context("failed to serialize comments")?;
+    fs::write(&path, json).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
 }
 
@@ -171,9 +167,7 @@ pub fn prune_all_comments_with_age(vault_root: &Path, max_age_secs: u64) -> Resu
         return Ok(0);
     }
     let mut total = 0;
-    for entry in fs::read_dir(&dir)
-        .with_context(|| format!("failed to read {}", dir.display()))?
-    {
+    for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
         let entry = entry?;
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("json") {
@@ -216,7 +210,7 @@ fn sanitize_slug(slug: &str) -> Option<String> {
             return None;
         }
     }
-    let safe = slug.replace('/', "_").replace('\\', "_");
+    let safe = slug.replace(['/', '\\'], "_");
     if safe.is_empty() {
         return None;
     }
@@ -246,7 +240,8 @@ mod tests {
     #[test]
     fn append_and_load_roundtrip() {
         let tmp = TempDir::new().unwrap();
-        let c = append_comment(tmp.path(), "readme", "alice-abc123", "looks good", TEST_KEY).unwrap();
+        let c =
+            append_comment(tmp.path(), "readme", "alice-abc123", "looks good", TEST_KEY).unwrap();
         assert_eq!(c.user, "alice-abc123");
         assert_eq!(c.text, "looks good");
         assert!(!c.at.is_empty());

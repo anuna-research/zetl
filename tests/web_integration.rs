@@ -60,9 +60,7 @@ fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
         theme: theme.to_string(),
         verbose: false,
         sessions: zetl::web::session::SessionStore::new(),
-        recovery_challenges: Arc::new(
-            zetl::user::recovery::RecoveryChallengeStore::new(),
-        ),
+        recovery_challenges: Arc::new(zetl::user::recovery::RecoveryChallengeStore::new()),
         mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),

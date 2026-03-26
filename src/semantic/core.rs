@@ -119,7 +119,11 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 ///
 /// Returns `(score, index)` pairs where `index` is the position in `embeddings`.
 /// The result length is `min(limit, embeddings.len())`. TEST-119.
-pub fn vector_search(embeddings: &[impl AsRef<[f32]>], query: &[f32], limit: usize) -> Vec<(f32, usize)> {
+pub fn vector_search(
+    embeddings: &[impl AsRef<[f32]>],
+    query: &[f32],
+    limit: usize,
+) -> Vec<(f32, usize)> {
     let mut scored: Vec<(f32, usize)> = embeddings
         .iter()
         .enumerate()
@@ -194,7 +198,11 @@ mod tests {
             (22usize, 2u8, "B".to_string()),
         ];
         let chunks = chunk_page("p", "p.md", content, &headings, 1);
-        assert!(chunks.len() >= 2, "expected at least 2 chunks, got {}", chunks.len());
+        assert!(
+            chunks.len() >= 2,
+            "expected at least 2 chunks, got {}",
+            chunks.len()
+        );
         assert!(chunks.iter().any(|c| c.heading.as_deref() == Some("A")));
         assert!(chunks.iter().any(|c| c.heading.as_deref() == Some("B")));
     }

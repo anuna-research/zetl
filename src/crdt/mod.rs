@@ -29,10 +29,7 @@ impl CrdtDocument {
         let text_id = doc
             .put_object(ROOT, "content", ObjType::Text)
             .context("failed to create text object")?;
-        Ok(Self {
-            text_id: text_id.into(),
-            doc,
-        })
+        Ok(Self { text_id, doc })
     }
 
     /// Load a CRDT document from markdown text. Parses the markdown into
@@ -59,17 +56,15 @@ impl CrdtDocument {
             }
 
             // Check for frontmatter boundaries
-            if *line == "---" {
-                if is_first_line || in_frontmatter {
-                    // Frontmatter boundary — insert as atomic token
-                    self.doc
-                        .splice_text(&self.text_id, pos, 0, line)
-                        .context("splice frontmatter")?;
-                    pos += line.chars().count();
-                    in_frontmatter = is_first_line;
-                    is_first_line = false;
-                    continue;
-                }
+            if *line == "---" && (is_first_line || in_frontmatter) {
+                // Frontmatter boundary — insert as atomic token
+                self.doc
+                    .splice_text(&self.text_id, pos, 0, line)
+                    .context("splice frontmatter")?;
+                pos += line.chars().count();
+                in_frontmatter = is_first_line;
+                is_first_line = false;
+                continue;
             }
             is_first_line = false;
 
@@ -272,7 +267,7 @@ impl CrdtDocument {
         let text_id = doc
             .get(ROOT, "content")
             .context("get content")?
-            .map(|(_, id)| id.into())
+            .map(|(_, id)| id)
             .context("content not found")?;
         Ok(Self { doc, text_id })
     }
@@ -501,9 +496,7 @@ fn handle_delimited_mark(
 }
 
 fn find_open_mark_idx(open_marks: &[(MarkType, usize)], name: &str) -> Option<usize> {
-    open_marks
-        .iter()
-        .rposition(|(mt, _)| mt.name() == name)
+    open_marks.iter().rposition(|(mt, _)| mt.name() == name)
 }
 
 fn find_closing(chars: &[char], start: usize, delim: &[char]) -> Option<usize> {
@@ -522,7 +515,10 @@ fn find_closing(chars: &[char], start: usize, delim: &[char]) -> Option<usize> {
 }
 
 fn find_single_closing(chars: &[char], start: usize, delim: char) -> Option<usize> {
-    chars[start..].iter().position(|&c| c == delim).map(|p| start + p)
+    chars[start..]
+        .iter()
+        .position(|&c| c == delim)
+        .map(|p| start + p)
 }
 
 fn parse_wikilink(chars: &[char], start: usize) -> Option<(String, Option<String>, usize)> {
@@ -592,7 +588,10 @@ fn serialize_to_markdown(text: &str, marks: &[Mark<'_>]) -> Result<String> {
     }
 
     // Sort by start position, then by nesting order (outermost first)
-    typed_marks.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.nesting_order().cmp(&b.0.nesting_order())));
+    typed_marks.sort_by(|a, b| {
+        a.1.cmp(&b.1)
+            .then(a.0.nesting_order().cmp(&b.0.nesting_order()))
+    });
 
     // Build events: mark-open and mark-close at each position
     let mut opens: Vec<Vec<usize>> = vec![Vec::new(); len + 1];
@@ -948,10 +947,7 @@ mod tests {
 
         // Verify the wikilink mark did not expand
         let marks_after = doc.marks().unwrap();
-        let wl_after = marks_after
-            .iter()
-            .find(|m| m.name() == "wikilink")
-            .unwrap();
+        let wl_after = marks_after.iter().find(|m| m.name() == "wikilink").unwrap();
         assert_eq!(
             wl_after.end, wl_end,
             "Wikilink should not grow when text is inserted at boundary"
@@ -1019,14 +1015,18 @@ mod tests {
     /// Acceptance: parse(serialize(state)) round-trips to equivalent state.
     #[test]
     fn parse_serialize_round_trip_equivalence() {
-        let md = "## Heading\n\n**bold** and *italic* with [[Link]] and `code`\n\n- list ~~item~~\n";
+        let md =
+            "## Heading\n\n**bold** and *italic* with [[Link]] and `code`\n\n- list ~~item~~\n";
         let doc = CrdtDocument::from_markdown(md).unwrap();
 
         // serialize → parse → serialize must be identical
         let serialized = doc.to_markdown().unwrap();
         let doc2 = CrdtDocument::from_markdown(&serialized).unwrap();
         let serialized2 = doc2.to_markdown().unwrap();
-        assert_eq!(serialized, serialized2, "parse(serialize(state)) must round-trip");
+        assert_eq!(
+            serialized, serialized2,
+            "parse(serialize(state)) must round-trip"
+        );
     }
 
     /// Frontmatter round-trip preserves YAML content.
@@ -1061,11 +1061,15 @@ mod tests {
 #[cfg(test)]
 mod cache_repro {
     use super::*;
-    
+
     #[test]
     fn cache_md_loads_with_multibyte_chars() {
         let content = std::fs::read_to_string("demo-vault/architecture/Cache.md").unwrap();
         let doc = CrdtDocument::from_markdown(&content);
-        assert!(doc.is_ok(), "Cache.md should load (has em-dash): {:?}", doc.err());
+        assert!(
+            doc.is_ok(),
+            "Cache.md should load (has em-dash): {:?}",
+            doc.err()
+        );
     }
 }

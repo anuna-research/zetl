@@ -117,7 +117,7 @@ pub fn load_or_create_server_key(vault_root: &Path) -> Result<SigningKey> {
         super::getrandom(&mut key_bytes);
         let key = SigningKey::from_bytes(&key_bytes);
 
-        fs::write(&path, &key_bytes)
+        fs::write(&path, key_bytes)
             .with_context(|| format!("failed to write server key: {}", path.display()))?;
 
         // Set file permissions to 0600 (owner read/write only)
@@ -192,8 +192,7 @@ fn encode_jwt(key: &SigningKey, claims: &InviteClaims) -> Result<String> {
     };
 
     let header_json = serde_json::to_vec(&header).context("failed to serialize JWT header")?;
-    let payload_json =
-        serde_json::to_vec(claims).context("failed to serialize JWT payload")?;
+    let payload_json = serde_json::to_vec(claims).context("failed to serialize JWT payload")?;
 
     let header_b64 = URL_SAFE_NO_PAD.encode(&header_json);
     let payload_b64 = URL_SAFE_NO_PAD.encode(&payload_json);
@@ -281,7 +280,9 @@ fn record_nonce(vault_root: &Path, nonce: &str, exp: u64) -> Result<()> {
 /// Check if a nonce has already been used.
 pub fn is_nonce_used(vault_root: &Path, nonce: &str) -> Result<bool> {
     let nonces = load_used_nonces(vault_root)?;
-    Ok(nonces.iter().any(|n| super::constant_time_eq(n.nonce.as_bytes(), nonce.as_bytes())))
+    Ok(nonces
+        .iter()
+        .any(|n| super::constant_time_eq(n.nonce.as_bytes(), nonce.as_bytes())))
 }
 
 /// Mark a nonce as used (for invitation acceptance).
@@ -311,7 +312,10 @@ pub fn try_consume_nonce(vault_root: &Path, nonce: &str, exp: u64) -> Result<boo
 
     // Under the lock: check + mark atomically.
     let nonces = load_used_nonces(vault_root)?;
-    if nonces.iter().any(|n| super::constant_time_eq(n.nonce.as_bytes(), nonce.as_bytes())) {
+    if nonces
+        .iter()
+        .any(|n| super::constant_time_eq(n.nonce.as_bytes(), nonce.as_bytes()))
+    {
         // Already used — unlock and return false.
         fs_unlock(&lock_file)?;
         return Ok(false);
@@ -338,7 +342,10 @@ fn fs_lock(file: &std::fs::File) -> Result<()> {
     {
         use std::os::unix::io::AsRawFd;
         extern "C" {
-            fn flock(fd: std::os::raw::c_int, operation: std::os::raw::c_int) -> std::os::raw::c_int;
+            fn flock(
+                fd: std::os::raw::c_int,
+                operation: std::os::raw::c_int,
+            ) -> std::os::raw::c_int;
         }
         const LOCK_EX: std::os::raw::c_int = 2;
         let ret = unsafe { flock(file.as_raw_fd(), LOCK_EX) };
@@ -359,7 +366,10 @@ fn fs_unlock(file: &std::fs::File) -> Result<()> {
     {
         use std::os::unix::io::AsRawFd;
         extern "C" {
-            fn flock(fd: std::os::raw::c_int, operation: std::os::raw::c_int) -> std::os::raw::c_int;
+            fn flock(
+                fd: std::os::raw::c_int,
+                operation: std::os::raw::c_int,
+            ) -> std::os::raw::c_int;
         }
         const LOCK_UN: std::os::raw::c_int = 8;
         let ret = unsafe { flock(file.as_raw_fd(), LOCK_UN) };
@@ -498,7 +508,9 @@ pub fn revoke_invitation(vault_root: &Path, nonce: &str) -> Result<bool> {
 /// Mark a pending invitation as consumed (accepted). Returns true if found.
 pub fn mark_invitation_consumed(vault_root: &Path, nonce: &str) -> Result<bool> {
     let mut invites = load_pending_invitations(vault_root)?;
-    let pos = invites.iter().position(|i| super::constant_time_eq(i.nonce.as_bytes(), nonce.as_bytes()));
+    let pos = invites
+        .iter()
+        .position(|i| super::constant_time_eq(i.nonce.as_bytes(), nonce.as_bytes()));
     if let Some(idx) = pos {
         invites.remove(idx);
         write_pending_invitations(vault_root, &invites)?;
@@ -597,14 +609,8 @@ mod tests {
     #[test]
     fn test_jwt_structure() {
         let tmp = TempDir::new().unwrap();
-        let (token, _) = generate_invitation(
-            tmp.path(),
-            "alice-a1b2c3d4",
-            "editor",
-            None,
-            Some(3600),
-        )
-        .unwrap();
+        let (token, _) =
+            generate_invitation(tmp.path(), "alice-a1b2c3d4", "editor", None, Some(3600)).unwrap();
 
         // JWT should have 3 base64url-encoded parts
         let parts: Vec<&str> = token.split('.').collect();
@@ -621,8 +627,7 @@ mod tests {
     fn test_jwt_without_pages() {
         let tmp = TempDir::new().unwrap();
         let (token, _) =
-            generate_invitation(tmp.path(), "alice-a1b2c3d4", "reader", None, Some(3600))
-                .unwrap();
+            generate_invitation(tmp.path(), "alice-a1b2c3d4", "reader", None, Some(3600)).unwrap();
 
         let claims = decode_jwt(tmp.path(), &token).unwrap();
         assert!(claims.pages.is_none());
@@ -632,8 +637,7 @@ mod tests {
     fn test_jwt_invalid_signature() {
         let tmp = TempDir::new().unwrap();
         let (token, _) =
-            generate_invitation(tmp.path(), "alice-a1b2c3d4", "editor", None, Some(3600))
-                .unwrap();
+            generate_invitation(tmp.path(), "alice-a1b2c3d4", "editor", None, Some(3600)).unwrap();
 
         // Tamper with the token
         let parts: Vec<&str> = token.split('.').collect();
@@ -674,14 +678,8 @@ mod tests {
 
         // Generate invitation does NOT record the nonce (nonces are only
         // marked as used when the invitation is accepted).
-        let (_, nonce) = generate_invitation(
-            tmp.path(),
-            "alice-a1b2c3d4",
-            "editor",
-            None,
-            Some(3600),
-        )
-        .unwrap();
+        let (_, nonce) =
+            generate_invitation(tmp.path(), "alice-a1b2c3d4", "editor", None, Some(3600)).unwrap();
 
         // Nonce should not be recorded at generation time.
         assert!(!is_nonce_used(tmp.path(), &nonce).unwrap());
@@ -721,11 +719,9 @@ mod tests {
     fn test_multiple_invitations_different_nonces() {
         let tmp = TempDir::new().unwrap();
         let (_, n1) =
-            generate_invitation(tmp.path(), "alice-a1b2c3d4", "editor", None, Some(3600))
-                .unwrap();
+            generate_invitation(tmp.path(), "alice-a1b2c3d4", "editor", None, Some(3600)).unwrap();
         let (_, n2) =
-            generate_invitation(tmp.path(), "alice-a1b2c3d4", "reader", None, Some(3600))
-                .unwrap();
+            generate_invitation(tmp.path(), "alice-a1b2c3d4", "reader", None, Some(3600)).unwrap();
         assert_ne!(n1, n2);
 
         // Nonces are NOT tracked at generation time — only at acceptance.

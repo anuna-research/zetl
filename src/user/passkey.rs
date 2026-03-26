@@ -48,8 +48,8 @@ impl PasskeyManager {
     /// - `rp_origin`: The origin URL (e.g. "http://localhost:3000").
     /// - `rp_name`: Human-readable relying party name (e.g. "zetl vault").
     pub fn new(rp_id: &str, rp_origin: &str, rp_name: &str) -> Result<Self> {
-        let origin = Url::parse(rp_origin)
-            .with_context(|| format!("invalid rp_origin URL: {rp_origin}"))?;
+        let origin =
+            Url::parse(rp_origin).with_context(|| format!("invalid rp_origin URL: {rp_origin}"))?;
 
         let builder = WebauthnBuilder::new(rp_id, &origin)
             .map_err(|e| anyhow!("WebauthnBuilder error: {e}"))?
@@ -83,7 +83,12 @@ impl PasskeyManager {
         let exclude: Option<Vec<CredentialID>> = if existing_passkeys.is_empty() {
             None
         } else {
-            Some(existing_passkeys.iter().map(|pk| pk.cred_id().clone()).collect())
+            Some(
+                existing_passkeys
+                    .iter()
+                    .map(|pk| pk.cred_id().clone())
+                    .collect(),
+            )
         };
 
         let (ccr, reg_state) = self
@@ -330,7 +335,10 @@ mod tests {
     fn test_user_id_to_uuid_unique() {
         let uuid1 = user_id_to_uuid("alice-a1b2c3d4");
         let uuid2 = user_id_to_uuid("bob-e5f6g7h8");
-        assert_ne!(uuid1, uuid2, "different user IDs should produce different UUIDs");
+        assert_ne!(
+            uuid1, uuid2,
+            "different user IDs should produce different UUIDs"
+        );
     }
 
     #[test]
@@ -367,20 +375,18 @@ mod tests {
         let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "zetl vault").unwrap();
 
         // Create a dummy RegisterPublicKeyCredential
-        let response: RegisterPublicKeyCredential =
-            serde_json::from_str(DUMMY_REG_RESPONSE).unwrap_or_else(|_| {
+        let response: RegisterPublicKeyCredential = serde_json::from_str(DUMMY_REG_RESPONSE)
+            .unwrap_or_else(|_| {
                 // If we can't parse, just test that finish_registration fails with no pending state
                 panic!("dummy response parse failed — test needs valid JSON fixture");
             });
 
         let result = mgr.finish_registration("alice-a1b2c3d4", &response);
         assert!(result.is_err(), "should fail with no pending registration");
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("no pending registration"),
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no pending registration"),);
     }
 
     #[test]
@@ -388,31 +394,30 @@ mod tests {
         let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "zetl vault").unwrap();
         let result = mgr.start_authentication("alice-a1b2c3d4", &[]);
         assert!(result.is_err(), "should fail with no passkeys");
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("no registered passkeys"),
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no registered passkeys"),);
     }
 
     #[test]
     fn test_finish_authentication_no_pending() {
         let mgr = PasskeyManager::new("localhost", "http://localhost:3000", "zetl vault").unwrap();
 
-        let response: PublicKeyCredential =
-            serde_json::from_str(DUMMY_AUTH_RESPONSE).unwrap_or_else(|_| {
+        let response: PublicKeyCredential = serde_json::from_str(DUMMY_AUTH_RESPONSE)
+            .unwrap_or_else(|_| {
                 panic!("dummy response parse failed — test needs valid JSON fixture");
             });
 
         let result = mgr.finish_authentication("alice-a1b2c3d4", &response);
-        assert!(result.is_err(), "should fail with no pending authentication");
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("no pending authentication"),
+            result.is_err(),
+            "should fail with no pending authentication"
         );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no pending authentication"),);
     }
 
     #[test]
@@ -432,9 +437,7 @@ mod tests {
 
     #[test]
     fn test_stored_passkeys_serialization() {
-        let stored = StoredPasskeys {
-            passkeys: vec![],
-        };
+        let stored = StoredPasskeys { passkeys: vec![] };
         let json = serde_json::to_string(&stored).unwrap();
         assert!(json.contains("\"passkeys\":[]"));
 

@@ -30,6 +30,12 @@ pub struct SessionStore {
     sessions: Arc<RwLock<HashMap<String, Session>>>,
 }
 
+impl Default for SessionStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionStore {
     pub fn new() -> Self {
         Self {
@@ -122,16 +128,12 @@ impl SessionStore {
 /// sent over HTTPS connections.
 pub fn session_cookie(token: &str, tls: bool) -> String {
     let secure = if tls { "; Secure" } else { "" };
-    format!(
-        "{SESSION_COOKIE_NAME}={token}; HttpOnly; SameSite=Strict; Path=/{secure}",
-    )
+    format!("{SESSION_COOKIE_NAME}={token}; HttpOnly; SameSite=Strict; Path=/{secure}",)
 }
 
 /// Build a `Set-Cookie` header value that clears the session cookie.
 pub fn clear_session_cookie() -> String {
-    format!(
-        "{SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",
-    )
+    format!("{SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0",)
 }
 
 /// Generate an opaque session token (64 hex chars / 256 bits).
@@ -256,7 +258,7 @@ pub async fn collab_gate(
         .headers()
         .get("accept")
         .and_then(|v| v.to_str().ok())
-        .map_or(false, |v| v.contains("text/html"));
+        .is_some_and(|v| v.contains("text/html"));
 
     if accepts_html {
         axum::response::Redirect::temporary("/auth/bootstrap").into_response()
@@ -272,8 +274,7 @@ pub async fn csrf_token_header(
     request: axum::http::Request<Body>,
     next: Next,
 ) -> Response {
-    let csrf = token_from_cookies(request.headers())
-        .and_then(|t| state.sessions.csrf_token(&t));
+    let csrf = token_from_cookies(request.headers()).and_then(|t| state.sessions.csrf_token(&t));
 
     let mut response = next.run(request).await;
 
@@ -484,7 +485,11 @@ pub async fn admin_gate(
         .flatten();
 
     match profile {
-        Some(p) if p.owner || crate::user::Role::for_profile_with_vault(&p, &state.vault_root) >= crate::user::Role::Admin => {
+        Some(p)
+            if p.owner
+                || crate::user::Role::for_profile_with_vault(&p, &state.vault_root)
+                    >= crate::user::Role::Admin =>
+        {
             next.run(request).await
         }
         _ => StatusCode::FORBIDDEN.into_response(),
@@ -569,10 +574,7 @@ mod tests {
             axum::http::header::COOKIE,
             "foo=bar; zetl_session=deadbeef; baz=qux".parse().unwrap(),
         );
-        assert_eq!(
-            token_from_cookies(&headers),
-            Some("deadbeef".to_string())
-        );
+        assert_eq!(token_from_cookies(&headers), Some("deadbeef".to_string()));
     }
 
     #[test]
@@ -668,12 +670,8 @@ mod tests {
         };
         crate::user::save_profile(tmp.path(), &profile).unwrap();
 
-        let token = crate::user::agent_token::generate_agent_token(
-            &kp.mnemonic,
-            &profile.id,
-            0,
-        )
-        .unwrap();
+        let token =
+            crate::user::agent_token::generate_agent_token(&kp.mnemonic, &profile.id, 0).unwrap();
 
         let result = verify_bearer_token(tmp.path(), &token);
         assert_eq!(result, Some("agent-test-a1b2c3d4".to_string()));
@@ -696,12 +694,8 @@ mod tests {
         crate::user::save_profile(tmp.path(), &profile).unwrap();
 
         // Generate token at generation 0
-        let token = crate::user::agent_token::generate_agent_token(
-            &kp.mnemonic,
-            &profile.id,
-            0,
-        )
-        .unwrap();
+        let token =
+            crate::user::agent_token::generate_agent_token(&kp.mnemonic, &profile.id, 0).unwrap();
 
         let result = verify_bearer_token(tmp.path(), &token);
         assert_eq!(result, None); // Should fail: generation mismatch
@@ -768,7 +762,9 @@ mod tests {
             data: Arc::new(RwLock::new(data)),
             vault_root: Arc::new(tmp.to_path_buf()),
             search_index: Arc::new(search_index),
-            engine: Arc::new(crate::web::engine::TemplateEngine::new(tmp, "default", false, false)),
+            engine: Arc::new(crate::web::engine::TemplateEngine::new(
+                tmp, "default", false, false,
+            )),
             theme: "default".to_string(),
             verbose: false,
             collab: true,
@@ -810,9 +806,9 @@ mod tests {
 
     #[tokio::test]
     async fn admin_gate_allows_owner() {
-        use axum::{middleware, routing::get, Router};
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
+        use axum::{middleware, routing::get, Router};
         use tower::ServiceExt;
 
         let tmp = tempfile::TempDir::new().unwrap();
@@ -840,9 +836,9 @@ mod tests {
 
     #[tokio::test]
     async fn admin_gate_blocks_non_owner() {
-        use axum::{middleware, routing::get, Router};
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
+        use axum::{middleware, routing::get, Router};
         use tower::ServiceExt;
 
         let tmp = tempfile::TempDir::new().unwrap();
@@ -870,9 +866,9 @@ mod tests {
 
     #[tokio::test]
     async fn admin_gate_returns_401_without_session() {
-        use axum::{middleware, routing::get, Router};
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
+        use axum::{middleware, routing::get, Router};
         use tower::ServiceExt;
 
         let tmp = tempfile::TempDir::new().unwrap();

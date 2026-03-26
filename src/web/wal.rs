@@ -57,12 +57,8 @@ impl WalStore {
         }
         self.ensure_dir()?;
         let path = self.wal_path(slug);
-        let mut f = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)?;
-        let json = serde_json::to_string(ops)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let mut f = OpenOptions::new().create(true).append(true).open(&path)?;
+        let json = serde_json::to_string(ops).map_err(std::io::Error::other)?;
         writeln!(f, "{json}")?;
         f.flush()?;
         // fsync to ensure durability
@@ -157,9 +153,11 @@ pub fn replay_pending_wals(state: &super::WebState) {
         // Register the real file path for this slug before loading.
         {
             let data = state.data.read().unwrap();
-            if let Some(file) = data.files.iter().find(|f| {
-                crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(slug)
-            }) {
+            if let Some(file) = data
+                .files
+                .iter()
+                .find(|f| crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(slug))
+            {
                 state
                     .crdt_store
                     .register_path(slug, state.vault_root.join(&file.path));
@@ -361,7 +359,12 @@ mod tests {
 
         // WAL file should use %2F encoding
         let wal_path = store.wal_path("notes/daily");
-        assert!(wal_path.file_name().unwrap().to_str().unwrap().contains("%2F"));
+        assert!(wal_path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("%2F"));
         assert!(wal_path.exists());
 
         // Should appear in pending_slugs with original slug
@@ -400,23 +403,19 @@ mod tests {
         let path = store.wal_path("bad");
         let mut f = File::create(&path).unwrap();
         // Valid line
-        writeln!(
-            f,
-            r#"[{{"action":"splice","pos":0,"del":0,"text":"ok"}}]"#
-        )
-        .unwrap();
+        writeln!(f, r#"[{{"action":"splice","pos":0,"del":0,"text":"ok"}}]"#).unwrap();
         // Corrupt line
         writeln!(f, "not json at all").unwrap();
         // Another valid line
-        writeln!(
-            f,
-            r#"[{{"action":"splice","pos":2,"del":0,"text":"!"}}]"#
-        )
-        .unwrap();
+        writeln!(f, r#"[{{"action":"splice","pos":2,"del":0,"text":"!"}}]"#).unwrap();
         f.flush().unwrap();
 
         let batches = store.replay("bad");
-        assert_eq!(batches.len(), 2, "should skip corrupt line and keep valid ones");
+        assert_eq!(
+            batches.len(),
+            2,
+            "should skip corrupt line and keep valid ones"
+        );
     }
 
     #[test]

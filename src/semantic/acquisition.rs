@@ -87,16 +87,16 @@ pub fn ensure_model(vault_root: &Path) -> Result<(PathBuf, PathBuf)> {
     if !model_ok {
         eprint!("  Downloading {MODEL_NAME}.onnx... ");
         std::io::stderr().flush()?;
-        let size = download_and_store(MODEL_ONNX_URL, &model_path)
-            .context("downloading ONNX model")?;
+        let size =
+            download_and_store(MODEL_ONNX_URL, &model_path).context("downloading ONNX model")?;
         eprintln!("{:.1} MB", size as f64 / 1_048_576.0);
     }
 
     if !tokenizer_ok {
         eprint!("  Downloading tokenizer.json... ");
         std::io::stderr().flush()?;
-        let size = download_and_store(TOKENIZER_URL, &tokenizer_path)
-            .context("downloading tokenizer")?;
+        let size =
+            download_and_store(TOKENIZER_URL, &tokenizer_path).context("downloading tokenizer")?;
         eprintln!("{:.1} MB", size as f64 / 1_048_576.0);
     }
 
@@ -122,8 +122,7 @@ fn download_and_store(url: &str, dest: &Path) -> Result<usize> {
 
     // Atomic write via a temp file.
     let tmp = dest.with_extension("tmp");
-    std::fs::write(&tmp, &data)
-        .with_context(|| format!("writing to {}", tmp.display()))?;
+    std::fs::write(&tmp, &data).with_context(|| format!("writing to {}", tmp.display()))?;
     std::fs::rename(&tmp, dest)
         .with_context(|| format!("moving {} to {}", tmp.display(), dest.display()))?;
 
@@ -149,8 +148,8 @@ fn sha256_sidecar_valid(model_path: &Path) -> Result<bool> {
     }
     let expected = std::fs::read_to_string(&sidecar)
         .with_context(|| format!("reading {}", sidecar.display()))?;
-    let data = std::fs::read(model_path)
-        .with_context(|| format!("reading {}", model_path.display()))?;
+    let data =
+        std::fs::read(model_path).with_context(|| format!("reading {}", model_path.display()))?;
     let actual = sha256_hex(&data);
     anyhow::ensure!(
         actual == expected.trim(),

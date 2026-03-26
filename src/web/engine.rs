@@ -1173,8 +1173,8 @@ mod tests {
     fn test_render_recovery_show() {
         let engine = default_engine();
         let words = vec![
-            "abandon", "ability", "able", "about", "above", "absent",
-            "absorb", "abstract", "absurd", "abuse", "access", "accident",
+            "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
+            "absurd", "abuse", "access", "accident",
         ];
         let html = engine
             .render_recovery_show(
@@ -1182,6 +1182,9 @@ mod tests {
                 "abandon ability able about above absent absorb abstract absurd abuse access accident",
                 &words,
                 "/passkey/register?user_id=alice",
+                "alice-12345678",
+                "fakepubkey123",
+                "csrf-token-abc",
             )
             .unwrap();
         // Explanation text
@@ -1215,7 +1218,15 @@ mod tests {
         let engine = default_engine();
         let words = vec!["abandon"; 12];
         let html = engine
-            .render_recovery_show("my-notes", "abandon ".repeat(12).trim(), &words, "/")
+            .render_recovery_show(
+                "my-notes",
+                "abandon ".repeat(12).trim(),
+                &words,
+                "/",
+                "user-1",
+                "pk",
+                "csrf",
+            )
             .unwrap();
         assert!(html.contains("my-notes"));
     }

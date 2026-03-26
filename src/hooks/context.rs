@@ -202,7 +202,11 @@ impl HookUser {
     }
 
     /// Create a `HookUser` from a `UserProfile`.
-    pub fn from_profile(profile: &crate::user::UserProfile, is_agent: bool, vault_root: &std::path::Path) -> Self {
+    pub fn from_profile(
+        profile: &crate::user::UserProfile,
+        is_agent: bool,
+        vault_root: &std::path::Path,
+    ) -> Self {
         let role = crate::user::Role::for_profile_with_vault(profile, vault_root);
         HookUser {
             id: profile.id.clone(),
@@ -834,23 +838,15 @@ mod tests {
         let resolved: HashMap<String, String> = HashMap::new();
         let graph = LinkGraph::build(&files, &resolved);
 
-        let mut ctx = build_hook_context(
-            "on-acl-violation",
-            tmp.path(),
-            "",
-            "0.1.0",
-            &files,
-            &graph,
-        );
+        let mut ctx =
+            build_hook_context("on-acl-violation", tmp.path(), "", "0.1.0", &files, &graph);
         ctx.acl_violations = Some(HookAclViolations {
-            violations: vec![
-                HookAclViolationEntry {
-                    page: "secret".to_string(),
-                    user_id: "bob-12345678".to_string(),
-                    action: "edit".to_string(),
-                    reason: "policy denied".to_string(),
-                },
-            ],
+            violations: vec![HookAclViolationEntry {
+                page: "secret".to_string(),
+                user_id: "bob-12345678".to_string(),
+                action: "edit".to_string(),
+                reason: "policy denied".to_string(),
+            }],
         });
 
         let json = serde_json::to_string_pretty(&ctx).unwrap();

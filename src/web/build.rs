@@ -330,7 +330,7 @@ pub fn build_static(
             .with_context(|| format!("Cannot read {}", full_path.display()))?;
 
         let root_path = compute_root_path(&slug);
-        let is_fountain = file.path.extension().map_or(false, |e| e == "fountain");
+        let is_fountain = file.path.extension().is_some_and(|e| e == "fountain");
         let rendered = if is_fountain {
             // Pass raw fountain text to the template; the theme's JS parser handles it.
             let body = strip_fountain_frontmatter(&content);

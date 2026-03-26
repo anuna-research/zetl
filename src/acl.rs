@@ -79,18 +79,15 @@ static OWNER_FACT_RE: LazyLock<Regex> =
 /// never from page-level SPL (REQ-020-059). Covers: admin, role, scope,
 /// visibility-mode, is-agent.  Owner is already handled by `OWNER_FACT_RE`.
 static GLOBAL_PREDICATE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?m)^\s*\(given\s+\((admin|role|scope|visibility-mode|is-agent)\s[^)]*\)\s*\)",
-    )
-    .unwrap()
+    Regex::new(r"(?m)^\s*\(given\s+\((admin|role|scope|visibility-mode|is-agent)\s[^)]*\)\s*\)")
+        .unwrap()
 });
 
 /// Regex matching `can-read` / `can-edit` with a quoted page slug:
 ///   `can-read "user" "page-slug"` or `can-edit "user" "page-slug"`
 /// Captures the page slug in group 1.
-static ACCESS_CONCLUSION_PAGE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"can-(?:read|edit)\s+"[^"]*"\s+"([^"]*)""#).unwrap()
-});
+static ACCESS_CONCLUSION_PAGE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"can-(?:read|edit)\s+"[^"]*"\s+"([^"]*)""#).unwrap());
 
 /// Regex matching `(given (during <name> <start-ms> <end-ms>))` temporal interval
 /// declarations (REQ-020-011).
@@ -454,8 +451,7 @@ fn scan_deontic_conclusions(
             ConclusionType::DefeasiblyNotProvable => ConclusionTag::DefeasiblyNotProvable,
         };
 
-        let rule_trace: Vec<RuleRef> =
-            conclusion.proof_sources.iter().map(RuleRef::from).collect();
+        let rule_trace: Vec<RuleRef> = conclusion.proof_sources.iter().map(RuleRef::from).collect();
 
         let dc = DeonticConclusion {
             modality,
@@ -539,10 +535,7 @@ pub fn evaluate(
     let safe_page = escape_spl(&query.page_slug);
 
     // Core runtime facts
-    runtime_facts.push_str(&format!(
-        "(given (authenticated \"{}\"))\n",
-        safe_user
-    ));
+    runtime_facts.push_str(&format!("(given (authenticated \"{}\"))\n", safe_user));
     runtime_facts.push_str(&format!(
         "(given (requesting \"{}\" \"{}\" \"{}\"))\n",
         safe_user, safe_page, query.action
@@ -552,37 +545,22 @@ pub fn evaluate(
     // ── Step 3: Agent flag ───────────────────────────────────────────────
 
     if query.is_agent {
-        runtime_facts.push_str(&format!(
-            "(given (is-agent \"{}\"))\n",
-            safe_user
-        ));
+        runtime_facts.push_str(&format!("(given (is-agent \"{}\"))\n", safe_user));
     }
 
     // ── Step 4: User roles from profile ──────────────────────────────────
 
     if let Some(profile) = user::load_profile(vault_root, &query.user_id)? {
         if profile.owner {
-            runtime_facts.push_str(&format!(
-                "(given (owner \"{}\"))\n",
-                safe_user
-            ));
-            runtime_facts.push_str(&format!(
-                "(given (admin \"{}\"))\n",
-                safe_user
-            ));
+            runtime_facts.push_str(&format!("(given (owner \"{}\"))\n", safe_user));
+            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", safe_user));
         }
 
         let role = user::Role::for_profile_with_vault(&profile, vault_root);
-        runtime_facts.push_str(&format!(
-            "(given (role \"{}\" {}))\n",
-            safe_user, role
-        ));
+        runtime_facts.push_str(&format!("(given (role \"{}\" {}))\n", safe_user, role));
 
         if role == user::Role::Admin {
-            runtime_facts.push_str(&format!(
-                "(given (admin \"{}\"))\n",
-                safe_user
-            ));
+            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", safe_user));
         }
     }
 
@@ -592,7 +570,10 @@ pub fn evaluate(
 
     let scopes = extract_user_scopes_from_access_spl(vault_root, &query.user_id);
     let page_in_scope = scopes.iter().any(|s| {
-        let glob = match build_scope_glob(s) { Some(g) => g, None => return false };
+        let glob = match build_scope_glob(s) {
+            Some(g) => g,
+            None => return false,
+        };
         glob.is_match(&query.page_slug)
     });
 
@@ -609,13 +590,14 @@ pub fn evaluate(
         if page == &query.page_slug {
             continue; // already handled above
         }
-        let in_scope = scopes.iter().any(|s| {
-            build_scope_glob(s).map_or(false, |g| g.is_match(page.as_str()))
-        });
+        let in_scope = scopes
+            .iter()
+            .any(|s| build_scope_glob(s).map_or(false, |g| g.is_match(page.as_str())));
         if in_scope {
             runtime_facts.push_str(&format!(
                 "(given (in-scope \"{}\" \"{}\"))\n",
-                escape_spl(page), safe_user
+                escape_spl(page),
+                safe_user
             ));
         }
     }
@@ -662,18 +644,13 @@ pub fn evaluate(
             continue;
         }
 
-        let rule_trace: Vec<RuleRef> =
-            conclusion.proof_sources.iter().map(RuleRef::from).collect();
+        let rule_trace: Vec<RuleRef> = conclusion.proof_sources.iter().map(RuleRef::from).collect();
 
         let (tag, allowed) = match conclusion.conclusion_type {
             ConclusionType::DefinitelyProvable => (ConclusionTag::DefinitelyProvable, true),
             ConclusionType::DefeasiblyProvable => (ConclusionTag::DefeasiblyProvable, true),
-            ConclusionType::DefinitelyNotProvable => {
-                (ConclusionTag::DefinitelyNotProvable, false)
-            }
-            ConclusionType::DefeasiblyNotProvable => {
-                (ConclusionTag::DefeasiblyNotProvable, false)
-            }
+            ConclusionType::DefinitelyNotProvable => (ConclusionTag::DefinitelyNotProvable, false),
+            ConclusionType::DefeasiblyNotProvable => (ConclusionTag::DefeasiblyNotProvable, false),
         };
 
         base_decision = Some(if allowed {
@@ -834,7 +811,11 @@ pub fn evaluate_with_theory(
     query: &AclQuery,
     page_spl_blocks: &[SplBlock],
     all_page_slugs: &[String],
-) -> Result<(AclDecision, DeonticOverlay, crate::reason::types::TheoryResult)> {
+) -> Result<(
+    AclDecision,
+    DeonticOverlay,
+    crate::reason::types::TheoryResult,
+)> {
     let mut spl_blocks: Vec<SplBlock> = Vec::new();
 
     // ── Step 1: Load SPL sources ─────────────────────────────────────────
@@ -865,10 +846,7 @@ pub fn evaluate_with_theory(
     let mut runtime_facts = String::new();
     let safe_user = escape_spl(&query.user_id);
     let safe_page = escape_spl(&query.page_slug);
-    runtime_facts.push_str(&format!(
-        "(given (authenticated \"{}\"))\n",
-        safe_user
-    ));
+    runtime_facts.push_str(&format!("(given (authenticated \"{}\"))\n", safe_user));
     runtime_facts.push_str(&format!(
         "(given (requesting \"{}\" \"{}\" \"{}\"))\n",
         safe_user, safe_page, query.action
@@ -876,10 +854,7 @@ pub fn evaluate_with_theory(
     runtime_facts.push_str(&format!("(given (now {}))\n", query.now_epoch_ms));
 
     if query.is_agent {
-        runtime_facts.push_str(&format!(
-            "(given (is-agent \"{}\"))\n",
-            safe_user
-        ));
+        runtime_facts.push_str(&format!("(given (is-agent \"{}\"))\n", safe_user));
     }
 
     if let Some(profile) = user::load_profile(vault_root, &query.user_id)? {
@@ -896,7 +871,10 @@ pub fn evaluate_with_theory(
 
     let scopes = extract_user_scopes_from_access_spl(vault_root, &query.user_id);
     let page_in_scope = scopes.iter().any(|s| {
-        let glob = match build_scope_glob(s) { Some(g) => g, None => return false };
+        let glob = match build_scope_glob(s) {
+            Some(g) => g,
+            None => return false,
+        };
         glob.is_match(&query.page_slug)
     });
     if page_in_scope {
@@ -909,13 +887,14 @@ pub fn evaluate_with_theory(
         if page == &query.page_slug {
             continue;
         }
-        let in_scope = scopes.iter().any(|s| {
-            build_scope_glob(s).map_or(false, |g| g.is_match(page.as_str()))
-        });
+        let in_scope = scopes
+            .iter()
+            .any(|s| build_scope_glob(s).map_or(false, |g| g.is_match(page.as_str())));
         if in_scope {
             runtime_facts.push_str(&format!(
                 "(given (in-scope \"{}\" \"{}\"))\n",
-                escape_spl(page), safe_user
+                escape_spl(page),
+                safe_user
             ));
         }
     }
@@ -954,18 +933,13 @@ pub fn evaluate_with_theory(
             continue;
         }
 
-        let rule_trace: Vec<RuleRef> =
-            conclusion.proof_sources.iter().map(RuleRef::from).collect();
+        let rule_trace: Vec<RuleRef> = conclusion.proof_sources.iter().map(RuleRef::from).collect();
 
         let (tag, allowed) = match conclusion.conclusion_type {
             ConclusionType::DefinitelyProvable => (ConclusionTag::DefinitelyProvable, true),
             ConclusionType::DefeasiblyProvable => (ConclusionTag::DefeasiblyProvable, true),
-            ConclusionType::DefinitelyNotProvable => {
-                (ConclusionTag::DefinitelyNotProvable, false)
-            }
-            ConclusionType::DefeasiblyNotProvable => {
-                (ConclusionTag::DefeasiblyNotProvable, false)
-            }
+            ConclusionType::DefinitelyNotProvable => (ConclusionTag::DefinitelyNotProvable, false),
+            ConclusionType::DefeasiblyNotProvable => (ConclusionTag::DefeasiblyNotProvable, false),
         };
 
         base_decision = Some(if allowed {
@@ -1088,7 +1062,10 @@ fn build_scope_glob(scope: &str) -> Option<globset::GlobMatcher> {
     match globset::Glob::new(scope) {
         Ok(g) => Some(g.compile_matcher()),
         Err(e) => {
-            eprintln!("warning: invalid scope glob pattern {:?}: {} — skipping", scope, e);
+            eprintln!(
+                "warning: invalid scope glob pattern {:?}: {} — skipping",
+                scope, e
+            );
             None
         }
     }
@@ -1280,14 +1257,20 @@ mod tests {
         };
 
         let decision = evaluate(&vault, &read_q, &[], &["secret/internal".to_string()]).unwrap();
-        assert!(decision.is_allowed(), "owner should be able to read any page");
+        assert!(
+            decision.is_allowed(),
+            "owner should be able to read any page"
+        );
 
         let edit_q = AclQuery {
             action: Action::Edit,
             ..read_q
         };
         let decision = evaluate(&vault, &edit_q, &[], &["secret/internal".to_string()]).unwrap();
-        assert!(decision.is_allowed(), "owner should be able to edit any page");
+        assert!(
+            decision.is_allowed(),
+            "owner should be able to edit any page"
+        );
     }
 
     #[test]
@@ -1514,9 +1497,18 @@ mod tests {
 
         strip_owner_facts(&mut block);
 
-        assert!(!block.content.contains("owner"), "owner fact should be stripped");
-        assert!(block.content.contains("role"), "non-owner facts should remain");
-        assert!(block.content.contains("scope"), "non-owner facts should remain");
+        assert!(
+            !block.content.contains("owner"),
+            "owner fact should be stripped"
+        );
+        assert!(
+            block.content.contains("role"),
+            "non-owner facts should remain"
+        );
+        assert!(
+            block.content.contains("scope"),
+            "non-owner facts should remain"
+        );
     }
 
     #[test]
@@ -1531,7 +1523,10 @@ mod tests {
 
         strip_owner_facts(&mut block);
 
-        assert!(!block.content.contains("owner"), "all owner facts should be stripped");
+        assert!(
+            !block.content.contains("owner"),
+            "all owner facts should be stripped"
+        );
         assert!(block.content.contains("admin"), "admin facts should remain");
     }
 
@@ -1665,10 +1660,7 @@ mod tests {
             start_ms: 1000,
             end_ms: 2000,
         };
-        assert_eq!(
-            temporal_relation(1500, &interval),
-            TemporalRelation::Within
-        );
+        assert_eq!(temporal_relation(1500, &interval), TemporalRelation::Within);
     }
 
     #[test]
@@ -1963,10 +1955,8 @@ mod tests {
 
     #[test]
     fn effective_visibility_force_visible_overrides_hidden() {
-        let result = effective_visibility(
-            VisibilityMode::Hidden,
-            PageVisibilityOverride::ForceVisible,
-        );
+        let result =
+            effective_visibility(VisibilityMode::Hidden, PageVisibilityOverride::ForceVisible);
         assert_eq!(result, VisibilityMode::Transparent);
     }
 
@@ -2011,7 +2001,13 @@ mod tests {
             is_agent: false,
             now_epoch_ms: now_ms(),
         };
-        let decision = evaluate(&vault, &q, &[], &["notes".to_string(), "Audit Log".to_string()]).unwrap();
+        let decision = evaluate(
+            &vault,
+            &q,
+            &[],
+            &["notes".to_string(), "Audit Log".to_string()],
+        )
+        .unwrap();
         assert!(
             decision.is_allowed(),
             "editor should be able to edit regular pages"
@@ -2025,7 +2021,13 @@ mod tests {
             is_agent: false,
             now_epoch_ms: now_ms(),
         };
-        let decision2 = evaluate(&vault, &q2, &[], &["notes".to_string(), "Audit Log".to_string()]).unwrap();
+        let decision2 = evaluate(
+            &vault,
+            &q2,
+            &[],
+            &["notes".to_string(), "Audit Log".to_string()],
+        )
+        .unwrap();
         assert!(
             !decision2.is_allowed(),
             "[F] should override base can-edit to deny access"
@@ -2060,7 +2062,10 @@ mod tests {
             evaluate_with_theory(&vault, &q, &[], &["Audit Log".to_string()]).unwrap();
 
         assert!(!decision.is_allowed(), "should be denied by [F] override");
-        assert!(!overlay.forbidden.is_empty(), "overlay should contain [F] conclusion");
+        assert!(
+            !overlay.forbidden.is_empty(),
+            "overlay should contain [F] conclusion"
+        );
         assert_eq!(overlay.forbidden[0].modality, DeonticModality::Forbidden);
         assert_eq!(overlay.forbidden[0].predicate, "edit");
         assert!(overlay.has_active_forbidden());
@@ -2132,10 +2137,7 @@ mod tests {
         let (decision, overlay, _theory) =
             evaluate_with_theory(&vault, &q, &[], &["flagged-page".to_string()]).unwrap();
 
-        assert!(
-            decision.is_allowed(),
-            "[O] should not block read access"
-        );
+        assert!(decision.is_allowed(), "[O] should not block read access");
         assert!(
             !overlay.obligations.is_empty(),
             "overlay should contain [O] conclusion"
@@ -2235,7 +2237,10 @@ mod tests {
             content: "(given (admin \"bob\"))\n(given (authenticated \"bob\"))\n".to_string(),
         };
         sandbox_page_spl(&mut block);
-        assert!(!block.content.contains("admin"), "admin fact should be stripped");
+        assert!(
+            !block.content.contains("admin"),
+            "admin fact should be stripped"
+        );
         assert!(
             block.content.contains("authenticated"),
             "non-global facts should remain"
@@ -2252,7 +2257,10 @@ mod tests {
             content: "(given (role \"bob\" admin))\n".to_string(),
         };
         sandbox_page_spl(&mut block);
-        assert!(!block.content.contains("role"), "role fact should be stripped");
+        assert!(
+            !block.content.contains("role"),
+            "role fact should be stripped"
+        );
     }
 
     #[test]
@@ -2265,7 +2273,10 @@ mod tests {
             content: "(given (scope \"bob\" \"**\"))\n".to_string(),
         };
         sandbox_page_spl(&mut block);
-        assert!(!block.content.contains("scope"), "scope fact should be stripped");
+        assert!(
+            !block.content.contains("scope"),
+            "scope fact should be stripped"
+        );
     }
 
     #[test]
@@ -2321,7 +2332,10 @@ mod tests {
         assert!(!block.content.contains("scope"));
         assert!(!block.content.contains("visibility-mode"));
         assert!(!block.content.contains("is-agent"));
-        assert!(block.content.contains("authenticated"), "non-global facts survive");
+        assert!(
+            block.content.contains("authenticated"),
+            "non-global facts survive"
+        );
     }
 
     #[test]
@@ -2331,8 +2345,9 @@ mod tests {
             source_page: "evil".to_string(),
             start_line: 1,
             end_line: 3,
-            content: "(normally r-steal\n  (authenticated \"bob\")\n  (can-edit \"bob\" \"secret\"))\n"
-                .to_string(),
+            content:
+                "(normally r-steal\n  (authenticated \"bob\")\n  (can-edit \"bob\" \"secret\"))\n"
+                    .to_string(),
         };
         sandbox_page_spl(&mut block);
         assert!(
@@ -2354,14 +2369,18 @@ mod tests {
             content: content.clone(),
         };
         sandbox_page_spl(&mut block);
-        assert_eq!(block.content, content, "own-page conclusion should survive sandbox");
+        assert_eq!(
+            block.content, content,
+            "own-page conclusion should survive sandbox"
+        );
     }
 
     #[test]
     fn sandbox_noop_when_clean() {
-        let content = "(except d-block\n  (authenticated \"bob\")\n  (not (can-read \"bob\" \"notes\")))\n\
+        let content =
+            "(except d-block\n  (authenticated \"bob\")\n  (not (can-read \"bob\" \"notes\")))\n\
                        (prefer d-block r-default-read)\n"
-            .to_string();
+                .to_string();
         let mut block = SplBlock {
             source_file: PathBuf::from("notes.md"),
             source_page: "notes".to_string(),
@@ -2386,7 +2405,10 @@ mod tests {
             source_page: "evil".to_string(),
             start_line: 1,
             end_line: 2,
-            content: format!("(given (admin \"{}\"))\n(given (role \"{}\" admin))\n", bob_id, bob_id),
+            content: format!(
+                "(given (admin \"{}\"))\n(given (role \"{}\" admin))\n",
+                bob_id, bob_id
+            ),
         };
 
         let q = AclQuery {

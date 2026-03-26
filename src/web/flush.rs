@@ -51,9 +51,10 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     // filename casing/spaces).  Falls back to slug-derived path for new pages.
     let path = {
         let data = state.data.read().unwrap();
-        let file = data.files.iter().find(|f| {
-            crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(slug)
-        });
+        let file = data
+            .files
+            .iter()
+            .find(|f| crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
         if let Some(file) = file {
             state.vault_root.join(&file.path)
         } else {
@@ -104,7 +105,10 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
         })
         .collect();
     let vault_root_bytes = compute_vault_root(&file_hashes);
-    let vault_root_hash: String = vault_root_bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let vault_root_hash: String = vault_root_bytes
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
 
     // ── Step 5: ACL invalidate ───────────────────────────────────────────
     #[cfg(feature = "reason")]
@@ -197,11 +201,11 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
         for file in &files {
             for link in &file.links {
                 let key = link.raw_target.clone();
-                if !resolved.contains_key(&key) {
+                if let std::collections::hash_map::Entry::Vacant(e) = resolved.entry(key) {
                     if let Some(r) =
                         crate::scanner::resolve_page_name(&link.target_page, &file_index)
                     {
-                        resolved.insert(key, r);
+                        e.insert(r);
                     }
                 }
             }
@@ -308,10 +312,9 @@ pub fn spawn_flush_lifecycle_task(state: WebState) -> tokio::task::JoinHandle<()
                 // starving the tokio runtime.
                 let state_clone = state.clone();
                 let slug_clone = slug.clone();
-                let result = tokio::task::spawn_blocking(move || {
-                    flush_pipeline(&state_clone, &slug_clone)
-                })
-                .await;
+                let result =
+                    tokio::task::spawn_blocking(move || flush_pipeline(&state_clone, &slug_clone))
+                        .await;
 
                 match result {
                     Ok(Some(r)) => {
@@ -392,9 +395,7 @@ mod tests {
             tls: false,
             trust_proxy: false,
             sessions: crate::web::session::SessionStore::new(),
-            recovery_challenges: Arc::new(
-                crate::user::recovery::RecoveryChallengeStore::new(),
-            ),
+            recovery_challenges: Arc::new(crate::user::recovery::RecoveryChallengeStore::new()),
             mnemonic_shown: Arc::new(Mutex::new(std::collections::HashSet::new())),
             bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
@@ -495,9 +496,7 @@ mod tests {
         {
             let sig = git2::Signature::now("test", "test@test").unwrap();
             let mut index = repo.index().unwrap();
-            index
-                .add_path(std::path::Path::new("note.md"))
-                .unwrap();
+            index.add_path(std::path::Path::new("note.md")).unwrap();
             index.write().unwrap();
             let tree_oid = index.write_tree().unwrap();
             let tree = repo.find_tree(tree_oid).unwrap();

@@ -57,7 +57,12 @@ pub fn spawn_git_poller(
                     continue;
                 }
 
-                let paths = diff_trees(&repo, last_head.as_ref(), current.as_ref(), &state.vault_root);
+                let paths = diff_trees(
+                    &repo,
+                    last_head.as_ref(),
+                    current.as_ref(),
+                    &state.vault_root,
+                );
                 let source = current
                     .and_then(|oid| extract_commit_author(&repo, oid))
                     .unwrap_or(ExternalSource::Filesystem);
@@ -104,7 +109,10 @@ fn extract_commit_author(repo: &git2::Repository, oid: git2::Oid) -> Option<Exte
     let author = commit.author();
     let name = author.name().unwrap_or("(unknown)").to_string();
     let email = author.email().unwrap_or("unknown").to_string();
-    Some(ExternalSource::GitCommit { author: name, email })
+    Some(ExternalSource::GitCommit {
+        author: name,
+        email,
+    })
 }
 
 /// Read the OID of the current HEAD commit, or `None` for an unborn branch.
@@ -128,10 +136,7 @@ fn diff_trees(
         None => return Vec::new(),
     };
 
-    let new_tree = repo
-        .find_commit(*new_oid)
-        .and_then(|c| c.tree())
-        .ok();
+    let new_tree = repo.find_commit(*new_oid).and_then(|c| c.tree()).ok();
 
     let old_tree = old_oid
         .and_then(|o| repo.find_commit(*o).ok())
@@ -146,9 +151,7 @@ fn diff_trees(
     };
 
     // Resolve the repo workdir to compute absolute paths.
-    let workdir = repo
-        .workdir()
-        .unwrap_or(vault_root);
+    let workdir = repo.workdir().unwrap_or(vault_root);
 
     let mut paths = Vec::new();
     for delta in diff.deltas() {

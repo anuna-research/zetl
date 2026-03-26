@@ -112,7 +112,10 @@ pub fn verify_agent_token(
         .verify(&message, &signature)
         .map_err(|_| anyhow!("invalid token signature"))?;
 
-    Ok(TokenClaims { user_id, generation })
+    Ok(TokenClaims {
+        user_id,
+        generation,
+    })
 }
 
 /// Extract the user_id from a token without verifying the signature.
@@ -169,8 +172,7 @@ mod tests {
         let generation = 0u8;
 
         let token = generate_agent_token(&kp.mnemonic, user_id, generation).unwrap();
-        let claims =
-            verify_agent_token(&token, &kp.recovery_pubkey, generation).unwrap();
+        let claims = verify_agent_token(&token, &kp.recovery_pubkey, generation).unwrap();
 
         assert_eq!(claims.user_id, user_id);
         assert_eq!(claims.generation, generation);
@@ -183,7 +185,10 @@ mod tests {
 
         let result = verify_agent_token(&token, &kp.recovery_pubkey, 1);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("generation mismatch"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("generation mismatch"));
     }
 
     #[test]
@@ -194,7 +199,10 @@ mod tests {
 
         let result = verify_agent_token(&token, &kp2.recovery_pubkey, 0);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("invalid token signature"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid token signature"));
     }
 
     #[test]
@@ -216,7 +224,10 @@ mod tests {
     fn truncated_token_rejected() {
         let result = verify_agent_token("AAAA", "dGVzdA", 0);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("invalid token length"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid token length"));
     }
 
     #[test]

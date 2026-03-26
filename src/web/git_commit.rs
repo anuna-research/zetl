@@ -47,7 +47,8 @@ pub fn auto_commit(
     let resolved;
     let git_path = if file_path.is_absolute() {
         if let Some(wd) = repo.workdir() {
-            let canon_file = std::fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
+            let canon_file =
+                std::fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
             let canon_wd = std::fs::canonicalize(wd).unwrap_or_else(|_| wd.to_path_buf());
             if !canon_file.starts_with(&canon_wd) {
                 return Err(git2::Error::from_str(&format!(
@@ -148,11 +149,7 @@ pub struct GitLogEntry {
 ///
 /// `file_path` is relative to the repository root (e.g. `"notes/My Page.md"`).
 /// Returns entries in newest-first order.
-pub fn file_log(
-    repo: &git2::Repository,
-    file_path: &Path,
-    limit: usize,
-) -> Vec<GitLogEntry> {
+pub fn file_log(repo: &git2::Repository, file_path: &Path, limit: usize) -> Vec<GitLogEntry> {
     let Ok(mut revwalk) = repo.revwalk() else {
         return Vec::new();
     };
@@ -205,16 +202,8 @@ pub fn file_log(
         entries.push(GitLogEntry {
             commit_id: oid_str[..7.min(oid_str.len())].to_string(),
             full_oid: oid_str,
-            author: commit
-                .author()
-                .name()
-                .unwrap_or("unknown")
-                .to_string(),
-            email: commit
-                .author()
-                .email()
-                .unwrap_or("")
-                .to_string(),
+            author: commit.author().name().unwrap_or("unknown").to_string(),
+            email: commit.author().email().unwrap_or("").to_string(),
             timestamp: commit.time().seconds(),
             summary: commit.summary().unwrap_or("").to_string(),
             message: commit.message().unwrap_or("").to_string(),
@@ -237,17 +226,15 @@ pub fn file_at_commit(
     let tree = commit.tree().ok()?;
     let entry = tree.get_path(file_path).ok()?;
     let blob = repo.find_blob(entry.id()).ok()?;
-    std::str::from_utf8(blob.content()).ok().map(|s| s.to_string())
+    std::str::from_utf8(blob.content())
+        .ok()
+        .map(|s| s.to_string())
 }
 
 /// Generate a unified diff of a file between a commit and its parent.
 ///
 /// Returns the diff as a string, or an empty string if unavailable.
-pub fn file_diff_at_commit(
-    repo: &git2::Repository,
-    commit_oid: &str,
-    file_path: &Path,
-) -> String {
+pub fn file_diff_at_commit(repo: &git2::Repository, commit_oid: &str, file_path: &Path) -> String {
     let oid = match git2::Oid::from_str(commit_oid) {
         Ok(o) => o,
         Err(_) => return String::new(),
@@ -307,9 +294,7 @@ mod tests {
         let tree_oid = {
             let mut index = repo.index().unwrap();
             fs::write(dir.path().join(".gitkeep"), "").unwrap();
-            index
-                .add_path(Path::new(".gitkeep"))
-                .unwrap();
+            index.add_path(Path::new(".gitkeep")).unwrap();
             index.write().unwrap();
             index.write_tree().unwrap()
         };
@@ -328,14 +313,7 @@ mod tests {
 
         // Write a file and auto-commit it.
         fs::write(dir.path().join("page.md"), "# Hello").unwrap();
-        let oid = auto_commit(
-            &repo,
-            Path::new("page.md"),
-            "Alice",
-            "alice-abc123",
-            None,
-        )
-        .unwrap();
+        let oid = auto_commit(&repo, Path::new("page.md"), "Alice", "alice-abc123", None).unwrap();
 
         let commit = repo.find_commit(oid).unwrap();
         assert_eq!(commit.message().unwrap(), "edit: page");
@@ -389,14 +367,7 @@ mod tests {
         let repo = git2::Repository::init(dir.path()).unwrap();
 
         fs::write(dir.path().join("first.md"), "hello").unwrap();
-        let oid = auto_commit(
-            &repo,
-            Path::new("first.md"),
-            "New User",
-            "new-user",
-            None,
-        )
-        .unwrap();
+        let oid = auto_commit(&repo, Path::new("first.md"), "New User", "new-user", None).unwrap();
 
         let commit = repo.find_commit(oid).unwrap();
         assert_eq!(commit.parent_count(), 0); // initial commit
@@ -411,14 +382,7 @@ mod tests {
         fs::create_dir_all(&nested).unwrap();
         fs::write(nested.join("deep.md"), "deep content").unwrap();
 
-        let oid = auto_commit(
-            &repo,
-            Path::new("sub/dir/deep.md"),
-            "User",
-            "u1",
-            None,
-        )
-        .unwrap();
+        let oid = auto_commit(&repo, Path::new("sub/dir/deep.md"), "User", "u1", None).unwrap();
 
         let commit = repo.find_commit(oid).unwrap();
         assert_eq!(commit.message().unwrap(), "edit: deep");

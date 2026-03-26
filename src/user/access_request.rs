@@ -34,8 +34,8 @@ pub fn load_access_requests(vault_root: &Path) -> Result<Vec<AccessRequest>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     if content.trim().is_empty() {
         return Ok(Vec::new());
     }
@@ -47,13 +47,11 @@ pub fn load_access_requests(vault_root: &Path) -> Result<Vec<AccessRequest>> {
 /// Save the full list of access requests to `.zetl/collab/access-requests.json`.
 pub fn save_access_requests(vault_root: &Path, requests: &[AccessRequest]) -> Result<()> {
     let dir = vault_root.join(COLLAB_DIR);
-    fs::create_dir_all(&dir)
-        .with_context(|| format!("failed to create {}", dir.display()))?;
+    fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;
     let path = vault_root.join(ACCESS_REQUESTS_FILE);
-    let json = serde_json::to_string_pretty(requests)
-        .context("failed to serialize access requests")?;
-    fs::write(&path, json)
-        .with_context(|| format!("failed to write {}", path.display()))?;
+    let json =
+        serde_json::to_string_pretty(requests).context("failed to serialize access requests")?;
+    fs::write(&path, json).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
 }
 
@@ -68,9 +66,9 @@ pub fn append_access_request(
     let mut requests = load_access_requests(vault_root)?;
 
     // Check for existing pending request from same user for same page
-    let already_pending = requests.iter().any(|r| {
-        r.user == user_id && r.page == page_slug && r.status == "pending"
-    });
+    let already_pending = requests
+        .iter()
+        .any(|r| r.user == user_id && r.page == page_slug && r.status == "pending");
     if already_pending {
         return Ok(false);
     }
@@ -107,9 +105,7 @@ pub fn now_iso8601() -> String {
     // Compute year/month/day from days since epoch (1970-01-01)
     let (year, month, day) = days_to_ymd(days);
 
-    format!(
-        "{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z"
-    )
+    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
 /// Convert days since Unix epoch to (year, month, day).
@@ -143,7 +139,8 @@ mod tests {
     #[test]
     fn append_and_load_roundtrip() {
         let tmp = TempDir::new().unwrap();
-        let created = append_access_request(tmp.path(), "bob-d4e5f6", "Bob", "secret-project").unwrap();
+        let created =
+            append_access_request(tmp.path(), "bob-d4e5f6", "Bob", "secret-project").unwrap();
         assert!(created);
 
         let requests = load_access_requests(tmp.path()).unwrap();

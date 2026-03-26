@@ -7,7 +7,6 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use base64::Engine as _;
 use crate::hooks;
 use crate::hooks::context::{build_hook_context, HookSaved};
 use crate::scanner::{body_text_ranges, page_slug_from_path};
@@ -21,6 +20,7 @@ use crate::web::engine::TemplateError;
 use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::{reindex, WebState};
+use base64::Engine as _;
 
 /// Collect recent git edits (up to `limit`) from the vault's git log.
 ///
@@ -47,15 +47,8 @@ fn recent_git_edits(
         let Ok(commit) = repo.find_commit(oid) else {
             continue;
         };
-        let summary = commit
-            .summary()
-            .unwrap_or("")
-            .to_string();
-        let author = commit
-            .author()
-            .name()
-            .unwrap_or("unknown")
-            .to_string();
+        let summary = commit.summary().unwrap_or("").to_string();
+        let author = commit.author().name().unwrap_or("unknown").to_string();
         let time = commit.time();
         let secs = time.seconds();
         // Format as a simple relative/absolute time string
@@ -124,9 +117,7 @@ pub async fn dashboard_handler(
     // Load user profile
     let profile = match crate::user::load_profile(vault_root, &session.user_id) {
         Ok(Some(p)) => p,
-        Ok(None) => {
-            return (StatusCode::NOT_FOUND, "user profile not found").into_response()
-        }
+        Ok(None) => return (StatusCode::NOT_FOUND, "user profile not found").into_response(),
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -325,7 +316,9 @@ pub async fn page_handler(
     #[cfg(feature = "reason")]
     if state.collab && file.is_some() {
         if let Some(user_id) = extract_session_user_id(&state, &headers) {
-            let page_slug_str = file.map(|f| page_slug_from_path(&f.path)).unwrap_or_default();
+            let page_slug_str = file
+                .map(|f| page_slug_from_path(&f.path))
+                .unwrap_or_default();
             let page_spl: Vec<crate::types::SplBlock> = data
                 .files
                 .iter()
@@ -358,14 +351,22 @@ pub async fn page_handler(
             // Check ACL cache first, then evaluate
             let decision = {
                 let cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(cached) = cache.lookup(&user_id, &page_slug_str, crate::acl::Action::Read) {
+                if let Some(cached) =
+                    cache.lookup(&user_id, &page_slug_str, crate::acl::Action::Read)
+                {
                     cached.clone()
                 } else {
                     drop(cache);
                     match crate::acl::evaluate(&state.vault_root, &query, &page_spl, &all_slugs) {
                         Ok(d) => {
-                            let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
-                            cache.insert(user_id.clone(), page_slug_str.clone(), crate::acl::Action::Read, d.clone());
+                            let mut cache =
+                                state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
+                            cache.insert(
+                                user_id.clone(),
+                                page_slug_str.clone(),
+                                crate::acl::Action::Read,
+                                d.clone(),
+                            );
                             d
                         }
                         Err(_) => {
@@ -549,7 +550,7 @@ pub async fn page_handler(
         let file_slug = page_slug_from_path(&file.path);
         match std::fs::read_to_string(&full_path) {
             Ok(content) => {
-                let is_fountain = file.path.extension().map_or(false, |e| e == "fountain");
+                let is_fountain = file.path.extension().is_some_and(|e| e == "fountain");
                 let html = if is_fountain {
                     let body = crate::web::build::strip_fountain_frontmatter(&content);
                     format!(
@@ -738,11 +739,7 @@ pub async fn edit_handler(
         (file.page_name.clone(), content, file_slug)
     } else {
         // New page — start with empty content
-        let name = slug
-            .rsplit('/')
-            .next()
-            .unwrap_or(slug)
-            .replace('-', " ");
+        let name = slug.rsplit('/').next().unwrap_or(slug).replace('-', " ");
         let capitalized = if let Some(first) = name.chars().next() {
             first.to_uppercase().to_string() + &name[first.len_utf8()..]
         } else {
@@ -779,10 +776,13 @@ pub async fn edit_handler(
 
     let vault_ctx = build_vault_context(&data, &vault_name);
 
-    match state
-        .engine
-        .render_editor(&vault_ctx, &page_name, &file_slug, &breadcrumbs, &editor_json)
-    {
+    match state.engine.render_editor(
+        &vault_ctx,
+        &page_name,
+        &file_slug,
+        &breadcrumbs,
+        &editor_json,
+    ) {
         Ok(html) => {
             let mut resp = Html(html).into_response();
             // Editor CSP: allow esm.sh CDN for CodeMirror 6 modules
@@ -852,8 +852,7 @@ pub async fn save_handler(
                 slug_path
             } else {
                 // Try to find a file whose slug matches (handles spaces/casing).
-                find_file_by_slug(&state.vault_root, slug)
-                    .unwrap_or(slug_path)
+                find_file_by_slug(&state.vault_root, slug).unwrap_or(slug_path)
             }
         }
     };
@@ -885,9 +884,7 @@ pub async fn save_handler(
                 }
                 base = base.parent().unwrap_or(&base).to_path_buf();
             }
-            std::fs::canonicalize(&base)
-                .unwrap_or(base)
-                .join(tail)
+            std::fs::canonicalize(&base).unwrap_or(base).join(tail)
         };
         if !canon_target.starts_with(&canon_root) {
             return (StatusCode::BAD_REQUEST, "path escapes vault").into_response();
@@ -1017,11 +1014,11 @@ pub async fn save_handler(
             for file in &files {
                 for link in &file.links {
                     let key = link.raw_target.clone();
-                    if !resolved.contains_key(&key) {
+                    if let std::collections::hash_map::Entry::Vacant(e) = resolved.entry(key) {
                         if let Some(r) =
                             crate::scanner::resolve_page_name(&link.target_page, &file_index)
                         {
-                            resolved.insert(key, r);
+                            e.insert(r);
                         }
                     }
                 }
@@ -1046,7 +1043,11 @@ pub async fn save_handler(
             // Attach authenticated user identity if a session was present.
             if let Some(ref uid) = hook_user_id {
                 if let Ok(Some(profile)) = crate::user::load_profile(&vault_root, uid) {
-                    ctx.user = Some(crate::hooks::context::HookUser::from_profile(&profile, false, &vault_root));
+                    ctx.user = Some(crate::hooks::context::HookUser::from_profile(
+                        &profile,
+                        false,
+                        &vault_root,
+                    ));
                 }
             }
 
@@ -1213,9 +1214,9 @@ pub async fn api_search_handler(
             let q_owned = q.clone();
             let vec_limit = limit;
             let hits = tokio::task::spawn_blocking(move || {
-                let idx = vec_index_arc.lock().map_err(|_| {
-                    anyhow::anyhow!("vector index lock poisoned")
-                })?;
+                let idx = vec_index_arc
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("vector index lock poisoned"))?;
                 idx.query_text(&q_owned, vec_limit)
             })
             .await;
@@ -1281,9 +1282,9 @@ pub async fn api_search_handler(
         let q_owned = q.clone();
         let vec_limit = limit.saturating_mul(2);
         let vec_hits = tokio::task::spawn_blocking(move || {
-            let idx = vec_index_arc.lock().map_err(|_| {
-                anyhow::anyhow!("vector index lock poisoned")
-            })?;
+            let idx = vec_index_arc
+                .lock()
+                .map_err(|_| anyhow::anyhow!("vector index lock poisoned"))?;
             idx.query_text(&q_owned, vec_limit)
         })
         .await;
@@ -1292,13 +1293,11 @@ pub async fn api_search_handler(
             Ok(Ok(h)) => h,
             Ok(Err(e)) => {
                 eprintln!("api/search vector error: {e}");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "Hybrid search failed")
-                    .into_response();
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Hybrid search failed").into_response();
             }
             Err(e) => {
                 eprintln!("api/search hybrid join error: {e}");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "Hybrid search failed")
-                    .into_response();
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Hybrid search failed").into_response();
             }
         };
 
@@ -1332,8 +1331,7 @@ pub async fn api_search_handler(
         );
 
         // Build a score map from page_name → fused score.
-        let score_map: std::collections::HashMap<String, f64> =
-            fused.into_iter().collect();
+        let score_map: std::collections::HashMap<String, f64> = fused.into_iter().collect();
 
         // Collect BM25 hits for pages in the fused set, scored by RRF.
         let terms: Vec<String> = q.split_whitespace().map(|t| t.to_lowercase()).collect();
@@ -1499,7 +1497,7 @@ pub async fn print_handler(State(state): State<WebState>) -> Response {
     let mut fountain_files: Vec<_> = data
         .files
         .iter()
-        .filter(|f| f.path.extension().map_or(false, |e| e == "fountain"))
+        .filter(|f| f.path.extension().is_some_and(|e| e == "fountain"))
         .collect();
     fountain_files.sort_by(|a, b| a.page_name.to_lowercase().cmp(&b.page_name.to_lowercase()));
 
@@ -1801,7 +1799,12 @@ fn build_denied_pages_map(
                 match acl::evaluate(&state.vault_root, &query, &page_spl, &all_slugs) {
                     Ok(d) => {
                         let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
-                        cache.insert(user_id.to_string(), slug.clone(), acl::Action::Read, d.clone());
+                        cache.insert(
+                            user_id.to_string(),
+                            slug.clone(),
+                            acl::Action::Read,
+                            d.clone(),
+                        );
                         d
                     }
                     Err(_) => continue,
@@ -1877,7 +1880,12 @@ fn build_sidebar_denied_map(
                 match acl::evaluate(&state.vault_root, &query, &page_spl, &all_slugs) {
                     Ok(d) => {
                         let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
-                        cache.insert(user_id.to_string(), slug.clone(), acl::Action::Read, d.clone());
+                        cache.insert(
+                            user_id.to_string(),
+                            slug.clone(),
+                            acl::Action::Read,
+                            d.clone(),
+                        );
                         d
                     }
                     Err(_) => continue,
@@ -1914,10 +1922,7 @@ fn build_sidebar_denied_map(
 // ── Page history UI /{slug}/_history ─────────────────────────────────────
 
 /// Inner handler for `/{slug}/_history` — renders chronological edit list.
-async fn page_history_handler_inner(
-    State(state): State<WebState>,
-    page_slug: String,
-) -> Response {
+async fn page_history_handler_inner(State(state): State<WebState>, page_slug: String) -> Response {
     let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     let vault_name = state
@@ -2026,14 +2031,22 @@ pub async fn api_file_diff_handler(
         .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug));
 
     let Some(file) = file else {
-        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "page not found" }))).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "page not found" })),
+        )
+            .into_response();
     };
 
     let file_path = file.path.clone();
     drop(data);
 
     let Some(ref lock) = state.git_commit_lock else {
-        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "git not available" }))).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "git not available" })),
+        )
+            .into_response();
     };
 
     let repo = lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -2068,7 +2081,11 @@ pub async fn api_restore_handler(
         .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(&slug));
 
     let Some(file) = file else {
-        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "page not found" }))).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "page not found" })),
+        )
+            .into_response();
     };
 
     let file_path = file.path.clone();
@@ -2094,7 +2111,11 @@ pub async fn api_restore_handler(
     }
 
     let Some(ref lock) = state.git_commit_lock else {
-        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "git not available" }))).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "git not available" })),
+        )
+            .into_response();
     };
 
     // Read the file content at the specified commit.
@@ -2104,7 +2125,11 @@ pub async fn api_restore_handler(
     };
 
     let Some(content) = content else {
-        return (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "file not found at commit" }))).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "file not found at commit" })),
+        )
+            .into_response();
     };
 
     // Write the content back to disk.
@@ -2120,8 +2145,8 @@ pub async fn api_restore_handler(
     // Auto-commit the restore.
     {
         let repo = lock.lock().unwrap_or_else(|e| e.into_inner());
-        let user_name = extract_session_user_id(&state, &headers)
-            .unwrap_or_else(|| "system".to_string());
+        let user_name =
+            extract_session_user_id(&state, &headers).unwrap_or_else(|| "system".to_string());
         let msg = format!("restore: {} to {}", slug, &commit[..7.min(commit.len())]);
         let _ = crate::web::git_commit::auto_commit(
             &repo,
@@ -2176,7 +2201,7 @@ fn find_file_by_slug(vault_root: &std::path::Path, slug: &str) -> Option<std::pa
     let entries = std::fs::read_dir(&search_dir).ok()?;
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "md") {
+        if path.extension().is_some_and(|e| e == "md") {
             let rel = path.strip_prefix(vault_root).ok()?;
             if page_slug_from_path(rel).eq_ignore_ascii_case(slug) {
                 return Some(path);
@@ -2791,11 +2816,7 @@ pub async fn passkey_register_finish_handler(
 
             (StatusCode::OK, "passkey registered").into_response()
         }
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            format!("registration failed: {e}"),
-        )
-            .into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, format!("registration failed: {e}")).into_response(),
     }
 }
 
@@ -2837,7 +2858,10 @@ pub async fn recovery_show_handler(
         match extract_session_user_id(&state, &headers) {
             Some(session_uid) if session_uid == user_id => { /* ok */ }
             Some(_) => {
-                return (StatusCode::FORBIDDEN, "cannot access another user's recovery phrase")
+                return (
+                    StatusCode::FORBIDDEN,
+                    "cannot access another user's recovery phrase",
+                )
                     .into_response();
             }
             None => {
@@ -2847,7 +2871,7 @@ pub async fn recovery_show_handler(
     }
 
     // Load profile to confirm user exists
-    let mut profile = match crate::user::load_profile(vault_root, user_id) {
+    let profile = match crate::user::load_profile(vault_root, user_id) {
         Ok(Some(p)) => p,
         Ok(None) => {
             return (StatusCode::NOT_FOUND, "user not found").into_response();
@@ -2904,24 +2928,21 @@ pub async fn recovery_show_handler(
 
     // Get CSRF token for the confirmation form.
     let csrf_token = extract_session_user_id(&state, &headers)
-        .and_then(|uid| {
+        .and_then(|_uid| {
             let token = crate::web::session::token_from_cookies(&headers)?;
             state.sessions.csrf_token(&token)
         })
         .unwrap_or_default();
 
-    match state
-        .engine
-        .render_recovery_show(
-            &vault_name,
-            &keypair.mnemonic,
-            &words,
-            &continue_url,
-            user_id,
-            &keypair.recovery_pubkey,
-            &csrf_token,
-        )
-    {
+    match state.engine.render_recovery_show(
+        &vault_name,
+        &keypair.mnemonic,
+        &words,
+        &continue_url,
+        user_id,
+        &keypair.recovery_pubkey,
+        &csrf_token,
+    ) {
         Ok(html) => {
             let mut resp = Html(html).into_response();
             let hdrs = resp.headers_mut();
@@ -3004,7 +3025,8 @@ pub async fn recovery_page_handler(State(state): State<WebState>) -> Response {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
 
-    let html = format!(r#"<!DOCTYPE html>
+    let html = format!(
+        r#"<!DOCTYPE html>
 <html lang="en" data-theme="default">
 <head>
   <meta charset="utf-8">
@@ -3034,7 +3056,8 @@ pub async fn recovery_page_handler(State(state): State<WebState>) -> Response {
     </div>
   </div>
 </body>
-</html>"#);
+</html>"#
+    );
 
     Html(html).into_response()
 }
@@ -3058,7 +3081,11 @@ pub async fn recovery_form_handler(
     let profile = match crate::user::find_by_name(vault_root, name) {
         Ok(Some(p)) => p,
         Ok(None) => {
-            return (StatusCode::BAD_REQUEST, Html(recovery_error_page("No account found with that name."))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Html(recovery_error_page("No account found with that name.")),
+            )
+                .into_response();
         }
         Err(_) => {
             return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
@@ -3066,20 +3093,39 @@ pub async fn recovery_form_handler(
     };
 
     if profile.recovery_pubkey.is_empty() {
-        return (StatusCode::BAD_REQUEST, Html(recovery_error_page("This account has no recovery key set up."))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Html(recovery_error_page(
+                "This account has no recovery key set up.",
+            )),
+        )
+            .into_response();
     }
 
     // Derive pubkey from mnemonic and compare
     let derived_pubkey = match crate::user::recovery::derive_pubkey_from_mnemonic(mnemonic) {
         Ok(pk) => pk,
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, Html(recovery_error_page("Invalid recovery phrase. Check your 12 words and try again."))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Html(recovery_error_page(
+                    "Invalid recovery phrase. Check your 12 words and try again.",
+                )),
+            )
+                .into_response();
         }
     };
 
-    let derived_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(derived_pubkey.as_bytes());
+    let derived_b64 =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(derived_pubkey.as_bytes());
     if !crate::user::constant_time_eq(derived_b64.as_bytes(), profile.recovery_pubkey.as_bytes()) {
-        return (StatusCode::UNAUTHORIZED, Html(recovery_error_page("Recovery phrase does not match this account."))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Html(recovery_error_page(
+                "Recovery phrase does not match this account.",
+            )),
+        )
+            .into_response();
     }
 
     // Success — issue session and show success page with redirect
@@ -3088,7 +3134,8 @@ pub async fn recovery_form_handler(
     let redirect_url = format!("/passkey/register?user_id={}", profile.id);
     let display_name = profile.name.replace('<', "&lt;").replace('>', "&gt;");
 
-    let mut html = String::from(r#"<!DOCTYPE html>
+    let mut html = String::from(
+        r#"<!DOCTYPE html>
 <html lang="en" data-theme="default">
 <head>
   <meta charset="utf-8">
@@ -3099,31 +3146,32 @@ pub async fn recovery_form_handler(
 <body class="min-h-screen bg-base-100 flex items-center justify-center p-4">
   <div class="max-w-md w-full text-center">
     <div class="text-4xl mb-4">&#x2705;</div>
-    <h2 class="text-xl font-bold mb-2">Welcome back, "#);
+    <h2 class="text-xl font-bold mb-2">Welcome back, "#,
+    );
     html.push_str(&display_name);
     html.push_str(r#"!</h2>
     <p class="text-sm opacity-60 mb-6">Your identity has been verified. You can now register a new passkey.</p>
     <a href=""#);
     html.push_str(&redirect_url);
-    html.push_str(r#"" class="btn btn-primary">Register Passkey</a>
+    html.push_str(
+        r#"" class="btn btn-primary">Register Passkey</a>
     <p class="text-xs opacity-40 mt-4">You will be redirected automatically in 3 seconds.</p>
-    <script>setTimeout(function(){ window.location.href = ""#);
+    <script>setTimeout(function(){ window.location.href = ""#,
+    );
     html.push_str(&redirect_url);
-    html.push_str(r#""; }, 3000);</script>
+    html.push_str(
+        r#""; }, 3000);</script>
   </div>
 </body>
-</html>"#);
+</html>"#,
+    );
 
-    (
-        StatusCode::OK,
-        [(header::SET_COOKIE, cookie)],
-        Html(html),
-    )
-        .into_response()
+    (StatusCode::OK, [(header::SET_COOKIE, cookie)], Html(html)).into_response()
 }
 
 fn recovery_error_page(msg: &str) -> String {
-    let mut html = String::from(r#"<!DOCTYPE html>
+    let mut html = String::from(
+        r#"<!DOCTYPE html>
 <html lang="en" data-theme="default">
 <head>
   <meta charset="utf-8">
@@ -3133,7 +3181,8 @@ fn recovery_error_page(msg: &str) -> String {
 </head>
 <body class="min-h-screen bg-base-100 flex items-center justify-center p-4">
   <div class="max-w-md w-full text-center">
-    <div class="alert alert-error mb-4"><span>"#);
+    <div class="alert alert-error mb-4"><span>"#,
+    );
     // Escape HTML in msg
     for c in msg.chars() {
         match c {
@@ -3144,11 +3193,13 @@ fn recovery_error_page(msg: &str) -> String {
             _ => html.push(c),
         }
     }
-    html.push_str(r#"</span></div>
+    html.push_str(
+        r#"</span></div>
     <a href="/auth/recovery" class="btn btn-primary">Try Again</a>
   </div>
 </body>
-</html>"#);
+</html>"#,
+    );
     html
 }
 
@@ -3192,8 +3243,7 @@ pub async fn recover_challenge_handler(
 
     match state.recovery_challenges.issue_challenge(user_id) {
         Ok(challenge) => {
-            let challenge_b64 =
-                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(challenge);
+            let challenge_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(challenge);
             let body = serde_json::json!({ "challenge": challenge_b64 });
             (StatusCode::OK, Json(body)).into_response()
         }
@@ -3247,14 +3297,13 @@ pub async fn recover_verify_handler(
 
     // Decode the challenge_response: base64url(challenge || signature)
     // challenge = 32 bytes, signature = 64 bytes → 96 bytes total
-    let response_bytes = match base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(&body.challenge_response)
-    {
-        Ok(b) => b,
-        Err(_) => {
-            return (StatusCode::BAD_REQUEST, "invalid base64url encoding").into_response();
-        }
-    };
+    let response_bytes =
+        match base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(&body.challenge_response) {
+            Ok(b) => b,
+            Err(_) => {
+                return (StatusCode::BAD_REQUEST, "invalid base64url encoding").into_response();
+            }
+        };
 
     if response_bytes.len() != 96 {
         return (
@@ -3269,7 +3318,10 @@ pub async fn recover_verify_handler(
     let signature = &response_bytes[32..];
 
     // Consume the challenge from the store
-    match state.recovery_challenges.consume_challenge(&body.user_id, &challenge) {
+    match state
+        .recovery_challenges
+        .consume_challenge(&body.user_id, &challenge)
+    {
         Ok(crate::user::recovery::ChallengeResult::Valid) => {}
         Ok(crate::user::recovery::ChallengeResult::Expired) => {
             return (StatusCode::GONE, "challenge expired").into_response();
@@ -3283,11 +3335,7 @@ pub async fn recover_verify_handler(
     }
 
     // Verify the signature against the stored recovery pubkey
-    match crate::user::recovery::verify_challenge(
-        &profile.recovery_pubkey,
-        &challenge,
-        signature,
-    ) {
+    match crate::user::recovery::verify_challenge(&profile.recovery_pubkey, &challenge, signature) {
         Ok(true) => {
             // Issue session and redirect to passkey registration
             let token = state.sessions.create(&body.user_id);
@@ -3349,7 +3397,10 @@ pub async fn accept_invite_handler(
             if msg.contains("expired") {
                 return (StatusCode::GONE, "invitation has expired").into_response();
             }
-            return (StatusCode::BAD_REQUEST, format!("invalid invitation: {msg}"))
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("invalid invitation: {msg}"),
+            )
                 .into_response();
         }
     };
@@ -3421,7 +3472,10 @@ pub async fn accept_invite_submit_handler(
             if msg.contains("expired") {
                 return (StatusCode::GONE, "invitation has expired").into_response();
             }
-            return (StatusCode::BAD_REQUEST, format!("invalid invitation: {msg}"))
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("invalid invitation: {msg}"),
+            )
                 .into_response();
         }
     };
@@ -3478,8 +3532,7 @@ pub async fn accept_invite_submit_handler(
     }
 
     // Inject SPL facts into .zetl/collab/access.spl
-    if let Err(e) = inject_access_spl(vault_root, &user_id, &claims.role, claims.pages.as_deref())
-    {
+    if let Err(e) = inject_access_spl(vault_root, &user_id, &claims.role, claims.pages.as_deref()) {
         eprintln!("warning: failed to write access.spl: {e}");
     }
 
@@ -3496,10 +3549,7 @@ pub async fn accept_invite_submit_handler(
     let location = format!("/recovery/show?user_id={user_id}");
     (
         StatusCode::FOUND,
-        [
-            (header::SET_COOKIE, cookie),
-            (header::LOCATION, location),
-        ],
+        [(header::SET_COOKIE, cookie), (header::LOCATION, location)],
     )
         .into_response()
 }
@@ -3626,10 +3676,7 @@ pub async fn bootstrap_handler(
             let location = format!("/passkey/register?user_id={}", profile.id);
             (
                 StatusCode::FOUND,
-                [
-                    (header::LOCATION, location),
-                    (header::SET_COOKIE, cookie),
-                ],
+                [(header::LOCATION, location), (header::SET_COOKIE, cookie)],
             )
                 .into_response()
         }
@@ -4124,7 +4171,13 @@ pub async fn admin_permissions_save_handler(
     // Handle permission updates
     let permissions = match body.permissions {
         Some(p) => p,
-        None => return (StatusCode::BAD_REQUEST, "missing permissions or remove_user").into_response(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "missing permissions or remove_user",
+            )
+                .into_response()
+        }
     };
 
     // Validate roles
@@ -4169,11 +4222,13 @@ pub async fn admin_permissions_save_handler(
                 .flatten()
                 .map(|p| p.name)
                 .unwrap_or_else(|| session.user_id.clone());
-            state.ws_hub.broadcast_all(crate::web::ws::ServerMsg::VisibilityModeChanged {
-                old_mode: format!("{old_mode:?}").to_lowercase(),
-                new_mode: format!("{new_mode:?}").to_lowercase(),
-                changed_by: changer_name,
-            });
+            state
+                .ws_hub
+                .broadcast_all(crate::web::ws::ServerMsg::VisibilityModeChanged {
+                    old_mode: format!("{old_mode:?}").to_lowercase(),
+                    new_mode: format!("{new_mode:?}").to_lowercase(),
+                    changed_by: changer_name,
+                });
         }
     }
 
@@ -4283,8 +4338,7 @@ fn extract_session_user_id(state: &WebState, headers: &axum::http::HeaderMap) ->
     }
     // Try Bearer token
     if let Some(token) = crate::web::session::bearer_token_from_headers(headers) {
-        if let Some(user_id) = crate::web::session::verify_bearer_token(&state.vault_root, &token)
-        {
+        if let Some(user_id) = crate::web::session::verify_bearer_token(&state.vault_root, &token) {
             return Some(user_id);
         }
     }
@@ -4303,8 +4357,7 @@ fn require_auth(
     }
     // Try Bearer token
     if let Some(token) = crate::web::session::bearer_token_from_headers(headers) {
-        if let Some(user_id) = crate::web::session::verify_bearer_token(&state.vault_root, &token)
-        {
+        if let Some(user_id) = crate::web::session::verify_bearer_token(&state.vault_root, &token) {
             return Ok((user_id, true));
         }
     }
@@ -4413,8 +4466,15 @@ pub async fn api_pages_get_handler(
             let is_agent = crate::web::session::bearer_token_from_headers(&headers)
                 .and_then(|t| crate::web::session::verify_bearer_token(&state.vault_root, &t))
                 .is_some();
-            let all_slugs: Vec<String> = data.files.iter().map(|f2| page_slug_from_path(&f2.path)).collect();
-            let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+            let all_slugs: Vec<String> = data
+                .files
+                .iter()
+                .map(|f2| page_slug_from_path(&f2.path))
+                .collect();
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64;
             let query = crate::acl::AclQuery {
                 user_id: uid.clone(),
                 page_slug: page_slug_str.clone(),
@@ -4428,10 +4488,17 @@ pub async fn api_pages_get_handler(
                     cached.clone()
                 } else {
                     drop(cache);
-                    match crate::acl::evaluate(&state.vault_root, &query, &f.spl_blocks, &all_slugs) {
+                    match crate::acl::evaluate(&state.vault_root, &query, &f.spl_blocks, &all_slugs)
+                    {
                         Ok(d) => {
-                            let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
-                            cache.insert(uid.clone(), page_slug_str.clone(), crate::acl::Action::Read, d.clone());
+                            let mut cache =
+                                state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
+                            cache.insert(
+                                uid.clone(),
+                                page_slug_str.clone(),
+                                crate::acl::Action::Read,
+                                d.clone(),
+                            );
                             d
                         }
                         Err(_) => crate::acl::AclDecision::Denied {
@@ -4443,11 +4510,22 @@ pub async fn api_pages_get_handler(
             };
             if !decision.is_allowed() {
                 let vis_mode = crate::acl::query_visibility_mode(&state.vault_root);
-                let effective = crate::acl::effective_visibility(vis_mode, crate::acl::PageVisibilityOverride::None);
+                let effective = crate::acl::effective_visibility(
+                    vis_mode,
+                    crate::acl::PageVisibilityOverride::None,
+                );
                 return if effective == crate::acl::VisibilityMode::Hidden {
-                    ApiResponse::err(StatusCode::NOT_FOUND, "NOT_FOUND", format!("page not found: {slug}"))
+                    ApiResponse::err(
+                        StatusCode::NOT_FOUND,
+                        "NOT_FOUND",
+                        format!("page not found: {slug}"),
+                    )
                 } else {
-                    ApiResponse::err(StatusCode::FORBIDDEN, "ACL_DENIED", "you don't have access to this page")
+                    ApiResponse::err(
+                        StatusCode::FORBIDDEN,
+                        "ACL_DENIED",
+                        "you don't have access to this page",
+                    )
                 };
             }
         }
@@ -4576,7 +4654,9 @@ pub async fn api_pages_put_handler(
             if x_create && state.collab {
                 let vis_mode = crate::acl::query_visibility_mode(&state.vault_root);
                 if matches!(vis_mode, crate::acl::VisibilityMode::Hidden) {
-                    let all_slugs: Vec<String> = data.files.iter()
+                    let all_slugs: Vec<String> = data
+                        .files
+                        .iter()
                         .map(|f| page_slug_from_path(&f.path))
                         .collect();
                     let q = crate::acl::AclQuery {
@@ -4589,7 +4669,9 @@ pub async fn api_pages_put_handler(
                             .unwrap_or_default()
                             .as_millis() as i64,
                     };
-                    if let Ok(decision) = crate::acl::evaluate(&state.vault_root, &q, &[], &all_slugs) {
+                    if let Ok(decision) =
+                        crate::acl::evaluate(&state.vault_root, &q, &[], &all_slugs)
+                    {
                         if !decision.is_allowed() {
                             return ApiResponse::err(
                                 StatusCode::CONFLICT,
@@ -4668,11 +4750,11 @@ pub async fn api_pages_put_handler(
 
     // Git auto-commit
     if let Some(ref lock) = state.git_commit_lock {
-        let (author_name, author_id) =
-            match crate::user::load_profile(&state.vault_root, &user_id) {
-                Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
-                _ => ("zetl".to_string(), "zetl".to_string()),
-            };
+        let (author_name, author_id) = match crate::user::load_profile(&state.vault_root, &user_id)
+        {
+            Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
+            _ => ("zetl".to_string(), "zetl".to_string()),
+        };
 
         let custom_message = headers
             .get("X-Commit-Message")
@@ -4791,11 +4873,11 @@ pub async fn api_pages_delete_handler(
 
     // Git auto-commit the deletion
     if let Some(ref lock) = state.git_commit_lock {
-        let (author_name, author_id) =
-            match crate::user::load_profile(&state.vault_root, &user_id) {
-                Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
-                _ => ("zetl".to_string(), "zetl".to_string()),
-            };
+        let (author_name, author_id) = match crate::user::load_profile(&state.vault_root, &user_id)
+        {
+            Ok(Some(profile)) => (profile.name.clone(), profile.id.clone()),
+            _ => ("zetl".to_string(), "zetl".to_string()),
+        };
 
         let page_name = slug.rsplit('/').next().unwrap_or(slug);
         let commit_msg = format!("delete: {page_name}");
@@ -4875,10 +4957,16 @@ pub async fn api_graph_handler(
             let mode = crate::acl::query_visibility_mode(&state.vault_root);
             (denied, mode)
         } else {
-            (std::collections::HashMap::new(), crate::acl::VisibilityMode::Mixed)
+            (
+                std::collections::HashMap::new(),
+                crate::acl::VisibilityMode::Mixed,
+            )
         }
     } else {
-        (std::collections::HashMap::new(), crate::acl::VisibilityMode::Mixed)
+        (
+            std::collections::HashMap::new(),
+            crate::acl::VisibilityMode::Mixed,
+        )
     };
 
     let nodes: Vec<ApiGraphNode> = graph
@@ -4930,7 +5018,8 @@ pub async fn api_graph_handler(
             // In hidden mode: omit edges to/from denied nodes (REQ-020-032)
             #[cfg(feature = "reason")]
             if vis_mode == crate::acl::VisibilityMode::Hidden {
-                if denied_set.contains(src_name.as_str()) || denied_set.contains(tgt_name.as_str()) {
+                if denied_set.contains(src_name.as_str()) || denied_set.contains(tgt_name.as_str())
+                {
                     return None;
                 }
             }
@@ -5078,10 +5167,12 @@ pub async fn access_request_handler(
     ) {
         Ok(true) => {
             // Broadcast to all connected WebSocket clients (admins will see it)
-            state.ws_hub.broadcast_all(crate::web::ws::ServerMsg::AccessRequest {
-                user: profile.name.clone(),
-                page: page_slug.clone(),
-            });
+            state
+                .ws_hub
+                .broadcast_all(crate::web::ws::ServerMsg::AccessRequest {
+                    user: profile.name.clone(),
+                    page: page_slug.clone(),
+                });
 
             // Fire on-access-request hook asynchronously
             let vault_root_owned = state.vault_root.clone();
@@ -5090,13 +5181,7 @@ pub async fn access_request_handler(
             let user_name = profile.name.clone();
             let page = page_slug.clone();
             tokio::task::spawn_blocking(move || {
-                fire_access_request_hook(
-                    &vault_root_owned,
-                    &theme,
-                    &user_id,
-                    &user_name,
-                    &page,
-                );
+                fire_access_request_hook(&vault_root_owned, &theme, &user_id, &user_name, &page);
             });
 
             ApiResponse::ok(serde_json::json!({ "status": "requested" })).into_response()
@@ -5107,7 +5192,11 @@ pub async fn access_request_handler(
         }
         Err(e) => {
             eprintln!("access-request error: {e}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "failed to record request").into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to record request",
+            )
+                .into_response()
         }
     }
 }
@@ -5142,11 +5231,9 @@ fn fire_access_request_hook(
     for file in &files {
         for link in &file.links {
             let key = link.raw_target.clone();
-            if !resolved.contains_key(&key) {
-                if let Some(r) =
-                    crate::scanner::resolve_page_name(&link.target_page, &file_index)
-                {
-                    resolved.insert(key, r);
+            if let std::collections::hash_map::Entry::Vacant(e) = resolved.entry(key) {
+                if let Some(r) = crate::scanner::resolve_page_name(&link.target_page, &file_index) {
+                    e.insert(r);
                 }
             }
         }
@@ -5164,7 +5251,9 @@ fn fire_access_request_hook(
 
     // Attach requesting user identity
     if let Ok(Some(profile)) = crate::user::load_profile(vault_root, user_id) {
-        ctx.user = Some(crate::hooks::context::HookUser::from_profile(&profile, false, vault_root));
+        ctx.user = Some(crate::hooks::context::HookUser::from_profile(
+            &profile, false, vault_root,
+        ));
     }
 
     // Attach access request context
@@ -5239,7 +5328,11 @@ pub async fn api_comments_get_handler(
         Ok(k) => k.to_bytes().to_vec(),
         Err(e) => {
             eprintln!("error loading server key for comment verification: {e}");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "failed to verify comments").into_response();
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to verify comments",
+            )
+                .into_response();
         }
     };
 
@@ -5274,10 +5367,20 @@ pub async fn api_comments_post_handler(
     // Validate: non-empty text, max 4096 chars
     let text = body.text.trim();
     if text.is_empty() {
-        return ApiResponse::err(StatusCode::BAD_REQUEST, "EMPTY_COMMENT", "comment text is required").into_response();
+        return ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            "EMPTY_COMMENT",
+            "comment text is required",
+        )
+        .into_response();
     }
     if text.len() > 4096 {
-        return ApiResponse::err(StatusCode::BAD_REQUEST, "COMMENT_TOO_LONG", "comment must be 4096 characters or fewer").into_response();
+        return ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            "COMMENT_TOO_LONG",
+            "comment must be 4096 characters or fewer",
+        )
+        .into_response();
     }
 
     // ACL: user must be able to edit the page to post comments
@@ -5297,7 +5400,13 @@ pub async fn api_comments_post_handler(
         }
     };
 
-    match crate::user::comment::append_comment(&state.vault_root, slug, &session.user_id, text, &server_key) {
+    match crate::user::comment::append_comment(
+        &state.vault_root,
+        slug,
+        &session.user_id,
+        text,
+        &server_key,
+    ) {
         Ok(comment) => {
             // Broadcast to all connected WebSocket clients viewing this page
             let room = state.ws_hub.room(slug);
@@ -5319,18 +5428,19 @@ pub async fn api_comments_post_handler(
 
 /// Check that a user can read a page (used by comment GET).
 #[cfg(feature = "reason")]
-fn check_page_acl_read(
-    state: &WebState,
-    user_id: &str,
-    page_slug: &str,
-) -> Result<(), Response> {
+fn check_page_acl_read(state: &WebState, user_id: &str, page_slug: &str) -> Result<(), Response> {
     let (spl_blocks, all_slugs) = {
         let data = state.data.read().unwrap_or_else(|e| e.into_inner());
-        let file = data.files.iter().find(|f| {
-            crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
-        });
+        let file = data
+            .files
+            .iter()
+            .find(|f| crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug));
         let spl = file.map(|f| f.spl_blocks.clone()).unwrap_or_default();
-        let slugs: Vec<String> = data.files.iter().map(|f| crate::scanner::page_slug_from_path(&f.path)).collect();
+        let slugs: Vec<String> = data
+            .files
+            .iter()
+            .map(|f| crate::scanner::page_slug_from_path(&f.path))
+            .collect();
         (spl, slugs)
     };
 
@@ -5354,7 +5464,12 @@ fn check_page_acl_read(
             match crate::acl::evaluate(&state.vault_root, &query, &spl_blocks, &all_slugs) {
                 Ok(d) => {
                     let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
-                    cache.insert(user_id.to_string(), page_slug.to_string(), crate::acl::Action::Read, d.clone());
+                    cache.insert(
+                        user_id.to_string(),
+                        page_slug.to_string(),
+                        crate::acl::Action::Read,
+                        d.clone(),
+                    );
                     d
                 }
                 Err(_) => crate::acl::AclDecision::Denied {
@@ -5367,24 +5482,29 @@ fn check_page_acl_read(
     if decision.is_allowed() {
         Ok(())
     } else {
-        Err(ApiResponse::err(StatusCode::FORBIDDEN, "ACL_DENIED", "you do not have read access to this page"))
+        Err(ApiResponse::err(
+            StatusCode::FORBIDDEN,
+            "ACL_DENIED",
+            "you do not have read access to this page",
+        ))
     }
 }
 
 /// Check that a user can edit a page (used by comment POST).
 #[cfg(feature = "reason")]
-fn check_page_acl_edit(
-    state: &WebState,
-    user_id: &str,
-    page_slug: &str,
-) -> Result<(), Response> {
+fn check_page_acl_edit(state: &WebState, user_id: &str, page_slug: &str) -> Result<(), Response> {
     let (spl_blocks, all_slugs) = {
         let data = state.data.read().unwrap_or_else(|e| e.into_inner());
-        let file = data.files.iter().find(|f| {
-            crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug)
-        });
+        let file = data
+            .files
+            .iter()
+            .find(|f| crate::scanner::page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug));
         let spl = file.map(|f| f.spl_blocks.clone()).unwrap_or_default();
-        let slugs: Vec<String> = data.files.iter().map(|f| crate::scanner::page_slug_from_path(&f.path)).collect();
+        let slugs: Vec<String> = data
+            .files
+            .iter()
+            .map(|f| crate::scanner::page_slug_from_path(&f.path))
+            .collect();
         (spl, slugs)
     };
 
@@ -5408,7 +5528,12 @@ fn check_page_acl_edit(
             match crate::acl::evaluate(&state.vault_root, &query, &spl_blocks, &all_slugs) {
                 Ok(d) => {
                     let mut cache = state.acl_cache.lock().unwrap_or_else(|e| e.into_inner());
-                    cache.insert(user_id.to_string(), page_slug.to_string(), crate::acl::Action::Edit, d.clone());
+                    cache.insert(
+                        user_id.to_string(),
+                        page_slug.to_string(),
+                        crate::acl::Action::Edit,
+                        d.clone(),
+                    );
                     d
                 }
                 Err(_) => crate::acl::AclDecision::Denied {
@@ -5421,7 +5546,11 @@ fn check_page_acl_edit(
     if decision.is_allowed() {
         Ok(())
     } else {
-        Err(ApiResponse::err(StatusCode::FORBIDDEN, "ACL_DENIED", "you do not have edit access to this page"))
+        Err(ApiResponse::err(
+            StatusCode::FORBIDDEN,
+            "ACL_DENIED",
+            "you do not have edit access to this page",
+        ))
     }
 }
 
@@ -5596,9 +5725,7 @@ pub async fn api_acl_explain_handler(
         let page_spl: Vec<crate::types::SplBlock> = data
             .files
             .iter()
-            .filter(|f| {
-                crate::scanner::page_slug_from_path(&f.path) == page_slug
-            })
+            .filter(|f| crate::scanner::page_slug_from_path(&f.path) == page_slug)
             .flat_map(|f| f.spl_blocks.iter().cloned())
             .collect();
         let slugs: Vec<String> = data
@@ -5790,10 +5917,7 @@ fn build_why_not_for_acl(
                     blockers.push(AclExplainBlocker {
                         blocker_type: "defeated".to_string(),
                         literal: negated_literal.clone(),
-                        explanation: format!(
-                            "blocked by defeater '{}'",
-                            def_rule.label
-                        ),
+                        explanation: format!("blocked by defeater '{}'", def_rule.label),
                     });
                 }
             }
@@ -5878,9 +6002,7 @@ mod tests {
             tls: false,
             trust_proxy: false,
             sessions: crate::web::session::SessionStore::new(),
-            recovery_challenges: Arc::new(
-                crate::user::recovery::RecoveryChallengeStore::new(),
-            ),
+            recovery_challenges: Arc::new(crate::user::recovery::RecoveryChallengeStore::new()),
             mnemonic_shown: Arc::new(std::sync::Mutex::new(HashSet::new())),
             bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             rate_limiters: crate::web::rate_limit::AuthRateLimiters::new(),
@@ -6089,7 +6211,10 @@ mod tests {
         let state = test_state(tmp.path(), "default");
 
         let app = Router::new()
-            .route("/passkey/register", axum::routing::get(passkey_register_handler))
+            .route(
+                "/passkey/register",
+                axum::routing::get(passkey_register_handler),
+            )
             .with_state(state);
 
         let (status, body, _ct) = get_body(&app, "/passkey/register?user_id=alice-a1b2c3d4").await;

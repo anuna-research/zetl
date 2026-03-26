@@ -18,7 +18,7 @@ use std::cell::RefCell;
 use std::path::Path;
 
 use anyhow::Result;
-use ort::session::{Session, builder::GraphOptimizationLevel};
+use ort::session::{builder::GraphOptimizationLevel, Session};
 use ort::value::TensorRef;
 use tokenizers::Tokenizer;
 
@@ -196,8 +196,7 @@ impl VectorIndex {
             embeddings.push(arr);
         }
 
-        let chunks: Vec<ChunkMeta> =
-            serde_json::from_str(&std::fs::read_to_string(&chunks_path)?)?;
+        let chunks: Vec<ChunkMeta> = serde_json::from_str(&std::fs::read_to_string(&chunks_path)?)?;
 
         let (session, tokenizer) = load_model(vault_root)?;
 
@@ -216,7 +215,6 @@ impl VectorIndex {
         let q_emb = embed_text(&self.session, &self.tokenizer, query)?;
         self.query(&q_emb, limit)
     }
-
 
     /// Query by a pre-computed embedding vector. Returns top-N chunks by cosine similarity.
     ///
@@ -316,7 +314,10 @@ mod tests {
 
         for (orig, back) in embeddings.iter().zip(read_embeddings.iter()) {
             for (a, b) in orig.iter().zip(back.iter()) {
-                assert!((a - b).abs() < f32::EPSILON, "f32 value mismatch: {a} vs {b}");
+                assert!(
+                    (a - b).abs() < f32::EPSILON,
+                    "f32 value mismatch: {a} vs {b}"
+                );
             }
         }
     }
@@ -385,7 +386,10 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         // No .zetl/search/vectors/ created.
         let result = VectorIndex::open(tmp.path()).unwrap();
-        assert!(result.is_none(), "expected None when vectors dir is missing");
+        assert!(
+            result.is_none(),
+            "expected None when vectors dir is missing"
+        );
     }
 
     /// TEST-117: `VectorIndex::open` returns `None` when `index.bin` is absent even if
@@ -461,7 +465,10 @@ mod tests {
         assert!((cache[&hash_b][0] - 2.0).abs() < f32::EPSILON);
 
         let hash_c = [0xCCu8; 32];
-        assert!(!cache.contains_key(&hash_c), "unknown hash should not be in cache");
+        assert!(
+            !cache.contains_key(&hash_c),
+            "unknown hash should not be in cache"
+        );
     }
 
     /// TEST-123 (edge case): `load_embedding_cache` returns an empty map when files are absent.
@@ -471,7 +478,10 @@ mod tests {
         let vectors_dir = tmp.path().join(VECTORS_DIR);
         fs::create_dir_all(&vectors_dir).unwrap();
         let cache = load_embedding_cache(&vectors_dir);
-        assert!(cache.is_empty(), "cache must be empty when files are missing");
+        assert!(
+            cache.is_empty(),
+            "cache must be empty when files are missing"
+        );
     }
 
     /// TEST-123 (edge case): `load_embedding_cache` returns an empty map when chunk count
@@ -503,7 +513,10 @@ mod tests {
         .unwrap();
 
         let cache = load_embedding_cache(&vectors_dir);
-        assert!(cache.is_empty(), "mismatched file sizes must produce an empty cache");
+        assert!(
+            cache.is_empty(),
+            "mismatched file sizes must produce an empty cache"
+        );
     }
 
     /// TEST-117: `VectorIndex::open` returns `None` when `chunks.json` is absent even if
@@ -517,7 +530,10 @@ mod tests {
         fs::write(vectors_dir.join(INDEX_FILE), b"").unwrap();
 
         let result = VectorIndex::open(tmp.path()).unwrap();
-        assert!(result.is_none(), "expected None when chunks.json is missing");
+        assert!(
+            result.is_none(),
+            "expected None when chunks.json is missing"
+        );
     }
 
     /// TEST-118: index.bin byte layout — file size equals `chunk_count * EMBEDDING_DIM * 4`.
@@ -607,8 +623,12 @@ fn load_model(vault_root: &Path) -> Result<(Session, Tokenizer)> {
         .with_optimization_level(GraphOptimizationLevel::Level3)?
         .commit_from_file(&model_path)?;
 
-    let tokenizer = Tokenizer::from_file(&tokenizer_path)
-        .map_err(|e| anyhow::anyhow!("Failed to load tokenizer from {}: {e}", tokenizer_path.display()))?;
+    let tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to load tokenizer from {}: {e}",
+            tokenizer_path.display()
+        )
+    })?;
 
     Ok((session, tokenizer))
 }
@@ -630,11 +650,7 @@ fn embed_text(
         .iter()
         .map(|&x| x as i64)
         .collect();
-    let type_ids: Vec<i64> = encoding
-        .get_type_ids()
-        .iter()
-        .map(|&x| x as i64)
-        .collect();
+    let type_ids: Vec<i64> = encoding.get_type_ids().iter().map(|&x| x as i64).collect();
     let seq_len = ids.len();
 
     let shape = [1i64, seq_len as i64];
@@ -656,7 +672,10 @@ fn embed_text(
     let dims: &[i64] = &out_shape;
     anyhow::ensure!(dims.len() == 3, "expected 3-D output, got {}D", dims.len());
     let hidden_dim = dims[2] as usize;
-    anyhow::ensure!(hidden_dim == EMBEDDING_DIM, "unexpected embedding dim {hidden_dim}");
+    anyhow::ensure!(
+        hidden_dim == EMBEDDING_DIM,
+        "unexpected embedding dim {hidden_dim}"
+    );
 
     let mut embedding = [0f32; EMBEDDING_DIM];
     for j in 0..EMBEDDING_DIM {
