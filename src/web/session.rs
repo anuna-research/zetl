@@ -261,7 +261,7 @@ pub async fn collab_gate(
         .is_some_and(|v| v.contains("text/html"));
 
     if accepts_html {
-        axum::response::Redirect::temporary("/auth/bootstrap").into_response()
+        axum::response::Redirect::temporary("/auth/login").into_response()
     } else {
         StatusCode::UNAUTHORIZED.into_response()
     }

@@ -219,6 +219,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "page.html",
     "editor.html",
     "folder.html",
+    "login.html",
     "passkey_register.html",
     "recovery_show.html",
     "invite_accept.html",
@@ -400,6 +401,29 @@ impl TemplateEngine {
     }
 
     /// Render the passkey registration guidance page.
+    pub fn render_login(
+        &self,
+        vault_name: &str,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault_name => vault_name,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("login.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("login.html"));
+        }
+        Ok(html)
+    }
+
     pub fn render_passkey_register(
         &self,
         vault_name: &str,
