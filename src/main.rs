@@ -4822,6 +4822,47 @@ fn cmd_agent_token(cli: &Cli, mnemonic: &str) -> Result<()> {
     Ok(())
 }
 
+fn cmd_derive_ssh_key(mnemonic: &str, out: Option<&str>) -> Result<()> {
+    let signing_key = zetl::user::recovery::derive_ssh_key_from_mnemonic(mnemonic)
+        .context("failed to derive SSH key from mnemonic")?;
+
+    let private_bytes = signing_key.to_bytes();
+    let public_key = signing_key.verifying_key();
+    let public_bytes = public_key.to_bytes();
+
+    let openssh_pem = zetl::user::recovery::encode_openssh_ed25519(&private_bytes, &public_bytes);
+
+    match out {
+        Some(path) => {
+            std::fs::write(path, &openssh_pem)
+                .with_context(|| format!("failed to write SSH key to {path}"))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+            }
+            eprintln!("SSH key written to {path}");
+
+            // Print the public key for adding to git remotes
+            let pub_b64 = base64::engine::general_purpose::STANDARD.encode(
+                [
+                    &7u32.to_be_bytes()[..],
+                    b"ssh-ed25519",
+                    &32u32.to_be_bytes()[..],
+                    &public_bytes[..],
+                ]
+                .concat(),
+            );
+            eprintln!("Public key: ssh-ed25519 {pub_b64} zetl-collab");
+        }
+        None => {
+            print!("{openssh_pem}");
+        }
+    }
+
+    Ok(())
+}
+
 fn cmd_invite(
     cli: &Cli,
     as_user: &str,
@@ -4952,25 +4993,24 @@ fn cmd_serve(
     collab: bool,
     init_owner: bool,
     owner_name: &str,
+    server_key_seed: Option<&str>,
     git_poll_interval: std::time::Duration,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
     // ── Server key protection (REQ-020) ─────────────────────────────────
     // When --collab is active, ensure sensitive dirs are in .gitignore and
-    // verify server key permissions if the key already exists.
+    // derive or verify the server key.
     if collab {
         zetl::user::ensure_gitignore(&pipeline.vault_root)
             .context("failed to update .gitignore for collab secrets")?;
 
-        // Eagerly verify server key permissions (if key exists) so we fail
-        // fast on startup rather than on first invitation.
-        let key_path = pipeline.vault_root.join(".zetl/collab/server.key");
-        if key_path.exists() {
-            // load_or_create_server_key checks permissions and bails if insecure
-            zetl::user::invite::load_or_create_server_key(&pipeline.vault_root)
-                .context("server key permission check failed")?;
-        }
+        // Derive from seed phrase or load/create from file
+        zetl::user::invite::load_or_derive_server_key(
+            &pipeline.vault_root,
+            server_key_seed,
+        )
+        .context("server key setup failed")?;
     }
 
     // ── Bootstrap owner (REQ-020-005) ────────────────────────────────────
@@ -9936,6 +9976,7 @@ fn main() -> anyhow::Result<()> {
             collab,
             init_owner,
             owner_name,
+            server_key_seed,
             git_poll_interval,
         } => cmd_serve(
             &cli,
@@ -9945,6 +9986,7 @@ fn main() -> anyhow::Result<()> {
             *collab,
             *init_owner,
             owner_name,
+            server_key_seed.as_deref(),
             *git_poll_interval,
         ),
         Command::Invite {
@@ -9964,6 +10006,7 @@ fn main() -> anyhow::Result<()> {
             host,
         ),
         Command::AgentToken { mnemonic } => cmd_agent_token(&cli, mnemonic),
+        Command::DeriveSshKey { mnemonic, out } => cmd_derive_ssh_key(mnemonic, out.as_deref()),
         Command::Build {
             out_dir,
             theme,

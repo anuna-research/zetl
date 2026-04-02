@@ -236,6 +236,11 @@ pub enum Command {
         /// Display name for the vault owner (used with --init-owner)
         #[arg(long, default_value = "Owner", requires = "init_owner")]
         owner_name: String,
+        /// BIP39 mnemonic (12 words) to deterministically derive the server key.
+        /// Useful for containerised deployments where the filesystem is ephemeral.
+        /// Can also be set via ZETL_SERVER_KEY_SEED env var. Requires --collab.
+        #[arg(long, requires = "collab", env = "ZETL_SERVER_KEY_SEED")]
+        server_key_seed: Option<String>,
         /// Git HEAD poll interval for detecting external commits (e.g. "30s", "1m").
         /// Set to "0" to disable. Requires --collab.
         #[arg(long, default_value = "30s", requires = "collab", value_parser = parse_duration)]
@@ -273,6 +278,19 @@ pub enum Command {
         /// BIP39 mnemonic phrase (12 words)
         #[arg(long)]
         mnemonic: String,
+    },
+
+    /// Derive an SSH ed25519 key from a BIP39 mnemonic and write it to a file.
+    /// Useful for containerised deployments where a single seed phrase provides
+    /// both the server key and the git SSH key.
+    #[command(after_help = "Examples:\n  zetl derive-ssh-key --mnemonic \"word1 word2 ... word12\" --out /root/.ssh/id_ed25519")]
+    DeriveSshKey {
+        /// BIP39 mnemonic phrase (12 words)
+        #[arg(long, env = "ZETL_SERVER_KEY_SEED")]
+        mnemonic: String,
+        /// Output path for the private key (default: stdout)
+        #[arg(long)]
+        out: Option<String>,
     },
 
     /// Generate a static HTML site from the vault
