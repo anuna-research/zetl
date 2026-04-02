@@ -236,6 +236,11 @@ pub enum Command {
         /// Display name for the vault owner (used with --init-owner)
         #[arg(long, default_value = "Owner", requires = "init_owner")]
         owner_name: String,
+        /// Public hostname for WebAuthn relying party (e.g. "mysite.fly.dev").
+        /// Defaults to "localhost". Can also be set via ZETL_HOSTNAME env var.
+        /// Requires --collab.
+        #[arg(long, requires = "collab", env = "ZETL_HOSTNAME")]
+        hostname: Option<String>,
         /// BIP39 mnemonic (12 words) to deterministically derive the server key.
         /// Useful for containerised deployments where the filesystem is ephemeral.
         /// Can also be set via ZETL_SERVER_KEY_SEED env var. Requires --collab.

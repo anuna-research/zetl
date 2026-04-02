@@ -4832,6 +4832,18 @@ fn cmd_derive_ssh_key(mnemonic: &str, out: Option<&str>) -> Result<()> {
 
     let openssh_pem = zetl::user::recovery::encode_openssh_ed25519(&private_bytes, &public_bytes);
 
+    // Build the OpenSSH public key line
+    let pub_b64 = base64::engine::general_purpose::STANDARD.encode(
+        [
+            &11u32.to_be_bytes()[..],
+            b"ssh-ed25519",
+            &32u32.to_be_bytes()[..],
+            &public_bytes[..],
+        ]
+        .concat(),
+    );
+    let pub_line = format!("ssh-ed25519 {pub_b64} zetl-collab\n");
+
     match out {
         Some(path) => {
             std::fs::write(path, &openssh_pem)
@@ -4843,22 +4855,18 @@ fn cmd_derive_ssh_key(mnemonic: &str, out: Option<&str>) -> Result<()> {
             }
             eprintln!("SSH key written to {path}");
 
-            // Print the public key for adding to git remotes
-            let pub_b64 = base64::engine::general_purpose::STANDARD.encode(
-                [
-                    &7u32.to_be_bytes()[..],
-                    b"ssh-ed25519",
-                    &32u32.to_be_bytes()[..],
-                    &public_bytes[..],
-                ]
-                .concat(),
-            );
-            eprintln!("Public key: ssh-ed25519 {pub_b64} zetl-collab");
+            let pub_path = format!("{path}.pub");
+            std::fs::write(&pub_path, &pub_line)
+                .with_context(|| format!("failed to write public key to {pub_path}"))?;
+            eprintln!("Public key written to {pub_path}");
         }
         None => {
             print!("{openssh_pem}");
         }
     }
+
+    // Always print the public key to stderr for easy copy-paste
+    eprint!("Public key: {pub_line}");
 
     Ok(())
 }
@@ -4993,6 +5001,7 @@ fn cmd_serve(
     collab: bool,
     init_owner: bool,
     owner_name: &str,
+    hostname: Option<&str>,
     server_key_seed: Option<&str>,
     git_poll_interval: std::time::Duration,
 ) -> Result<()> {
@@ -5241,8 +5250,11 @@ fn cmd_serve(
         wal_store: std::sync::Arc::new(zetl::web::wal::WalStore::new(&vault_root)),
         pending_writes: zetl::web::fs_watch::PendingWrites::new(),
         passkey_mgr: zetl::user::passkey::PasskeyManager::new(
-            "localhost",
-            &format!("http://localhost:{port}"),
+            hostname.unwrap_or("localhost"),
+            &match hostname {
+                Some(h) => format!("https://{h}"),
+                None => format!("http://localhost:{port}"),
+            },
             "zetl vault",
         )
         .ok()
@@ -9976,6 +9988,7 @@ fn main() -> anyhow::Result<()> {
             collab,
             init_owner,
             owner_name,
+            hostname,
             server_key_seed,
             git_poll_interval,
         } => cmd_serve(
@@ -9986,6 +9999,7 @@ fn main() -> anyhow::Result<()> {
             *collab,
             *init_owner,
             owner_name,
+            hostname.as_deref(),
             server_key_seed.as_deref(),
             *git_poll_interval,
         ),
