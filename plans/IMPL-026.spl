@@ -1,0 +1,390 @@
+;; IMPL-026: AST-Aware Graph Compression
+;; Implements SPEC-026 — token-efficient vault export for LLM consumption
+
+(meta plan
+  (id "IMPL-026")
+  (title "AST-Aware Graph Compression")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-04-07")
+  (author "agent:claude")
+  (spec "SPEC-026")
+  (description "Implement compress module: AST-walking compressor, paragraph compression, CLI --compact flag, MCP zetl_compress tool"))
+
+;; ── Agents ──────────────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── Tasks ───────────────────────────────────────────────────────
+
+;; Phase 1: Pure core (no I/O)
+(given task-compress-core)
+(given task-paragraph)
+(given task-frontmatter)
+(given task-graph-summary)
+(given task-token-estimate)
+
+;; Phase 2: Integration (I/O shell)
+(given task-cli)
+(given task-json-envelope)
+(given task-mcp)
+
+;; Phase 3: Tests
+(given task-unit-tests)
+(given task-integration-tests)
+
+;; ── Task metadata ───────────────────────────────────────────────
+
+(meta task-compress-core
+  (description "Create src/compress.rs with compress_page() that walks pulldown-cmark Event stream. Handle headings, wikilinks, lists, code blocks, block quotes, tables, images, HTML stripping, task list markers, soft/hard breaks per SPEC-026 §3.1")
+  (acceptance "compress_page() produces correct output for all AST node types in §3.1 table; wikilinks emit → target; dead links emit → ✗ target; headings preserved verbatim; code blocks emit ⌜lang: first_line⌝; lists flatten to bullet; HTML stripped; images emit [img: alt]; breaks collapsed"))
+
+(meta task-paragraph
+  (description "Implement compress_paragraph() with tiered strategy per §3.2: preserve link-bearing sentences verbatim, preserve signal sentences (decision markers), reduce filler via stop-word removal")
+  (acceptance "Link-bearing sentences preserved verbatim; signal words (decided, chose, because, instead of, trade-off) trigger preservation; filler sentences have stop words removed; deterministic output"))
+
+(meta task-frontmatter
+  (description "Parse YAML frontmatter and emit as @ key: value lines. Skip internal keys. Handle tags as comma-separated, aliases as comma-separated")
+  (acceptance "Frontmatter emits @ tags:, @ aliases:, @ date: etc; array values comma-joined; internal keys omitted"))
+
+(meta task-graph-summary
+  (description "Implement build_graph_summary() per §3.3: header with page/edge counts, forward links with →, backlinks with ←, alphabetical ordering")
+  (acceptance "Graph summary shows correct page and edge counts; forward links use →; backlinks use ←; pages sorted alphabetically"))
+
+(meta task-token-estimate
+  (description "Implement estimate_tokens() as whitespace-split word count proxy")
+  (acceptance "Returns usize equal to whitespace-split word count of input string"))
+
+(meta task-cli
+  (description "Add --compact flag to zetl export command. Support <page>, --neighbours, --depth, --all, --format json|text. Wire to CompressedExport orchestrator that reads files, builds LinkGraph, calls pure core, writes stdout")
+  (acceptance "zetl export --compact <page> outputs compressed single page; --neighbours includes 1-hop pages; --all compresses entire vault; multi-page output has === page === delimiters and graph summary; exit codes per CON-037"))
+
+(meta task-json-envelope
+  (description "Implement --format json output per CON-037: pages array with name, compressed, token_estimate, raw_token_estimate; graph field; total_token_estimate")
+  (acceptance "JSON output parses correctly; all fields present; token_estimate < raw_token_estimate for non-trivial pages"))
+
+(meta task-mcp
+  (description "Add zetl_compress tool to MCP server per CON-038: page param (required), neighbours boolean, depth integer 1-3. Returns JSON envelope")
+  (acceptance "tools/list includes zetl_compress with correct schema; tools/call returns valid JSON envelope matching CON-038"))
+
+(meta task-unit-tests
+  (description "Unit tests for compress_page, compress_paragraph, build_graph_summary, estimate_tokens covering TEST-144, TEST-147, TEST-148, TEST-149, TEST-150, TEST-151, TEST-152")
+  (acceptance "All unit tests pass; covers node-type coverage, wikilink preservation, dead link marking, frontmatter, determinism, graph summary"))
+
+(meta task-integration-tests
+  (description "Integration tests for CLI and MCP: TEST-145 (neighbourhood), TEST-146 (full vault), TEST-153 (JSON envelope), TEST-154 (MCP tool)")
+  (acceptance "All integration tests pass; CLI produces correct output; MCP tool returns valid responses"))
+
+;; ── Dependencies (no-deps for root tasks) ───────────────────────
+
+(given no-deps-compress-core)
+(given no-deps-paragraph)
+(given no-deps-token-estimate)
+
+;; ── Readiness rules ─────────────────────────────────────────────
+
+;; Phase 1: Independent pure core tasks
+(normally r-ready-compress-core
+  (and task-compress-core no-deps-compress-core)
+  ready-compress-core)
+
+(normally r-ready-paragraph
+  (and task-paragraph no-deps-paragraph)
+  ready-paragraph)
+
+(normally r-ready-token-estimate
+  (and task-token-estimate no-deps-token-estimate)
+  ready-token-estimate)
+
+;; Frontmatter depends on compress-core (needs the same module structure)
+(normally r-ready-frontmatter
+  (and task-frontmatter completed-compress-core)
+  ready-frontmatter)
+
+;; Graph summary depends on compress-core (shares output format)
+(normally r-ready-graph-summary
+  (and task-graph-summary completed-compress-core)
+  ready-graph-summary)
+
+;; Phase 2: CLI needs all pure core
+(normally r-ready-cli
+  (and task-cli completed-compress-core completed-paragraph completed-frontmatter completed-graph-summary completed-token-estimate)
+  ready-cli)
+
+;; JSON envelope builds on CLI
+(normally r-ready-json-envelope
+  (and task-json-envelope completed-cli)
+  ready-json-envelope)
+
+;; MCP needs CLI + JSON envelope (same orchestrator logic)
+(normally r-ready-mcp
+  (and task-mcp completed-cli completed-json-envelope)
+  ready-mcp)
+
+;; Phase 3: Tests
+(normally r-ready-unit-tests
+  (and task-unit-tests completed-compress-core completed-paragraph completed-frontmatter completed-graph-summary completed-token-estimate)
+  ready-unit-tests)
+
+(normally r-ready-integration-tests
+  (and task-integration-tests completed-cli completed-json-envelope completed-mcp)
+  ready-integration-tests)
+
+;; ── Assignment rules ────────────────────────────────────────────
+
+(normally r-assign-compress-core
+  (and ready-compress-core agent-claude-available)
+  assign-to-compress-core-claude)
+
+(normally r-assign-paragraph
+  (and ready-paragraph agent-claude-available)
+  assign-to-paragraph-claude)
+
+(normally r-assign-token-estimate
+  (and ready-token-estimate agent-claude-available)
+  assign-to-token-estimate-claude)
+
+(normally r-assign-frontmatter
+  (and ready-frontmatter agent-claude-available)
+  assign-to-frontmatter-claude)
+
+(normally r-assign-graph-summary
+  (and ready-graph-summary agent-claude-available)
+  assign-to-graph-summary-claude)
+
+(normally r-assign-cli
+  (and ready-cli agent-claude-available)
+  assign-to-cli-claude)
+
+(normally r-assign-json-envelope
+  (and ready-json-envelope agent-claude-available)
+  assign-to-json-envelope-claude)
+
+(normally r-assign-mcp
+  (and ready-mcp agent-claude-available)
+  assign-to-mcp-claude)
+
+(normally r-assign-unit-tests
+  (and ready-unit-tests agent-claude-available)
+  assign-to-unit-tests-claude)
+
+(normally r-assign-integration-tests
+  (and ready-integration-tests agent-claude-available)
+  assign-to-integration-tests-claude)
+
+(claims agent:claude
+  :at "2026-04-07T13:43:25Z"
+  (given claim-v1-compress-core)
+  (normally r-cl-state-v1-compress-core claim-v1-compress-core state-claimed-v1-compress-core)
+  (normally r-cl-chain-v1-compress-core state-claimed-v1-compress-core claimed-compress-core)
+)
+
+;; Propagation rules: failures in 'compress-core' block downstream tasks
+(normally r-propagate-cli-from-compress-core-failed failed-compress-core upstream-blocked-cli)
+(normally r-propagate-cli-from-compress-core-permanently-failed permanently-failed-compress-core upstream-blocked-cli)
+(normally r-propagate-cli-from-compress-core-stale-v1 stale-v1-compress-core upstream-blocked-cli)
+(normally r-propagate-cli-from-compress-core-timeout-v1 timeout-v1-compress-core upstream-blocked-cli)
+(normally r-propagate-cli-from-compress-core-blocked upstream-blocked-compress-core upstream-blocked-cli)
+(normally r-propagate-frontmatter-from-compress-core-failed failed-compress-core upstream-blocked-frontmatter)
+(normally r-propagate-frontmatter-from-compress-core-permanently-failed permanently-failed-compress-core upstream-blocked-frontmatter)
+(normally r-propagate-frontmatter-from-compress-core-stale-v1 stale-v1-compress-core upstream-blocked-frontmatter)
+(normally r-propagate-frontmatter-from-compress-core-timeout-v1 timeout-v1-compress-core upstream-blocked-frontmatter)
+(normally r-propagate-frontmatter-from-compress-core-blocked upstream-blocked-compress-core upstream-blocked-frontmatter)
+(normally r-propagate-graph-summary-from-compress-core-failed failed-compress-core upstream-blocked-graph-summary)
+(normally r-propagate-graph-summary-from-compress-core-permanently-failed permanently-failed-compress-core upstream-blocked-graph-summary)
+(normally r-propagate-graph-summary-from-compress-core-stale-v1 stale-v1-compress-core upstream-blocked-graph-summary)
+(normally r-propagate-graph-summary-from-compress-core-timeout-v1 timeout-v1-compress-core upstream-blocked-graph-summary)
+(normally r-propagate-graph-summary-from-compress-core-blocked upstream-blocked-compress-core upstream-blocked-graph-summary)
+(normally r-propagate-unit-tests-from-compress-core-failed failed-compress-core upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-compress-core-permanently-failed permanently-failed-compress-core upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-compress-core-stale-v1 stale-v1-compress-core upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-compress-core-timeout-v1 timeout-v1-compress-core upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-compress-core-blocked upstream-blocked-compress-core upstream-blocked-unit-tests)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-integration-tests-from-cli-blocked upstream-blocked-cli upstream-blocked-integration-tests)
+(normally r-propagate-json-envelope-from-cli-blocked upstream-blocked-cli upstream-blocked-json-envelope)
+(normally r-propagate-mcp-from-cli-blocked upstream-blocked-cli upstream-blocked-mcp)
+(normally r-propagate-cli-from-frontmatter-blocked upstream-blocked-frontmatter upstream-blocked-cli)
+(normally r-propagate-unit-tests-from-frontmatter-blocked upstream-blocked-frontmatter upstream-blocked-unit-tests)
+(normally r-propagate-cli-from-graph-summary-blocked upstream-blocked-graph-summary upstream-blocked-cli)
+(normally r-propagate-unit-tests-from-graph-summary-blocked upstream-blocked-graph-summary upstream-blocked-unit-tests)
+(normally r-propagate-integration-tests-from-json-envelope-blocked upstream-blocked-json-envelope upstream-blocked-integration-tests)
+(normally r-propagate-mcp-from-json-envelope-blocked upstream-blocked-json-envelope upstream-blocked-mcp)
+(normally r-propagate-integration-tests-from-mcp-blocked upstream-blocked-mcp upstream-blocked-integration-tests)
+
+(claims agent:claude
+  :at "2026-04-07T13:43:25Z"
+  (given claim-v1-paragraph)
+  (normally r-cl-state-v1-paragraph claim-v1-paragraph state-claimed-v1-paragraph)
+  (normally r-cl-chain-v1-paragraph state-claimed-v1-paragraph claimed-paragraph)
+)
+
+;; Propagation rules: failures in 'paragraph' block downstream tasks
+(normally r-propagate-cli-from-paragraph-failed failed-paragraph upstream-blocked-cli)
+(normally r-propagate-cli-from-paragraph-permanently-failed permanently-failed-paragraph upstream-blocked-cli)
+(normally r-propagate-cli-from-paragraph-stale-v1 stale-v1-paragraph upstream-blocked-cli)
+(normally r-propagate-cli-from-paragraph-timeout-v1 timeout-v1-paragraph upstream-blocked-cli)
+(normally r-propagate-cli-from-paragraph-blocked upstream-blocked-paragraph upstream-blocked-cli)
+(normally r-propagate-unit-tests-from-paragraph-failed failed-paragraph upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-paragraph-permanently-failed permanently-failed-paragraph upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-paragraph-stale-v1 stale-v1-paragraph upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-paragraph-timeout-v1 timeout-v1-paragraph upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-paragraph-blocked upstream-blocked-paragraph upstream-blocked-unit-tests)
+
+(claims agent:claude
+  :at "2026-04-07T13:43:25Z"
+  (given claim-v1-token-estimate)
+  (normally r-cl-state-v1-token-estimate claim-v1-token-estimate state-claimed-v1-token-estimate)
+  (normally r-cl-chain-v1-token-estimate state-claimed-v1-token-estimate claimed-token-estimate)
+)
+
+;; Propagation rules: failures in 'token-estimate' block downstream tasks
+(normally r-propagate-cli-from-token-estimate-failed failed-token-estimate upstream-blocked-cli)
+(normally r-propagate-cli-from-token-estimate-permanently-failed permanently-failed-token-estimate upstream-blocked-cli)
+(normally r-propagate-cli-from-token-estimate-stale-v1 stale-v1-token-estimate upstream-blocked-cli)
+(normally r-propagate-cli-from-token-estimate-timeout-v1 timeout-v1-token-estimate upstream-blocked-cli)
+(normally r-propagate-cli-from-token-estimate-blocked upstream-blocked-token-estimate upstream-blocked-cli)
+(normally r-propagate-unit-tests-from-token-estimate-failed failed-token-estimate upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-token-estimate-permanently-failed permanently-failed-token-estimate upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-token-estimate-stale-v1 stale-v1-token-estimate upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-token-estimate-timeout-v1 timeout-v1-token-estimate upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-token-estimate-blocked upstream-blocked-token-estimate upstream-blocked-unit-tests)
+
+(claims agent:claude
+  :at "2026-04-07T13:52:37Z"
+  (given completed-compress-core))
+
+(claims agent:claude
+  :at "2026-04-07T13:52:37Z"
+  (given completed-paragraph))
+
+(claims agent:claude
+  :at "2026-04-07T13:52:37Z"
+  (given completed-token-estimate))
+
+(claims agent:claude
+  :at "2026-04-07T13:52:42Z"
+  (given claim-v1-frontmatter)
+  (normally r-cl-state-v1-frontmatter claim-v1-frontmatter state-claimed-v1-frontmatter)
+  (normally r-cl-chain-v1-frontmatter state-claimed-v1-frontmatter claimed-frontmatter)
+)
+
+;; Propagation rules: failures in 'frontmatter' block downstream tasks
+(normally r-propagate-cli-from-frontmatter-failed failed-frontmatter upstream-blocked-cli)
+(normally r-propagate-cli-from-frontmatter-permanently-failed permanently-failed-frontmatter upstream-blocked-cli)
+(normally r-propagate-cli-from-frontmatter-stale-v1 stale-v1-frontmatter upstream-blocked-cli)
+(normally r-propagate-cli-from-frontmatter-timeout-v1 timeout-v1-frontmatter upstream-blocked-cli)
+(normally r-propagate-unit-tests-from-frontmatter-failed failed-frontmatter upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-frontmatter-permanently-failed permanently-failed-frontmatter upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-frontmatter-stale-v1 stale-v1-frontmatter upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-frontmatter-timeout-v1 timeout-v1-frontmatter upstream-blocked-unit-tests)
+
+(claims agent:claude
+  :at "2026-04-07T13:52:42Z"
+  (given completed-frontmatter))
+
+(claims agent:claude
+  :at "2026-04-07T13:52:42Z"
+  (given claim-v1-graph-summary)
+  (normally r-cl-state-v1-graph-summary claim-v1-graph-summary state-claimed-v1-graph-summary)
+  (normally r-cl-chain-v1-graph-summary state-claimed-v1-graph-summary claimed-graph-summary)
+)
+
+;; Propagation rules: failures in 'graph-summary' block downstream tasks
+(normally r-propagate-cli-from-graph-summary-failed failed-graph-summary upstream-blocked-cli)
+(normally r-propagate-cli-from-graph-summary-permanently-failed permanently-failed-graph-summary upstream-blocked-cli)
+(normally r-propagate-cli-from-graph-summary-stale-v1 stale-v1-graph-summary upstream-blocked-cli)
+(normally r-propagate-cli-from-graph-summary-timeout-v1 timeout-v1-graph-summary upstream-blocked-cli)
+(normally r-propagate-unit-tests-from-graph-summary-failed failed-graph-summary upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-graph-summary-permanently-failed permanently-failed-graph-summary upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-graph-summary-stale-v1 stale-v1-graph-summary upstream-blocked-unit-tests)
+(normally r-propagate-unit-tests-from-graph-summary-timeout-v1 timeout-v1-graph-summary upstream-blocked-unit-tests)
+
+(claims agent:claude
+  :at "2026-04-07T13:52:42Z"
+  (given completed-graph-summary))
+
+(claims agent:claude
+  :at "2026-04-07T13:52:47Z"
+  (given claim-v1-cli)
+  (normally r-cl-state-v1-cli claim-v1-cli state-claimed-v1-cli)
+  (normally r-cl-chain-v1-cli state-claimed-v1-cli claimed-cli)
+)
+
+;; Propagation rules: failures in 'cli' block downstream tasks
+(normally r-propagate-integration-tests-from-cli-failed failed-cli upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-cli-permanently-failed permanently-failed-cli upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-cli-stale-v1 stale-v1-cli upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-cli-timeout-v1 timeout-v1-cli upstream-blocked-integration-tests)
+(normally r-propagate-json-envelope-from-cli-failed failed-cli upstream-blocked-json-envelope)
+(normally r-propagate-json-envelope-from-cli-permanently-failed permanently-failed-cli upstream-blocked-json-envelope)
+(normally r-propagate-json-envelope-from-cli-stale-v1 stale-v1-cli upstream-blocked-json-envelope)
+(normally r-propagate-json-envelope-from-cli-timeout-v1 timeout-v1-cli upstream-blocked-json-envelope)
+(normally r-propagate-mcp-from-cli-failed failed-cli upstream-blocked-mcp)
+(normally r-propagate-mcp-from-cli-permanently-failed permanently-failed-cli upstream-blocked-mcp)
+(normally r-propagate-mcp-from-cli-stale-v1 stale-v1-cli upstream-blocked-mcp)
+(normally r-propagate-mcp-from-cli-timeout-v1 timeout-v1-cli upstream-blocked-mcp)
+
+(claims agent:claude
+  :at "2026-04-07T13:52:47Z"
+  (given claim-v1-unit-tests)
+  (normally r-cl-state-v1-unit-tests claim-v1-unit-tests state-claimed-v1-unit-tests)
+  (normally r-cl-chain-v1-unit-tests state-claimed-v1-unit-tests claimed-unit-tests)
+)
+
+(claims agent:claude
+  :at "2026-04-07T13:52:51Z"
+  (given completed-unit-tests))
+
+(claims agent:claude
+  :at "2026-04-07T13:55:21Z"
+  (given completed-cli))
+
+(claims agent:claude
+  :at "2026-04-07T13:55:25Z"
+  (given claim-v1-json-envelope)
+  (normally r-cl-state-v1-json-envelope claim-v1-json-envelope state-claimed-v1-json-envelope)
+  (normally r-cl-chain-v1-json-envelope state-claimed-v1-json-envelope claimed-json-envelope)
+)
+
+;; Propagation rules: failures in 'json-envelope' block downstream tasks
+(normally r-propagate-integration-tests-from-json-envelope-failed failed-json-envelope upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-json-envelope-permanently-failed permanently-failed-json-envelope upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-json-envelope-stale-v1 stale-v1-json-envelope upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-json-envelope-timeout-v1 timeout-v1-json-envelope upstream-blocked-integration-tests)
+(normally r-propagate-mcp-from-json-envelope-failed failed-json-envelope upstream-blocked-mcp)
+(normally r-propagate-mcp-from-json-envelope-permanently-failed permanently-failed-json-envelope upstream-blocked-mcp)
+(normally r-propagate-mcp-from-json-envelope-stale-v1 stale-v1-json-envelope upstream-blocked-mcp)
+(normally r-propagate-mcp-from-json-envelope-timeout-v1 timeout-v1-json-envelope upstream-blocked-mcp)
+
+(claims agent:claude
+  :at "2026-04-07T13:55:25Z"
+  (given completed-json-envelope))
+
+(claims agent:claude
+  :at "2026-04-07T13:55:30Z"
+  (given claim-v1-mcp)
+  (normally r-cl-state-v1-mcp claim-v1-mcp state-claimed-v1-mcp)
+  (normally r-cl-chain-v1-mcp state-claimed-v1-mcp claimed-mcp)
+)
+
+;; Propagation rules: failures in 'mcp' block downstream tasks
+(normally r-propagate-integration-tests-from-mcp-failed failed-mcp upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-mcp-permanently-failed permanently-failed-mcp upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-mcp-stale-v1 stale-v1-mcp upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-mcp-timeout-v1 timeout-v1-mcp upstream-blocked-integration-tests)
+
+(claims agent:claude
+  :at "2026-04-07T13:57:05Z"
+  (given completed-mcp))
+
+(claims agent:claude
+  :at "2026-04-07T13:57:10Z"
+  (given claim-v1-integration-tests)
+  (normally r-cl-state-v1-integration-tests claim-v1-integration-tests state-claimed-v1-integration-tests)
+  (normally r-cl-chain-v1-integration-tests state-claimed-v1-integration-tests claimed-integration-tests)
+)
+
+(claims agent:claude
+  :at "2026-04-07T13:59:16Z"
+  (given completed-integration-tests))

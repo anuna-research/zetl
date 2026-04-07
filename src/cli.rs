@@ -195,8 +195,23 @@ pub enum Command {
         max_depth: usize,
     },
 
-    /// Export the complete link graph
-    Export,
+    /// Export the complete link graph (or AST-compressed pages with --compact)
+    Export {
+        /// Enable AST-aware compression for token-efficient LLM output
+        #[arg(long)]
+        compact: bool,
+        /// Page name (required for --compact unless --all is set)
+        page: Option<String>,
+        /// Include pages within --depth hops (requires --compact)
+        #[arg(long)]
+        neighbours: bool,
+        /// Hop radius for --neighbours (default: 1)
+        #[arg(long, default_value = "1")]
+        depth: usize,
+        /// Compress entire vault (requires --compact)
+        #[arg(long)]
+        all: bool,
+    },
 
     /// List Merkle blocks for a page (forward mode) or resolve a block by hash
     Blocks {

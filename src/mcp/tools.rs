@@ -337,6 +337,112 @@ pub fn tool_status(state: &McpState) -> Result<Value, ToolError> {
 }
 
 // ---------------------------------------------------------------------------
+// Compress tool (SPEC-026)
+// ---------------------------------------------------------------------------
+
+/// **compress** — AST-compressed representation of vault pages for token-efficient LLM consumption.
+pub fn tool_compress(
+    state: &McpState,
+    files: &[crate::types::ParsedFile],
+    page: &str,
+    neighbours: bool,
+    depth: usize,
+) -> Result<Value, ToolError> {
+    use crate::compress::{build_graph_summary, compress_page, estimate_tokens};
+
+    let resolved = resolve_page(page, &state.page_names)?;
+
+    // Build dead-links set
+    let dead_links: std::collections::HashSet<String> = state
+        .graph
+        .dead_links()
+        .iter()
+        .map(|dl| dl.target.clone())
+        .collect();
+
+    // Determine pages to compress
+    let pages_to_compress: Vec<String> = if neighbours {
+        let hood = state
+            .graph
+            .neighbourhood(&resolved, depth)
+            .map_err(|e| ToolError::Internal(e.to_string()))?;
+        let mut names: Vec<String> = hood.into_iter().collect();
+        names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        names
+    } else {
+        vec![resolved.clone()]
+    };
+
+    // Build file lookup
+    let file_map: std::collections::HashMap<String, &crate::types::ParsedFile> = files
+        .iter()
+        .map(|f| (f.page_name.clone(), f))
+        .collect();
+
+    let multi_page = pages_to_compress.len() > 1;
+
+    // Build per-page entries
+    let mut page_entries = Vec::new();
+    for page_name in &pages_to_compress {
+        if let Some(pf) = file_map.get(page_name) {
+            let abs_path = state.vault_root.join(&pf.path);
+            let content = std::fs::read_to_string(&abs_path)
+                .map_err(|e| ToolError::Internal(format!("reading '{}': {e}", abs_path.display())))?;
+            let raw_tokens = estimate_tokens(&content);
+            let compressed = compress_page(&content, &dead_links);
+            let comp_tokens = estimate_tokens(&compressed);
+
+            page_entries.push(serde_json::json!({
+                "name": page_name,
+                "compressed": compressed,
+                "token_estimate": comp_tokens,
+                "raw_token_estimate": raw_tokens,
+            }));
+        }
+    }
+
+    let total: usize = page_entries
+        .iter()
+        .filter_map(|e| e.get("token_estimate").and_then(|v| v.as_u64()))
+        .map(|v| v as usize)
+        .sum();
+
+    // Build graph summary if multi-page
+    let graph = if multi_page {
+        let page_set: std::collections::HashSet<&str> =
+            pages_to_compress.iter().map(|s| s.as_str()).collect();
+        let graph_data: Vec<(String, Vec<String>, Vec<String>)> = pages_to_compress
+            .iter()
+            .map(|p| {
+                let fwd: Vec<String> = state
+                    .graph
+                    .forward_links(p)
+                    .iter()
+                    .map(|fl| fl.target.clone())
+                    .filter(|t| page_set.contains(t.as_str()))
+                    .collect();
+                let back: Vec<String> = state
+                    .graph
+                    .backlinks(p)
+                    .iter()
+                    .map(|bl| bl.source.clone())
+                    .filter(|s| page_set.contains(s.as_str()))
+                    .collect();
+                (p.clone(), fwd, back)
+            })
+            .collect();
+        Some(build_graph_summary(&graph_data))
+    } else {
+        None
+    };
+
+    Ok(serde_json::json!({
+        "pages": page_entries,
+        "graph": graph,
+        "total_token_estimate": total,
+    }))
+}
+
 // Reason tool — feature-gated
 // ---------------------------------------------------------------------------
 

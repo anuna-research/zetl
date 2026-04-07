@@ -3563,6 +3563,166 @@ fn cmd_export(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
+// ── AST-Aware Compact Export (SPEC-026) ──────────────────────────────────────
+
+fn cmd_export_compact(
+    cli: &Cli,
+    page: Option<&str>,
+    neighbours: bool,
+    depth: usize,
+    all: bool,
+) -> Result<()> {
+    use zetl::compress::{build_graph_summary, compress_page, estimate_tokens};
+
+    let pipeline = run_pipeline(cli)?;
+
+    // Build dead-links set (phantom nodes)
+    let dead_links: HashSet<String> = pipeline
+        .graph
+        .dead_links()
+        .iter()
+        .map(|dl| dl.target.clone())
+        .collect();
+
+    // Determine which pages to compress
+    let pages_to_compress: Vec<String> = if all {
+        let mut names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
+        names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        names
+    } else {
+        let page_name = page.ok_or_else(|| {
+            anyhow::anyhow!("page name required (or use --all for entire vault)")
+        })?;
+        let resolved = find_page(page_name, &pipeline.file_index, false, &pipeline.files)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        if neighbours {
+            let hood = pipeline.graph.neighbourhood(&resolved, depth)?;
+            let mut names: Vec<String> = hood.into_iter().collect();
+            names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+            names
+        } else {
+            vec![resolved]
+        }
+    };
+
+    // Build a lookup from page_name → file content
+    let file_map: HashMap<String, &ParsedFile> = pipeline
+        .files
+        .iter()
+        .map(|f| (f.page_name.clone(), f))
+        .collect();
+
+    let multi_page = pages_to_compress.len() > 1;
+
+    // Build graph summary data for multi-page output
+    let graph_data: Vec<(String, Vec<String>, Vec<String>)> = if multi_page {
+        let page_set: HashSet<&str> = pages_to_compress.iter().map(|s| s.as_str()).collect();
+        pages_to_compress
+            .iter()
+            .map(|p| {
+                let fwd: Vec<String> = pipeline
+                    .graph
+                    .forward_links(p)
+                    .iter()
+                    .map(|fl| fl.target.clone())
+                    .filter(|t| page_set.contains(t.as_str()))
+                    .collect();
+                let back: Vec<String> = pipeline
+                    .graph
+                    .backlinks(p)
+                    .iter()
+                    .map(|bl| bl.source.clone())
+                    .filter(|s| page_set.contains(s.as_str()))
+                    .collect();
+                (p.clone(), fwd, back)
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+
+    // Determine output format
+    let use_json = matches!(cli.format, OutputFormat::Json) || cli.json;
+
+    if use_json {
+        // JSON envelope per CON-037
+        #[derive(Serialize)]
+        struct PageEntry {
+            name: String,
+            compressed: String,
+            token_estimate: usize,
+            raw_token_estimate: usize,
+        }
+
+        #[derive(Serialize)]
+        struct CompactExportJson {
+            pages: Vec<PageEntry>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            graph: Option<String>,
+            total_token_estimate: usize,
+        }
+
+        let mut entries = Vec::new();
+        for page_name in &pages_to_compress {
+            if let Some(pf) = file_map.get(page_name) {
+                let content = std::fs::read_to_string(
+                    Path::new(&pipeline.vault_root).join(&pf.path),
+                )?;
+                let raw_tokens = estimate_tokens(&content);
+                let compressed = compress_page(&content, &dead_links);
+                let comp_tokens = estimate_tokens(&compressed);
+
+                entries.push(PageEntry {
+                    name: page_name.clone(),
+                    compressed,
+                    token_estimate: comp_tokens,
+                    raw_token_estimate: raw_tokens,
+                });
+            }
+        }
+
+        let total = entries.iter().map(|e| e.token_estimate).sum();
+        let graph_str = if multi_page {
+            Some(build_graph_summary(&graph_data))
+        } else {
+            None
+        };
+
+        let output = CompactExportJson {
+            pages: entries,
+            graph: graph_str,
+            total_token_estimate: total,
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        // Text output
+        if multi_page {
+            println!("{}", build_graph_summary(&graph_data));
+            println!();
+        }
+
+        for page_name in &pages_to_compress {
+            if let Some(pf) = file_map.get(page_name) {
+                let content = std::fs::read_to_string(
+                    Path::new(&pipeline.vault_root).join(&pf.path),
+                )?;
+                let compressed = compress_page(&content, &dead_links);
+
+                if multi_page {
+                    println!("=== {} ===", page_name);
+                }
+                print!("{}", compressed);
+                if multi_page {
+                    println!();
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 // ── Cross-referencing helpers ──────────────────────────────────────────────
 
 /// A conclusion that a page contributes to (used by --with-conclusions).
@@ -9981,7 +10141,19 @@ fn main() -> anyhow::Result<()> {
             block_type,
             resolve,
         } => cmd_blocks(&cli, page.as_deref(), block_type, resolve.as_deref()),
-        Command::Export => cmd_export(&cli),
+        Command::Export {
+            compact,
+            ref page,
+            neighbours,
+            depth,
+            all,
+        } => {
+            if *compact {
+                cmd_export_compact(&cli, page.as_deref(), *neighbours, *depth, *all)
+            } else {
+                cmd_export(&cli)
+            }
+        }
         Command::Tui => cmd_tui(&cli),
         Command::View {
             page,

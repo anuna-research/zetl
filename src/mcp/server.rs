@@ -121,6 +121,16 @@ impl McpServer {
             ),
         ];
 
+        tools.push(mk(
+            "compress",
+            "Return AST-compressed representation of vault pages for token-efficient LLM consumption.",
+            json!({
+                "page": { "type": "string", "description": "Page name" },
+                "neighbours": { "type": "boolean", "description": "Include pages within depth hops", "default": false },
+                "depth": { "type": "integer", "description": "Hop radius for neighbours (1-3)", "default": 1 }
+            }),
+        ));
+
         #[cfg(feature = "reason")]
         tools.push(mk(
             "reason",
@@ -250,6 +260,19 @@ impl ServerHandler for McpServer {
                     tools::tool_check(&self.state, &category)
                 }
                 "status" => tools::tool_status(&self.state),
+                "compress" => {
+                    let neighbours = args
+                        .and_then(|a| a.get("neighbours"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    tools::tool_compress(
+                        &self.state,
+                        &self.files,
+                        &get_str("page"),
+                        neighbours,
+                        get_usize("depth", 1).min(3).max(1),
+                    )
+                }
                 #[cfg(feature = "reason")]
                 "reason" => {
                     let query = get_str("query");
