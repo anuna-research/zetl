@@ -227,3 +227,11 @@
 (normally r-assign-delegate-cmd (and ready-delegate-cmd agent-claude-available) assign-to-delegate-cmd-claude)
 (normally r-assign-bind-safety (and ready-bind-safety agent-claude-available) assign-to-bind-safety-claude)
 (normally r-assign-integration-tests (and ready-integration-tests agent-claude-available) assign-to-integration-tests-claude)
+
+(claims agent:claude
+  :at "2026-04-07T02:37:16Z"
+  (given completed-integration-tests))
+
+(claims agent:claude
+  :at "2026-04-07T02:37:21Z"
+  (given completed-integration-tests))

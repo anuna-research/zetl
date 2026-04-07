@@ -145,15 +145,23 @@ fn mcp_stdio_list_tools() {
         .map(|t| t["name"].as_str().unwrap())
         .collect();
 
-    let expected = [
-        "get", "search", "links", "backlinks", "path", "similar", "check", "status", "reason",
+    // Core tools are always expected regardless of feature flags.
+    let expected_core = [
+        "get", "search", "links", "backlinks", "path", "similar", "check", "status",
     ];
-    for name in &expected {
+    for name in &expected_core {
         assert!(
             tool_names.contains(name),
             "missing tool: {name}. Found: {tool_names:?}"
         );
     }
+
+    // "reason" is only registered when built with --features reason.
+    #[cfg(feature = "reason")]
+    assert!(
+        tool_names.contains(&"reason"),
+        "missing tool: reason (expected with --features reason). Found: {tool_names:?}"
+    );
 }
 
 #[test]

@@ -2,7 +2,6 @@
 
 use crate::mcp::auth::resolve_page;
 use crate::mcp::types::{McpState, ToolError};
-use crate::simhash::SimHashIndex;
 use serde_json::{json, Value};
 
 // ---------------------------------------------------------------------------
@@ -29,9 +28,24 @@ fn clamp_limit(limit: usize, max: usize) -> usize {
 /// **search** — full-text search over the vault via Tantivy.
 ///
 /// Returns up to `limit` (clamped to 1–100) results ranked by score.
-pub fn tool_search(state: &McpState, query: &str, limit: usize) -> Result<Value, ToolError> {
+/// `mode` can be "fulltext" (default), "semantic", or "hybrid".
+pub fn tool_search(
+    state: &McpState,
+    query: &str,
+    limit: usize,
+    mode: &str,
+) -> Result<Value, ToolError> {
     validate_search_params(query)?;
     let limit = clamp_limit(limit, 100);
+
+    match mode {
+        "semantic" | "hybrid" => {
+            return Err(ToolError::FeatureUnavailable(
+                "semantic/hybrid search requires --features semantic".into(),
+            ));
+        }
+        _ => {} // "fulltext" or anything else falls through to tantivy
+    }
 
     let hits = state
         .tantivy
@@ -41,16 +55,42 @@ pub fn tool_search(state: &McpState, query: &str, limit: usize) -> Result<Value,
     let results: Vec<Value> = hits
         .iter()
         .map(|h| {
+            // Build a basic snippet: first 200 chars of file content.
+            let snippet = {
+                let rel_path = state
+                    .file_index
+                    .iter()
+                    .find(|(name, _)| name == &h.page_name)
+                    .map(|(_, p)| p.clone());
+                rel_path
+                    .and_then(|rp| {
+                        let abs = state.vault_root.join(&rp);
+                        std::fs::read_to_string(abs).ok()
+                    })
+                    .map(|content| {
+                        let trimmed = content.trim_start();
+                        let end = trimmed
+                            .char_indices()
+                            .nth(200)
+                            .map(|(i, _)| i)
+                            .unwrap_or(trimmed.len());
+                        trimmed[..end].replace('\n', " ")
+                    })
+                    .unwrap_or_default()
+            };
+
             json!({
                 "page": h.page_name,
                 "path": h.path,
                 "score": h.score,
+                "snippet": snippet,
             })
         })
         .collect();
 
     Ok(json!({
         "query": query,
+        "mode": mode,
         "count": results.len(),
         "results": results,
     }))
@@ -174,15 +214,8 @@ pub fn tool_similar(
     validate_search_params(query)?;
     let limit = clamp_limit(limit, 100);
 
-    // Build SimHash index from file_index (Vec<(page_name, PathBuf)>).
-    let pages: Vec<(String, String)> = state
-        .file_index
-        .iter()
-        .map(|(name, path)| (name.clone(), path.to_string_lossy().into_owned()))
-        .collect();
-
-    let index = SimHashIndex::build(&pages);
-    let results = index.search(query, threshold, limit);
+    // Use cached SimHashIndex from state (built once at startup).
+    let results = state.simhash.search(query, threshold, limit);
 
     let result_list: Vec<Value> = results
         .iter()
@@ -204,10 +237,14 @@ pub fn tool_similar(
 }
 
 /// **check** — health check: dead links, orphans, and graph stats.
-pub fn tool_check(state: &McpState) -> Result<Value, ToolError> {
+///
+/// `category` controls what is returned:
+/// - "all" (default): full report including dead links, orphans, and stats
+/// - "dead_links": only dead link information
+/// - "orphans": only orphan information
+pub fn tool_check(state: &McpState, category: &str) -> Result<Value, ToolError> {
     let dead_links = state.graph.dead_links();
     let orphans = state.graph.orphans();
-    let stats = state.graph.stats(10);
 
     let dead_list: Vec<Value> = dead_links
         .iter()
@@ -230,21 +267,35 @@ pub fn tool_check(state: &McpState) -> Result<Value, ToolError> {
         })
         .collect();
 
-    Ok(json!({
-        "dead_links": dead_list,
-        "dead_link_count": dead_list.len(),
-        "orphans": orphan_list,
-        "orphan_count": orphan_list.len(),
-        "stats": {
-            "pages": stats.pages,
-            "links": stats.links,
-            "unique_targets": stats.unique_targets,
-            "dead_links": stats.dead_links,
-            "orphans": stats.orphans,
-            "ambiguous_links": stats.ambiguous_links,
-            "connected_components": stats.connected_components,
-        },
-    }))
+    match category {
+        "dead_links" => Ok(json!({
+            "dead_links": dead_list,
+            "dead_link_count": dead_list.len(),
+        })),
+        "orphans" => Ok(json!({
+            "orphans": orphan_list,
+            "orphan_count": orphan_list.len(),
+        })),
+        _ => {
+            // "all" or anything else
+            let stats = state.graph.stats(10);
+            Ok(json!({
+                "dead_links": dead_list,
+                "dead_link_count": dead_list.len(),
+                "orphans": orphan_list,
+                "orphan_count": orphan_list.len(),
+                "stats": {
+                    "pages": stats.pages,
+                    "links": stats.links,
+                    "unique_targets": stats.unique_targets,
+                    "dead_links": stats.dead_links,
+                    "orphans": stats.orphans,
+                    "ambiguous_links": stats.ambiguous_links,
+                    "connected_components": stats.connected_components,
+                },
+            }))
+        }
+    }
 }
 
 /// **status** — server status and vault summary.
@@ -263,6 +314,14 @@ pub fn tool_status(state: &McpState) -> Result<Value, ToolError> {
         })
         .collect();
 
+    // List of available tool names (conditionally including "reason").
+    #[allow(unused_mut)]
+    let mut tool_names = vec![
+        "get", "search", "links", "backlinks", "path", "similar", "check", "status",
+    ];
+    #[cfg(feature = "reason")]
+    tool_names.push("reason");
+
     Ok(json!({
         "vault_root": state.vault_root.to_string_lossy(),
         "page_count": stats.pages,
@@ -271,6 +330,9 @@ pub fn tool_status(state: &McpState) -> Result<Value, ToolError> {
         "dead_links": stats.dead_links,
         "orphans": stats.orphans,
         "most_linked": most_linked,
+        "tools": tool_names,
+        "transport": state.transport.as_str(),
+        "reindex": "not yet supported",
     }))
 }
 

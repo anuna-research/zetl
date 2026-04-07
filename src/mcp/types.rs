@@ -2,6 +2,7 @@
 
 use crate::graph::LinkGraph;
 use crate::search_index::SearchIndex;
+use crate::simhash::SimHashIndex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -14,11 +15,14 @@ pub struct McpState {
     pub vault_root: Arc<PathBuf>,
     pub graph: Arc<LinkGraph>,
     pub tantivy: Arc<SearchIndex>,
+    pub simhash: Arc<SimHashIndex>,
     pub file_index: Arc<Vec<(String, PathBuf)>>,
     pub resolved: Arc<HashSet<String>>,
     pub page_names: Arc<Vec<String>>,
     pub allowed_issuers: Arc<HashMap<String, String>>,
     pub started_at: Instant,
+    /// Transport mode: "stdio" or "http"
+    pub transport: Arc<String>,
 }
 
 /// JWT payload for delegate tokens.

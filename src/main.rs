@@ -10172,9 +10172,7 @@ fn cmd_mcp(
 ) -> Result<()> {
     use zetl::mcp::{server::McpServer, transport as mcp_transport, types::McpState};
 
-    // Store for future auth wiring (C1).
-    let _allowed_issuers = allowed_issuers;
-    let _cors_origin = cors_origin;
+    let _ = cors_origin; // Reserved for future CORS support.
 
     // -- Bind safety checks (Task 17) --
     let is_loopback = host == "127.0.0.1" || host == "::1" || host == "localhost";
@@ -10215,18 +10213,56 @@ fn cmd_mcp(
     // Resolved page set.
     let resolved: std::collections::HashSet<String> = pipeline.graph_resolved.clone();
 
-    // Allowed issuers (populated in Task 15).
-    let allowed_issuers = std::collections::HashMap::new();
+    // Build allowed issuers map: user_id → recovery_pubkey (base64url ed25519).
+    // Sources: (1) user profiles in .zetl/users/*/profile.json,
+    //          (2) --allowed-issuer CLI values (format: "id:pubkey_b64").
+    let mut allowed_issuers_map = std::collections::HashMap::new();
+
+    // Load from vault user profiles.
+    if let Ok(profiles) = zetl::user::list_profiles(&pipeline.vault_root) {
+        for profile in profiles {
+            if !profile.recovery_pubkey.is_empty() {
+                allowed_issuers_map.insert(profile.id.clone(), profile.recovery_pubkey.clone());
+            }
+        }
+    }
+
+    // Merge CLI-provided issuers (--allowed-issuer id:pubkey_b64).
+    for entry in allowed_issuers {
+        if let Some((id, pubkey)) = entry.split_once(':') {
+            allowed_issuers_map.insert(id.to_string(), pubkey.to_string());
+        } else {
+            eprintln!("WARNING: ignoring malformed --allowed-issuer {entry:?} (expected id:pubkey_b64)");
+        }
+    }
+
+    let require_auth = !allowed_issuers_map.is_empty() && !insecure;
+
+    // Build SimHash index once and cache in state.
+    let simhash_pages: Vec<(String, String)> = pipeline
+        .files
+        .iter()
+        .map(|f| (f.page_name.clone(), f.path.to_string_lossy().into_owned()))
+        .collect();
+    let simhash = zetl::simhash::SimHashIndex::build(&simhash_pages);
+
+    let transport_str = match transport {
+        zetl::cli::McpTransport::Stdio => "stdio",
+        zetl::cli::McpTransport::Http => "http",
+    }
+    .to_string();
 
     let state = McpState {
         vault_root: std::sync::Arc::new(pipeline.vault_root.clone()),
         graph: std::sync::Arc::new(pipeline.graph),
         tantivy: std::sync::Arc::new(tantivy),
+        simhash: std::sync::Arc::new(simhash),
         file_index: std::sync::Arc::new(file_index),
         resolved: std::sync::Arc::new(resolved),
         page_names: std::sync::Arc::new(page_names),
-        allowed_issuers: std::sync::Arc::new(allowed_issuers),
+        allowed_issuers: std::sync::Arc::new(allowed_issuers_map.clone()),
         started_at: std::time::Instant::now(),
+        transport: std::sync::Arc::new(transport_str),
     };
 
     let server = McpServer::new(state, pipeline.files);
@@ -10236,7 +10272,14 @@ fn cmd_mcp(
         match transport {
             zetl::cli::McpTransport::Stdio => mcp_transport::serve_stdio(server).await,
             zetl::cli::McpTransport::Http => {
-                mcp_transport::serve_http(server, host, port).await
+                mcp_transport::serve_http(
+                    server,
+                    host,
+                    port,
+                    require_auth,
+                    std::sync::Arc::new(allowed_issuers_map),
+                )
+                .await
             }
         }
     })?;
