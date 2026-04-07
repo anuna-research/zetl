@@ -366,6 +366,33 @@ pub enum Command {
         command: HistoryCommand,
     },
 
+    /// Issue a delegate JWT for MCP access
+    #[cfg(feature = "mcp")]
+    Delegate {
+        /// Restrict to specific tools (comma-separated, e.g. "search,get,links")
+        #[arg(long)]
+        tools: Option<String>,
+        /// Restrict to page scope glob (e.g. "projects/**")
+        #[arg(long)]
+        scope: Option<String>,
+        /// Token expiry (e.g. "1h", "7d", "30d"). Default: no expiry
+        #[arg(long)]
+        expiry: Option<String>,
+        /// BIP39 mnemonic (fallback if identity key not stored)
+        #[arg(long)]
+        mnemonic: Option<String>,
+        /// Save derived key to ~/.config/zetl/identity.key
+        #[arg(long)]
+        save_key: bool,
+    },
+
+    /// Issue a delegate JWT (requires --features mcp)
+    #[cfg(not(feature = "mcp"))]
+    Delegate {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        _args: Vec<String>,
+    },
+
     /// Start an MCP server exposing zetl tools
     #[cfg(feature = "mcp")]
     Mcp {

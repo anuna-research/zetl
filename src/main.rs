@@ -10032,6 +10032,21 @@ fn main() -> anyhow::Result<()> {
             }
         }
         #[cfg(feature = "mcp")]
+        Command::Delegate {
+            tools,
+            scope,
+            expiry,
+            mnemonic,
+            save_key,
+        } => cmd_delegate(tools.as_deref(), scope.as_deref(), expiry.as_deref(), mnemonic.as_deref(), *save_key),
+        #[cfg(not(feature = "mcp"))]
+        Command::Delegate { .. } => {
+            eprintln!(
+                "Delegate command requires --features mcp. Rebuild with: cargo build --features mcp"
+            );
+            std::process::exit(1);
+        }
+        #[cfg(feature = "mcp")]
         Command::Mcp {
             transport,
             host,
@@ -10049,14 +10064,128 @@ fn main() -> anyhow::Result<()> {
 }
 
 #[cfg(feature = "mcp")]
+fn cmd_delegate(
+    tools: Option<&str>,
+    scope: Option<&str>,
+    expiry: Option<&str>,
+    mnemonic: Option<&str>,
+    save_key: bool,
+) -> Result<()> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+    use ed25519_dalek::SigningKey;
+    use zetl::mcp::delegate::{parse_expiry, sign_delegate_jwt};
+    use zetl::mcp::types::DelegateClaims;
+
+    let config_dir = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .unwrap_or_else(|| PathBuf::from(".config"))
+        .join("zetl");
+    let key_path = config_dir.join("identity.key");
+
+    // Try to load signing key from file, or derive from mnemonic.
+    let signing_key: SigningKey = if key_path.exists() {
+        let key_bytes = std::fs::read(&key_path)
+            .with_context(|| format!("reading identity key from {}", key_path.display()))?;
+        if key_bytes.len() != 32 {
+            anyhow::bail!(
+                "identity key file has wrong size ({} bytes, expected 32): {}",
+                key_bytes.len(),
+                key_path.display()
+            );
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&key_bytes);
+        SigningKey::from_bytes(&arr)
+    } else if let Some(phrase) = mnemonic {
+        let sk = zetl::user::recovery::derive_signing_key_from_mnemonic(phrase)
+            .context("deriving signing key from mnemonic")?;
+        if save_key {
+            std::fs::create_dir_all(&config_dir)
+                .with_context(|| format!("creating config dir {}", config_dir.display()))?;
+            std::fs::write(&key_path, sk.to_bytes())
+                .with_context(|| format!("saving identity key to {}", key_path.display()))?;
+            eprintln!("Saved identity key to {}", key_path.display());
+        }
+        sk
+    } else {
+        anyhow::bail!(
+            "No identity key found at {} and no --mnemonic provided.\n\
+             Either:\n  \
+               1. Run with --mnemonic \"word1 word2 ... word12\" to derive a key\n  \
+               2. Add --save-key to persist the derived key for future use",
+            key_path.display()
+        );
+    };
+
+    // Derive user_id from public key.
+    let verifying_key = signing_key.verifying_key();
+    let user_id = URL_SAFE_NO_PAD.encode(verifying_key.as_bytes());
+
+    // Build claims.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let exp = match expiry {
+        Some(s) => parse_expiry(s).context("parsing --expiry")?,
+        None => 0, // no expiry
+    };
+
+    let tools_list: Vec<String> = tools
+        .map(|t| t.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+
+    let scope_list: Vec<String> = scope
+        .map(|s| vec![s.to_string()])
+        .unwrap_or_default();
+
+    let claims = DelegateClaims {
+        iss: user_id,
+        sub: "zetl-mcp".into(),
+        aud: String::new(),
+        iat: now,
+        exp,
+        tools: tools_list,
+        scope: scope_list,
+    };
+
+    let jwt = sign_delegate_jwt(&signing_key, &claims).context("signing delegate JWT")?;
+    println!("{jwt}");
+
+    Ok(())
+}
+
+#[cfg(feature = "mcp")]
 fn cmd_mcp(
     cli: &Cli,
     transport: &zetl::cli::McpTransport,
     host: &str,
     port: u16,
-    _insecure: bool,
+    insecure: bool,
 ) -> Result<()> {
     use zetl::mcp::{server::McpServer, transport as mcp_transport, types::McpState};
+
+    // -- Bind safety checks (Task 17) --
+    let is_loopback = host == "127.0.0.1" || host == "::1" || host == "localhost";
+    if !is_loopback {
+        if insecure {
+            eprintln!(
+                "WARNING: binding to non-loopback address {host} without authentication. \
+                 Use --host 127.0.0.1 or configure delegate tokens for production use."
+            );
+        } else {
+            anyhow::bail!(
+                "Refusing to bind to non-loopback address {host} without authentication.\n\
+                 Either:\n  \
+                   1. Use --host 127.0.0.1 (default) for local-only access\n  \
+                   2. Pass --insecure to override this safety check\n  \
+                   3. (Future) Configure auth tokens via `zetl delegate`"
+            );
+        }
+    }
 
     let pipeline = run_pipeline(cli)?;
 
