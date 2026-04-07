@@ -6,6 +6,7 @@ use rmcp::handler::server::ServerHandler;
 use rmcp::model::*;
 use rmcp::service::RoleServer;
 
+use super::resources;
 use super::tools;
 use super::types::McpState;
 
@@ -56,7 +57,8 @@ impl McpServer {
                 .with_annotations(ToolAnnotations::new().read_only(true).open_world(false))
         };
 
-        vec![
+        #[allow(unused_mut)]
+        let mut tools: Vec<Tool> = vec![
             mk(
                 "get",
                 "Retrieve the raw Markdown content of a vault page by name.",
@@ -69,7 +71,8 @@ impl McpServer {
                 "Full-text search over vault pages via Tantivy.",
                 json!({
                     "query": { "type": "string", "description": "Search query" },
-                    "limit": { "type": "integer", "description": "Max results (1-100)", "default": 20 }
+                    "limit": { "type": "integer", "description": "Max results (1-100)", "default": 20 },
+                    "mode": { "type": "string", "description": "Search mode: fulltext (default), semantic, or hybrid", "default": "fulltext" }
                 }),
             ),
             mk(
@@ -97,7 +100,7 @@ impl McpServer {
             ),
             mk(
                 "similar",
-                "Find pages with names similar to a query via SimHash.",
+                "Find pages with similar names via page name similarity (SimHash).",
                 json!({
                     "query": { "type": "string", "description": "Query string" },
                     "threshold": { "type": "integer", "description": "Max Hamming distance (0-64)", "default": 10 },
@@ -107,28 +110,37 @@ impl McpServer {
             mk(
                 "check",
                 "Health check: dead links, orphans, and graph statistics.",
-                json!({}),
+                json!({
+                    "category": { "type": "string", "description": "Filter: all (default), dead_links, or orphans", "default": "all" }
+                }),
             ),
             mk(
                 "status",
                 "Server status and vault summary.",
                 json!({}),
             ),
-            mk(
-                "reason",
-                "Defeasible reasoning over SPL blocks in the vault (requires --features reason).",
-                json!({
-                    "query": { "type": "string", "description": "SPL query to evaluate", "default": "" },
-                    "files": { "type": "array", "items": { "type": "string" }, "description": "Page names to scope reasoning to (empty = all)", "default": [] }
-                }),
-            ),
-        ]
+        ];
+
+        #[cfg(feature = "reason")]
+        tools.push(mk(
+            "reason",
+            "Defeasible reasoning over SPL blocks in the vault.",
+            json!({
+                "query": { "type": "string", "description": "SPL query to evaluate", "default": "" },
+                "files": { "type": "array", "items": { "type": "string" }, "description": "Page names to scope reasoning to (empty = all)", "default": [] }
+            }),
+        ));
+
+        tools
     }
 }
 
 impl ServerHandler for McpServer {
     fn get_info(&self) -> ServerInfo {
-        let capabilities = ServerCapabilities::builder().enable_tools().build();
+        let capabilities = ServerCapabilities::builder()
+            .enable_tools()
+            .enable_resources()
+            .build();
         InitializeResult::new(capabilities)
             .with_server_info(Implementation::new(
                 "zetl-mcp",
@@ -138,6 +150,29 @@ impl ServerHandler for McpServer {
                 "Use the available tools to query vault pages, search, traverse links, and check vault health."
                     .to_string(),
             )
+    }
+
+    fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: rmcp::service::RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListResourcesResult, rmcp::ErrorData>> + Send + '_
+    {
+        std::future::ready(Ok(resources::list_resources(&self.state.page_names)))
+    }
+
+    fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: rmcp::service::RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ReadResourceResult, rmcp::ErrorData>> + Send + '_
+    {
+        let result = resources::read_resource(
+            &request.uri,
+            &self.state.file_index,
+            &self.state.vault_root,
+        );
+        std::future::ready(result)
     }
 
     fn list_tools(
@@ -191,7 +226,9 @@ impl ServerHandler for McpServer {
             let result = match name {
                 "get" => tools::tool_get(&self.state, &get_str("page")),
                 "search" => {
-                    tools::tool_search(&self.state, &get_str("query"), get_usize("limit", 20))
+                    let mode = get_str("mode");
+                    let mode = if mode.is_empty() { "fulltext".to_string() } else { mode };
+                    tools::tool_search(&self.state, &get_str("query"), get_usize("limit", 20), &mode)
                 }
                 "links" => tools::tool_links(&self.state, &get_str("page")),
                 "backlinks" => tools::tool_backlinks(&self.state, &get_str("page")),
@@ -207,7 +244,11 @@ impl ServerHandler for McpServer {
                     get_u32("threshold", 10),
                     get_usize("limit", 20),
                 ),
-                "check" => tools::tool_check(&self.state),
+                "check" => {
+                    let category = get_str("category");
+                    let category = if category.is_empty() { "all".to_string() } else { category };
+                    tools::tool_check(&self.state, &category)
+                }
                 "status" => tools::tool_status(&self.state),
                 "reason" => {
                     let query = get_str("query");
