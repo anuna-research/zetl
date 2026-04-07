@@ -94,7 +94,7 @@ mod tests {
             aud: "my-vault".to_string(),
             iat: 1_000_000,
             exp: 2_000_000,
-            tools: vec!["get_page".to_string(), "search".to_string()],
+            tools: vec!["get".to_string(), "search".to_string()],
             scope: vec!["notes/**".to_string()],
         }
     }

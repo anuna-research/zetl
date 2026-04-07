@@ -250,6 +250,7 @@ impl ServerHandler for McpServer {
                     tools::tool_check(&self.state, &category)
                 }
                 "status" => tools::tool_status(&self.state),
+                #[cfg(feature = "reason")]
                 "reason" => {
                     let query = get_str("query");
                     let files: Vec<String> = args

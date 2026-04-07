@@ -10172,7 +10172,9 @@ fn cmd_mcp(
 ) -> Result<()> {
     use zetl::mcp::{server::McpServer, transport as mcp_transport, types::McpState};
 
-    let _ = cors_origin; // Reserved for future CORS support.
+    if cors_origin.is_some() {
+        eprintln!("zetl-mcp: WARNING: --cors-origin is not yet implemented; value ignored");
+    }
 
     // -- Bind safety checks (Task 17) --
     let is_loopback = host == "127.0.0.1" || host == "::1" || host == "localhost";
