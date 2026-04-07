@@ -21,6 +21,7 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context; themes can bundle hooks
 - **Content-addressable blocks** — BLAKE3 Merkle leaves for headings, paragraphs, code blocks, and SPL
 - **Incremental caching** — two-tier (mtime + hash) index for both wikilinks and reasoning theories
+- **MCP server** — expose graph traversal, search, and reasoning as typed MCP tools over stdio and HTTP transports; user-signed JWT delegation with per-tool and per-page scoping
 - **Agent-friendly** — JSON by default, structured errors, non-zero exit codes
 - **Defeasible reasoning** — extract SPL facts and rules from Markdown, build a vault-wide theory, derive conclusions with full provenance
 - **Proof trees** — explain why a conclusion holds, traced back to source files and line numbers
@@ -46,8 +47,11 @@ cargo install --path . --features history
 # Both reasoning and history
 cargo install --path . --features "reason,history"
 
-# All features (reasoning + history + semantic search)
-cargo install --path . --features "reason,history,semantic"
+# All features (reasoning + history + semantic search + MCP)
+cargo install --path . --features "reason,history,semantic,mcp"
+
+# With MCP server only
+cargo install --path . --features mcp
 ```
 
 Collaboration mode (`--collab`) is always available — no feature flag needed. SPL-based access control requires `--features reason`.
@@ -205,6 +209,38 @@ zetl -d ./demo-vault backlinks "Reasoning Engine" --with-conclusions
 ```
 
 All commands default to JSON output. Pass `-f table` as a global flag (before the subcommand) for human-readable output, e.g. `zetl -f table stats`. The `reason explain` subcommand also accepts `--format natural` and `--format dot`.
+
+### MCP server
+
+Requires `--features mcp` at build time. Exposes zetl's graph, search, and reasoning as typed [MCP](https://modelcontextprotocol.io) tools for AI agents.
+
+```bash
+# Start MCP server over stdio (for Claude Desktop, Cursor, etc.)
+zetl -d ./my-vault mcp
+
+# Start over HTTP (for remote agents)
+zetl -d ./my-vault mcp --transport http --port 3100
+
+# Issue a delegate token for your agent
+zetl delegate                                           # all tools, all pages, no expiry
+zetl delegate --tools search,get --scope "projects/**"  # scoped access
+zetl delegate --expiry 7d                               # time-limited
+zetl delegate --mnemonic "word1 word2 ..." --save-key   # first-time key setup
+```
+
+**Available tools:** `search`, `get_page`, `links`, `backlinks`, `path`, `similar`, `check`, `status`, `reason`
+
+**Claude Desktop config** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "zetl": {
+      "command": "zetl",
+      "args": ["-d", "/path/to/vault", "mcp"]
+    }
+  }
+}
+```
 
 ## SPL in Markdown
 
