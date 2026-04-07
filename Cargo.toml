@@ -10,7 +10,7 @@ default = []
 reason = ["dep:spindle-core", "dep:spindle-parser"]
 history = ["dep:jj-lib", "dep:chrono", "dep:pollster"]
 semantic = ["dep:ort", "dep:tokenizers", "dep:ureq"]
-mcp = ["dep:rmcp", "dep:jsonwebtoken"]
+mcp = ["dep:rmcp"]
 
 [dependencies]
 anyhow = "1"
@@ -57,7 +57,7 @@ getrandom = "0.2"
 git2 = "0.19"
 automerge = "0.5"
 rmcp = { version = "1", optional = true, features = ["server", "transport-io", "server-side-http", "transport-streamable-http-server"] }
-jsonwebtoken = { version = "9", optional = true }
+
 
 [dev-dependencies]
 assert_cmd = "2"
