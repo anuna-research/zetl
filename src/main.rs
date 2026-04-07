@@ -10051,12 +10051,58 @@ fn main() -> anyhow::Result<()> {
 #[cfg(feature = "mcp")]
 fn cmd_mcp(
     cli: &Cli,
-    _transport: &zetl::cli::McpTransport,
-    _host: &str,
-    _port: u16,
+    transport: &zetl::cli::McpTransport,
+    host: &str,
+    port: u16,
     _insecure: bool,
 ) -> Result<()> {
-    let _pipeline = run_pipeline(cli)?;
-    eprintln!("zetl-mcp: server not yet implemented");
+    use zetl::mcp::{server::McpServer, transport as mcp_transport, types::McpState};
+
+    let pipeline = run_pipeline(cli)?;
+
+    // Build search index.
+    let tantivy = zetl::search_index::SearchIndex::build(&pipeline.vault_root, &pipeline.files)
+        .context("building search index for MCP")?;
+
+    // Collect sorted page names.
+    let mut page_names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
+    page_names.sort();
+
+    // Build file index (page_name -> relative path).
+    let file_index: Vec<(String, PathBuf)> = pipeline
+        .files
+        .iter()
+        .map(|f| (f.page_name.clone(), f.path.clone()))
+        .collect();
+
+    // Resolved page set.
+    let resolved: std::collections::HashSet<String> = pipeline.graph_resolved.clone();
+
+    // Allowed issuers (populated in Task 15).
+    let allowed_issuers = std::collections::HashMap::new();
+
+    let state = McpState {
+        vault_root: std::sync::Arc::new(pipeline.vault_root.clone()),
+        graph: std::sync::Arc::new(pipeline.graph),
+        tantivy: std::sync::Arc::new(tantivy),
+        file_index: std::sync::Arc::new(file_index),
+        resolved: std::sync::Arc::new(resolved),
+        page_names: std::sync::Arc::new(page_names),
+        allowed_issuers: std::sync::Arc::new(allowed_issuers),
+        started_at: std::time::Instant::now(),
+    };
+
+    let server = McpServer::new(state, pipeline.files);
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        match transport {
+            zetl::cli::McpTransport::Stdio => mcp_transport::serve_stdio(server).await,
+            zetl::cli::McpTransport::Http => {
+                mcp_transport::serve_http(server, host, port).await
+            }
+        }
+    })?;
+
     Ok(())
 }
