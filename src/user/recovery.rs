@@ -71,25 +71,9 @@ pub fn derive_pubkey_from_mnemonic(mnemonic_phrase: &str) -> Result<VerifyingKey
 }
 
 /// Derive the ed25519 signing key from a BIP39 mnemonic via SLIP-0010
-/// at path `m/44'/0'/0'`.
+/// at path `m/44'/0'/0'` (user account recovery).
 pub fn derive_signing_key_from_mnemonic(mnemonic_phrase: &str) -> Result<SigningKey> {
-    let mnemonic: bip39::Mnemonic = mnemonic_phrase
-        .parse()
-        .map_err(|e| anyhow!("invalid BIP39 mnemonic: {e}"))?;
-
-    // BIP39: mnemonic → seed (no passphrase)
-    let seed = mnemonic.to_seed("");
-
-    // SLIP-0010 ed25519 master key derivation
-    let (master_key, master_chain) = slip0010_master_key(&seed)?;
-
-    // Derive m/44'/0'/0' (three hardened children)
-    let (key1, chain1) = slip0010_derive_child(&master_key, &master_chain, 44 + 0x80000000)?;
-    let (key2, chain2) = slip0010_derive_child(&key1, &chain1, 0x80000000)?;
-    let (key3, _) = slip0010_derive_child(&key2, &chain2, 0x80000000)?;
-
-    let signing_key = SigningKey::from_bytes(&key3);
-    Ok(signing_key)
+    derive_key_at_purpose(mnemonic_phrase, 0)
 }
 
 /// SLIP-0010: Derive master key and chain code from seed.
@@ -129,6 +113,106 @@ fn slip0010_derive_child(
     child_key.copy_from_slice(&result[..32]);
     child_chain.copy_from_slice(&result[32..]);
     Ok((child_key, child_chain))
+}
+
+/// Derive an ed25519 signing key at a specific SLIP-0010 sub-path.
+///
+/// All paths share `m/44'/` as prefix, with the second level distinguishing purpose:
+/// - `m/44'/0'/0'` — user account recovery (existing)
+/// - `m/44'/1'/0'` — collab server signing key
+/// - `m/44'/2'/0'` — SSH key for git operations
+fn derive_key_at_purpose(mnemonic_phrase: &str, purpose: u32) -> Result<SigningKey> {
+    let mnemonic: bip39::Mnemonic = mnemonic_phrase
+        .parse()
+        .map_err(|e| anyhow!("invalid BIP39 mnemonic: {e}"))?;
+
+    let seed = mnemonic.to_seed("");
+    let (master_key, master_chain) = slip0010_master_key(&seed)?;
+
+    let (key1, chain1) = slip0010_derive_child(&master_key, &master_chain, 44 + 0x80000000)?;
+    let (key2, chain2) = slip0010_derive_child(&key1, &chain1, purpose + 0x80000000)?;
+    let (key3, _) = slip0010_derive_child(&key2, &chain2, 0x80000000)?;
+
+    Ok(SigningKey::from_bytes(&key3))
+}
+
+/// Derive the collab server signing key from a BIP39 mnemonic.
+/// Uses SLIP-0010 path `m/44'/1'/0'`.
+pub fn derive_server_key_from_mnemonic(mnemonic_phrase: &str) -> Result<SigningKey> {
+    derive_key_at_purpose(mnemonic_phrase, 1)
+}
+
+/// Derive an ed25519 SSH key from a BIP39 mnemonic.
+/// Uses SLIP-0010 path `m/44'/2'/0'`.
+pub fn derive_ssh_key_from_mnemonic(mnemonic_phrase: &str) -> Result<SigningKey> {
+    derive_key_at_purpose(mnemonic_phrase, 2)
+}
+
+/// Encode an ed25519 keypair as an OpenSSH PEM private key.
+///
+/// The format follows the openssh-key-v1 spec used by `ssh-keygen -t ed25519`.
+pub fn encode_openssh_ed25519(private_key: &[u8; 32], public_key: &[u8; 32]) -> String {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+
+    let comment = b"zetl-collab";
+
+    // Public key blob: "ssh-ed25519" + public key
+    let mut pubkey_blob = Vec::new();
+    push_ssh_string(&mut pubkey_blob, b"ssh-ed25519");
+    push_ssh_bytes(&mut pubkey_blob, public_key);
+
+    // Private section (unencrypted)
+    let mut priv_section = Vec::new();
+    // checkint (random, but since unencrypted we use 0)
+    let check = 0u32;
+    priv_section.extend_from_slice(&check.to_be_bytes());
+    priv_section.extend_from_slice(&check.to_be_bytes());
+    // key type
+    push_ssh_string(&mut priv_section, b"ssh-ed25519");
+    // public key
+    push_ssh_bytes(&mut priv_section, public_key);
+    // private key (openssh stores 64 bytes: private || public)
+    let mut combined = Vec::with_capacity(64);
+    combined.extend_from_slice(private_key);
+    combined.extend_from_slice(public_key);
+    push_ssh_bytes(&mut priv_section, &combined);
+    // comment
+    push_ssh_string(&mut priv_section, comment);
+    // padding to block size (8)
+    let pad_len = (8 - (priv_section.len() % 8)) % 8;
+    for i in 0..pad_len {
+        priv_section.push((i + 1) as u8);
+    }
+
+    // Full key blob
+    let mut blob = Vec::new();
+    blob.extend_from_slice(b"openssh-key-v1\0"); // auth magic
+    push_ssh_string(&mut blob, b"none");          // cipher
+    push_ssh_string(&mut blob, b"none");          // kdf
+    push_ssh_string(&mut blob, b"");              // kdf options
+    blob.extend_from_slice(&1u32.to_be_bytes());  // number of keys
+    push_ssh_bytes(&mut blob, &pubkey_blob);      // public key
+    push_ssh_bytes(&mut blob, &priv_section);     // private key section
+
+    let encoded = STANDARD.encode(&blob);
+    let mut pem = String::from("-----BEGIN OPENSSH PRIVATE KEY-----\n");
+    for chunk in encoded.as_bytes().chunks(70) {
+        pem.push_str(std::str::from_utf8(chunk).unwrap());
+        pem.push('\n');
+    }
+    pem.push_str("-----END OPENSSH PRIVATE KEY-----\n");
+    pem
+}
+
+fn push_ssh_string(buf: &mut Vec<u8>, s: &[u8]) {
+    buf.extend_from_slice(&(s.len() as u32).to_be_bytes());
+    buf.extend_from_slice(s);
+}
+
+fn push_ssh_bytes(buf: &mut Vec<u8>, s: &[u8]) {
+    buf.extend_from_slice(&(s.len() as u32).to_be_bytes());
+    buf.extend_from_slice(s);
 }
 
 /// Sign a challenge with the ed25519 key derived from a mnemonic.

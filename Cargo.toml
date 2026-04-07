@@ -35,8 +35,8 @@ include_dir = "0.7"
 serde_yaml_ng = "0.10"
 toml = "0.8"
 tui-input = "0.11"
-spindle-core = { git = "ssh://git@codeberg.org/anuna/spindle-rust.git", optional = true, features = ["serde"] }
-spindle-parser = { git = "ssh://git@codeberg.org/anuna/spindle-rust.git", optional = true }
+spindle-core = { git = "https://codeberg.org/anuna/spindle-rust.git", optional = true, features = ["serde"] }
+spindle-parser = { git = "https://codeberg.org/anuna/spindle-rust.git", optional = true }
 jj-lib = { version = "0.32", optional = true }
 chrono = { version = "0.4", optional = true, features = ["std"] }
 pollster = { version = "0.4", optional = true }

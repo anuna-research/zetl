@@ -2888,6 +2888,174 @@ pub struct PasskeyApiRequest {
     pub user_id: String,
 }
 
+// -- Passkey login --
+
+/// GET /auth/login — Render the passkey login page.
+pub async fn login_handler(State(state): State<WebState>, headers: axum::http::HeaderMap) -> Response {
+    // Already authenticated — redirect to vault
+    if extract_session_user_id(&state, &headers).is_some() {
+        return axum::response::Redirect::temporary("/").into_response();
+    }
+
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    match state.engine.render_login(&vault_name) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => {
+            eprintln!("{}", e.stderr_line("login"));
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(e.to_error_html())).into_response()
+        }
+    }
+}
+
+/// POST /api/passkey/auth/start — Begin passkey authentication.
+///
+/// Finds all users with passkeys and starts a discoverable credential auth.
+/// For single-user vaults (owner only), this is straightforward.
+pub async fn passkey_auth_start_handler(
+    State(state): State<WebState>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+
+    let passkey_mgr = match &state.passkey_mgr {
+        Some(mgr) => mgr.clone(),
+        None => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "passkey manager not available".to_string(),
+            )
+                .into_response();
+        }
+    };
+
+    // Collect all users with passkeys
+    let profiles = match crate::user::list_profiles(vault_root) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to list profiles: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    // Gather all passkeys across all users
+    let mut all_passkeys = Vec::new();
+    let mut user_for_auth = None;
+    for profile in &profiles {
+        let pks = crate::user::passkey::load_passkeys(vault_root, &profile.id).unwrap_or_default();
+        if !pks.is_empty() {
+            // For now, use the first user with passkeys (typically the owner).
+            // Multi-user discoverable credentials would need userHandle matching.
+            if user_for_auth.is_none() {
+                user_for_auth = Some(profile.id.clone());
+            }
+            all_passkeys.extend(pks);
+        }
+    }
+
+    let user_id = match user_for_auth {
+        Some(id) => id,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "no users with passkeys found".to_string(),
+            )
+                .into_response();
+        }
+    };
+
+    match passkey_mgr.start_authentication(&user_id, &all_passkeys) {
+        Ok(rcr) => Json(rcr).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("authentication start failed: {e}"),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /api/passkey/auth/finish — Complete passkey authentication.
+///
+/// Verifies the assertion, creates a session, and returns a session cookie.
+pub async fn passkey_auth_finish_handler(
+    State(state): State<WebState>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let vault_root = &*state.vault_root;
+
+    let passkey_mgr = match &state.passkey_mgr {
+        Some(mgr) => mgr.clone(),
+        None => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "passkey manager not available".to_string(),
+            )
+                .into_response();
+        }
+    };
+
+    let credential: webauthn_rs::prelude::PublicKeyCredential = match serde_json::from_value(body) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("invalid credential: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    // Find which user this credential belongs to by checking all profiles
+    let profiles = match crate::user::list_profiles(vault_root) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to list profiles: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    // Try finishing auth for each user that has a pending auth state
+    for profile in &profiles {
+        match passkey_mgr.finish_authentication(&profile.id, &credential) {
+            Ok(auth_result) => {
+                // Update sign counter
+                let mut passkeys =
+                    crate::user::passkey::load_passkeys(vault_root, &profile.id).unwrap_or_default();
+                for pk in &mut passkeys {
+                    pk.update_credential(&auth_result);
+                }
+                let _ = crate::user::passkey::save_passkeys(vault_root, &profile.id, &passkeys);
+
+                // Create session
+                let token = state.sessions.create(&profile.id);
+                let secure = if state.tls { "; Secure" } else { "" };
+                let cookie = format!(
+                    "zetl_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400{secure}"
+                );
+
+                return (
+                    StatusCode::OK,
+                    [(axum::http::header::SET_COOKIE, cookie)],
+                    "authenticated",
+                )
+                    .into_response();
+            }
+            Err(_) => continue,
+        }
+    }
+
+    (StatusCode::UNAUTHORIZED, "authentication failed").into_response()
+}
+
 // -- Recovery display (CON-020-002) --
 
 #[derive(Debug, Deserialize)]
@@ -3726,7 +3894,7 @@ pub async fn bootstrap_handler(
                 .map(|pks| !pks.is_empty())
                 .unwrap_or(false);
             if has_passkey {
-                return (StatusCode::GONE, "bootstrap has already been used").into_response();
+                return axum::response::Redirect::temporary("/auth/login").into_response();
             }
 
             // Create a bootstrap session so the owner is authenticated for

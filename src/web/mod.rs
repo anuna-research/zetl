@@ -314,6 +314,15 @@ pub async fn run(
 
     // ── Auth routes (always public, even in --collab mode) ───────────
     let auth_routes = Router::new()
+        .route("/auth/login", get(routes::login_handler))
+        .route(
+            "/api/passkey/auth/start",
+            post(routes::passkey_auth_start_handler),
+        )
+        .route(
+            "/api/passkey/auth/finish",
+            post(routes::passkey_auth_finish_handler),
+        )
         .route("/auth/bootstrap", get(routes::bootstrap_handler))
         .route(
             "/auth/recover",

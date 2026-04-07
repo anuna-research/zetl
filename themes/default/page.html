@@ -244,9 +244,12 @@ function toggleEdit() {
 }
 async function saveEdit() {
   var content = document.getElementById('editor').value;
+  var csrf = document.cookie.split(';').map(function(c){return c.trim();}).find(function(c){return c.startsWith('zetl_csrf=');});
+  var headers = { 'Content-Type': 'text/plain; charset=utf-8' };
+  if (csrf) headers['X-CSRF-Token'] = csrf.split('=')[1];
   var res = await fetch(window.location.pathname, {
     method: 'PUT',
-    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    headers: headers,
     body: content
   });
   if (res.ok) window.location.reload();
