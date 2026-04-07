@@ -57,6 +57,16 @@ Require `--features history` at build time. See [[Feature Gates]].
 | `history page <name>` | Evolution of a specific page across snapshots | [[History Command]] |
 | `history timeline` | List recent snapshots with timestamps and graph stats | [[History Command]] |
 
+### MCP commands
+
+Require `--features mcp` at build time. See [[Feature Gates]].
+
+| Command | Description | Reference |
+|---------|-------------|-----------|
+| `mcp` | Start MCP server (stdio transport, default) | |
+| `mcp --transport http` | Start MCP server over HTTP | |
+| `delegate` | Issue a JWT delegate token for MCP access | |
+
 ### Reasoning commands
 
 Require `--features reason` at build time. See [[Feature Gates]].

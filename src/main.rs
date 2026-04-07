@@ -10088,5 +10088,260 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        #[cfg(feature = "mcp")]
+        Command::Delegate {
+            tools,
+            scope,
+            expiry,
+            mnemonic,
+            save_key,
+        } => cmd_delegate(tools.as_deref(), scope.as_deref(), expiry.as_deref(), mnemonic.as_deref(), *save_key),
+        #[cfg(not(feature = "mcp"))]
+        Command::Delegate { .. } => {
+            eprintln!(
+                "Delegate command requires --features mcp. Rebuild with: cargo build --features mcp"
+            );
+            std::process::exit(1);
+        }
+        #[cfg(feature = "mcp")]
+        Command::Mcp {
+            transport,
+            host,
+            port,
+            insecure,
+            allowed_issuer,
+            cors_origin,
+        } => cmd_mcp(&cli, transport, host, *port, *insecure, allowed_issuer, cors_origin.as_deref()),
+        #[cfg(not(feature = "mcp"))]
+        Command::Mcp { .. } => {
+            eprintln!(
+                "MCP server requires --features mcp. Rebuild with: cargo build --features mcp"
+            );
+            std::process::exit(1);
+        }
     }
+}
+
+#[cfg(feature = "mcp")]
+fn cmd_delegate(
+    tools: Option<&str>,
+    scope: Option<&str>,
+    expiry: Option<&str>,
+    mnemonic: Option<&str>,
+    save_key: bool,
+) -> Result<()> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+    use ed25519_dalek::SigningKey;
+    use zetl::mcp::delegate::{parse_expiry, sign_delegate_jwt};
+    use zetl::mcp::types::DelegateClaims;
+
+    let config_dir = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .unwrap_or_else(|| PathBuf::from(".config"))
+        .join("zetl");
+    let key_path = config_dir.join("identity.key");
+
+    // Try to load signing key from file, or derive from mnemonic.
+    let signing_key: SigningKey = if key_path.exists() {
+        let key_bytes = std::fs::read(&key_path)
+            .with_context(|| format!("reading identity key from {}", key_path.display()))?;
+        if key_bytes.len() != 32 {
+            anyhow::bail!(
+                "identity key file has wrong size ({} bytes, expected 32): {}",
+                key_bytes.len(),
+                key_path.display()
+            );
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&key_bytes);
+        SigningKey::from_bytes(&arr)
+    } else if let Some(phrase) = mnemonic {
+        let sk = zetl::user::recovery::derive_signing_key_from_mnemonic(phrase)
+            .context("deriving signing key from mnemonic")?;
+        if save_key {
+            std::fs::create_dir_all(&config_dir)
+                .with_context(|| format!("creating config dir {}", config_dir.display()))?;
+            std::fs::write(&key_path, sk.to_bytes())
+                .with_context(|| format!("saving identity key to {}", key_path.display()))?;
+            eprintln!("Saved identity key to {}", key_path.display());
+        }
+        sk
+    } else {
+        anyhow::bail!(
+            "No identity key found at {} and no --mnemonic provided.\n\
+             Either:\n  \
+               1. Run with --mnemonic \"word1 word2 ... word12\" to derive a key\n  \
+               2. Add --save-key to persist the derived key for future use",
+            key_path.display()
+        );
+    };
+
+    // Derive user_id from public key.
+    let verifying_key = signing_key.verifying_key();
+    let user_id = URL_SAFE_NO_PAD.encode(verifying_key.as_bytes());
+
+    // Build claims.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let exp = match expiry {
+        Some(s) => parse_expiry(s).context("parsing --expiry")?,
+        None => 0, // no expiry
+    };
+
+    let tools_list: Vec<String> = tools
+        .map(|t| t.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+
+    let scope_list: Vec<String> = scope
+        .map(|s| vec![s.to_string()])
+        .unwrap_or_default();
+
+    let claims = DelegateClaims {
+        iss: user_id,
+        sub: "zetl-mcp".into(),
+        aud: String::new(),
+        iat: now,
+        exp,
+        tools: tools_list,
+        scope: scope_list,
+    };
+
+    let jwt = sign_delegate_jwt(&signing_key, &claims).context("signing delegate JWT")?;
+    println!("{jwt}");
+
+    Ok(())
+}
+
+#[cfg(feature = "mcp")]
+fn cmd_mcp(
+    cli: &Cli,
+    transport: &zetl::cli::McpTransport,
+    host: &str,
+    port: u16,
+    insecure: bool,
+    allowed_issuers: &[String],
+    cors_origin: Option<&str>,
+) -> Result<()> {
+    use zetl::mcp::{server::McpServer, transport as mcp_transport, types::McpState};
+
+    if cors_origin.is_some() {
+        eprintln!("zetl-mcp: WARNING: --cors-origin is not yet implemented; value ignored");
+    }
+
+    // -- Bind safety checks (Task 17) --
+    let is_loopback = host == "127.0.0.1" || host == "::1" || host == "localhost";
+    if !is_loopback {
+        if insecure {
+            eprintln!(
+                "WARNING: binding to non-loopback address {host} without authentication. \
+                 Use --host 127.0.0.1 or configure delegate tokens for production use."
+            );
+        } else {
+            anyhow::bail!(
+                "Refusing to bind to non-loopback address {host} without authentication.\n\
+                 Either:\n  \
+                   1. Use --host 127.0.0.1 (default) for local-only access\n  \
+                   2. Pass --insecure to override this safety check\n  \
+                   3. (Future) Configure auth tokens via `zetl delegate`"
+            );
+        }
+    }
+
+    let pipeline = run_pipeline(cli)?;
+
+    // Build search index.
+    let tantivy = zetl::search_index::SearchIndex::build(&pipeline.vault_root, &pipeline.files)
+        .context("building search index for MCP")?;
+
+    // Collect sorted page names.
+    let mut page_names: Vec<String> = pipeline.files.iter().map(|f| f.page_name.clone()).collect();
+    page_names.sort();
+
+    // Build file index (page_name -> relative path).
+    let file_index: Vec<(String, PathBuf)> = pipeline
+        .files
+        .iter()
+        .map(|f| (f.page_name.clone(), f.path.clone()))
+        .collect();
+
+    // Resolved page set.
+    let resolved: std::collections::HashSet<String> = pipeline.graph_resolved.clone();
+
+    // Build allowed issuers map: user_id → recovery_pubkey (base64url ed25519).
+    // Sources: (1) user profiles in .zetl/users/*/profile.json,
+    //          (2) --allowed-issuer CLI values (format: "id:pubkey_b64").
+    let mut allowed_issuers_map = std::collections::HashMap::new();
+
+    // Load from vault user profiles.
+    if let Ok(profiles) = zetl::user::list_profiles(&pipeline.vault_root) {
+        for profile in profiles {
+            if !profile.recovery_pubkey.is_empty() {
+                allowed_issuers_map.insert(profile.id.clone(), profile.recovery_pubkey.clone());
+            }
+        }
+    }
+
+    // Merge CLI-provided issuers (--allowed-issuer id:pubkey_b64).
+    for entry in allowed_issuers {
+        if let Some((id, pubkey)) = entry.split_once(':') {
+            allowed_issuers_map.insert(id.to_string(), pubkey.to_string());
+        } else {
+            eprintln!("WARNING: ignoring malformed --allowed-issuer {entry:?} (expected id:pubkey_b64)");
+        }
+    }
+
+    let require_auth = !allowed_issuers_map.is_empty() && !insecure;
+
+    // Build SimHash index once and cache in state.
+    let simhash_pages: Vec<(String, String)> = pipeline
+        .files
+        .iter()
+        .map(|f| (f.page_name.clone(), f.path.to_string_lossy().into_owned()))
+        .collect();
+    let simhash = zetl::simhash::SimHashIndex::build(&simhash_pages);
+
+    let transport_str = match transport {
+        zetl::cli::McpTransport::Stdio => "stdio",
+        zetl::cli::McpTransport::Http => "http",
+    }
+    .to_string();
+
+    let state = McpState {
+        vault_root: std::sync::Arc::new(pipeline.vault_root.clone()),
+        graph: std::sync::Arc::new(pipeline.graph),
+        tantivy: std::sync::Arc::new(tantivy),
+        simhash: std::sync::Arc::new(simhash),
+        file_index: std::sync::Arc::new(file_index),
+        resolved: std::sync::Arc::new(resolved),
+        page_names: std::sync::Arc::new(page_names),
+        allowed_issuers: std::sync::Arc::new(allowed_issuers_map.clone()),
+        started_at: std::time::Instant::now(),
+        transport: std::sync::Arc::new(transport_str),
+    };
+
+    let server = McpServer::new(state, pipeline.files);
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        match transport {
+            zetl::cli::McpTransport::Stdio => mcp_transport::serve_stdio(server).await,
+            zetl::cli::McpTransport::Http => {
+                mcp_transport::serve_http(
+                    server,
+                    host,
+                    port,
+                    require_auth,
+                    std::sync::Arc::new(allowed_issuers_map),
+                )
+                .await
+            }
+        }
+    })?;
+
+    Ok(())
 }

@@ -388,6 +388,63 @@ pub enum Command {
         #[command(subcommand)]
         command: HistoryCommand,
     },
+
+    /// Issue a delegate JWT for MCP access
+    #[cfg(feature = "mcp")]
+    Delegate {
+        /// Restrict to specific tools (comma-separated, e.g. "search,get,links")
+        #[arg(long)]
+        tools: Option<String>,
+        /// Restrict to page scope glob (e.g. "projects/**")
+        #[arg(long)]
+        scope: Option<String>,
+        /// Token expiry (e.g. "1h", "7d", "30d"). Default: no expiry
+        #[arg(long)]
+        expiry: Option<String>,
+        /// BIP39 mnemonic (fallback if identity key not stored)
+        #[arg(long)]
+        mnemonic: Option<String>,
+        /// Save derived key to ~/.config/zetl/identity.key
+        #[arg(long)]
+        save_key: bool,
+    },
+
+    /// Issue a delegate JWT (requires --features mcp)
+    #[cfg(not(feature = "mcp"))]
+    Delegate {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        _args: Vec<String>,
+    },
+
+    /// Start an MCP server exposing zetl tools
+    #[cfg(feature = "mcp")]
+    Mcp {
+        /// Transport mode
+        #[arg(long, default_value = "stdio")]
+        transport: McpTransport,
+        /// Host to bind HTTP server to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        /// Port for HTTP transport
+        #[arg(long, default_value_t = 3100)]
+        port: u16,
+        /// Allow non-loopback bind without auth
+        #[arg(long)]
+        insecure: bool,
+        /// Restrict which user DIDs may issue tokens (repeatable)
+        #[arg(long)]
+        allowed_issuer: Vec<String>,
+        /// CORS origin for HTTP transport
+        #[arg(long)]
+        cors_origin: Option<String>,
+    },
+
+    /// Start an MCP server (requires --features mcp)
+    #[cfg(not(feature = "mcp"))]
+    Mcp {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        _args: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -586,6 +643,13 @@ pub enum BlockTypeFilter {
     Blockquote,
     Frontmatter,
     All,
+}
+
+/// Transport mode for the MCP server.
+#[derive(Clone, clap::ValueEnum, PartialEq)]
+pub enum McpTransport {
+    Stdio,
+    Http,
 }
 
 /// Category filter for `zetl diff`.

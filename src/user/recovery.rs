@@ -72,7 +72,7 @@ pub fn derive_pubkey_from_mnemonic(mnemonic_phrase: &str) -> Result<VerifyingKey
 
 /// Derive the ed25519 signing key from a BIP39 mnemonic via SLIP-0010
 /// at path `m/44'/0'/0'` (user account recovery).
-pub(crate) fn derive_signing_key_from_mnemonic(mnemonic_phrase: &str) -> Result<SigningKey> {
+pub fn derive_signing_key_from_mnemonic(mnemonic_phrase: &str) -> Result<SigningKey> {
     derive_key_at_purpose(mnemonic_phrase, 0)
 }
 
