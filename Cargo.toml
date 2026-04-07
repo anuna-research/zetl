@@ -56,7 +56,7 @@ hmac = "0.12"
 getrandom = "0.2"
 git2 = "0.19"
 automerge = "0.5"
-rmcp = { version = "1", optional = true, features = ["server", "transport-io", "server-side-http"] }
+rmcp = { version = "1", optional = true, features = ["server", "transport-io", "server-side-http", "transport-streamable-http-server"] }
 jsonwebtoken = { version = "9", optional = true }
 
 [dev-dependencies]
