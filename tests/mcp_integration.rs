@@ -146,7 +146,7 @@ fn mcp_stdio_list_tools() {
         .collect();
 
     let expected = [
-        "get_page", "search", "links", "backlinks", "path", "similar", "check", "status", "reason",
+        "get", "search", "links", "backlinks", "path", "similar", "check", "status", "reason",
     ];
     for name in &expected {
         assert!(
@@ -241,7 +241,7 @@ fn mcp_stdio_call_backlinks() {
 }
 
 #[test]
-fn mcp_stdio_call_get_page() {
+fn mcp_stdio_call_get() {
     let vault = setup_vault();
     let responses = run_mcp_with_handshake(
         &vault,
@@ -250,7 +250,7 @@ fn mcp_stdio_call_get_page() {
             "id": 6,
             "method": "tools/call",
             "params": {
-                "name": "get_page",
+                "name": "get",
                 "arguments": {
                     "page": "README"
                 }
@@ -258,13 +258,13 @@ fn mcp_stdio_call_get_page() {
         })],
     );
 
-    let resp = find_response(&responses, &json!(6)).expect("no response for tools/call get_page");
+    let resp = find_response(&responses, &json!(6)).expect("no response for tools/call get");
     let result = resp.get("result").expect("tools/call has no result");
     let content = result.get("content").expect("no content");
     let text = content[0]["text"].as_str().unwrap();
     assert!(
         text.contains("Welcome") || text.contains("README"),
-        "get_page should return page content, got: {text}"
+        "get should return page content, got: {text}"
     );
 }
 

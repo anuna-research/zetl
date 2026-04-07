@@ -408,6 +408,12 @@ pub enum Command {
         /// Allow non-loopback bind without auth
         #[arg(long)]
         insecure: bool,
+        /// Restrict which user DIDs may issue tokens (repeatable)
+        #[arg(long)]
+        allowed_issuer: Vec<String>,
+        /// CORS origin for HTTP transport
+        #[arg(long)]
+        cors_origin: Option<String>,
     },
 
     /// Start an MCP server (requires --features mcp)

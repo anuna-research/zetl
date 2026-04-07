@@ -10052,7 +10052,9 @@ fn main() -> anyhow::Result<()> {
             host,
             port,
             insecure,
-        } => cmd_mcp(&cli, transport, host, *port, *insecure),
+            allowed_issuer,
+            cors_origin,
+        } => cmd_mcp(&cli, transport, host, *port, *insecure, allowed_issuer, cors_origin.as_deref()),
         #[cfg(not(feature = "mcp"))]
         Command::Mcp { .. } => {
             eprintln!(
@@ -10165,8 +10167,14 @@ fn cmd_mcp(
     host: &str,
     port: u16,
     insecure: bool,
+    allowed_issuers: &[String],
+    cors_origin: Option<&str>,
 ) -> Result<()> {
     use zetl::mcp::{server::McpServer, transport as mcp_transport, types::McpState};
+
+    // Store for future auth wiring (C1).
+    let _allowed_issuers = allowed_issuers;
+    let _cors_origin = cors_origin;
 
     // -- Bind safety checks (Task 17) --
     let is_loopback = host == "127.0.0.1" || host == "::1" || host == "localhost";

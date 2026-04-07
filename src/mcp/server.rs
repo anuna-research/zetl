@@ -58,7 +58,7 @@ impl McpServer {
 
         vec![
             mk(
-                "get_page",
+                "get",
                 "Retrieve the raw Markdown content of a vault page by name.",
                 json!({
                     "page": { "type": "string", "description": "Page name (case-insensitive, partial match OK)" }
@@ -189,7 +189,7 @@ impl ServerHandler for McpServer {
             };
 
             let result = match name {
-                "get_page" => tools::tool_get(&self.state, &get_str("page")),
+                "get" => tools::tool_get(&self.state, &get_str("page")),
                 "search" => {
                     tools::tool_search(&self.state, &get_str("query"), get_usize("limit", 20))
                 }
