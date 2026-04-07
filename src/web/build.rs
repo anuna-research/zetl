@@ -264,6 +264,13 @@ fn write_history_index_json(
     json_str
 }
 
+/// Summary of a completed build operation.
+pub struct BuildResult {
+    pub pages: usize,
+    pub folder_indexes: usize,
+    pub out_dir: String,
+}
+
 /// Generate a complete static HTML site from the vault data.
 pub fn build_static(
     data: &VaultData,
@@ -272,7 +279,7 @@ pub fn build_static(
     theme: &str,
     verbose: bool,
     public: Option<&str>,
-) -> Result<()> {
+) -> Result<BuildResult> {
     let out = Path::new(out_dir);
     std::fs::create_dir_all(out)
         .with_context(|| format!("Cannot create output directory: {out_dir}"))?;
@@ -282,6 +289,7 @@ pub fn build_static(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
+    #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(data, &vault_name);
     #[cfg(feature = "history")]
     {
@@ -460,7 +468,11 @@ pub fn build_static(
     eprintln!(
         "zetl build  →  {count} pages + {folder_count} folder indexes written to {out_dir}/{suffix}",
     );
-    Ok(())
+    Ok(BuildResult {
+        pages: count,
+        folder_indexes: folder_count,
+        out_dir: out_dir.to_string(),
+    })
 }
 
 /// Copy static assets from `.zetl/static/`, `.zetl/themes/<theme>/static/`, and

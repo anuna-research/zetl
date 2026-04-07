@@ -559,6 +559,7 @@ pub async fn page_handler(
 
         if has_pages {
             let folder_name = slug.rsplit('/').next().unwrap_or(slug);
+            #[allow(unused_mut)]
             let mut vault_ctx = build_vault_context(&data, &vault_name);
             #[cfg(feature = "history")]
             {
@@ -741,6 +742,7 @@ pub async fn page_handler(
         }
     }
 
+    #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(&data, &vault_name);
     #[cfg(feature = "history")]
     {

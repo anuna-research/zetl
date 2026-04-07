@@ -1,0 +1,171 @@
+;; FIX-user-testing.spl — Fix bugs from TEST-USER testing
+;; Addresses BUG-001 through BUG-004 + compiler warnings
+
+(meta plan
+  (id "FIX-USER-TEST")
+  (title "Fix bugs discovered in user testing (TEST-USER)")
+  (status "active")
+  (description "Fix 4 bugs and compiler warnings found during comprehensive user testing"))
+
+;; ── Agents ──────────────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── T1: Fix BUG-001 — stale BM25 inline test ───────────────────
+(given task-T1)
+(given no-deps-T1)
+(meta task-T1
+  (description "Update test_013_015_html_embeds_bm25_index to assert external search-index.json instead of inline script element")
+  (acceptance "cargo test test_013_015_html_embeds_bm25_index passes"))
+
+(normally r-ready-T1 (and task-T1 no-deps-T1) ready-T1)
+(normally r-assign-T1 (and ready-T1 agent-claude-available) assign-to-T1-claude)
+
+;; ── T2: Fix BUG-002 — search --limit corrupts total_matches ────
+(given task-T2)
+(given no-deps-T2)
+(meta task-T2
+  (description "Decouple Tantivy document limit from output limit. search_vault should query Tantivy with a generous doc limit, then truncate the final match list at config.limit. total_matches reflects pre-truncation count.")
+  (acceptance "zetl search 'install' --limit 1 reports total_matches=7 with results array of length 1"))
+
+(normally r-ready-T2 (and task-T2 no-deps-T2) ready-T2)
+(normally r-assign-T2 (and ready-T2 agent-claude-available) assign-to-T2-claude)
+
+;; ── T3: Fix BUG-003 — build ignores --json ─────────────────────
+(given task-T3)
+(given no-deps-T3)
+(meta task-T3
+  (description "Make cmd_build respect cli.format. When --json, emit structured JSON with pages count, folder count, out_dir. When table, emit human-readable summary.")
+  (acceptance "zetl --json build produces valid JSON output"))
+
+(normally r-ready-T3 (and task-T3 no-deps-T3) ready-T3)
+(normally r-assign-T3 (and ready-T3 agent-claude-available) assign-to-T3-claude)
+
+;; ── T4: Fix BUG-004 — check table missing top-level counts ─────
+(given task-T4)
+(given no-deps-T4)
+(meta task-T4
+  (description "Add dead_links, orphans, syntax_errors, spl_errors rows to the check table summary section")
+  (acceptance "zetl -f table check shows dead link and orphan counts in summary table"))
+
+(normally r-ready-T4 (and task-T4 no-deps-T4) ready-T4)
+(normally r-assign-T4 (and ready-T4 agent-claude-available) assign-to-T4-claude)
+
+;; ── T5: Fix compiler warnings ───────────────────────────────────
+(given task-T5)
+(given no-deps-T5)
+(meta task-T5
+  (description "Remove unnecessary mut qualifiers in src/web/build.rs to eliminate compiler warnings")
+  (acceptance "cargo build 2>&1 | grep warning shows zero warnings for zetl lib"))
+
+(normally r-ready-T5 (and task-T5 no-deps-T5) ready-T5)
+(normally r-assign-T5 (and ready-T5 agent-claude-available) assign-to-T5-claude)
+
+;; ── T6: Verify all fixes ────────────────────────────────────────
+(given task-T6)
+(meta task-T6
+  (description "Run full test suite to verify no regressions")
+  (acceptance "cargo test passes with 0 failures"))
+
+(normally r-ready-T6 (and task-T6 completed-T1 completed-T2 completed-T3 completed-T4 completed-T5) ready-T6)
+(normally r-assign-T6 (and ready-T6 agent-claude-available) assign-to-T6-claude)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:39:28Z"
+  (given claim-v1-T1)
+  (normally r-cl-state-v1-T1 claim-v1-T1 state-claimed-v1-T1)
+  (normally r-cl-chain-v1-T1 state-claimed-v1-T1 claimed-T1)
+)
+
+;; Propagation rules: failures in 'T1' block downstream tasks
+(normally r-propagate-T6-from-T1-failed failed-T1 upstream-blocked-T6)
+(normally r-propagate-T6-from-T1-permanently-failed permanently-failed-T1 upstream-blocked-T6)
+(normally r-propagate-T6-from-T1-stale-v1 stale-v1-T1 upstream-blocked-T6)
+(normally r-propagate-T6-from-T1-timeout-v1 timeout-v1-T1 upstream-blocked-T6)
+(normally r-propagate-T6-from-T1-blocked upstream-blocked-T1 upstream-blocked-T6)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:39:28Z"
+  (given claim-v1-T2)
+  (normally r-cl-state-v1-T2 claim-v1-T2 state-claimed-v1-T2)
+  (normally r-cl-chain-v1-T2 state-claimed-v1-T2 claimed-T2)
+)
+
+;; Propagation rules: failures in 'T2' block downstream tasks
+(normally r-propagate-T6-from-T2-failed failed-T2 upstream-blocked-T6)
+(normally r-propagate-T6-from-T2-permanently-failed permanently-failed-T2 upstream-blocked-T6)
+(normally r-propagate-T6-from-T2-stale-v1 stale-v1-T2 upstream-blocked-T6)
+(normally r-propagate-T6-from-T2-timeout-v1 timeout-v1-T2 upstream-blocked-T6)
+(normally r-propagate-T6-from-T2-blocked upstream-blocked-T2 upstream-blocked-T6)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:39:28Z"
+  (given claim-v1-T3)
+  (normally r-cl-state-v1-T3 claim-v1-T3 state-claimed-v1-T3)
+  (normally r-cl-chain-v1-T3 state-claimed-v1-T3 claimed-T3)
+)
+
+;; Propagation rules: failures in 'T3' block downstream tasks
+(normally r-propagate-T6-from-T3-failed failed-T3 upstream-blocked-T6)
+(normally r-propagate-T6-from-T3-permanently-failed permanently-failed-T3 upstream-blocked-T6)
+(normally r-propagate-T6-from-T3-stale-v1 stale-v1-T3 upstream-blocked-T6)
+(normally r-propagate-T6-from-T3-timeout-v1 timeout-v1-T3 upstream-blocked-T6)
+(normally r-propagate-T6-from-T3-blocked upstream-blocked-T3 upstream-blocked-T6)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:39:28Z"
+  (given claim-v1-T4)
+  (normally r-cl-state-v1-T4 claim-v1-T4 state-claimed-v1-T4)
+  (normally r-cl-chain-v1-T4 state-claimed-v1-T4 claimed-T4)
+)
+
+;; Propagation rules: failures in 'T4' block downstream tasks
+(normally r-propagate-T6-from-T4-failed failed-T4 upstream-blocked-T6)
+(normally r-propagate-T6-from-T4-permanently-failed permanently-failed-T4 upstream-blocked-T6)
+(normally r-propagate-T6-from-T4-stale-v1 stale-v1-T4 upstream-blocked-T6)
+(normally r-propagate-T6-from-T4-timeout-v1 timeout-v1-T4 upstream-blocked-T6)
+(normally r-propagate-T6-from-T4-blocked upstream-blocked-T4 upstream-blocked-T6)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:39:28Z"
+  (given claim-v1-T5)
+  (normally r-cl-state-v1-T5 claim-v1-T5 state-claimed-v1-T5)
+  (normally r-cl-chain-v1-T5 state-claimed-v1-T5 claimed-T5)
+)
+
+;; Propagation rules: failures in 'T5' block downstream tasks
+(normally r-propagate-T6-from-T5-failed failed-T5 upstream-blocked-T6)
+(normally r-propagate-T6-from-T5-permanently-failed permanently-failed-T5 upstream-blocked-T6)
+(normally r-propagate-T6-from-T5-stale-v1 stale-v1-T5 upstream-blocked-T6)
+(normally r-propagate-T6-from-T5-timeout-v1 timeout-v1-T5 upstream-blocked-T6)
+(normally r-propagate-T6-from-T5-blocked upstream-blocked-T5 upstream-blocked-T6)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:42:50Z"
+  (given completed-T1))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:42:50Z"
+  (given completed-T2))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:42:50Z"
+  (given completed-T3))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:42:50Z"
+  (given completed-T4))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:42:50Z"
+  (given completed-T5))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:42:54Z"
+  (given claim-v1-T6)
+  (normally r-cl-state-v1-T6 claim-v1-T6 state-claimed-v1-T6)
+  (normally r-cl-chain-v1-T6 state-claimed-v1-T6 claimed-T6)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T12:43:27Z"
+  (given completed-T6))

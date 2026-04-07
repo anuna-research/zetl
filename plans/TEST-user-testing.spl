@@ -1,0 +1,399 @@
+;; TEST-user-testing.spl — Comprehensive user testing of zetl
+;; Following USDD Agent Protocol for synthetic user testing
+
+(meta plan
+  (id "TEST-USER")
+  (title "Comprehensive User Testing of zetl")
+  (status "active")
+  (description "Systematic user testing of all zetl features against zetl-vault, documenting bugs, improvements, and findings per USDD protocol"))
+
+;; ── Agents ──────────────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── T1: User profiles ──────────────────────────────────────────
+(given task-T1)
+(given no-deps-T1)
+(meta task-T1
+  (description "Create synthetic user profiles and happy paths for testing")
+  (acceptance "User profiles and happy paths documented in test report"))
+
+(normally r-ready-T1
+  (and task-T1 no-deps-T1)
+  ready-T1)
+
+(normally r-assign-T1
+  (and ready-T1 agent-claude-available)
+  assign-to-T1-claude)
+
+;; ── T2: Core graph commands ─────────────────────────────────────
+(given task-T2)
+(meta task-T2
+  (description "Test core graph commands: index, links, backlinks, path, similar, blocks, list, stats, export")
+  (acceptance "All core commands tested, findings documented"))
+
+(normally r-ready-T2
+  (and task-T2 completed-T1)
+  ready-T2)
+
+(normally r-assign-T2
+  (and ready-T2 agent-claude-available)
+  assign-to-T2-claude)
+
+;; ── T3: Search ──────────────────────────────────────────────────
+(given task-T3)
+(meta task-T3
+  (description "Test search: full-text, context, case-sensitive, path filter, near/neighbourhood")
+  (acceptance "Search functionality fully exercised, findings documented"))
+
+(normally r-ready-T3
+  (and task-T3 completed-T1)
+  ready-T3)
+
+(normally r-assign-T3
+  (and ready-T3 agent-claude-available)
+  assign-to-T3-claude)
+
+;; ── T4: Diagnostics ─────────────────────────────────────────────
+(given task-T4)
+(meta task-T4
+  (description "Test check command: dead-links, orphans, syntax, format modes")
+  (acceptance "All diagnostic modes tested, findings documented"))
+
+(normally r-ready-T4
+  (and task-T4 completed-T1)
+  ready-T4)
+
+(normally r-assign-T4
+  (and ready-T4 agent-claude-available)
+  assign-to-T4-claude)
+
+;; ── T5: View TUI ────────────────────────────────────────────────
+(given task-T5)
+(meta task-T5
+  (description "Test zetl view: page rendering, context cards, navigation, help overlay")
+  (acceptance "View TUI tested for rendering correctness"))
+
+(normally r-ready-T5
+  (and task-T5 completed-T1)
+  ready-T5)
+
+(normally r-assign-T5
+  (and ready-T5 agent-claude-available)
+  assign-to-T5-claude)
+
+;; ── T6: TUI dashboard ───────────────────────────────────────────
+(given task-T6)
+(meta task-T6
+  (description "Test zetl tui: tabs, navigation, search, diagnostics, page view")
+  (acceptance "TUI dashboard tested across all tabs"))
+
+(normally r-ready-T6
+  (and task-T6 completed-T1)
+  ready-T6)
+
+(normally r-assign-T6
+  (and ready-T6 agent-claude-available)
+  assign-to-T6-claude)
+
+;; ── T7: Web serve and build ─────────────────────────────────────
+(given task-T7)
+(meta task-T7
+  (description "Test zetl serve and build: web UI, API endpoints, themes, static export")
+  (acceptance "Web serve and build tested, findings documented"))
+
+(normally r-ready-T7
+  (and task-T7 completed-T1)
+  ready-T7)
+
+(normally r-assign-T7
+  (and ready-T7 agent-claude-available)
+  assign-to-T7-claude)
+
+;; ── T8: Theme management ────────────────────────────────────────
+(given task-T8)
+(meta task-T8
+  (description "Test theme list, export, install, remove")
+  (acceptance "Theme commands tested, findings documented"))
+
+(normally r-ready-T8
+  (and task-T8 completed-T1)
+  ready-T8)
+
+(normally r-assign-T8
+  (and ready-T8 agent-claude-available)
+  assign-to-T8-claude)
+
+;; ── T9: Hooks ───────────────────────────────────────────────────
+(given task-T9)
+(meta task-T9
+  (description "Test hook list and hook run")
+  (acceptance "Hook commands tested, findings documented"))
+
+(normally r-ready-T9
+  (and task-T9 completed-T1)
+  ready-T9)
+
+(normally r-assign-T9
+  (and ready-T9 agent-claude-available)
+  assign-to-T9-claude)
+
+;; ── T10: Diff and watch ─────────────────────────────────────────
+(given task-T10)
+(meta task-T10
+  (description "Test diff command and watch mode")
+  (acceptance "Diff and watch tested, findings documented"))
+
+(normally r-ready-T10
+  (and task-T10 completed-T1)
+  ready-T10)
+
+(normally r-assign-T10
+  (and ready-T10 agent-claude-available)
+  assign-to-T10-claude)
+
+;; ── T11: Compile report ─────────────────────────────────────────
+(given task-T11)
+(meta task-T11
+  (description "Compile all findings into USDD-format test report markdown")
+  (acceptance "Complete test report in docs/TEST-user-testing.md"))
+
+(normally r-ready-T11
+  (and task-T11 completed-T2 completed-T3 completed-T4 completed-T5 completed-T6 completed-T7 completed-T8 completed-T9 completed-T10)
+  ready-T11)
+
+(normally r-assign-T11
+  (and ready-T11 agent-claude-available)
+  assign-to-T11-claude)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:52:52Z"
+  (given claim-v1-T1)
+  (normally r-cl-state-v1-T1 claim-v1-T1 state-claimed-v1-T1)
+  (normally r-cl-chain-v1-T1 state-claimed-v1-T1 claimed-T1)
+)
+
+;; Propagation rules: failures in 'T1' block downstream tasks
+(normally r-propagate-T10-from-T1-failed failed-T1 upstream-blocked-T10)
+(normally r-propagate-T10-from-T1-permanently-failed permanently-failed-T1 upstream-blocked-T10)
+(normally r-propagate-T10-from-T1-stale-v1 stale-v1-T1 upstream-blocked-T10)
+(normally r-propagate-T10-from-T1-timeout-v1 timeout-v1-T1 upstream-blocked-T10)
+(normally r-propagate-T10-from-T1-blocked upstream-blocked-T1 upstream-blocked-T10)
+(normally r-propagate-T2-from-T1-failed failed-T1 upstream-blocked-T2)
+(normally r-propagate-T2-from-T1-permanently-failed permanently-failed-T1 upstream-blocked-T2)
+(normally r-propagate-T2-from-T1-stale-v1 stale-v1-T1 upstream-blocked-T2)
+(normally r-propagate-T2-from-T1-timeout-v1 timeout-v1-T1 upstream-blocked-T2)
+(normally r-propagate-T2-from-T1-blocked upstream-blocked-T1 upstream-blocked-T2)
+(normally r-propagate-T3-from-T1-failed failed-T1 upstream-blocked-T3)
+(normally r-propagate-T3-from-T1-permanently-failed permanently-failed-T1 upstream-blocked-T3)
+(normally r-propagate-T3-from-T1-stale-v1 stale-v1-T1 upstream-blocked-T3)
+(normally r-propagate-T3-from-T1-timeout-v1 timeout-v1-T1 upstream-blocked-T3)
+(normally r-propagate-T3-from-T1-blocked upstream-blocked-T1 upstream-blocked-T3)
+(normally r-propagate-T4-from-T1-failed failed-T1 upstream-blocked-T4)
+(normally r-propagate-T4-from-T1-permanently-failed permanently-failed-T1 upstream-blocked-T4)
+(normally r-propagate-T4-from-T1-stale-v1 stale-v1-T1 upstream-blocked-T4)
+(normally r-propagate-T4-from-T1-timeout-v1 timeout-v1-T1 upstream-blocked-T4)
+(normally r-propagate-T4-from-T1-blocked upstream-blocked-T1 upstream-blocked-T4)
+(normally r-propagate-T5-from-T1-failed failed-T1 upstream-blocked-T5)
+(normally r-propagate-T5-from-T1-permanently-failed permanently-failed-T1 upstream-blocked-T5)
+(normally r-propagate-T5-from-T1-stale-v1 stale-v1-T1 upstream-blocked-T5)
+(normally r-propagate-T5-from-T1-timeout-v1 timeout-v1-T1 upstream-blocked-T5)
+(normally r-propagate-T5-from-T1-blocked upstream-blocked-T1 upstream-blocked-T5)
+(normally r-propagate-T6-from-T1-failed failed-T1 upstream-blocked-T6)
+(normally r-propagate-T6-from-T1-permanently-failed permanently-failed-T1 upstream-blocked-T6)
+(normally r-propagate-T6-from-T1-stale-v1 stale-v1-T1 upstream-blocked-T6)
+(normally r-propagate-T6-from-T1-timeout-v1 timeout-v1-T1 upstream-blocked-T6)
+(normally r-propagate-T6-from-T1-blocked upstream-blocked-T1 upstream-blocked-T6)
+(normally r-propagate-T7-from-T1-failed failed-T1 upstream-blocked-T7)
+(normally r-propagate-T7-from-T1-permanently-failed permanently-failed-T1 upstream-blocked-T7)
+(normally r-propagate-T7-from-T1-stale-v1 stale-v1-T1 upstream-blocked-T7)
+(normally r-propagate-T7-from-T1-timeout-v1 timeout-v1-T1 upstream-blocked-T7)
+(normally r-propagate-T7-from-T1-blocked upstream-blocked-T1 upstream-blocked-T7)
+(normally r-propagate-T8-from-T1-failed failed-T1 upstream-blocked-T8)
+(normally r-propagate-T8-from-T1-permanently-failed permanently-failed-T1 upstream-blocked-T8)
+(normally r-propagate-T8-from-T1-stale-v1 stale-v1-T1 upstream-blocked-T8)
+(normally r-propagate-T8-from-T1-timeout-v1 timeout-v1-T1 upstream-blocked-T8)
+(normally r-propagate-T8-from-T1-blocked upstream-blocked-T1 upstream-blocked-T8)
+(normally r-propagate-T9-from-T1-failed failed-T1 upstream-blocked-T9)
+(normally r-propagate-T9-from-T1-permanently-failed permanently-failed-T1 upstream-blocked-T9)
+(normally r-propagate-T9-from-T1-stale-v1 stale-v1-T1 upstream-blocked-T9)
+(normally r-propagate-T9-from-T1-timeout-v1 timeout-v1-T1 upstream-blocked-T9)
+(normally r-propagate-T9-from-T1-blocked upstream-blocked-T1 upstream-blocked-T9)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-T11-from-T10-blocked upstream-blocked-T10 upstream-blocked-T11)
+(normally r-propagate-T11-from-T2-blocked upstream-blocked-T2 upstream-blocked-T11)
+(normally r-propagate-T11-from-T3-blocked upstream-blocked-T3 upstream-blocked-T11)
+(normally r-propagate-T11-from-T4-blocked upstream-blocked-T4 upstream-blocked-T11)
+(normally r-propagate-T11-from-T5-blocked upstream-blocked-T5 upstream-blocked-T11)
+(normally r-propagate-T11-from-T6-blocked upstream-blocked-T6 upstream-blocked-T11)
+(normally r-propagate-T11-from-T7-blocked upstream-blocked-T7 upstream-blocked-T11)
+(normally r-propagate-T11-from-T8-blocked upstream-blocked-T8 upstream-blocked-T11)
+(normally r-propagate-T11-from-T9-blocked upstream-blocked-T9 upstream-blocked-T11)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:53:00Z"
+  (given completed-T1))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:53:05Z"
+  (given claim-v1-T2)
+  (normally r-cl-state-v1-T2 claim-v1-T2 state-claimed-v1-T2)
+  (normally r-cl-chain-v1-T2 state-claimed-v1-T2 claimed-T2)
+)
+
+;; Propagation rules: failures in 'T2' block downstream tasks
+(normally r-propagate-T11-from-T2-failed failed-T2 upstream-blocked-T11)
+(normally r-propagate-T11-from-T2-permanently-failed permanently-failed-T2 upstream-blocked-T11)
+(normally r-propagate-T11-from-T2-stale-v1 stale-v1-T2 upstream-blocked-T11)
+(normally r-propagate-T11-from-T2-timeout-v1 timeout-v1-T2 upstream-blocked-T11)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:53:05Z"
+  (given claim-v1-T3)
+  (normally r-cl-state-v1-T3 claim-v1-T3 state-claimed-v1-T3)
+  (normally r-cl-chain-v1-T3 state-claimed-v1-T3 claimed-T3)
+)
+
+;; Propagation rules: failures in 'T3' block downstream tasks
+(normally r-propagate-T11-from-T3-failed failed-T3 upstream-blocked-T11)
+(normally r-propagate-T11-from-T3-permanently-failed permanently-failed-T3 upstream-blocked-T11)
+(normally r-propagate-T11-from-T3-stale-v1 stale-v1-T3 upstream-blocked-T11)
+(normally r-propagate-T11-from-T3-timeout-v1 timeout-v1-T3 upstream-blocked-T11)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:53:05Z"
+  (given claim-v1-T4)
+  (normally r-cl-state-v1-T4 claim-v1-T4 state-claimed-v1-T4)
+  (normally r-cl-chain-v1-T4 state-claimed-v1-T4 claimed-T4)
+)
+
+;; Propagation rules: failures in 'T4' block downstream tasks
+(normally r-propagate-T11-from-T4-failed failed-T4 upstream-blocked-T11)
+(normally r-propagate-T11-from-T4-permanently-failed permanently-failed-T4 upstream-blocked-T11)
+(normally r-propagate-T11-from-T4-stale-v1 stale-v1-T4 upstream-blocked-T11)
+(normally r-propagate-T11-from-T4-timeout-v1 timeout-v1-T4 upstream-blocked-T11)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:53:05Z"
+  (given claim-v1-T7)
+  (normally r-cl-state-v1-T7 claim-v1-T7 state-claimed-v1-T7)
+  (normally r-cl-chain-v1-T7 state-claimed-v1-T7 claimed-T7)
+)
+
+;; Propagation rules: failures in 'T7' block downstream tasks
+(normally r-propagate-T11-from-T7-failed failed-T7 upstream-blocked-T11)
+(normally r-propagate-T11-from-T7-permanently-failed permanently-failed-T7 upstream-blocked-T11)
+(normally r-propagate-T11-from-T7-stale-v1 stale-v1-T7 upstream-blocked-T11)
+(normally r-propagate-T11-from-T7-timeout-v1 timeout-v1-T7 upstream-blocked-T11)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:53:05Z"
+  (given claim-v1-T8)
+  (normally r-cl-state-v1-T8 claim-v1-T8 state-claimed-v1-T8)
+  (normally r-cl-chain-v1-T8 state-claimed-v1-T8 claimed-T8)
+)
+
+;; Propagation rules: failures in 'T8' block downstream tasks
+(normally r-propagate-T11-from-T8-failed failed-T8 upstream-blocked-T11)
+(normally r-propagate-T11-from-T8-permanently-failed permanently-failed-T8 upstream-blocked-T11)
+(normally r-propagate-T11-from-T8-stale-v1 stale-v1-T8 upstream-blocked-T11)
+(normally r-propagate-T11-from-T8-timeout-v1 timeout-v1-T8 upstream-blocked-T11)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:53:05Z"
+  (given claim-v1-T9)
+  (normally r-cl-state-v1-T9 claim-v1-T9 state-claimed-v1-T9)
+  (normally r-cl-chain-v1-T9 state-claimed-v1-T9 claimed-T9)
+)
+
+;; Propagation rules: failures in 'T9' block downstream tasks
+(normally r-propagate-T11-from-T9-failed failed-T9 upstream-blocked-T11)
+(normally r-propagate-T11-from-T9-permanently-failed permanently-failed-T9 upstream-blocked-T11)
+(normally r-propagate-T11-from-T9-stale-v1 stale-v1-T9 upstream-blocked-T11)
+(normally r-propagate-T11-from-T9-timeout-v1 timeout-v1-T9 upstream-blocked-T11)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:53:05Z"
+  (given claim-v1-T10)
+  (normally r-cl-state-v1-T10 claim-v1-T10 state-claimed-v1-T10)
+  (normally r-cl-chain-v1-T10 state-claimed-v1-T10 claimed-T10)
+)
+
+;; Propagation rules: failures in 'T10' block downstream tasks
+(normally r-propagate-T11-from-T10-failed failed-T10 upstream-blocked-T11)
+(normally r-propagate-T11-from-T10-permanently-failed permanently-failed-T10 upstream-blocked-T11)
+(normally r-propagate-T11-from-T10-stale-v1 stale-v1-T10 upstream-blocked-T11)
+(normally r-propagate-T11-from-T10-timeout-v1 timeout-v1-T10 upstream-blocked-T11)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:53:50Z"
+  (given claim-v1-T5)
+  (normally r-cl-state-v1-T5 claim-v1-T5 state-claimed-v1-T5)
+  (normally r-cl-chain-v1-T5 state-claimed-v1-T5 claimed-T5)
+)
+
+;; Propagation rules: failures in 'T5' block downstream tasks
+(normally r-propagate-T11-from-T5-failed failed-T5 upstream-blocked-T11)
+(normally r-propagate-T11-from-T5-permanently-failed permanently-failed-T5 upstream-blocked-T11)
+(normally r-propagate-T11-from-T5-stale-v1 stale-v1-T5 upstream-blocked-T11)
+(normally r-propagate-T11-from-T5-timeout-v1 timeout-v1-T5 upstream-blocked-T11)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:53:50Z"
+  (given claim-v1-T6)
+  (normally r-cl-state-v1-T6 claim-v1-T6 state-claimed-v1-T6)
+  (normally r-cl-chain-v1-T6 state-claimed-v1-T6 claimed-T6)
+)
+
+;; Propagation rules: failures in 'T6' block downstream tasks
+(normally r-propagate-T11-from-T6-failed failed-T6 upstream-blocked-T11)
+(normally r-propagate-T11-from-T6-permanently-failed permanently-failed-T6 upstream-blocked-T11)
+(normally r-propagate-T11-from-T6-stale-v1 stale-v1-T6 upstream-blocked-T11)
+(normally r-propagate-T11-from-T6-timeout-v1 timeout-v1-T6 upstream-blocked-T11)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:59:53Z"
+  (given completed-T2))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:59:53Z"
+  (given completed-T3))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:59:53Z"
+  (given completed-T4))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:59:53Z"
+  (given completed-T5))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:59:53Z"
+  (given completed-T6))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:59:53Z"
+  (given completed-T7))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:59:53Z"
+  (given completed-T8))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:59:53Z"
+  (given completed-T9))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:59:53Z"
+  (given completed-T10))
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T05:59:58Z"
+  (given claim-v1-T11)
+  (normally r-cl-state-v1-T11 claim-v1-T11 state-claimed-v1-T11)
+  (normally r-cl-chain-v1-T11 state-claimed-v1-T11 claimed-T11)
+)
+
+(claims agent:ed25519:xfRAzZFG
+  :at "2026-04-07T06:01:46Z"
+  (given completed-T11))

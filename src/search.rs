@@ -154,8 +154,11 @@ pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOu
         None
     };
 
-    // Query the index for top-scoring documents (limited to config.limit documents).
-    let hits = index.query(config.query, config.limit)?;
+    // Query the index for all matching documents. We use a generous document limit
+    // so that total_matches reflects the true count, independent of config.limit
+    // which is applied later to the per-line match list.
+    let tantivy_doc_limit = 10_000;
+    let hits = index.query(config.query, tantivy_doc_limit)?;
 
     // Split query into individual terms for re-scanning.
     let terms: Vec<String> = config

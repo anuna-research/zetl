@@ -3931,15 +3931,16 @@ fn test_013_015_html_embeds_bm25_index() {
     let out_dir = dir.path().join("dist");
     run_build(dir.path(), &out_dir);
 
-    let html = fs::read_to_string(out_dir.join("index.html")).unwrap();
-
+    // BM25 index is written as an external file (too large to inline).
+    let search_index_path = out_dir.join("search-index.json");
     assert!(
-        html.contains("id=\"zetl-bm25-index\""),
-        "index.html must embed the BM25 search index inline for file:// support"
+        search_index_path.exists(),
+        "build must produce search-index.json for client-side BM25 search"
     );
+    let search_index = fs::read_to_string(&search_index_path).unwrap();
     assert!(
-        html.contains("\"avgDl\""),
-        "embedded BM25 index must contain corpus statistics"
+        search_index.contains("\"avgDl\""),
+        "search-index.json must contain BM25 corpus statistics (avgDl)"
     );
 }
 

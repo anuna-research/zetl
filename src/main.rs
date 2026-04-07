@@ -1879,6 +1879,22 @@ fn cmd_check(
                 let mut sum_table = Table::new();
                 sum_table.set_header(vec!["Summary", "Count"]);
                 sum_table.add_row(vec![
+                    Cell::new("Dead links"),
+                    Cell::new(output.summary.dead_links),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Orphan pages"),
+                    Cell::new(output.summary.orphans),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("Syntax errors"),
+                    Cell::new(output.summary.syntax_errors),
+                ]);
+                sum_table.add_row(vec![
+                    Cell::new("SPL errors"),
+                    Cell::new(output.summary.spl_errors),
+                ]);
+                sum_table.add_row(vec![
                     Cell::new("Total SPL blocks"),
                     Cell::new(output.summary.total_spl_blocks),
                 ]);
@@ -5380,7 +5396,7 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str, public: Option<&str>) -> Res
         }
     }
 
-    zetl::web::build::build_static(
+    let build_result = zetl::web::build::build_static(
         &data,
         &pipeline.vault_root,
         out_dir,
@@ -5388,6 +5404,21 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str, public: Option<&str>) -> Res
         cli.verbose > 0,
         public,
     )?;
+
+    if matches!(cli.format, OutputFormat::Json) || cli.json {
+        #[derive(Serialize)]
+        struct BuildOutput {
+            pages: usize,
+            folder_indexes: usize,
+            out_dir: String,
+        }
+        let out = BuildOutput {
+            pages: build_result.pages,
+            folder_indexes: build_result.folder_indexes,
+            out_dir: build_result.out_dir,
+        };
+        println!("{}", serde_json::to_string_pretty(&out)?);
+    }
 
     if !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(
