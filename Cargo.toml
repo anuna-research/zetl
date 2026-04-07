@@ -10,6 +10,7 @@ default = []
 reason = ["dep:spindle-core", "dep:spindle-parser"]
 history = ["dep:jj-lib", "dep:chrono", "dep:pollster"]
 semantic = ["dep:ort", "dep:tokenizers", "dep:ureq"]
+mcp = ["dep:rmcp", "dep:jsonwebtoken"]
 
 [dependencies]
 anyhow = "1"
@@ -54,6 +55,8 @@ hmac = "0.12"
 getrandom = "0.2"
 git2 = "0.19"
 automerge = "0.5"
+rmcp = { version = "1", optional = true, features = ["server", "transport-io", "server-side-http"] }
+jsonwebtoken = { version = "9", optional = true }
 
 [dev-dependencies]
 assert_cmd = "2"
@@ -78,3 +81,7 @@ required-features = ["history"]
 [[test]]
 name = "semantic_integration"
 required-features = ["semantic"]
+
+[[test]]
+name = "mcp_integration"
+required-features = ["mcp"]

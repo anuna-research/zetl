@@ -365,6 +365,30 @@ pub enum Command {
         #[command(subcommand)]
         command: HistoryCommand,
     },
+
+    /// Start an MCP server exposing zetl tools
+    #[cfg(feature = "mcp")]
+    Mcp {
+        /// Transport mode
+        #[arg(long, default_value = "stdio")]
+        transport: McpTransport,
+        /// Host to bind HTTP server to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        /// Port for HTTP transport
+        #[arg(long, default_value_t = 3100)]
+        port: u16,
+        /// Allow non-loopback bind without auth
+        #[arg(long)]
+        insecure: bool,
+    },
+
+    /// Start an MCP server (requires --features mcp)
+    #[cfg(not(feature = "mcp"))]
+    Mcp {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        _args: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -563,6 +587,13 @@ pub enum BlockTypeFilter {
     Blockquote,
     Frontmatter,
     All,
+}
+
+/// Transport mode for the MCP server.
+#[derive(Clone, clap::ValueEnum, PartialEq)]
+pub enum McpTransport {
+    Stdio,
+    Http,
 }
 
 /// Category filter for `zetl diff`.

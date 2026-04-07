@@ -10031,5 +10031,32 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        #[cfg(feature = "mcp")]
+        Command::Mcp {
+            transport,
+            host,
+            port,
+            insecure,
+        } => cmd_mcp(&cli, transport, host, *port, *insecure),
+        #[cfg(not(feature = "mcp"))]
+        Command::Mcp { .. } => {
+            eprintln!(
+                "MCP server requires --features mcp. Rebuild with: cargo build --features mcp"
+            );
+            std::process::exit(1);
+        }
     }
+}
+
+#[cfg(feature = "mcp")]
+fn cmd_mcp(
+    cli: &Cli,
+    _transport: &zetl::cli::McpTransport,
+    _host: &str,
+    _port: u16,
+    _insecure: bool,
+) -> Result<()> {
+    let _pipeline = run_pipeline(cli)?;
+    eprintln!("zetl-mcp: server not yet implemented");
+    Ok(())
 }

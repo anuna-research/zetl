@@ -23,3 +23,5 @@ pub mod user;
 pub mod vcs;
 pub mod view;
 pub mod web;
+#[cfg(feature = "mcp")]
+pub mod mcp;
