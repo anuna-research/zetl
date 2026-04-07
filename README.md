@@ -127,8 +127,10 @@ zetl -d ./my-vault serve --theme paper                   # custom theme
 # Multi-user collaboration
 zetl -d ./my-vault serve --collab --init-owner --owner-name Alice  # first-time setup
 zetl -d ./my-vault serve --collab                                  # start collab server
+zetl -d ./my-vault serve --collab --server-key-seed "word1 ..."    # deterministic server key
 zetl -d ./my-vault invite --as Alice --role editor                 # invite a collaborator
 zetl -d ./my-vault invite --as Alice --role reader --pages "projects/*"
+zetl derive-ssh-key --mnemonic "word1 ..." --out ~/.ssh/id_ed25519 # derive SSH key from seed
 
 # Static site export
 zetl -d ./my-vault build                                 # generates dist/
@@ -295,6 +297,7 @@ Local web UI for browsing the vault. Renders Markdown pages with a sidebar, back
 zetl -d ./my-vault serve                                        # single-user
 zetl -d ./my-vault serve --collab --init-owner --owner-name Jo  # first-time collab setup
 zetl -d ./my-vault serve --collab                                # multi-user mode
+zetl -d ./my-vault serve --collab --server-key-seed "word1 ..."  # deterministic server key
 zetl -d ./my-vault serve --port 8080 --theme dark                # custom port and theme
 ```
 
@@ -544,6 +547,33 @@ When multiple users open the same page, edits sync in real-time via WebSocket us
 
 If you lose access to your passkey, recover your account at `/auth/recovery` using your display name and 12-word recovery phrase. This issues a new session so you can re-register a passkey.
 
+### Deterministic keys from a seed phrase
+
+For containerised or ephemeral deployments, a single BIP39 mnemonic can deterministically derive all keys zetl needs. This avoids managing key files across redeploys.
+
+The seed derives three keys at distinct SLIP-0010 paths:
+
+| Path | Purpose | Flag / Command |
+|------|---------|----------------|
+| `m/44'/0'/0'` | User account recovery | (generated at `--init-owner`) |
+| `m/44'/1'/0'` | Collab server signing key | `--server-key-seed` |
+| `m/44'/2'/0'` | SSH ed25519 key for git | `zetl derive-ssh-key` |
+
+```bash
+# Start the collab server with a deterministic server key
+zetl -d ./my-vault serve --collab --server-key-seed "word1 word2 ... word12"
+
+# Or set via environment variable
+export ZETL_SERVER_KEY_SEED="word1 word2 ... word12"
+zetl -d ./my-vault serve --collab
+
+# Derive an SSH key (for git push) from the same seed
+zetl derive-ssh-key --mnemonic "word1 word2 ... word12" --out ~/.ssh/id_ed25519
+# Prints the public key for adding to your git remote (GitLab/GitHub)
+```
+
+When `--server-key-seed` is provided, the derived key is written to `.zetl/collab/server.key` so that all code paths use a consistent key. Destroy the volume, redeploy with the same seed — same server identity, same SSH key.
+
 ### Agent tokens
 
 For headless API access (CI, scripts, bots):
@@ -561,6 +591,7 @@ Use the token as a Bearer token: `Authorization: Bearer <token>`.
 - Per-IP and per-user rate limiting on auth endpoints
 - Session idle and absolute timeouts
 - Ed25519-signed invitation tokens with single-use nonces
+- Deterministic server key derivation from BIP39 mnemonic via SLIP-0010
 - SPL-based access control with deontic modalities (when built with `--features reason`)
 - Git auto-commit on every save with author attribution
 - Write-ahead log for CRDT crash recovery

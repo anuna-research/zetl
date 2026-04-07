@@ -132,6 +132,37 @@ pub fn load_or_create_server_key(vault_root: &Path) -> Result<SigningKey> {
     }
 }
 
+/// Load the server key from a BIP39 seed phrase, or fall back to file-based
+/// load/create. When a seed is provided, the key is also written to disk so
+/// that code paths using `load_or_create_server_key` directly (e.g. comment
+/// verification in routes) find a consistent key.
+pub fn load_or_derive_server_key(
+    vault_root: &Path,
+    seed_phrase: Option<&str>,
+) -> Result<SigningKey> {
+    match seed_phrase {
+        Some(mnemonic) => {
+            let key = super::recovery::derive_server_key_from_mnemonic(mnemonic)?;
+
+            // Write to disk so other code paths find the same key
+            let dir = collab_dir(vault_root);
+            fs::create_dir_all(&dir)
+                .with_context(|| format!("failed to create collab directory: {}", dir.display()))?;
+            let path = server_key_path(vault_root);
+            fs::write(&path, key.to_bytes())
+                .with_context(|| format!("failed to write server key: {}", path.display()))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+            }
+
+            Ok(key)
+        }
+        None => load_or_create_server_key(vault_root),
+    }
+}
+
 /// Get the server's public verifying key.
 pub fn server_verifying_key(vault_root: &Path) -> Result<VerifyingKey> {
     let signing_key = load_or_create_server_key(vault_root)?;

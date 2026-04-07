@@ -261,7 +261,7 @@ pub async fn collab_gate(
         .is_some_and(|v| v.contains("text/html"));
 
     if accepts_html {
-        axum::response::Redirect::temporary("/auth/bootstrap").into_response()
+        axum::response::Redirect::temporary("/auth/login").into_response()
     } else {
         StatusCode::UNAUTHORIZED.into_response()
     }
@@ -283,6 +283,14 @@ pub async fn csrf_token_header(
             HeaderName::from_static("x-csrf-token"),
             axum::http::HeaderValue::from_str(&csrf).unwrap(),
         );
+        // Also set a non-HttpOnly cookie so page.html inline JS can read it
+        if let Ok(cookie_val) = axum::http::HeaderValue::from_str(
+            &format!("zetl_csrf={csrf}; Path=/; SameSite=Strict"),
+        ) {
+            response
+                .headers_mut()
+                .append(axum::http::header::SET_COOKIE, cookie_val);
+        }
     }
 
     response
