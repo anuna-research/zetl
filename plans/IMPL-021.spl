@@ -1,0 +1,229 @@
+;; IMPL-021: zetl mcp — Model Context Protocol Server
+;; Implements SPEC-021 v0.2.0
+
+(meta plan
+  (id "IMPL-021")
+  (title "zetl mcp — MCP Server for Graph-Native Knowledge Tools")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-04-07")
+  (author "agent:claude")
+  (spec "SPEC-021")
+  (description "Implement MCP server exposing zetl's graph, search, and reasoning as typed tools. Supports stdio and HTTP transports with user-signed JWT delegation auth."))
+
+;; ── Agents ──────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── Tasks ───────────────────────────────────────────────
+
+;; Phase 1: Foundation
+(given task-scaffold)
+(given task-types)
+(given task-pure-core)
+
+;; Phase 2: Tool handlers
+(given task-tool-get)
+(given task-tool-links)
+(given task-tool-search)
+(given task-tool-path)
+(given task-tool-similar)
+(given task-tool-check)
+(given task-tool-status)
+(given task-tool-reason)
+(given task-resources)
+
+;; Phase 3: Transports
+(given task-stdio)
+(given task-http)
+
+;; Phase 4: Auth
+(given task-auth-core)
+(given task-delegate-cmd)
+(given task-bind-safety)
+
+;; Phase 5: Integration
+(given task-integration-tests)
+
+;; ── No-deps markers ────────────────────────────────────
+(given no-deps-scaffold)
+
+;; ── Task Metadata ──────────────────────────────────────
+
+(meta task-scaffold
+  (description "Create src/mcp/ module scaffold with feature gate, Cargo.toml mcp feature, and McpState struct")
+  (acceptance "cargo check --features mcp compiles; src/mcp/mod.rs exports; feature gate works"))
+
+(meta task-types
+  (description "Define core types: DelegateContext, DelegateClaims, ToolError, SearchParams, VaultSnapshot, and all result serialization types")
+  (acceptance "All types compile; serde round-trip tests pass"))
+
+(meta task-pure-core
+  (description "Implement pure core functions: JWT decode/verify, capability checking, scope glob matching, result serialization for all tools, input validation, fuzzy page matching")
+  (acceptance "Unit tests for each pure function pass; no I/O imports in pure core"))
+
+(meta task-tool-get
+  (description "Implement get tool handler: case-insensitive page lookup, raw markdown return, fuzzy suggestions on miss")
+  (acceptance "get tool returns page content; case-insensitive; PAGE_NOT_FOUND with suggestions on miss"))
+
+(meta task-tool-links
+  (description "Implement links and backlinks tool handlers: forward_links with line/exists, backlinks with source/line")
+  (acceptance "links returns targets with exists flag; backlinks returns sources with line numbers"))
+
+(meta task-tool-search
+  (description "Implement search tool handler: fulltext/semantic/hybrid modes with feature detection")
+  (acceptance "fulltext search returns scored results; semantic/hybrid gate on feature; FEATURE_NOT_AVAILABLE error when missing"))
+
+(meta task-tool-path
+  (description "Implement path tool handler: shortest path via LinkGraph, max_depth support")
+  (acceptance "path returns ordered page chain; null path when unreachable; respects max_depth"))
+
+(meta task-tool-similar
+  (description "Implement similar tool handler: vector similarity via VectorIndex")
+  (acceptance "similar returns scored pages; excludes self; FEATURE_NOT_AVAILABLE when semantic not compiled"))
+
+(meta task-tool-check
+  (description "Implement check tool handler: dead links, orphans, category filtering")
+  (acceptance "check returns dead links and orphans; category filter works; stats included"))
+
+(meta task-tool-status
+  (description "Implement status tool handler: vault stats, index health, stale detection, reindex trigger")
+  (acceptance "status returns page/link counts, stale flag, tool list; reindex rebuilds graph and search"))
+
+(meta task-tool-reason
+  (description "Implement reason tool handler: SPL query with proof chains, feature-gated registration")
+  (acceptance "reason returns conclusions with bindings and sources; tool not registered when feature absent"))
+
+(meta task-resources
+  (description "Implement MCP resource handlers: resources/list and resources/read for vault pages")
+  (acceptance "resources/list returns all pages with zetl:// URIs; resources/read returns markdown content"))
+
+(meta task-stdio
+  (description "Implement stdio transport: JSON-RPC 2.0 over stdin/stdout, tool dispatch, clean EOF shutdown")
+  (acceptance "MCP initialize handshake works; tools/list returns catalog; tools/call dispatches correctly; EOF exits cleanly"))
+
+(meta task-http
+  (description "Implement HTTP+SSE transport: POST /mcp for requests, GET /mcp/sse for notifications, CORS support")
+  (acceptance "HTTP transport accepts MCP requests; SSE stream opens; concurrent clients work; CORS headers set"))
+
+(meta task-auth-core
+  (description "Implement JWT auth middleware: decode zetl-delegate+jwt, verify ed25519 sig, check issuer, attach DelegateContext, enforce tool/scope per call")
+  (acceptance "Valid JWT passes; expired rejected; unknown issuer rejected; tool scope enforced; INSUFFICIENT_CAPABILITY on scope violation"))
+
+(meta task-delegate-cmd
+  (description "Implement zetl delegate CLI command: read stored identity key, sign JWT with tools/scope/exp claims, --mnemonic fallback")
+  (acceptance "zetl delegate outputs valid JWT; --tools and --scope restrict claims; --expiry sets exp; --mnemonic fallback works"))
+
+(meta task-bind-safety
+  (description "Implement network bind safety: non-loopback requires auth or --insecure, security warnings on stderr")
+  (acceptance "0.0.0.0 without auth or --insecure exits 1; --insecure allows unauthenticated; loopback always works"))
+
+(meta task-integration-tests
+  (description "End-to-end integration tests: stdio protocol compliance, HTTP transport, auth flow, tool correctness across all 9 tools")
+  (acceptance "All TEST-133 through TEST-143c scenarios pass; feature-gated tests use required-features"))
+
+;; ── Readiness Rules ────────────────────────────────────
+
+;; Phase 1: scaffold has no deps
+(normally r-ready-scaffold
+  (and task-scaffold no-deps-scaffold)
+  ready-scaffold)
+
+;; types depends on scaffold
+(normally r-ready-types
+  (and task-types completed-scaffold)
+  ready-types)
+
+;; pure-core depends on types
+(normally r-ready-pure-core
+  (and task-pure-core completed-types)
+  ready-pure-core)
+
+;; Phase 2: all tools depend on pure-core
+(normally r-ready-tool-get
+  (and task-tool-get completed-pure-core)
+  ready-tool-get)
+
+(normally r-ready-tool-links
+  (and task-tool-links completed-pure-core)
+  ready-tool-links)
+
+(normally r-ready-tool-search
+  (and task-tool-search completed-pure-core)
+  ready-tool-search)
+
+(normally r-ready-tool-path
+  (and task-tool-path completed-pure-core)
+  ready-tool-path)
+
+(normally r-ready-tool-similar
+  (and task-tool-similar completed-pure-core)
+  ready-tool-similar)
+
+(normally r-ready-tool-check
+  (and task-tool-check completed-pure-core)
+  ready-tool-check)
+
+(normally r-ready-tool-status
+  (and task-tool-status completed-pure-core)
+  ready-tool-status)
+
+(normally r-ready-tool-reason
+  (and task-tool-reason completed-pure-core)
+  ready-tool-reason)
+
+(normally r-ready-resources
+  (and task-resources completed-pure-core)
+  ready-resources)
+
+;; Phase 3: transports depend on at least get + links tools working
+(normally r-ready-stdio
+  (and task-stdio completed-tool-get completed-tool-links)
+  ready-stdio)
+
+(normally r-ready-http
+  (and task-http completed-tool-get completed-tool-links)
+  ready-http)
+
+;; Phase 4: auth depends on HTTP transport + pure-core
+(normally r-ready-auth-core
+  (and task-auth-core completed-http completed-pure-core)
+  ready-auth-core)
+
+(normally r-ready-delegate-cmd
+  (and task-delegate-cmd completed-auth-core)
+  ready-delegate-cmd)
+
+(normally r-ready-bind-safety
+  (and task-bind-safety completed-auth-core)
+  ready-bind-safety)
+
+;; Phase 5: integration tests depend on everything
+(normally r-ready-integration-tests
+  (and task-integration-tests
+       completed-stdio completed-http
+       completed-auth-core completed-delegate-cmd completed-bind-safety
+       completed-tool-get completed-tool-links completed-tool-search
+       completed-tool-path completed-tool-similar completed-tool-check
+       completed-tool-status completed-tool-reason completed-resources)
+  ready-integration-tests)
+
+;; ── Assignment Rules ───────────────────────────────────
+
+(normally r-assign-scaffold (and ready-scaffold agent-claude-available) assign-to-scaffold-claude)
+(normally r-assign-types (and ready-types agent-claude-available) assign-to-types-claude)
+(normally r-assign-pure-core (and ready-pure-core agent-claude-available) assign-to-pure-core-claude)
+(normally r-assign-tool-get (and ready-tool-get agent-claude-available) assign-to-tool-get-claude)
+(normally r-assign-tool-links (and ready-tool-links agent-claude-available) assign-to-tool-links-claude)
+(normally r-assign-tool-search (and ready-tool-search agent-claude-available) assign-to-tool-search-claude)
+(normally r-assign-tool-path (and ready-tool-path agent-claude-available) assign-to-tool-path-claude)
+(normally r-assign-tool-similar (and ready-tool-similar agent-claude-available) assign-to-tool-similar-claude)
+(normally r-assign-tool-check (and ready-tool-check agent-claude-available) assign-to-tool-check-claude)
+(normally r-assign-tool-status (and ready-tool-status agent-claude-available) assign-to-tool-status-claude)
+(normally r-assign-tool-reason (and ready-tool-reason agent-claude-available) assign-to-tool-reason-claude)
+(normally r-assign-resources (and ready-resources agent-claude-available) assign-to-resources-claude)
+(normally r-assign-stdio (and ready-stdio agent-claude-available) assign-to-stdio-claude)
+(normally r-assign-http (and ready-http agent-claude-available) assign-to-http-claude)
+(normally r-assign-auth-core (and ready-auth-core agent-claude-available) assign-to-auth-core-claude)
+(normally r-assign-delegate-cmd (and ready-delegate-cmd agent-claude-available) assign-to-delegate-cmd-claude)
+(normally r-assign-bind-safety (and ready-bind-safety agent-claude-available) assign-to-bind-safety-claude)
+(normally r-assign-integration-tests (and ready-integration-tests agent-claude-available) assign-to-integration-tests-claude)
