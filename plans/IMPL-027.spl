@@ -1,0 +1,445 @@
+;; IMPL-027: LongMemEval Memory Benchmark
+;; Implements SPEC-027 — zetl-bench crate with 6 retrieval modes
+
+(meta plan
+  (id "IMPL-027")
+  (title "LongMemEval Memory Benchmark")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-04-08")
+  (author "agent:claude")
+  (spec "SPEC-027")
+  (description "Port LongMemEval benchmark to Rust as zetl-bench workspace crate. Six retrieval modes: BM25, semantic, hybrid, graph-augmented, LLM rerank, agentic. Library integration for modes 1-5, MCP for mode 6."))
+
+;; ── Agents ──────────────────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── Tasks ───────────────────────────────────────────────────────────
+
+;; Phase 1: Workspace & scaffold
+(given task-workspace)
+(given no-deps-workspace)
+(meta task-workspace
+  (description "Convert zetl to a Cargo workspace and create benches/zetl-bench crate scaffold with Cargo.toml, main.rs (clap subcommands: ingest, run, compare), and module stubs")
+  (acceptance "cargo build -p zetl-bench compiles; zetl-bench --help shows subcommands; cargo build -p zetl still works"))
+
+;; Phase 2: Dataset parsing
+(given task-dataset)
+(meta task-dataset
+  (description "Parse longmemeval_s_cleaned.json. Structs: LongMemEntry{question_id, question_type, question, answer, haystack_sessions (Vec<Vec<Turn>>), haystack_session_ids, haystack_dates, answer_session_ids}. Turn{role, content}. Load full file or --limit N.")
+  (acceptance "Unit test parses sample JSON fixture with 2 questions; fields roundtrip correctly; --limit flag works"))
+
+;; Phase 3: Vault ingestion
+(given task-entity)
+(meta task-entity
+  (description "Entity extraction from session text. Heuristics: proper nouns (capitalized multi-word not at sentence start), quoted terms, repeated noun phrases (3+ sessions), temporal markers, backtick-wrapped terms. Normalize: lowercase, collapse whitespace, stem plurals. Return Vec<Entity> with name, entity_type, mention_count, session_ids.")
+  (acceptance "Unit tests: extracts 'PostgreSQL' from 'switching to PostgreSQL'; extracts quoted terms; normalizes 'PostgreSQL'='postgresql'; deduplicates"))
+
+(given task-ingest)
+(meta task-ingest
+  (description "Generate Markdown vault from LongMemEval data. One .md per session with YAML frontmatter (session_id, timestamp, question_ids). Auto-insert [[wikilinks]] on first entity mention per session. Create entities/ hub pages listing referencing sessions. Add ## Related sections for sessions sharing 2+ entities. Deterministic output.")
+  (acceptance "zetl-bench ingest <fixture.json> --vault-dir /tmp/test-vault creates vault; zetl index on vault succeeds; wikilinks present in session files; entity hub pages exist; same input produces identical vault"))
+
+;; Phase 4: Scoring infrastructure
+(given task-scoring)
+(meta task-scoring
+  (description "Implement scoring.rs: dcg(relevances, k) = sum(rel[i]/log2(i+2)), ndcg(rankings, ground_truth, corpus_ids, k), recall_any_at_k, recall_all_at_k. Session ID mapping: extract session from turn IDs via rsplit('_turn_'). Aggregate per question type.")
+  (acceptance "Unit tests: DCG([1,0,1], 3) = 1/log2(2) + 0 + 1/log2(4) = 1.5; NDCG perfect ranking = 1.0; recall@5 with ground truth at rank 3 = 1.0; recall@5 with ground truth at rank 7 = 0.0"))
+
+;; Phase 5: Retrieval modes (can parallelize within phase)
+(given task-mode-bm25)
+(meta task-mode-bm25
+  (description "Mode 1: BM25. Load vault via scan_vault + SearchIndex::build. For each question call SearchIndex::query(question, top_k). Map SearchHit page_names back to session IDs. Return ranked Vec<RetrievalResult>{session_id, score, rank}.")
+  (acceptance "Integration test: ingest 5-question fixture, run BM25 mode, verify results JSONL has correct structure and non-zero recall"))
+
+(given task-mode-semantic)
+(meta task-mode-semantic
+  (description "Mode 2: Semantic. Use VectorIndex::build + query_text(question, top_k). Map VectorHit page_names to session IDs. Requires --features semantic.")
+  (acceptance "Integration test: same fixture, semantic mode returns ranked results with cosine similarity scores"))
+
+(given task-mode-hybrid)
+(meta task-mode-hybrid
+  (description "Mode 3: Hybrid. BM25 + semantic fusion. Retrieve top_k from both, normalize scores to [0,1], combine: score = (1-w)*bm25_norm + w*semantic_norm. Configurable --fusion-weight (default 0.5).")
+  (acceptance "Integration test: hybrid results differ from both pure BM25 and pure semantic; fusion weight 0.0 matches BM25; fusion weight 1.0 matches semantic"))
+
+(given task-mode-graph)
+(meta task-mode-graph
+  (description "Mode 4: Graph-augmented. Hybrid search for initial candidates, then for each result follow LinkGraph forward_links + backlinks (1 hop). Score neighbors: origin_score * decay (default 0.5). Merge, dedup, re-sort, return top_k.")
+  (acceptance "Integration test: graph mode surfaces sessions not in hybrid top-k that are linked to top results; result count >= hybrid result count"))
+
+(given task-mode-rerank)
+(meta task-mode-rerank
+  (description "Mode 5: LLM rerank. Hybrid retrieval for top 50, format as numbered passages, single LLM call to rerank to top_k. Parse structured JSON response. Requires LLM client.")
+  (acceptance "Integration test with mock LLM client: reranked order differs from hybrid order; JSONL includes llm_stats{tokens_in, tokens_out, cost_usd}"))
+
+(given task-mode-agentic)
+(meta task-mode-agentic
+  (description "Mode 6: Agentic. Spawn zetl mcp --transport stdio. System prompt lists tools (search, links, backlinks, path, blocks). LLM drives tool loop. Cap at --max-tool-calls (default 10). Collect referenced sessions as ranked list.")
+  (acceptance "Integration test with mock LLM client: agent makes tool calls, receives MCP responses, produces final ranked session list; tool_calls count in llm_stats"))
+
+;; Phase 6: LLM client
+(given task-llm-client)
+(meta task-llm-client
+  (description "LlmClient trait with complete(messages, tools) -> Response. Three impls: GroqClient (OpenAI-compat, api.groq.com, GROQ_API_KEY, default llama-3.1-8b-instant), AnthropicClient (ANTHROPIC_API_KEY), OpenAICompatibleClient (--llm-base-url). All use reqwest. estimate_cost() method per provider.")
+  (acceptance "Unit test: GroqClient builds correct request body with tools; AnthropicClient uses messages API format; mock HTTP responses parse correctly"))
+
+;; Phase 7: Reporting
+(given task-report)
+(meta task-report
+  (description "Console output with box-drawing chars showing Recall@5/10, NDCG@5/10, per-type breakdown, timing. JSONL writer: one JSON line per question with question_id, question_type, mode, ground_truth_sessions, retrieved_sessions, metrics, latency_ms, llm_stats. Auto-named files: results_{mode}_{timestamp}.jsonl.")
+  (acceptance "Integration test: run mode produces formatted console output; JSONL file is valid (each line parses as JSON); compare subcommand loads 2+ JSONL files and prints side-by-side table"))
+
+;; Phase 8: End-to-end
+(given task-e2e)
+(meta task-e2e
+  (description "End-to-end test: download LongMemEval fixture (or use bundled 5-question sample), ingest, run BM25 mode with --limit 5, verify JSONL output and console summary. Add progress bar via indicatif for long runs.")
+  (acceptance "zetl-bench ingest + zetl-bench run --mode bm25 --limit 5 produces valid output end-to-end; progress bar shows during run"))
+
+;; ── Readiness rules ─────────────────────────────────────────────────
+
+;; Phase 1: no deps
+(normally r-ready-workspace
+  (and task-workspace no-deps-workspace)
+  ready-workspace)
+
+;; Phase 2: needs workspace
+(normally r-ready-dataset
+  (and task-dataset completed-workspace)
+  ready-dataset)
+
+;; Phase 3: needs dataset
+(normally r-ready-entity
+  (and task-entity completed-dataset)
+  ready-entity)
+
+(normally r-ready-ingest
+  (and task-ingest completed-entity)
+  ready-ingest)
+
+;; Phase 4: needs ingest (for test fixtures)
+(normally r-ready-scoring
+  (and task-scoring completed-dataset)
+  ready-scoring)
+
+;; Phase 5: modes need ingest + scoring
+(normally r-ready-mode-bm25
+  (and task-mode-bm25 completed-ingest completed-scoring)
+  ready-mode-bm25)
+
+(normally r-ready-mode-semantic
+  (and task-mode-semantic completed-ingest completed-scoring)
+  ready-mode-semantic)
+
+(normally r-ready-mode-hybrid
+  (and task-mode-hybrid completed-mode-bm25 completed-mode-semantic)
+  ready-mode-hybrid)
+
+(normally r-ready-mode-graph
+  (and task-mode-graph completed-mode-hybrid)
+  ready-mode-graph)
+
+;; LLM client needed before rerank and agentic
+(normally r-ready-llm-client
+  (and task-llm-client completed-workspace)
+  ready-llm-client)
+
+(normally r-ready-mode-rerank
+  (and task-mode-rerank completed-mode-hybrid completed-llm-client)
+  ready-mode-rerank)
+
+(normally r-ready-mode-agentic
+  (and task-mode-agentic completed-mode-rerank)
+  ready-mode-agentic)
+
+;; Phase 7: report needs at least BM25 mode
+(normally r-ready-report
+  (and task-report completed-mode-bm25 completed-scoring)
+  ready-report)
+
+;; Phase 8: e2e needs everything
+(normally r-ready-e2e
+  (and task-e2e completed-report completed-mode-bm25)
+  ready-e2e)
+
+;; ── Assignment rules ────────────────────────────────────────────────
+
+(normally r-assign-workspace (and ready-workspace agent-claude-available) assign-to-workspace-claude)
+(normally r-assign-dataset (and ready-dataset agent-claude-available) assign-to-dataset-claude)
+(normally r-assign-entity (and ready-entity agent-claude-available) assign-to-entity-claude)
+(normally r-assign-ingest (and ready-ingest agent-claude-available) assign-to-ingest-claude)
+(normally r-assign-scoring (and ready-scoring agent-claude-available) assign-to-scoring-claude)
+(normally r-assign-mode-bm25 (and ready-mode-bm25 agent-claude-available) assign-to-mode-bm25-claude)
+(normally r-assign-mode-semantic (and ready-mode-semantic agent-claude-available) assign-to-mode-semantic-claude)
+(normally r-assign-mode-hybrid (and ready-mode-hybrid agent-claude-available) assign-to-mode-hybrid-claude)
+(normally r-assign-mode-graph (and ready-mode-graph agent-claude-available) assign-to-mode-graph-claude)
+(normally r-assign-llm-client (and ready-llm-client agent-claude-available) assign-to-llm-client-claude)
+(normally r-assign-mode-rerank (and ready-mode-rerank agent-claude-available) assign-to-mode-rerank-claude)
+(normally r-assign-mode-agentic (and ready-mode-agentic agent-claude-available) assign-to-mode-agentic-claude)
+(normally r-assign-report (and ready-report agent-claude-available) assign-to-report-claude)
+(normally r-assign-e2e (and ready-e2e agent-claude-available) assign-to-e2e-claude)
+
+(claims agent:claude
+  :at "2026-04-08T00:18:35Z"
+  (given claim-v1-workspace)
+  (normally r-cl-state-v1-workspace claim-v1-workspace state-claimed-v1-workspace)
+  (normally r-cl-chain-v1-workspace state-claimed-v1-workspace claimed-workspace)
+)
+
+;; Propagation rules: failures in 'workspace' block downstream tasks
+(normally r-propagate-dataset-from-workspace-failed failed-workspace upstream-blocked-dataset)
+(normally r-propagate-dataset-from-workspace-permanently-failed permanently-failed-workspace upstream-blocked-dataset)
+(normally r-propagate-dataset-from-workspace-stale-v1 stale-v1-workspace upstream-blocked-dataset)
+(normally r-propagate-dataset-from-workspace-timeout-v1 timeout-v1-workspace upstream-blocked-dataset)
+(normally r-propagate-dataset-from-workspace-blocked upstream-blocked-workspace upstream-blocked-dataset)
+(normally r-propagate-llm-client-from-workspace-failed failed-workspace upstream-blocked-llm-client)
+(normally r-propagate-llm-client-from-workspace-permanently-failed permanently-failed-workspace upstream-blocked-llm-client)
+(normally r-propagate-llm-client-from-workspace-stale-v1 stale-v1-workspace upstream-blocked-llm-client)
+(normally r-propagate-llm-client-from-workspace-timeout-v1 timeout-v1-workspace upstream-blocked-llm-client)
+(normally r-propagate-llm-client-from-workspace-blocked upstream-blocked-workspace upstream-blocked-llm-client)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-entity-from-dataset-blocked upstream-blocked-dataset upstream-blocked-entity)
+(normally r-propagate-scoring-from-dataset-blocked upstream-blocked-dataset upstream-blocked-scoring)
+(normally r-propagate-mode-rerank-from-llm-client-blocked upstream-blocked-llm-client upstream-blocked-mode-rerank)
+(normally r-propagate-ingest-from-entity-blocked upstream-blocked-entity upstream-blocked-ingest)
+(normally r-propagate-mode-bm25-from-scoring-blocked upstream-blocked-scoring upstream-blocked-mode-bm25)
+(normally r-propagate-mode-semantic-from-scoring-blocked upstream-blocked-scoring upstream-blocked-mode-semantic)
+(normally r-propagate-report-from-scoring-blocked upstream-blocked-scoring upstream-blocked-report)
+(normally r-propagate-mode-agentic-from-mode-rerank-blocked upstream-blocked-mode-rerank upstream-blocked-mode-agentic)
+(normally r-propagate-mode-bm25-from-ingest-blocked upstream-blocked-ingest upstream-blocked-mode-bm25)
+(normally r-propagate-mode-semantic-from-ingest-blocked upstream-blocked-ingest upstream-blocked-mode-semantic)
+(normally r-propagate-e2e-from-mode-bm25-blocked upstream-blocked-mode-bm25 upstream-blocked-e2e)
+(normally r-propagate-mode-hybrid-from-mode-bm25-blocked upstream-blocked-mode-bm25 upstream-blocked-mode-hybrid)
+(normally r-propagate-report-from-mode-bm25-blocked upstream-blocked-mode-bm25 upstream-blocked-report)
+(normally r-propagate-mode-hybrid-from-mode-semantic-blocked upstream-blocked-mode-semantic upstream-blocked-mode-hybrid)
+(normally r-propagate-e2e-from-report-blocked upstream-blocked-report upstream-blocked-e2e)
+(normally r-propagate-mode-graph-from-mode-hybrid-blocked upstream-blocked-mode-hybrid upstream-blocked-mode-graph)
+(normally r-propagate-mode-rerank-from-mode-hybrid-blocked upstream-blocked-mode-hybrid upstream-blocked-mode-rerank)
+
+(claims agent:claude
+  :at "2026-04-08T00:21:05Z"
+  (given completed-workspace))
+
+(claims agent:claude
+  :at "2026-04-08T00:21:09Z"
+  (given claim-v1-dataset)
+  (normally r-cl-state-v1-dataset claim-v1-dataset state-claimed-v1-dataset)
+  (normally r-cl-chain-v1-dataset state-claimed-v1-dataset claimed-dataset)
+)
+
+;; Propagation rules: failures in 'dataset' block downstream tasks
+(normally r-propagate-entity-from-dataset-failed failed-dataset upstream-blocked-entity)
+(normally r-propagate-entity-from-dataset-permanently-failed permanently-failed-dataset upstream-blocked-entity)
+(normally r-propagate-entity-from-dataset-stale-v1 stale-v1-dataset upstream-blocked-entity)
+(normally r-propagate-entity-from-dataset-timeout-v1 timeout-v1-dataset upstream-blocked-entity)
+(normally r-propagate-scoring-from-dataset-failed failed-dataset upstream-blocked-scoring)
+(normally r-propagate-scoring-from-dataset-permanently-failed permanently-failed-dataset upstream-blocked-scoring)
+(normally r-propagate-scoring-from-dataset-stale-v1 stale-v1-dataset upstream-blocked-scoring)
+(normally r-propagate-scoring-from-dataset-timeout-v1 timeout-v1-dataset upstream-blocked-scoring)
+
+(claims agent:claude
+  :at "2026-04-08T00:21:09Z"
+  (given claim-v1-llm-client)
+  (normally r-cl-state-v1-llm-client claim-v1-llm-client state-claimed-v1-llm-client)
+  (normally r-cl-chain-v1-llm-client state-claimed-v1-llm-client claimed-llm-client)
+)
+
+;; Propagation rules: failures in 'llm-client' block downstream tasks
+(normally r-propagate-mode-rerank-from-llm-client-failed failed-llm-client upstream-blocked-mode-rerank)
+(normally r-propagate-mode-rerank-from-llm-client-permanently-failed permanently-failed-llm-client upstream-blocked-mode-rerank)
+(normally r-propagate-mode-rerank-from-llm-client-stale-v1 stale-v1-llm-client upstream-blocked-mode-rerank)
+(normally r-propagate-mode-rerank-from-llm-client-timeout-v1 timeout-v1-llm-client upstream-blocked-mode-rerank)
+
+(claims agent:claude
+  :at "2026-04-08T00:23:58Z"
+  (given completed-dataset))
+
+(claims agent:claude
+  :at "2026-04-08T00:23:58Z"
+  (given completed-llm-client))
+
+(claims agent:claude
+  :at "2026-04-08T00:24:03Z"
+  (given claim-v1-entity)
+  (normally r-cl-state-v1-entity claim-v1-entity state-claimed-v1-entity)
+  (normally r-cl-chain-v1-entity state-claimed-v1-entity claimed-entity)
+)
+
+;; Propagation rules: failures in 'entity' block downstream tasks
+(normally r-propagate-ingest-from-entity-failed failed-entity upstream-blocked-ingest)
+(normally r-propagate-ingest-from-entity-permanently-failed permanently-failed-entity upstream-blocked-ingest)
+(normally r-propagate-ingest-from-entity-stale-v1 stale-v1-entity upstream-blocked-ingest)
+(normally r-propagate-ingest-from-entity-timeout-v1 timeout-v1-entity upstream-blocked-ingest)
+
+(claims agent:claude
+  :at "2026-04-08T00:24:03Z"
+  (given claim-v1-scoring)
+  (normally r-cl-state-v1-scoring claim-v1-scoring state-claimed-v1-scoring)
+  (normally r-cl-chain-v1-scoring state-claimed-v1-scoring claimed-scoring)
+)
+
+;; Propagation rules: failures in 'scoring' block downstream tasks
+(normally r-propagate-mode-bm25-from-scoring-failed failed-scoring upstream-blocked-mode-bm25)
+(normally r-propagate-mode-bm25-from-scoring-permanently-failed permanently-failed-scoring upstream-blocked-mode-bm25)
+(normally r-propagate-mode-bm25-from-scoring-stale-v1 stale-v1-scoring upstream-blocked-mode-bm25)
+(normally r-propagate-mode-bm25-from-scoring-timeout-v1 timeout-v1-scoring upstream-blocked-mode-bm25)
+(normally r-propagate-mode-semantic-from-scoring-failed failed-scoring upstream-blocked-mode-semantic)
+(normally r-propagate-mode-semantic-from-scoring-permanently-failed permanently-failed-scoring upstream-blocked-mode-semantic)
+(normally r-propagate-mode-semantic-from-scoring-stale-v1 stale-v1-scoring upstream-blocked-mode-semantic)
+(normally r-propagate-mode-semantic-from-scoring-timeout-v1 timeout-v1-scoring upstream-blocked-mode-semantic)
+(normally r-propagate-report-from-scoring-failed failed-scoring upstream-blocked-report)
+(normally r-propagate-report-from-scoring-permanently-failed permanently-failed-scoring upstream-blocked-report)
+(normally r-propagate-report-from-scoring-stale-v1 stale-v1-scoring upstream-blocked-report)
+(normally r-propagate-report-from-scoring-timeout-v1 timeout-v1-scoring upstream-blocked-report)
+
+(claims agent:claude
+  :at "2026-04-08T00:27:22Z"
+  (given completed-entity))
+
+(claims agent:claude
+  :at "2026-04-08T00:27:22Z"
+  (given completed-scoring))
+
+(claims agent:claude
+  :at "2026-04-08T00:27:27Z"
+  (given claim-v1-ingest)
+  (normally r-cl-state-v1-ingest claim-v1-ingest state-claimed-v1-ingest)
+  (normally r-cl-chain-v1-ingest state-claimed-v1-ingest claimed-ingest)
+)
+
+;; Propagation rules: failures in 'ingest' block downstream tasks
+(normally r-propagate-mode-bm25-from-ingest-failed failed-ingest upstream-blocked-mode-bm25)
+(normally r-propagate-mode-bm25-from-ingest-permanently-failed permanently-failed-ingest upstream-blocked-mode-bm25)
+(normally r-propagate-mode-bm25-from-ingest-stale-v1 stale-v1-ingest upstream-blocked-mode-bm25)
+(normally r-propagate-mode-bm25-from-ingest-timeout-v1 timeout-v1-ingest upstream-blocked-mode-bm25)
+(normally r-propagate-mode-semantic-from-ingest-failed failed-ingest upstream-blocked-mode-semantic)
+(normally r-propagate-mode-semantic-from-ingest-permanently-failed permanently-failed-ingest upstream-blocked-mode-semantic)
+(normally r-propagate-mode-semantic-from-ingest-stale-v1 stale-v1-ingest upstream-blocked-mode-semantic)
+(normally r-propagate-mode-semantic-from-ingest-timeout-v1 timeout-v1-ingest upstream-blocked-mode-semantic)
+
+(claims agent:claude
+  :at "2026-04-08T00:29:18Z"
+  (given completed-ingest))
+
+(claims agent:claude
+  :at "2026-04-08T00:29:22Z"
+  (given claim-v1-mode-bm25)
+  (normally r-cl-state-v1-mode-bm25 claim-v1-mode-bm25 state-claimed-v1-mode-bm25)
+  (normally r-cl-chain-v1-mode-bm25 state-claimed-v1-mode-bm25 claimed-mode-bm25)
+)
+
+;; Propagation rules: failures in 'mode-bm25' block downstream tasks
+(normally r-propagate-e2e-from-mode-bm25-failed failed-mode-bm25 upstream-blocked-e2e)
+(normally r-propagate-e2e-from-mode-bm25-permanently-failed permanently-failed-mode-bm25 upstream-blocked-e2e)
+(normally r-propagate-e2e-from-mode-bm25-stale-v1 stale-v1-mode-bm25 upstream-blocked-e2e)
+(normally r-propagate-e2e-from-mode-bm25-timeout-v1 timeout-v1-mode-bm25 upstream-blocked-e2e)
+(normally r-propagate-mode-hybrid-from-mode-bm25-failed failed-mode-bm25 upstream-blocked-mode-hybrid)
+(normally r-propagate-mode-hybrid-from-mode-bm25-permanently-failed permanently-failed-mode-bm25 upstream-blocked-mode-hybrid)
+(normally r-propagate-mode-hybrid-from-mode-bm25-stale-v1 stale-v1-mode-bm25 upstream-blocked-mode-hybrid)
+(normally r-propagate-mode-hybrid-from-mode-bm25-timeout-v1 timeout-v1-mode-bm25 upstream-blocked-mode-hybrid)
+(normally r-propagate-report-from-mode-bm25-failed failed-mode-bm25 upstream-blocked-report)
+(normally r-propagate-report-from-mode-bm25-permanently-failed permanently-failed-mode-bm25 upstream-blocked-report)
+(normally r-propagate-report-from-mode-bm25-stale-v1 stale-v1-mode-bm25 upstream-blocked-report)
+(normally r-propagate-report-from-mode-bm25-timeout-v1 timeout-v1-mode-bm25 upstream-blocked-report)
+
+(claims agent:claude
+  :at "2026-04-08T00:29:22Z"
+  (given claim-v1-mode-semantic)
+  (normally r-cl-state-v1-mode-semantic claim-v1-mode-semantic state-claimed-v1-mode-semantic)
+  (normally r-cl-chain-v1-mode-semantic state-claimed-v1-mode-semantic claimed-mode-semantic)
+)
+
+;; Propagation rules: failures in 'mode-semantic' block downstream tasks
+(normally r-propagate-mode-hybrid-from-mode-semantic-failed failed-mode-semantic upstream-blocked-mode-hybrid)
+(normally r-propagate-mode-hybrid-from-mode-semantic-permanently-failed permanently-failed-mode-semantic upstream-blocked-mode-hybrid)
+(normally r-propagate-mode-hybrid-from-mode-semantic-stale-v1 stale-v1-mode-semantic upstream-blocked-mode-hybrid)
+(normally r-propagate-mode-hybrid-from-mode-semantic-timeout-v1 timeout-v1-mode-semantic upstream-blocked-mode-hybrid)
+
+(claims agent:claude
+  :at "2026-04-08T00:31:50Z"
+  (given completed-mode-bm25))
+
+(claims agent:claude
+  :at "2026-04-08T00:31:50Z"
+  (given completed-mode-semantic))
+
+(claims agent:claude
+  :at "2026-04-08T00:31:54Z"
+  (given claim-v1-mode-hybrid)
+  (normally r-cl-state-v1-mode-hybrid claim-v1-mode-hybrid state-claimed-v1-mode-hybrid)
+  (normally r-cl-chain-v1-mode-hybrid state-claimed-v1-mode-hybrid claimed-mode-hybrid)
+)
+
+;; Propagation rules: failures in 'mode-hybrid' block downstream tasks
+(normally r-propagate-mode-graph-from-mode-hybrid-failed failed-mode-hybrid upstream-blocked-mode-graph)
+(normally r-propagate-mode-graph-from-mode-hybrid-permanently-failed permanently-failed-mode-hybrid upstream-blocked-mode-graph)
+(normally r-propagate-mode-graph-from-mode-hybrid-stale-v1 stale-v1-mode-hybrid upstream-blocked-mode-graph)
+(normally r-propagate-mode-graph-from-mode-hybrid-timeout-v1 timeout-v1-mode-hybrid upstream-blocked-mode-graph)
+(normally r-propagate-mode-rerank-from-mode-hybrid-failed failed-mode-hybrid upstream-blocked-mode-rerank)
+(normally r-propagate-mode-rerank-from-mode-hybrid-permanently-failed permanently-failed-mode-hybrid upstream-blocked-mode-rerank)
+(normally r-propagate-mode-rerank-from-mode-hybrid-stale-v1 stale-v1-mode-hybrid upstream-blocked-mode-rerank)
+(normally r-propagate-mode-rerank-from-mode-hybrid-timeout-v1 timeout-v1-mode-hybrid upstream-blocked-mode-rerank)
+
+(claims agent:claude
+  :at "2026-04-08T00:31:54Z"
+  (given claim-v1-report)
+  (normally r-cl-state-v1-report claim-v1-report state-claimed-v1-report)
+  (normally r-cl-chain-v1-report state-claimed-v1-report claimed-report)
+)
+
+;; Propagation rules: failures in 'report' block downstream tasks
+(normally r-propagate-e2e-from-report-failed failed-report upstream-blocked-e2e)
+(normally r-propagate-e2e-from-report-permanently-failed permanently-failed-report upstream-blocked-e2e)
+(normally r-propagate-e2e-from-report-stale-v1 stale-v1-report upstream-blocked-e2e)
+(normally r-propagate-e2e-from-report-timeout-v1 timeout-v1-report upstream-blocked-e2e)
+
+(claims agent:claude
+  :at "2026-04-08T00:34:34Z"
+  (given completed-mode-hybrid))
+
+(claims agent:claude
+  :at "2026-04-08T00:34:34Z"
+  (given completed-report))
+
+(claims agent:claude
+  :at "2026-04-08T00:34:39Z"
+  (given completed-mode-graph))
+
+(claims agent:claude
+  :at "2026-04-08T00:34:39Z"
+  (given claim-v1-mode-rerank)
+  (normally r-cl-state-v1-mode-rerank claim-v1-mode-rerank state-claimed-v1-mode-rerank)
+  (normally r-cl-chain-v1-mode-rerank state-claimed-v1-mode-rerank claimed-mode-rerank)
+)
+
+;; Propagation rules: failures in 'mode-rerank' block downstream tasks
+(normally r-propagate-mode-agentic-from-mode-rerank-failed failed-mode-rerank upstream-blocked-mode-agentic)
+(normally r-propagate-mode-agentic-from-mode-rerank-permanently-failed permanently-failed-mode-rerank upstream-blocked-mode-agentic)
+(normally r-propagate-mode-agentic-from-mode-rerank-stale-v1 stale-v1-mode-rerank upstream-blocked-mode-agentic)
+(normally r-propagate-mode-agentic-from-mode-rerank-timeout-v1 timeout-v1-mode-rerank upstream-blocked-mode-agentic)
+
+(claims agent:claude
+  :at "2026-04-08T00:34:39Z"
+  (given claim-v1-e2e)
+  (normally r-cl-state-v1-e2e claim-v1-e2e state-claimed-v1-e2e)
+  (normally r-cl-chain-v1-e2e state-claimed-v1-e2e claimed-e2e)
+)
+
+(claims agent:claude
+  :at "2026-04-08T00:39:06Z"
+  (given completed-mode-rerank))
+
+(claims agent:claude
+  :at "2026-04-08T00:39:10Z"
+  (given claim-v1-mode-agentic)
+  (normally r-cl-state-v1-mode-agentic claim-v1-mode-agentic state-claimed-v1-mode-agentic)
+  (normally r-cl-chain-v1-mode-agentic state-claimed-v1-mode-agentic claimed-mode-agentic)
+)
+
+(claims agent:claude
+  :at "2026-04-08T00:39:10Z"
+  (given completed-mode-agentic))
+
+(claims agent:claude
+  :at "2026-04-08T00:40:11Z"
+  (given completed-e2e))

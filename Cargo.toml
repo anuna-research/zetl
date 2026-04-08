@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "benches/zetl-bench"]
+resolver = "2"
+
 [package]
 name = "zetl"
 version = "0.1.0"

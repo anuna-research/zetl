@@ -1,0 +1,27 @@
+[package]
+name = "zetl-bench"
+version = "0.1.0"
+edition = "2021"
+description = "LongMemEval memory retrieval benchmark for zetl"
+license = "MIT"
+
+[features]
+default = []
+semantic = ["zetl/semantic"]
+mcp = ["zetl/mcp"]
+
+[dependencies]
+zetl = { path = "../.." }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+indicatif = "0.17"
+chrono = { version = "0.4", features = ["std"] }
+regex = "1"
+async-trait = "0.1"
+tempfile = "3"
+
+[dev-dependencies]
