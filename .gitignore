@@ -1,3 +1,4 @@
 /target
 /dist
 .zetl/
+.DS_Store
