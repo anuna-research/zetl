@@ -142,3 +142,24 @@
 (claims agent:claude
   :at "2026-04-13T21:43:37Z"
   (given completed-sigpipe-verify))
+
+(claims agent:claude
+  :at "2026-04-13T23:45:34Z"
+  (given task-man-page)
+(meta task-man-page
+  (description "Add `zetl man` subcommand emitting roff(7) to stdout via clap_mangen.")
+  (acceptance "`zetl man | grep NAME` returns the roff NAME section; no regression")
+  (priority "P1"))
+(normally r-ready-man task-man-page ready-man-page)
+(normally r-assign-man (and ready-man-page agent-claude-available) assign-to-man-page-claude))
+
+(claims agent:claude
+  :at "2026-04-13T23:45:34Z"
+  (given claim-v1-man-page)
+  (normally r-cl-state-v1-man-page claim-v1-man-page state-claimed-v1-man-page)
+  (normally r-cl-chain-v1-man-page state-claimed-v1-man-page claimed-man-page)
+)
+
+(claims agent:claude
+  :at "2026-04-13T23:45:34Z"
+  (given completed-man-page))
