@@ -594,6 +594,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ff7a1dccbdd8b078c2bdebff47e404615151534d5043da397ec50286816f9cb"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.5.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6262,6 +6271,7 @@ dependencies = [
  "blake3",
  "chrono",
  "clap",
+ "clap_complete",
  "comfy-table",
  "crossterm 0.28.1",
  "ed25519-dalek",

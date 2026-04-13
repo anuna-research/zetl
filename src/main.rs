@@ -483,8 +483,9 @@ fn exit_json_error(message: &str, code: i32) -> ! {
         error: message.to_string(),
         code,
     };
-    // Ignore write errors — we're exiting anyway
-    let _ = serde_json::to_string_pretty(&err).map(|json| println!("{json}"));
+    // Errors go to stderr so stdout remains valid JSON for pipe consumers (clig.dev).
+    // Ignore write errors — we're exiting anyway.
+    let _ = serde_json::to_string_pretty(&err).map(|json| eprintln!("{json}"));
     std::process::exit(code);
 }
 
@@ -3706,6 +3707,8 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
     let (page_title, file_path) = if let Some(page_input) = page {
         let resolved = if let Some(r) = resolve_page_name(page_input, &pipeline.file_index) {
             r
+        } else if cli.no_input {
+            anyhow::bail!("Page not found: '{page_input}' (--no-input set; skipping picker)");
         } else {
             // Page not found — offer the top-5 SimHash-nearest suggestions (REQ-073).
             let pages: Vec<(String, String)> = pipeline
@@ -3727,6 +3730,8 @@ fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) ->
             .map(|(_, rel_path)| pipeline.vault_root.join(rel_path));
 
         (resolved, abs_path)
+    } else if cli.no_input {
+        anyhow::bail!("No page specified (--no-input set; picker disabled)");
     } else {
         // No page argument — open with empty title to trigger picker overlay (REQ-062).
         (String::new(), None)
@@ -10028,6 +10033,13 @@ fn main() -> anyhow::Result<()> {
                 "MCP server requires --features mcp. Rebuild with: cargo build --features mcp"
             );
             std::process::exit(1);
+        }
+        Command::Completions { shell } => {
+            use clap::CommandFactory;
+            let mut cmd = Cli::command();
+            let bin_name = cmd.get_name().to_string();
+            clap_complete::generate(*shell, &mut cmd, bin_name, &mut std::io::stdout());
+            Ok(())
         }
     }
 }

@@ -9,38 +9,42 @@ use clap::{Parser, Subcommand, ValueEnum};
 )]
 pub struct Cli {
     /// Vault root directory
-    #[arg(short = 'd', long, default_value = ".", env = "ZETL_DIR")]
+    #[arg(short = 'd', long, default_value = ".", env = "ZETL_DIR", global = true)]
     pub dir: String,
 
     /// Output format (auto-detects: table for TTY, JSON for pipes)
-    #[arg(short = 'f', long, default_value = "auto", env = "ZETL_FORMAT")]
+    #[arg(short = 'f', long, default_value = "auto", env = "ZETL_FORMAT", global = true)]
     pub format: OutputFormat,
 
     /// Force JSON output (shorthand for -f json)
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub json: bool,
 
     /// Force full rescan, ignore cached index
-    #[arg(long, env = "ZETL_NO_CACHE")]
+    #[arg(long, env = "ZETL_NO_CACHE", global = true)]
     pub no_cache: bool,
 
     /// Disable colored output
-    #[arg(long, env = "NO_COLOR")]
+    #[arg(long, env = "NO_COLOR", global = true)]
     pub no_color: bool,
 
     /// Suppress non-essential output
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub quiet: bool,
 
     /// Increase verbosity (repeat for more: -vv)
-    #[arg(short, long, action = clap::ArgAction::Count)]
+    #[arg(short, long, action = clap::ArgAction::Count, global = true)]
     pub verbose: u8,
+
+    /// Disable interactive prompts; fail non-zero if input would be needed
+    #[arg(long, global = true)]
+    pub no_input: bool,
 
     /// Query vault state at a historical point in time (requires --features history).
     /// Accepts ISO 8601 dates ("2024-01-15"), relative expressions ("3 days ago",
     /// "last monday"), or VCS refs ("HEAD~1", change-ID prefix).
     #[cfg(feature = "history")]
-    #[arg(long, value_name = "TIME-EXPR")]
+    #[arg(long, value_name = "TIME-EXPR", global = true)]
     pub at: Option<String>,
 
     #[command(subcommand)]
@@ -441,6 +445,13 @@ pub enum Command {
     Mcp {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
         _args: Vec<String>,
+    },
+
+    /// Generate shell completion script (bash, zsh, fish, elvish, powershell)
+    Completions {
+        /// Target shell
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
     },
 }
 
