@@ -305,7 +305,14 @@ impl TemplateEngine {
         bm25_index: &str,
         history_index: &str,
     ) -> Result<String, TemplateError> {
-        let search_index = build_search_index(vault_ctx);
+        // Build mode: don't inline the search index — it's written to pages.json
+        // and fetched lazily on first Cmd+K. Serve mode keeps it inline because
+        // openSearch() needs to respond instantly and the payload is tiny.
+        let search_index = if mode == "build" {
+            String::new()
+        } else {
+            build_search_index(vault_ctx)
+        };
         let root_path = compute_root_path(mode, "");
         let idx_file = index_file(mode);
         let ctx = context! {
@@ -339,7 +346,11 @@ impl TemplateEngine {
         bm25_index: &str,
         history_index: &str,
     ) -> Result<String, TemplateError> {
-        let search_index = build_search_index(vault_ctx);
+        let search_index = if mode == "build" {
+            String::new()
+        } else {
+            build_search_index(vault_ctx)
+        };
         let root_path = compute_root_path(mode, &page_ctx.slug);
         let idx_file = index_file(mode);
         let ctx = context! {
@@ -670,7 +681,11 @@ impl TemplateEngine {
         bm25_index: &str,
         history_index: &str,
     ) -> Result<String, TemplateError> {
-        let search_index = build_search_index(vault_ctx);
+        let search_index = if mode == "build" {
+            String::new()
+        } else {
+            build_search_index(vault_ctx)
+        };
         let root_path = compute_root_path(mode, &folder_ctx.slug);
         let idx_file = index_file(mode);
         let ctx = context! {
@@ -725,7 +740,7 @@ fn index_file(mode: &str) -> &'static str {
 }
 
 /// Build a JSON search index string from vault pages for the Cmd+K search modal.
-fn build_search_index(vault_ctx: &VaultContext) -> String {
+pub fn build_search_index(vault_ctx: &VaultContext) -> String {
     let entries: Vec<String> = vault_ctx
         .pages
         .iter()

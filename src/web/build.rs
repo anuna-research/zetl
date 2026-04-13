@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 
 use crate::scanner::{body_text_ranges, page_slug_from_path};
 use crate::web::context::{build_folder_context, build_page_context, build_vault_context};
-use crate::web::engine::{bundled_theme_files, TemplateEngine};
+use crate::web::engine::{build_search_index, bundled_theme_files, TemplateEngine};
 use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::VaultData;
@@ -309,8 +309,13 @@ pub fn build_static(
         }
     }
 
-    // ── search-index.json (written as external file, not inlined into pages) ──
+    // ── search-index.json + pages.json (external files, not inlined) ──
+    // Both are fetched lazily by the Cmd+K search JS on first open, so they
+    // stay off the critical rendering path.
     write_search_index_json(data, vault_root, out)?;
+    let pages_json = build_search_index(&vault_ctx);
+    std::fs::write(out.join("pages.json"), &pages_json)
+        .context("writing pages.json")?;
     let bm25_json = String::new();
 
     // ── history-index.json ───────────────────────────────────────────────

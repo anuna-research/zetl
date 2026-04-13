@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ vault.name }} — zetl{% endblock %}</title>
   <meta name="description" content="{% block description %}{{ vault.name }} — a knowledge vault built with zetl.{% endblock %}">
-  <script type="application/json" id="zetl-search-index">{{ search_index | safe }}</script>
+  {% if search_index %}<script type="application/json" id="zetl-search-index">{{ search_index | safe }}</script>{% endif %}
   {% if bm25_index %}<script type="application/json" id="zetl-bm25-index">{{ bm25_index | safe }}</script>{% endif %}
+  {% if mode == "build" %}<link rel="prefetch" href="{{ root_path }}pages.json">
+  <link rel="prefetch" href="{{ root_path }}search-index.json">{% endif %}
   <link rel="stylesheet" href="{{ root_path }}_static/theme.css">
   {% block head %}{% endblock %}
   <style>
@@ -403,10 +405,24 @@
     var active=-1;
     var filtered=[];
 
+    /* Page list: inline in serve mode (instant); lazy-fetched from pages.json
+       in build mode (keeps HTML lean, single one-time cost on first Cmd+K). */
     var pageList=(function(){
-      try{return JSON.parse(document.getElementById('zetl-search-index').textContent||'[]');}
+      var el=document.getElementById('zetl-search-index');
+      if(!el)return null;
+      try{return JSON.parse(el.textContent||'[]');}
       catch(e){return [];}
     })();
+    var pageListPromise=null;
+    function ensurePageList(){
+      if(pageList)return Promise.resolve(pageList);
+      if(pageListPromise)return pageListPromise;
+      if(location.protocol==='file:'){pageList=[];return Promise.resolve(pageList);}
+      pageListPromise=fetch(ROOT+'pages.json').then(function(r){return r.ok?r.json():[];})
+        .then(function(data){pageList=data||[];return pageList;})
+        .catch(function(){pageList=[];return pageList;});
+      return pageListPromise;
+    }
 
     function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
     function slugFromPath(path){return path.replace(/\.[^/.]+$/,'').toLowerCase().replace(/ /g,'-');}
@@ -449,9 +465,10 @@
     }
 
     function fuzzyFilter(q){
-      if(!q)return pageList.map(function(p){return{n:p.n,s:p.s,_indices:null};});
+      var list=pageList||[];
+      if(!q)return list.map(function(p){return{n:p.n,s:p.s,_indices:null};});
       var scored=[];
-      pageList.forEach(function(p){
+      list.forEach(function(p){
         var m=fuzzyMatch(q,p.n);
         if(m)scored.push({n:p.n,s:p.s,score:m.score,_indices:m.indices});
       });
@@ -508,12 +525,25 @@
       if(active>=0&&els[active])els[active].scrollIntoView({block:'nearest'});
     }
 
-    /* ── BM25 scorer for build mode (client-side) */
+    /* ── BM25 scorer for build mode (client-side).
+       Inline script is only present on file:// / legacy pages; production
+       build mode lazy-fetches search-index.json on first search. */
     var searchIndex=(function(){
-      try{var el=document.getElementById('zetl-bm25-index');
-        return el?JSON.parse(el.textContent):null;}
+      var el=document.getElementById('zetl-bm25-index');
+      if(!el)return null;
+      try{return JSON.parse(el.textContent);}
       catch(e){return null;}
     })();
+    var searchIndexPromise=null;
+    function ensureSearchIndex(){
+      if(searchIndex)return Promise.resolve(searchIndex);
+      if(searchIndexPromise)return searchIndexPromise;
+      if(location.protocol==='file:')return Promise.resolve(null);
+      searchIndexPromise=fetch(ROOT+'search-index.json').then(function(r){return r.ok?r.json():null;})
+        .then(function(data){searchIndex=data;return searchIndex;})
+        .catch(function(){return null;});
+      return searchIndexPromise;
+    }
 
     function findBestSection(doc,terms){
       if(!doc.secs||!doc.secs.length)return null;
@@ -601,22 +631,24 @@
         });
     }
 
-    /* ── Build mode: fuzzy + BM25 content search */
+    /* ── Build mode: fuzzy + BM25 content search (indexes lazy-loaded) */
     function buildSearchRun(){
       var q=input.value;
       if(!q){
         filtered=fuzzyFilter('');
         active=0;renderFuzzy(filtered);return;
       }
-      /* Always show fuzzy name matches first */
-      if(!searchIndex){
-        filtered=fuzzyFilter(q);
-        active=0;renderFuzzy(filtered);return;
-      }
-      /* BM25 content search for longer queries when index is available */
       if(q.length>2){
-        var bm25=bm25Search(q,searchIndex).slice(0,20);
-        if(bm25.length>0){filtered=bm25;renderFullText(filtered);return;}
+        ensureSearchIndex().then(function(idx){
+          if(input.value!==q)return;
+          if(idx){
+            var bm25=bm25Search(q,idx).slice(0,20);
+            if(bm25.length>0){filtered=bm25;renderFullText(filtered);return;}
+          }
+          filtered=fuzzyFilter(q);
+          active=0;renderFuzzy(filtered);
+        });
+        return;
       }
       filtered=fuzzyFilter(q);
       active=0;renderFuzzy(filtered);
@@ -636,9 +668,20 @@
     window.openSearch=function(){
       overlay.classList.add('open');
       input.value='';
+      input.focus();
+      if(!pageList){
+        results.innerHTML='<div class="search-hint">Loading\u2026</div>';
+        ensurePageList().then(function(){
+          if(!overlay.classList.contains('open'))return;
+          filtered=fuzzyFilter(input.value);
+          active=0;renderFuzzy(filtered);
+        });
+        /* Warm the BM25 index in the background too. */
+        ensureSearchIndex();
+        return;
+      }
       filtered=fuzzyFilter('');
       active=0;renderFuzzy(filtered);
-      input.focus();
     };
     window.closeSearch=function(){
       overlay.classList.remove('open');
