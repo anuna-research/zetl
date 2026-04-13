@@ -343,6 +343,21 @@ pub async fn index_handler(
     }
 }
 
+/// GET /help — Bundled help/install/usage page (overridable via theme dir).
+pub async fn help_handler(State(state): State<WebState>) -> Response {
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+    let vault_ctx = build_vault_context(&data, &vault_name);
+    match state.engine.render_help(&vault_ctx, "serve") {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => render_error_response(e),
+    }
+}
+
 /// GET /{*path} — Rendered markdown page with backlinks, or folder index.
 #[allow(unused_variables)]
 pub async fn page_handler(

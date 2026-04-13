@@ -227,6 +227,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "admin_permissions.html",
     "dashboard.html",
     "page_history.html",
+    "help.html",
 ];
 
 /// Build a minijinja Environment with the three-tier template loader.
@@ -333,6 +334,41 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("index.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the help page.
+    pub fn render_help(
+        &self,
+        vault_ctx: &VaultContext,
+        mode: &str,
+    ) -> Result<String, TemplateError> {
+        let search_index = if mode == "build" {
+            String::new()
+        } else {
+            build_search_index(vault_ctx)
+        };
+        let root_path = compute_root_path(mode, "help");
+        let idx_file = index_file(mode);
+        let ctx = context! {
+            vault => vault_ctx,
+            mode => mode,
+            search_index => search_index,
+            theme => &self.theme,
+            active_slug => "help",
+            root_path => root_path,
+            index_file => idx_file,
+            bm25_index => "",
+            history_index => "",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("help.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("help.html"));
         }
         Ok(html)
     }

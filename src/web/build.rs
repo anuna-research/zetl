@@ -333,6 +333,17 @@ pub fn build_static(
         })?;
     std::fs::write(out.join("index.html"), index_html)?;
 
+    // ── help page ───────────────────────────────────────────────────────
+    let help_html = engine
+        .render_help(&vault_ctx, "build")
+        .map_err(|e| {
+            eprintln!("{}", e.stderr_line("help"));
+            anyhow::anyhow!("{e}")
+        })?;
+    let help_dir = out.join("help");
+    std::fs::create_dir_all(&help_dir)?;
+    std::fs::write(help_dir.join("index.html"), help_html)?;
+
     // ── per-page HTML ───────────────────────────────────────────────────
     let mut count = 0usize;
     for file in &data.files {

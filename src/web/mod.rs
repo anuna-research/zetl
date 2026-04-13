@@ -374,6 +374,8 @@ pub async fn run(
     // ── Content routes (gated by collab_gate when --collab is active) ─
     let content_routes = Router::new()
         .route("/", get(routes::index_handler))
+        .route("/help", get(routes::help_handler))
+        .route("/help/", get(routes::help_handler))
         .route("/api/search", get(routes::api_search_handler))
         // Agent API (CON-020-007, REQ-020-017, REQ-020-018)
         .route("/api/pages", get(routes::api_pages_list_handler))

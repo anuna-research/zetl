@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Help — zetl{% endblock %}
+
+{% block styles %}
+  .help h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+  .help h2 { font-size: 1.25rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem; }
+  .help h3 { font-size: 1rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+  .help p { margin-bottom: 0.75rem; line-height: 1.6; }
+  .help ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+  .help li { margin-bottom: 0.35rem; line-height: 1.5; }
+  .help code { background: oklch(var(--b2)); padding: 1px 6px; border-radius: 4px; font-size: 0.9em; }
+  .help pre { background: oklch(var(--b2)); padding: 0.85rem 1rem; border-radius: 6px; overflow-x: auto; margin-bottom: 1rem; font-size: 0.85rem; line-height: 1.5; }
+  .help pre code { background: transparent; padding: 0; }
+  .help .lead { opacity: 0.75; font-size: 1.05rem; margin-bottom: 1.5rem; }
+  .help a { color: oklch(var(--p)); text-decoration: underline; }
+{% endblock %}
+
+{% block content %}
+<main class="help flex-1 p-4 sm:p-6 max-w-3xl mx-auto w-full">
+  <h1>zetl — help</h1>
+  <p class="lead">Bi-directional wikilink graph CLI with optional defeasible reasoning, vault history, and a multi-user collaborative web UI. To override this page, drop a <code>help.html</code> in <code>.zetl/themes/&lt;theme&gt;/</code>.</p>
+
+  <h2>Install</h2>
+  <p>Requires a Rust toolchain (<a href="https://rustup.rs/">rustup</a>). Clone the repo, then install the variant you want:</p>
+  <pre><code>git clone https://codeberg.org/anuna/zetl
+cd zetl
+
+# wikilink features only
+make install
+
+# with defeasible reasoning
+cargo install --path . --features reason
+
+# with vault history (jj-backed temporal snapshots)
+cargo install --path . --features history
+
+# everything (reasoning + history + semantic search + MCP)
+cargo install --path . --features "reason,history,semantic,mcp"</code></pre>
+  <p>Collaboration mode (<code>--collab</code>) is always available. SPL-based access control needs <code>--features reason</code>.</p>
+
+  <h2>Quick start</h2>
+  <pre><code># point zetl at any vault of markdown files
+zetl -d ./my-vault index            # build/refresh the link index
+
+# explore the graph
+zetl -d ./my-vault links "Some Page"
+zetl -d ./my-vault backlinks "Some Page" --depth 2
+zetl -d ./my-vault path "Page A" "Page B"
+
+# search and validate
+zetl -d ./my-vault search "query"
+zetl -d ./my-vault check
+
+# this web UI
+zetl -d ./my-vault serve            # http://localhost:3000
+
+# static export
+zetl -d ./my-vault build            # writes ./dist</code></pre>
+  <p>Tip: when run from inside the vault directory, you can omit <code>-d</code>.</p>
+
+  <h2>Common commands</h2>
+  <ul>
+    <li><code>zetl index</code> — build/refresh the link index</li>
+    <li><code>zetl links &lt;page&gt;</code> / <code>zetl backlinks &lt;page&gt;</code> — graph queries</li>
+    <li><code>zetl path A B</code> — shortest link path between two pages</li>
+    <li><code>zetl similar &lt;name&gt;</code> — fuzzy page-name match</li>
+    <li><code>zetl search "query"</code> — full-text search (<code>--regex</code> for patterns)</li>
+    <li><code>zetl check</code> — dead links, orphans, syntax/SPL diagnostics</li>
+    <li><code>zetl blocks &lt;page&gt;</code> — content-addressable block hashes</li>
+    <li><code>zetl view &lt;page&gt;</code> — Xanadu two-pane page viewer</li>
+    <li><code>zetl serve</code> / <code>zetl build</code> — web UI / static site</li>
+    <li><code>zetl --help</code> — full CLI reference</li>
+  </ul>
+
+  <h2>History &amp; time travel</h2>
+  <p>Built with <code>--features history</code>:</p>
+  <pre><code>zetl history log                       # graph evolution timeline
+zetl history page "Some Page"          # page evolution
+zetl --at "3 days ago" links "Page"    # query any read-only command at a point in time
+zetl watch                             # auto-snapshot on file changes</code></pre>
+
+  <h2>Reasoning</h2>
+  <p>Built with <code>--features reason</code>. Embed Spindle Lisp in <code>```spl</code> code blocks or standalone <code>.spl</code> files, then:</p>
+  <pre><code>zetl reason status                     # vault-wide conclusions
+zetl reason explain "release-candidate" --format natural
+zetl reason why-not "docs-updated"
+zetl reason conflicts --suggest</code></pre>
+
+  <h2>Collaboration</h2>
+  <pre><code># first-time setup (saves a 12-word recovery phrase)
+zetl serve --collab --init-owner --owner-name Alice
+
+# subsequent runs
+zetl serve --collab
+
+# invite a collaborator (link copies to clipboard)
+zetl invite --as Alice --role editor</code></pre>
+  <p>Roles: <code>reader</code>, <code>editor</code>, <code>admin</code>. Authentication uses WebAuthn passkeys with BIP39 mnemonic recovery. Real-time co-editing syncs over WebSocket via a Peritext CRDT.</p>
+
+  <h2>Customising</h2>
+  <ul>
+    <li><strong>Themes:</strong> override Minijinja templates in <code>.zetl/themes/&lt;name&gt;/</code> (<code>base.html</code>, <code>index.html</code>, <code>page.html</code>, <code>folder.html</code>, <code>help.html</code>, …). Missing templates fall back to the bundled defaults. Activate with <code>--theme &lt;name&gt;</code>.</li>
+    <li><strong>Static assets:</strong> drop CSS/JS/images in <code>.zetl/themes/&lt;name&gt;/static/</code> — served at <code>/_static/</code>.</li>
+    <li><strong>Hooks:</strong> executable scripts in <code>.zetl/hooks/</code> at <code>pre-build</code>, <code>post-build</code>, <code>post-index</code>, <code>post-check</code>, <code>pre-serve</code>, <code>on-save</code>, <code>on-agent</code>, <code>on-access-request</code>. Receive vault context as JSON on stdin.</li>
+  </ul>
+
+  <h2>More</h2>
+  <p>Source, issues, and full docs: <a href="https://codeberg.org/anuna/zetl">codeberg.org/anuna/zetl</a>.</p>
+</main>
+{% endblock %}
