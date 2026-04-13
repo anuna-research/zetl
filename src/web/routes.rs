@@ -16,7 +16,7 @@ use crate::search::{
 };
 use crate::search_index::SearchIndex;
 use crate::web::context::{build_folder_context, build_page_context, build_vault_context};
-use crate::web::engine::TemplateError;
+use crate::web::engine::{bundled_theme_files, TemplateError};
 use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::{reindex, WebState};
@@ -1783,6 +1783,19 @@ pub async fn static_handler(
 
         let mime = mime_from_ext(&req_path);
         return ([(header::CONTENT_TYPE, mime)], body).into_response();
+    }
+
+    // 3. Fall back to the compile-time-bundled theme's `static/` dir. This
+    // lets the default theme ship a precompiled theme.css without requiring
+    // the vault to have `.zetl/themes/default/static/` on disk.
+    if !state.theme.is_empty() {
+        let bundled_rel = std::path::PathBuf::from("static").join(&req_path);
+        for (rel, bytes) in bundled_theme_files(&state.theme) {
+            if rel == bundled_rel {
+                let mime = mime_from_ext(&req_path);
+                return ([(header::CONTENT_TYPE, mime)], bytes).into_response();
+            }
+        }
     }
 
     StatusCode::NOT_FOUND.into_response()
