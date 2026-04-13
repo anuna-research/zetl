@@ -2,7 +2,7 @@
 
 Bi-directional wikilink graph CLI with defeasible reasoning for personal knowledge management.
 
-zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph, and exposes query, validation, search, and visualization commands. Optionally, it extracts [Spindle Lisp (SPL)](https://codeberg.org/anuna/spindle-rust) code blocks from your vault and performs defeasible reasoning — drawing conclusions that can be defeated by stronger evidence. Designed for both AI agents (JSON output) and humans (tables, interactive TUI).
+zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph, and exposes query, validation, search, and visualization commands. Optionally, it extracts [Spindle Lisp (SPL)](https://codeberg.org/anuna/spindle-rust) code blocks from your vault and performs defeasible reasoning — drawing conclusions that can be defeated by stronger evidence. Designed for both AI agents (JSON output) and humans (tables, web UI).
 
 ## Features
 
@@ -11,7 +11,6 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Vault diagnostics** — dead links, orphan pages, syntax errors, SPL parse errors
 - **Full-text search** — content search with regex support, frontmatter/code-block awareness
 - **Fuzzy matching** — SimHash-based page name similarity
-- **Interactive TUI** — dashboard, page browser, link explorer, graph view, inline wikilink navigation, temporal timeline
 - **Page viewer** — Xanadu-inspired two-pane reader with context cards, bridge connectors, and wikilink navigation
 - **Web UI** — local web server with rendered pages, transclusion panels, backlink navigation, and inline editing
 - **Static site export** — generate a deployable HTML site from your vault (same look, no server required)
@@ -114,9 +113,6 @@ zetl -d ./my-vault blocks --resolve abc123               # resolve by hash prefi
 zetl -d ./my-vault stats
 zetl -d ./my-vault list
 zetl -d ./my-vault export    # full graph as JSON
-
-# Interactive TUI
-zetl -d ./my-vault tui
 
 # Page viewer (two-pane reader)
 zetl -d ./my-vault view "Some Page"
@@ -282,26 +278,7 @@ zetl merges all SPL from across the vault into a single theory, reasons over it,
 | `+d` | Defeasibly provable (inferred, no active defeaters) |
 | `-d` | Defeasibly not provable (blocked or no derivation path) |
 
-## TUI
-
-### Dashboard (`zetl tui`)
-
-Multi-tab terminal interface for vault exploration:
-
-| View | Description |
-|------|-------------|
-| Dashboard | Vault stats and most-linked pages |
-| Pages | Filterable page list |
-| Links | Forward/back link explorer |
-| Search | Full-text search with context |
-| Diagnostics | Dead links, orphans, syntax issues |
-| Page | Rendered markdown with wikilink navigation |
-| Graph | Local link graph with depth toggle |
-| Timeline | Temporal snapshot history (requires `--features history`) |
-
-Navigate with `Tab`/`Shift+Tab` to cycle views, `Ctrl+K` for the quick switcher, `j`/`k` for scrolling, `Enter` to follow wikilinks, `Backspace` to go back.
-
-### Page viewer (`zetl view`)
+## Page viewer (`zetl view`)
 
 Xanadu-inspired two-pane reader for focused page navigation. The left pane renders the current note with numbered `[N]` anchor glyphs at each wikilink. The right pane shows context cards — excerpts from forward-linked pages. A bridge column connects anchors to their cards with colored connectors. Falls back to single-pane layout in narrow terminals (<60 cols).
 
@@ -354,6 +331,7 @@ The serve mode exposes JSON API endpoints (authenticated via session cookie or B
 | `/api/access-request` | POST | Request access to a page (collab mode) |
 | `/api/ws/ticket` | POST | Obtain a WebSocket ticket (collab mode) |
 | `/ws/edit/{slug}` | WS | Real-time collaborative editing (collab mode) |
+| `/help` | GET | Built-in help page (install + usage; override via theme `help.html`) |
 
 ### Static site (`zetl build`)
 
@@ -380,7 +358,7 @@ dist/
 
 ### Themes
 
-Both `serve` and `build` support custom themes via `--theme <name>`. Themes live in `.zetl/themes/<name>/` and can override any of the four built-in Minijinja templates:
+Both `serve` and `build` support custom themes via `--theme <name>`. Themes live in `.zetl/themes/<name>/` and can override any of the built-in Minijinja templates:
 
 ```
 .zetl/themes/paper/
@@ -388,6 +366,7 @@ Both `serve` and `build` support custom themes via `--theme <name>`. Themes live
   index.html      # vault landing page
   page.html       # single page view
   folder.html     # folder index
+  help.html       # /help page (install + usage)
 ```
 
 You only need to provide the templates you want to override — the rest fall back to the built-in defaults. All templates use [Minijinja](https://github.com/mitsuhiko/minijinja) syntax and extend `base.html` via `{% extends "base.html" %}`.
@@ -426,6 +405,17 @@ Templates use [Minijinja](https://github.com/mitsuhiko/minijinja) (Jinja2-compat
 | `content` | all | Main content area |
 | `sidebar` | all | Sidebar page list |
 | `scripts` | all | Extra `<script>` tags |
+
+`index.html` also exposes finer-grained blocks so a custom theme can replace a single region without rewriting the whole landing page:
+
+| Block | Purpose |
+|-------|---------|
+| `index_title` | `<title>` for the vault index |
+| `index_header` / `index_heading` | Top heading (defaults to `vault.name`) |
+| `index_intro` | Empty by default — use for a banner, description, or widget |
+| `index_stats` | The pages/links/dead/orphans stat row |
+| `index_before_pages` / `index_after_pages` | Slots around the page grid |
+| `index_pages` / `index_pages_heading` | The "All Pages" grid and its heading |
 
 #### Template variables
 

@@ -109,10 +109,7 @@ impl PickerState {
 
 // ── ViewApp ───────────────────────────────────────────────────────────────
 
-/// Application state for `zetl view`.
-///
-/// This struct is distinct from [`crate::tui::App`]: it drives the
-/// Xanadu-style two-pane view (SPEC-009) rather than the dashboard TUI.
+/// Application state for `zetl view` — the Xanadu-style two-pane view (SPEC-009).
 pub struct ViewApp {
     /// Title of the page currently displayed in the main pane.
     pub current_page: String,

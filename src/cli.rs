@@ -210,9 +210,6 @@ pub enum Command {
         resolve: Option<String>,
     },
 
-    /// Launch interactive terminal UI
-    Tui,
-
     /// Start local web server to browse the vault
     #[command(
         after_help = "Examples:\n  zetl serve                                        Single-user web UI\n  zetl serve --collab --init-owner --owner-name Jo   First-time collab setup\n  zetl serve --collab                                Multi-user mode\n  zetl serve --port 8080 --theme dark                Custom port and theme"

@@ -17,7 +17,6 @@ pub mod search_index;
 #[cfg(feature = "semantic")]
 pub mod semantic;
 pub mod simhash;
-pub mod tui;
 pub mod types;
 pub mod user;
 pub mod vcs;
