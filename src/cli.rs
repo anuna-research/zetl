@@ -453,6 +453,9 @@ pub enum Command {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+
+    /// Generate a roff(7) man page on stdout (pipe to `man -l -` to preview)
+    Man,
 }
 
 #[derive(Subcommand)]

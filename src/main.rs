@@ -10041,6 +10041,12 @@ fn main() -> anyhow::Result<()> {
             clap_complete::generate(*shell, &mut cmd, bin_name, &mut std::io::stdout());
             Ok(())
         }
+        Command::Man => {
+            use clap::CommandFactory;
+            let cmd = Cli::command();
+            clap_mangen::Man::new(cmd).render(&mut std::io::stdout())?;
+            Ok(())
+        }
     }
 }
 
