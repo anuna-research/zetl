@@ -1,7 +1,6 @@
 //! MCP resource handlers (page directory listing).
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use rmcp::model::{
     ListResourcesResult, RawResource, ReadResourceResult, Resource, ResourceContents,
