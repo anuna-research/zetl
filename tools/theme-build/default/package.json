@@ -1,0 +1,15 @@
+{
+  "name": "zetl-default-theme-css",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Tailwind + daisyUI build pipeline for the bundled default theme. Run `npm run build` to regenerate static/theme.css when templates change.",
+  "scripts": {
+    "build": "tailwindcss -i ./input.css -o ../../../themes/default/static/theme.css --minify",
+    "watch": "tailwindcss -i ./input.css -o ../../../themes/default/static/theme.css --watch"
+  },
+  "devDependencies": {
+    "daisyui": "4.12.14",
+    "tailwindcss": "3.4.17",
+    "@tailwindcss/typography": "0.5.16"
+  }
+}

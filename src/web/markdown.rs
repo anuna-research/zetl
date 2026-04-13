@@ -526,6 +526,118 @@ pub fn parse_frontmatter(content: &str) -> serde_json::Value {
     }
 }
 
+/// Extract a plain-text description suitable for `<meta name="description">`.
+///
+/// Preference order: frontmatter `description` field → first paragraph of body
+/// (stripped of markdown syntax), truncated to ~160 chars on a word boundary.
+pub fn extract_description(content: &str, frontmatter: &serde_json::Value) -> String {
+    if let Some(s) = frontmatter.get("description").and_then(|v| v.as_str()) {
+        return truncate_description(s);
+    }
+    let body = strip_frontmatter(content);
+    let mut out = String::new();
+    let mut in_code_fence = false;
+    for line in body.lines() {
+        let t = line.trim();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            in_code_fence = !in_code_fence;
+            continue;
+        }
+        if in_code_fence {
+            continue;
+        }
+        if t.is_empty() || t.starts_with('#') || t.starts_with('>') || t.starts_with('|') {
+            if !out.is_empty() {
+                break;
+            }
+            continue;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(t);
+        if out.len() >= 400 {
+            break;
+        }
+    }
+    truncate_description(&strip_inline_markdown(&out))
+}
+
+fn strip_inline_markdown(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+        // ![alt](url) → drop
+        if c == '!' && bytes.get(i + 1) == Some(&b'[') {
+            if let Some(end) = s[i..].find(')') {
+                i += end + 1;
+                continue;
+            }
+        }
+        // [[target|label]] or [[target]] → label/target
+        if c == '[' && bytes.get(i + 1) == Some(&b'[') {
+            if let Some(end) = s[i + 2..].find("]]") {
+                let inner = &s[i + 2..i + 2 + end];
+                let label = inner.split('|').next_back().unwrap_or(inner);
+                out.push_str(label);
+                i += 2 + end + 2;
+                continue;
+            }
+        }
+        // [text](url) → text
+        if c == '[' {
+            if let Some(close) = s[i + 1..].find(']') {
+                let text = &s[i + 1..i + 1 + close];
+                if bytes.get(i + 1 + close + 1) == Some(&b'(') {
+                    if let Some(paren) = s[i + 1 + close + 2..].find(')') {
+                        out.push_str(text);
+                        i += 1 + close + 2 + paren + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        // inline `code` → strip backticks
+        if c == '`' {
+            if let Some(end) = s[i + 1..].find('`') {
+                out.push_str(&s[i + 1..i + 1 + end]);
+                i += 1 + end + 1;
+                continue;
+            }
+        }
+        // Emphasis markers
+        if c == '*' || c == '_' {
+            i += 1;
+            continue;
+        }
+        out.push(c);
+        i += 1;
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate_description(s: &str) -> String {
+    const MAX: usize = 160;
+    let s = s.trim();
+    if s.chars().count() <= MAX {
+        return s.to_string();
+    }
+    let mut end = 0;
+    let mut count = 0;
+    for (idx, _) in s.char_indices() {
+        if count >= MAX {
+            end = idx;
+            break;
+        }
+        count += 1;
+    }
+    let slice = &s[..end];
+    let cut = slice.rfind(' ').unwrap_or(end);
+    format!("{}…", slice[..cut].trim_end_matches(|c: char| c.is_ascii_punctuation()))
+}
+
 /// Count the number of lines consumed by YAML frontmatter (including delimiters).
 fn frontmatter_line_count(content: &str) -> usize {
     let trimmed = content.trim_start();

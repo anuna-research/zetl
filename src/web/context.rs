@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::scanner::page_slug_from_path;
-use crate::web::markdown::parse_frontmatter;
+use crate::web::markdown::{extract_description, parse_frontmatter};
 use crate::web::VaultData;
 
 // ── Shared structs ──────────────────────────────────────────────────
@@ -89,6 +89,9 @@ pub struct PageContext {
     pub content_html: String,
     pub content_raw: String,
     pub frontmatter: serde_json::Value,
+    /// Plain-text description for `<meta name="description">` / social previews.
+    /// Derived from frontmatter `description`, falling back to the first paragraph.
+    pub description: String,
     pub backlinks: Vec<BacklinkEntry>,
     pub outlinks: Vec<OutlinkEntry>,
     pub breadcrumbs: Vec<BreadcrumbEntry>,
@@ -376,6 +379,7 @@ pub fn build_page_context(
     let breadcrumbs = build_breadcrumbs(slug);
     let is_new = !data.resolved.contains(page_name);
     let frontmatter = parse_frontmatter(content_raw);
+    let description = extract_description(content_raw, &frontmatter);
 
     PageContext {
         title: page_name.to_string(),
@@ -383,6 +387,7 @@ pub fn build_page_context(
         content_html: content_html.to_string(),
         content_raw: content_raw.to_string(),
         frontmatter,
+        description,
         backlinks,
         outlinks,
         breadcrumbs,

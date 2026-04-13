@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ page.title }} — zetl{% endblock %}
+{% block description %}{% if page.description %}{{ page.description }}{% else %}{{ page.title }} — a page in the {{ vault.name }} knowledge vault.{% endif %}{% endblock %}
 
 {% block content %}
 {% if page.transclusion_cards %}

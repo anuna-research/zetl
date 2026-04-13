@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Accessibility overrides: daisyUI defaults that fail WCAG AA. */
+@layer components {
+  .stat-title { color: oklch(var(--bc) / 0.7); }
+}
+@layer utilities {
+  .opacity-60 { opacity: 0.75; }
+}

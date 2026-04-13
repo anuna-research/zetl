@@ -435,6 +435,17 @@ pub fn build_static(
         folder_count += 1;
     }
 
+    // ── robots.txt + _headers (only written if not already provided by a public overlay later) ──
+    let robots = "User-agent: *\nAllow: /\n";
+    if !out.join("robots.txt").exists() {
+        std::fs::write(out.join("robots.txt"), robots)?;
+    }
+    // Cloudflare Pages / Netlify-style _headers: long-cache hashed static assets and JSON indexes.
+    let headers = "/_static/*\n  Cache-Control: public, max-age=31536000, immutable\n\n/*.json\n  Cache-Control: public, max-age=3600\n";
+    if !out.join("_headers").exists() {
+        std::fs::write(out.join("_headers"), headers)?;
+    }
+
     // ── static assets ─────────────────────────────────────────────────
     let static_copied = copy_static_assets(vault_root, out, theme)?;
 

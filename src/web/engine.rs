@@ -784,6 +784,7 @@ mod tests {
             content_html: "<p>world</p>".to_string(),
             content_raw: "world".to_string(),
             frontmatter: serde_json::json!({}),
+            description: String::new(),
             backlinks: vec![],
             outlinks: vec![],
             breadcrumbs: vec![],

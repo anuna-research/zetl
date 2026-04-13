@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ vault.name }} — zetl{% endblock %}</title>
+  <meta name="description" content="{% block description %}{{ vault.name }} — a knowledge vault built with zetl.{% endblock %}">
   <script type="application/json" id="zetl-search-index">{{ search_index | safe }}</script>
   {% if bm25_index %}<script type="application/json" id="zetl-bm25-index">{{ bm25_index | safe }}</script>{% endif %}
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <link rel="stylesheet" href="{{ root_path }}_static/theme.css">
   {% block head %}{% endblock %}
   <style>
     /* dead link */
