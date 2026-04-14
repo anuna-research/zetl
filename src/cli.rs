@@ -4,8 +4,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[command(
     name = "zetl",
     version,
-    about = "Bi-directional wikilink graph CLI for personal knowledge management",
-    after_help = "Examples:\n  zetl list                    List all pages\n  zetl links \"My Page\"         Show forward links\n  zetl search \"query\"          Search vault contents\n  zetl check                   Validate vault health\n  zetl serve                   Start local web server\n  zetl serve --collab          Start with multi-user auth\n\nLearn more: https://github.com/anuna/zetl"
+    about = "Bi-directional wikilink graph CLI for knowledge management, solo or team",
+    after_help = "Examples:\n  zetl list                    List all pages\n  zetl links \"My Page\"         Show forward links\n  zetl search \"query\"          Search vault contents\n  zetl check                   Validate vault health\n  zetl serve                   Start local web server\n  zetl serve --collab          Start with multi-user auth\n\nLearn more: https://codeberg.org/anuna/zetl"
 )]
 pub struct Cli {
     /// Vault root directory

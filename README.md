@@ -4,7 +4,9 @@
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-yellow.svg)](#)
 
-Bi-directional wikilink graph CLI with defeasible reasoning for personal knowledge management.
+Bi-directional wikilink graph CLI with defeasible reasoning for knowledge management, solo or team.
+
+Source: [codeberg.org/anuna/zetl](https://codeberg.org/anuna/zetl)
 
 zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph, and exposes query, validation, search, and visualization commands. Optionally, it extracts [Spindle Lisp (SPL)](https://codeberg.org/anuna/spindle-rust) code blocks from your vault and performs defeasible reasoning — drawing conclusions that can be defeated by stronger evidence. Designed for both AI agents (JSON output) and humans (tables, web UI).
 

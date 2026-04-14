@@ -2,8 +2,11 @@
 name = "zetl"
 version = "0.1.0"
 edition = "2021"
-description = "Bi-directional wikilink graph CLI for personal knowledge management"
+description = "Bi-directional wikilink graph CLI for knowledge management, solo or team"
 license = "AGPL-3.0-or-later"
+repository = "https://codeberg.org/anuna/zetl"
+homepage = "https://codeberg.org/anuna/zetl"
+readme = "README.md"
 
 [features]
 default = []
