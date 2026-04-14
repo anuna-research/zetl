@@ -65,15 +65,18 @@ Prebuilt binaries are not yet published. Users need a Rust toolchain to build fr
 
 ### Shell completions and man page
 
-```bash
-# Shell completions (bash, zsh, fish, elvish, powershell)
-zetl completions zsh  > ~/.zfunc/_zetl
-zetl completions bash > /etc/bash_completion.d/zetl
-zetl completions fish > ~/.config/fish/completions/zetl.fish
+`make install` installs the binary, `man zetl`, and bash/zsh/fish completions into `$PREFIX` (default `~/.local`). After installing, run `man zetl` directly — no extra steps, provided `~/.local/share/man` is on your `MANPATH`.
 
-# Man page
-zetl man > /usr/local/share/man/man1/zetl.1    # install
-zetl man | man -l -                            # preview
+For manual or packaging use:
+
+```bash
+zetl man > /usr/local/share/man/man1/zetl.1    # install the man page
+zetl man | man -l -                            # preview without installing
+
+zetl completions bash > /etc/bash_completion.d/zetl
+zetl completions zsh  > ~/.zfunc/_zetl
+zetl completions fish > ~/.config/fish/completions/zetl.fish
+zetl completions powershell > $PROFILE/zetl.ps1
 ```
 
 ### Non-interactive / CI usage
