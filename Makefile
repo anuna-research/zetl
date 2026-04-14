@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all check lint clippy fmt fmt-fix install uninstall clean doc doc-open help
+.PHONY: all build test test-reason test-history test-all check lint clippy fmt fmt-fix install uninstall clean doc doc-open release help
 
 all: build
 
@@ -67,6 +67,9 @@ uninstall:
 clean:
 	cargo clean
 
+release:
+	./release.sh $(VERSION)
+
 doc:
 	cargo doc --no-deps
 
@@ -92,6 +95,8 @@ help:
 	@echo "  make clean        - Remove build artifacts"
 	@echo "  make doc          - Generate documentation"
 	@echo "  make doc-open     - Generate and open documentation"
+	@echo "  make release      - Tag and push a new release (VERSION=X.Y.Z optional)"
 	@echo ""
 	@echo "Options:"
 	@echo "  PREFIX=<path>     - Install prefix (default: ~/.local)"
+	@echo "  VERSION=<ver>     - Version for release target (e.g. VERSION=0.1.1)"

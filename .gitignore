@@ -3,3 +3,4 @@
 .zetl/
 .DS_Store
 tools/theme-build/*/node_modules
+/landing
