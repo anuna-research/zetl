@@ -279,7 +279,12 @@ pub fn build_static(
     theme: &str,
     verbose: bool,
     public: Option<&str>,
+    site_url: Option<&str>,
 ) -> Result<BuildResult> {
+    // Normalise: strip trailing '/' so `{site_url}/{slug}/og.png` stays clean.
+    let site_url = site_url
+        .map(|u| u.trim_end_matches('/').to_string())
+        .unwrap_or_default();
     let out = Path::new(out_dir);
     std::fs::create_dir_all(out)
         .with_context(|| format!("Cannot create output directory: {out_dir}"))?;
@@ -291,6 +296,7 @@ pub fn build_static(
         .unwrap_or_else(|| "vault".to_string());
     #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(data, &vault_name);
+    vault_ctx.site_url = site_url.clone();
     #[cfg(feature = "history")]
     {
         // OBS-013: time vault history context build.

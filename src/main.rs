@@ -5204,7 +5204,13 @@ fn cmd_serve(
     Ok(())
 }
 
-fn cmd_build(cli: &Cli, out_dir: &str, theme: &str, public: Option<&str>) -> Result<()> {
+fn cmd_build(
+    cli: &Cli,
+    out_dir: &str,
+    theme: &str,
+    public: Option<&str>,
+    site_url: Option<&str>,
+) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
     validate_theme(theme, &pipeline.vault_root)?;
@@ -5301,6 +5307,7 @@ fn cmd_build(cli: &Cli, out_dir: &str, theme: &str, public: Option<&str>) -> Res
         theme,
         cli.verbose > 0,
         public,
+        site_url,
     )?;
 
     if matches!(cli.format, OutputFormat::Json) || cli.json {
@@ -9953,7 +9960,14 @@ fn main() -> anyhow::Result<()> {
             out_dir,
             theme,
             public,
-        } => cmd_build(&cli, out_dir, theme, public.as_deref()),
+            site_url,
+        } => cmd_build(
+            &cli,
+            out_dir,
+            theme,
+            public.as_deref(),
+            site_url.as_deref(),
+        ),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

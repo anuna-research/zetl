@@ -310,6 +310,13 @@ pub enum Command {
         /// Public directory whose contents are copied over the output root (overrides generated pages)
         #[arg(long)]
         public: Option<String>,
+        /// Canonical site URL (e.g. `https://vault.example`). Used to emit
+        /// absolute og:image / twitter:image URLs so social-card scrapers
+        /// can resolve them. Without this flag, image URLs are root-relative
+        /// (`/slug/og.png`) which only works when the vault is served from
+        /// the domain root.
+        #[arg(long)]
+        site_url: Option<String>,
     },
 
     /// Launch the Xanadu-style two-pane view for a note

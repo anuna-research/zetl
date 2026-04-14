@@ -31,6 +31,11 @@ pub struct VaultContext {
     /// Whether the semantic vector index is available (REQ-100).
     /// Always `false` in build mode; `true` in serve mode when the index exists.
     pub semantic_available: bool,
+    /// Canonical site URL (no trailing slash) for emitting absolute URLs in
+    /// meta tags (og:image, twitter:image, canonical). Empty string when
+    /// unset — templates treat it as "use root-relative URLs".
+    #[serde(default)]
+    pub site_url: String,
 }
 
 #[derive(Serialize)]
@@ -240,6 +245,7 @@ pub fn build_vault_context(data: &VaultData, vault_name: &str) -> VaultContext {
         stats,
         history: serde_json::Value::Null,
         semantic_available: false,
+        site_url: String::new(),
     }
 }
 

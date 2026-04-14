@@ -827,6 +827,7 @@ mod tests {
             },
             history: serde_json::Value::Null,
             semantic_available: false,
+            site_url: String::new(),
         }
     }
 
@@ -910,6 +911,7 @@ mod tests {
             },
             history: serde_json::Value::Null,
             semantic_available: false,
+            site_url: String::new(),
         };
         let idx = build_search_index(&vault);
         assert!(idx.contains(r#"\"hello\""#));
