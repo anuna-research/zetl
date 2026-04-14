@@ -66,12 +66,24 @@ fn run_json_with_stderr(cmd: &mut Command) -> (Value, String) {
     (json, stderr.into_owned())
 }
 
-/// Run the command (may fail) and parse stdout as JSON regardless of exit code.
+/// Run the command (may fail) and parse JSON output regardless of exit code.
+///
+/// Per clig.dev (and src/main.rs::exit_json_error), structured JSON errors
+/// are emitted on stderr so stdout remains valid JSON for pipe consumers.
+/// On success, JSON lands on stdout. This helper inspects exit status:
+///  - success → parse stdout
+///  - failure → parse stderr (fall back to stdout for robustness)
 fn run_json_any(cmd: &mut Command) -> (Value, std::process::ExitStatus) {
     let output = cmd.output().expect("failed to execute zetl");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let primary = if output.status.success() { &stdout } else { &stderr };
+    let fallback = if output.status.success() { &stderr } else { &stdout };
+    let json: Value = serde_json::from_str(primary)
+        .or_else(|_| serde_json::from_str(fallback))
+        .unwrap_or_else(|e| {
+            panic!("failed to parse JSON output: {e}\nstdout: {stdout}\nstderr: {stderr}")
+        });
     (json, output.status)
 }
 
@@ -2668,7 +2680,10 @@ fn test_012_006_build_preserves_directory_structure() {
 fn test_012_006_build_no_static_dirs_no_output() {
     let dir = TempDir::new().unwrap();
     write_file(dir.path(), "Note.md", "# Note\nHello.\n");
-    // No .zetl/static/ or theme static
+    // No .zetl/static/ or on-disk theme static. The default theme ships
+    // bundled static assets (Inter fonts, theme.css) so `_static/` will be
+    // populated from the embedded bundle — we assert those bundled files
+    // are what ends up in the output, not user-side content.
 
     let out_dir = dir.path().join("dist");
     let mut cmd = zetl_cmd(dir.path());
@@ -2680,9 +2695,19 @@ fn test_012_006_build_no_static_dirs_no_output() {
         String::from_utf8_lossy(&output.stderr)
     );
 
+    let static_dir = out_dir.join("_static");
     assert!(
-        !out_dir.join("_static").exists(),
-        "_static/ should not be created when no source static dirs exist"
+        static_dir.is_dir(),
+        "_static/ should exist — the default theme bundles static assets"
+    );
+    assert!(
+        static_dir.join("theme.css").is_file(),
+        "bundled theme.css should be copied into _static/"
+    );
+    // No user-supplied assets should leak in when there are none on disk.
+    assert!(
+        !static_dir.join("user-custom.css").exists(),
+        "no user-side assets should be present when .zetl/static/ is empty"
     );
 }
 
@@ -3537,10 +3562,10 @@ fn test_013_008_unresolvable_anchor_exits_2_with_suggestions() {
 
     assert_eq!(output.status.code(), Some(2), "should exit with code 2");
 
-    // The JSON error response should mention a suggestion
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("failed to parse JSON: {e}\nstdout: {stdout}"));
+    // The JSON error response is emitted on stderr (clig.dev convention).
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let json: Value = serde_json::from_str(&stderr)
+        .unwrap_or_else(|e| panic!("failed to parse JSON: {e}\nstderr: {stderr}"));
     let error_msg = json["error"].as_str().expect("error field in JSON");
     assert!(
         error_msg.contains("Spaced Repetition"),

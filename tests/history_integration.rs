@@ -1402,6 +1402,9 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
         wal_store: Arc::new(zetl::web::wal::WalStore::new(vault_root)),
         pending_writes: zetl::web::fs_watch::PendingWrites::new(),
         passkey_mgr: None,
+        public_dir: None,
+        tls: false,
+        trust_proxy: false,
     }
 }
 
@@ -1766,6 +1769,8 @@ fn test_125_vault_history_null_when_no_history() {
             orphans: 0,
         },
         history: serde_json::Value::Null,
+        semantic_available: false,
+        site_url: String::new(),
     };
 
     let engine = TemplateEngine::new(tmp.path(), "hist-test", false, false);
@@ -1816,6 +1821,8 @@ fn test_126_vault_history_populated_in_template() {
             orphans: 0,
         },
         history: serde_json::Value::Null,
+        semantic_available: false,
+        site_url: String::new(),
     };
     vault_ctx.history = serde_json::to_value(hist).unwrap();
 
@@ -2046,6 +2053,8 @@ fn test_130_page_history_null_in_template() {
             orphans: 0,
         },
         history: serde_json::Value::Null,
+        semantic_available: false,
+        site_url: String::new(),
     };
 
     let page_ctx = PageContext {
@@ -2113,6 +2122,8 @@ fn test_131_page_history_populated_in_template() {
             orphans: 0,
         },
         history: serde_json::Value::Null,
+        semantic_available: false,
+        site_url: String::new(),
     };
 
     let mut page_ctx = PageContext {
