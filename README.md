@@ -1,5 +1,9 @@
 # zetl
 
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
+[![Status: alpha](https://img.shields.io/badge/status-alpha-yellow.svg)](#)
+
 Bi-directional wikilink graph CLI with defeasible reasoning for personal knowledge management.
 
 zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph, and exposes query, validation, search, and visualization commands. Optionally, it extracts [Spindle Lisp (SPL)](https://codeberg.org/anuna/spindle-rust) code blocks from your vault and performs defeasible reasoning — drawing conclusions that can be defeated by stronger evidence. Designed for both AI agents (JSON output) and humans (tables, web UI).
@@ -21,7 +25,7 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 - **Content-addressable blocks** — BLAKE3 Merkle leaves for headings, paragraphs, code blocks, and SPL
 - **Incremental caching** — two-tier (mtime + hash) index for both wikilinks and reasoning theories
 - **MCP server** — expose graph traversal, search, and reasoning as typed MCP tools over stdio and HTTP transports; user-signed JWT delegation with per-tool and per-page scoping
-- **Agent-friendly** — JSON by default, structured errors, non-zero exit codes
+- **Agent-friendly** — auto-detects JSON when piped, structured errors on stderr, non-zero exit codes, shell completions + man page
 - **Defeasible reasoning** — extract SPL facts and rules from Markdown, build a vault-wide theory, derive conclusions with full provenance
 - **Proof trees** — explain why a conclusion holds, traced back to source files and line numbers
 - **What-if analysis** — hypothetical reasoning: add temporary facts and see what changes
@@ -56,6 +60,25 @@ cargo install --path . --features mcp
 Collaboration mode (`--collab`) is always available — no feature flag needed. SPL-based access control requires `--features reason`.
 
 Without `--features reason`, `zetl reason` prints a helpful error instead of failing silently. Without `--features history`, history-related template variables and API endpoints gracefully degrade to null.
+
+Prebuilt binaries are not yet published. Users need a Rust toolchain to build from source.
+
+### Shell completions and man page
+
+```bash
+# Shell completions (bash, zsh, fish, elvish, powershell)
+zetl completions zsh  > ~/.zfunc/_zetl
+zetl completions bash > /etc/bash_completion.d/zetl
+zetl completions fish > ~/.config/fish/completions/zetl.fish
+
+# Man page
+zetl man > /usr/local/share/man/man1/zetl.1    # install
+zetl man | man -l -                            # preview
+```
+
+### Non-interactive / CI usage
+
+Pass `--no-input` to disable interactive prompts (e.g. the `zetl view` page picker). Commands that would otherwise prompt will exit non-zero instead.
 
 ## Quick start
 
@@ -206,7 +229,7 @@ zetl -d ./demo-vault links "Cache" --with-conclusions
 zetl -d ./demo-vault backlinks "Reasoning Engine" --with-conclusions
 ```
 
-All commands default to JSON output. Pass `-f table` as a global flag (before the subcommand) for human-readable output, e.g. `zetl -f table stats`. The `reason explain` subcommand also accepts `--format natural` and `--format dot`.
+Output format auto-detects: tables in an interactive terminal, JSON when piped or redirected. Force one with `--json` or `-f table` (global flags, can appear before or after the subcommand). The `reason explain` subcommand also accepts `--format natural` and `--format dot`. Errors go to stderr so piped stdout stays valid JSON.
 
 ### MCP server
 
