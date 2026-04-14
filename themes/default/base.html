@@ -677,24 +677,40 @@
     }
 
     /* ── Open / close */
-    window.openSearch=function(){
+    window.openSearch=function(initialQuery){
       overlay.classList.add('open');
-      input.value='';
+      input.value=initialQuery||'';
       input.focus();
+      if(initialQuery)input.select();
       if(!pageList){
         results.innerHTML='<div class="search-hint">Loading\u2026</div>';
         ensurePageList().then(function(){
           if(!overlay.classList.contains('open'))return;
-          filtered=fuzzyFilter(input.value);
-          active=0;renderFuzzy(filtered);
+          if(initialQuery){active=0;runSearch();}
+          else{filtered=fuzzyFilter('');active=0;renderFuzzy(filtered);}
         });
         /* Warm the BM25 index in the background too. */
         ensureSearchIndex();
         return;
       }
-      filtered=fuzzyFilter('');
-      active=0;renderFuzzy(filtered);
+      if(initialQuery){active=0;runSearch();}
+      else{filtered=fuzzyFilter('');active=0;renderFuzzy(filtered);}
     };
+
+    /* Deep-link support: ?q=foo on page load opens the search with that
+       query pre-populated. Also exposed via the hash form #search=foo for
+       cases where the query string is reserved for other uses. */
+    (function(){
+      try{
+        var params=new URLSearchParams(window.location.search);
+        var q=params.get('q')||params.get('search');
+        if(!q&&window.location.hash){
+          var m=window.location.hash.match(/(?:^#|&)(?:search|q)=([^&]+)/);
+          if(m)q=decodeURIComponent(m[1].replace(/\+/g,' '));
+        }
+        if(q)window.openSearch(q);
+      }catch(err){/* URLSearchParams unsupported — ignore */}
+    })();
     window.closeSearch=function(){
       overlay.classList.remove('open');
       if(currentCtrl){currentCtrl.abort();currentCtrl=null;}
