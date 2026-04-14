@@ -648,7 +648,11 @@ mod tests {
         let out = tmp.path().join("out");
         std::fs::create_dir_all(&out).unwrap();
 
-        let result = copy_static_assets(tmp.path(), &out, "default").unwrap();
+        // Use a theme name that has no bundled assets and no on-disk theme
+        // directory, so there is nothing to copy. (The "default" theme now
+        // carries bundled static assets, so it no longer exercises the
+        // skip path.)
+        let result = copy_static_assets(tmp.path(), &out, "__no_bundled__").unwrap();
         assert!(!result);
         assert!(!out.join("_static").exists());
     }

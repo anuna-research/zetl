@@ -477,6 +477,7 @@ impl TemplateEngine {
         user_id: &str,
     ) -> Result<String, TemplateError> {
         let ctx = context! {
+            vault => context! { name => vault_name },
             vault_name => vault_name,
             user_id => user_id,
             mode => "serve",
@@ -508,6 +509,7 @@ impl TemplateEngine {
         csrf_token: &str,
     ) -> Result<String, TemplateError> {
         let ctx = context! {
+            vault => context! { name => vault_name },
             vault_name => vault_name,
             mnemonic => mnemonic,
             words => words,
