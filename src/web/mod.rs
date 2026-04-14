@@ -452,10 +452,10 @@ pub async fn run(
         .layer(middleware::map_response(|mut resp: axum::response::Response| async {
             // Only set CSP if the handler didn't already set one (e.g. the editor).
             resp.headers_mut().entry(header::CONTENT_SECURITY_POLICY).or_insert(
-                "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://esm.sh; \
-                 style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://esm.sh; \
+                "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://esm.sh https://unpkg.com; \
+                 style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://esm.sh https://unpkg.com https://fonts.googleapis.com; \
                  connect-src 'self' ws: wss: https://esm.sh https://cdn.jsdelivr.net; \
-                 font-src 'self' https://cdn.jsdelivr.net; \
+                 font-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://fonts.gstatic.com; \
                  frame-ancestors 'none'"
                     .parse()
                     .unwrap(),
