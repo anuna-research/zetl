@@ -49,12 +49,23 @@ fn run_json(cmd: &mut Command) -> Value {
         .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"))
 }
 
-/// Run the command (may fail) and parse stdout as JSON regardless of exit code.
+/// Run the command (may fail) and parse JSON output regardless of exit code.
+///
+/// Structured errors land on stderr (clig.dev convention — see
+/// src/main.rs::exit_json_error); successful JSON lands on stdout. This
+/// helper picks the stream matching exit status, falling back to the other
+/// on parse failure.
 fn run_json_any(cmd: &mut Command) -> (Value, ExitStatus) {
     let output = cmd.output().expect("failed to execute zetl");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("failed to parse JSON output: {e}\nraw stdout: {stdout}"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let primary = if output.status.success() { &stdout } else { &stderr };
+    let fallback = if output.status.success() { &stderr } else { &stdout };
+    let json: Value = serde_json::from_str(primary)
+        .or_else(|_| serde_json::from_str(fallback))
+        .unwrap_or_else(|e| {
+            panic!("failed to parse JSON output: {e}\nstdout: {stdout}\nstderr: {stderr}")
+        });
     (json, output.status)
 }
 
@@ -298,7 +309,7 @@ fn test_026a_single_spl_block_extraction() {
         zetl_cmd(dir.path())
             .arg("reason")
             .arg("export")
-            .arg("--format")
+            .arg("--as")
             .arg("json"),
     );
 
@@ -362,7 +373,7 @@ Some text between blocks.
         zetl_cmd(dir.path())
             .arg("reason")
             .arg("export")
-            .arg("--format")
+            .arg("--as")
             .arg("json"),
     );
 
@@ -395,7 +406,7 @@ fn test_026c_html_comment_exclusion() {
         zetl_cmd(dir.path())
             .arg("reason")
             .arg("export")
-            .arg("--format")
+            .arg("--as")
             .arg("json"),
     );
 
@@ -433,7 +444,7 @@ fn test_026d_standalone_spl_file() {
         zetl_cmd(dir.path())
             .arg("reason")
             .arg("export")
-            .arg("--format")
+            .arg("--as")
             .arg("json"),
     );
 
@@ -525,7 +536,7 @@ fn test_027c_provenance_metadata() {
         zetl_cmd(dir.path())
             .arg("reason")
             .arg("export")
-            .arg("--format")
+            .arg("--as")
             .arg("json"),
     );
 
@@ -1199,7 +1210,7 @@ fn test_034a_export_json() {
         zetl_cmd(dir.path())
             .arg("reason")
             .arg("export")
-            .arg("--format")
+            .arg("--as")
             .arg("json"),
     );
 
@@ -1245,7 +1256,7 @@ fn test_034b_export_json_with_conclusions() {
         zetl_cmd(dir.path())
             .arg("reason")
             .arg("export")
-            .arg("--format")
+            .arg("--as")
             .arg("json")
             .arg("--with-conclusions"),
     );
@@ -1272,7 +1283,7 @@ fn test_034c_export_spl() {
     let output = zetl_cmd(dir.path())
         .arg("reason")
         .arg("export")
-        .arg("--format")
+        .arg("--as")
         .arg("spl")
         .output()
         .expect("failed to execute zetl");
@@ -1323,7 +1334,7 @@ fn test_034d_export_empty_vault() {
         zetl_cmd(dir.path())
             .arg("reason")
             .arg("export")
-            .arg("--format")
+            .arg("--as")
             .arg("json"),
     );
 
@@ -1690,7 +1701,7 @@ fn test_source_file_count() {
         zetl_cmd(dir.path())
             .arg("reason")
             .arg("export")
-            .arg("--format")
+            .arg("--as")
             .arg("json"),
     );
 

@@ -915,9 +915,18 @@ fn test_build_no_static_dirs_no_static_output() {
         .assert()
         .success();
 
+    // The default theme now ships bundled static assets (Inter fonts,
+    // theme.css), so `_static/` is populated from the embedded bundle
+    // even when no user-side .zetl/static/ exists. Assert the bundled
+    // content lands in _static/ and that no user-side files leaked in.
+    let static_dir = out_dir.join("_static");
     assert!(
-        !out_dir.join("_static").exists(),
-        "_static/ should not be created when no source dirs exist"
+        static_dir.is_dir(),
+        "_static/ should exist — the default theme bundles assets"
+    );
+    assert!(
+        static_dir.join("theme.css").is_file(),
+        "bundled theme.css should land in _static/"
     );
 }
 
@@ -1317,13 +1326,14 @@ async fn test_serve_new_page_creation() {
     let state = build_web_state(tmp.path(), "default");
     let app = full_router(state);
 
-    // Request a non-existent page - should render with is_new=true
+    // Request a non-existent page: per BUG-002 the handler renders the
+    // "create this page" stub body but responds 404 so uptime probes /
+    // crawlers see a correct status.
     let (status, body, _ct) = get_response(&app, "/brand-new-page").await;
-    assert_eq!(status, StatusCode::OK);
-    // The default template shows something for new pages
+    assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(
         body.contains("brand-new-page") || body.contains("Brand New Page"),
-        "new page should show page info"
+        "404 body should still describe the requested page so the editor can pre-populate"
     );
 }
 

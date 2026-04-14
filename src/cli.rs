@@ -571,9 +571,10 @@ pub enum ReasonCommand {
         /// Maximum proof tree depth
         #[arg(long, default_value = "10")]
         depth: usize,
-        /// Output format for the explanation
-        #[arg(long, default_value = "json")]
-        format: ExplainFormat,
+        /// Output format for the explanation (renamed from --format to
+        /// avoid collision with the global -f/--format flag).
+        #[arg(long = "as", default_value = "json")]
+        output_as: ExplainFormat,
     },
     /// Hypothetical reasoning: what if facts/rules were added?
     WhatIf {
@@ -613,9 +614,11 @@ pub enum ReasonCommand {
     },
     /// Export the combined theory (SPL with provenance or structured JSON)
     Export {
-        /// Output format: spl (reconstructed SPL with provenance comments), json (structured theory)
-        #[arg(long, default_value = "json")]
-        format: ExportFormat,
+        /// Output format: spl (reconstructed SPL with provenance comments),
+        /// json (structured theory). Renamed from --format to avoid collision
+        /// with the global -f/--format flag.
+        #[arg(long = "as", default_value = "json")]
+        output_as: ExportFormat,
         /// Include reasoning results (conclusions) in the export
         #[arg(long)]
         with_conclusions: bool,

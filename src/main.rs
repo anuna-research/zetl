@@ -9989,8 +9989,8 @@ fn main() -> anyhow::Result<()> {
                 ReasonCommand::Explain {
                     literal,
                     depth,
-                    format,
-                } => cmd_reason_explain(&cli, literal, *depth, format),
+                    output_as,
+                } => cmd_reason_explain(&cli, literal, *depth, output_as),
                 ReasonCommand::WhyNot { literal } => cmd_reason_why_not(&cli, literal),
                 ReasonCommand::Conflicts {
                     suggest,
@@ -10006,9 +10006,9 @@ fn main() -> anyhow::Result<()> {
                     assume,
                 } => cmd_reason_require(&cli, literal, *max_solutions, assume.as_deref()),
                 ReasonCommand::Export {
-                    format,
+                    output_as,
                     with_conclusions,
-                } => cmd_reason_export(&cli, format, *with_conclusions),
+                } => cmd_reason_export(&cli, output_as, *with_conclusions),
             }
         }
         #[cfg(not(feature = "reason"))]
