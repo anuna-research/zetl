@@ -6,10 +6,21 @@ steps:
   - name: build-linux
     image: rust:1-bookworm
     commands:
-      - cargo build --release --target x86_64-unknown-linux-gnu
+      - cargo build --release --features "reason,history,mcp" --target x86_64-unknown-linux-gnu
       - mkdir -p dist
       - cp target/x86_64-unknown-linux-gnu/release/zetl dist/zetl
       - cd dist && tar czf zetl-linux-x86_64.tar.gz zetl && rm zetl && cd ..
+
+  - name: build-linux-arm64
+    image: rust:1-bookworm
+    commands:
+      - apt-get update && apt-get install -y gcc-aarch64-linux-gnu
+      - rustup target add aarch64-unknown-linux-gnu
+      - export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+      - cargo build --release --features "reason,history,mcp" --target aarch64-unknown-linux-gnu
+      - mkdir -p dist
+      - cp target/aarch64-unknown-linux-gnu/release/zetl dist/zetl
+      - cd dist && tar czf zetl-linux-arm64.tar.gz zetl && rm zetl && cd ..
 
   - name: build-macos-arm64
     image: rust:1-bookworm
@@ -26,7 +37,7 @@ steps:
         export CXX_aarch64_apple_darwin=aarch64-apple-darwin23.5-clang++
         export CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=aarch64-apple-darwin23.5-clang
         cd -
-        cargo build --release --target aarch64-apple-darwin
+        cargo build --release --features "reason,history,mcp" --target aarch64-apple-darwin
         mkdir -p dist
         cp target/aarch64-apple-darwin/release/zetl dist/zetl
         cd dist && tar czf zetl-macos-arm64.tar.gz zetl && rm zetl && cd ..
@@ -46,7 +57,7 @@ steps:
         export CXX_x86_64_apple_darwin=x86_64-apple-darwin23.5-clang++
         export CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER=x86_64-apple-darwin23.5-clang
         cd -
-        cargo build --release --target x86_64-apple-darwin
+        cargo build --release --features "reason,history,mcp" --target x86_64-apple-darwin
         mkdir -p dist
         cp target/x86_64-apple-darwin/release/zetl dist/zetl
         cd dist && tar czf zetl-macos-x86_64.tar.gz zetl && rm zetl && cd ..
@@ -56,7 +67,7 @@ steps:
     commands:
       - apt-get update && apt-get install -y gcc-mingw-w64-x86-64 zip
       - rustup target add x86_64-pc-windows-gnu
-      - cargo build --release --target x86_64-pc-windows-gnu
+      - cargo build --release --features "reason,history,mcp" --target x86_64-pc-windows-gnu
       - mkdir -p dist
       - cp target/x86_64-pc-windows-gnu/release/zetl.exe dist/zetl.exe
       - cd dist && zip zetl-windows-x86_64.zip zetl.exe && rm zetl.exe && cd ..
@@ -64,14 +75,17 @@ steps:
   - name: create-metadata
     image: alpine:3
     commands:
-      - apk add --no-cache jq
+      - apk add --no-cache jq coreutils
       - |
         cat > dist/version.json << EOF
         {
           "version": "${CI_COMMIT_TAG#v}",
-          "download_url": "https://files.anuna.io/zetl/${CI_COMMIT_TAG}"
+          "download_url": "https://files.anuna.io/zetl/${CI_COMMIT_TAG}",
+          "features": "reason,history,mcp"
         }
         EOF
+      - cp install.sh dist/install.sh
+      - cd dist && sha256sum zetl-*.tar.gz zetl-*.zip > SHA256SUMS && cd ..
       - ls -la dist/
 
   - name: upload-to-cloudflare-r2
@@ -92,7 +106,7 @@ steps:
       # Upload versioned release
       - echo "Uploading to $${PROJECT}/$${CI_COMMIT_TAG}/..."
       - |
-        for file in dist/zetl-*.tar.gz dist/zetl-*.zip dist/version.json; do
+        for file in dist/zetl-*.tar.gz dist/zetl-*.zip dist/version.json dist/install.sh dist/SHA256SUMS; do
           if [ -f "$$file" ]; then
             filename=$$(basename "$$file")
             aws s3 cp "$$file" "s3://$${BUCKET}/$${PROJECT}/$${CI_COMMIT_TAG}/$$filename" \
@@ -104,7 +118,7 @@ steps:
       # Upload to latest/
       - echo "Uploading to $${PROJECT}/latest/..."
       - |
-        for file in dist/zetl-*.tar.gz dist/zetl-*.zip dist/version.json; do
+        for file in dist/zetl-*.tar.gz dist/zetl-*.zip dist/version.json dist/install.sh dist/SHA256SUMS; do
           if [ -f "$$file" ]; then
             filename=$$(basename "$$file")
             aws s3 cp "$$file" "s3://$${BUCKET}/$${PROJECT}/latest/$$filename" \

@@ -8,6 +8,11 @@ repository = "https://codeberg.org/anuna/zetl"
 homepage = "https://codeberg.org/anuna/zetl"
 readme = "README.md"
 
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
 [features]
 default = []
 reason = ["dep:spindle-core", "dep:spindle-parser"]
