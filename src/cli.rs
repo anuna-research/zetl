@@ -302,7 +302,7 @@ pub enum Command {
     /// Generate a static HTML site from the vault
     Build {
         /// Output directory
-        #[arg(short, long, default_value = "dist")]
+        #[arg(short = 'o', long, alias = "out", default_value = "dist")]
         out_dir: String,
         /// Theme name (looks in .zetl/themes/<name>/)
         #[arg(long, default_value = "default")]

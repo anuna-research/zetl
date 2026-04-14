@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `zetl stats`: `grounded_spl_blocks` could exceed `spl_blocks` when the theory
+  cache outlived deleted SPL blocks. Grounded / grounding counts are now joined
+  against the live pipeline so only currently-present blocks are counted.
+  (BUG-001)
+- `zetl serve`: unknown pages now respond `404 Not Found` instead of `200 OK`.
+  The "create this page" body is preserved — only the status code changes —
+  so uptime probes, crawlers and monitoring see the correct signal. (BUG-002)
+- `zetl build`: accept `--out` and `-o` as aliases for `--out-dir`. (BUG-005)
+
 ### Added
 
 - `zetl completions <shell>` — generate shell completion scripts for bash, zsh, fish, elvish, and powershell.

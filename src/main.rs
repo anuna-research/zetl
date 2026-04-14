@@ -2128,16 +2128,29 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     let vault_content_hash = load_vault_root_hex(&pipeline.vault_root).unwrap_or(None);
     let spl_blocks: usize = pipeline.files.iter().map(|f| f.spl_blocks.len()).sum();
     let theory = load_theory_cache(&pipeline.vault_root).unwrap_or(None);
+    // Only count grounded / grounding counts for blocks that still exist in the
+    // current pipeline; the cache may outlive deleted SPL blocks. Join key is
+    // "<source_file>:<start_line>" — matches TheoryCache::spl_blocks keys
+    // (see src/cache.rs).
+    let live_block_keys: std::collections::HashSet<String> = pipeline
+        .files
+        .iter()
+        .flat_map(|f| f.spl_blocks.iter())
+        .map(|b| format!("{}:{}", b.source_file.display(), b.start_line))
+        .collect();
     let grounded_spl_blocks = theory.as_ref().map_or(0, |tc| {
         tc.spl_blocks
-            .values()
-            .filter(|b| b.section_grounding_hash != [0u8; 32])
+            .iter()
+            .filter(|(k, b)| {
+                b.section_grounding_hash != [0u8; 32] && live_block_keys.contains(*k)
+            })
             .count()
     });
     let explicitly_grounded_facts = theory.as_ref().map_or(0, |tc| {
         tc.spl_blocks
-            .values()
-            .map(|b| b.explicit_groundings.len())
+            .iter()
+            .filter(|(k, _)| live_block_keys.contains(*k))
+            .map(|(_, b)| b.explicit_groundings.len())
             .sum()
     });
 

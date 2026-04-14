@@ -624,6 +624,7 @@ pub async fn page_handler(
             std::collections::HashMap::new()
         };
 
+    let page_exists = file.is_some();
     let (rendered, page_name, current_slug, raw_content) = if let Some(file) = file {
         let full_path = state.vault_root.join(&file.path);
         let file_slug = page_slug_from_path(&file.path);
@@ -784,7 +785,16 @@ pub async fn page_handler(
         .engine
         .render_page(&vault_ctx, &page_ctx, "serve", "", "")
     {
-        Ok(html) => Html(html).into_response(),
+        Ok(html) => {
+            if page_exists {
+                Html(html).into_response()
+            } else {
+                // BUG-002: unknown pages render a "create page" stub but MUST
+                // return 404 so crawlers / uptime probes / monitoring see the
+                // correct status. Body is preserved for the in-browser UX.
+                (axum::http::StatusCode::NOT_FOUND, Html(html)).into_response()
+            }
+        }
         Err(e) => render_error_response(e),
     }
 }
