@@ -12,28 +12,53 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 
 ## Features
 
+### Graph & search (core)
+
 - **Wikilink parsing** — `[[target]]`, `[[target|alias]]`, `[[target#heading]]`, `[[target^block-id]]`, `![[embeds]]`
-- **Graph queries** — forward links, backlinks, multi-hop traversal, shortest path between pages
+- **Graph queries** — forward links, backlinks, multi-hop traversal, shortest path
 - **Vault diagnostics** — dead links, orphan pages, syntax errors, SPL parse errors
-- **Full-text search** — content search with regex support, frontmatter/code-block awareness
+- **Full-text search** — content search with regex, frontmatter/code-block awareness
 - **Fuzzy matching** — SimHash-based page name similarity
-- **Page viewer** — Xanadu-inspired two-pane reader with context cards, bridge connectors, and wikilink navigation
-- **Web UI** — local web server with rendered pages, transclusion panels, backlink navigation, and inline editing
-- **Static site export** — generate a deployable HTML site from your vault (same look, no server required)
-- **Vault history** — jj-backed temporal snapshots with time-travel queries (`--at "3 days ago"`), graph evolution timeline, and automatic snapshotting on index
-- **Lifecycle hooks** — git-style executable hooks at `pre-build`, `post-build`, `post-index`, `post-check`, `pre-serve`, and `on-save` lifecycle points; receive vault context as JSON on stdin
-- **Multi-user collaboration** — passkey (WebAuthn) authentication, role-based access control (reader/editor/admin), invitation links, CRDT-based real-time co-editing via WebSocket, BIP39 mnemonic account recovery
-- **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context; themes can bundle hooks
 - **Content-addressable blocks** — BLAKE3 Merkle leaves for headings, paragraphs, code blocks, and SPL
 - **Incremental caching** — two-tier (mtime + hash) index for both wikilinks and reasoning theories
-- **MCP server** — expose graph traversal, search, and reasoning as typed MCP tools over stdio and HTTP transports; user-signed JWT delegation with per-tool and per-page scoping
-- **Agent-friendly** — auto-detects JSON when piped, structured errors on stderr, non-zero exit codes, shell completions + man page
-- **Defeasible reasoning** — extract SPL facts and rules from Markdown, build a vault-wide theory, derive conclusions with full provenance
+
+### Reading & rendering
+
+- **Page viewer** — Xanadu-inspired two-pane terminal reader with context cards, bridge connectors, and wikilink navigation
+- **Web UI** — local server with rendered pages, transclusion panels, backlink navigation, and inline editing
+- **Static site export** — deployable HTML site from your vault (same look, no server required)
+- **Custom themes** — override Minijinja templates and static assets via `.zetl/themes/`, with full access to frontmatter and vault context
+
+### Temporal queries (`--features history`)
+
+- **Vault history** — jj-backed silent snapshots, automatic on index
+- **Time-travel** — `--at "3 days ago"`, `--at "last monday"`, `--at HEAD~1` on any read-only command
+- **Graph evolution timeline** — watch link structure change across snapshots
+- **Page history** — track a single page's evolution with link trends and change events
+- **Auto-snapshot watcher** — `zetl watch` for continuous FS-event-driven snapshotting
+
+### Defeasible reasoning (`--features reason`)
+
+- **Vault-wide theory** — extract SPL facts and rules from Markdown code blocks and `.spl` files, derive conclusions with full provenance
 - **Proof trees** — explain why a conclusion holds, traced back to source files and line numbers
-- **What-if analysis** — hypothetical reasoning: add temporary facts and see what changes
+- **What-if analysis** — hypothetical reasoning: add temporary facts, see what changes
 - **Abductive reasoning** — find what facts are needed to prove a goal
 - **Conflict detection** — find unresolved logical contradictions with resolution suggestions
-- **Cross-referencing** — link graph and logical theory annotate each other
+- **Cross-referencing** — annotate the link graph with conclusions and vice versa
+
+### Collaboration
+
+- **Passkey auth** — WebAuthn (Touch ID, security keys); no passwords
+- **Role-based access** — reader / editor / admin, with per-page scoping via glob or SPL deontic rules
+- **Invitation links** — Ed25519-signed, single-use, optional expiry, optional page scope
+- **CRDT co-editing** — Peritext engine over WebSocket; auto-commit to git on save with author attribution
+- **BIP39 recovery** — deterministic derivation of account, server, and SSH keys from one 12-word mnemonic
+
+### Automation & extensibility
+
+- **Lifecycle hooks** — executables at `pre-build`, `post-build`, `post-index`, `post-check`, `pre-serve`, `on-save`, `on-agent`, `on-access-request`; receive vault context as JSON on stdin
+- **MCP server** (`--features mcp`) — graph, search, and reasoning as typed tools over stdio and HTTP; user-signed JWT delegation with per-tool and per-page scoping
+- **Agent-friendly CLI** — auto-detects JSON when piped, structured errors on stderr, non-zero exit codes, `--no-input` for unattended runs, shell completions, man page
 
 ## Install
 
