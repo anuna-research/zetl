@@ -1,0 +1,41 @@
+; agent-ergonomics.spl — Agent-friendliness modelled as defeasible rules
+; Run: zetl reason status --positive -d .
+
+; --- Agent-friendliness criteria ---
+
+; JSON by default is necessary for agent consumption
+(normally r-json-for-agents
+  json-default-output
+  agent-parseable-output)
+
+; Structured errors let agents handle failures gracefully
+(normally r-structured-errors
+  structured-errors
+  agent-error-handling)
+
+; Non-zero exit codes enable shell script integration
+(normally r-exit-codes
+  nonzero-exit-codes
+  agent-process-control)
+
+; Page enumeration enables agent bootstrapping
+(normally r-list-for-bootstrap
+  agent-ergonomics-audited
+  agent-bootstrapping-supported)
+
+; All three output qualities make zetl agent-friendly
+(normally r-agent-friendly
+  (and agent-parseable-output agent-error-handling agent-process-control)
+  agent-friendly)
+
+; Agent-friendliness + audit = production-ready for agents
+(normally r-agent-production
+  (and agent-friendly agent-bootstrapping-supported)
+  agent-production-ready)
+
+; --- Dual audience ---
+
+; Agent-friendly + TUI = serves both audiences
+(normally r-dual-audience-agents
+  (and agent-production-ready tui-complete)
+  serves-both-audiences)

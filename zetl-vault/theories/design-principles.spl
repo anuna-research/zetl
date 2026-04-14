@@ -1,0 +1,43 @@
+; design-principles.spl — zetl design philosophy as defeasible rules
+; These rules capture the reasoning behind architectural decisions.
+; Run: zetl reason status --positive -d .
+
+; Good CLI tool: fast, single binary, type-safe
+(normally r-good-cli
+  (and fast-startup single-binary type-safe)
+  good-cli-tool)
+
+; Dual-audience: serves both agents and humans
+(normally r-dual-audience
+  (and json-default-output tui-complete seven-views)
+  serves-both-audiences)
+
+; Lean default: optional deps don't bloat the default binary
+(normally r-lean-default
+  reason-feature-optional
+  lean-default-binary)
+
+; Good developer experience from graceful degradation
+(normally r-good-dx
+  graceful-degradation
+  good-developer-experience)
+
+; Feature gates + graceful degradation = progressive disclosure
+(normally r-progressive-disclosure
+  (and lean-default-binary good-developer-experience)
+  progressive-disclosure)
+
+; Content addressing strengthens provenance
+(normally r-grounded-reasoning
+  (and content-addressed-hashing provenance-documented)
+  grounded-reasoning)
+
+; Xanadu-style view enhances knowledge exploration
+(normally r-visible-connections
+  (and tui-complete spec-009-documented)
+  visible-knowledge-connections)
+
+; Local-first + agent-friendly = trustworthy tool
+(normally r-trustworthy
+  (and read-only-vault-access agent-ergonomics-audited json-default-output)
+  trustworthy-tool)

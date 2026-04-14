@@ -1,0 +1,45 @@
+; caching.spl — Caching theory with intentional conflict
+; Reasoning about cache validity, backend selection, and trade-offs.
+; Run: zetl reason conflicts -d .
+
+; --- Base facts ---
+
+; Cache is mtime-based (from architecture/Cache.md)
+(given mtime-based-cache)
+(given incremental-rebuild)
+(given disposable-cache)
+
+; --- Defeasible rules: cache coherence ---
+
+; Merkle hashing gives reliable change detection even when mtimes are stale
+(normally r-merkle-over-mtime
+  (and mtime-based-cache incremental-rebuild)
+  merkle-hashing-preferred)
+
+; Two-tier invalidation is sound when both mtime and hash are available
+(normally r-two-tier-sound
+  (and mtime-based-cache content-addressed-hashing)
+  two-tier-invalidation-sound)
+
+; --- Intentional conflict: cache reasoning results ---
+
+; Cache the theory for fast startup
+(normally r-cache-theory
+  mtime-based-cache
+  cache-reasoning-results)
+
+; But recomputing ensures results are always fresh
+(normally r-recompute-theory
+  incremental-rebuild
+  (not cache-reasoning-results))
+
+; No (prefer ...) between r-cache-theory and r-recompute-theory.
+; zetl reason conflicts will surface this as an unresolved tension.
+; This demonstrates how defeasible reasoning models real design debates.
+
+; --- Cache safety ---
+
+; Cache is safe when disposable and vault is read-only
+(normally r-cache-safe
+  (and disposable-cache read-only-vault-access)
+  cache-safe-to-deploy)
