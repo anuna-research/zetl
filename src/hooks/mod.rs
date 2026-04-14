@@ -665,10 +665,7 @@ fn scan_hooks_dir(
         // Only recognised hook names (REQ-016-002)
         if !HOOK_NAMES.contains(&file_name.as_str()) {
             if verbose {
-                eprintln!(
-                    "[hooks] skipping '{}': not a recognised hook name",
-                    file_name
-                );
+                eprintln!("[hooks] skipping '{file_name}': not a recognised hook name");
             }
             continue;
         }
@@ -677,10 +674,7 @@ fn scan_hooks_dir(
 
         if !executable {
             if verbose {
-                eprintln!(
-                    "[hooks] found '{}' ({}) but not executable — skipping",
-                    file_name, source
-                );
+                eprintln!("[hooks] found '{file_name}' ({source}) but not executable — skipping");
             }
             warnings.push(format!(
                 "hook '{}' is not executable: {}\nhint: chmod +x {}",

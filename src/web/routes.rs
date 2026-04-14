@@ -3185,7 +3185,7 @@ pub async fn recovery_show_handler(
     // written the phrase down (POST /recovery/confirm).  Pass the pubkey to
     // the template so it can be submitted with the confirmation form.
     let words: Vec<&str> = keypair.mnemonic.split_whitespace().collect();
-    let continue_url = format!("/passkey/register?user_id={}", user_id);
+    let continue_url = format!("/passkey/register?user_id={user_id}");
 
     // CSP header for mnemonic display page (REQ-020-056, REQ-020-063).
     // Must allow the CDN resources that base.html loads (Tailwind, DaisyUI).
@@ -4411,7 +4411,7 @@ pub async fn admin_permissions_save_handler(
         let content = std::fs::read_to_string(&access_path).unwrap_or_default();
         let new_content: String = content
             .lines()
-            .filter(|line| !line.contains(&format!("\"{}\"", user_id)))
+            .filter(|line| !line.contains(&format!("\"{user_id}\"")))
             .collect::<Vec<_>>()
             .join("\n")
             + "\n";
@@ -4431,7 +4431,7 @@ pub async fn admin_permissions_save_handler(
                     &acl_path,
                     &user_name,
                     &session.user_id,
-                    Some(&format!("permissions: remove user {}", user_id)),
+                    Some(&format!("permissions: remove user {user_id}")),
                 );
             }
         }
@@ -4616,6 +4616,7 @@ fn extract_session_user_id(state: &WebState, headers: &axum::http::HeaderMap) ->
     None
 }
 
+#[allow(clippy::result_large_err)] // axum Response is always ≥128 bytes; not worth boxing on the error path
 fn require_auth(
     state: &WebState,
     headers: &axum::http::HeaderMap,
@@ -5240,6 +5241,7 @@ pub async fn api_graph_handler(
         )
     };
 
+    #[allow(clippy::unnecessary_filter_map)] // without feature="reason" the closure always returns Some; the filter is real when it's enabled
     let nodes: Vec<ApiGraphNode> = graph
         .node_map
         .iter()
@@ -5288,12 +5290,11 @@ pub async fn api_graph_handler(
 
             // In hidden mode: omit edges to/from denied nodes (REQ-020-032)
             #[cfg(feature = "reason")]
-            if vis_mode == crate::acl::VisibilityMode::Hidden {
-                if denied_set.contains(src_name.as_str()) || denied_set.contains(tgt_name.as_str())
+            if vis_mode == crate::acl::VisibilityMode::Hidden
+                && (denied_set.contains(src_name.as_str()) || denied_set.contains(tgt_name.as_str()))
                 {
                     return None;
                 }
-            }
 
             Some(ApiGraphEdge {
                 source: src_name.clone(),
@@ -5699,6 +5700,7 @@ pub async fn api_comments_post_handler(
 
 /// Check that a user can read a page (used by comment GET).
 #[cfg(feature = "reason")]
+#[allow(clippy::result_large_err)] // axum Response is always ≥128 bytes; not worth boxing on the error path
 fn check_page_acl_read(state: &WebState, user_id: &str, page_slug: &str) -> Result<(), Response> {
     let (spl_blocks, all_slugs) = {
         let data = state.data.read().unwrap_or_else(|e| e.into_inner());
@@ -5763,6 +5765,7 @@ fn check_page_acl_read(state: &WebState, user_id: &str, page_slug: &str) -> Resu
 
 /// Check that a user can edit a page (used by comment POST).
 #[cfg(feature = "reason")]
+#[allow(clippy::result_large_err)] // axum Response is always ≥128 bytes; not worth boxing on the error path
 fn check_page_acl_edit(state: &WebState, user_id: &str, page_slug: &str) -> Result<(), Response> {
     let (spl_blocks, all_slugs) = {
         let data = state.data.read().unwrap_or_else(|e| e.into_inner());
@@ -6157,7 +6160,7 @@ fn build_why_not_for_acl(
         .filter(|r| r.head.to_string() == target_literal)
         .collect();
 
-    let negated_literal = format!("~{}", target_literal);
+    let negated_literal = format!("~{target_literal}");
 
     let mut analyses = Vec::new();
     for rule in &candidate_rules {

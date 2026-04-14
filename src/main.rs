@@ -313,13 +313,11 @@ fn run_historical_pipeline(vault_root: PathBuf, at_expr: &str, verbose: u8) -> R
     if verbose > 0 {
         if file_map_opt.is_some() {
             eprintln!(
-                "[zetl] at: cache hit vault_root_hash={} duration_ms={}",
-                vault_root_hash, cache_load_ms
+                "[zetl] at: cache hit vault_root_hash={vault_root_hash} duration_ms={cache_load_ms}"
             );
         } else {
             eprintln!(
-                "[zetl] at: cache miss vault_root_hash={} duration_ms={}",
-                vault_root_hash, cache_load_ms
+                "[zetl] at: cache miss vault_root_hash={vault_root_hash} duration_ms={cache_load_ms}"
             );
         }
     }
@@ -1599,6 +1597,7 @@ fn cmd_backlinks(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)] // command entry point — each flag maps to a CLI arg
 fn cmd_check(
     cli: &Cli,
     show_dead_links: bool,
@@ -4808,7 +4807,7 @@ fn cmd_invite(
     });
 
     let inviter =
-        inviter.ok_or_else(|| anyhow::anyhow!("user '{}' not found in this vault", as_user))?;
+        inviter.ok_or_else(|| anyhow::anyhow!("user '{as_user}' not found in this vault"))?;
 
     // Parse expiry duration
     let expires_secs = match expires {
@@ -4839,9 +4838,9 @@ fn cmd_invite(
     } else {
         eprintln!("Invitation created by {} ({})", inviter.name, inviter.id);
         if let Some(p) = pages {
-            eprintln!("  role: {}  pages: {}", role, p);
+            eprintln!("  role: {role}  pages: {p}");
         } else {
-            eprintln!("  role: {}  pages: (vault-wide)", role);
+            eprintln!("  role: {role}  pages: (vault-wide)");
         }
         eprintln!();
         println!("{url}");
@@ -4907,6 +4906,7 @@ fn parse_duration_secs(s: &str) -> Result<u64> {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // command entry point — each flag maps to a CLI arg
 fn cmd_serve(
     cli: &Cli,
     port: u16,
@@ -5507,8 +5507,8 @@ fn emit_timing_metrics(
     reasoning_ms: u128,
     total_ms: u128,
 ) {
-    eprintln!("SPL blocks extracted: {}", spl_block_count);
-    eprintln!("Source files with SPL: {}", spl_file_count);
+    eprintln!("SPL blocks extracted: {spl_block_count}");
+    eprintln!("Source files with SPL: {spl_file_count}");
     eprintln!(
         "Theory: {} facts, {} rules, {} defeaters, {} superiority relations",
         result.summary.fact_count,
@@ -5516,10 +5516,10 @@ fn emit_timing_metrics(
         result.summary.defeater_count,
         result.summary.superiority_count,
     );
-    eprintln!("SPL parse time: {}ms", parse_ms);
-    eprintln!("Theory construction time: {}ms", construction_ms);
-    eprintln!("Reasoning time: {}ms", reasoning_ms);
-    eprintln!("Total elapsed: {}ms", total_ms);
+    eprintln!("SPL parse time: {parse_ms}ms");
+    eprintln!("Theory construction time: {construction_ms}ms");
+    eprintln!("Reasoning time: {reasoning_ms}ms");
+    eprintln!("Total elapsed: {total_ms}ms");
 }
 
 /// Count unresolved conflicts in the theory (OBS-006).
@@ -5562,7 +5562,7 @@ fn count_unresolved_conflicts(result: &zetl::reason::types::TheoryResult) -> usi
         }
 
         let positive = &base;
-        let negative = format!("~{}", base);
+        let negative = format!("~{base}");
 
         let pos_exists = all_heads.contains(positive);
         let neg_exists = all_heads.contains(&negative);
@@ -5656,7 +5656,7 @@ fn cmd_reason_status(
         eprintln!("tier1_misses: {}", s.tier1_misses);
         eprintln!("tier2_hits: {}", s.tier2_hits);
         eprintln!("tier2_misses: {}", s.tier2_misses);
-        eprintln!("theory_cache_hit: {}", theory_cache_hit);
+        eprintln!("theory_cache_hit: {theory_cache_hit}");
         eprintln!("theory_cache_miss: {}", !theory_cache_hit);
     }
 
@@ -5854,12 +5854,11 @@ fn cmd_reason_status(
                     + result.summary.defeasibly_not_provable,
             );
             if unresolved_conflict_count > 0 {
-                println!("Unresolved conflicts: {}", unresolved_conflict_count,);
+                println!("Unresolved conflicts: {unresolved_conflict_count}",);
             }
             if error_count > 0 || warning_count > 0 {
                 println!(
-                    "Diagnostics: {} errors, {} warnings",
-                    error_count, warning_count,
+                    "Diagnostics: {error_count} errors, {warning_count} warnings",
                 );
             }
 
@@ -5976,10 +5975,10 @@ fn cmd_reason_explain(
         let suggestions = fuzzy_match_literals(literal_input, &all_literals);
 
         let msg = if suggestions.is_empty() {
-            format!("Literal '{}' not found in any conclusion", literal_input)
+            format!("Literal '{literal_input}' not found in any conclusion")
         } else {
             let did_you_mean: Vec<String> =
-                suggestions.iter().map(|s| format!("'{}'", s)).collect();
+                suggestions.iter().map(|s| format!("'{s}'")).collect();
             format!(
                 "Literal '{}' not found. Did you mean: {}?",
                 literal_input,
@@ -6074,10 +6073,10 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
         let suggestions = fuzzy_match_literals(literal_input, &all_lits);
 
         let msg = if suggestions.is_empty() {
-            format!("Literal '{}' not found in theory", literal_input)
+            format!("Literal '{literal_input}' not found in theory")
         } else {
             let did_you_mean: Vec<String> =
-                suggestions.iter().map(|s| format!("'{}'", s)).collect();
+                suggestions.iter().map(|s| format!("'{s}'")).collect();
             format!(
                 "Literal '{}' not found in theory. Did you mean: {}?",
                 literal_input,
@@ -6119,8 +6118,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
 
     if is_provable {
         let msg = format!(
-            "Literal '{}' IS provable. Use 'zetl reason explain {}' instead.",
-            literal_input, literal_input
+            "Literal '{literal_input}' IS provable. Use 'zetl reason explain {literal_input}' instead."
         );
         match cli.format {
             OutputFormat::Json => {
@@ -6133,7 +6131,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
                 let output = ProvableOutput {
                     error: msg.clone(),
                     literal: literal_input.to_string(),
-                    hint: format!("zetl reason explain {}", literal_input),
+                    hint: format!("zetl reason explain {literal_input}"),
                 };
                 print_json(&output)?;
                 std::process::exit(1);
@@ -6198,7 +6196,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
         let negated_literal = if let Some(stripped) = literal_input.strip_prefix('~') {
             stripped.to_string()
         } else {
-            format!("~{}", literal_input)
+            format!("~{literal_input}")
         };
 
         // Find defeaters that target this literal (produce its negation)
@@ -6527,8 +6525,7 @@ fn cmd_reason_require(
             literal: literal_input.to_string(),
             status: "already_provable".to_string(),
             message: Some(format!(
-                "Literal '{}' is already provable. No additional facts needed.",
-                literal_input
+                "Literal '{literal_input}' is already provable. No additional facts needed."
             )),
             solutions: vec![],
             assumed: assumed_literals.iter().cloned().collect(),
@@ -6538,8 +6535,7 @@ fn cmd_reason_require(
             OutputFormat::Json => print_json(&output)?,
             _ => {
                 println!(
-                    "Literal '{}' is already provable. No additional facts needed.",
-                    literal_input
+                    "Literal '{literal_input}' is already provable. No additional facts needed."
                 );
                 if !output.assumed.is_empty() {
                     println!("  (with assumed facts: {})", output.assumed.join(", "));
@@ -6557,12 +6553,11 @@ fn cmd_reason_require(
 
         let msg = if suggestions.is_empty() {
             format!(
-                "No rules found with '{}' as head — cannot determine requirements",
-                literal_input
+                "No rules found with '{literal_input}' as head — cannot determine requirements"
             )
         } else {
             let did_you_mean: Vec<String> =
-                suggestions.iter().map(|s| format!("'{}'", s)).collect();
+                suggestions.iter().map(|s| format!("'{s}'")).collect();
             format!(
                 "No rules found with '{}' as head. Did you mean: {}?",
                 literal_input,
@@ -6661,7 +6656,7 @@ fn cmd_reason_require(
                 // No rule can prove it — must be asserted as a fact
                 required_facts.push(RequiredFact {
                     literal: lit.clone(),
-                    reason: format!("No rules can derive '{}'; must be asserted as a fact", lit),
+                    reason: format!("No rules can derive '{lit}'; must be asserted as a fact"),
                     needed_by_rule: needed_by.clone(),
                     needed_in_page: needed_in_page.clone(),
                 });
@@ -6737,7 +6732,7 @@ fn cmd_reason_require(
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
         _ => {
-            println!("Requirements to prove '{}':", literal_input);
+            println!("Requirements to prove '{literal_input}':");
             if !output.assumed.is_empty() {
                 println!("  Assumed facts: {}", output.assumed.join(", "));
             }
@@ -6757,7 +6752,7 @@ fn cmd_reason_require(
                     println!("    {}", solution.rule_text);
 
                     if let Some(ref note) = solution.note {
-                        println!("    Note: {}", note);
+                        println!("    Note: {note}");
                     }
 
                     if solution.required_facts.is_empty() {
@@ -6877,7 +6872,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
         let (base_name, _complement) = if let Some(name) = lit_str.strip_prefix('~') {
             (name.to_string(), name.to_string())
         } else {
-            (lit_str.clone(), format!("~{}", lit_str))
+            (lit_str.clone(), format!("~{lit_str}"))
         };
 
         // Skip if we already processed this pair
@@ -6887,7 +6882,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
 
         // Check if the complement also has rules/facts
         let positive = base_name.clone();
-        let negative = format!("~{}", base_name);
+        let negative = format!("~{base_name}");
 
         let pos_has_rules =
             rules_for_literal.contains_key(&positive) || facts_for_literal.contains_key(&positive);
@@ -7125,7 +7120,7 @@ fn cmd_reason_conflicts(cli: &Cli, suggest: bool, fail_on_conflicts: bool) -> Re
                         println!();
                         println!("   Suggested resolutions:");
                         for suggestion in &conflict.suggestions {
-                            println!("     - {}", suggestion);
+                            println!("     - {suggestion}");
                         }
                     }
 
@@ -7232,14 +7227,12 @@ fn build_conflict_suggestions(
     // Suggest removing conflicting facts
     if !neg_facts.is_empty() && !pos_rules.is_empty() {
         suggestions.push(format!(
-            "Remove the fact '~{}' if it is no longer applicable",
-            base_name
+            "Remove the fact '~{base_name}' if it is no longer applicable"
         ));
     }
     if !pos_facts.is_empty() && !neg_rules.is_empty() {
         suggestions.push(format!(
-            "Remove the fact '{}' if it is no longer applicable",
-            base_name
+            "Remove the fact '{base_name}' if it is no longer applicable"
         ));
     }
 
@@ -7625,8 +7618,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
 
     if matching.is_empty() {
         let msg = format!(
-            "Literal '{}' not found in conclusions. Use `zetl reason status` to see all conclusions.",
-            literal_str
+            "Literal '{literal_str}' not found in conclusions. Use `zetl reason status` to see all conclusions."
         );
         match cli.format {
             OutputFormat::Json => exit_json_error(&msg, 1),
@@ -7731,7 +7723,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
     match cli.format {
         OutputFormat::Json => print_json(&output)?,
         _ => {
-            println!("Provenance for '{}':\n", literal_str);
+            println!("Provenance for '{literal_str}':\n");
 
             if let Some(ref vr) = output.vault_root_hash {
                 println!("  Vault root hash: {vr}");
@@ -7748,7 +7740,7 @@ fn cmd_reason_provenance(cli: &Cli, literal_input: &str) -> Result<()> {
                 println!("  Proof sources:");
                 for ps in &entry.proof_sources {
                     let label_part = if let Some(ref label) = ps.rule_label {
-                        format!(" ({})", label)
+                        format!(" ({label})")
                     } else {
                         String::new()
                     };
@@ -8304,7 +8296,7 @@ fn print_negative_explanation(
             let negated_input = if let Some(stripped) = literal_input.strip_prefix('~') {
                 stripped.to_string()
             } else {
-                format!("~{}", literal_input)
+                format!("~{literal_input}")
             };
             head_str == negated_input
         })
@@ -8348,13 +8340,12 @@ fn print_negative_explanation(
             let explanation_text = match conclusion.conclusion_type {
                 ConclusionType::DefinitelyNotProvable => {
                     format!(
-                        "'{}' is definitely not provable (-D): no strict proof chain exists",
-                        literal_input
+                        "'{literal_input}' is definitely not provable (-D): no strict proof chain exists"
                     )
                 }
                 ConclusionType::DefeasiblyNotProvable => {
                     if defeat_chain.is_empty() {
-                        format!("'{}' is defeasibly not provable (-d): no undefeated defeasible proof chain exists", literal_input)
+                        format!("'{literal_input}' is defeasibly not provable (-d): no undefeated defeasible proof chain exists")
                     } else {
                         format!(
                             "'{}' is defeasibly not provable (-d): defeated by {} rule(s)",
@@ -8363,7 +8354,7 @@ fn print_negative_explanation(
                         )
                     }
                 }
-                _ => format!("'{}' holds as {}", literal_input, conclusion_type_str),
+                _ => format!("'{literal_input}' holds as {conclusion_type_str}"),
             };
 
             let output = NegativeExplainOutput {
@@ -8376,8 +8367,8 @@ fn print_negative_explanation(
             print_json(&output)?;
         }
         ExplainFormat::Table => {
-            println!("Explanation for '{}':", literal_input);
-            println!("  Conclusion: {} {}", conclusion_type_str, literal_input);
+            println!("Explanation for '{literal_input}':");
+            println!("  Conclusion: {conclusion_type_str} {literal_input}");
             println!();
             if !sources.is_empty() {
                 println!("  Sources:");
@@ -8405,15 +8396,13 @@ fn print_negative_explanation(
         ExplainFormat::Natural => match conclusion.conclusion_type {
             ConclusionType::DefinitelyNotProvable => {
                 println!(
-                    "The literal '{}' is definitely not provable.",
-                    literal_input
+                    "The literal '{literal_input}' is definitely not provable."
                 );
                 println!("No strict proof chain can establish it from the known facts and rules.");
             }
             ConclusionType::DefeasiblyNotProvable => {
                 println!(
-                    "The literal '{}' is defeasibly not provable.",
-                    literal_input
+                    "The literal '{literal_input}' is defeasibly not provable."
                 );
                 if defeat_chain.is_empty() {
                     println!("No undefeated defeasible proof chain exists.");
@@ -8429,8 +8418,7 @@ fn print_negative_explanation(
             }
             _ => {
                 println!(
-                    "'{}' holds as {} {}.",
-                    literal_input, conclusion_type_str, literal_input
+                    "'{literal_input}' holds as {conclusion_type_str} {literal_input}."
                 );
             }
         },
@@ -8439,11 +8427,11 @@ fn print_negative_explanation(
             println!("digraph explanation {{");
             println!("  rankdir=BT;");
             println!("  node [shape=box];");
-            let conclusion_id = format!("\"{}\\n{}\"", conclusion_type_str, literal_input);
-            println!("  {} [style=filled, fillcolor=lightcoral];", conclusion_id);
+            let conclusion_id = format!("\"{conclusion_type_str}\\n{literal_input}\"");
+            println!("  {conclusion_id} [style=filled, fillcolor=lightcoral];");
             for r in &defeat_chain {
                 let rule_id = format!("\"{}\"", r.label);
-                println!("  {} -> {} [label=\"defeats\"];", rule_id, conclusion_id);
+                println!("  {rule_id} -> {conclusion_id} [label=\"defeats\"];");
                 println!(
                     "  {} [label=\"{}\\n[[{}]]:{}\"];",
                     rule_id, r.label, r.source_page, r.source_line
@@ -8514,7 +8502,7 @@ fn print_explain_table(output: &ExplainOutput) {
         for b in &output.blocked_alternatives {
             println!("    {} via '{}': {}", b.literal, b.rule_label, b.reason);
             if let Some(ref blocker) = b.blocking_rule {
-                println!("      blocked by: {}", blocker);
+                println!("      blocked by: {blocker}");
             }
         }
     }
@@ -8672,7 +8660,7 @@ fn print_explain_dot(output: &ExplainOutput) {
 fn emit_dot_node(node: &ExplainNode, parent_id: &str, counter: &mut usize) {
     if let Some(ref step) = node.rule {
         // Rule node
-        let rule_node_id = format!("rule_{}", counter);
+        let rule_node_id = format!("rule_{counter}");
         *counter += 1;
 
         let source_label = if let Some(ref src) = node.source {
@@ -8685,11 +8673,11 @@ fn emit_dot_node(node: &ExplainNode, parent_id: &str, counter: &mut usize) {
             "  {} [label=\"{}\\n[{}]{}\"];",
             rule_node_id, step.label, step.rule_type, source_label
         );
-        println!("  {} -> {};", rule_node_id, parent_id);
+        println!("  {rule_node_id} -> {parent_id};");
 
         // Body literals
         for child in &node.body {
-            let child_id = format!("lit_{}", counter);
+            let child_id = format!("lit_{counter}");
             *counter += 1;
 
             let child_source = if let Some(ref src) = child.source {
@@ -8702,7 +8690,7 @@ fn emit_dot_node(node: &ExplainNode, parent_id: &str, counter: &mut usize) {
                 "  {} [label=\"{}{}\"];",
                 child_id, child.literal, child_source
             );
-            println!("  {} -> {};", child_id, rule_node_id);
+            println!("  {child_id} -> {rule_node_id};");
 
             // Recurse into children of the body node
             emit_dot_node(child, &child_id, counter);
@@ -8962,7 +8950,7 @@ fn cmd_reason_export(
 #[cfg(feature = "reason")]
 fn literal_to_spl(lit: &str) -> String {
     if let Some(name) = lit.strip_prefix('~') {
-        format!("(not {})", name)
+        format!("(not {name})")
     } else {
         lit.to_string()
     }
@@ -9133,11 +9121,11 @@ fn cmd_diff_history(
     for f in &baseline_files {
         for link in &f.links {
             let key = link.raw_target.clone();
-            if !baseline_resolved.contains_key(&key) {
+            if let std::collections::hash_map::Entry::Vacant(e) = baseline_resolved.entry(key) {
                 if let Some(r) =
                     zetl::scanner::resolve_page_name(&link.target_page, &baseline_file_index)
                 {
-                    baseline_resolved.insert(key, r);
+                    e.insert(r);
                 }
             }
         }
@@ -9369,6 +9357,7 @@ fn git_show(vault_root: &Path, git_ref: &str, rel_path: &str) -> Result<Option<S
 }
 
 /// Compare two graph snapshots and emit the diff output (shared by both backends).
+#[allow(clippy::too_many_arguments)] // shared helper with two graph halves, files, refs, cli, and filter
 fn diff_graphs_and_output(
     cli: &Cli,
     filter: Option<&zetl::cli::DiffFilter>,

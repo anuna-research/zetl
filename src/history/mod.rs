@@ -15,7 +15,7 @@
 //! - `jj_backend`  — JjBackend wrapper around jj-lib (task-jj-backend)
 //! - `cache`       — HistoricalIndexCache keyed by vault_root_hash (task-historical-index-cache)
 //! - `core`        — Pure temporal functions: time-expr parser, delta, timeline
-//!                   (task-time-expression-parser, task-history-cli)
+//!   (task-time-expression-parser, task-history-cli)
 
 pub mod cache;
 pub mod core;

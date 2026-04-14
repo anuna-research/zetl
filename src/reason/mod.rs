@@ -1041,8 +1041,7 @@ mod tests {
             .collect();
         assert!(
             parse_errors.is_empty(),
-            "no parse errors expected: {:?}",
-            parse_errors
+            "no parse errors expected: {parse_errors:?}"
         );
     }
 

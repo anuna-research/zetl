@@ -360,7 +360,7 @@ fn test_098_historical_cache_lru_eviction() {
     let cache = HistoricalIndexCache::new(capacity);
 
     // Write 5 entries with a small delay so mtime ordering is deterministic.
-    let hashes: Vec<String> = (0u8..5).map(|i| format!("{:064x}", i)).collect();
+    let hashes: Vec<String> = (0u8..5).map(|i| format!("{i:064x}")).collect();
     for hash in &hashes {
         cache
             .store(dir.path(), hash, &[dummy_parsed_file("p.md")])
@@ -373,7 +373,7 @@ fn test_098_historical_cache_lru_eviction() {
     let count = std::fs::read_dir(&history_dir)
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |x| x == "json"))
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
         .count();
 
     assert_eq!(
@@ -1268,7 +1268,7 @@ fn test_112_extract_page_history_limit() {
     let cache = HistoricalIndexCache::with_default_capacity();
 
     // Create 5 snapshots, each with a different neighbourhood.
-    let hashes: Vec<String> = (0..5u8).map(|i| format!("{:064x}", i)).collect();
+    let hashes: Vec<String> = (0..5u8).map(|i| format!("{i:064x}")).collect();
     let link_sets: Vec<&[&str]> = vec![&[], &["a"], &["a", "b"], &["b"], &[]];
 
     for (i, (hash, links)) in hashes.iter().zip(link_sets.iter()).enumerate() {
@@ -1378,7 +1378,7 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
     use zetl::search_index::SearchIndex;
     use zetl::web::engine::TemplateEngine;
 
-    let data = zetl::web::reindex(&vault_root.to_path_buf()).expect("reindex");
+    let data = zetl::web::reindex(vault_root).expect("reindex");
     let search_index = SearchIndex::build(vault_root, &data.files).expect("build search index");
     zetl::web::WebState {
         data: Arc::new(RwLock::new(data)),
@@ -1705,7 +1705,7 @@ fn test_123_build_vault_history_context_populated() {
         )
         .unwrap();
 
-    let mut backend =
+    let backend =
         zetl::history::jj_backend::JjBackend::open_or_init_at_vault_root(vault_root).unwrap();
     let snapshots = backend.list_changes(100).unwrap();
 
@@ -1746,7 +1746,7 @@ fn test_124_build_template_history_context_no_workspace() {
 // TEST-125: vault.history is null in template context when history unavailable (REQ-085).
 #[test]
 fn test_125_vault_history_null_when_no_history() {
-    use zetl::web::context::{build_vault_context, PageEntry, StatsContext, VaultContext};
+    use zetl::web::context::{StatsContext, VaultContext};
     use zetl::web::engine::TemplateEngine;
 
     let tmp = tempfile::TempDir::new().unwrap();
@@ -1784,8 +1784,8 @@ fn test_125_vault_history_null_when_no_history() {
 // TEST-126: vault.history fields are accessible in template context when history exists (REQ-085).
 #[test]
 fn test_126_vault_history_populated_in_template() {
-    use zetl::history::core::{HistoryEntry, TrendPoint, VaultHistoryContext};
-    use zetl::web::context::{build_vault_context, StatsContext, VaultContext};
+    use zetl::history::core::{TrendPoint, VaultHistoryContext};
+    use zetl::web::context::{StatsContext, VaultContext};
     use zetl::web::engine::TemplateEngine;
 
     let tmp = tempfile::TempDir::new().unwrap();
@@ -1845,7 +1845,7 @@ fn test_126_vault_history_populated_in_template() {
 fn test_127_build_page_history_context_none_when_no_history() {
     use chrono::{FixedOffset, TimeZone as _};
     use zetl::history::core::build_page_history_context;
-    use zetl::history::jj_backend::ChangeInfo;
+    
 
     let now = FixedOffset::east_opt(0)
         .unwrap()
@@ -1954,7 +1954,7 @@ fn test_129_sample_page_trend_oldest_first() {
     use chrono::{FixedOffset, TimeZone as _};
     use std::path::PathBuf;
     use std::time::SystemTime;
-    use zetl::history::core::{build_page_history_context, sample_page_trend};
+    use zetl::history::core::build_page_history_context;
     use zetl::history::jj_backend::ChangeInfo;
     use zetl::types::{ParsedFile, WikiLink};
 
@@ -2584,8 +2584,7 @@ fn test_nfr_026_snapshot_overhead_bounded() {
     assert!(
         per_call_ms <= 250,
         "auto_snapshot (no-op) must complete in ≤ 250ms per call \
-         (NFR-026 bound: ≤ 50ms overhead); got {}ms average over 10 calls",
-        per_call_ms
+         (NFR-026 bound: ≤ 50ms overhead); got {per_call_ms}ms average over 10 calls"
     );
 }
 
@@ -2621,8 +2620,7 @@ fn test_nfr_028_cache_hit_latency() {
     );
     assert!(
         elapsed_ms <= 500,
-        "cache hit must complete in ≤ 500ms (NFR-028 bound: ≤ 100ms); got {}ms",
-        elapsed_ms
+        "cache hit must complete in ≤ 500ms (NFR-028 bound: ≤ 100ms); got {elapsed_ms}ms"
     );
 }
 
@@ -2647,8 +2645,7 @@ fn test_nfr_029_cache_miss_latency() {
     assert!(result.is_none(), "absent entry must return None");
     assert!(
         detection_ms <= 50,
-        "cache-miss detection must complete in ≤ 50ms; got {}ms",
-        detection_ms
+        "cache-miss detection must complete in ≤ 50ms; got {detection_ms}ms"
     );
 
     // 2. Full history context build on a small vault with no cached indexes.
@@ -2776,9 +2773,7 @@ fn test_nfr_032_history_index_size_bound() {
     assert!(
         size_kb <= 2048,
         "history-index.json must be ≤ 2,048 KB for 2,000 pages; \
-         got {} KB ({} bytes). Spec NFR-032 aspirational target: 500 KB.",
-        size_kb,
-        size_bytes
+         got {size_kb} KB ({size_bytes} bytes). Spec NFR-032 aspirational target: 500 KB."
     );
 
     // Verify the per-page link_trend was correctly resampled to ≤ 10 points.

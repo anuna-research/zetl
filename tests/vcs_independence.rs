@@ -566,7 +566,7 @@ fn test_050_3c_provenance_git_fields_null_after_git_removal() {
     // Core provenance fields must still be valid.
     assert_eq!(json2["literal"], "flies");
     assert!(
-        json2["conclusions"].as_array().unwrap().len() > 0,
+        !json2["conclusions"].as_array().unwrap().is_empty(),
         "provenance must still show conclusions after .git removal"
     );
 }

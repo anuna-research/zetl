@@ -86,7 +86,7 @@ fn run_mcp(vault: &TempDir, messages: &[Value]) -> Vec<Value> {
 
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     let output = cmd
-        .args(&["-d", vault.path().to_str().unwrap(), "mcp", "--transport", "stdio"])
+        .args(["-d", vault.path().to_str().unwrap(), "mcp", "--transport", "stdio"])
         .write_stdin(stdin_data)
         .timeout(Duration::from_secs(15))
         .output()

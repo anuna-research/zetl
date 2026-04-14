@@ -1229,7 +1229,7 @@ fn test_017_search_respects_ignores() {
         "should find match in Public, got: {pages:?}"
     );
     assert!(
-        !pages.iter().any(|p| *p == "Draft"),
+        !pages.contains(&"Draft"),
         "should NOT find match in ignored Draft, got: {pages:?}"
     );
 }
@@ -2393,6 +2393,7 @@ fn find_free_port() -> u16 {
 }
 
 /// Spawn `zetl serve` and wait up to 3 seconds for it to accept TCP connections.
+#[allow(clippy::zombie_processes)] // caller owns the returned Child and kills it when the test finishes
 fn spawn_serve(vault: &Path, port: u16, theme: &str) -> std::process::Child {
     let bin = assert_cmd::cargo::cargo_bin!("zetl");
     let child = std::process::Command::new(bin)
@@ -4312,7 +4313,7 @@ fn git_init_commit(dir: &std::path::Path, commit_msg: &str) {
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("HOME", dir.to_str().unwrap())
             .output()
-            .unwrap_or_else(|e| panic!("git {:?} failed to start: {e}", args));
+            .unwrap_or_else(|e| panic!("git {args:?} failed to start: {e}"));
         assert!(
             out.status.success(),
             "git {:?} failed: {}",
@@ -4899,14 +4900,12 @@ fn test_014_invalid_source_strings_rejected() {
         };
         assert!(
             !output.status.success(),
-            "source {:?} should be rejected but was accepted",
-            source
+            "source {source:?} should be rejected but was accepted"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
             !stderr.is_empty(),
-            "error output must be non-empty for invalid source {:?}",
-            source
+            "error output must be non-empty for invalid source {source:?}"
         );
     }
 }
@@ -4944,16 +4943,14 @@ fn test_014_path_traversal_rejected() {
         };
         assert!(
             !output.status.success(),
-            "--path {:?} should be rejected as a traversal attempt",
-            path
+            "--path {path:?} should be rejected as a traversal attempt"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
             stderr.contains("disallowed")
                 || stderr.contains("relative")
                 || stderr.contains("absolute"),
-            "error for --path {:?} must explain the rejection; got: {stderr}",
-            path
+            "error for --path {path:?} must explain the rejection; got: {stderr}"
         );
     }
 }

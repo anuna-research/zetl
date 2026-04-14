@@ -192,92 +192,90 @@ impl ServerHandler for McpServer {
             .find(|t| t.name == name)
     }
 
-    fn call_tool(
+    async fn call_tool(
         &self,
         request: CallToolRequestParams,
         _context: rmcp::service::RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, rmcp::ErrorData>> + Send + '_
+    ) -> Result<CallToolResult, rmcp::ErrorData>
     {
-        async move {
-            let name = request.name.as_ref();
-            let args = request.arguments.as_ref();
+        let name = request.name.as_ref();
+        let args = request.arguments.as_ref();
 
-            let get_str = |key: &str| -> String {
-                args.and_then(|a| a.get(key))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string()
-            };
+        let get_str = |key: &str| -> String {
+            args.and_then(|a| a.get(key))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
 
-            let get_usize = |key: &str, default: usize| -> usize {
-                args.and_then(|a| a.get(key))
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as usize)
-                    .unwrap_or(default)
-            };
+        let get_usize = |key: &str, default: usize| -> usize {
+            args.and_then(|a| a.get(key))
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize)
+                .unwrap_or(default)
+        };
 
-            let get_u32 = |key: &str, default: u32| -> u32 {
-                args.and_then(|a| a.get(key))
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as u32)
-                    .unwrap_or(default)
-            };
+        let get_u32 = |key: &str, default: u32| -> u32 {
+            args.and_then(|a| a.get(key))
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32)
+                .unwrap_or(default)
+        };
 
-            let result = match name {
-                "get" => tools::tool_get(&self.state, &get_str("page")),
-                "search" => {
-                    let mode = get_str("mode");
-                    let mode = if mode.is_empty() { "fulltext".to_string() } else { mode };
-                    tools::tool_search(&self.state, &get_str("query"), get_usize("limit", 20), &mode)
-                }
-                "links" => tools::tool_links(&self.state, &get_str("page")),
-                "backlinks" => tools::tool_backlinks(&self.state, &get_str("page")),
-                "path" => tools::tool_path(
-                    &self.state,
-                    &get_str("from"),
-                    &get_str("to"),
-                    get_usize("max_depth", 10),
-                ),
-                "similar" => tools::tool_similar(
-                    &self.state,
-                    &get_str("query"),
-                    get_u32("threshold", 10),
-                    get_usize("limit", 20),
-                ),
-                "check" => {
-                    let category = get_str("category");
-                    let category = if category.is_empty() { "all".to_string() } else { category };
-                    tools::tool_check(&self.state, &category)
-                }
-                "status" => tools::tool_status(&self.state),
-                #[cfg(feature = "reason")]
-                "reason" => {
-                    let query = get_str("query");
-                    let files: Vec<String> = args
-                        .and_then(|a| a.get("files"))
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(String::from))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    tools::tool_reason(&self.state, &query, &files)
-                }
-                _ => {
-                    return Ok(CallToolResult::error(vec![Content::text(format!(
-                        "Unknown tool: {name}"
-                    ))]));
-                }
-            };
-
-            match result {
-                Ok(value) => {
-                    let text = serde_json::to_string_pretty(&value).unwrap_or_default();
-                    Ok(CallToolResult::success(vec![Content::text(text)]))
-                }
-                Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        let result = match name {
+            "get" => tools::tool_get(&self.state, &get_str("page")),
+            "search" => {
+                let mode = get_str("mode");
+                let mode = if mode.is_empty() { "fulltext".to_string() } else { mode };
+                tools::tool_search(&self.state, &get_str("query"), get_usize("limit", 20), &mode)
             }
+            "links" => tools::tool_links(&self.state, &get_str("page")),
+            "backlinks" => tools::tool_backlinks(&self.state, &get_str("page")),
+            "path" => tools::tool_path(
+                &self.state,
+                &get_str("from"),
+                &get_str("to"),
+                get_usize("max_depth", 10),
+            ),
+            "similar" => tools::tool_similar(
+                &self.state,
+                &get_str("query"),
+                get_u32("threshold", 10),
+                get_usize("limit", 20),
+            ),
+            "check" => {
+                let category = get_str("category");
+                let category = if category.is_empty() { "all".to_string() } else { category };
+                tools::tool_check(&self.state, &category)
+            }
+            "status" => tools::tool_status(&self.state),
+            #[cfg(feature = "reason")]
+            "reason" => {
+                let query = get_str("query");
+                let files: Vec<String> = args
+                    .and_then(|a| a.get("files"))
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                tools::tool_reason(&self.state, &query, &files)
+            }
+            _ => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Unknown tool: {name}"
+                ))]));
+            }
+        };
+
+        match result {
+            Ok(value) => {
+                let text = serde_json::to_string_pretty(&value).unwrap_or_default();
+                Ok(CallToolResult::success(vec![Content::text(text)]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
         }
     }
 }

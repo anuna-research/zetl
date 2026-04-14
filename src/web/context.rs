@@ -269,10 +269,8 @@ pub fn filter_vault_context_for_visibility(
     denied_pages: &HashMap<String, SidebarDeniedStyle>,
 ) {
     // Filter the pages list
-    ctx.pages.retain(|p| match denied_pages.get(&p.slug) {
-        Some(SidebarDeniedStyle::Hidden) => false,
-        _ => true,
-    });
+    ctx.pages
+        .retain(|p| !matches!(denied_pages.get(&p.slug), Some(SidebarDeniedStyle::Hidden)));
 
     // Rebuild sidebar tree from filtered pages
     ctx.sidebar_tree = build_sidebar_tree(&ctx.pages);

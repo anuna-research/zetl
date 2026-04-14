@@ -688,8 +688,7 @@ mod tests {
         ] {
             assert!(
                 validate_theme_name(name).is_ok(),
-                "expected {:?} to be valid",
-                name
+                "expected {name:?} to be valid"
             );
         }
     }
@@ -707,8 +706,7 @@ mod tests {
         ] {
             assert!(
                 validate_theme_name(name).is_err(),
-                "expected {:?} to be invalid",
-                name
+                "expected {name:?} to be invalid"
             );
         }
     }
@@ -728,8 +726,7 @@ mod tests {
         ] {
             assert!(
                 validate_semver(v).is_ok(),
-                "expected {:?} to be valid semver",
-                v
+                "expected {v:?} to be valid semver"
             );
         }
     }
@@ -739,8 +736,7 @@ mod tests {
         for v in &["1.0", "1", "v1.0.0", "1.0.0.0", "latest", ""] {
             assert!(
                 validate_semver(v).is_err(),
-                "expected {:?} to be invalid semver",
-                v
+                "expected {v:?} to be invalid semver"
             );
         }
     }
@@ -917,8 +913,7 @@ name = "my-theme"
         ] {
             assert!(
                 parse_install_source(bad).is_err(),
-                "expected {:?} to be rejected",
-                bad
+                "expected {bad:?} to be rejected"
             );
         }
     }

@@ -52,8 +52,7 @@ pub fn auto_commit(
             let canon_wd = std::fs::canonicalize(wd).unwrap_or_else(|_| wd.to_path_buf());
             if !canon_file.starts_with(&canon_wd) {
                 return Err(git2::Error::from_str(&format!(
-                    "file path {:?} is outside the repository working directory {:?}",
-                    canon_file, canon_wd
+                    "file path {canon_file:?} is outside the repository working directory {canon_wd:?}"
                 )));
             }
             resolved = canon_file

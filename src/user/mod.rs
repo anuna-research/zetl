@@ -98,8 +98,7 @@ impl std::str::FromStr for Role {
             "editor" => Ok(Role::Editor),
             "admin" => Ok(Role::Admin),
             _ => Err(anyhow::anyhow!(
-                "invalid role '{}': expected reader, editor, or admin",
-                s
+                "invalid role '{s}': expected reader, editor, or admin"
             )),
         }
     }

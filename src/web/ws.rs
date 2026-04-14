@@ -1383,7 +1383,7 @@ mod tests {
 
     fn test_crdt_store() -> CrdtDocStore {
         let tmp = tempfile::tempdir().unwrap();
-        CrdtDocStore::new(Arc::new(tmp.into_path()))
+        CrdtDocStore::new(Arc::new(tmp.keep()))
     }
 
     fn test_wal_store() -> (tempfile::TempDir, WalStore) {

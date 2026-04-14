@@ -438,7 +438,7 @@ pub fn sample_trend(entries: &[HistoryEntry], max_points: usize) -> Vec<TrendPoi
     let n = reversed.len();
 
     let selected: Vec<&HistoryEntry> = if n <= max_points {
-        reversed.iter().copied().collect()
+        reversed.to_vec()
     } else {
         // Uniformly sample max_points indices spanning the full range.
         (0..max_points)
@@ -711,7 +711,7 @@ pub fn sample_page_trend(entries: &[PageHistoryEntry], max_points: usize) -> Vec
     let n = reversed.len();
 
     let selected: Vec<&PageHistoryEntry> = if n <= max_points {
-        reversed.iter().copied().collect()
+        reversed.to_vec()
     } else {
         (0..max_points)
             .map(|i| {

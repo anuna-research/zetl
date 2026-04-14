@@ -114,7 +114,7 @@ impl HistoricalIndexCache {
     fn evict_lru(&self, history_dir: &Path) -> Result<()> {
         let mut entries: Vec<(PathBuf, std::time::SystemTime)> = std::fs::read_dir(history_dir)?
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "json"))
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
             .filter_map(|e| {
                 let mtime = e.metadata().ok()?.modified().ok()?;
                 Some((e.path(), mtime))
@@ -189,7 +189,7 @@ mod tests {
 
         for i in 0u8..5 {
             // Use distinct hashes (each 64 hex chars).
-            let hash = format!("{:064x}", i);
+            let hash = format!("{i:064x}");
             cache
                 .store(dir.path(), &hash, &[dummy_file("x.md")])
                 .unwrap();
@@ -201,7 +201,7 @@ mod tests {
         let count = std::fs::read_dir(&history_dir)
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |x| x == "json"))
+            .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
             .count();
         assert_eq!(
             count, capacity,

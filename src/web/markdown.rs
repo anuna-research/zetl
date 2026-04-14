@@ -627,13 +627,11 @@ fn truncate_description(s: &str) -> String {
         return s.to_string();
     }
     let mut end = 0;
-    let mut count = 0;
-    for (idx, _) in s.char_indices() {
+    for (count, (idx, _)) in s.char_indices().enumerate() {
         if count >= MAX {
             end = idx;
             break;
         }
-        count += 1;
     }
     let slice = &s[..end];
     let cut = slice.rfind(' ').unwrap_or(end);

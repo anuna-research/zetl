@@ -50,7 +50,7 @@ fn zetl_cmd(vault: &Path) -> assert_cmd::Command {
 
 /// Build a WebState by re-indexing a vault directory (uses the real scanner/graph).
 fn build_web_state(vault_root: &Path, theme: &str) -> WebState {
-    let data = zetl::web::reindex(&vault_root.to_path_buf()).expect("reindex");
+    let data = zetl::web::reindex(vault_root).expect("reindex");
     let search_index = SearchIndex::build(vault_root, &data.files).expect("build search index");
     WebState {
         data: Arc::new(RwLock::new(data)),

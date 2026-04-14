@@ -209,6 +209,12 @@ pub struct AuthRateLimiters {
     pub auth_per_ip: std::sync::Arc<RateLimiter>,
 }
 
+impl Default for AuthRateLimiters {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuthRateLimiters {
     /// Create rate limiters with default production settings.
     pub fn new() -> Self {

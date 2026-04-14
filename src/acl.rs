@@ -44,20 +44,17 @@ fn escape_spl(s: &str) -> String {
 
 /// Visibility mode controlling how denied pages appear to users (REQ-020-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum VisibilityMode {
     /// Denied pages visible (grayed) in sidebar; 403 on direct access; grayed-out wikilinks.
     Transparent,
     /// Denied pages hidden from sidebar/search; 403 on direct access; lock icon on wikilinks.
+    #[default]
     Mixed,
     /// Denied pages fully hidden; 404 on direct access; dead-link wikilinks.
     Hidden,
 }
 
-impl Default for VisibilityMode {
-    fn default() -> Self {
-        VisibilityMode::Mixed
-    }
-}
 
 /// Per-page visibility override for a specific user (REQ-020-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -535,7 +532,7 @@ pub fn evaluate(
     let safe_page = escape_spl(&query.page_slug);
 
     // Core runtime facts
-    runtime_facts.push_str(&format!("(given (authenticated \"{}\"))\n", safe_user));
+    runtime_facts.push_str(&format!("(given (authenticated \"{safe_user}\"))\n"));
     runtime_facts.push_str(&format!(
         "(given (requesting \"{}\" \"{}\" \"{}\"))\n",
         safe_user, safe_page, query.action
@@ -545,22 +542,22 @@ pub fn evaluate(
     // ── Step 3: Agent flag ───────────────────────────────────────────────
 
     if query.is_agent {
-        runtime_facts.push_str(&format!("(given (is-agent \"{}\"))\n", safe_user));
+        runtime_facts.push_str(&format!("(given (is-agent \"{safe_user}\"))\n"));
     }
 
     // ── Step 4: User roles from profile ──────────────────────────────────
 
     if let Some(profile) = user::load_profile(vault_root, &query.user_id)? {
         if profile.owner {
-            runtime_facts.push_str(&format!("(given (owner \"{}\"))\n", safe_user));
-            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", safe_user));
+            runtime_facts.push_str(&format!("(given (owner \"{safe_user}\"))\n"));
+            runtime_facts.push_str(&format!("(given (admin \"{safe_user}\"))\n"));
         }
 
         let role = user::Role::for_profile_with_vault(&profile, vault_root);
-        runtime_facts.push_str(&format!("(given (role \"{}\" {}))\n", safe_user, role));
+        runtime_facts.push_str(&format!("(given (role \"{safe_user}\" {role}))\n"));
 
         if role == user::Role::Admin {
-            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", safe_user));
+            runtime_facts.push_str(&format!("(given (admin \"{safe_user}\"))\n"));
         }
     }
 
@@ -579,8 +576,7 @@ pub fn evaluate(
 
     if page_in_scope {
         runtime_facts.push_str(&format!(
-            "(given (in-scope \"{}\" \"{}\"))\n",
-            safe_page, safe_user
+            "(given (in-scope \"{safe_page}\" \"{safe_user}\"))\n"
         ));
     }
 
@@ -592,7 +588,7 @@ pub fn evaluate(
         }
         let in_scope = scopes
             .iter()
-            .any(|s| build_scope_glob(s).map_or(false, |g| g.is_match(page.as_str())));
+            .any(|s| build_scope_glob(s).is_some_and(|g| g.is_match(page.as_str())));
         if in_scope {
             runtime_facts.push_str(&format!(
                 "(given (in-scope \"{}\" \"{}\"))\n",
@@ -846,7 +842,7 @@ pub fn evaluate_with_theory(
     let mut runtime_facts = String::new();
     let safe_user = escape_spl(&query.user_id);
     let safe_page = escape_spl(&query.page_slug);
-    runtime_facts.push_str(&format!("(given (authenticated \"{}\"))\n", safe_user));
+    runtime_facts.push_str(&format!("(given (authenticated \"{safe_user}\"))\n"));
     runtime_facts.push_str(&format!(
         "(given (requesting \"{}\" \"{}\" \"{}\"))\n",
         safe_user, safe_page, query.action
@@ -854,18 +850,18 @@ pub fn evaluate_with_theory(
     runtime_facts.push_str(&format!("(given (now {}))\n", query.now_epoch_ms));
 
     if query.is_agent {
-        runtime_facts.push_str(&format!("(given (is-agent \"{}\"))\n", safe_user));
+        runtime_facts.push_str(&format!("(given (is-agent \"{safe_user}\"))\n"));
     }
 
     if let Some(profile) = user::load_profile(vault_root, &query.user_id)? {
         if profile.owner {
-            runtime_facts.push_str(&format!("(given (owner \"{}\"))\n", safe_user));
-            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", safe_user));
+            runtime_facts.push_str(&format!("(given (owner \"{safe_user}\"))\n"));
+            runtime_facts.push_str(&format!("(given (admin \"{safe_user}\"))\n"));
         }
         let role = user::Role::for_profile_with_vault(&profile, vault_root);
-        runtime_facts.push_str(&format!("(given (role \"{}\" {}))\n", safe_user, role));
+        runtime_facts.push_str(&format!("(given (role \"{safe_user}\" {role}))\n"));
         if role == user::Role::Admin {
-            runtime_facts.push_str(&format!("(given (admin \"{}\"))\n", safe_user));
+            runtime_facts.push_str(&format!("(given (admin \"{safe_user}\"))\n"));
         }
     }
 
@@ -879,8 +875,7 @@ pub fn evaluate_with_theory(
     });
     if page_in_scope {
         runtime_facts.push_str(&format!(
-            "(given (in-scope \"{}\" \"{}\"))\n",
-            safe_page, safe_user
+            "(given (in-scope \"{safe_page}\" \"{safe_user}\"))\n"
         ));
     }
     for page in all_page_slugs {
@@ -889,7 +884,7 @@ pub fn evaluate_with_theory(
         }
         let in_scope = scopes
             .iter()
-            .any(|s| build_scope_glob(s).map_or(false, |g| g.is_match(page.as_str())));
+            .any(|s| build_scope_glob(s).is_some_and(|g| g.is_match(page.as_str())));
         if in_scope {
             runtime_facts.push_str(&format!(
                 "(given (in-scope \"{}\" \"{}\"))\n",
@@ -1063,8 +1058,7 @@ fn build_scope_glob(scope: &str) -> Option<globset::GlobMatcher> {
         Ok(g) => Some(g.compile_matcher()),
         Err(e) => {
             eprintln!(
-                "warning: invalid scope glob pattern {:?}: {} — skipping",
-                scope, e
+                "warning: invalid scope glob pattern {scope:?}: {e} — skipping"
             );
             None
         }
@@ -1326,8 +1320,7 @@ mod tests {
 
         // Write access.spl granting Bob editor on projects/*
         let access_spl = format!(
-            "(given (role \"{}\" editor))\n(given (scope \"{}\" \"projects/*\"))\n",
-            bob_id, bob_id
+            "(given (role \"{bob_id}\" editor))\n(given (scope \"{bob_id}\" \"projects/*\"))\n"
         );
         std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
 
@@ -1374,17 +1367,15 @@ mod tests {
 
         // Vault policy: Bob is an editor with ** scope (can read everything)
         let access_spl = format!(
-            "(given (role \"{}\" editor))\n(given (scope \"{}\" \"**\"))\n",
-            bob_id, bob_id
+            "(given (role \"{bob_id}\" editor))\n(given (scope \"{bob_id}\" \"**\"))\n"
         );
         std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
 
         // Page-level override: defeater argues for negation to block reads
         let page_override = format!(
-            "(except d-secret-block\n  (authenticated \"{}\")\n  (not (can-read \"{}\" \"secret\")))\n\
+            "(except d-secret-block\n  (authenticated \"{bob_id}\")\n  (not (can-read \"{bob_id}\" \"secret\")))\n\
              (prefer d-secret-block r-default-read)\n\
-             (prefer d-secret-block r-scoped-edit-read)\n",
-            bob_id, bob_id
+             (prefer d-secret-block r-scoped-edit-read)\n"
         );
         let page_block = SplBlock {
             source_file: PathBuf::from("secret.md"),
@@ -1420,8 +1411,7 @@ mod tests {
 
         // Give agent admin role
         let access_spl = format!(
-            "(given (admin \"{}\"))\n(given (role \"{}\" admin))\n",
-            agent_id, agent_id
+            "(given (admin \"{agent_id}\"))\n(given (role \"{agent_id}\" admin))\n"
         );
         std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
 
@@ -1555,8 +1545,7 @@ mod tests {
 
         // Malicious access.spl tries to grant Bob owner status
         let access_spl = format!(
-            "(given (owner \"{}\"))\n(given (role \"{}\" reader))\n",
-            bob_id, bob_id,
+            "(given (owner \"{bob_id}\"))\n(given (role \"{bob_id}\" reader))\n",
         );
         std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
 
@@ -1589,7 +1578,7 @@ mod tests {
             source_page: "evil".to_string(),
             start_line: 5,
             end_line: 6,
-            content: format!("(given (owner \"{}\"))\n", bob_id),
+            content: format!("(given (owner \"{bob_id}\"))\n"),
         };
 
         let q = AclQuery {
@@ -2406,8 +2395,7 @@ mod tests {
             start_line: 1,
             end_line: 2,
             content: format!(
-                "(given (admin \"{}\"))\n(given (role \"{}\" admin))\n",
-                bob_id, bob_id
+                "(given (admin \"{bob_id}\"))\n(given (role \"{bob_id}\" admin))\n"
             ),
         };
 
@@ -2440,8 +2428,7 @@ mod tests {
             start_line: 1,
             end_line: 3,
             content: format!(
-                "(normally r-steal\n  (authenticated \"{}\")\n  (can-edit \"{}\" \"secret\"))\n",
-                bob_id, bob_id
+                "(normally r-steal\n  (authenticated \"{bob_id}\")\n  (can-edit \"{bob_id}\" \"secret\"))\n"
             ),
         };
 

@@ -498,6 +498,7 @@ impl TemplateEngine {
     }
 
     /// Render the recovery phrase display page.
+    #[allow(clippy::too_many_arguments)] // template context fields
     pub fn render_recovery_show(
         &self,
         vault_name: &str,
@@ -1034,7 +1035,7 @@ mod tests {
         let vault = sample_vault();
         let err = engine.render_index(&vault, "serve", "", "").unwrap_err();
         assert!(err.template_name.is_some());
-        assert!(err.message.len() > 0);
+        assert!(!err.message.is_empty());
     }
 
     #[test]
