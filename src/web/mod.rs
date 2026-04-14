@@ -7,6 +7,7 @@ pub mod git_commit;
 pub mod git_poll;
 pub mod html;
 pub mod markdown;
+pub mod og;
 pub mod rate_limit;
 pub mod routes;
 pub mod session;

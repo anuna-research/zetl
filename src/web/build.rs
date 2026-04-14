@@ -333,6 +333,23 @@ pub fn build_static(
         })?;
     std::fs::write(out.join("index.html"), index_html)?;
 
+    // ── OG images ───────────────────────────────────────────────────────
+    // Generate a 1200×630 PNG per page for social sharing. A user-supplied
+    // background (at .zetl/static/og-background.png or the theme's static
+    // directory) is composited underneath when present.
+    let og_bg = crate::web::og::load_background(vault_root, None);
+    let og_start = std::time::Instant::now();
+    match crate::web::og::render_og_png(&vault_ctx.name, "a knowledge vault", og_bg.as_ref()) {
+        Ok(bytes) => std::fs::write(out.join("og.png"), &bytes)
+            .context("writing vault og.png")?,
+        Err(e) => {
+            if verbose {
+                eprintln!("[zetl] og: skipping vault image: {e}");
+            }
+        }
+    }
+    let mut og_count = 1usize;
+
     // ── help page ───────────────────────────────────────────────────────
     let help_html = engine
         .render_help(&vault_ctx, "build")
@@ -409,7 +426,27 @@ pub fn build_static(
                 anyhow::anyhow!("{e}")
             })?;
         std::fs::write(page_dir.join("index.html"), page_html)?;
+
+        // Per-page OG image.
+        match crate::web::og::render_og_png(&file.page_name, &vault_ctx.name, og_bg.as_ref()) {
+            Ok(bytes) => {
+                std::fs::write(page_dir.join("og.png"), &bytes)
+                    .context("writing page og.png")?;
+                og_count += 1;
+            }
+            Err(e) if verbose => {
+                eprintln!("[zetl] og: skipping {}: {e}", file.page_name);
+            }
+            Err(_) => {}
+        }
+
         count += 1;
+    }
+    if verbose {
+        eprintln!(
+            "[zetl] og: wrote {og_count} images in {} ms",
+            og_start.elapsed().as_millis()
+        );
     }
 
     // ── folder index pages ─────────────────────────────────────────────
