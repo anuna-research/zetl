@@ -87,7 +87,8 @@
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.1em;
-      opacity: 0.4;
+      /* WCAG AA: opacity 0.4 failed contrast; 0.75 clears 4.5:1 on both themes. */
+      opacity: 0.75;
       margin-bottom: 1rem;
     }
     .transclusion-card {
@@ -187,7 +188,7 @@
     .tt-close {
       background: none; border: none;
       font-size: 1.25rem; cursor: pointer;
-      opacity: 0.5; padding: 0 0.25rem;
+      opacity: 0.75; padding: 0 0.25rem;
       color: oklch(var(--bc));
     }
     .tt-close:hover { opacity: 1; }
@@ -264,9 +265,12 @@
       color: oklch(var(--p));
       font-weight: 700;
     }
+    /* Contrast: secondary/tertiary text in the search overlay uses opacity
+       levels tuned for WCAG AA (≥4.5:1 body, ≥3:1 large). Previous values
+       of 0.4–0.6 failed on the dark default theme. */
     .search-result .sr-slug {
       font-size: 0.75rem;
-      opacity: 0.5;
+      opacity: 0.75;
     }
     .search-result .page-name {
       font-weight: 600;
@@ -274,26 +278,26 @@
     }
     .search-result .heading {
       font-size: 0.78rem;
-      opacity: 0.6;
+      opacity: 0.8;
       font-style: italic;
     }
     .search-result .context {
       font-size: 0.78rem;
-      opacity: 0.5;
+      opacity: 0.75;
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
     }
     .search-result .score {
       font-size: 0.7rem;
-      opacity: 0.4;
+      opacity: 0.7;
       font-family: monospace;
     }
     .search-hint {
       padding: 1rem;
       text-align: center;
       font-size: 0.85rem;
-      opacity: 0.5;
+      opacity: 0.75;
     }
     .search-btn {
       display: flex; align-items: center; gap: 0.5rem;
@@ -305,7 +309,7 @@
       color: oklch(var(--bc));
       font-size: 0.8rem;
       cursor: pointer;
-      opacity: 0.7;
+      opacity: 0.85;
       transition: opacity 0.15s;
       margin-bottom: 0.75rem;
     }
@@ -313,7 +317,7 @@
     .search-btn kbd {
       margin-left: auto;
       font-size: 0.7rem;
-      opacity: 0.5;
+      opacity: 0.75;
     }
     /* ── Sidebar tree */
     .sidebar-tree details > summary {
@@ -322,7 +326,8 @@
       padding: 0.25rem 0.5rem;
       font-weight: 600;
       font-size: 0.85rem;
-      opacity: 0.7;
+      /* Contrast: was 0.7; 0.85 clears WCAG AA for UI labels. */
+      opacity: 0.85;
     }
     .sidebar-tree details > summary::-webkit-details-marker { display: none; }
     .sidebar-tree details > summary::before {
@@ -377,7 +382,7 @@
           Search…
           <kbd>⌘K</kbd>
         </button>
-        <a href="{{ root_path }}help/{{ index_file }}" class="block text-xs opacity-60 hover:opacity-100 mb-3 px-2">Help &amp; install</a>
+        <a href="{{ root_path }}help/{{ index_file }}" class="block text-xs opacity-80 hover:opacity-100 mb-3 px-2">Help &amp; install</a>
         {% block sidebar %}
         {% macro render_tree(nodes) %}
         <ul class="menu menu-sm sidebar-tree">

@@ -38,7 +38,7 @@
         {%- for bl in page.backlinks %}
         <li>
           <a href="{{ root_path }}{{ bl.slug | safe }}/{{ index_file }}#line-{{ bl.line }}" class="link link-secondary">{{ bl.title }}</a>
-          <span class="text-xs opacity-50 ml-2">line {{ bl.line }}</span>
+          <span class="text-xs opacity-75 ml-2">line {{ bl.line }}</span>
         </li>
         {%- endfor %}
       </ul>

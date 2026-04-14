@@ -45,7 +45,8 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: oklch(var(--bc) / 0.5);
+    /* WCAG AA: 0.5 failed contrast on the dark theme; 0.8 clears for UI labels. */
+    color: oklch(var(--bc) / 0.8);
     margin-bottom: 0.75rem;
   }
   .db-stat {
@@ -61,7 +62,7 @@
   }
   .db-stat-label {
     font-size: 0.85rem;
-    color: oklch(var(--bc) / 0.6);
+    color: oklch(var(--bc) / 0.8);
   }
   .db-list {
     list-style: none;
@@ -82,7 +83,7 @@
   }
   .db-edit-meta {
     font-size: 0.75rem;
-    color: oklch(var(--bc) / 0.5);
+    color: oklch(var(--bc) / 0.75);
   }
   .db-badge {
     display: inline-block;

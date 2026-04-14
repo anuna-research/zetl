@@ -38,14 +38,15 @@ pub fn render_to_html(
     let mut events: Vec<Event> = Vec::new();
     let mut anchored_lines: HashSet<usize> = HashSet::new();
     for (event, range) in parser.into_offset_iter() {
+        // Note: we intentionally do NOT match Tag::List(_) here. Placing
+        // the injected line-anchor <a> after a list-start event makes it
+        // a direct child of <ul>/<ol>, which fails WCAG / axe list-children
+        // checks. The Tag::Item branch below still places an anchor inside
+        // the first <li> so deep-linking to a list still works.
         let is_block_start = matches!(
             &event,
             Event::Start(
-                Tag::Paragraph
-                    | Tag::Heading { .. }
-                    | Tag::BlockQuote(_)
-                    | Tag::List(_)
-                    | Tag::Item
+                Tag::Paragraph | Tag::Heading { .. } | Tag::BlockQuote(_) | Tag::Item
             )
         );
         events.push(event);
@@ -317,14 +318,15 @@ pub fn render_to_html_with_visibility(
     let mut events: Vec<Event> = Vec::new();
     let mut anchored_lines: HashSet<usize> = HashSet::new();
     for (event, range) in parser.into_offset_iter() {
+        // Note: we intentionally do NOT match Tag::List(_) here. Placing
+        // the injected line-anchor <a> after a list-start event makes it
+        // a direct child of <ul>/<ol>, which fails WCAG / axe list-children
+        // checks. The Tag::Item branch below still places an anchor inside
+        // the first <li> so deep-linking to a list still works.
         let is_block_start = matches!(
             &event,
             Event::Start(
-                Tag::Paragraph
-                    | Tag::Heading { .. }
-                    | Tag::BlockQuote(_)
-                    | Tag::List(_)
-                    | Tag::Item
+                Tag::Paragraph | Tag::Heading { .. } | Tag::BlockQuote(_) | Tag::Item
             )
         );
         events.push(event);
@@ -677,6 +679,31 @@ fn strip_frontmatter(content: &str) -> String {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn list_has_no_direct_anchor_children() {
+        // Line anchors must land inside <li>, never as direct children of
+        // <ul>/<ol>, or axe/Lighthouse flag a WCAG list-children violation.
+        let slug_map = HashMap::new();
+        let md = "Intro paragraph.\n\n- first item\n- [[Target]] item\n- third item\n\n1. numbered\n2. list\n";
+        let html = render_to_html(md, &slug_map, "/", "");
+        // Easy regex: no `<a` tag should appear immediately after `<ul>` or `<ol>`
+        // without an intervening `<li>`.
+        for open in ["<ul>", "<ol>"] {
+            let mut pos = 0;
+            while let Some(i) = html[pos..].find(open) {
+                let after = &html[pos + i + open.len()..];
+                // Skip whitespace.
+                let trimmed = after.trim_start();
+                assert!(
+                    trimmed.starts_with("<li"),
+                    "list element {open} followed by {:?} — would fail WCAG list-children",
+                    &trimmed[..trimmed.len().min(60)]
+                );
+                pos += i + open.len();
+            }
+        }
+    }
 
     #[test]
     fn test_simple_wikilink() {
