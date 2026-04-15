@@ -188,7 +188,13 @@ pub struct WebState {
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.
+///
+/// Convenience wrapper for callers that don't need CLI-driven exclusion
+/// options (currently only test fixtures and the legacy entry point).
+/// Production code paths use [`reindex_with`] with the active
+/// `WebState.scan_options`.
 pub fn reindex(vault_root: &Path) -> anyhow::Result<VaultData> {
+    // SCAN-OPTS: intentional — legacy wrapper retained for tests.
     reindex_with(vault_root, &crate::scanner::ScanOptions::default())
 }
 

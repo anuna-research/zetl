@@ -159,6 +159,199 @@ fn test_205_cli_exclude_overrides_zetlignore_negation() {
     );
 }
 
+/// Defect 1 (review): `--exclude '!pattern'` must produce a clear error,
+/// not silently break by becoming `!!pattern` in the override stack.
+#[test]
+fn test_cli_exclude_negation_is_rejected() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    std::fs::write(root.join("a.md"), "# A").unwrap();
+
+    let opts = ScanOptions::default().with_exclude_patterns(vec!["!.archive/".into()]);
+    let err = scan_vault(root, &opts).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--exclude") && msg.contains("!.archive/") && msg.contains(".zetlignore"),
+        "expected diagnostic naming the offending pattern and pointing at .zetlignore: {msg}"
+    );
+}
+
+/// Defect 3 (review) / REQ-205 level 3: a `.gitignore` with `!.archive/`
+/// must re-include the dotdir even with no `.zetlignore`.
+#[test]
+fn test_gitignore_negation_overrides_dotdir_default() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    write(root, "notes/a.md", "# A");
+    write(root, ".archive/old.md", "# Old");
+    write(root, ".gitignore", "!.archive/\n");
+
+    let result = pages(root, &ScanOptions::default());
+    assert!(result.contains("a"));
+    assert!(
+        result.contains("old"),
+        ".gitignore !.archive/ should re-include the dotdir: {result:?}"
+    );
+}
+
+/// Defect 4 (review) / REQ-205 level 1: `--exclude` patterns that touch
+/// `.git/`, `.zetl/`, or `node_modules/` must not let the walker descend
+/// into those directories. The hardcoded force-ignores are added to the
+/// Override AFTER user patterns precisely so they win last-match-wins.
+#[test]
+fn test_user_exclude_cannot_unlock_force_ignored_dirs() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    write(root, "notes/a.md", "# A");
+    write(root, ".git/HEAD-fake.md", "# git");
+    write(root, ".zetl/cache.md", "# zetl");
+    write(root, "node_modules/lib.md", "# nm");
+
+    // A user pattern that lexically overlaps with .git/ subpaths must
+    // not cause the override stack to whitelist .git/ traversal.
+    let opts = ScanOptions::default()
+        .with_exclude_patterns(vec![".git/HEAD-fake".into(), ".zetl/cache".into()]);
+    let result = pages(root, &opts);
+    assert!(result.contains("a"));
+    for page in &result {
+        assert!(
+            !page.contains("HEAD-fake") && !page.contains("cache") && !page.contains("lib"),
+            "force-ignored dir leaked: {result:?}"
+        );
+    }
+}
+
+/// Risk (review): a vault rooted at e.g. `/Users/foo/.config/vault/`
+/// has `file_name() == ".config"` (or similar dot-prefixed name) at
+/// walker depth 0. The filter_entry must accept the root unconditionally
+/// or the walk terminates immediately.
+#[test]
+fn test_dot_rooted_vault_is_walked() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join(".config-vault");
+    std::fs::create_dir(&root).unwrap();
+    write(&root, "notes/a.md", "# A");
+    write(&root, "b.md", "# B");
+
+    let result = pages(&root, &ScanOptions::default());
+    assert!(
+        result.contains("a") && result.contains("b"),
+        "vault rooted at a dot-prefixed dir must still be walked: {result:?}"
+    );
+}
+
+/// OBS-200: verbose mode emits `[zetl] scan: skipped <path> reason=<r>`
+/// lines on stderr for each excluded entry. The reason taxonomy is part
+/// of the contract — verify a representative sample.
+#[test]
+fn test_obs_200_verbose_emits_skip_lines() {
+    use std::process::Command;
+
+    // Build a tiny vault and invoke the binary with --verbose so we can
+    // capture real stderr. (Calling scan_vault in-process can't easily
+    // capture eprintln! output across thread boundaries.)
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    write(root, "notes/a.md", "# A");
+    write(root, ".claude/leak.md", "# leak");
+    write(root, ".zetl/internal.md", "# zetl");
+
+    let out_dir = tmp.path().join("dist");
+    let bin = env!("CARGO_BIN_EXE_zetl");
+    let output = Command::new(bin)
+        .args(["-d", root.to_str().unwrap(), "--verbose", "build", "-o"])
+        .arg(&out_dir)
+        .output()
+        .expect("failed to execute zetl binary");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "build failed: stdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        stderr
+    );
+    // The .claude/ directory exits via the dotdir branch of filter_entry.
+    // (The hardcoded force-ignores .git/ / .zetl/ / node_modules/ are
+    // removed by the WalkBuilder Override before filter_entry runs, so
+    // they don't emit OBS-200 lines from the scanner; the watcher path
+    // does emit "hardcoded" via classify_entry_os.)
+    assert!(
+        stderr.contains("[zetl] scan: skipped")
+            && stderr.contains(".claude")
+            && stderr.contains("reason=dotdir"),
+        "expected OBS-200 dotdir skip line for .claude in stderr; got: {stderr}"
+    );
+}
+
+/// REQ-207 (call-site audit): no production code path may pass
+/// `&ScanOptions::default()` directly to `scan_vault` without an
+/// `// SCAN-OPTS: intentional` annotation. The legitimate sites are
+/// (a) the `cli.rs` fallback and (b) the legacy `web::reindex` shim.
+#[test]
+fn test_207_no_unannotated_default_scan_options_in_production() {
+    use std::path::Path;
+
+    fn walk(dir: &Path, out: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                walk(&p, out);
+            } else if p.extension().and_then(|e| e.to_str()) == Some("rs") {
+                if let Ok(text) = std::fs::read_to_string(&p) {
+                    out.push(format!("{}\n{text}", p.display()));
+                }
+            }
+        }
+    }
+
+    let mut sources = Vec::new();
+    walk(Path::new("src"), &mut sources);
+
+    let mut violations = Vec::new();
+    for blob in &sources {
+        let mut iter = blob.lines();
+        let header = iter.next().unwrap_or("");
+        let lines: Vec<&str> = iter.collect();
+        let mut in_test = false;
+        let mut depth = 0usize;
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("#[cfg(test)]") || trimmed.starts_with("#[test]") {
+                in_test = true;
+            }
+            if in_test {
+                depth += line.matches('{').count();
+                if depth > 0 {
+                    depth -= line.matches('}').count();
+                    if depth == 0 && line.contains('}') {
+                        in_test = false;
+                    }
+                }
+            }
+            if in_test {
+                continue;
+            }
+            let is_call = (line.contains("scan_vault(") || line.contains("reindex_with("))
+                && line.contains("ScanOptions::default()");
+            if !is_call {
+                continue;
+            }
+            // Annotation may be on this line or the line immediately above.
+            let prev = i.checked_sub(1).map(|j| lines[j]).unwrap_or("");
+            if line.contains("SCAN-OPTS: intentional") || prev.contains("SCAN-OPTS: intentional") {
+                continue;
+            }
+            violations.push(format!("{header}:{}: {}", i + 1, line.trim()));
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "REQ-207: unannotated ScanOptions::default() in production scan_vault/reindex_with calls:\n{}",
+        violations.join("\n")
+    );
+}
+
 /// Bonus: explicit guard that nothing under `.git/`, `.zetl/`, or
 /// `node_modules/` ever appears, regardless of options.
 #[test]
@@ -173,7 +366,7 @@ fn test_force_ignored_dirs_never_scanned() {
     for opts in [
         ScanOptions::default(),
         ScanOptions::default().with_include_hidden(true),
-        ScanOptions::default().with_exclude_patterns(vec!["!.git/".into()]),
+        ScanOptions::default().with_exclude_patterns(vec!["unrelated/".into()]),
     ] {
         let result = pages(root, &opts);
         assert!(

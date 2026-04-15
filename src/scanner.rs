@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub mod exclude;
-pub use exclude::{Decision, ExcludeReason, ScanOptions, classify_entry};
+pub use exclude::{Decision, ExcludeReason, ScanOptions, classify_entry, classify_entry_os};
 
 /// Scan a vault directory and parse all markdown files.
 ///
@@ -22,6 +22,18 @@ pub use exclude::{Decision, ExcludeReason, ScanOptions, classify_entry};
 /// rule stack defined in SPEC-026 §REQ-205: hardcoded force-ignores → dotdir
 /// default → .gitignore → .zetlignore → CLI `--exclude` patterns.
 pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
+    // Defect 1 (REQ-203): reject `--exclude '!pattern'` with a clear error
+    // rather than silently producing `!!pattern` in the override stack.
+    // Per SPEC-026 §1.3, gitignore-style negations belong in `.zetlignore`.
+    for pattern in &opts.exclude_patterns {
+        if pattern.starts_with('!') {
+            anyhow::bail!(
+                "--exclude '{pattern}' uses gitignore negation syntax, which is not supported \
+                 on the CLI. Put the negation in `.zetlignore` instead (e.g. `{pattern}` on its own line)."
+            );
+        }
+    }
+
     let mut builder = WalkBuilder::new(root);
     builder
         .hidden(false) // dotfile/dotdir handling is delegated to filter_entry below
@@ -29,61 +41,87 @@ pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
         .git_global(false)
         .git_exclude(false);
 
-    // Add .zetlignore if it exists. Also load it as a standalone matcher so
-    // filter_entry can consult it before vetoing a dotdir.
+    // Build a single "whitelist matcher" from `.gitignore` + `.zetlignore`
+    // that filter_entry can consult when deciding whether to override the
+    // dotdir default. The walker also applies these files independently —
+    // this matcher exists *only* to surface their negated entries before
+    // filter_entry vetoes a directory (defects 2/3 / REQ-205 levels 3-4).
     let zetlignore_path = root.join(".zetlignore");
-    let zetlignore_matcher = if zetlignore_path.exists() {
-        builder.add_ignore(&zetlignore_path);
+    let gitignore_path = root.join(".gitignore");
+    let whitelist_matcher: Option<Arc<ignore::gitignore::Gitignore>> = {
         let mut gi = ignore::gitignore::GitignoreBuilder::new(root);
-        gi.add(&zetlignore_path);
-        gi.build().ok().map(Arc::new)
-    } else {
-        None
+        let mut any = false;
+        if gitignore_path.exists() {
+            gi.add(&gitignore_path);
+            any = true;
+        }
+        if zetlignore_path.exists() {
+            builder.add_ignore(&zetlignore_path);
+            gi.add(&zetlignore_path);
+            any = true;
+        }
+        if any {
+            gi.build().ok().map(Arc::new)
+        } else {
+            None
+        }
     };
 
-    // Add custom ignore patterns via an in-memory override.
+    // Add custom ignore patterns via an in-memory override. Order matters
+    // (defect 4 / REQ-205 level 1 non-negotiable): user `--exclude`
+    // patterns go first so the hardcoded force-ignores added afterwards
+    // always win under the `Override`'s last-match-wins semantics.
     let mut overrides = ignore::overrides::OverrideBuilder::new(root);
-    // Hardcoded force-ignores (REQ-205 level 1).
-    overrides.add("!.git/")?;
-    overrides.add("!node_modules/")?;
-    overrides.add("!.zetl/")?;
     for pattern in &opts.exclude_patterns {
         overrides.add(&format!("!{pattern}"))?;
     }
+    overrides.add("!.git/")?;
+    overrides.add("!node_modules/")?;
+    overrides.add("!.zetl/")?;
     builder.overrides(overrides.build()?);
 
     // Combined filter_entry handles:
     //   - level-1 nested-vault force-ignore (parent vault must not absorb child vault pages)
-    //   - level-2 dotdir default (overridable by .zetlignore negation)
+    //   - level-2 dotdir default (overridable by .gitignore / .zetlignore negation)
     let opts_for_filter = opts.clone();
-    let zetlignore_for_filter = zetlignore_matcher.clone();
+    let whitelist_for_filter = whitelist_matcher.clone();
     let root_owned = root.to_path_buf();
     let verbose = opts.verbose;
     builder.filter_entry(move |entry| {
+        // Risk: a vault rooted at e.g. `/Users/foo/.notes/` would have
+        // `file_name() == ".notes"` at depth 0, which classify_entry
+        // would label as a dotdir and exclude — terminating the walk
+        // immediately. Always accept the walker's root entry.
+        if entry.depth() == 0 {
+            return true;
+        }
+
         let path = entry.path();
         let is_dir = entry.file_type().is_some_and(|ft| ft.is_dir());
-        let basename = entry
-            .file_name()
-            .to_str()
-            .unwrap_or("");
+        // Defect 5 / REQ-205 level 1: compare via `OsStr` so non-UTF-8
+        // basenames cannot bypass the hardcoded force-ignore check by
+        // collapsing to the Unicode replacement character.
+        let basename_os = entry.file_name();
+        let basename_str = basename_os.to_str();
         let rel = path.strip_prefix(&root_owned).unwrap_or(path);
 
         // Nested-vault probe: a child directory containing its own .zetl/ is its own vault.
-        let nested_vault = entry.depth() > 0 && is_dir && path.join(".zetl").is_dir();
+        let nested_vault = is_dir && path.join(".zetl").is_dir();
 
-        let decision = classify_entry(
+        let decision = classify_entry_os(
             rel,
-            basename,
+            basename_os,
+            basename_str,
             is_dir,
             &opts_for_filter,
             || nested_vault,
-            zetlignore_for_filter.as_deref(),
+            whitelist_for_filter.as_deref(),
         );
 
         match decision {
             Decision::Include => true,
             Decision::Exclude(reason) => {
-                if verbose && entry.depth() > 0 {
+                if verbose {
                     eprintln!(
                         "[zetl] scan: skipped {} reason={}",
                         rel.display(),

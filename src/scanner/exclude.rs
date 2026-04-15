@@ -10,6 +10,7 @@
 #![deny(clippy::disallowed_methods)]
 
 use ignore::gitignore::Gitignore;
+use std::ffi::OsStr;
 use std::path::Path;
 
 #[derive(Debug, Clone, Default)]
@@ -73,8 +74,9 @@ pub enum Decision {
 }
 
 /// Pure entry-point classifier. Decides whether a single filesystem entry
-/// should be included in the scan, given pre-loaded `.zetlignore` rules
-/// and an injected nested-vault probe.
+/// should be included in the scan, given a pre-loaded "whitelist" matcher
+/// (typically `.gitignore` + `.zetlignore` combined) and an injected
+/// nested-vault probe.
 ///
 /// The function performs no IO directly; the `is_nested_vault` closure is
 /// the only escape hatch and is invoked at most once.
@@ -84,19 +86,40 @@ pub fn classify_entry(
     is_dir: bool,
     opts: &ScanOptions,
     is_nested_vault: impl FnOnce() -> bool,
-    zetlignore: Option<&Gitignore>,
+    whitelist: Option<&Gitignore>,
+) -> Decision {
+    classify_entry_os(
+        relative_path,
+        OsStr::new(basename),
+        Some(basename),
+        is_dir,
+        opts,
+        is_nested_vault,
+        whitelist,
+    )
+}
+
+/// `OsStr`-aware variant. Defect 5: the level-1 hardcoded force-ignore
+/// check must not be bypassable by a non-UTF-8 basename collapsing to the
+/// Unicode replacement character. Real walkers should call this directly.
+pub fn classify_entry_os(
+    relative_path: &Path,
+    basename_os: &OsStr,
+    basename_str: Option<&str>,
+    is_dir: bool,
+    opts: &ScanOptions,
+    is_nested_vault: impl FnOnce() -> bool,
+    whitelist: Option<&Gitignore>,
 ) -> Decision {
     // Level 1a: hardcoded directory names — never traverse, regardless of
-    // any other configuration. These are listed in the WalkBuilder Override
-    // as well, but having them here means the watcher path picks them up
-    // without depending on Override semantics.
-    if is_dir {
-        match basename {
-            ".git" | ".zetl" | "node_modules" => {
-                return Decision::Exclude(ExcludeReason::Hardcoded);
-            }
-            _ => {}
-        }
+    // any other configuration. Compared via OsStr so non-UTF-8 names
+    // cannot slip past as "".
+    if is_dir
+        && (basename_os == OsStr::new(".git")
+            || basename_os == OsStr::new(".zetl")
+            || basename_os == OsStr::new("node_modules"))
+    {
+        return Decision::Exclude(ExcludeReason::Hardcoded);
     }
 
     // Level 1b: nested vault. A child directory that contains its own
@@ -106,11 +129,18 @@ pub fn classify_entry(
     }
 
     // Level 2: dotdir default. Skip directories whose basename starts with
-    // `.`, unless `--include-hidden` is set or `.zetlignore` has a
-    // whitelist (`!pattern`) match for this path. Files (including
-    // dotfiles) are not excluded by this rule — only directories.
-    if !opts.include_hidden && is_dir && basename.starts_with('.') {
-        if let Some(gi) = zetlignore {
+    // `.`, unless `--include-hidden` is set or the whitelist matcher
+    // (built from `.gitignore` + `.zetlignore`) has a `!pattern` match
+    // for this path or any parent. Files (including dotfiles) are not
+    // excluded by this rule — only directories.
+    let starts_with_dot = basename_str
+        .map(|s| s.starts_with('.'))
+        .unwrap_or_else(|| {
+            // Non-UTF-8 basename: peek at the first byte via `as_encoded_bytes`.
+            basename_os.as_encoded_bytes().first() == Some(&b'.')
+        });
+    if !opts.include_hidden && is_dir && starts_with_dot {
+        if let Some(gi) = whitelist {
             if gi
                 .matched_path_or_any_parents(relative_path, true)
                 .is_whitelist()

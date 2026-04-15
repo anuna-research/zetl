@@ -593,16 +593,21 @@ fn filter_event(
 
     let mut external_paths = Vec::new();
 
-    // Load .zetlignore once per event batch so a `!.archive/` negation can
-    // override the dotdir default — keeps watcher in sync with scanner
-    // (REQ-206). Falls back to None when the file is absent or unreadable.
-    let zetlignore_path = vault_root.join(".zetlignore");
-    let zetlignore = if zetlignore_path.exists() {
+    // Load `.gitignore` + `.zetlignore` once per event batch into a single
+    // whitelist matcher so negated patterns can override the dotdir
+    // default — keeps watcher in sync with scanner (REQ-206 / defects 2-3).
+    // Falls back to None when neither file exists.
+    let whitelist: Option<ignore::gitignore::Gitignore> = {
         let mut gi = ignore::gitignore::GitignoreBuilder::new(vault_root);
-        gi.add(&zetlignore_path);
-        gi.build().ok()
-    } else {
-        None
+        let mut any = false;
+        for name in [".gitignore", ".zetlignore"] {
+            let p = vault_root.join(name);
+            if p.exists() {
+                gi.add(&p);
+                any = true;
+            }
+        }
+        if any { gi.build().ok() } else { None }
     };
     for path in &event.paths {
         // Skip non-markdown files.
@@ -620,16 +625,18 @@ fn filter_event(
             // All components except the last are intermediate directories.
             // The last is the .md file itself; classify it as a non-dir.
             for (i, comp) in components.iter().enumerate() {
-                let basename = comp.as_os_str().to_string_lossy();
+                let basename_os = comp.as_os_str();
+                let basename_str = basename_os.to_str();
                 let is_last = i + 1 == components.len();
                 let partial: std::path::PathBuf = components[..=i].iter().collect();
-                let decision = crate::scanner::classify_entry(
+                let decision = crate::scanner::classify_entry_os(
                     &partial,
-                    &basename,
+                    basename_os,
+                    basename_str,
                     !is_last,
                     opts,
                     || partial.join(".zetl").is_dir(),
-                    zetlignore.as_ref(),
+                    whitelist.as_ref(),
                 );
                 if matches!(decision, crate::scanner::Decision::Exclude(_)) {
                     excluded = true;
@@ -706,6 +713,14 @@ mod tests {
                 "nested_in_dotdir",
                 &[("notes/a.md", "# A"), (".vscode/settings/x.md", "# nested")],
             ),
+            (
+                "with_gitignore_negation",
+                &[
+                    ("notes/a.md", "# A"),
+                    (".archive/g.md", "# from gitignore !"),
+                    (".gitignore", "!.archive/\n"),
+                ],
+            ),
         ];
 
         // Each option set is exercised against every layout.
@@ -745,25 +760,66 @@ mod tests {
                     .map(|(rel, _)| root.join(rel))
                     .collect();
 
-                let evt = Event {
-                    kind: EventKind::Modify(notify::event::ModifyKind::Data(
+                // Test parity for both Modify and Remove event kinds —
+                // the watcher must apply the same filter regardless of
+                // event type (review test gap: Remove was untested).
+                let event_kinds = [
+                    EventKind::Modify(notify::event::ModifyKind::Data(
                         notify::event::DataChange::Content,
                     )),
-                    paths: all_md_paths,
-                    attrs: Default::default(),
-                };
-                let watcher_seen: BTreeSet<PathBuf> =
-                    filter_event(&evt, root, &PendingWrites::new(), opts)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .collect();
+                    EventKind::Remove(notify::event::RemoveKind::File),
+                    EventKind::Create(notify::event::CreateKind::File),
+                ];
+                for kind in event_kinds {
+                    let evt = Event {
+                        kind,
+                        paths: all_md_paths.clone(),
+                        attrs: Default::default(),
+                    };
+                    let watcher_seen: BTreeSet<PathBuf> =
+                        filter_event(&evt, root, &PendingWrites::new(), opts)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .collect();
 
-                assert_eq!(
-                    scanned, watcher_seen,
-                    "scanner/watcher parity violation for layout={layout_name} opts={opts_name}\n  scanner: {scanned:?}\n  watcher: {watcher_seen:?}"
-                );
+                    assert_eq!(
+                        scanned, watcher_seen,
+                        "scanner/watcher parity violation for layout={layout_name} opts={opts_name} kind={kind:?}\n  scanner: {scanned:?}\n  watcher: {watcher_seen:?}"
+                    );
+                }
             }
         }
+    }
+
+    /// Risk (review): a vault rooted at e.g. `/Users/foo/.config/vault/`
+    /// hits the watcher at depth-0 with a dot-prefixed component. The
+    /// `path.strip_prefix(vault_root)` strips the dot-prefixed root
+    /// segment, so the watcher should not erroneously classify the leaf.
+    #[test]
+    fn filter_event_works_with_dot_rooted_vault() {
+        use notify::{Event, EventKind};
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().join(".config-vault");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(root.join("notes")).unwrap();
+        let leaf = root.join("notes/a.md");
+        std::fs::write(&leaf, "# A").unwrap();
+
+        let evt = Event {
+            kind: EventKind::Modify(notify::event::ModifyKind::Data(
+                notify::event::DataChange::Content,
+            )),
+            paths: vec![leaf.clone()],
+            attrs: Default::default(),
+        };
+        let result = filter_event(
+            &evt,
+            &root,
+            &PendingWrites::new(),
+            &ScanOptions::default(),
+        );
+        assert_eq!(result, Some(vec![leaf]));
     }
 
     #[test]

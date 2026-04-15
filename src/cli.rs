@@ -39,6 +39,7 @@ impl Cli {
             | Command::Serve { scan, .. }
             | Command::Search { scan, .. }
             | Command::Watch { scan, .. } => scan.to_scan_options(verbose),
+            // SCAN-OPTS: intentional — commands without ScanArgs use defaults.
             _ => crate::scanner::ScanOptions::default().with_verbose(verbose),
         }
     }
