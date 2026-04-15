@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-15
+
+### Fixed
+
+- `zetl hook run` / in-process hook execution: retry `spawn()` on Linux
+  `ETXTBSY` ("Text file busy") up to 20× with 10ms backoff. Defeats a
+  kernel-level race when a hook script is written and immediately
+  executed from the same process (common in tests, theme installers,
+  and agent tooling that generates hooks on the fly).
+
 ## [0.2.0] - 2026-04-15
 
 ### Changed (breaking)
