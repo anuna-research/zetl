@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-04-15
+
+### Fixed
+
+- CI: macOS (arm64 + x86_64) and Windows release builds were failing
+  in `openssl-sys` because no host sysroot OpenSSL exists for those
+  cross-compile targets. Adds an opt-in `vendored-openssl` cargo
+  feature that statically links a self-contained OpenSSL into the
+  binary; enabled in the macOS and Windows release jobs. Linux builds
+  continue to dynamic-link against the system libssl.
+
 ## [0.2.3] - 2026-04-15
 
 ### Fixed
