@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-04-15
+
+### Fixed
+
+- CI: disable `git2`'s default features (`https`, `ssh`). zetl only
+  uses git2 for local repo inspection and auto-commits (no network),
+  so both are dead weight. Dropping `https` also eliminates
+  libgit2-sys's unconditional `stransport.c` compile on Apple targets
+  — which was blocking the macOS cross-compile even with
+  `vendored-openssl`, because libgit2 links `Security.framework`
+  directly without an escape hatch.
+
 ## [0.2.5] - 2026-04-15
 
 ### Fixed
