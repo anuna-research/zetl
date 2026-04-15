@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-04-15
+
+### Fixed
+
+- Build: cfg-gate Unix mode bits in `hooks` so the Windows
+  cross-compile target (`x86_64-pc-windows-gnu`) compiles cleanly.
+
 ## [0.2.6] - 2026-04-15
 
 ### Fixed
