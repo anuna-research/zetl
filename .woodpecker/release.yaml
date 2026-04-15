@@ -14,9 +14,19 @@ steps:
   - name: build-linux-arm64
     image: rust:1-bookworm
     commands:
-      - apt-get update && apt-get install -y gcc-aarch64-linux-gnu
+      # Enable arm64 multiarch so we can install aarch64 system libraries
+      # (libssl-dev:arm64) alongside the cross-compiler toolchain. Required
+      # by openssl-sys (transitive via git2/libgit2-sys) which refuses to
+      # cross-compile without a target sysroot.
+      - dpkg --add-architecture arm64
+      - apt-get update
+      - apt-get install -y gcc-aarch64-linux-gnu pkg-config libssl-dev:arm64
       - rustup target add aarch64-unknown-linux-gnu
       - export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+      # Point pkg-config at the arm64 multiarch lib dir and tell it to
+      # tolerate cross queries (host==x86_64, target==aarch64).
+      - export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
+      - export PKG_CONFIG_ALLOW_CROSS=1
       - cargo build --release --features "reason,history,mcp" --target aarch64-unknown-linux-gnu
       - mkdir -p dist
       - cp target/aarch64-unknown-linux-gnu/release/zetl dist/zetl
