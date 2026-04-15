@@ -31,11 +31,14 @@
       {% endif %}
     {% endif %}
       {# SPEC-027 REQ-300 / REQ-305: page metadata strip.
-         Omitted when page.history is null (feature disabled or no snapshots). #}
+         Omitted when page.history is null or last_changed is empty
+         (feature disabled, no snapshots, or first-snapshot edge). #}
       {%- if page.history and page.history.last_changed %}
       <div class="text-xs opacity-70 mb-3 page-history-meta" aria-label="Page history metadata">
         <span>Last changed <time datetime="{{ page.history.last_changed }}">{{ page.history.last_changed[:10] }}</time></span>
-        {%- if page.history.stable_days is number %}
+        {# Synthetic-user Finding 2: suppress "stable today" — reads as
+           stability when the page literally just changed. #}
+        {%- if page.history.stable_days is number and page.history.stable_days > 0 %}
         <span> · stable {{ page.history.stable_days | humanise_days }}</span>
         {%- endif %}
         <span> · <a href="{{ root_path }}{{ page.slug | safe }}/_history{% if mode == 'build' %}.html{% endif %}" class="link">history</a></span>

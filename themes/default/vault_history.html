@@ -94,7 +94,7 @@
     {%- set first = sparkline_points[0] %}
     {%- set last = sparkline_points[-1] %}
     {%- set aria = "Vault link count trend: " ~ (first | round | int) ~ " to " ~ (last | round | int) ~ (" (growing)" if last > first else (" (shrinking)" if last < first else " (stable)")) %}
-    <div class="vh-spark" aria-label="{{ aria }}">
+    <div class="vh-spark">
       {%- set width = 600 %}
       {%- set height = 60 %}
       {%- set count = sparkline_points | length %}

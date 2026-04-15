@@ -2122,9 +2122,21 @@ async fn vault_history_handler_inner(State(state): State<WebState>) -> Response 
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
 
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
+    // SPEC-027 Finding 1: populate vault.history before rendering so
+    // `vault_history.html`'s `{% if vault.history %}` guard passes and
+    // snapshot_count / trend are available to the template.
+    if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+        vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+    }
 
-    let limit = 50usize;
+    // REQ-306: `vault.history.recent_limit` overrides the default of 50.
+    let limit: usize = vault_ctx
+        .history
+        .get("recent_limit")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize)
+        .unwrap_or(50);
     let recent_changes = match crate::history::open_history(&state.vault_root) {
         Ok(backend) => match backend.list_changes(10_000) {
             Ok(snaps) => crate::history::core::build_recent_changes(

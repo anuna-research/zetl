@@ -958,7 +958,7 @@ pub fn build_recent_changes(
     limit: usize,
 ) -> anyhow::Result<Vec<RecentChangeEntry>> {
     use crate::history::cache::HistoricalIndexCache;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::path::PathBuf;
 
     if snapshots.is_empty() || limit == 0 {
@@ -968,15 +968,16 @@ pub fn build_recent_changes(
     let cache = HistoricalIndexCache::with_default_capacity();
 
     // Load per-snapshot file list keyed by page_name → (file_merkle root, path).
-    // `None` when the cache entry is missing; such snapshots are skipped in pairs.
-    let per_snapshot: Vec<Option<HashMap<String, (crate::types::ContentHash, PathBuf)>>> =
+    // Adversarial defect 3: BTreeMap (not HashMap) so iteration order is
+    // deterministic across runs — required for reproducible static builds.
+    let per_snapshot: Vec<Option<BTreeMap<String, (crate::types::ContentHash, PathBuf)>>> =
         snapshots
             .iter()
             .map(|snap| {
                 let hash = extract_vault_root_hash_from_description(&snap.description)?;
                 let file_map: HashMap<PathBuf, ParsedFile> =
                     cache.load(vault_root, &hash).ok().flatten()?;
-                let by_page = file_map
+                let by_page: BTreeMap<String, (crate::types::ContentHash, PathBuf)> = file_map
                     .into_iter()
                     .map(|(path, file)| {
                         let root = file
@@ -991,25 +992,24 @@ pub fn build_recent_changes(
             })
             .collect();
 
+    // Adversarial defect 4: collect ALL candidate changes across every
+    // snapshot pair first, then truncate to `limit` at the end. The
+    // previous `break` inside the inner loops could partially emit a
+    // snapshot's Added/Modified without its Removed.
     let mut out: Vec<RecentChangeEntry> = Vec::new();
 
     for i in 0..snapshots.len() {
-        if out.len() >= limit {
-            break;
-        }
-        let newer = match &per_snapshot[i] {
-            Some(m) => m,
-            None => continue,
+        let Some(newer) = per_snapshot[i].as_ref() else {
+            continue;
         };
         // The oldest snapshot has no prior to diff against — every page in
         // it would look "Added", which is noisy. Skip the tail.
-        let older = match per_snapshot.get(i + 1).and_then(|o| o.as_ref()) {
-            Some(m) => m,
-            None => continue,
+        let Some(older) = per_snapshot.get(i + 1).and_then(|o| o.as_ref()) else {
+            continue;
         };
         let ts = snapshots[i].timestamp.to_rfc3339();
 
-        // Added / Modified: walk newer.
+        // Added / Modified: walk newer (BTreeMap → sorted by page_name).
         for (page_name, (new_root, path)) in newer {
             let kind = match older.get(page_name) {
                 None => Some(ChangeKind::Added),
@@ -1023,16 +1023,10 @@ pub fn build_recent_changes(
                     changed_at: ts.clone(),
                     change_kind,
                 });
-                if out.len() >= limit {
-                    break;
-                }
             }
         }
-        if out.len() >= limit {
-            break;
-        }
 
-        // Removed: walk older for pages absent in newer.
+        // Removed: walk older for pages absent in newer (BTreeMap → sorted).
         for (page_name, (_old_root, path)) in older {
             if !newer.contains_key(page_name) {
                 out.push(RecentChangeEntry {
@@ -1041,9 +1035,6 @@ pub fn build_recent_changes(
                     changed_at: ts.clone(),
                     change_kind: ChangeKind::Removed,
                 });
-                if out.len() >= limit {
-                    break;
-                }
             }
         }
     }

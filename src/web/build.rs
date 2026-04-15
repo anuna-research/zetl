@@ -429,10 +429,18 @@ pub fn build_static(
             })?;
         std::fs::write(page_dir.join("index.html"), page_html)?;
 
-        // SPEC-027 REQ-302: static emission of per-page history HTML.
-        // Only write when the history context is non-null (graceful absence).
+        // SPEC-027 REQ-302 / adversarial defect 5: static emission of
+        // per-page history HTML. Gate on last_changed presence so the
+        // static file is never emitted when page.html's inline link
+        // guard (`page.history.last_changed`) would suppress the link —
+        // prevents orphan artefacts.
         #[cfg(feature = "history")]
-        if !page_ctx.history.is_null() {
+        if page_ctx
+            .history
+            .get("last_changed")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty())
+        {
             let hist_start = std::time::Instant::now();
             let breadcrumbs: Vec<crate::web::context::BreadcrumbEntry> = {
                 let parts: Vec<&str> = slug.split('/').collect();
@@ -446,13 +454,24 @@ pub fn build_static(
                 }
                 crumbs
             };
+            // Adversarial defect 2 (REQ-302 parity): serve passes real
+            // git log entries; build previously passed `"[]"` which left
+            // the template's client-side chart empty. Load git file_log
+            // directly when the vault is inside a git repo.
+            let git_entries_json = match git2::Repository::discover(vault_root) {
+                Ok(repo) => {
+                    let entries = crate::web::git_commit::file_log(&repo, &file.path, 100);
+                    serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string())
+                }
+                Err(_) => "[]".to_string(),
+            };
             let ph_html = engine
                 .render_page_history(
                     &vault_ctx,
                     &file.page_name,
                     &slug,
                     &breadcrumbs,
-                    "[]",
+                    &git_entries_json,
                     false,
                     "build",
                 )
@@ -575,10 +594,17 @@ pub fn build_static(
     {
         use crate::history::jj_backend::VcsBackend;
         let vh_start = std::time::Instant::now();
+        // REQ-306: template-overridable via vault.history.recent_limit.
+        let vh_limit: usize = vault_ctx
+            .history
+            .get("recent_limit")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .unwrap_or(50);
         let recent_changes = match crate::history::open_history(vault_root) {
             Ok(backend) => match backend.list_changes(10_000) {
                 Ok(snaps) => {
-                    crate::history::core::build_recent_changes(&snaps, vault_root, 50)
+                    crate::history::core::build_recent_changes(&snaps, vault_root, vh_limit)
                         .unwrap_or_default()
                 }
                 Err(_) => Vec::new(),

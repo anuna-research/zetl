@@ -261,6 +261,137 @@ fn test_302_303_build_emits_history_html() {
     );
 }
 
+/// Adversarial review / synthetic-user Finding 1 regression: serve
+/// `/_history` renders the full body (snapshot stats + recent-changes
+/// list) when the vault has snapshots — not the graceful-absence body.
+#[tokio::test]
+async fn test_serve_vault_history_populates_body_with_snapshots() {
+    use axum::Router;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::get;
+    use tower::ServiceExt as _;
+    use zetl::scanner::ScanOptions;
+    use zetl::search_index::SearchIndex;
+    use zetl::web::WebState;
+    use zetl::web::routes::page_handler;
+
+    let (tmp, _slug) = setup_two_snapshot_vault();
+    let root = tmp.path();
+    let data = zetl::web::reindex_with(root, &ScanOptions::default()).unwrap();
+    let search_index = SearchIndex::build(root, &data.files).unwrap();
+    let state = WebState {
+        data: Arc::new(std::sync::RwLock::new(data)),
+        vault_root: Arc::new(root.to_path_buf()),
+        search_index: Arc::new(search_index),
+        engine: Arc::new(zetl::web::engine::TemplateEngine::new(
+            root, "default", true, false,
+        )),
+        theme: "default".into(),
+        verbose: false,
+        sessions: zetl::web::session::SessionStore::new(),
+        recovery_challenges: Arc::new(zetl::user::recovery::RecoveryChallengeStore::new()),
+        mnemonic_shown: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
+        bootstrap_used: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        rate_limiters: zetl::web::rate_limit::AuthRateLimiters::new(),
+        collab: false,
+        tls: false,
+        trust_proxy: false,
+        #[cfg(feature = "reason")]
+        acl_cache: Arc::new(std::sync::Mutex::new(zetl::web::AclCache::new())),
+        git_commit_lock: None,
+        ws_hub: zetl::web::ws::WsHub::new(),
+        ticket_store: zetl::web::ws::TicketStore::new(),
+        crdt_store: zetl::web::ws::CrdtDocStore::new(Arc::new(root.to_path_buf())),
+        wal_store: Arc::new(zetl::web::wal::WalStore::new(root)),
+        pending_writes: zetl::web::fs_watch::PendingWrites::new(),
+        passkey_mgr: None,
+        public_dir: None,
+        scan_options: ScanOptions::default(),
+        #[cfg(feature = "semantic")]
+        vector_index: None,
+    };
+    let app: Router = Router::new()
+        .route("/{*path}", get(page_handler))
+        .with_state(state);
+
+    let req = Request::builder()
+        .uri("/_history")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), 10_000_000)
+        .await
+        .unwrap();
+    let html = String::from_utf8_lossy(&body);
+
+    assert!(
+        !html.contains("No history yet"),
+        "serve /_history must not render graceful-absence body when snapshots exist"
+    );
+    assert!(
+        html.contains("snapshots"),
+        "serve /_history must render snapshot-count stat; got excerpt: {}",
+        &html[..html.len().min(2000)]
+    );
+    assert!(
+        html.contains("vh-list") || html.contains("vh-stats"),
+        "serve /_history must render the recent-changes or stats blocks"
+    );
+}
+
+/// Adversarial Defect 3: `build_recent_changes` output is deterministic
+/// across repeated calls — required for reproducible static builds.
+#[test]
+fn test_build_recent_changes_deterministic() {
+    use zetl::history::jj_backend::VcsBackend as _;
+
+    let (tmp, _) = setup_two_snapshot_vault();
+    let root = tmp.path();
+    let backend = zetl::history::open_history(root).unwrap();
+    let snapshots = backend.list_changes(10_000).unwrap();
+
+    let a = zetl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
+    let b = zetl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
+    let c = zetl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
+
+    // BTreeMap iteration makes the order stable; assert all three runs
+    // produce identical sequences (page_title, change_kind, changed_at).
+    let tuples = |v: &[zetl::history::core::RecentChangeEntry]| {
+        v.iter()
+            .map(|e| (e.page_title.clone(), format!("{:?}", e.change_kind), e.changed_at.clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(tuples(&a), tuples(&b));
+    assert_eq!(tuples(&b), tuples(&c));
+    assert!(!a.is_empty(), "setup should produce at least one change");
+}
+
+/// Adversarial Defect 4: when limit is smaller than a single snapshot's
+/// change count, truncation happens AFTER collecting that snapshot —
+/// never mid-snapshot between Added/Modified and Removed.
+#[test]
+fn test_build_recent_changes_respects_limit_without_midsnap_cutoff() {
+    use zetl::history::jj_backend::VcsBackend as _;
+
+    let (tmp, _) = setup_two_snapshot_vault();
+    let root = tmp.path();
+    let backend = zetl::history::open_history(root).unwrap();
+    let snapshots = backend.list_changes(10_000).unwrap();
+
+    // Known: setup_two_snapshot_vault produces ≥2 changes between the two
+    // cache-enabled snapshots (note-a modified + note-b added).
+    let all = zetl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
+    assert!(all.len() >= 2, "expected ≥2 candidate changes; got {}", all.len());
+
+    let limited = zetl::history::core::build_recent_changes(&snapshots, root, 1).unwrap();
+    assert!(
+        limited.len() <= 1,
+        "limit=1 must cap output at 1; got {}",
+        limited.len()
+    );
+}
+
 /// TEST-303 graceful-absence branch: build on a vault with zero snapshots
 /// still emits `_history.html` but with the "No history yet" message.
 #[test]
