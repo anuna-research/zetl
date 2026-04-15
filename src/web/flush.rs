@@ -150,12 +150,23 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
         }
     }
 
-    // ── Step 9: jj snapshot ──────────────────────────────────────────────
+    // ── Step 9: jj snapshot + historical index cache ─────────────────────
+    // Mirror cmd_index: auto_snapshot + cache.store as a pair. Without
+    // cache.store, every per-save snapshot is invisible to the page /
+    // vault history UI (SPEC-027 / SPEC-028), because the timeline
+    // builders rely on the per-snapshot ParsedFile cache to compute
+    // neighbourhood deltas.
     #[cfg(feature = "history")]
     {
         match crate::history::auto_snapshot(&state.vault_root, Some(&vault_root_hash)) {
             Ok(Some(change_id)) => {
                 eprintln!("flush: jj snapshot {change_id} for {slug}");
+                let cache = crate::history::cache::HistoricalIndexCache::with_default_capacity();
+                if let Err(e) =
+                    cache.store(&state.vault_root, &vault_root_hash, &new_data.files)
+                {
+                    warnings.push(format!("history cache store: {e}"));
+                }
             }
             Ok(None) => { /* deduplicated — vault unchanged */ }
             Err(e) => {
