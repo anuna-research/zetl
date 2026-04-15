@@ -12,6 +12,7 @@
 pub mod context;
 
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -582,10 +583,13 @@ fn extract_bundled_hooks(
     for (name, content) in hook_files {
         let path = hooks_dir.join(name);
         std::fs::write(&path, content)?;
-        // Set executable permission
-        let mut perms = std::fs::metadata(&path)?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&path, perms)?;
+        // Set executable permission (Unix-only; Windows uses file extensions)
+        #[cfg(unix)]
+        {
+            let mut perms = std::fs::metadata(&path)?.permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms)?;
+        }
     }
 
     Ok((hooks_dir, temp))
@@ -631,9 +635,12 @@ fn extract_bundled_hooks_cached(
     for (name, content) in hook_files {
         let path = cache_dir.join(name);
         std::fs::write(&path, content)?;
-        let mut perms = std::fs::metadata(&path)?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&path, perms)?;
+        #[cfg(unix)]
+        {
+            let mut perms = std::fs::metadata(&path)?.permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms)?;
+        }
     }
 
     // Write version stamp
@@ -729,6 +736,7 @@ fn scan_hooks_dir(
 }
 
 /// Check if a file has the executable bit set (Unix).
+#[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
     match std::fs::metadata(path) {
         Ok(meta) => meta.permissions().mode() & 0o111 != 0,
@@ -736,7 +744,18 @@ fn is_executable(path: &Path) -> bool {
     }
 }
 
-#[cfg(test)]
+#[cfg(windows)]
+fn is_executable(path: &Path) -> bool {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) => matches!(
+            ext.to_ascii_lowercase().as_str(),
+            "exe" | "bat" | "cmd" | "com" | "ps1"
+        ),
+        None => false,
+    }
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::fs;
