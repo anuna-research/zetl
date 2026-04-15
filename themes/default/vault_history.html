@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Recent changes — {{ vault.name }} — zetl{% endblock %}
+{% block description %}Recent changes across {{ vault.name }} — an evolving zetl vault.{% endblock %}
+
+{% block styles %}
+<style>
+  .vh-header { margin-bottom: 1.5rem; }
+  .vh-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    font-size: 0.9rem;
+    opacity: 0.85;
+    margin-top: 0.5rem;
+  }
+  .vh-stats span strong { font-weight: 600; opacity: 1; }
+  .vh-spark {
+    margin: 1rem 0 1.5rem;
+    padding: 0.75rem 1rem;
+    background: oklch(var(--b2) / 0.5);
+    border-radius: 0.375rem;
+  }
+  .vh-spark svg { display: block; max-width: 100%; }
+  .vh-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-top: 1px solid oklch(var(--b3));
+  }
+  .vh-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.5rem 0.25rem;
+    border-bottom: 1px solid oklch(var(--b3));
+  }
+  .vh-kind {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    min-width: 4.5rem;
+    text-align: center;
+    background: oklch(var(--b2));
+  }
+  .vh-kind.added { color: oklch(var(--su)); }
+  .vh-kind.modified { color: oklch(var(--wa)); }
+  .vh-kind.removed { color: oklch(var(--er)); }
+  .vh-title { flex: 1; }
+  .vh-time {
+    font-size: 0.8rem;
+    opacity: 0.65;
+    font-variant-numeric: tabular-nums;
+  }
+  .vh-empty {
+    padding: 1.5rem;
+    text-align: center;
+    opacity: 0.7;
+    font-style: italic;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
+  <nav class="text-sm breadcrumbs mb-4" aria-label="Breadcrumb">
+    <ul>
+      <li><a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a></li>
+      <li>Recent changes</li>
+    </ul>
+  </nav>
+
+  <header class="vh-header">
+    <h1 class="text-2xl font-semibold">Recent changes</h1>
+    {# REQ-305 graceful absence #}
+    {%- if not vault.history or not vault.history.snapshot_count or vault.history.snapshot_count == 0 %}
+    <p class="vh-empty">No history yet. Run <code>zetl index</code> or edit a page to take the first snapshot.</p>
+    {%- else %}
+    <div class="vh-stats">
+      <span><strong>{{ vault.history.snapshot_count }}</strong> snapshots</span>
+      {%- if vault.history.oldest %}
+      <span>first <time datetime="{{ vault.history.oldest }}">{{ vault.history.oldest[:10] }}</time></span>
+      {%- endif %}
+      {%- if vault.history.newest %}
+      <span>latest <time datetime="{{ vault.history.newest }}">{{ vault.history.newest[:10] }}</time></span>
+      {%- endif %}
+    </div>
+
+    {# REQ-303 / NFR-301: sparkline with aria-label fallback. #}
+    {%- if sparkline_points and sparkline_points | length > 1 %}
+    {%- set first = sparkline_points[0] %}
+    {%- set last = sparkline_points[-1] %}
+    {%- set aria = "Vault link count trend: " ~ (first | round | int) ~ " to " ~ (last | round | int) ~ (" (growing)" if last > first else (" (shrinking)" if last < first else " (stable)")) %}
+    <div class="vh-spark" aria-label="{{ aria }}">
+      {%- set width = 600 %}
+      {%- set height = 60 %}
+      {%- set count = sparkline_points | length %}
+      {%- set hi = sparkline_points | max %}
+      {%- set lo = sparkline_points | min %}
+      {%- set span = (hi - lo) if (hi - lo) > 0 else 1 %}
+      <svg viewBox="0 0 {{ width }} {{ height }}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{{ aria }}">
+        <polyline fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+          points="
+          {%- for pt in sparkline_points -%}
+          {%- set x = (loop.index0 * width / (count - 1)) | round(2) -%}
+          {%- set y = (height - ((pt - lo) / span) * height) | round(2) -%}
+          {{ x }},{{ y }} {% endfor -%}" />
+      </svg>
+    </div>
+    {%- endif %}
+
+    {# REQ-303: reverse-chronological list of recent changes. #}
+    {%- if recent_changes and recent_changes | length > 0 %}
+    <ol class="vh-list" role="list">
+      {%- for entry in recent_changes %}
+      <li>
+        <span class="vh-kind {{ entry.change_kind }}">{{ entry.change_kind }}</span>
+        <span class="vh-title">
+          {%- if entry.change_kind == "removed" %}
+          {{ entry.page_title }}
+          {%- else %}
+          <a href="{{ root_path }}{{ entry.page_slug | safe }}/{{ index_file }}" class="link link-hover">{{ entry.page_title }}</a>
+          {%- endif %}
+        </span>
+        <time class="vh-time" datetime="{{ entry.changed_at }}">{{ entry.changed_at[:10] }}</time>
+      </li>
+      {%- endfor %}
+    </ol>
+    {%- else %}
+    <p class="vh-empty">No changes detected between the cached snapshots yet.</p>
+    {%- endif %}
+    {%- endif %}
+  </header>
+</main>
+{% endblock %}

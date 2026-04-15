@@ -1403,6 +1403,7 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
         pending_writes: zetl::web::fs_watch::PendingWrites::new(),
         passkey_mgr: None,
         public_dir: None,
+        scan_options: zetl::scanner::ScanOptions::default(),
         tls: false,
         trust_proxy: false,
     }

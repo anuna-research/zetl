@@ -429,6 +429,50 @@ pub fn build_static(
             })?;
         std::fs::write(page_dir.join("index.html"), page_html)?;
 
+        // SPEC-027 REQ-302: static emission of per-page history HTML.
+        // Only write when the history context is non-null (graceful absence).
+        #[cfg(feature = "history")]
+        if !page_ctx.history.is_null() {
+            let hist_start = std::time::Instant::now();
+            let breadcrumbs: Vec<crate::web::context::BreadcrumbEntry> = {
+                let parts: Vec<&str> = slug.split('/').collect();
+                let mut crumbs = Vec::new();
+                for i in 0..parts.len().saturating_sub(1) {
+                    let s = parts[..=i].join("/");
+                    crumbs.push(crate::web::context::BreadcrumbEntry {
+                        title: parts[i].to_string(),
+                        slug: s,
+                    });
+                }
+                crumbs
+            };
+            let ph_html = engine
+                .render_page_history(
+                    &vault_ctx,
+                    &file.page_name,
+                    &slug,
+                    &breadcrumbs,
+                    "[]",
+                    false,
+                    "build",
+                )
+                .map_err(|e| {
+                    eprintln!("{}", e.stderr_line(&slug));
+                    anyhow::anyhow!("{e}")
+                })?;
+            let hist_bytes = ph_html.len();
+            std::fs::write(page_dir.join("_history.html"), ph_html)?;
+            if verbose {
+                eprintln!(
+                    "[zetl] history-static: page {:?} slug={:?} bytes={} duration_ms={}",
+                    file.page_name,
+                    slug,
+                    hist_bytes,
+                    hist_start.elapsed().as_millis()
+                );
+            }
+        }
+
         // Per-page OG image.
         match crate::web::og::render_og_png(&file.page_name, &vault_ctx.name, og_bg.as_ref()) {
             Ok(bytes) => {
@@ -523,6 +567,52 @@ pub fn build_static(
     } else {
         false
     };
+
+    // SPEC-027 REQ-303: static emission of vault-wide history page.
+    // Renders even when history is absent — the template's graceful-absence
+    // branch produces a short "No history yet" body.
+    #[cfg(feature = "history")]
+    {
+        use crate::history::jj_backend::VcsBackend;
+        let vh_start = std::time::Instant::now();
+        let recent_changes = match crate::history::open_history(vault_root) {
+            Ok(backend) => match backend.list_changes(10_000) {
+                Ok(snaps) => {
+                    crate::history::core::build_recent_changes(&snaps, vault_root, 50)
+                        .unwrap_or_default()
+                }
+                Err(_) => Vec::new(),
+            },
+            Err(_) => Vec::new(),
+        };
+        let sparkline: Vec<f32> = vault_ctx
+            .history
+            .get("trend")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|pt| {
+                        pt.get("total_links").and_then(|v| v.as_f64()).map(|f| f as f32)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        match engine.render_vault_history(&vault_ctx, &recent_changes, &sparkline, "build") {
+            Ok(html) => {
+                std::fs::write(out.join("_history.html"), html)?;
+                if verbose {
+                    eprintln!(
+                        "[zetl] history-static: vault entries={} duration_ms={}",
+                        recent_changes.len(),
+                        vh_start.elapsed().as_millis()
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("[zetl] history-static: vault render failed: {e}");
+            }
+        }
+    }
 
     let suffix = match (static_copied, public_copied) {
         (true, true) => " (static assets + public overlay copied)",

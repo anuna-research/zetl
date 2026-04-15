@@ -371,7 +371,12 @@ pub async fn page_handler(
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
 
-    // Intercept /_history suffix → render page history UI.
+    // SPEC-027 REQ-303: /_history → vault-wide history page.
+    if slug == "_history" {
+        return vault_history_handler_inner(State(state)).await;
+    }
+
+    // Intercept /{slug}/_history → render page history UI.
     if let Some(page_slug) = slug.strip_suffix("/_history") {
         return page_history_handler_inner(State(state), page_slug.to_string()).await;
     }
@@ -2094,10 +2099,90 @@ async fn page_history_handler_inner(State(state): State<WebState>, page_slug: St
         &breadcrumbs,
         &history_json,
         has_draft,
+        "serve",
     ) {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
     }
+}
+
+// ── Vault history UI /_history ───────────────────────────────────────────
+
+/// Inner handler for `/_history` — vault-wide recent changes + trend sparkline.
+/// SPEC-027 REQ-303 / OBS-301.
+#[cfg(feature = "history")]
+async fn vault_history_handler_inner(State(state): State<WebState>) -> Response {
+    use crate::history::jj_backend::VcsBackend;
+    let start = std::time::Instant::now();
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    let vault_ctx = build_vault_context(&data, &vault_name);
+
+    let limit = 50usize;
+    let recent_changes = match crate::history::open_history(&state.vault_root) {
+        Ok(backend) => match backend.list_changes(10_000) {
+            Ok(snaps) => crate::history::core::build_recent_changes(
+                &snaps,
+                &state.vault_root,
+                limit,
+            )
+            .unwrap_or_default(),
+            Err(_) => Vec::new(),
+        },
+        Err(_) => Vec::new(),
+    };
+    let sparkline: Vec<f32> = vault_ctx
+        .history
+        .get("trend")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|pt| {
+                    pt.get("total_links")
+                        .and_then(|v| v.as_f64())
+                        .map(|f| f as f32)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let resp = match state.engine.render_vault_history(
+        &vault_ctx,
+        &recent_changes,
+        &sparkline,
+        "serve",
+    ) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => render_error_response(e),
+    };
+
+    if state.verbose {
+        eprintln!(
+            "[zetl] history-route: path=/_history entries={} duration_ms={}",
+            recent_changes.len(),
+            start.elapsed().as_millis()
+        );
+    }
+    resp
+}
+
+/// Fallback when the history feature is disabled: serve a 404 (the route
+/// is registered as a normal page slug which would otherwise 404 anyway).
+#[cfg(not(feature = "history"))]
+async fn vault_history_handler_inner(State(_state): State<WebState>) -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Html(
+            "<html><body><h1>404 — Not Found</h1><p>History feature is not enabled in this build.</p></body></html>".to_string(),
+        ),
+    )
+        .into_response()
 }
 
 /// GET /api/history/file-diff — unified diff of a file at a specific commit.

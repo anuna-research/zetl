@@ -383,6 +383,10 @@
           <kbd>⌘K</kbd>
         </button>
         <a href="{{ root_path }}help/{{ index_file }}" class="block text-xs opacity-80 hover:opacity-100 mb-3 px-2">Help &amp; install</a>
+        {# SPEC-027 REQ-304 / REQ-305: vault-history link, omitted when history absent. #}
+        {%- if vault.history and vault.history.snapshot_count and vault.history.snapshot_count > 0 %}
+        <a href="{{ root_path }}_history{% if mode == 'build' %}.html{% endif %}" class="block text-xs opacity-80 hover:opacity-100 mb-3 px-2">Recent changes</a>
+        {%- endif %}
         {% block sidebar %}
         {% macro render_tree(nodes) %}
         <ul class="menu menu-sm sidebar-tree">

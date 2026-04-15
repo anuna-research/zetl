@@ -227,6 +227,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "admin_permissions.html",
     "dashboard.html",
     "page_history.html",
+    "vault_history.html",
     "help.html",
 ];
 
@@ -250,6 +251,23 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
         // Tier 3: fall back to built-in default theme embedded at compile time
         Ok(bundled_template("default", name).map(|s| s.to_string()))
     });
+
+    // SPEC-027 REQ-300: expose humanise_days (e.g. `3d`, `2w`, `9mo`) as a
+    // template filter for history-metadata rendering.
+    #[cfg(feature = "history")]
+    env.add_filter(
+        "humanise_days",
+        |v: minijinja::Value| -> Result<String, minijinja::Error> {
+            let n = v.as_i64().ok_or_else(|| {
+                minijinja::Error::new(
+                    minijinja::ErrorKind::InvalidOperation,
+                    "humanise_days expects an integer",
+                )
+            })?;
+            Ok(crate::history::core::humanise_days(n))
+        },
+    );
+
     env
 }
 
@@ -681,8 +699,10 @@ impl TemplateEngine {
         breadcrumbs: &[super::context::BreadcrumbEntry],
         history_json: &str,
         has_draft: bool,
+        mode: &str,
     ) -> Result<String, TemplateError> {
         let search_index = build_search_index(vault_ctx);
+        let root_path = compute_root_path(mode, page_slug);
         let ctx = context! {
             vault => vault_ctx,
             page_title => page_title,
@@ -690,12 +710,12 @@ impl TemplateEngine {
             breadcrumbs => breadcrumbs,
             history_json => history_json,
             has_draft => has_draft,
-            mode => "serve",
+            mode => mode,
             search_index => search_index,
             theme => &self.theme,
             active_slug => page_slug,
-            root_path => "/",
-            index_file => "",
+            root_path => root_path,
+            index_file => index_file(mode),
         };
         let env = self.env();
         let tmpl = env
@@ -704,6 +724,39 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("page_history.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the vault-wide history UI (/_history) — SPEC-027 REQ-303.
+    #[cfg(feature = "history")]
+    pub fn render_vault_history(
+        &self,
+        vault_ctx: &VaultContext,
+        recent_changes: &[crate::history::core::RecentChangeEntry],
+        sparkline_points: &[f32],
+        mode: &str,
+    ) -> Result<String, TemplateError> {
+        let search_index = build_search_index(vault_ctx);
+        let root_path = compute_root_path(mode, "");
+        let ctx = context! {
+            vault => vault_ctx,
+            recent_changes => recent_changes,
+            sparkline_points => sparkline_points,
+            mode => mode,
+            search_index => search_index,
+            theme => &self.theme,
+            active_slug => "",
+            root_path => root_path,
+            index_file => index_file(mode),
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("vault_history.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("vault_history.html"));
         }
         Ok(html)
     }

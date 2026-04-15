@@ -422,6 +422,57 @@ pub struct VaultHistoryContext {
     pub unique_states: usize,
 }
 
+/// How a page changed between two adjacent snapshots. Fed into the vault
+/// recent-changes surface (SPEC-027 REQ-303).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ChangeKind {
+    Added,
+    Modified,
+    Removed,
+}
+
+/// One entry in the vault-wide recent-changes list.
+///
+/// Emitted by [`build_recent_changes`] and rendered by
+/// `themes/default/vault_history.html`.
+#[derive(Debug, Clone, Serialize)]
+pub struct RecentChangeEntry {
+    pub page_title: String,
+    pub page_slug: String,
+    /// RFC 3339 timestamp of the snapshot in which the change was observed.
+    pub changed_at: String,
+    pub change_kind: ChangeKind,
+}
+
+/// Humanise a non-negative day count as a compact label for UI surfaces.
+///
+/// - `< 1` → `"today"`
+/// - `< 7` → `"{n}d"`
+/// - `< 30` → `"{n}w"`
+/// - `< 365` → `"{n}mo"`
+/// - otherwise → `"{n}y"`
+///
+/// Negative inputs saturate to `"today"` — the UI should not display future
+/// durations.
+///
+/// This is a **pure function**: no I/O.
+pub fn humanise_days(days: i64) -> String {
+    if days < 1 {
+        return "today".to_string();
+    }
+    if days < 7 {
+        return format!("{days}d");
+    }
+    if days < 30 {
+        return format!("{}w", days / 7);
+    }
+    if days < 365 {
+        return format!("{}mo", days / 30);
+    }
+    format!("{}y", days / 365)
+}
+
 /// Sample up to `max_points` uniformly spaced entries from a newest-first history list.
 ///
 /// Returns trend points in **oldest-first** order suitable for chart rendering.
@@ -887,6 +938,120 @@ pub fn serialize_history_index(
     })
 }
 
+/// Build the vault-wide recent-changes list (SPEC-027 REQ-303 / CON-303).
+///
+/// Walks `snapshots` newest-first, loads the cached `ParsedFile` list for
+/// each, and diffs adjacent pairs to emit per-page change events:
+///
+/// - A page in the newer snapshot but not the older → [`ChangeKind::Added`]
+/// - A page in the older snapshot but not the newer → [`ChangeKind::Removed`]
+/// - A page in both whose file-Merkle root differs → [`ChangeKind::Modified`]
+///
+/// Results are returned newest-first, capped at `limit` entries. Snapshots
+/// whose cached index cannot be loaded are skipped (no partial events).
+///
+/// This function is purity-adjacent: it does disk IO via
+/// `HistoricalIndexCache` just like [`build_vault_history`].
+pub fn build_recent_changes(
+    snapshots: &[ChangeInfo],
+    vault_root: &std::path::Path,
+    limit: usize,
+) -> anyhow::Result<Vec<RecentChangeEntry>> {
+    use crate::history::cache::HistoricalIndexCache;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    if snapshots.is_empty() || limit == 0 {
+        return Ok(Vec::new());
+    }
+
+    let cache = HistoricalIndexCache::with_default_capacity();
+
+    // Load per-snapshot file list keyed by page_name → (file_merkle root, path).
+    // `None` when the cache entry is missing; such snapshots are skipped in pairs.
+    let per_snapshot: Vec<Option<HashMap<String, (crate::types::ContentHash, PathBuf)>>> =
+        snapshots
+            .iter()
+            .map(|snap| {
+                let hash = extract_vault_root_hash_from_description(&snap.description)?;
+                let file_map: HashMap<PathBuf, ParsedFile> =
+                    cache.load(vault_root, &hash).ok().flatten()?;
+                let by_page = file_map
+                    .into_iter()
+                    .map(|(path, file)| {
+                        let root = file
+                            .file_merkle
+                            .as_ref()
+                            .map(|fm| fm.root_hash)
+                            .unwrap_or([0u8; 32]);
+                        (file.page_name, (root, path))
+                    })
+                    .collect();
+                Some(by_page)
+            })
+            .collect();
+
+    let mut out: Vec<RecentChangeEntry> = Vec::new();
+
+    for i in 0..snapshots.len() {
+        if out.len() >= limit {
+            break;
+        }
+        let newer = match &per_snapshot[i] {
+            Some(m) => m,
+            None => continue,
+        };
+        // The oldest snapshot has no prior to diff against — every page in
+        // it would look "Added", which is noisy. Skip the tail.
+        let older = match per_snapshot.get(i + 1).and_then(|o| o.as_ref()) {
+            Some(m) => m,
+            None => continue,
+        };
+        let ts = snapshots[i].timestamp.to_rfc3339();
+
+        // Added / Modified: walk newer.
+        for (page_name, (new_root, path)) in newer {
+            let kind = match older.get(page_name) {
+                None => Some(ChangeKind::Added),
+                Some((old_root, _)) if old_root != new_root => Some(ChangeKind::Modified),
+                _ => None,
+            };
+            if let Some(change_kind) = kind {
+                out.push(RecentChangeEntry {
+                    page_title: page_name.clone(),
+                    page_slug: crate::scanner::page_slug_from_path(path),
+                    changed_at: ts.clone(),
+                    change_kind,
+                });
+                if out.len() >= limit {
+                    break;
+                }
+            }
+        }
+        if out.len() >= limit {
+            break;
+        }
+
+        // Removed: walk older for pages absent in newer.
+        for (page_name, (_old_root, path)) in older {
+            if !newer.contains_key(page_name) {
+                out.push(RecentChangeEntry {
+                    page_title: page_name.clone(),
+                    page_slug: crate::scanner::page_slug_from_path(path),
+                    changed_at: ts.clone(),
+                    change_kind: ChangeKind::Removed,
+                });
+                if out.len() >= limit {
+                    break;
+                }
+            }
+        }
+    }
+
+    out.truncate(limit);
+    Ok(out)
+}
+
 fn pgh_sorted_vec(set: &std::collections::BTreeSet<String>) -> Vec<String> {
     set.iter().cloned().collect()
 }
@@ -1007,6 +1172,42 @@ fn parse_weekday(s: &str) -> Option<Weekday> {
 }
 
 // ─── Unit tests ───────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod humanise_days_tests {
+    use super::humanise_days;
+
+    #[test]
+    fn today_and_negative() {
+        assert_eq!(humanise_days(0), "today");
+        assert_eq!(humanise_days(-3), "today");
+    }
+
+    #[test]
+    fn days_under_a_week() {
+        assert_eq!(humanise_days(1), "1d");
+        assert_eq!(humanise_days(6), "6d");
+    }
+
+    #[test]
+    fn weeks() {
+        assert_eq!(humanise_days(7), "1w");
+        assert_eq!(humanise_days(14), "2w");
+        assert_eq!(humanise_days(29), "4w");
+    }
+
+    #[test]
+    fn months() {
+        assert_eq!(humanise_days(30), "1mo");
+        assert_eq!(humanise_days(364), "12mo");
+    }
+
+    #[test]
+    fn years() {
+        assert_eq!(humanise_days(365), "1y");
+        assert_eq!(humanise_days(730), "2y");
+    }
+}
 
 #[cfg(test)]
 mod time_expression_parser {
