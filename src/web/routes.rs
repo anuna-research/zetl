@@ -19,7 +19,7 @@ use crate::web::context::{build_folder_context, build_page_context, build_vault_
 use crate::web::engine::{bundled_theme_files, TemplateError};
 use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
-use crate::web::{reindex, WebState};
+use crate::web::{reindex, reindex_with, WebState};
 use base64::Engine as _;
 
 /// Collect recent git edits (up to `limit`) from the vault's git log.
@@ -1045,13 +1045,43 @@ pub async fn save_handler(
     }
 
     // Re-index the vault so the graph/links and search index reflect the edit.
-    match reindex(&state.vault_root) {
+    match reindex_with(&state.vault_root, &state.scan_options) {
         Ok(new_data) => {
             // Rebuild Tantivy search index so the reader picks up the new content
             // (ReloadPolicy::OnCommitWithDelay causes the existing reader to reload).
             if let Err(e) = SearchIndex::build(&state.vault_root, &new_data.files) {
                 eprintln!("search index rebuild error: {e}");
             }
+
+            // SPEC-028 / fix-2888c4c follow-up: take a jj snapshot + cache
+            // entry for the edited state so per-page and vault history
+            // surfaces see the change. Mirrors cmd_index and the CRDT
+            // flush_pipeline step 9.
+            #[cfg(feature = "history")]
+            {
+                use crate::merkle::{compute_file_root, compute_vault_root};
+                let file_hashes: Vec<(&std::path::Path, crate::types::ContentHash)> = new_data
+                    .files
+                    .iter()
+                    .map(|f| {
+                        let root = compute_file_root(&f.merkle_leaves);
+                        (f.path.as_path(), root)
+                    })
+                    .collect();
+                let vault_root_bytes = compute_vault_root(&file_hashes);
+                let vault_root_hash: String = vault_root_bytes
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect();
+                if let Ok(Some(_)) =
+                    crate::history::auto_snapshot(&state.vault_root, Some(&vault_root_hash))
+                {
+                    let cache =
+                        crate::history::cache::HistoricalIndexCache::with_default_capacity();
+                    let _ = cache.store(&state.vault_root, &vault_root_hash, &new_data.files);
+                }
+            }
+
             *state.data.write().unwrap_or_else(|e| e.into_inner()) = new_data;
         }
         Err(e) => {
