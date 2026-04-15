@@ -136,7 +136,58 @@
     {% endif %}
   </div>
 
+  {# SPEC-028: jj-derived snapshot timeline. Shown above the git-commit
+     timeline when page.history is populated — independent of git, so
+     imported pages without git commits still have a history surface.  #}
+  {%- if page_history and page_history.last_changed %}
+  <section class="mb-6" aria-label="Snapshot timeline">
+    <h2 class="text-lg font-semibold mb-2">Snapshot timeline</h2>
+    <div class="text-sm opacity-80 mb-3" style="display:flex; gap:1.25rem; flex-wrap:wrap;">
+      {%- if page_history.created_at %}
+      <span>First seen <time datetime="{{ page_history.created_at }}">{{ page_history.created_at[:10] }}</time></span>
+      {%- endif %}
+      <span>Last changed <time datetime="{{ page_history.last_changed }}">{{ page_history.last_changed[:10] }}</time></span>
+      {%- if page_history.stable_days is number and page_history.stable_days > 0 %}
+      <span>Stable {{ page_history.stable_days | humanise_days }}</span>
+      {%- endif %}
+    </div>
+
+    {%- if page_history.recent_changes and page_history.recent_changes | length > 0 %}
+    <ol class="list-none" style="padding:0; margin:0; border-top:1px solid oklch(var(--b3));">
+      {%- for entry in page_history.recent_changes %}
+      <li style="display:flex; gap:0.75rem; align-items:baseline; padding:0.5rem 0.25rem; border-bottom:1px solid oklch(var(--b3)); font-size:0.9rem;">
+        <span style="font-family:ui-monospace,monospace; font-size:0.75rem; background:oklch(var(--b2)); padding:1px 6px; border-radius:3px;">{{ entry.change_id }}</span>
+        <span style="flex:1;">
+          {%- if entry.delta %}
+            {%- set parts = [] %}
+            {%- if entry.delta.appeared %}{%- set parts = parts + ["appeared"] %}{%- endif %}
+            {%- if entry.delta.disappeared %}{%- set parts = parts + ["removed"] %}{%- endif %}
+            {%- if entry.delta.links_added | length > 0 %}{%- set parts = parts + ["+" ~ (entry.delta.links_added | length) ~ " links"] %}{%- endif %}
+            {%- if entry.delta.links_removed | length > 0 %}{%- set parts = parts + ["−" ~ (entry.delta.links_removed | length) ~ " links"] %}{%- endif %}
+            {%- if entry.delta.backlinks_added | length > 0 %}{%- set parts = parts + ["+" ~ (entry.delta.backlinks_added | length) ~ " backlinks"] %}{%- endif %}
+            {%- if entry.delta.backlinks_removed | length > 0 %}{%- set parts = parts + ["−" ~ (entry.delta.backlinks_removed | length) ~ " backlinks"] %}{%- endif %}
+            {{ parts | join(" · ") or "neighbourhood unchanged" }}
+          {%- else %}
+            snapshot recorded
+          {%- endif %}
+        </span>
+        <span style="opacity:0.65; font-variant-numeric:tabular-nums; font-size:0.8rem;">{{ entry.link_count }} links · {{ entry.backlink_count }} backlinks</span>
+        <time style="opacity:0.65; font-size:0.8rem;" datetime="{{ entry.timestamp }}">{{ entry.timestamp[:10] }}</time>
+      </li>
+      {%- endfor %}
+    </ol>
+    {%- endif %}
+  </section>
+  {%- endif %}
+
+  {%- if history_json and history_json != "[]" %}
+  <section aria-label="Git commit log">
+    <h2 class="text-lg font-semibold mb-2">Git commit log</h2>
+    <div id="history-list"></div>
+  </section>
+  {%- else %}
   <div id="history-list"></div>
+  {%- endif %}
 
   <div id="diff-panel" class="diff-panel" style="display:none;">
     <div class="diff-header">

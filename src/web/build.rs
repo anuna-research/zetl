@@ -472,6 +472,7 @@ pub fn build_static(
                     &slug,
                     &breadcrumbs,
                     &git_entries_json,
+                    &page_ctx.history,
                     false,
                     "build",
                 )

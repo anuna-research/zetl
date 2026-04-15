@@ -706,6 +706,14 @@ impl TemplateEngine {
     }
 
     /// Render the page history UI (/{slug}/_history).
+    ///
+    /// `page_history` is the jj-derived `page.history` context (link
+    /// trend, snapshot-level neighbourhood deltas, last_changed). When
+    /// non-null it is rendered as a server-side "Snapshot timeline"
+    /// section that complements (or replaces) the JS-rendered git
+    /// commit log driven by `history_json` — important because pages
+    /// imported into the vault from outside zetl have no git commits
+    /// but may have many jj snapshots.
     #[allow(clippy::too_many_arguments)]
     pub fn render_page_history(
         &self,
@@ -714,6 +722,7 @@ impl TemplateEngine {
         page_slug: &str,
         breadcrumbs: &[super::context::BreadcrumbEntry],
         history_json: &str,
+        page_history: &serde_json::Value,
         has_draft: bool,
         mode: &str,
     ) -> Result<String, TemplateError> {
@@ -725,6 +734,7 @@ impl TemplateEngine {
             page_slug => page_slug,
             breadcrumbs => breadcrumbs,
             history_json => history_json,
+            page_history => page_history,
             has_draft => has_draft,
             mode => mode,
             search_index => search_index,
