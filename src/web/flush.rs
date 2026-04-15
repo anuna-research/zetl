@@ -162,9 +162,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
             Ok(Some(change_id)) => {
                 eprintln!("flush: jj snapshot {change_id} for {slug}");
                 let cache = crate::history::cache::HistoricalIndexCache::with_default_capacity();
-                if let Err(e) =
-                    cache.store(&state.vault_root, &vault_root_hash, &new_data.files)
-                {
+                if let Err(e) = cache.store(&state.vault_root, &vault_root_hash, &new_data.files) {
                     warnings.push(format!("history cache store: {e}"));
                 }
             }

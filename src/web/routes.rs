@@ -2093,14 +2093,15 @@ async fn page_history_handler_inner(State(state): State<WebState>, page_slug: St
     let history_json = serde_json::to_string(&git_entries).unwrap_or_else(|_| "[]".to_string());
 
     // jj-derived per-page history (link trend, snapshot timeline, last_changed).
-    // Independent of git: surfaces 603-snapshot histories for files that
-    // were imported and never edited through serve.
-    let page_history_value = crate::history::build_template_page_history_context(
-        &page_name,
-        &state.vault_root,
-    )
-    .map(|h| serde_json::to_value(h).unwrap_or(serde_json::Value::Null))
-    .unwrap_or(serde_json::Value::Null);
+    // Independent of git: surfaces snapshot histories for files that were
+    // imported and never edited through serve.
+    #[cfg(feature = "history")]
+    let page_history_value =
+        crate::history::build_template_page_history_context(&page_name, &state.vault_root)
+            .map(|h| serde_json::to_value(h).unwrap_or(serde_json::Value::Null))
+            .unwrap_or(serde_json::Value::Null);
+    #[cfg(not(feature = "history"))]
+    let page_history_value = serde_json::Value::Null;
 
     match state.engine.render_page_history(
         &vault_ctx,
