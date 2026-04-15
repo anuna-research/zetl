@@ -702,6 +702,26 @@ impl CrdtDocStore {
             .contains_key(slug)
     }
 
+    /// If an in-memory CRDT session exists for `slug`, discard its
+    /// current state and reload from disk — used by the simple PUT save
+    /// handler after it writes fresh content, so subsequent typing in
+    /// the editor merges into the saved state rather than the
+    /// pre-save CRDT.
+    pub fn reload_if_loaded(&self, slug: &str) {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        if !docs.contains_key(slug) {
+            return;
+        }
+        if let Ok(doc) = self.load_from_disk(slug) {
+            if let Some(entry) = docs.get_mut(slug) {
+                entry.doc = doc;
+                entry.dirty = false;
+                entry.last_access = Instant::now();
+                entry.last_flush = Instant::now();
+            }
+        }
+    }
+
     /// Return CRDT metadata for a loaded document: `(dirty, secs_since_flush, content_hash)`.
     ///
     /// `content_hash` is a BLAKE3 hex digest of the live CRDT markdown.  When

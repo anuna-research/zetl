@@ -1004,10 +1004,21 @@ pub async fn save_handler(
         }
     }
 
+    // Mark as pending write BEFORE writing so fs_watch ignores our own
+    // event (REQ-020-039). Without this, fs_watch fires, reconcile runs
+    // against any active in-memory CRDT session for this slug, and a
+    // dirty CRDT can overwrite the just-written content on the next
+    // quiescence flush — user sees their save revert on refresh.
+    state.pending_writes.insert(&full_path);
     if let Err(e) = std::fs::write(&full_path, &body) {
+        state.pending_writes.remove(&full_path);
         eprintln!("save error: {e}");
         return (StatusCode::INTERNAL_SERVER_ERROR, "Write failed").into_response();
     }
+    // Also reload the CRDT session (if any) from the fresh disk content
+    // so further typing happens on top of the saved state rather than
+    // the pre-save in-memory CRDT.
+    state.crdt_store.reload_if_loaded(slug);
 
     // ── Git auto-commit (REQ-020-015, CON-020-006) ────────────────────
     // Resolve user identity early so we can attribute the git commit.
