@@ -384,7 +384,25 @@ fn execute_hook_with_timeout(
         cmd.env(key, val);
     }
 
-    let mut child = cmd.spawn()?;
+    // Retry on ETXTBSY ("Text file busy"): when a hook script is written
+    // and immediately executed — common in tests and in tools that
+    // generate hooks programmatically — Linux can reject the `execve`
+    // for up to a few milliseconds because another cargo-test thread's
+    // concurrent `fork()` inherited a still-open write fd to the script.
+    // See rust-lang/rust#114554.
+    let mut child = {
+        let mut attempt: u32 = 0;
+        loop {
+            match cmd.spawn() {
+                Ok(c) => break c,
+                Err(e) if e.raw_os_error() == Some(26) && attempt < 20 => {
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    };
 
     // Write context JSON to stdin on a background thread so the timeout
     // polling loop below is not blocked when the hook does not consume stdin
