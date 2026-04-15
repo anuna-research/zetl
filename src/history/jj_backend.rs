@@ -48,6 +48,16 @@ pub trait VcsBackend {
     /// (deduplication by tree hash).
     fn snapshot(&mut self, description: &str) -> anyhow::Result<Option<String>>;
 
+    /// Like [`snapshot`] but attribute the commit to `author = (name, email)`
+    /// when provided. Default impl ignores the author.
+    fn snapshot_as(
+        &mut self,
+        description: &str,
+        _author: Option<(&str, &str)>,
+    ) -> anyhow::Result<Option<String>> {
+        self.snapshot(description)
+    }
+
     /// Read the bytes of `vault_path` (relative, forward-slash separated) at
     /// the commit identified by `change_id_prefix`.
     fn read_file_at(&self, change_id_prefix: &str, vault_path: &str) -> anyhow::Result<Vec<u8>>;
@@ -295,6 +305,14 @@ impl JjBackend {
 
 impl VcsBackend for JjBackend {
     fn snapshot(&mut self, description: &str) -> anyhow::Result<Option<String>> {
+        self.snapshot_as(description, None)
+    }
+
+    fn snapshot_as(
+        &mut self,
+        description: &str,
+        author: Option<(&str, &str)>,
+    ) -> anyhow::Result<Option<String>> {
         let base_ignores = GitIgnoreFile::empty();
         let snap_opts = SnapshotOptions {
             base_ignores,
@@ -339,7 +357,15 @@ impl VcsBackend for JjBackend {
         //   root → initial_wc → snap1 → snap2 → …
         let mut tx = self.repo.start_transaction();
 
-        let now = Signature {
+        let (author_name, author_email) = author
+            .map(|(n, e)| (n.to_owned(), e.to_owned()))
+            .unwrap_or_else(|| ("zetl".to_owned(), "zetl@localhost".to_owned()));
+        let author_sig = Signature {
+            name: author_name,
+            email: author_email,
+            timestamp: Timestamp::now(),
+        };
+        let committer_sig = Signature {
             name: "zetl".to_owned(),
             email: "zetl@localhost".to_owned(),
             timestamp: Timestamp::now(),
@@ -349,8 +375,8 @@ impl VcsBackend for JjBackend {
             .repo_mut()
             .new_commit(vec![wc_commit_id], new_tree_id)
             .set_description(description)
-            .set_author(now.clone())
-            .set_committer(now)
+            .set_author(author_sig)
+            .set_committer(committer_sig)
             .write()
             .context("failed to write new commit")?;
 

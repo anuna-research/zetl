@@ -1094,9 +1094,22 @@ pub async fn save_handler(
                     .iter()
                     .map(|b| format!("{b:02x}"))
                     .collect();
-                if let Ok(Some(_)) =
-                    crate::history::auto_snapshot(&state.vault_root, Some(&vault_root_hash))
-                {
+                // Attribute the snapshot to the authenticated user when
+                // available (matches the git-commit path above).
+                let (profile_name, profile_id) = if let Some(ref uid) = session_user_id {
+                    match crate::user::load_profile(&state.vault_root, uid) {
+                        Ok(Some(p)) => (p.name.clone(), p.id.clone()),
+                        _ => ("zetl".to_string(), "zetl".to_string()),
+                    }
+                } else {
+                    ("zetl".to_string(), "zetl".to_string())
+                };
+                let author_email = format!("{profile_id}@vault");
+                if let Ok(Some(_)) = crate::history::auto_snapshot_as(
+                    &state.vault_root,
+                    Some(&vault_root_hash),
+                    Some((&profile_name, &author_email)),
+                ) {
                     let cache =
                         crate::history::cache::HistoricalIndexCache::with_default_capacity();
                     let _ = cache.store(&state.vault_root, &vault_root_hash, &new_data.files);

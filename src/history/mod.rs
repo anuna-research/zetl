@@ -326,6 +326,17 @@ pub fn auto_snapshot(
     vault_root: &Path,
     vault_root_hash: Option<&str>,
 ) -> anyhow::Result<Option<String>> {
+    auto_snapshot_as(vault_root, vault_root_hash, None)
+}
+
+/// Like [`auto_snapshot`] but attributes the jj commit to a specific
+/// author. `author` is `(name, email)`. When `None`, falls back to the
+/// default `("zetl", "zetl@localhost")` identity.
+pub fn auto_snapshot_as(
+    vault_root: &Path,
+    vault_root_hash: Option<&str>,
+    author: Option<(&str, &str)>,
+) -> anyhow::Result<Option<String>> {
     let mut backend = jj_backend::JjBackend::open_or_init_at_vault_root(vault_root)?;
 
     let description = match vault_root_hash {
@@ -348,5 +359,5 @@ pub fn auto_snapshot(
         }
     }
 
-    backend.snapshot(&description)
+    backend.snapshot_as(&description, author)
 }
