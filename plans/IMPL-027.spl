@@ -1,0 +1,334 @@
+;; IMPL-027: History UI — Per-Page and Per-Vault History Surfaces
+;; Implements SPEC-027 v0.1.0
+
+(meta plan
+  (id "IMPL-027")
+  (title "History UI — Per-Page and Per-Vault History Surfaces")
+  (version "0.1.0")
+  (status "draft")
+  (created "2026-04-15")
+  (author "agent:claude")
+  (spec "SPEC-027")
+  (description "Wire the existing history data pipeline to the default-theme UI. Add a per-page metadata strip, emit per-page history pages statically, and introduce a vault-wide /history page with recent changes and trend sparkline. Maintain serve/build parity and graceful absence when history is null."))
+
+;; ── Agents ──────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── Tasks ───────────────────────────────────────────────
+
+;; Phase 1: pure core additions
+(given task-humanise-days)
+(given task-recent-changes-builder)
+
+;; Phase 2: template engine + templates
+(given task-vault-history-template)
+(given task-vault-history-render-method)
+(given task-page-template-metadata-strip)
+(given task-base-template-recent-changes-link)
+(given task-page-history-template-polish)
+
+;; Phase 3: route + build emission
+(given task-vault-history-route)
+(given task-build-emit-page-history)
+(given task-build-emit-vault-history)
+
+;; Phase 4: tests
+(given task-integration-tests-serve)
+(given task-integration-tests-build)
+(given task-graceful-absence-tests)
+(given task-accessibility-tests)
+(given task-performance-benchmark)
+
+;; Phase 5: docs + review
+(given task-changelog-readme)
+(given task-synthetic-user-run)
+(given task-adversarial-review)
+
+;; ── No-deps markers ────────────────────────────────────
+(given no-deps-humanise-days)
+(given no-deps-recent-changes-builder)
+
+;; ── Task Metadata ──────────────────────────────────────
+
+(meta task-humanise-days
+  (description "Add pure `history::core::humanise_days(days: i64) -> String` converting stable_days to humanised labels: 0 -> 'today', 1 -> '1d', 2..13 -> 'Nd', 14..60 -> 'Nw', 61..730 -> 'Nmo', 731.. -> 'Ny'. Table-driven unit tests cover all boundaries including negatives (clamp to 'today' or return 'future' per clarification in implementation).")
+  (acceptance "Unit tests in src/history/core.rs cover day boundaries 0, 1, 2, 13, 14, 60, 61, 729, 730, 731, negative; cargo test history::core::humanise_days passes")
+  (trace "REQ-300"))
+
+(meta task-recent-changes-builder
+  (description "Add pure `history::core::build_recent_changes(vault_root: &Path, limit: usize) -> Vec<RecentChangeEntry>` and the RecentChangeEntry struct (page_title, page_slug, changed_at RFC3339, change_kind enum). Derives from existing snapshot + cache readers in history::core (no new jj calls). Returns reverse-chronological order, at most `limit` entries. Defer behind `#[cfg(feature = \"history\")]` where needed.")
+  (acceptance "Unit tests: empty vault returns empty Vec; vault with N>limit changes returns exactly `limit`, newest first; vault with page rename produces Added+Removed entries as appropriate; clippy::disallowed_methods passes on std::fs")
+  (trace "REQ-303 CON-303"))
+
+(meta task-vault-history-template
+  (description "Create `themes/default/vault_history.html` rendering: snapshot_count, oldest/newest timestamps as <time datetime=\"...\">, inline SVG sparkline (derived from vault.history.trend sampled to ≤30 points) with aria-label containing first/last values and trend direction, semantic <ol> of recent_changes with <time> elements and anchors to each page. Graceful absence: when snapshot_count==0 render the single-line empty-state body from SPEC-027 §3.2.")
+  (acceptance "Template renders without error against fixture contexts covering populated + empty cases; axe-core check shows zero critical violations; SVG sparkline has non-empty aria-label")
+  (trace "REQ-303 REQ-305 NFR-301"))
+
+(meta task-vault-history-render-method
+  (description "Add `TemplateEngine::render_vault_history(&self, vault_ctx, recent_changes, sparkline_points, mode) -> Result<String, TemplateError>` in src/web/engine.rs. Register 'vault_history.html' in KNOWN_TEMPLATES. Context matches CON-303. Mirrors the shape of render_page_history.")
+  (acceptance "cargo check passes; KNOWN_TEMPLATES includes vault_history.html; unit test renders a minimal fixture successfully")
+  (trace "CON-303 REQ-303"))
+
+(meta task-page-template-metadata-strip
+  (description "Modify `themes/default/page.html` to render a metadata strip below the title and above the body. Strip contains: <time datetime=\"...\">last_changed localised date</time>, separator, stable_days humanised via history.stable_days_label (we compute in builder or inline), separator, anchor to `{{ root_path }}pages/{{ page.slug }}/history{{ index_file | default('') }}` with text 'history'. Entirely wrapped in `{% if page.history %}...{% endif %}` for graceful absence (REQ-305). Use class name 'page-history-meta' for theming.")
+  (acceptance "TEST-300 and TEST-301 pass; rendering a page with page.history=null produces no .page-history-meta element in the HTML")
+  (trace "REQ-300 REQ-301 REQ-305"))
+
+(meta task-base-template-recent-changes-link
+  (description "Modify `themes/default/base.html` to include a 'Recent changes' link in the sidebar/footer (whichever the default theme uses). Wrapped in `{% if vault.history and vault.history.snapshot_count > 0 %}...{% endif %}`. href resolves to `{{ root_path }}history{{ index_file | default('') }}`. Preserve existing layout — this is an additive link, not a reflow.")
+  (acceptance "TEST-304 passes; with vault.history=null the link is absent from rendered HTML")
+  (trace "REQ-304 REQ-305"))
+
+(meta task-page-history-template-polish
+  (description "Audit existing `themes/default/page_history.html` (325 lines) against the spec: ensure it renders link_trend sparkline with aria-label (NFR-301), uses <time datetime=\"...\"> on every timestamp, and degrades gracefully when history_json is empty. Fix any gaps; do NOT rewrite.")
+  (acceptance "axe-core check against the fixture shows zero critical violations; all timestamps are <time> elements; visual no-regression review against current output")
+  (trace "REQ-301 NFR-301"))
+
+(meta task-vault-history-route
+  (description "Add GET /history handler in src/web/routes.rs: calls history::build_template_vault_history_context (existing) + the new build_recent_changes, samples sparkline points, calls engine.render_vault_history. Emit OBS-301 log line when state.verbose. Under feature='history' only; otherwise return 404 with a one-line message.")
+  (acceptance "TEST-303 passes under serve mode; /history returns 200 with expected content when history feature enabled; returns 404 gracefully when feature disabled")
+  (trace "REQ-303 OBS-301"))
+
+(meta task-build-emit-page-history
+  (description "Extend the per-page loop in src/web/build.rs (around the render_page call) to also call engine.render_page_history when build_template_page_history_context returns Some(_) and the result has ≥1 entry. Write to `{out_dir}/pages/{slug}/history.html`. Emit OBS-300 log line when verbose. Reuse the VaultContext and breadcrumbs already built for the parent page render.")
+  (acceptance "TEST-302 passes; dist/pages/<slug>/history.html exists for all pages with history; does NOT exist for pages with None history; CON-302 error propagation works (build fails with page slug in diagnostic)")
+  (trace "REQ-302 CON-302 OBS-300"))
+
+(meta task-build-emit-vault-history
+  (description "At the end of build_static (after the per-page loop, alongside write_history_index_json), invoke engine.render_vault_history and write `{out_dir}/history.html`. Skip silently when vault.history is null or snapshot_count==0 (REQ-305). Emit one OBS line on success.")
+  (acceptance "TEST-303 (build variant) passes; dist/history.html exists when history is populated; absent when vault.history=null with no build error")
+  (trace "REQ-303 REQ-305 OBS-300"))
+
+(meta task-integration-tests-serve
+  (description "Add tests to tests/history_integration.rs (requires --features history): TEST-300 (metadata strip serve), TEST-301 (link URL correctness), TEST-303 (vault /history serve), TEST-304 (base template link), TEST-306 (recent-changes limit). Use existing test fixtures / snapshot helpers in that file.")
+  (acceptance "cargo test --features history passes all 5 named tests; tests exercise both populated and null-history fixtures")
+  (trace "TEST-300 TEST-301 TEST-303 TEST-304 TEST-306"))
+
+(meta task-integration-tests-build
+  (description "Add tests covering build-mode parity: TEST-302 (per-page history.html emission), TEST-303 build variant (dist/history.html), TEST-307 (theme override with partial templates). Invoke zetl build via cargo run or the build_static function directly against a tempdir vault.")
+  (acceptance "cargo test --features history passes; temp dist/ contains the expected files; theme override fallback resolves vault_history.html to bundled default")
+  (trace "TEST-302 TEST-303 TEST-307"))
+
+(meta task-graceful-absence-tests
+  (description "Add TEST-305 variants: four tests, one per surface (metadata strip, per-page history link in base, vault history link, vault history body). Each renders with null or empty history and asserts (a) status 200, (b) the associated CSS class / selector does not appear, (c) no error in logs.")
+  (acceptance "TEST-305 suite passes; no surface rendered when backing data is null")
+  (trace "REQ-305 TEST-305"))
+
+(meta task-accessibility-tests
+  (description "Add TEST-NFR-301: run axe-core (or equivalent — if no JS axe runner is in-tree, use a Rust-side html5ever-based sanity check for <time datetime=...> elements, <ol>/<ul> semantics on the recent-changes list, and aria-label on the sparkline). Fixture-based; no browser required.")
+  (acceptance "Test asserts zero critical axe violations on page.html + vault_history.html fixtures; fails if aria-label removed from sparkline; fails if <time> removed from dates")
+  (trace "NFR-301 TEST-NFR-301"))
+
+(meta task-performance-benchmark
+  (description "Add TEST-NFR-300 benchmark (criterion or ad-hoc timing harness). Two measurements: (1) serve per-page render p95 before vs after the metadata strip, on a 500-page fixture; (2) zetl build wall-clock p95 over 5 runs before vs after. Assert serve delta ≤ 3ms p95 and build delta ≤ 10%.")
+  (acceptance "Benchmark output committed to research/SPEC-027-perf.md; both budgets met or the benchmark flags a regression that blocks merge")
+  (trace "NFR-300 TEST-NFR-300"))
+
+(meta task-changelog-readme
+  (description "Add CHANGELOG.md entry under the next minor version (the SPEC-026 minor bump may already be in flight — coordinate) describing the new per-page metadata strip, per-page history page in static builds, and the /history vault page. Add 'History UI' section to README.md explaining the two surfaces, graceful absence, and how to override via themes.")
+  (acceptance "TEST-308 doc test passes; CHANGELOG contains 'per-page history' or 'history UI'; README has the new section with a short example")
+  (trace "REQ-308 TEST-308"))
+
+(meta task-synthetic-user-run
+  (description "Run SPEC-027 §3 happy paths as a synthetic-user simulation per USDD §Synthetic User Protocol. Use the three user profiles in §2 (knowledge worker, reader of published vault, LLM reader). Log findings categorised per USDD taxonomy; each finding proposes a REQ amendment.")
+  (acceptance "Report at research/SPEC-027-synthetic-user.md with findings or explicit 'no findings' after all 3 happy paths across all 3 profiles")
+  (trace "SPEC-027 §3"))
+
+(meta task-adversarial-review
+  (description "Per Constitution §12: fresh-context reviewer (different session; cross-model per USDD Trust Tier 3) reviews the implementation against SPEC-027 with an explicit mandate to find defects. Focus: (a) graceful-absence edge cases — feature disabled, zero snapshots, page rename, deleted page; (b) build/serve parity — are there surfaces shown under serve but absent in build?; (c) NFR-300 budget realism on larger vaults.")
+  (acceptance "Review report at research/SPEC-027-adversarial-review.md; all defects raised either fixed or documented as accepted risk with justification")
+  (trace "Constitution §12"))
+
+;; ── Readiness Rules (DAG) ──────────────────────────────
+
+(normally r-ready-humanise-days
+  (and task-humanise-days no-deps-humanise-days)
+  ready-humanise-days)
+
+(normally r-ready-recent-changes-builder
+  (and task-recent-changes-builder no-deps-recent-changes-builder)
+  ready-recent-changes-builder)
+
+(normally r-ready-vault-history-template
+  (and task-vault-history-template completed-humanise-days)
+  ready-vault-history-template)
+
+(normally r-ready-vault-history-render-method
+  (and task-vault-history-render-method
+       completed-vault-history-template
+       completed-recent-changes-builder)
+  ready-vault-history-render-method)
+
+(normally r-ready-page-template-metadata-strip
+  (and task-page-template-metadata-strip completed-humanise-days)
+  ready-page-template-metadata-strip)
+
+(normally r-ready-base-template-recent-changes-link
+  (and task-base-template-recent-changes-link completed-humanise-days)
+  ready-base-template-recent-changes-link)
+
+(normally r-ready-page-history-template-polish
+  (and task-page-history-template-polish completed-humanise-days)
+  ready-page-history-template-polish)
+
+(normally r-ready-vault-history-route
+  (and task-vault-history-route completed-vault-history-render-method)
+  ready-vault-history-route)
+
+(normally r-ready-build-emit-page-history
+  (and task-build-emit-page-history
+       completed-page-history-template-polish)
+  ready-build-emit-page-history)
+
+(normally r-ready-build-emit-vault-history
+  (and task-build-emit-vault-history completed-vault-history-render-method)
+  ready-build-emit-vault-history)
+
+(normally r-ready-integration-tests-serve
+  (and task-integration-tests-serve
+       completed-vault-history-route
+       completed-page-template-metadata-strip
+       completed-base-template-recent-changes-link)
+  ready-integration-tests-serve)
+
+(normally r-ready-integration-tests-build
+  (and task-integration-tests-build
+       completed-build-emit-page-history
+       completed-build-emit-vault-history)
+  ready-integration-tests-build)
+
+(normally r-ready-graceful-absence-tests
+  (and task-graceful-absence-tests
+       completed-page-template-metadata-strip
+       completed-base-template-recent-changes-link
+       completed-vault-history-route
+       completed-build-emit-vault-history)
+  ready-graceful-absence-tests)
+
+(normally r-ready-accessibility-tests
+  (and task-accessibility-tests
+       completed-vault-history-template
+       completed-page-history-template-polish
+       completed-page-template-metadata-strip)
+  ready-accessibility-tests)
+
+(normally r-ready-performance-benchmark
+  (and task-performance-benchmark
+       completed-integration-tests-serve
+       completed-integration-tests-build)
+  ready-performance-benchmark)
+
+(normally r-ready-changelog-readme
+  (and task-changelog-readme
+       completed-integration-tests-serve
+       completed-integration-tests-build)
+  ready-changelog-readme)
+
+(normally r-ready-synthetic-user-run
+  (and task-synthetic-user-run
+       completed-integration-tests-serve
+       completed-integration-tests-build
+       completed-graceful-absence-tests
+       completed-accessibility-tests
+       completed-changelog-readme)
+  ready-synthetic-user-run)
+
+(normally r-ready-adversarial-review
+  (and task-adversarial-review completed-synthetic-user-run)
+  ready-adversarial-review)
+
+;; ── Assignment Rules ───────────────────────────────────
+
+(normally r-assign-humanise-days (and ready-humanise-days agent-claude-available) assign-to-humanise-days-claude)
+(normally r-assign-recent-changes-builder (and ready-recent-changes-builder agent-claude-available) assign-to-recent-changes-builder-claude)
+(normally r-assign-vault-history-template (and ready-vault-history-template agent-claude-available) assign-to-vault-history-template-claude)
+(normally r-assign-vault-history-render-method (and ready-vault-history-render-method agent-claude-available) assign-to-vault-history-render-method-claude)
+(normally r-assign-page-template-metadata-strip (and ready-page-template-metadata-strip agent-claude-available) assign-to-page-template-metadata-strip-claude)
+(normally r-assign-base-template-recent-changes-link (and ready-base-template-recent-changes-link agent-claude-available) assign-to-base-template-recent-changes-link-claude)
+(normally r-assign-page-history-template-polish (and ready-page-history-template-polish agent-claude-available) assign-to-page-history-template-polish-claude)
+(normally r-assign-vault-history-route (and ready-vault-history-route agent-claude-available) assign-to-vault-history-route-claude)
+(normally r-assign-build-emit-page-history (and ready-build-emit-page-history agent-claude-available) assign-to-build-emit-page-history-claude)
+(normally r-assign-build-emit-vault-history (and ready-build-emit-vault-history agent-claude-available) assign-to-build-emit-vault-history-claude)
+(normally r-assign-integration-tests-serve (and ready-integration-tests-serve agent-claude-available) assign-to-integration-tests-serve-claude)
+(normally r-assign-integration-tests-build (and ready-integration-tests-build agent-claude-available) assign-to-integration-tests-build-claude)
+(normally r-assign-graceful-absence-tests (and ready-graceful-absence-tests agent-claude-available) assign-to-graceful-absence-tests-claude)
+(normally r-assign-accessibility-tests (and ready-accessibility-tests agent-claude-available) assign-to-accessibility-tests-claude)
+(normally r-assign-performance-benchmark (and ready-performance-benchmark agent-claude-available) assign-to-performance-benchmark-claude)
+(normally r-assign-changelog-readme (and ready-changelog-readme agent-claude-available) assign-to-changelog-readme-claude)
+(normally r-assign-synthetic-user-run (and ready-synthetic-user-run agent-claude-available) assign-to-synthetic-user-run-claude)
+(normally r-assign-adversarial-review (and ready-adversarial-review agent-claude-available) assign-to-adversarial-review-claude)
+
+;; ── Meta ───────────────────────────────────────────────
+
+(meta r-ready-humanise-days
+  (description "Pure humanise_days function is foundational and has no deps.")
+  (justification "Used by metadata strip, base link, page_history polish, and vault_history template."))
+
+(meta r-ready-recent-changes-builder
+  (description "Pure recent-changes builder reads existing history infra; no deps.")
+  (justification "Prereq for the vault history render context."))
+
+(meta r-ready-vault-history-template
+  (description "Template can be authored once humanise_days exists for consistent date rendering.")
+  (justification "Template references humanise output; building it first would risk placeholder churn."))
+
+(meta r-ready-vault-history-render-method
+  (description "Render method wires template + recent-changes builder.")
+  (justification "Both prerequisites must exist before the method can type-check."))
+
+(meta r-ready-page-template-metadata-strip
+  (description "Page template edit needs the humaniser.")
+  (justification "The strip's stable_days label depends on humanise_days."))
+
+(meta r-ready-base-template-recent-changes-link
+  (description "Base template edit is independent of vault-history route but needs the same URL scheme.")
+  (justification "Safe to do once humanise_days lands; no runtime dep on the route."))
+
+(meta r-ready-page-history-template-polish
+  (description "Polishing the existing page_history.html relies on consistent date rendering.")
+  (justification "Aligns the older template with NFR-301 semantic requirements."))
+
+(meta r-ready-vault-history-route
+  (description "Route wiring requires the render method to exist.")
+  (justification "Serve path is the canonical test harness for the new template."))
+
+(meta r-ready-build-emit-page-history
+  (description "Build loop extension requires polished page_history.html.")
+  (justification "Avoids committing a build artefact that would immediately regress on polish."))
+
+(meta r-ready-build-emit-vault-history
+  (description "Build emission of vault history follows the render method.")
+  (justification "Uses the same render path as the serve handler; emit after render is stable."))
+
+(meta r-ready-integration-tests-serve
+  (description "Serve tests run once templates + route + links are all wired.")
+  (justification "End-to-end assertions require the full serve path."))
+
+(meta r-ready-integration-tests-build
+  (description "Build tests run once both build emissions are in place.")
+  (justification "Asserts artefacts on disk; both per-page and vault emissions must land."))
+
+(meta r-ready-graceful-absence-tests
+  (description "Absence tests run against all four surfaces once they exist.")
+  (justification "Single source of truth for REQ-305 enforcement."))
+
+(meta r-ready-accessibility-tests
+  (description "A11y tests run once templates are final.")
+  (justification "Avoid churn against intermediate markup."))
+
+(meta r-ready-performance-benchmark
+  (description "Perf benchmarks run last among the test tasks.")
+  (justification "Benchmarks are noisy if functional tests still churn behaviour."))
+
+(meta r-ready-changelog-readme
+  (description "Docs land once behaviour stabilises.")
+  (justification "Avoid documenting behaviour that shifts during test-driven refinement."))
+
+(meta r-ready-synthetic-user-run
+  (description "Synthetic user runs against the shipping artefact including docs.")
+  (justification "Users consult docs during onboarding; simulation must reflect the real experience."))
+
+(meta r-ready-adversarial-review
+  (description "Adversarial review runs last per Constitution §12.")
+  (justification "Review function operates on the full deliverable including synthetic-user findings."))
