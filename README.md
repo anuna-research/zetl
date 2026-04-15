@@ -409,6 +409,37 @@ dist/
     Another/index.html
 ```
 
+### History UI
+
+When built with the `history` feature (on by default), zetl surfaces
+temporal metadata on every rendered page and exposes a vault-wide
+recent-changes view.
+
+- **Per-page metadata strip** — a single visually-light line under the
+  page title: `Last changed 2026-03-18 · stable 28d · history`. The
+  `history` link opens the per-page edit timeline.
+- **Vault recent-changes page** — served at `/_history` (and emitted as
+  `_history.html` under `zetl build`). Shows snapshot count, first /
+  latest snapshot dates, an inline-SVG link-count trend sparkline, and a
+  reverse-chronological list (up to 50 entries) of added / modified /
+  removed pages.
+- **Sidebar link** — the default theme's left rail gets a "Recent
+  changes" entry alongside "Help & install".
+
+Every surface degrades silently when history is absent. A freshly-created
+vault with no snapshots shows no metadata strip, no sidebar link, and
+`/_history` renders a short "No history yet" body — no errors, no empty
+elements.
+
+Static and dynamic modes reach parity: `zetl build` writes
+`pages/<slug>/_history.html` for every page with snapshots and a
+`_history.html` at the output root, mirroring the serve-mode output.
+
+To disable the UI without disabling the feature, override the affected
+templates in `.zetl/themes/<theme>/` — remove the `page-history-meta`
+block from `page.html`, delete the "Recent changes" link in `base.html`,
+or ship an empty `vault_history.html`.
+
 ### Vault scanning and ignore files
 
 `zetl` walks the vault using a layered exclusion stack. From lowest to

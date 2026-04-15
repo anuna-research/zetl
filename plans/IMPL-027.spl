@@ -579,3 +579,115 @@
 (claims agent:claude
   :at "2026-04-15T03:31:50Z"
   (given completed-build-emit-vault-history))
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given claim-v1-integration-tests-serve)
+  (normally r-cl-state-v1-integration-tests-serve claim-v1-integration-tests-serve state-claimed-v1-integration-tests-serve)
+  (normally r-cl-chain-v1-integration-tests-serve state-claimed-v1-integration-tests-serve claimed-integration-tests-serve)
+)
+
+;; Propagation rules: failures in 'integration-tests-serve' block downstream tasks
+(normally r-propagate-changelog-readme-from-integration-tests-serve-failed failed-integration-tests-serve upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-integration-tests-serve-permanently-failed permanently-failed-integration-tests-serve upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-integration-tests-serve-stale-v1 stale-v1-integration-tests-serve upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-integration-tests-serve-timeout-v1 timeout-v1-integration-tests-serve upstream-blocked-changelog-readme)
+(normally r-propagate-performance-benchmark-from-integration-tests-serve-failed failed-integration-tests-serve upstream-blocked-performance-benchmark)
+(normally r-propagate-performance-benchmark-from-integration-tests-serve-permanently-failed permanently-failed-integration-tests-serve upstream-blocked-performance-benchmark)
+(normally r-propagate-performance-benchmark-from-integration-tests-serve-stale-v1 stale-v1-integration-tests-serve upstream-blocked-performance-benchmark)
+(normally r-propagate-performance-benchmark-from-integration-tests-serve-timeout-v1 timeout-v1-integration-tests-serve upstream-blocked-performance-benchmark)
+(normally r-propagate-synthetic-user-run-from-integration-tests-serve-failed failed-integration-tests-serve upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-integration-tests-serve-permanently-failed permanently-failed-integration-tests-serve upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-integration-tests-serve-stale-v1 stale-v1-integration-tests-serve upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-integration-tests-serve-timeout-v1 timeout-v1-integration-tests-serve upstream-blocked-synthetic-user-run)
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given completed-integration-tests-serve))
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given claim-v1-integration-tests-build)
+  (normally r-cl-state-v1-integration-tests-build claim-v1-integration-tests-build state-claimed-v1-integration-tests-build)
+  (normally r-cl-chain-v1-integration-tests-build state-claimed-v1-integration-tests-build claimed-integration-tests-build)
+)
+
+;; Propagation rules: failures in 'integration-tests-build' block downstream tasks
+(normally r-propagate-changelog-readme-from-integration-tests-build-failed failed-integration-tests-build upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-integration-tests-build-permanently-failed permanently-failed-integration-tests-build upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-integration-tests-build-stale-v1 stale-v1-integration-tests-build upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-integration-tests-build-timeout-v1 timeout-v1-integration-tests-build upstream-blocked-changelog-readme)
+(normally r-propagate-performance-benchmark-from-integration-tests-build-failed failed-integration-tests-build upstream-blocked-performance-benchmark)
+(normally r-propagate-performance-benchmark-from-integration-tests-build-permanently-failed permanently-failed-integration-tests-build upstream-blocked-performance-benchmark)
+(normally r-propagate-performance-benchmark-from-integration-tests-build-stale-v1 stale-v1-integration-tests-build upstream-blocked-performance-benchmark)
+(normally r-propagate-performance-benchmark-from-integration-tests-build-timeout-v1 timeout-v1-integration-tests-build upstream-blocked-performance-benchmark)
+(normally r-propagate-synthetic-user-run-from-integration-tests-build-failed failed-integration-tests-build upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-integration-tests-build-permanently-failed permanently-failed-integration-tests-build upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-integration-tests-build-stale-v1 stale-v1-integration-tests-build upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-integration-tests-build-timeout-v1 timeout-v1-integration-tests-build upstream-blocked-synthetic-user-run)
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given completed-integration-tests-build))
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given claim-v1-graceful-absence-tests)
+  (normally r-cl-state-v1-graceful-absence-tests claim-v1-graceful-absence-tests state-claimed-v1-graceful-absence-tests)
+  (normally r-cl-chain-v1-graceful-absence-tests state-claimed-v1-graceful-absence-tests claimed-graceful-absence-tests)
+)
+
+;; Propagation rules: failures in 'graceful-absence-tests' block downstream tasks
+(normally r-propagate-synthetic-user-run-from-graceful-absence-tests-failed failed-graceful-absence-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-graceful-absence-tests-permanently-failed permanently-failed-graceful-absence-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-graceful-absence-tests-stale-v1 stale-v1-graceful-absence-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-graceful-absence-tests-timeout-v1 timeout-v1-graceful-absence-tests upstream-blocked-synthetic-user-run)
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given completed-graceful-absence-tests))
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given claim-v1-accessibility-tests)
+  (normally r-cl-state-v1-accessibility-tests claim-v1-accessibility-tests state-claimed-v1-accessibility-tests)
+  (normally r-cl-chain-v1-accessibility-tests state-claimed-v1-accessibility-tests claimed-accessibility-tests)
+)
+
+;; Propagation rules: failures in 'accessibility-tests' block downstream tasks
+(normally r-propagate-synthetic-user-run-from-accessibility-tests-failed failed-accessibility-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-accessibility-tests-permanently-failed permanently-failed-accessibility-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-accessibility-tests-stale-v1 stale-v1-accessibility-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-accessibility-tests-timeout-v1 timeout-v1-accessibility-tests upstream-blocked-synthetic-user-run)
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given completed-accessibility-tests))
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given claim-v1-performance-benchmark)
+  (normally r-cl-state-v1-performance-benchmark claim-v1-performance-benchmark state-claimed-v1-performance-benchmark)
+  (normally r-cl-chain-v1-performance-benchmark state-claimed-v1-performance-benchmark claimed-performance-benchmark)
+)
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given completed-performance-benchmark))
+
+(claims agent:claude
+  :at "2026-04-15T03:38:13Z"
+  (given claim-v1-changelog-readme)
+  (normally r-cl-state-v1-changelog-readme claim-v1-changelog-readme state-claimed-v1-changelog-readme)
+  (normally r-cl-chain-v1-changelog-readme state-claimed-v1-changelog-readme claimed-changelog-readme)
+)
+
+;; Propagation rules: failures in 'changelog-readme' block downstream tasks
+(normally r-propagate-synthetic-user-run-from-changelog-readme-failed failed-changelog-readme upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-changelog-readme-permanently-failed permanently-failed-changelog-readme upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-changelog-readme-stale-v1 stale-v1-changelog-readme upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-changelog-readme-timeout-v1 timeout-v1-changelog-readme upstream-blocked-synthetic-user-run)
+
+(claims agent:claude
+  :at "2026-04-15T03:38:14Z"
+  (given completed-changelog-readme))

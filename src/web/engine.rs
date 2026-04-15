@@ -268,6 +268,22 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
         },
     );
 
+    // `tojson`: serialise a value to a JSON literal (string quoting + escaping).
+    // Used by page_history.html to embed history data inside `<script>`.
+    // Minijinja's built-in `tojson` requires the `json` feature, which we
+    // don't enable — so we register our own.
+    env.add_filter(
+        "tojson",
+        |v: minijinja::Value| -> Result<String, minijinja::Error> {
+            let json_val = serde_json::to_value(&v).map_err(|e| {
+                minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, e.to_string())
+            })?;
+            serde_json::to_string(&json_val).map_err(|e| {
+                minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, e.to_string())
+            })
+        },
+    );
+
     env
 }
 

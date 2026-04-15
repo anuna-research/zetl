@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **History UI surfaces on the default theme.** Every page now shows an
+  inline metadata strip with `Last changed`, a humanised `stable` label
+  (e.g. `3d`, `2w`, `9mo`), and a `history` link. A new `/_history`
+  route (and `_history.html` under `zetl build`) surfaces vault-wide
+  recent changes with a link-count trend sparkline and a
+  reverse-chronological list of added / modified / removed pages. The
+  sidebar gains a "Recent changes" link. All surfaces degrade silently
+  when history is absent (SPEC-027 / REQ-305). Static builds now emit
+  `pages/<slug>/_history.html` alongside `index.html` so deployed vaults
+  get the same temporal affordances as `zetl serve`. Requires the
+  `history` feature (enabled in default builds).
 - `--exclude PATTERN` (repeatable) and `--include-hidden` flags on
   `zetl build`, `zetl index`, `zetl serve`, `zetl search`, and `zetl watch`.
   `--exclude` accepts gitignore-syntax patterns; `--include-hidden` disables
