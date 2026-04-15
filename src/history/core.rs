@@ -583,6 +583,9 @@ pub struct PageNeighborhoodDelta {
     pub backlinks_added: Vec<String>,
     /// Pages that stopped linking to this page (sorted).
     pub backlinks_removed: Vec<String>,
+    /// The page's file-Merkle root changed since the previous snapshot —
+    /// body was edited even if wikilinks and backlinks are unchanged.
+    pub content_modified: bool,
 }
 
 /// A single entry in the per-page evolution timeline.
@@ -594,6 +597,10 @@ pub struct PageHistoryEntry {
     pub change_id: String,
     /// Snapshot timestamp as an RFC 3339 string.
     pub timestamp: String,
+    /// Author display name from the jj commit.
+    pub author_name: String,
+    /// Author email from the jj commit.
+    pub author_email: String,
     /// Number of forward links from the page in this snapshot.
     pub link_count: usize,
     /// Number of pages that link to this page in this snapshot.
@@ -631,11 +638,16 @@ pub fn extract_page_history(
 
     // Walk oldest-to-newest (snapshots are newest-first, so reverse-iterate).
     // Track the last known neighbourhood; include a snapshot only when the
-    // neighbourhood changed.
+    // neighbourhood OR the page content changed.
     //
-    // prev_state: (exists, forward_links, backlinks) for the most recently
-    // processed snapshot that had cached data.
-    let mut prev_state: Option<(bool, BTreeSet<String>, BTreeSet<String>)> = None;
+    // prev_state: (exists, forward_links, backlinks, content_hash) for the
+    // most recently processed snapshot that had cached data.
+    let mut prev_state: Option<(
+        bool,
+        BTreeSet<String>,
+        BTreeSet<String>,
+        Option<crate::types::ContentHash>,
+    )> = None;
     let mut included: Vec<PageHistoryEntry> = Vec::new();
 
     for raw_idx in (0..n).rev() {
@@ -668,10 +680,22 @@ pub fn extract_page_history(
             .map(|f| f.page_name.to_lowercase())
             .collect();
 
-        // Detect neighbourhood change vs. previous snapshot.
-        let changed = match &prev_state {
-            None => exists, // first data point: include only when page exists
-            Some((pe, pf, pb)) => exists != *pe || &forward != pf || &backlinks != pb,
+        let content_hash: Option<crate::types::ContentHash> =
+            this_page.and_then(|f| f.file_merkle.as_ref().map(|fm| fm.root_hash));
+
+        // Detect change vs. previous snapshot: neighbourhood OR body edit.
+        let (changed, content_modified) = match &prev_state {
+            None => (exists, false), // first data point: include only when page exists
+            Some((pe, pf, pb, ph)) => {
+                let neighbourhood_changed = exists != *pe || &forward != pf || &backlinks != pb;
+                let body_changed = match (ph, &content_hash) {
+                    (Some(a), Some(b)) => a != b,
+                    // Gained or lost a hash (e.g. page appeared/disappeared) —
+                    // counted via the appeared/disappeared flags already.
+                    _ => false,
+                };
+                (neighbourhood_changed || body_changed, body_changed)
+            }
         };
 
         if changed {
@@ -683,14 +707,16 @@ pub fn extract_page_history(
                     links_removed: vec![],
                     backlinks_added: pgh_sorted_vec(&backlinks),
                     backlinks_removed: vec![],
+                    content_modified: false,
                 },
-                Some((pe, pf, pb)) => PageNeighborhoodDelta {
+                Some((pe, pf, pb, _)) => PageNeighborhoodDelta {
                     appeared: !pe && exists,
                     disappeared: *pe && !exists,
                     links_added: pgh_sorted_diff(&forward, pf),
                     links_removed: pgh_sorted_diff(pf, &forward),
                     backlinks_added: pgh_sorted_diff(&backlinks, pb),
                     backlinks_removed: pgh_sorted_diff(pb, &backlinks),
+                    content_modified,
                 },
             };
 
@@ -698,6 +724,8 @@ pub fn extract_page_history(
             included.push(PageHistoryEntry {
                 change_id: snap.change_id.clone(),
                 timestamp: snap.timestamp.to_rfc3339(),
+                author_name: snap.author_name.clone(),
+                author_email: snap.author_email.clone(),
                 link_count: forward.len(),
                 backlink_count: backlinks.len(),
                 is_orphan: forward.is_empty() && backlinks.is_empty(),
@@ -705,7 +733,7 @@ pub fn extract_page_history(
             });
         }
 
-        prev_state = Some((exists, forward, backlinks));
+        prev_state = Some((exists, forward, backlinks, content_hash));
     }
 
     // Convert oldest-to-newest result to newest-first, then apply limit.
@@ -1220,6 +1248,8 @@ mod time_expression_parser {
             commit_id: "deadbeef0000".to_owned(),
             timestamp: ts,
             description: description.to_owned(),
+            author_name: "test".to_string(),
+            author_email: "test@example".to_string(),
         }
     }
 
@@ -1545,6 +1575,8 @@ mod page_history_tests {
             commit_id: format!("{change_id}commit"),
             timestamp: base + chrono::Duration::hours(ts_offset),
             description: format!("zetl-snapshot vault_root_hash={}", "a".repeat(64)),
+            author_name: "test".to_string(),
+            author_email: "test@example".to_string(),
         }
     }
 

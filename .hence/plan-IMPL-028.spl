@@ -1,0 +1,337 @@
+;; ============================================================
+;; IMPL-028: Interactive Graph View (Sigma.js + graphology)
+;; Implementation plan for SPEC-028
+;; ============================================================
+
+(meta plan
+  (id "IMPL-028")
+  (title "Interactive Graph View — Sigma.js + graphology Component for Serve and Build")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-04-15")
+  (author "agent:architect")
+  (spec "SPEC-028")
+  (description "Implement a single persistent, WebGL-rendered graph widget for serve and build modes: graphology-serialised JSON index; Sigma.js renderer with ForceAtlas2 layout; SPA navigation shell for no-flash persistence; CSS custom-property theming contract; docked mini-map placement with mobile toggle and theme.toml placement opt-ins."))
+
+;; ============================================================
+;; Agents
+;; ============================================================
+
+(given agent-backend-available)
+(given agent-frontend-available)
+(given agent-testing-available)
+
+;; ============================================================
+;; Phase 1 — Pure core: graph index serialisation
+;; REQ-101, CON-101
+;; ============================================================
+
+(given task-graph-serialize-core)
+(given no-deps-graph-serialize-core)
+(meta task-graph-serialize-core
+  (description "Implement graph::serialize_graph_index(vault_ctx) -> serde_json::Value producing the graphology serialisation format per CON-101. Stable ordering (alphabetical by slug). Pure function, no I/O. Include attributes.format='zetl-graph/v1', options.type='directed', per-node attributes {label,slug,outlink_count,backlink_count,is_orphan,is_dead,tags}.")
+  (acceptance "Unit tests pass; stable ordering property-tested; output loadable via graphology graph.import() in headless Chrome fixture (TEST-101).")
+  (phase "1")
+  (reqs "REQ-101")
+  (contracts "CON-101"))
+
+(given task-graph-neighbourhood-core)
+(meta task-graph-neighbourhood-core
+  (description "Implement graph::filter_neighbourhood(graph, root_slug, depth) -> Subgraph as a pure function. BFS from root, depth N, returns nodes+edges within the neighbourhood. No I/O.")
+  (acceptance "Unit tests for depth 0/1/2; property test (neighbourhood of any node includes that node; edges only between included nodes); handles disconnected components.")
+  (phase "1")
+  (reqs "REQ-108"))
+
+;; ============================================================
+;; Phase 2 — Effectful shell: build and serve wiring
+;; REQ-102, REQ-103, REQ-104, REQ-105, CON-102, OBS-101, OBS-102
+;; ============================================================
+
+(given task-graph-build-emit)
+(meta task-graph-build-emit
+  (description "In web::build, add write_graph_index_json(vault_ctx, out_dir) writing <out_dir>/graph-index.json. Co-locate with existing search_index.json and history-index.json write passes. Emit '[zetl] graph-export: pages=N edges=M duration_ms=X bytes=Y' under --verbose (OBS-101).")
+  (acceptance "TEST-102: `zetl build --out-dir /tmp/out` on demo-vault writes /tmp/out/graph-index.json matching CON-101. Verbose log line format matches.")
+  (phase "2")
+  (reqs "REQ-102")
+  (observability "OBS-101"))
+
+(given task-graph-serve-route)
+(meta task-graph-serve-route
+  (description "In web::routes, add GET /graph-index.json handler returning CON-101 JSON with Content-Type: application/json and Cache-Control: no-cache. Uses the same pure core as build.")
+  (acceptance "TEST-103: GET /graph-index.json against serve fixture returns 200 and valid CON-101 body.")
+  (phase "2")
+  (reqs "REQ-103")
+  (contracts "CON-102"))
+
+(given task-graph-template-vars)
+(meta task-graph-template-vars
+  (description "Extend web::engine TemplateEngine to inject graph_index_url (always) and graph_index (only when theme.toml sets graph_inline=true, else empty string). Match existing search_index pattern. Cover all render paths (serve, build, error pages).")
+  (acceptance "TEST-104 and TEST-105 pass: trivial template renders expected strings for both modes with and without graph_inline.")
+  (phase "2")
+  (reqs "REQ-104 REQ-105"))
+
+(given task-graph-stats-integration)
+(meta task-graph-stats-integration
+  (description "Extend `zetl stats` to include a Graph: section (bytes, nodes, edges) in table output and a graph field in JSON output. Mirrors existing History: section.")
+  (acceptance "`zetl stats` on demo-vault shows Graph: section; `zetl stats --json` contains graph.{bytes,nodes,edges}.")
+  (phase "2")
+  (reqs "REQ-101")
+  (observability "OBS-102"))
+
+;; ============================================================
+;; Phase 3 — Vendor assets and theme.toml
+;; REQ-110
+;; ============================================================
+
+(given task-vendor-bundle)
+(meta task-vendor-bundle
+  (description "Vendor Sigma.js v3, graphology, and graphology-layout-forceatlas2 as pinned minified builds under themes/default/static/vendor/sigma/. Record pins in themes/default/theme.toml under [vendor.sigma], [vendor.graphology], [vendor.graphology-layout-forceatlas2]. No CDN dependency at runtime.")
+  (acceptance "TEST-110: vendor files present, versions in theme.toml match. TEST-203: gzip-size of bundled JS <= 250 kB.")
+  (phase "3")
+  (reqs "REQ-110")
+  (nfrs "NFR-103"))
+
+;; ============================================================
+;; Phase 4 — Default theme templates: graph widget and CSS contract
+;; REQ-106, REQ-107, REQ-108, REQ-109, REQ-114, REQ-116, REQ-117, NFR-105
+;; ============================================================
+
+(given task-graph-partial)
+(meta task-graph-partial
+  (description "Create themes/default/_graph.html: single-Sigma-instance partial. Instantiates graphology DirectedGraph (from inline graph_index or fetched graph_index_url), runs graphology-layout-forceatlas2 in a Web Worker when available, mounts Sigma.js v3. Implements mode switching (local/vault/off) via data-mode attribute. nodeReducer/edgeReducer read CSS custom properties via getComputedStyle.")
+  (acceptance "TEST-106: rendered partial contains <div id='zetl-graph'>, correct <script> tags, and either inline JSON or fetch call. TEST-108: three-route fixture shows single WebGL context identity across navigations; FA2 runs once; mode persisted in sessionStorage.")
+  (phase "4")
+  (reqs "REQ-106 REQ-108"))
+
+(given task-graph-vault-page)
+(meta task-graph-vault-page
+  (description "Create themes/default/vault_graph.html extending base.html, rendering the full-screen graph view for the /_graph route (serve) and _graph.html root (build). Sidebar entry labelled 'Graph'.")
+  (acceptance "TEST-107: /_graph route renders on demo-vault without console errors; sidebar Graph link present; static build emits _graph.html at output root.")
+  (phase "4")
+  (reqs "REQ-107"))
+
+(given task-shell-and-css-contract)
+(meta task-shell-and-css-contract
+  (description "Update themes/default/base.html to establish the persistent shell contract: {% block persistent_shell %} containing sidebar and zetl-graph-widget; <main data-zetl-volatile> for content. Define the full --zetl-graph-* and --zetl-shell-* CSS custom-property contract in the default stylesheet. Document in theme authoring reference.")
+  (acceptance "TEST-114: overriding each CSS var in a fixture theme visibly changes the rendered graph (canvas readPixels + getBoundingClientRect checks). All documented CSS vars are declared with sensible defaults.")
+  (phase "4")
+  (reqs "REQ-114"))
+
+(given task-docked-minimap-placement)
+(meta task-docked-minimap-placement
+  (description "Implement docked mini-map default placement: position:fixed bottom-right, 280x200 px default, CSS resize handle, click-to-expand navigates to /_graph. Implement tabs and stacked placements as theme.toml [graph.placement] opt-ins via data-placement attribute on the shell container.")
+  (acceptance "TEST-116: default placement is fixed mini-map with no overlap of .transclusion-panel or sidebar; [graph.placement]=tabs and =stacked variants work without editing _graph.html.")
+  (phase "4")
+  (reqs "REQ-116"))
+
+(given task-mobile-toggle)
+(meta task-mobile-toggle
+  (description "Implement mobile behaviour: below the --zetl-graph-widget-breakpoint (default 900 px) the widget is display:none and reachable via a top-bar toggle that expands to a full-screen overlay. Focus ring, Enter/Space activate, Escape dismiss. Visibility-only manipulation preserves Sigma instance.")
+  (acceptance "TEST-117: Puppeteer resize below breakpoint hides widget; toggle is focusable and reveals full-screen; Escape dismisses; WebGL context identity unchanged across all transitions.")
+  (phase "4")
+  (reqs "REQ-117"))
+
+(given task-graceful-absence)
+(meta task-graceful-absence
+  (description "Implement graceful-absence matrix: <noscript> fallback in _graph.html; empty-state copy when vault has zero pages/links; sidebar link and /_graph route tolerate theme override that removes _graph.html; keyboard/SR fallback (<details>-grouped page list alongside canvas) for NFR-105.")
+  (acceptance "TEST-109 matrix passes (JS off, empty vault, partial deleted). TEST-205: axe-core 0 critical violations on /_graph; tab-navigable fallback contains every node.")
+  (phase "4")
+  (reqs "REQ-109")
+  (nfrs "NFR-105"))
+
+;; ============================================================
+;; Phase 5 — SPA navigation shell (persistent, no-flash)
+;; REQ-113, REQ-115, OBS-113
+;; ============================================================
+
+(given task-spa-shell)
+(meta task-spa-shell
+  (description "Implement the SPA navigation shell as a small (<100 loc) vanilla JS module loaded by base.html when theme.toml sets [spa] enabled=true. Intercepts same-origin <a> clicks, fetches next document, swaps the [data-zetl-volatile] element, updates title and history state. Bypasses on meta/ctrl/middle-click, target=_blank, cross-origin. Handles popstate. Re-executes inline <script> tags in swapped content.")
+  (acceptance "TEST-113: WebGL context identity unchanged across navigations; camera state preserved; URL and title updated; back/forward works; new-tab modifiers preserve native behaviour; spa.enabled=false fixture falls back to full reload.")
+  (phase "5")
+  (reqs "REQ-113")
+  (observability "OBS-113"))
+
+(given task-navigate-events)
+(meta task-navigate-events
+  (description "Dispatch window-level zetl:before-navigate (cancelable, detail={fromSlug,toSlug,url}) and zetl:after-navigate (detail={slug,contentRoot}) around each successful navigation. Document in theme authoring reference. Graph partial listens to zetl:after-navigate to update highlight state via renderer.refresh() without re-instantiating Sigma.")
+  (acceptance "TEST-115: both events fire in order on every SPA navigation; preventDefault() on before-navigate falls back to native nav; after-navigate.detail.contentRoot is the new volatile element.")
+  (phase "5")
+  (reqs "REQ-115"))
+
+;; ============================================================
+;; Phase 6 — Interaction polish
+;; REQ-111, REQ-112, OBS-201
+;; ============================================================
+
+(given task-node-click-nav)
+(meta task-node-click-nav
+  (description "Wire Sigma click events: clicking a node navigates to that page's slug URL via the SPA shell (no full reload); falls back to standard anchor navigation when SPA is disabled.")
+  (acceptance "TEST-111: headless-browser test confirms node click navigates to correct slug.")
+  (phase "6")
+  (reqs "REQ-111"))
+
+(given task-dead-link-styling)
+(meta task-dead-link-styling
+  (description "Render dead-link nodes and edges with the muted treatment used elsewhere in the UI. Read --zetl-graph-node-dead and --zetl-graph-edge-dead CSS vars via reducer; apply dashed edge pattern to dead-link edges.")
+  (acceptance "TEST-112: vault fixture with known dead link produces is_dead:true node and dashed/muted edge in rendered snapshot.")
+  (phase "6")
+  (reqs "REQ-112"))
+
+(given task-client-perf-marks)
+(meta task-client-perf-marks
+  (description "Emit performance.mark('zetl:graph:render:start') before layout and performance.measure('zetl:graph:render', ...) on layoutstop; emit performance.measure('zetl:navigate', ...) around SPA navigation (OBS-113).")
+  (acceptance "Performance entries visible in devtools; used by NFR test harness.")
+  (phase "6")
+  (reqs "REQ-113")
+  (observability "OBS-201 OBS-113"))
+
+;; ============================================================
+;; Phase 7 — Verification: NFRs and headless browser tests
+;; NFR-101, NFR-102, NFR-103, NFR-104, NFR-105
+;; ============================================================
+
+(given task-nfr-harness)
+(meta task-nfr-harness
+  (description "Set up Puppeteer/Playwright harness in tests/ for the NFR tests. Seed fixtures for a 2,000-page synthetic vault and a 5,000-page vault (for the NFR-104 warning check). Harness runs against a built dist/ served via a local http server.")
+  (acceptance "Harness runs in CI; produces deterministic metrics across machines.")
+  (phase "7"))
+
+(given task-nfr-render-latency)
+(meta task-nfr-render-latency
+  (description "Implement TEST-201: LargestContentfulPaint on /_graph for the 2k-page fixture; assert <= 1500 ms (P95 across 10 cold loads).")
+  (acceptance "Test passes on CI target machine; failing run reports the measured P95 for debuggability.")
+  (phase "7")
+  (nfrs "NFR-101"))
+
+(given task-nfr-interaction-fps)
+(meta task-nfr-interaction-fps
+  (description "Implement TEST-202: scripted drag gesture on /_graph; count requestAnimationFrame ticks over 2s; assert >= 30 fps.")
+  (acceptance "Test passes on CI; reports measured fps.")
+  (phase "7")
+  (nfrs "NFR-102"))
+
+(given task-nfr-size-budgets)
+(meta task-nfr-size-budgets
+  (description "Implement TEST-203 (gzip of vendor/sigma/*.min.js <= 250 kB) and TEST-204 (graph-index.json <= 1 MB for 2k-page vault; stderr warning for 5k-page vault).")
+  (acceptance "Both tests pass; budget breaches fail CI with a clear message.")
+  (phase "7")
+  (nfrs "NFR-103 NFR-104"))
+
+;; ============================================================
+;; Phase 8 — Documentation and release
+;; ============================================================
+
+(given task-readme-section)
+(meta task-readme-section
+  (description "Add 'Graph view' section to README.md covering: default widget placement, mode switcher, /_graph route, mobile behaviour, theme.toml [graph.placement] opt-ins, CSS-var overrides, graceful absence.")
+  (acceptance "Section published; copy-pasteable examples for the three placement modes; cross-references SPEC-028.")
+  (phase "8"))
+
+(given task-theme-authoring-ref)
+(meta task-theme-authoring-ref
+  (description "Extend the theme authoring reference (README.md or docs/themes) with: full --zetl-graph-* and --zetl-shell-* CSS-var table; theme.toml [spa] and [graph.placement] tables; {% block persistent_shell %}/{% block graph_widget %} contract; zetl:before-navigate and zetl:after-navigate events with code example; versioned theme contract note per REQ-114.")
+  (acceptance "Docs cover every documented variable and block; example theme override builds and runs.")
+  (phase "8")
+  (reqs "REQ-114"))
+
+(given task-changelog-release)
+(meta task-changelog-release
+  (description "CHANGELOG entry under [0.3.0] — feature addition (minor bump). Summarise: interactive graph view, SPA navigation shell, persistent widget with mode switching, CSS-var theming contract. Bump Cargo.toml version.")
+  (acceptance "CHANGELOG and Cargo.toml updated; release PR opened.")
+  (phase "8"))
+
+;; ============================================================
+;; Readiness rules — topological order by phase
+;; ============================================================
+
+;; Phase 1 — ready immediately
+(normally r-ready-p1a (and task-graph-serialize-core no-deps-graph-serialize-core) ready-graph-serialize-core)
+(normally r-ready-p1b task-graph-neighbourhood-core ready-graph-neighbourhood-core)
+
+;; Phase 2 — depends on Phase 1 pure core
+(normally r-ready-p2a (and task-graph-build-emit completed-graph-serialize-core) ready-graph-build-emit)
+(normally r-ready-p2b (and task-graph-serve-route completed-graph-serialize-core) ready-graph-serve-route)
+(normally r-ready-p2c (and task-graph-template-vars completed-graph-serialize-core) ready-graph-template-vars)
+(normally r-ready-p2d (and task-graph-stats-integration completed-graph-build-emit) ready-graph-stats-integration)
+
+;; Phase 3 — independent of Phase 1/2, blocks Phase 4
+(normally r-ready-p3 task-vendor-bundle ready-vendor-bundle)
+
+;; Phase 4 — needs vendor bundle + template variable plumbing
+(normally r-ready-p4a (and task-graph-partial completed-vendor-bundle completed-graph-template-vars) ready-graph-partial)
+(normally r-ready-p4b (and task-graph-vault-page completed-graph-partial) ready-graph-vault-page)
+(normally r-ready-p4c (and task-shell-and-css-contract completed-graph-partial) ready-shell-and-css-contract)
+(normally r-ready-p4d (and task-docked-minimap-placement completed-shell-and-css-contract) ready-docked-minimap-placement)
+(normally r-ready-p4e (and task-mobile-toggle completed-docked-minimap-placement) ready-mobile-toggle)
+(normally r-ready-p4f (and task-graceful-absence completed-graph-partial) ready-graceful-absence)
+
+;; Phase 5 — needs the shell structural contract
+(normally r-ready-p5a (and task-spa-shell completed-shell-and-css-contract) ready-spa-shell)
+(normally r-ready-p5b (and task-navigate-events completed-spa-shell) ready-navigate-events)
+
+;; Phase 6 — interaction polish after Sigma + SPA ready
+(normally r-ready-p6a (and task-node-click-nav completed-spa-shell completed-graph-partial) ready-node-click-nav)
+(normally r-ready-p6b (and task-dead-link-styling completed-graph-partial) ready-dead-link-styling)
+(normally r-ready-p6c (and task-client-perf-marks completed-spa-shell completed-graph-partial) ready-client-perf-marks)
+
+;; Phase 7 — verification after full integration
+(normally r-ready-p7a (and task-nfr-harness
+                          completed-graph-build-emit
+                          completed-docked-minimap-placement
+                          completed-spa-shell) ready-nfr-harness)
+(normally r-ready-p7b (and task-nfr-render-latency completed-nfr-harness) ready-nfr-render-latency)
+(normally r-ready-p7c (and task-nfr-interaction-fps completed-nfr-harness) ready-nfr-interaction-fps)
+(normally r-ready-p7d (and task-nfr-size-budgets completed-vendor-bundle completed-graph-build-emit) ready-nfr-size-budgets)
+
+;; Phase 8 — docs and release after verification
+(normally r-ready-p8a (and task-readme-section
+                          completed-docked-minimap-placement
+                          completed-spa-shell) ready-readme-section)
+(normally r-ready-p8b (and task-theme-authoring-ref
+                          completed-shell-and-css-contract
+                          completed-navigate-events) ready-theme-authoring-ref)
+(normally r-ready-p8c (and task-changelog-release
+                          completed-nfr-render-latency
+                          completed-nfr-size-budgets
+                          completed-readme-section
+                          completed-theme-authoring-ref) ready-changelog-release)
+
+;; ============================================================
+;; Assignment rules — by agent specialisation
+;; ============================================================
+
+;; Pure core and backend/shell work → backend
+(normally r-a-p1a (and ready-graph-serialize-core agent-backend-available) assign-to-graph-serialize-core-backend)
+(normally r-a-p1b (and ready-graph-neighbourhood-core agent-backend-available) assign-to-graph-neighbourhood-core-backend)
+(normally r-a-p2a (and ready-graph-build-emit agent-backend-available) assign-to-graph-build-emit-backend)
+(normally r-a-p2b (and ready-graph-serve-route agent-backend-available) assign-to-graph-serve-route-backend)
+(normally r-a-p2c (and ready-graph-template-vars agent-backend-available) assign-to-graph-template-vars-backend)
+(normally r-a-p2d (and ready-graph-stats-integration agent-backend-available) assign-to-graph-stats-integration-backend)
+
+;; Vendor assets → frontend (they live in the theme tree)
+(normally r-a-p3 (and ready-vendor-bundle agent-frontend-available) assign-to-vendor-bundle-frontend)
+
+;; Templates, CSS, placement, mobile, SPA, interaction → frontend
+(normally r-a-p4a (and ready-graph-partial agent-frontend-available) assign-to-graph-partial-frontend)
+(normally r-a-p4b (and ready-graph-vault-page agent-frontend-available) assign-to-graph-vault-page-frontend)
+(normally r-a-p4c (and ready-shell-and-css-contract agent-frontend-available) assign-to-shell-and-css-contract-frontend)
+(normally r-a-p4d (and ready-docked-minimap-placement agent-frontend-available) assign-to-docked-minimap-placement-frontend)
+(normally r-a-p4e (and ready-mobile-toggle agent-frontend-available) assign-to-mobile-toggle-frontend)
+(normally r-a-p4f (and ready-graceful-absence agent-frontend-available) assign-to-graceful-absence-frontend)
+(normally r-a-p5a (and ready-spa-shell agent-frontend-available) assign-to-spa-shell-frontend)
+(normally r-a-p5b (and ready-navigate-events agent-frontend-available) assign-to-navigate-events-frontend)
+(normally r-a-p6a (and ready-node-click-nav agent-frontend-available) assign-to-node-click-nav-frontend)
+(normally r-a-p6b (and ready-dead-link-styling agent-frontend-available) assign-to-dead-link-styling-frontend)
+(normally r-a-p6c (and ready-client-perf-marks agent-frontend-available) assign-to-client-perf-marks-frontend)
+
+;; Verification → testing
+(normally r-a-p7a (and ready-nfr-harness agent-testing-available) assign-to-nfr-harness-testing)
+(normally r-a-p7b (and ready-nfr-render-latency agent-testing-available) assign-to-nfr-render-latency-testing)
+(normally r-a-p7c (and ready-nfr-interaction-fps agent-testing-available) assign-to-nfr-interaction-fps-testing)
+(normally r-a-p7d (and ready-nfr-size-budgets agent-testing-available) assign-to-nfr-size-budgets-testing)
+
+;; Docs and release → backend (owns README and Cargo.toml) ; theme-authoring ref → frontend
+(normally r-a-p8a (and ready-readme-section agent-backend-available) assign-to-readme-section-backend)
+(normally r-a-p8b (and ready-theme-authoring-ref agent-frontend-available) assign-to-theme-authoring-ref-frontend)
+(normally r-a-p8c (and ready-changelog-release agent-backend-available) assign-to-changelog-release-backend)

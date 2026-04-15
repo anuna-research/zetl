@@ -588,12 +588,16 @@ fn test_102_pit_resolve_and_cache_roundtrip() {
             commit_id: "deadbeef0002".to_owned(),
             timestamp: ts2,
             description: format!("zetl-snapshot vault_root_hash={hash2}"),
+            author_name: "test".to_string(),
+            author_email: "test@example".to_string(),
         },
         ChangeInfo {
             change_id: "aaaaaaaaaaaa".to_owned(),
             commit_id: "deadbeef0001".to_owned(),
             timestamp: ts1,
             description: format!("zetl-snapshot vault_root_hash={hash1}"),
+            author_name: "test".to_string(),
+            author_email: "test@example".to_string(),
         },
     ];
 
@@ -1880,6 +1884,8 @@ fn test_128_build_page_history_context_summary_fields() {
             commit_id: "deadbeef0000".to_owned(),
             timestamp: t,
             description: "zetl-snapshot".to_owned(),
+            author_name: "test".to_string(),
+            author_email: "test@example".to_string(),
         }
     }
 
@@ -1971,6 +1977,8 @@ fn test_129_sample_page_trend_oldest_first() {
             commit_id: "c0ffee".to_owned(),
             timestamp: ts(d),
             description: "zetl-snapshot".to_owned(),
+            author_name: "test".to_string(),
+            author_email: "test@example".to_string(),
         }
     }
 
@@ -2178,18 +2186,24 @@ fn test_132_resolve_backlink_since_earliest_timestamp() {
             commit_id: "c3".to_owned(),
             timestamp: ts3,
             description: "snap3".to_owned(),
+            author_name: "test".to_string(),
+            author_email: "test@example".to_string(),
         },
         ChangeInfo {
             change_id: "s2".to_owned(),
             commit_id: "c2".to_owned(),
             timestamp: ts2,
             description: "snap2".to_owned(),
+            author_name: "test".to_string(),
+            author_email: "test@example".to_string(),
         },
         ChangeInfo {
             change_id: "s1".to_owned(),
             commit_id: "c1".to_owned(),
             timestamp: ts1,
             description: "snap1".to_owned(),
+            author_name: "test".to_string(),
+            author_email: "test@example".to_string(),
         },
     ];
 
@@ -2226,6 +2240,8 @@ fn test_133_resolve_backlink_since_none_when_no_link() {
         commit_id: "c1".to_owned(),
         timestamp: ts1,
         description: "snap1".to_owned(),
+        author_name: "test".to_string(),
+        author_email: "test@example".to_string(),
     }];
     // source links to a different page, never to target.
     let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> =
@@ -2253,6 +2269,8 @@ fn test_134_resolve_backlink_since_none_for_missing_cache() {
         commit_id: "c1".to_owned(),
         timestamp: ts1,
         description: "snap1".to_owned(),
+        author_name: "test".to_string(),
+        author_email: "test@example".to_string(),
     }];
     // No cached index for any snapshot.
     let fps: Vec<Option<Vec<zetl::types::ParsedFile>>> = vec![None];
@@ -2451,6 +2469,8 @@ fn test_138_serialize_history_index_structure() {
         recent_changes: vec![PageHistoryEntry {
             change_id: "aabbcc".to_owned(),
             timestamp: "2026-02-01T00:00:00+00:00".to_owned(),
+            author_name: "test".to_string(),
+            author_email: "test@example".to_string(),
             link_count: 2,
             backlink_count: 1,
             is_orphan: false,

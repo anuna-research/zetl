@@ -162,6 +162,7 @@
             {%- set parts = [] %}
             {%- if entry.delta.appeared %}{%- set parts = parts + ["appeared"] %}{%- endif %}
             {%- if entry.delta.disappeared %}{%- set parts = parts + ["removed"] %}{%- endif %}
+            {%- if entry.delta.content_modified %}{%- set parts = parts + ["edited"] %}{%- endif %}
             {%- if entry.delta.links_added | length > 0 %}{%- set parts = parts + ["+" ~ (entry.delta.links_added | length) ~ " links"] %}{%- endif %}
             {%- if entry.delta.links_removed | length > 0 %}{%- set parts = parts + ["−" ~ (entry.delta.links_removed | length) ~ " links"] %}{%- endif %}
             {%- if entry.delta.backlinks_added | length > 0 %}{%- set parts = parts + ["+" ~ (entry.delta.backlinks_added | length) ~ " backlinks"] %}{%- endif %}
@@ -171,6 +172,9 @@
             snapshot recorded
           {%- endif %}
         </span>
+        {%- if entry.author_name %}
+        <span style="opacity:0.8; font-weight:500; font-size:0.8rem;">{{ entry.author_name }}</span>
+        {%- endif %}
         <span style="opacity:0.65; font-variant-numeric:tabular-nums; font-size:0.8rem;">{{ entry.link_count }} links · {{ entry.backlink_count }} backlinks</span>
         <time style="opacity:0.65; font-size:0.8rem;" datetime="{{ entry.timestamp }}">{{ entry.timestamp[:10] }}</time>
       </li>

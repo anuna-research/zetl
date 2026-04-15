@@ -74,6 +74,10 @@ pub struct ChangeInfo {
     pub timestamp: chrono::DateTime<chrono::FixedOffset>,
     /// Commit description (may be empty).
     pub description: String,
+    /// Author display name (falls back to email local-part when empty).
+    pub author_name: String,
+    /// Author email.
+    pub author_email: String,
 }
 
 // ─── JjBackend ───────────────────────────────────────────────────────────────
@@ -275,11 +279,14 @@ impl JjBackend {
             .timestamp
             .to_datetime()
             .map_err(|_| anyhow!("commit timestamp out of range"))?;
+        let author = commit.author();
         Ok(ChangeInfo {
             change_id: change_id_prefix(commit.change_id()),
             commit_id: commit_id_prefix(commit.id()),
             timestamp: ts,
             description: commit.description().to_owned(),
+            author_name: author.name.clone(),
+            author_email: author.email.clone(),
         })
     }
 }
