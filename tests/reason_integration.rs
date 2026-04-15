@@ -59,8 +59,16 @@ fn run_json_any(cmd: &mut Command) -> (Value, ExitStatus) {
     let output = cmd.output().expect("failed to execute zetl");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let primary = if output.status.success() { &stdout } else { &stderr };
-    let fallback = if output.status.success() { &stderr } else { &stdout };
+    let primary = if output.status.success() {
+        &stdout
+    } else {
+        &stderr
+    };
+    let fallback = if output.status.success() {
+        &stderr
+    } else {
+        &stdout
+    };
     let json: Value = serde_json::from_str(primary)
         .or_else(|_| serde_json::from_str(fallback))
         .unwrap_or_else(|e| {

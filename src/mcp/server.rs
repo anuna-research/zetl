@@ -114,11 +114,7 @@ impl McpServer {
                     "category": { "type": "string", "description": "Filter: all (default), dead_links, or orphans", "default": "all" }
                 }),
             ),
-            mk(
-                "status",
-                "Server status and vault summary.",
-                json!({}),
-            ),
+            mk("status", "Server status and vault summary.", json!({})),
         ];
 
         #[cfg(feature = "reason")]
@@ -167,11 +163,8 @@ impl ServerHandler for McpServer {
         _context: rmcp::service::RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ReadResourceResult, rmcp::ErrorData>> + Send + '_
     {
-        let result = resources::read_resource(
-            &request.uri,
-            &self.state.file_index,
-            &self.state.vault_root,
-        );
+        let result =
+            resources::read_resource(&request.uri, &self.state.file_index, &self.state.vault_root);
         std::future::ready(result)
     }
 
@@ -181,9 +174,9 @@ impl ServerHandler for McpServer {
         _context: rmcp::service::RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, rmcp::ErrorData>> + Send + '_
     {
-        std::future::ready(Ok(ListToolsResult::with_all_items(
-            Self::tool_definitions(),
-        )))
+        std::future::ready(Ok(
+            ListToolsResult::with_all_items(Self::tool_definitions()),
+        ))
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
@@ -196,8 +189,7 @@ impl ServerHandler for McpServer {
         &self,
         request: CallToolRequestParams,
         _context: rmcp::service::RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, rmcp::ErrorData>
-    {
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let name = request.name.as_ref();
         let args = request.arguments.as_ref();
 
@@ -226,8 +218,17 @@ impl ServerHandler for McpServer {
             "get" => tools::tool_get(&self.state, &get_str("page")),
             "search" => {
                 let mode = get_str("mode");
-                let mode = if mode.is_empty() { "fulltext".to_string() } else { mode };
-                tools::tool_search(&self.state, &get_str("query"), get_usize("limit", 20), &mode)
+                let mode = if mode.is_empty() {
+                    "fulltext".to_string()
+                } else {
+                    mode
+                };
+                tools::tool_search(
+                    &self.state,
+                    &get_str("query"),
+                    get_usize("limit", 20),
+                    &mode,
+                )
             }
             "links" => tools::tool_links(&self.state, &get_str("page")),
             "backlinks" => tools::tool_backlinks(&self.state, &get_str("page")),
@@ -245,7 +246,11 @@ impl ServerHandler for McpServer {
             ),
             "check" => {
                 let category = get_str("category");
-                let category = if category.is_empty() { "all".to_string() } else { category };
+                let category = if category.is_empty() {
+                    "all".to_string()
+                } else {
+                    category
+                };
                 tools::tool_check(&self.state, &category)
             }
             "status" => tools::tool_status(&self.state),

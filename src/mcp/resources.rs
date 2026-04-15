@@ -86,10 +86,7 @@ pub fn read_resource(
         )
     })?;
 
-    let resource_uri = format!(
-        "{PAGE_URI_PREFIX}{}",
-        urlencoding::encode(&resolved_name)
-    );
+    let resource_uri = format!("{PAGE_URI_PREFIX}{}", urlencoding::encode(&resolved_name));
 
     Ok(ReadResourceResult::new(vec![
         ResourceContents::TextResourceContents {
@@ -111,7 +108,10 @@ mod tests {
         let result = list_resources(&pages);
         assert_eq!(result.resources.len(), 2);
         assert_eq!(result.resources[0].raw.name, "README");
-        assert!(result.resources[0].raw.uri.starts_with("zetl://vault/pages/"));
+        assert!(result.resources[0]
+            .raw
+            .uri
+            .starts_with("zetl://vault/pages/"));
         assert_eq!(result.resources[1].raw.name, "Architecture");
     }
 
@@ -124,7 +124,11 @@ mod tests {
     #[test]
     fn read_resource_unknown_uri() {
         let file_index = vec![];
-        let err = read_resource("https://example.com/foo", &file_index, std::path::Path::new("/tmp"));
+        let err = read_resource(
+            "https://example.com/foo",
+            &file_index,
+            std::path::Path::new("/tmp"),
+        );
         assert!(err.is_err());
         let e = err.unwrap_err();
         assert!(e.message.contains("unrecognised resource URI"));

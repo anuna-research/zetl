@@ -86,7 +86,13 @@ fn run_mcp(vault: &TempDir, messages: &[Value]) -> Vec<Value> {
 
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("zetl");
     let output = cmd
-        .args(["-d", vault.path().to_str().unwrap(), "mcp", "--transport", "stdio"])
+        .args([
+            "-d",
+            vault.path().to_str().unwrap(),
+            "mcp",
+            "--transport",
+            "stdio",
+        ])
         .write_stdin(stdin_data)
         .timeout(Duration::from_secs(15))
         .output()
@@ -147,7 +153,14 @@ fn mcp_stdio_list_tools() {
 
     // Core tools are always expected regardless of feature flags.
     let expected_core = [
-        "get", "search", "links", "backlinks", "path", "similar", "check", "status",
+        "get",
+        "search",
+        "links",
+        "backlinks",
+        "path",
+        "similar",
+        "check",
+        "status",
     ];
     for name in &expected_core {
         assert!(
@@ -299,7 +312,9 @@ fn mcp_stdio_call_check() {
     // The check tool returns health information — it should at least be valid JSON.
     let parsed: Value = serde_json::from_str(text).expect("check output should be valid JSON");
     assert!(
-        parsed.get("dead_links").is_some() || parsed.get("orphans").is_some() || parsed.get("page_count").is_some(),
+        parsed.get("dead_links").is_some()
+            || parsed.get("orphans").is_some()
+            || parsed.get("page_count").is_some(),
         "check result should contain health info, got: {text}"
     );
 }
@@ -325,7 +340,8 @@ fn mcp_stdio_call_status() {
     let content = result.get("content").expect("no content");
     let text = content[0]["text"].as_str().unwrap();
     let parsed: Value = serde_json::from_str(text).expect("status output should be valid JSON");
-    let page_count = parsed.get("page_count")
+    let page_count = parsed
+        .get("page_count")
         .and_then(|v| v.as_u64())
         .expect("status should have page_count");
     assert!(

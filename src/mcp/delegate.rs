@@ -89,7 +89,10 @@ mod tests {
         let verified = verify_jwt(&jwt, &allowed_issuers).expect("verification should succeed");
         assert_eq!(verified.iss, "test-user");
         assert_eq!(verified.sub, "zetl-mcp");
-        assert_eq!(verified.tools, vec!["search".to_string(), "get_page".to_string()]);
+        assert_eq!(
+            verified.tools,
+            vec!["search".to_string(), "get_page".to_string()]
+        );
         assert_eq!(verified.scope, vec!["notes/**".to_string()]);
     }
 

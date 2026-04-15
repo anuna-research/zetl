@@ -8,6 +8,8 @@ pub mod graph;
 #[cfg(feature = "history")]
 pub mod history;
 pub mod hooks;
+#[cfg(feature = "mcp")]
+pub mod mcp;
 pub mod merkle;
 #[cfg(feature = "reason")]
 pub mod reason;
@@ -22,5 +24,3 @@ pub mod user;
 pub mod vcs;
 pub mod view;
 pub mod web;
-#[cfg(feature = "mcp")]
-pub mod mcp;

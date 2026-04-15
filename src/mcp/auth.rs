@@ -38,10 +38,7 @@ pub fn verify_jwt(
         .map_err(|e| ToolError::AccessDenied(format!("JWT header base64 error: {e}")))?;
     let header: serde_json::Value = serde_json::from_slice(&header_bytes)
         .map_err(|e| ToolError::AccessDenied(format!("JWT header JSON error: {e}")))?;
-    let alg = header
-        .get("alg")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let alg = header.get("alg").and_then(|v| v.as_str()).unwrap_or("");
     if alg != "EdDSA" {
         return Err(ToolError::AccessDenied(format!(
             "JWT alg must be EdDSA, got {alg:?}"
@@ -56,9 +53,9 @@ pub fn verify_jwt(
         .map_err(|e| ToolError::AccessDenied(format!("JWT payload JSON error: {e}")))?;
 
     // 4. Look up issuer's public key.
-    let pubkey_b64 = allowed_issuers.get(&claims.iss).ok_or_else(|| {
-        ToolError::AccessDenied(format!("unknown issuer: {}", claims.iss))
-    })?;
+    let pubkey_b64 = allowed_issuers
+        .get(&claims.iss)
+        .ok_or_else(|| ToolError::AccessDenied(format!("unknown issuer: {}", claims.iss)))?;
     let pubkey_bytes = URL_SAFE_NO_PAD
         .decode(pubkey_b64)
         .map_err(|e| ToolError::AccessDenied(format!("issuer pubkey base64 error: {e}")))?;
@@ -377,7 +374,10 @@ mod tests {
         assert_eq!(resolve_page("Notes/Foo", &pages).unwrap(), "Notes/Foo");
         // Case-insensitive.
         assert_eq!(resolve_page("notes/foo", &pages).unwrap(), "Notes/Foo");
-        assert_eq!(resolve_page("PROJECTS/ALPHA", &pages).unwrap(), "Projects/Alpha");
+        assert_eq!(
+            resolve_page("PROJECTS/ALPHA", &pages).unwrap(),
+            "Projects/Alpha"
+        );
     }
 
     #[test]
@@ -388,7 +388,10 @@ mod tests {
         let err = resolve_page("Notes", &pages).unwrap_err();
         let msg = err.to_string();
         // Should say page not found.
-        assert!(msg.contains("page not found"), "expected 'page not found' in: {msg}");
+        assert!(
+            msg.contains("page not found"),
+            "expected 'page not found' in: {msg}"
+        );
         // Should include at least one suggestion from pages containing "Notes".
         assert!(
             msg.contains("Notes/Foo") || msg.contains("Notes/Bar"),
@@ -455,7 +458,10 @@ mod tests {
 
         // Wrong issuer must fail.
         let mut wrong_issuers = HashMap::new();
-        wrong_issuers.insert("other-issuer".to_string(), URL_SAFE_NO_PAD.encode(verifying_key.as_bytes()));
+        wrong_issuers.insert(
+            "other-issuer".to_string(),
+            URL_SAFE_NO_PAD.encode(verifying_key.as_bytes()),
+        );
         assert!(verify_jwt(&token, &wrong_issuers).is_err());
     }
 }

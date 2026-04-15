@@ -317,7 +317,14 @@ pub fn tool_status(state: &McpState) -> Result<Value, ToolError> {
     // List of available tool names (conditionally including "reason").
     #[allow(unused_mut)]
     let mut tool_names = vec![
-        "get", "search", "links", "backlinks", "path", "similar", "check", "status",
+        "get",
+        "search",
+        "links",
+        "backlinks",
+        "path",
+        "similar",
+        "check",
+        "status",
     ];
     #[cfg(feature = "reason")]
     tool_names.push("reason");
@@ -344,11 +351,7 @@ pub fn tool_status(state: &McpState) -> Result<Value, ToolError> {
 ///
 /// Only available when built with `--features reason`.
 #[cfg(feature = "reason")]
-pub fn tool_reason(
-    state: &McpState,
-    query: &str,
-    files: &[String],
-) -> Result<Value, ToolError> {
+pub fn tool_reason(state: &McpState, query: &str, files: &[String]) -> Result<Value, ToolError> {
     use crate::types::SplBlock;
     use std::path::PathBuf;
 
@@ -449,11 +452,7 @@ fn extract_spl_blocks_from_content(
 
 /// Stub when the `reason` feature is not enabled.
 #[cfg(not(feature = "reason"))]
-pub fn tool_reason(
-    _state: &McpState,
-    _query: &str,
-    _files: &[String],
-) -> Result<Value, ToolError> {
+pub fn tool_reason(_state: &McpState, _query: &str, _files: &[String]) -> Result<Value, ToolError> {
     Err(ToolError::FeatureUnavailable(
         "reasoning engine requires building with --features reason".into(),
     ))

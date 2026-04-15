@@ -2931,7 +2931,10 @@ pub struct PasskeyApiRequest {
 // -- Passkey login --
 
 /// GET /auth/login — Render the passkey login page.
-pub async fn login_handler(State(state): State<WebState>, headers: axum::http::HeaderMap) -> Response {
+pub async fn login_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
     // Already authenticated — redirect to vault
     if extract_session_user_id(&state, &headers).is_some() {
         return axum::response::Redirect::temporary("/").into_response();
@@ -2956,9 +2959,7 @@ pub async fn login_handler(State(state): State<WebState>, headers: axum::http::H
 ///
 /// Finds all users with passkeys and starts a discoverable credential auth.
 /// For single-user vaults (owner only), this is straightforward.
-pub async fn passkey_auth_start_handler(
-    State(state): State<WebState>,
-) -> Response {
+pub async fn passkey_auth_start_handler(State(state): State<WebState>) -> Response {
     let vault_root = &*state.vault_root;
 
     let passkey_mgr = match &state.passkey_mgr {
@@ -3043,11 +3044,7 @@ pub async fn passkey_auth_finish_handler(
     let credential: webauthn_rs::prelude::PublicKeyCredential = match serde_json::from_value(body) {
         Ok(c) => c,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("invalid credential: {e}"),
-            )
-                .into_response();
+            return (StatusCode::BAD_REQUEST, format!("invalid credential: {e}")).into_response();
         }
     };
 
@@ -3068,8 +3065,8 @@ pub async fn passkey_auth_finish_handler(
         match passkey_mgr.finish_authentication(&profile.id, &credential) {
             Ok(auth_result) => {
                 // Update sign counter
-                let mut passkeys =
-                    crate::user::passkey::load_passkeys(vault_root, &profile.id).unwrap_or_default();
+                let mut passkeys = crate::user::passkey::load_passkeys(vault_root, &profile.id)
+                    .unwrap_or_default();
                 for pk in &mut passkeys {
                     pk.update_credential(&auth_result);
                 }
@@ -5241,7 +5238,8 @@ pub async fn api_graph_handler(
         )
     };
 
-    #[allow(clippy::unnecessary_filter_map)] // without feature="reason" the closure always returns Some; the filter is real when it's enabled
+    #[allow(clippy::unnecessary_filter_map)]
+    // without feature="reason" the closure always returns Some; the filter is real when it's enabled
     let nodes: Vec<ApiGraphNode> = graph
         .node_map
         .iter()
@@ -5291,10 +5289,11 @@ pub async fn api_graph_handler(
             // In hidden mode: omit edges to/from denied nodes (REQ-020-032)
             #[cfg(feature = "reason")]
             if vis_mode == crate::acl::VisibilityMode::Hidden
-                && (denied_set.contains(src_name.as_str()) || denied_set.contains(tgt_name.as_str()))
-                {
-                    return None;
-                }
+                && (denied_set.contains(src_name.as_str())
+                    || denied_set.contains(tgt_name.as_str()))
+            {
+                return None;
+            }
 
             Some(ApiGraphEdge {
                 source: src_name.clone(),

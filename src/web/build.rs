@@ -320,8 +320,7 @@ pub fn build_static(
     // stay off the critical rendering path.
     write_search_index_json(data, vault_root, out)?;
     let pages_json = build_search_index(&vault_ctx);
-    std::fs::write(out.join("pages.json"), &pages_json)
-        .context("writing pages.json")?;
+    std::fs::write(out.join("pages.json"), &pages_json).context("writing pages.json")?;
     let bm25_json = String::new();
 
     // ── history-index.json ───────────────────────────────────────────────
@@ -346,8 +345,7 @@ pub fn build_static(
     let og_bg = crate::web::og::load_background(vault_root, None);
     let og_start = std::time::Instant::now();
     match crate::web::og::render_og_png(&vault_ctx.name, "a knowledge vault", og_bg.as_ref()) {
-        Ok(bytes) => std::fs::write(out.join("og.png"), &bytes)
-            .context("writing vault og.png")?,
+        Ok(bytes) => std::fs::write(out.join("og.png"), &bytes).context("writing vault og.png")?,
         Err(e) => {
             if verbose {
                 eprintln!("[zetl] og: skipping vault image: {e}");
@@ -357,12 +355,10 @@ pub fn build_static(
     let mut og_count = 1usize;
 
     // ── help page ───────────────────────────────────────────────────────
-    let help_html = engine
-        .render_help(&vault_ctx, "build")
-        .map_err(|e| {
-            eprintln!("{}", e.stderr_line("help"));
-            anyhow::anyhow!("{e}")
-        })?;
+    let help_html = engine.render_help(&vault_ctx, "build").map_err(|e| {
+        eprintln!("{}", e.stderr_line("help"));
+        anyhow::anyhow!("{e}")
+    })?;
     let help_dir = out.join("help");
     std::fs::create_dir_all(&help_dir)?;
     std::fs::write(help_dir.join("index.html"), help_html)?;
@@ -436,8 +432,7 @@ pub fn build_static(
         // Per-page OG image.
         match crate::web::og::render_og_png(&file.page_name, &vault_ctx.name, og_bg.as_ref()) {
             Ok(bytes) => {
-                std::fs::write(page_dir.join("og.png"), &bytes)
-                    .context("writing page og.png")?;
+                std::fs::write(page_dir.join("og.png"), &bytes).context("writing page og.png")?;
                 og_count += 1;
             }
             Err(e) if verbose => {

@@ -2140,9 +2140,7 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     let grounded_spl_blocks = theory.as_ref().map_or(0, |tc| {
         tc.spl_blocks
             .iter()
-            .filter(|(k, b)| {
-                b.section_grounding_hash != [0u8; 32] && live_block_keys.contains(*k)
-            })
+            .filter(|(k, b)| b.section_grounding_hash != [0u8; 32] && live_block_keys.contains(*k))
             .count()
     });
     let explicitly_grounded_facts = theory.as_ref().map_or(0, |tc| {
@@ -3681,7 +3679,6 @@ fn extract_context(vault_root: &Path, source_file: &str, line: u32, n: usize) ->
     Some(target_line[ctx_start..ctx_end].to_string())
 }
 
-
 fn cmd_view(cli: &Cli, page: Option<&str>, context_lines: u8, main_width: u8) -> Result<()> {
     // Require an interactive terminal (REQ-062, CON-023).
     use std::io::IsTerminal as _;
@@ -4929,11 +4926,8 @@ fn cmd_serve(
             .context("failed to update .gitignore for collab secrets")?;
 
         // Derive from seed phrase or load/create from file
-        zetl::user::invite::load_or_derive_server_key(
-            &pipeline.vault_root,
-            server_key_seed,
-        )
-        .context("server key setup failed")?;
+        zetl::user::invite::load_or_derive_server_key(&pipeline.vault_root, server_key_seed)
+            .context("server key setup failed")?;
     }
 
     // ── Bootstrap owner (REQ-020-005) ────────────────────────────────────
@@ -5857,9 +5851,7 @@ fn cmd_reason_status(
                 println!("Unresolved conflicts: {unresolved_conflict_count}",);
             }
             if error_count > 0 || warning_count > 0 {
-                println!(
-                    "Diagnostics: {error_count} errors, {warning_count} warnings",
-                );
+                println!("Diagnostics: {error_count} errors, {warning_count} warnings",);
             }
 
             if !result.diagnostics.is_empty() {
@@ -5977,8 +5969,7 @@ fn cmd_reason_explain(
         let msg = if suggestions.is_empty() {
             format!("Literal '{literal_input}' not found in any conclusion")
         } else {
-            let did_you_mean: Vec<String> =
-                suggestions.iter().map(|s| format!("'{s}'")).collect();
+            let did_you_mean: Vec<String> = suggestions.iter().map(|s| format!("'{s}'")).collect();
             format!(
                 "Literal '{}' not found. Did you mean: {}?",
                 literal_input,
@@ -6075,8 +6066,7 @@ fn cmd_reason_why_not(cli: &Cli, literal_input: &str) -> Result<()> {
         let msg = if suggestions.is_empty() {
             format!("Literal '{literal_input}' not found in theory")
         } else {
-            let did_you_mean: Vec<String> =
-                suggestions.iter().map(|s| format!("'{s}'")).collect();
+            let did_you_mean: Vec<String> = suggestions.iter().map(|s| format!("'{s}'")).collect();
             format!(
                 "Literal '{}' not found in theory. Did you mean: {}?",
                 literal_input,
@@ -6552,12 +6542,9 @@ fn cmd_reason_require(
         let suggestions = fuzzy_match_literals(literal_input, &all_lits);
 
         let msg = if suggestions.is_empty() {
-            format!(
-                "No rules found with '{literal_input}' as head — cannot determine requirements"
-            )
+            format!("No rules found with '{literal_input}' as head — cannot determine requirements")
         } else {
-            let did_you_mean: Vec<String> =
-                suggestions.iter().map(|s| format!("'{s}'")).collect();
+            let did_you_mean: Vec<String> = suggestions.iter().map(|s| format!("'{s}'")).collect();
             format!(
                 "No rules found with '{}' as head. Did you mean: {}?",
                 literal_input,
@@ -8395,15 +8382,11 @@ fn print_negative_explanation(
         }
         ExplainFormat::Natural => match conclusion.conclusion_type {
             ConclusionType::DefinitelyNotProvable => {
-                println!(
-                    "The literal '{literal_input}' is definitely not provable."
-                );
+                println!("The literal '{literal_input}' is definitely not provable.");
                 println!("No strict proof chain can establish it from the known facts and rules.");
             }
             ConclusionType::DefeasiblyNotProvable => {
-                println!(
-                    "The literal '{literal_input}' is defeasibly not provable."
-                );
+                println!("The literal '{literal_input}' is defeasibly not provable.");
                 if defeat_chain.is_empty() {
                     println!("No undefeated defeasible proof chain exists.");
                 } else {
@@ -8417,9 +8400,7 @@ fn print_negative_explanation(
                 }
             }
             _ => {
-                println!(
-                    "'{literal_input}' holds as {conclusion_type_str} {literal_input}."
-                );
+                println!("'{literal_input}' holds as {conclusion_type_str} {literal_input}.");
             }
         },
         ExplainFormat::Dot => {
@@ -9950,13 +9931,7 @@ fn main() -> anyhow::Result<()> {
             theme,
             public,
             site_url,
-        } => cmd_build(
-            &cli,
-            out_dir,
-            theme,
-            public.as_deref(),
-            site_url.as_deref(),
-        ),
+        } => cmd_build(&cli, out_dir, theme, public.as_deref(), site_url.as_deref()),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;
@@ -10026,7 +10001,13 @@ fn main() -> anyhow::Result<()> {
             expiry,
             mnemonic,
             save_key,
-        } => cmd_delegate(tools.as_deref(), scope.as_deref(), expiry.as_deref(), mnemonic.as_deref(), *save_key),
+        } => cmd_delegate(
+            tools.as_deref(),
+            scope.as_deref(),
+            expiry.as_deref(),
+            mnemonic.as_deref(),
+            *save_key,
+        ),
         #[cfg(not(feature = "mcp"))]
         Command::Delegate { .. } => {
             eprintln!(
@@ -10042,7 +10023,15 @@ fn main() -> anyhow::Result<()> {
             insecure,
             allowed_issuer,
             cors_origin,
-        } => cmd_mcp(&cli, transport, host, *port, *insecure, allowed_issuer, cors_origin.as_deref()),
+        } => cmd_mcp(
+            &cli,
+            transport,
+            host,
+            *port,
+            *insecure,
+            allowed_issuer,
+            cors_origin.as_deref(),
+        ),
         #[cfg(not(feature = "mcp"))]
         Command::Mcp { .. } => {
             eprintln!(
@@ -10138,12 +10127,15 @@ fn cmd_delegate(
     };
 
     let tools_list: Vec<String> = tools
-        .map(|t| t.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .map(|t| {
+            t.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
 
-    let scope_list: Vec<String> = scope
-        .map(|s| vec![s.to_string()])
-        .unwrap_or_default();
+    let scope_list: Vec<String> = scope.map(|s| vec![s.to_string()]).unwrap_or_default();
 
     let claims = DelegateClaims {
         iss: user_id,
@@ -10235,7 +10227,9 @@ fn cmd_mcp(
         if let Some((id, pubkey)) = entry.split_once(':') {
             allowed_issuers_map.insert(id.to_string(), pubkey.to_string());
         } else {
-            eprintln!("WARNING: ignoring malformed --allowed-issuer {entry:?} (expected id:pubkey_b64)");
+            eprintln!(
+                "WARNING: ignoring malformed --allowed-issuer {entry:?} (expected id:pubkey_b64)"
+            );
         }
     }
 

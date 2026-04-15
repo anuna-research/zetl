@@ -1845,7 +1845,6 @@ fn test_126_vault_history_populated_in_template() {
 fn test_127_build_page_history_context_none_when_no_history() {
     use chrono::{FixedOffset, TimeZone as _};
     use zetl::history::core::build_page_history_context;
-    
 
     let now = FixedOffset::east_opt(0)
         .unwrap()

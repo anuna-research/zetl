@@ -188,12 +188,12 @@ pub fn encode_openssh_ed25519(private_key: &[u8; 32], public_key: &[u8; 32]) -> 
     // Full key blob
     let mut blob = Vec::new();
     blob.extend_from_slice(b"openssh-key-v1\0"); // auth magic
-    push_ssh_string(&mut blob, b"none");          // cipher
-    push_ssh_string(&mut blob, b"none");          // kdf
-    push_ssh_string(&mut blob, b"");              // kdf options
-    blob.extend_from_slice(&1u32.to_be_bytes());  // number of keys
-    push_ssh_bytes(&mut blob, &pubkey_blob);      // public key
-    push_ssh_bytes(&mut blob, &priv_section);     // private key section
+    push_ssh_string(&mut blob, b"none"); // cipher
+    push_ssh_string(&mut blob, b"none"); // kdf
+    push_ssh_string(&mut blob, b""); // kdf options
+    blob.extend_from_slice(&1u32.to_be_bytes()); // number of keys
+    push_ssh_bytes(&mut blob, &pubkey_blob); // public key
+    push_ssh_bytes(&mut blob, &priv_section); // private key section
 
     let encoded = STANDARD.encode(&blob);
     let mut pem = String::from("-----BEGIN OPENSSH PRIVATE KEY-----\n");

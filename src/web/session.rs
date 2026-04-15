@@ -284,9 +284,9 @@ pub async fn csrf_token_header(
             axum::http::HeaderValue::from_str(&csrf).unwrap(),
         );
         // Also set a non-HttpOnly cookie so page.html inline JS can read it
-        if let Ok(cookie_val) = axum::http::HeaderValue::from_str(
-            &format!("zetl_csrf={csrf}; Path=/; SameSite=Strict"),
-        ) {
+        if let Ok(cookie_val) =
+            axum::http::HeaderValue::from_str(&format!("zetl_csrf={csrf}; Path=/; SameSite=Strict"))
+        {
             response
                 .headers_mut()
                 .append(axum::http::header::SET_COOKIE, cookie_val);

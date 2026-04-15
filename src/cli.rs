@@ -9,11 +9,23 @@ use clap::{Parser, Subcommand, ValueEnum};
 )]
 pub struct Cli {
     /// Vault root directory
-    #[arg(short = 'd', long, default_value = ".", env = "ZETL_DIR", global = true)]
+    #[arg(
+        short = 'd',
+        long,
+        default_value = ".",
+        env = "ZETL_DIR",
+        global = true
+    )]
     pub dir: String,
 
     /// Output format (auto-detects: table for TTY, JSON for pipes)
-    #[arg(short = 'f', long, default_value = "auto", env = "ZETL_FORMAT", global = true)]
+    #[arg(
+        short = 'f',
+        long,
+        default_value = "auto",
+        env = "ZETL_FORMAT",
+        global = true
+    )]
     pub format: OutputFormat,
 
     /// Force JSON output (shorthand for -f json)
@@ -289,7 +301,9 @@ pub enum Command {
     /// Derive an SSH ed25519 key from a BIP39 mnemonic and write it to a file.
     /// Useful for containerised deployments where a single seed phrase provides
     /// both the server key and the git SSH key.
-    #[command(after_help = "Examples:\n  zetl derive-ssh-key --mnemonic \"word1 word2 ... word12\" --out /root/.ssh/id_ed25519")]
+    #[command(
+        after_help = "Examples:\n  zetl derive-ssh-key --mnemonic \"word1 word2 ... word12\" --out /root/.ssh/id_ed25519"
+    )]
     DeriveSshKey {
         /// BIP39 mnemonic phrase (12 words)
         #[arg(long, env = "ZETL_SERVER_KEY_SEED")]

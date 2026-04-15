@@ -448,10 +448,7 @@ impl TemplateEngine {
     }
 
     /// Render the passkey registration guidance page.
-    pub fn render_login(
-        &self,
-        vault_name: &str,
-    ) -> Result<String, TemplateError> {
+    pub fn render_login(&self, vault_name: &str) -> Result<String, TemplateError> {
         let ctx = context! {
             vault_name => vault_name,
             mode => "serve",

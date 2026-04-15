@@ -43,8 +43,7 @@ fn escape_spl(s: &str) -> String {
 }
 
 /// Visibility mode controlling how denied pages appear to users (REQ-020-030).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VisibilityMode {
     /// Denied pages visible (grayed) in sidebar; 403 on direct access; grayed-out wikilinks.
     Transparent,
@@ -54,7 +53,6 @@ pub enum VisibilityMode {
     /// Denied pages fully hidden; 404 on direct access; dead-link wikilinks.
     Hidden,
 }
-
 
 /// Per-page visibility override for a specific user (REQ-020-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1057,9 +1055,7 @@ fn build_scope_glob(scope: &str) -> Option<globset::GlobMatcher> {
     match globset::Glob::new(scope) {
         Ok(g) => Some(g.compile_matcher()),
         Err(e) => {
-            eprintln!(
-                "warning: invalid scope glob pattern {scope:?}: {e} — skipping"
-            );
+            eprintln!("warning: invalid scope glob pattern {scope:?}: {e} — skipping");
             None
         }
     }
@@ -1366,9 +1362,8 @@ mod tests {
         let bob_id = create_user(&vault, "Bob", &owner_id);
 
         // Vault policy: Bob is an editor with ** scope (can read everything)
-        let access_spl = format!(
-            "(given (role \"{bob_id}\" editor))\n(given (scope \"{bob_id}\" \"**\"))\n"
-        );
+        let access_spl =
+            format!("(given (role \"{bob_id}\" editor))\n(given (scope \"{bob_id}\" \"**\"))\n");
         std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
 
         // Page-level override: defeater argues for negation to block reads
@@ -1410,9 +1405,8 @@ mod tests {
         let agent_id = create_user(&vault, "Agent", &owner_id);
 
         // Give agent admin role
-        let access_spl = format!(
-            "(given (admin \"{agent_id}\"))\n(given (role \"{agent_id}\" admin))\n"
-        );
+        let access_spl =
+            format!("(given (admin \"{agent_id}\"))\n(given (role \"{agent_id}\" admin))\n");
         std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
 
         let q = AclQuery {
@@ -1544,9 +1538,8 @@ mod tests {
         let bob_id = create_user(&vault, "Bob", &owner_id);
 
         // Malicious access.spl tries to grant Bob owner status
-        let access_spl = format!(
-            "(given (owner \"{bob_id}\"))\n(given (role \"{bob_id}\" reader))\n",
-        );
+        let access_spl =
+            format!("(given (owner \"{bob_id}\"))\n(given (role \"{bob_id}\" reader))\n",);
         std::fs::write(vault.join(".zetl/collab/access.spl"), &access_spl).unwrap();
 
         // Bob should NOT be able to edit (owner fact was stripped)
@@ -2394,9 +2387,7 @@ mod tests {
             source_page: "evil".to_string(),
             start_line: 1,
             end_line: 2,
-            content: format!(
-                "(given (admin \"{bob_id}\"))\n(given (role \"{bob_id}\" admin))\n"
-            ),
+            content: format!("(given (admin \"{bob_id}\"))\n(given (role \"{bob_id}\" admin))\n"),
         };
 
         let q = AclQuery {

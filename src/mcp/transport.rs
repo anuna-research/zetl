@@ -41,8 +41,7 @@ pub async fn serve_http(
     allowed_issuers: Arc<HashMap<String, String>>,
 ) -> Result<()> {
     use rmcp::transport::streamable_http_server::{
-        StreamableHttpServerConfig, StreamableHttpService,
-        session::local::LocalSessionManager,
+        session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
     };
 
     let config = StreamableHttpServerConfig::default();
@@ -67,12 +66,9 @@ pub async fn serve_http(
 
     // Build the MCP sub-router, optionally wrapped in auth middleware.
     let mcp_router = if require_auth {
-        axum::Router::new()
-            .nest_service("/mcp", mcp_service)
-            .layer(axum::middleware::from_fn_with_state(
-                allowed_issuers.clone(),
-                auth_middleware,
-            ))
+        axum::Router::new().nest_service("/mcp", mcp_service).layer(
+            axum::middleware::from_fn_with_state(allowed_issuers.clone(), auth_middleware),
+        )
     } else {
         axum::Router::new().nest_service("/mcp", mcp_service)
     };

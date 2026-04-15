@@ -45,9 +45,7 @@ pub fn render_to_html(
         // the first <li> so deep-linking to a list still works.
         let is_block_start = matches!(
             &event,
-            Event::Start(
-                Tag::Paragraph | Tag::Heading { .. } | Tag::BlockQuote(_) | Tag::Item
-            )
+            Event::Start(Tag::Paragraph | Tag::Heading { .. } | Tag::BlockQuote(_) | Tag::Item)
         );
         events.push(event);
         if is_block_start {
@@ -325,9 +323,7 @@ pub fn render_to_html_with_visibility(
         // the first <li> so deep-linking to a list still works.
         let is_block_start = matches!(
             &event,
-            Event::Start(
-                Tag::Paragraph | Tag::Heading { .. } | Tag::BlockQuote(_) | Tag::Item
-            )
+            Event::Start(Tag::Paragraph | Tag::Heading { .. } | Tag::BlockQuote(_) | Tag::Item)
         );
         events.push(event);
         if is_block_start {
@@ -635,7 +631,10 @@ fn truncate_description(s: &str) -> String {
     }
     let slice = &s[..end];
     let cut = slice.rfind(' ').unwrap_or(end);
-    format!("{}…", slice[..cut].trim_end_matches(|c: char| c.is_ascii_punctuation()))
+    format!(
+        "{}…",
+        slice[..cut].trim_end_matches(|c: char| c.is_ascii_punctuation())
+    )
 }
 
 /// Count the number of lines consumed by YAML frontmatter (including delimiters).

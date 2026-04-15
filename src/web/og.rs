@@ -19,10 +19,8 @@ pub const OG_WIDTH: u32 = 1200;
 pub const OG_HEIGHT: u32 = 630;
 
 /// Inter Bold, SIL OFL — bundled under themes/default/static/Inter-Bold.ttf.
-static FONT_BOLD_BYTES: &[u8] =
-    include_bytes!("../../themes/default/static/Inter-Bold.ttf");
-static FONT_REGULAR_BYTES: &[u8] =
-    include_bytes!("../../themes/default/static/Inter-Regular.ttf");
+static FONT_BOLD_BYTES: &[u8] = include_bytes!("../../themes/default/static/Inter-Bold.ttf");
+static FONT_REGULAR_BYTES: &[u8] = include_bytes!("../../themes/default/static/Inter-Regular.ttf");
 
 /// Render an OG card PNG and return its bytes.
 ///
@@ -34,8 +32,8 @@ pub fn render_og_png(
     subtitle: &str,
     background: Option<&RgbaImage>,
 ) -> Result<Vec<u8>> {
-    let font_bold = FontRef::try_from_slice(FONT_BOLD_BYTES)
-        .context("loading bundled Inter-Bold font")?;
+    let font_bold =
+        FontRef::try_from_slice(FONT_BOLD_BYTES).context("loading bundled Inter-Bold font")?;
     let font_regular = FontRef::try_from_slice(FONT_REGULAR_BYTES)
         .context("loading bundled Inter-Regular font")?;
 
@@ -226,8 +224,7 @@ fn fit_cover(src: &RgbaImage, w: u32, h: u32) -> RgbaImage {
     };
     let x = (sw - crop_w) / 2;
     let y = (sh - crop_h) / 2;
-    let cropped =
-        image::imageops::crop_imm(src, x, y, crop_w, crop_h).to_image();
+    let cropped = image::imageops::crop_imm(src, x, y, crop_w, crop_h).to_image();
     image::imageops::resize(&cropped, w, h, image::imageops::FilterType::Lanczos3)
 }
 
