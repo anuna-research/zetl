@@ -25,8 +25,7 @@ fn write(root: &Path, rel: &str, body: &str) {
 /// the same tag. `build_template_page_history_context` needs both the jj
 /// commit AND the cache entry to return `Some(_)`.
 fn take_snapshot(root: &Path, tag: &str) {
-    let files =
-        zetl::scanner::scan_vault(root, &zetl::scanner::ScanOptions::default()).unwrap();
+    let files = zetl::scanner::scan_vault(root, &zetl::scanner::ScanOptions::default()).unwrap();
     zetl::history::auto_snapshot(root, Some(tag)).unwrap();
     let cache = zetl::history::cache::HistoricalIndexCache::with_default_capacity();
     cache.store(root, tag, &files).unwrap();
@@ -39,11 +38,21 @@ fn setup_two_snapshot_vault() -> (TempDir, String) {
     let root = tmp.path();
     // Snapshot 1.
     write(root, "notes/note-a.md", "# Note A\n\nfirst draft\n");
-    take_snapshot(root, "deadbeef00000000000000000000000000000000000000000000000000000001");
+    take_snapshot(
+        root,
+        "deadbeef00000000000000000000000000000000000000000000000000000001",
+    );
     // Snapshot 2: modify note-a and add note-b.
-    write(root, "notes/note-a.md", "# Note A\n\nsecond revision\n[[note-b]]\n");
+    write(
+        root,
+        "notes/note-a.md",
+        "# Note A\n\nsecond revision\n[[note-b]]\n",
+    );
     write(root, "notes/note-b.md", "# Note B\n");
-    take_snapshot(root, "deadbeef00000000000000000000000000000000000000000000000000000002");
+    take_snapshot(
+        root,
+        "deadbeef00000000000000000000000000000000000000000000000000000002",
+    );
     (tmp, "note-a".to_string())
 }
 
@@ -53,15 +62,15 @@ fn setup_two_snapshot_vault() -> (TempDir, String) {
 /// structurally by the template syntax.
 #[tokio::test]
 async fn test_300_304_metadata_strip_and_recent_changes_link() {
-    use axum::Router;
     use axum::body::Body;
     use axum::http::Request;
     use axum::routing::get;
+    use axum::Router;
     use tower::ServiceExt as _;
     use zetl::scanner::ScanOptions;
-    use zetl::web::WebState;
-    use zetl::web::routes::page_handler;
     use zetl::search_index::SearchIndex;
+    use zetl::web::routes::page_handler;
+    use zetl::web::WebState;
 
     let (tmp, _slug) = setup_two_snapshot_vault();
     let root = tmp.path();
@@ -141,15 +150,15 @@ async fn test_300_304_metadata_strip_and_recent_changes_link() {
 /// strip nor the "Recent changes" sidebar link.
 #[tokio::test]
 async fn test_305_graceful_absence_no_history() {
-    use axum::Router;
     use axum::body::Body;
     use axum::http::Request;
     use axum::routing::get;
+    use axum::Router;
     use tower::ServiceExt as _;
     use zetl::scanner::ScanOptions;
-    use zetl::web::WebState;
-    use zetl::web::routes::page_handler;
     use zetl::search_index::SearchIndex;
+    use zetl::web::routes::page_handler;
+    use zetl::web::WebState;
 
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
@@ -251,7 +260,11 @@ fn test_302_303_build_emits_history_html() {
 
     // TEST-303: vault-wide history HTML exists and contains recent changes.
     let vault_hist = out.join("_history.html");
-    assert!(vault_hist.exists(), "expected vault history at {}", vault_hist.display());
+    assert!(
+        vault_hist.exists(),
+        "expected vault history at {}",
+        vault_hist.display()
+    );
     let vh = fs::read_to_string(&vault_hist).unwrap();
     assert!(vh.contains("Recent changes"));
     // Snapshot count should be >= 2 based on setup_two_snapshot_vault.
@@ -266,15 +279,15 @@ fn test_302_303_build_emits_history_html() {
 /// list) when the vault has snapshots — not the graceful-absence body.
 #[tokio::test]
 async fn test_serve_vault_history_populates_body_with_snapshots() {
-    use axum::Router;
     use axum::body::Body;
     use axum::http::Request;
     use axum::routing::get;
+    use axum::Router;
     use tower::ServiceExt as _;
     use zetl::scanner::ScanOptions;
     use zetl::search_index::SearchIndex;
-    use zetl::web::WebState;
     use zetl::web::routes::page_handler;
+    use zetl::web::WebState;
 
     let (tmp, _slug) = setup_two_snapshot_vault();
     let root = tmp.path();
@@ -359,7 +372,13 @@ fn test_build_recent_changes_deterministic() {
     // produce identical sequences (page_title, change_kind, changed_at).
     let tuples = |v: &[zetl::history::core::RecentChangeEntry]| {
         v.iter()
-            .map(|e| (e.page_title.clone(), format!("{:?}", e.change_kind), e.changed_at.clone()))
+            .map(|e| {
+                (
+                    e.page_title.clone(),
+                    format!("{:?}", e.change_kind),
+                    e.changed_at.clone(),
+                )
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(tuples(&a), tuples(&b));
@@ -382,7 +401,11 @@ fn test_build_recent_changes_respects_limit_without_midsnap_cutoff() {
     // Known: setup_two_snapshot_vault produces ≥2 changes between the two
     // cache-enabled snapshots (note-a modified + note-b added).
     let all = zetl::history::core::build_recent_changes(&snapshots, root, 50).unwrap();
-    assert!(all.len() >= 2, "expected ≥2 candidate changes; got {}", all.len());
+    assert!(
+        all.len() >= 2,
+        "expected ≥2 candidate changes; got {}",
+        all.len()
+    );
 
     let limited = zetl::history::core::build_recent_changes(&snapshots, root, 1).unwrap();
     assert!(

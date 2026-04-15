@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub mod exclude;
-pub use exclude::{Decision, ExcludeReason, ScanOptions, classify_entry, classify_entry_os};
+pub use exclude::{classify_entry, classify_entry_os, Decision, ExcludeReason, ScanOptions};
 
 /// Scan a vault directory and parse all markdown files.
 ///

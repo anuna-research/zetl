@@ -2139,12 +2139,10 @@ async fn vault_history_handler_inner(State(state): State<WebState>) -> Response 
         .unwrap_or(50);
     let recent_changes = match crate::history::open_history(&state.vault_root) {
         Ok(backend) => match backend.list_changes(10_000) {
-            Ok(snaps) => crate::history::core::build_recent_changes(
-                &snaps,
-                &state.vault_root,
-                limit,
-            )
-            .unwrap_or_default(),
+            Ok(snaps) => {
+                crate::history::core::build_recent_changes(&snaps, &state.vault_root, limit)
+                    .unwrap_or_default()
+            }
             Err(_) => Vec::new(),
         },
         Err(_) => Vec::new(),
@@ -2164,15 +2162,14 @@ async fn vault_history_handler_inner(State(state): State<WebState>) -> Response 
         })
         .unwrap_or_default();
 
-    let resp = match state.engine.render_vault_history(
-        &vault_ctx,
-        &recent_changes,
-        &sparkline,
-        "serve",
-    ) {
-        Ok(html) => Html(html).into_response(),
-        Err(e) => render_error_response(e),
-    };
+    let resp =
+        match state
+            .engine
+            .render_vault_history(&vault_ctx, &recent_changes, &sparkline, "serve")
+        {
+            Ok(html) => Html(html).into_response(),
+            Err(e) => render_error_response(e),
+        };
 
     if state.verbose {
         eprintln!(

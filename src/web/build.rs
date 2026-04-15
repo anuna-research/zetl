@@ -618,7 +618,9 @@ pub fn build_static(
             .map(|arr| {
                 arr.iter()
                     .filter_map(|pt| {
-                        pt.get("total_links").and_then(|v| v.as_f64()).map(|f| f as f32)
+                        pt.get("total_links")
+                            .and_then(|v| v.as_f64())
+                            .map(|f| f as f32)
                     })
                     .collect()
             })

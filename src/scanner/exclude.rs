@@ -133,12 +133,10 @@ pub fn classify_entry_os(
     // (built from `.gitignore` + `.zetlignore`) has a `!pattern` match
     // for this path or any parent. Files (including dotfiles) are not
     // excluded by this rule — only directories.
-    let starts_with_dot = basename_str
-        .map(|s| s.starts_with('.'))
-        .unwrap_or_else(|| {
-            // Non-UTF-8 basename: peek at the first byte via `as_encoded_bytes`.
-            basename_os.as_encoded_bytes().first() == Some(&b'.')
-        });
+    let starts_with_dot = basename_str.map(|s| s.starts_with('.')).unwrap_or_else(|| {
+        // Non-UTF-8 basename: peek at the first byte via `as_encoded_bytes`.
+        basename_os.as_encoded_bytes().first() == Some(&b'.')
+    });
     if !opts.include_hidden && is_dir && starts_with_dot {
         if let Some(gi) = whitelist {
             if gi
@@ -166,14 +164,7 @@ mod tests {
     #[test]
     fn force_ignored_dirs_excluded() {
         let opts = ScanOptions::default();
-        let r = classify_entry(
-            &PathBuf::from(".git"),
-            ".git",
-            true,
-            &opts,
-            no_nested,
-            None,
-        );
+        let r = classify_entry(&PathBuf::from(".git"), ".git", true, &opts, no_nested, None);
         assert_eq!(r, Decision::Exclude(ExcludeReason::Hardcoded));
 
         let r = classify_entry(

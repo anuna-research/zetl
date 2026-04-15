@@ -10,7 +10,7 @@ use std::fs;
 use std::path::Path;
 
 use tempfile::TempDir;
-use zetl::scanner::{ScanOptions, scan_vault};
+use zetl::scanner::{scan_vault, ScanOptions};
 
 fn write(root: &Path, rel: &str, body: &str) {
     let path = root.join(rel);
@@ -42,7 +42,9 @@ fn test_200_dotdir_excluded_by_default() {
         "expected page 'a' to be present: {result:?}"
     );
     assert!(
-        !result.iter().any(|p| p == "session" || p.contains("claude")),
+        !result
+            .iter()
+            .any(|p| p == "session" || p.contains("claude")),
         ".claude/ pages must not appear under default options: {result:?}"
     );
 }

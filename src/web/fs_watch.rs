@@ -607,7 +607,11 @@ fn filter_event(
                 any = true;
             }
         }
-        if any { gi.build().ok() } else { None }
+        if any {
+            gi.build().ok()
+        } else {
+            None
+        }
     };
     for path in &event.paths {
         // Skip non-markdown files.
@@ -684,10 +688,7 @@ mod tests {
         // Each entry: (label, list of (relative path, body)). All files are
         // .md so they make it past the `ext != "md"` watcher gate.
         let vault_layouts: &[(&str, &[(&str, &str)])] = &[
-            (
-                "plain",
-                &[("notes/a.md", "# A"), ("notes/sub/b.md", "# B")],
-            ),
+            ("plain", &[("notes/a.md", "# A"), ("notes/sub/b.md", "# B")]),
             (
                 "with_dotdir",
                 &[("notes/a.md", "# A"), (".claude/session.md", "# leak")],
@@ -813,12 +814,7 @@ mod tests {
             paths: vec![leaf.clone()],
             attrs: Default::default(),
         };
-        let result = filter_event(
-            &evt,
-            &root,
-            &PendingWrites::new(),
-            &ScanOptions::default(),
-        );
+        let result = filter_event(&evt, &root, &PendingWrites::new(), &ScanOptions::default());
         assert_eq!(result, Some(vec![leaf]));
     }
 

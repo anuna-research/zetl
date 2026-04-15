@@ -168,7 +168,8 @@ fn perf_046_merkle_overhead() {
     // ── 1. Full scan including Merkle ────────────────────────────────────────
     let t_scan = {
         let start = Instant::now();
-        let files = zetl::scanner::scan_vault(vault.path(), &zetl::scanner::ScanOptions::default()).expect("scan_vault failed");
+        let files = zetl::scanner::scan_vault(vault.path(), &zetl::scanner::ScanOptions::default())
+            .expect("scan_vault failed");
         let elapsed = start.elapsed();
         assert_eq!(
             files.len(),
@@ -254,7 +255,8 @@ fn perf_047_memory_overhead() {
 
     let rss_before = rss_bytes();
 
-    let files = zetl::scanner::scan_vault(vault.path(), &zetl::scanner::ScanOptions::default()).expect("scan_vault failed");
+    let files = zetl::scanner::scan_vault(vault.path(), &zetl::scanner::ScanOptions::default())
+        .expect("scan_vault failed");
     assert_eq!(
         files.len(),
         N,
@@ -313,7 +315,8 @@ fn perf_048_cache_size() {
     let baseline = dir_size_bytes(&vault.path().join(".zetl"));
 
     // Full pipeline: scan + save cache.
-    let files = zetl::scanner::scan_vault(vault.path(), &zetl::scanner::ScanOptions::default()).expect("scan_vault failed");
+    let files = zetl::scanner::scan_vault(vault.path(), &zetl::scanner::ScanOptions::default())
+        .expect("scan_vault failed");
     assert_eq!(
         files.len(),
         N,
