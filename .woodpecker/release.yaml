@@ -47,7 +47,7 @@ steps:
         export CXX_aarch64_apple_darwin=aarch64-apple-darwin23.5-clang++
         export CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=aarch64-apple-darwin23.5-clang
         cd -
-        cargo build --release --features "reason,history,mcp" --target aarch64-apple-darwin
+        cargo build --release --features "reason,history,mcp,vendored-openssl" --target aarch64-apple-darwin
         mkdir -p dist
         cp target/aarch64-apple-darwin/release/zetl dist/zetl
         cd dist && tar czf zetl-macos-arm64.tar.gz zetl && rm zetl && cd ..
@@ -67,7 +67,7 @@ steps:
         export CXX_x86_64_apple_darwin=x86_64-apple-darwin23.5-clang++
         export CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER=x86_64-apple-darwin23.5-clang
         cd -
-        cargo build --release --features "reason,history,mcp" --target x86_64-apple-darwin
+        cargo build --release --features "reason,history,mcp,vendored-openssl" --target x86_64-apple-darwin
         mkdir -p dist
         cp target/x86_64-apple-darwin/release/zetl dist/zetl
         cd dist && tar czf zetl-macos-x86_64.tar.gz zetl && rm zetl && cd ..
@@ -77,7 +77,7 @@ steps:
     commands:
       - apt-get update && apt-get install -y gcc-mingw-w64-x86-64 zip
       - rustup target add x86_64-pc-windows-gnu
-      - cargo build --release --features "reason,history,mcp" --target x86_64-pc-windows-gnu
+      - cargo build --release --features "reason,history,mcp,vendored-openssl" --target x86_64-pc-windows-gnu
       - mkdir -p dist
       - cp target/x86_64-pc-windows-gnu/release/zetl.exe dist/zetl.exe
       - cd dist && zip zetl-windows-x86_64.zip zetl.exe && rm zetl.exe && cd ..
