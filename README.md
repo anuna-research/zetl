@@ -409,6 +409,47 @@ dist/
     Another/index.html
 ```
 
+### Vault scanning and ignore files
+
+`zetl` walks the vault using a layered exclusion stack. From lowest to
+highest precedence (later rules override earlier ones, except level 1):
+
+1. **Hardcoded force-ignores** — `.git/`, `.zetl/`, and `node_modules/`
+   are never scanned. Not overridable by any flag or ignore file.
+2. **Default dotdir exclusion** — directories whose name starts with `.`
+   (e.g. `.claude/`, `.obsidian/`, `.vscode/`) are skipped. Disable with
+   `--include-hidden`. Dotfiles at the vault root are not affected by
+   this rule and are always scanned.
+3. **`.gitignore`** — respected if present.
+4. **`.zetlignore`** — gitignore-syntax file at the vault root. Negated
+   patterns (`!foo`) re-include paths the dotdir default would have
+   excluded. Subdirectory `.zetlignore` files are not yet honoured.
+5. **`--exclude PATTERN`** — repeatable CLI flag, gitignore syntax,
+   evaluated relative to the vault root. Highest priority of the
+   user-configurable layers.
+
+Examples:
+
+```bash
+# Publish .archive/ alongside the rest of the vault
+echo '!.archive/' > .zetlignore
+zetl build
+
+# One-off build that omits drafts/ without changing .zetlignore
+zetl build --exclude 'drafts/'
+
+# Restore the pre-SPEC-026 behaviour (walks .claude/, .obsidian/, etc.)
+zetl build --include-hidden
+
+# Debug what is being skipped and why
+zetl --verbose build
+# → [zetl] scan: skipped .obsidian reason=dotdir
+```
+
+The same exclusion stack applies to `serve`, `index`, `search`, and
+`watch`. The `serve` watcher honours the flags for the whole serve
+lifetime — file events under excluded paths are silently dropped.
+
 ### Themes
 
 Both `serve` and `build` support custom themes via `--theme <name>`. Themes live in `.zetl/themes/<name>/` and can override any of the built-in Minijinja templates:

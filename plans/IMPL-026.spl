@@ -312,3 +312,75 @@
 (claims agent:claude
   :at "2026-04-15T01:31:17Z"
   (given completed-cli-flags))
+
+(claims agent:claude
+  :at "2026-04-15T01:31:42Z"
+  (given claim-v1-integration-tests)
+  (normally r-cl-state-v1-integration-tests claim-v1-integration-tests state-claimed-v1-integration-tests)
+  (normally r-cl-chain-v1-integration-tests state-claimed-v1-integration-tests claimed-integration-tests)
+)
+
+;; Propagation rules: failures in 'integration-tests' block downstream tasks
+(normally r-propagate-synthetic-user-run-from-integration-tests-failed failed-integration-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-integration-tests-permanently-failed permanently-failed-integration-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-integration-tests-stale-v1 stale-v1-integration-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-integration-tests-timeout-v1 timeout-v1-integration-tests upstream-blocked-synthetic-user-run)
+
+(claims agent:claude
+  :at "2026-04-15T01:32:26Z"
+  (given completed-integration-tests))
+
+(claims agent:claude
+  :at "2026-04-15T01:32:26Z"
+  (given claim-v1-property-tests)
+  (normally r-cl-state-v1-property-tests claim-v1-property-tests state-claimed-v1-property-tests)
+  (normally r-cl-chain-v1-property-tests state-claimed-v1-property-tests claimed-property-tests)
+)
+
+;; Propagation rules: failures in 'property-tests' block downstream tasks
+(normally r-propagate-synthetic-user-run-from-property-tests-failed failed-property-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-property-tests-permanently-failed permanently-failed-property-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-property-tests-stale-v1 stale-v1-property-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-property-tests-timeout-v1 timeout-v1-property-tests upstream-blocked-synthetic-user-run)
+
+(claims agent:claude
+  :at "2026-04-15T01:32:26Z"
+  (given claim-v1-callsite-audit)
+  (normally r-cl-state-v1-callsite-audit claim-v1-callsite-audit state-claimed-v1-callsite-audit)
+  (normally r-cl-chain-v1-callsite-audit state-claimed-v1-callsite-audit claimed-callsite-audit)
+)
+
+;; Propagation rules: failures in 'callsite-audit' block downstream tasks
+(normally r-propagate-changelog-readme-from-callsite-audit-failed failed-callsite-audit upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-callsite-audit-permanently-failed permanently-failed-callsite-audit upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-callsite-audit-stale-v1 stale-v1-callsite-audit upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-callsite-audit-timeout-v1 timeout-v1-callsite-audit upstream-blocked-changelog-readme)
+(normally r-propagate-synthetic-user-run-from-callsite-audit-failed failed-callsite-audit upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-callsite-audit-permanently-failed permanently-failed-callsite-audit upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-callsite-audit-stale-v1 stale-v1-callsite-audit upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-callsite-audit-timeout-v1 timeout-v1-callsite-audit upstream-blocked-synthetic-user-run)
+
+(claims agent:claude
+  :at "2026-04-15T01:36:58Z"
+  (given completed-property-tests))
+
+(claims agent:claude
+  :at "2026-04-15T01:36:58Z"
+  (given completed-callsite-audit))
+
+(claims agent:claude
+  :at "2026-04-15T01:36:58Z"
+  (given claim-v1-changelog-readme)
+  (normally r-cl-state-v1-changelog-readme claim-v1-changelog-readme state-claimed-v1-changelog-readme)
+  (normally r-cl-chain-v1-changelog-readme state-claimed-v1-changelog-readme claimed-changelog-readme)
+)
+
+;; Propagation rules: failures in 'changelog-readme' block downstream tasks
+(normally r-propagate-synthetic-user-run-from-changelog-readme-failed failed-changelog-readme upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-changelog-readme-permanently-failed permanently-failed-changelog-readme upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-changelog-readme-stale-v1 stale-v1-changelog-readme upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-changelog-readme-timeout-v1 timeout-v1-changelog-readme upstream-blocked-synthetic-user-run)
+
+(claims agent:claude
+  :at "2026-04-15T01:36:58Z"
+  (given completed-changelog-readme))

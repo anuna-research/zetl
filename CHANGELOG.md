@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **Vault scan now skips dotdirs by default.** Directories whose name starts with
+  `.` (e.g. `.claude/`, `.obsidian/`, `.vscode/`, `.cache/`, `.venv/`,
+  `.terraform/`) are no longer walked by `zetl build`, `zetl serve`,
+  `zetl index`, `zetl search`, or `zetl watch`. Previously these were scanned
+  unless explicitly ignored, causing tool-state and AI-agent scratchpads to
+  leak into `dist/` and pollute the link graph and search index. The
+  hardcoded force-ignores (`.git/`, `.zetl/`, `node_modules/`) behave as
+  before. Dotfiles at the vault root (e.g. `.hidden-note.md`,
+  `.zetlignore`, `.gitignore`) are still walked. (SPEC-026)
+
+  **Migration:** if you intentionally publish a dotdir, either pass
+  `--include-hidden` or add a negated pattern to a `.zetlignore` file at
+  the vault root (e.g. `!.archive/`).
+
+### Added
+
+- `--exclude PATTERN` (repeatable) and `--include-hidden` flags on
+  `zetl build`, `zetl index`, `zetl serve`, `zetl search`, and `zetl watch`.
+  `--exclude` accepts gitignore-syntax patterns; `--include-hidden` disables
+  the new dotdir default while preserving the level-1 `.git/`/`.zetl/`/
+  `node_modules/` force-ignore. (SPEC-026)
+- `.zetlignore` is now a documented first-class feature. Patterns use
+  gitignore syntax and are evaluated relative to the vault root. Negated
+  patterns (`!foo`) override the default dotdir exclusion.
+- With `--verbose`, the scanner prints one stderr line per skipped path
+  with a `reason=` tag (`hardcoded`, `nested-vault`, or `dotdir`) for
+  debugging unexpected omissions.
+
 ### Fixed
 
 - `zetl stats`: `grounded_spl_blocks` could exceed `spl_blocks` when the theory

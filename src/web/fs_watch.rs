@@ -493,6 +493,7 @@ pub fn spawn_fs_watcher(state: WebState) -> tokio::task::JoinHandle<()> {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<PathBuf>>();
         let vault_root = state.vault_root.clone();
         let pending_writes = state.pending_writes.clone();
+        let scan_options = state.scan_options.clone();
 
         // Spawn the notify watcher on a blocking thread.
         let _watcher_handle = std::thread::spawn(move || {
@@ -528,7 +529,9 @@ pub fn spawn_fs_watcher(state: WebState) -> tokio::task::JoinHandle<()> {
 
                 match notify_rx.recv_timeout(timeout) {
                     Ok(Ok(event)) => {
-                        if let Some(paths) = filter_event(&event, &vault_root, &pending_writes) {
+                        if let Some(paths) =
+                            filter_event(&event, &vault_root, &pending_writes, &scan_options)
+                        {
                             batch.extend(paths);
                             last_event = Some(Instant::now());
                         }
@@ -580,6 +583,7 @@ fn filter_event(
     event: &Event,
     vault_root: &Path,
     pending_writes: &PendingWrites,
+    opts: &crate::scanner::ScanOptions,
 ) -> Option<Vec<PathBuf>> {
     // Only react to creates, modifies, and removes.
     match event.kind {
@@ -600,8 +604,6 @@ fn filter_event(
     } else {
         None
     };
-    let opts = crate::scanner::ScanOptions::default();
-
     for path in &event.paths {
         // Skip non-markdown files.
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -625,7 +627,7 @@ fn filter_event(
                     &partial,
                     &basename,
                     !is_last,
-                    &opts,
+                    opts,
                     || partial.join(".zetl").is_dir(),
                     zetlignore.as_ref(),
                 );
@@ -659,6 +661,110 @@ fn filter_event(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scanner::ScanOptions;
+
+    /// SPEC-026 TEST-206 (parity): for every markdown file in a synthetic
+    /// vault, the watcher's `filter_event` and the scanner's `scan_vault`
+    /// must agree on whether the file is included. Combinatorial over a
+    /// curated set of vault layouts; substitutes for a proptest-based
+    /// check (proptest is not in the dep tree).
+    #[test]
+    fn scanner_watcher_parity() {
+        use notify::{Event, EventKind};
+        use std::collections::BTreeSet;
+        use std::fs;
+
+        // Each entry: (label, list of (relative path, body)). All files are
+        // .md so they make it past the `ext != "md"` watcher gate.
+        let vault_layouts: &[(&str, &[(&str, &str)])] = &[
+            (
+                "plain",
+                &[("notes/a.md", "# A"), ("notes/sub/b.md", "# B")],
+            ),
+            (
+                "with_dotdir",
+                &[("notes/a.md", "# A"), (".claude/session.md", "# leak")],
+            ),
+            (
+                "with_dotdir_and_zetlignore_negation",
+                &[
+                    ("notes/a.md", "# A"),
+                    (".archive/old.md", "# old"),
+                    (".zetlignore", "!.archive/\n"),
+                ],
+            ),
+            (
+                "with_force_ignored",
+                &[
+                    ("notes/a.md", "# A"),
+                    (".zetl/internal.md", "# zetl"),
+                    (".git/config-as-md.md", "# git"),
+                    ("node_modules/lib.md", "# nm"),
+                ],
+            ),
+            (
+                "nested_in_dotdir",
+                &[("notes/a.md", "# A"), (".vscode/settings/x.md", "# nested")],
+            ),
+        ];
+
+        // Each option set is exercised against every layout.
+        let opts_variants: &[(&str, ScanOptions)] = &[
+            ("default", ScanOptions::default()),
+            (
+                "include_hidden",
+                ScanOptions::default().with_include_hidden(true),
+            ),
+            (
+                "exclude_drafts",
+                ScanOptions::default().with_exclude_patterns(vec!["drafts/".into()]),
+            ),
+        ];
+
+        for (layout_name, files) in vault_layouts {
+            for (opts_name, opts) in opts_variants {
+                let tmp = tempfile::TempDir::new().unwrap();
+                let root = tmp.path();
+                for (rel, body) in *files {
+                    let path = root.join(rel);
+                    fs::create_dir_all(path.parent().unwrap()).unwrap();
+                    fs::write(path, body).unwrap();
+                }
+
+                let scanned: BTreeSet<PathBuf> = crate::scanner::scan_vault(root, opts)
+                    .unwrap()
+                    .into_iter()
+                    .filter(|f| f.path.extension().and_then(|e| e.to_str()) == Some("md"))
+                    .map(|f| root.join(&f.path))
+                    .collect();
+
+                // Build one notify event with every .md file as a path.
+                let all_md_paths: Vec<PathBuf> = files
+                    .iter()
+                    .filter(|(rel, _)| rel.ends_with(".md"))
+                    .map(|(rel, _)| root.join(rel))
+                    .collect();
+
+                let evt = Event {
+                    kind: EventKind::Modify(notify::event::ModifyKind::Data(
+                        notify::event::DataChange::Content,
+                    )),
+                    paths: all_md_paths,
+                    attrs: Default::default(),
+                };
+                let watcher_seen: BTreeSet<PathBuf> =
+                    filter_event(&evt, root, &PendingWrites::new(), opts)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .collect();
+
+                assert_eq!(
+                    scanned, watcher_seen,
+                    "scanner/watcher parity violation for layout={layout_name} opts={opts_name}\n  scanner: {scanned:?}\n  watcher: {watcher_seen:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn pending_writes_insert_contains_remove() {
@@ -688,7 +794,7 @@ mod tests {
             attrs: Default::default(),
         };
 
-        let result = filter_event(&event, &vault, &pw);
+        let result = filter_event(&event, &vault, &pw, &ScanOptions::default());
         assert!(result.is_none(), "pending write should be filtered out");
         // pending write should be cleared after filtering
         assert!(!pw.contains(&path));
@@ -708,7 +814,7 @@ mod tests {
             attrs: Default::default(),
         };
 
-        let result = filter_event(&event, &vault, &pw);
+        let result = filter_event(&event, &vault, &pw, &ScanOptions::default());
         assert!(result.is_some());
         assert_eq!(result.unwrap(), vec![path]);
     }
@@ -724,7 +830,7 @@ mod tests {
             attrs: Default::default(),
         };
 
-        let result = filter_event(&event, &vault, &pw);
+        let result = filter_event(&event, &vault, &pw, &ScanOptions::default());
         assert!(result.is_none(), "hidden dir files should be filtered");
     }
 
@@ -741,7 +847,7 @@ mod tests {
             attrs: Default::default(),
         };
 
-        let result = filter_event(&event, &vault, &pw);
+        let result = filter_event(&event, &vault, &pw, &ScanOptions::default());
         assert!(result.is_none(), "non-markdown files should be filtered");
     }
 
