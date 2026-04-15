@@ -83,7 +83,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     }
 
     // ── Step 3: Re-scan ──────────────────────────────────────────────────
-    let new_data = match super::reindex(&state.vault_root) {
+    let new_data = match super::reindex_with(&state.vault_root, &state.scan_options) {
         Ok(d) => d,
         Err(e) => {
             warnings.push(format!("reindex: {e}"));
@@ -170,6 +170,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     // Fire on-save hooks in a blocking context (best-effort).
     let vault_root = state.vault_root.clone();
     let theme = state.theme.clone();
+    let scan_options = state.scan_options.clone();
     let content_length = md.len();
     let rel_path_str = path
         .strip_prefix(state.vault_root.as_ref())
@@ -186,7 +187,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
             return;
         }
 
-        let files = match crate::scanner::scan_vault(&vault_root, &[]) {
+        let files = match crate::scanner::scan_vault(&vault_root, &scan_options) {
             Ok(f) => f,
             Err(e) => {
                 eprintln!("flush hook: scan error: {e}");
@@ -409,6 +410,7 @@ mod tests {
             pending_writes: crate::web::fs_watch::PendingWrites::new(),
             passkey_mgr: None,
             public_dir: None,
+            scan_options: crate::scanner::ScanOptions::default(),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

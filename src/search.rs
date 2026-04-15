@@ -120,7 +120,11 @@ pub struct SearchConfig<'a> {
 /// for precise line/column positions and heading context.
 ///
 /// REQ-013-002, REQ-013-005, CON-013-001.
-pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOutput> {
+pub fn search_vault(
+    vault_root: &Path,
+    config: &SearchConfig,
+    scan_options: &crate::scanner::ScanOptions,
+) -> Result<SearchOutput> {
     if config.query.trim().is_empty() {
         anyhow::bail!("Empty search query");
     }
@@ -132,7 +136,7 @@ pub fn search_vault(vault_root: &Path, config: &SearchConfig) -> Result<SearchOu
             eprintln!(
                 "Building search index (run `zetl index` to avoid this delay on future queries)"
             );
-            let files = scan_vault(vault_root, &[])?;
+            let files = scan_vault(vault_root, scan_options)?;
             SearchIndex::build(vault_root, &files)?
         }
     };

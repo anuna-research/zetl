@@ -1,0 +1,314 @@
+;; IMPL-026: Vault Scan Exclusions — Dotdir Defaults, .zetlignore, --exclude
+;; Implements SPEC-026 v0.1.0
+
+(meta plan
+  (id "IMPL-026")
+  (title "Vault Scan Exclusions — Dotdir Defaults, .zetlignore, --exclude")
+  (version "0.1.0")
+  (status "draft")
+  (created "2026-04-15")
+  (author "agent:claude")
+  (spec "SPEC-026")
+  (description "Close the dist/ leak of tool-state dotdirs (.claude, .obsidian, etc.). Skip dotdirs by default, add --exclude and --include-hidden CLI flags, align scanner/watcher, and audit all scan_vault(&[]) call sites."))
+
+;; ── Agents ──────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── Tasks ───────────────────────────────────────────────
+
+;; Phase 1: pure core + types
+(given task-scan-options-type)
+(given task-pure-resolver)
+
+;; Phase 2: scanner integration
+(given task-scanner-integration)
+(given task-watcher-parity)
+
+;; Phase 3: CLI plumbing
+(given task-cli-flags)
+(given task-callsite-audit)
+
+;; Phase 4: tests + docs
+(given task-integration-tests)
+(given task-property-tests)
+(given task-changelog-readme)
+
+;; Phase 5: synthetic review
+(given task-synthetic-user-run)
+(given task-adversarial-review)
+
+;; ── No-deps markers ────────────────────────────────────
+(given no-deps-scan-options-type)
+
+;; ── Task Metadata ──────────────────────────────────────
+
+(meta task-scan-options-type
+  (description "Add `ScanOptions { exclude_patterns: Vec<String>, include_hidden: bool }` in src/scanner.rs. Provide Default impl + From<&[String]> adapter for backward-compat of existing test call sites. No behaviour change yet — just the type.")
+  (acceptance "cargo check passes; ScanOptions::default() returns include_hidden=false, empty patterns; existing scan_vault(&[]) still compiles via From adapter OR wrapper fn")
+  (trace "CON-200"))
+
+(meta task-pure-resolver
+  (description "Implement pure `resolve_exclusion(path, opts, nested_vault_probe) -> Decision` function in src/scanner.rs (or new submodule scanner/exclude.rs). Implements precedence from REQ-205: (1) hardcoded force-ignores, (2) dotdir default, (3) gitignore, (4) .zetlignore, (5) --exclude. No std::fs imports in this function except via injected probe closure. Returns `Decision::Include` or `Decision::Exclude(Reason)`.")
+  (acceptance "Unit tests cover all 5 precedence levels with table-driven cases; clippy::disallowed_methods denies std::fs in the module; TEST-205 passes as unit test")
+  (trace "REQ-200 REQ-202 REQ-203 REQ-204 REQ-205 CON-200"))
+
+(meta task-scanner-integration
+  (description "Rewrite scan_vault() in src/scanner.rs to consume ScanOptions and call resolve_exclusion via a filter_entry callback on WalkBuilder. Remove .hidden(false) bypass when include_hidden=false. Preserve existing force-ignores for .git/, .zetl/, node_modules/, and nested-vault detection. Emit OBS-200 trace lines when verbose.")
+  (acceptance "TEST-200, TEST-201, TEST-202, TEST-203, TEST-204 pass as integration tests in tests/scan_exclusions.rs; zetl build on a vault with .claude/ produces dist/ without .claude/")
+  (trace "REQ-200 REQ-201 REQ-202 REQ-203 REQ-204 OBS-200"))
+
+(meta task-watcher-parity
+  (description "Update src/web/fs_watch.rs::classify_external_event to call the same resolve_exclusion function from task-pure-resolver. Remove the duplicate starts_with('.') check. Ensure the watcher loads ScanOptions from the same source as the scanner (CLI flags propagated into watch state).")
+  (acceptance "TEST-206 property test passes: scanner and watcher produce identical include/exclude decisions on arbitrary vault + options inputs")
+  (trace "REQ-206"))
+
+(meta task-cli-flags
+  (description "Add --exclude <PATTERN> (repeatable, via clap) and --include-hidden (bool) to `build`, `index`, `serve`, `search`, `watch` subcommands in src/cli.rs. Thread through to call sites in src/main.rs, src/web/mod.rs, src/web/build.rs, src/search.rs. Document in --help text.")
+  (acceptance "CLI --help shows the flags on all five subcommands; TEST-203 and TEST-204 pass end-to-end via CLI invocation")
+  (trace "REQ-203 REQ-204 CON-203"))
+
+(meta task-callsite-audit
+  (description "Audit all 12 scan_vault() call sites (src/main.rs:96, src/main.rs:2914, src/search.rs:135, src/cache.rs:1413, src/web/flush.rs:189, src/web/mod.rs:188, src/web/routes.rs:1092, src/web/routes.rs:5491, src/scanner.rs:2360 [test], src/scanner.rs:2380 [test]). For each, either propagate CLI-supplied ScanOptions or annotate with `// SCAN-OPTS: intentional <reason>`. Add CI lint script (shell or xtask) to fail on ungated scan_vault(_, &[]) or ScanOptions::default() uses outside #[cfg(test)].")
+  (acceptance "TEST-207 CI lint passes; grep for raw scan_vault(_, &[]) in non-test code returns zero matches unless annotated")
+  (trace "REQ-207"))
+
+(meta task-integration-tests
+  (description "Add tests/scan_exclusions.rs implementing TEST-200 through TEST-205 as tempdir-based integration tests against the scanner API. Use tempfile crate (already in dev-deps per Cargo.toml convention). Each test creates a synthetic vault layout and asserts on the returned ParsedFile page set.")
+  (acceptance "cargo test --test scan_exclusions passes; each of TEST-200..205 is a named #[test] fn")
+  (trace "TEST-200 TEST-201 TEST-202 TEST-203 TEST-204 TEST-205"))
+
+(meta task-property-tests
+  (description "Add proptest-based property test for TEST-206 (scanner/watcher parity): generate arbitrary vault layouts + ScanOptions, assert scan_vault result set == watcher-filtered event set. Shrinking must produce a minimal failing reproducer. If proptest is not already a dep, gate this behind a test feature and justify in the commit.")
+  (acceptance "cargo test --features proptest-scan (or unconditional) runs >=100 cases and passes; intentional mutation (e.g., remove dotdir check from scanner) makes the test fail")
+  (trace "REQ-206 TEST-206"))
+
+(meta task-changelog-readme
+  (description "Add CHANGELOG.md entry under the next minor version: describe the breaking change (dotdirs now skipped), migration path (use --include-hidden or `.zetlignore` with negated pattern), and call out .zetl/ was always force-ignored. Add a 'Vault scanning and ignore files' section to README.md explaining precedence (REQ-205) with a concrete example.")
+  (acceptance "TEST-208 doc lint passes; CHANGELOG contains 'dotdir'; README has the new section; reviewer confirms migration instructions are unambiguous")
+  (trace "REQ-208 TEST-208"))
+
+(meta task-synthetic-user-run
+  (description "Run SPEC-026 §3 happy paths as a synthetic-user simulation (per USDD Protocol §Synthetic User Protocol). Use agent profiles from §2. Log findings categorised as Gap/Ambiguity/Friction/etc. Each finding proposes a REQ amendment.")
+  (acceptance "Report written to research/SPEC-026-synthetic-user.md with at least one finding or explicit 'no findings' after running all 3 happy paths")
+  (trace "SPEC-026 §3"))
+
+(meta task-adversarial-review
+  (description "Per Constitutional Principle #12 (Adversarial Review): a fresh-context reviewer (different session, optionally cross-model per USDD §AI Trust Boundaries Tier 3) reviews the implementation against SPEC-026 with an explicit mandate to find defects. Focus: REQ-205 precedence edge cases, dotfile-vs-dotdir boundary (REQ-201), and the watcher-parity property test's generator coverage.")
+  (acceptance "Review report in research/SPEC-026-adversarial-review.md; all raised defects either fixed or documented as accepted risks with justification")
+  (trace "Constitution §12"))
+
+;; ── Readiness Rules (DAG) ──────────────────────────────
+
+(normally r-ready-scan-options-type
+  (and task-scan-options-type no-deps-scan-options-type)
+  ready-scan-options-type)
+
+(normally r-ready-pure-resolver
+  (and task-pure-resolver completed-scan-options-type)
+  ready-pure-resolver)
+
+(normally r-ready-scanner-integration
+  (and task-scanner-integration completed-pure-resolver)
+  ready-scanner-integration)
+
+(normally r-ready-watcher-parity
+  (and task-watcher-parity completed-pure-resolver)
+  ready-watcher-parity)
+
+(normally r-ready-cli-flags
+  (and task-cli-flags completed-scanner-integration)
+  ready-cli-flags)
+
+(normally r-ready-callsite-audit
+  (and task-callsite-audit completed-cli-flags)
+  ready-callsite-audit)
+
+(normally r-ready-integration-tests
+  (and task-integration-tests completed-scanner-integration)
+  ready-integration-tests)
+
+(normally r-ready-property-tests
+  (and task-property-tests completed-scanner-integration completed-watcher-parity)
+  ready-property-tests)
+
+(normally r-ready-changelog-readme
+  (and task-changelog-readme completed-cli-flags completed-callsite-audit)
+  ready-changelog-readme)
+
+(normally r-ready-synthetic-user-run
+  (and task-synthetic-user-run
+       completed-integration-tests
+       completed-property-tests
+       completed-callsite-audit
+       completed-changelog-readme)
+  ready-synthetic-user-run)
+
+(normally r-ready-adversarial-review
+  (and task-adversarial-review completed-synthetic-user-run)
+  ready-adversarial-review)
+
+;; ── Assignment Rules ───────────────────────────────────
+
+(normally r-assign-scan-options-type (and ready-scan-options-type agent-claude-available) assign-to-scan-options-type-claude)
+(normally r-assign-pure-resolver (and ready-pure-resolver agent-claude-available) assign-to-pure-resolver-claude)
+(normally r-assign-scanner-integration (and ready-scanner-integration agent-claude-available) assign-to-scanner-integration-claude)
+(normally r-assign-watcher-parity (and ready-watcher-parity agent-claude-available) assign-to-watcher-parity-claude)
+(normally r-assign-cli-flags (and ready-cli-flags agent-claude-available) assign-to-cli-flags-claude)
+(normally r-assign-callsite-audit (and ready-callsite-audit agent-claude-available) assign-to-callsite-audit-claude)
+(normally r-assign-integration-tests (and ready-integration-tests agent-claude-available) assign-to-integration-tests-claude)
+(normally r-assign-property-tests (and ready-property-tests agent-claude-available) assign-to-property-tests-claude)
+(normally r-assign-changelog-readme (and ready-changelog-readme agent-claude-available) assign-to-changelog-readme-claude)
+(normally r-assign-synthetic-user-run (and ready-synthetic-user-run agent-claude-available) assign-to-synthetic-user-run-claude)
+(normally r-assign-adversarial-review (and ready-adversarial-review agent-claude-available) assign-to-adversarial-review-claude)
+
+;; ── Meta ───────────────────────────────────────────────
+
+(meta r-ready-scan-options-type
+  (description "ScanOptions type has no deps — foundation for the rest.")
+  (justification "Pure type change; no behaviour risk."))
+
+(meta r-ready-pure-resolver
+  (description "Pure resolver needs the ScanOptions type to exist.")
+  (justification "Shell→core dependency rule; core cannot import types that don't exist."))
+
+(meta r-ready-scanner-integration
+  (description "Scanner uses the pure resolver via filter_entry.")
+  (justification "Keeps behaviour change isolated after the pure core is unit-tested."))
+
+(meta r-ready-watcher-parity
+  (description "Watcher reuses the same pure resolver as the scanner.")
+  (justification "REQ-206 parity is the whole point of the extraction."))
+
+(meta r-ready-cli-flags
+  (description "CLI flags can only be wired once the scanner consumes ScanOptions.")
+  (justification "Avoids a window where flags exist but do nothing."))
+
+(meta r-ready-callsite-audit
+  (description "Audit runs after CLI plumbing exists, so the 'intentional' cases can be judged against real alternatives.")
+  (justification "Prevents premature annotation of call sites that should propagate CLI options."))
+
+(meta r-ready-synthetic-user-run
+  (description "Synthetic user runs against a working implementation with docs in place.")
+  (justification "Users will consult CHANGELOG/README during migration; simulation must reflect the shipping experience."))
+
+(meta r-ready-adversarial-review
+  (description "Adversarial review runs last, against the shipping artifact and synthetic-user findings.")
+  (justification "Constitution §12: review function operates on the full deliverable, not partial state."))
+
+(claims agent:claude
+  :at "2026-04-15T01:18:42Z"
+  (given claim-v1-scan-options-type)
+  (normally r-cl-state-v1-scan-options-type claim-v1-scan-options-type state-claimed-v1-scan-options-type)
+  (normally r-cl-chain-v1-scan-options-type state-claimed-v1-scan-options-type claimed-scan-options-type)
+)
+
+;; Propagation rules: failures in 'scan-options-type' block downstream tasks
+(normally r-propagate-pure-resolver-from-scan-options-type-failed failed-scan-options-type upstream-blocked-pure-resolver)
+(normally r-propagate-pure-resolver-from-scan-options-type-permanently-failed permanently-failed-scan-options-type upstream-blocked-pure-resolver)
+(normally r-propagate-pure-resolver-from-scan-options-type-stale-v1 stale-v1-scan-options-type upstream-blocked-pure-resolver)
+(normally r-propagate-pure-resolver-from-scan-options-type-timeout-v1 timeout-v1-scan-options-type upstream-blocked-pure-resolver)
+(normally r-propagate-pure-resolver-from-scan-options-type-blocked upstream-blocked-scan-options-type upstream-blocked-pure-resolver)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-scanner-integration-from-pure-resolver-blocked upstream-blocked-pure-resolver upstream-blocked-scanner-integration)
+(normally r-propagate-watcher-parity-from-pure-resolver-blocked upstream-blocked-pure-resolver upstream-blocked-watcher-parity)
+(normally r-propagate-cli-flags-from-scanner-integration-blocked upstream-blocked-scanner-integration upstream-blocked-cli-flags)
+(normally r-propagate-integration-tests-from-scanner-integration-blocked upstream-blocked-scanner-integration upstream-blocked-integration-tests)
+(normally r-propagate-property-tests-from-scanner-integration-blocked upstream-blocked-scanner-integration upstream-blocked-property-tests)
+(normally r-propagate-property-tests-from-watcher-parity-blocked upstream-blocked-watcher-parity upstream-blocked-property-tests)
+(normally r-propagate-callsite-audit-from-cli-flags-blocked upstream-blocked-cli-flags upstream-blocked-callsite-audit)
+(normally r-propagate-changelog-readme-from-cli-flags-blocked upstream-blocked-cli-flags upstream-blocked-changelog-readme)
+(normally r-propagate-synthetic-user-run-from-integration-tests-blocked upstream-blocked-integration-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-property-tests-blocked upstream-blocked-property-tests upstream-blocked-synthetic-user-run)
+(normally r-propagate-changelog-readme-from-callsite-audit-blocked upstream-blocked-callsite-audit upstream-blocked-changelog-readme)
+(normally r-propagate-synthetic-user-run-from-callsite-audit-blocked upstream-blocked-callsite-audit upstream-blocked-synthetic-user-run)
+(normally r-propagate-synthetic-user-run-from-changelog-readme-blocked upstream-blocked-changelog-readme upstream-blocked-synthetic-user-run)
+(normally r-propagate-adversarial-review-from-synthetic-user-run-blocked upstream-blocked-synthetic-user-run upstream-blocked-adversarial-review)
+
+(claims agent:claude
+  :at "2026-04-15T01:23:50Z"
+  (given completed-scan-options-type))
+
+(claims agent:claude
+  :at "2026-04-15T01:23:50Z"
+  (given claim-v1-pure-resolver)
+  (normally r-cl-state-v1-pure-resolver claim-v1-pure-resolver state-claimed-v1-pure-resolver)
+  (normally r-cl-chain-v1-pure-resolver state-claimed-v1-pure-resolver claimed-pure-resolver)
+)
+
+;; Propagation rules: failures in 'pure-resolver' block downstream tasks
+(normally r-propagate-scanner-integration-from-pure-resolver-failed failed-pure-resolver upstream-blocked-scanner-integration)
+(normally r-propagate-scanner-integration-from-pure-resolver-permanently-failed permanently-failed-pure-resolver upstream-blocked-scanner-integration)
+(normally r-propagate-scanner-integration-from-pure-resolver-stale-v1 stale-v1-pure-resolver upstream-blocked-scanner-integration)
+(normally r-propagate-scanner-integration-from-pure-resolver-timeout-v1 timeout-v1-pure-resolver upstream-blocked-scanner-integration)
+(normally r-propagate-watcher-parity-from-pure-resolver-failed failed-pure-resolver upstream-blocked-watcher-parity)
+(normally r-propagate-watcher-parity-from-pure-resolver-permanently-failed permanently-failed-pure-resolver upstream-blocked-watcher-parity)
+(normally r-propagate-watcher-parity-from-pure-resolver-stale-v1 stale-v1-pure-resolver upstream-blocked-watcher-parity)
+(normally r-propagate-watcher-parity-from-pure-resolver-timeout-v1 timeout-v1-pure-resolver upstream-blocked-watcher-parity)
+
+(claims agent:claude
+  :at "2026-04-15T01:23:50Z"
+  (given completed-pure-resolver))
+
+(claims agent:claude
+  :at "2026-04-15T01:23:50Z"
+  (given claim-v1-scanner-integration)
+  (normally r-cl-state-v1-scanner-integration claim-v1-scanner-integration state-claimed-v1-scanner-integration)
+  (normally r-cl-chain-v1-scanner-integration state-claimed-v1-scanner-integration claimed-scanner-integration)
+)
+
+;; Propagation rules: failures in 'scanner-integration' block downstream tasks
+(normally r-propagate-cli-flags-from-scanner-integration-failed failed-scanner-integration upstream-blocked-cli-flags)
+(normally r-propagate-cli-flags-from-scanner-integration-permanently-failed permanently-failed-scanner-integration upstream-blocked-cli-flags)
+(normally r-propagate-cli-flags-from-scanner-integration-stale-v1 stale-v1-scanner-integration upstream-blocked-cli-flags)
+(normally r-propagate-cli-flags-from-scanner-integration-timeout-v1 timeout-v1-scanner-integration upstream-blocked-cli-flags)
+(normally r-propagate-integration-tests-from-scanner-integration-failed failed-scanner-integration upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-scanner-integration-permanently-failed permanently-failed-scanner-integration upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-scanner-integration-stale-v1 stale-v1-scanner-integration upstream-blocked-integration-tests)
+(normally r-propagate-integration-tests-from-scanner-integration-timeout-v1 timeout-v1-scanner-integration upstream-blocked-integration-tests)
+(normally r-propagate-property-tests-from-scanner-integration-failed failed-scanner-integration upstream-blocked-property-tests)
+(normally r-propagate-property-tests-from-scanner-integration-permanently-failed permanently-failed-scanner-integration upstream-blocked-property-tests)
+(normally r-propagate-property-tests-from-scanner-integration-stale-v1 stale-v1-scanner-integration upstream-blocked-property-tests)
+(normally r-propagate-property-tests-from-scanner-integration-timeout-v1 timeout-v1-scanner-integration upstream-blocked-property-tests)
+
+(claims agent:claude
+  :at "2026-04-15T01:23:50Z"
+  (given completed-scanner-integration))
+
+(claims agent:claude
+  :at "2026-04-15T01:23:53Z"
+  (given claim-v1-watcher-parity)
+  (normally r-cl-state-v1-watcher-parity claim-v1-watcher-parity state-claimed-v1-watcher-parity)
+  (normally r-cl-chain-v1-watcher-parity state-claimed-v1-watcher-parity claimed-watcher-parity)
+)
+
+;; Propagation rules: failures in 'watcher-parity' block downstream tasks
+(normally r-propagate-property-tests-from-watcher-parity-failed failed-watcher-parity upstream-blocked-property-tests)
+(normally r-propagate-property-tests-from-watcher-parity-permanently-failed permanently-failed-watcher-parity upstream-blocked-property-tests)
+(normally r-propagate-property-tests-from-watcher-parity-stale-v1 stale-v1-watcher-parity upstream-blocked-property-tests)
+(normally r-propagate-property-tests-from-watcher-parity-timeout-v1 timeout-v1-watcher-parity upstream-blocked-property-tests)
+
+(claims agent:claude
+  :at "2026-04-15T01:24:27Z"
+  (given completed-watcher-parity))
+
+(claims agent:claude
+  :at "2026-04-15T01:24:27Z"
+  (given claim-v1-cli-flags)
+  (normally r-cl-state-v1-cli-flags claim-v1-cli-flags state-claimed-v1-cli-flags)
+  (normally r-cl-chain-v1-cli-flags state-claimed-v1-cli-flags claimed-cli-flags)
+)
+
+;; Propagation rules: failures in 'cli-flags' block downstream tasks
+(normally r-propagate-callsite-audit-from-cli-flags-failed failed-cli-flags upstream-blocked-callsite-audit)
+(normally r-propagate-callsite-audit-from-cli-flags-permanently-failed permanently-failed-cli-flags upstream-blocked-callsite-audit)
+(normally r-propagate-callsite-audit-from-cli-flags-stale-v1 stale-v1-cli-flags upstream-blocked-callsite-audit)
+(normally r-propagate-callsite-audit-from-cli-flags-timeout-v1 timeout-v1-cli-flags upstream-blocked-callsite-audit)
+(normally r-propagate-changelog-readme-from-cli-flags-failed failed-cli-flags upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-cli-flags-permanently-failed permanently-failed-cli-flags upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-cli-flags-stale-v1 stale-v1-cli-flags upstream-blocked-changelog-readme)
+(normally r-propagate-changelog-readme-from-cli-flags-timeout-v1 timeout-v1-cli-flags upstream-blocked-changelog-readme)
+
+(claims agent:claude
+  :at "2026-04-15T01:31:17Z"
+  (given completed-cli-flags))

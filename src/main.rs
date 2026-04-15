@@ -93,7 +93,7 @@ fn run_pipeline(cli: &Cli) -> Result<Pipeline> {
 
     // Scan vault for all markdown files (timed for OBS-007).
     let scan_start = Instant::now();
-    let all_scanned = scan_vault(&vault_root, &[])?;
+    let all_scanned = scan_vault(&vault_root, &cli.scan_options())?;
     let scan_elapsed_ms = scan_start.elapsed().as_millis();
 
     // Incremental re-parse: two-tier invalidation (REQ-039, ADR-009).
@@ -2603,7 +2603,7 @@ fn cmd_search(
         None
     };
 
-    let mut output = match search_vault(&vault_root, &config) {
+    let mut output = match search_vault(&vault_root, &config, &cli.scan_options()) {
         Ok(o) => o,
         Err(e) => {
             let msg = format!("{e}");
@@ -2909,7 +2909,7 @@ fn cmd_list(cli: &Cli) -> Result<()> {
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
 
     // Lean version: just scan for files, no graph construction needed
-    let files = scan_vault(&vault_root, &[])?;
+    let files = scan_vault(&vault_root, &cli.scan_options())?;
 
     #[derive(Serialize)]
     struct PageEntry {
@@ -5168,6 +5168,7 @@ fn cmd_serve(
         .ok()
         .map(std::sync::Arc::new),
         public_dir,
+        scan_options: cli.scan_options(),
         #[cfg(feature = "semantic")]
         vector_index,
     };
@@ -9784,7 +9785,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     match &cli.command {
-        Command::Index => cmd_index(&cli),
+        Command::Index { .. } => cmd_index(&cli),
         Command::Links {
             page,
             fuzzy,
@@ -9832,6 +9833,7 @@ fn main() -> anyhow::Result<()> {
             depth,
             semantic,
             hybrid,
+            scan: _,
         } => cmd_search(
             &cli,
             query,
@@ -9896,6 +9898,7 @@ fn main() -> anyhow::Result<()> {
             hostname,
             server_key_seed,
             git_poll_interval,
+            scan: _,
         } => cmd_serve(
             &cli,
             *port,
@@ -9931,6 +9934,7 @@ fn main() -> anyhow::Result<()> {
             theme,
             public,
             site_url,
+            scan: _,
         } => cmd_build(&cli, out_dir, theme, public.as_deref(), site_url.as_deref()),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
@@ -9977,7 +9981,11 @@ fn main() -> anyhow::Result<()> {
         }
         #[cfg(not(feature = "reason"))]
         Command::Reason { .. } => reason_not_available(),
-        Command::Watch { debounce, exec } => cmd_watch(&cli, *debounce, exec.as_deref()),
+        Command::Watch {
+            debounce,
+            exec,
+            scan: _,
+        } => cmd_watch(&cli, *debounce, exec.as_deref()),
         Command::Diff {
             from,
             since,

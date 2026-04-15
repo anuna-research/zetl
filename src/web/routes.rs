@@ -1068,6 +1068,7 @@ pub async fn save_handler(
     if !no_hooks {
         let vault_root = state.vault_root.clone();
         let theme = state.theme.clone();
+        let scan_options = state.scan_options.clone();
         let content_length = body.len();
         let rel_path = full_path
             .strip_prefix(vault_root.as_ref())
@@ -1089,7 +1090,7 @@ pub async fn save_handler(
             }
 
             // Re-scan vault for fresh graph data used by hook context.
-            let files = match crate::scanner::scan_vault(&vault_root, &[]) {
+            let files = match crate::scanner::scan_vault(&vault_root, &scan_options) {
                 Ok(f) => f,
                 Err(e) => {
                     eprintln!("on-save hook: scan error: {e}");
@@ -5448,11 +5449,19 @@ pub async fn access_request_handler(
             // Fire on-access-request hook asynchronously
             let vault_root_owned = state.vault_root.clone();
             let theme = state.theme.clone();
+            let scan_options = state.scan_options.clone();
             let user_id = session.user_id.clone();
             let user_name = profile.name.clone();
             let page = page_slug.clone();
             tokio::task::spawn_blocking(move || {
-                fire_access_request_hook(&vault_root_owned, &theme, &user_id, &user_name, &page);
+                fire_access_request_hook(
+                    &vault_root_owned,
+                    &theme,
+                    &user_id,
+                    &user_name,
+                    &page,
+                    &scan_options,
+                );
             });
 
             ApiResponse::ok(serde_json::json!({ "status": "requested" })).into_response()
@@ -5479,6 +5488,7 @@ fn fire_access_request_hook(
     user_id: &str,
     user_name: &str,
     page_slug: &str,
+    scan_options: &crate::scanner::ScanOptions,
 ) {
     let theme_hooks = hooks::resolve_theme_hooks(vault_root, theme);
     let manifest = hooks::discover_hooks(vault_root, theme_hooks.path());
@@ -5487,7 +5497,7 @@ fn fire_access_request_hook(
         return;
     }
 
-    let files = match crate::scanner::scan_vault(vault_root, &[]) {
+    let files = match crate::scanner::scan_vault(vault_root, scan_options) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("on-access-request hook: scan error: {e}");
@@ -6295,6 +6305,7 @@ mod tests {
             .ok()
             .map(Arc::new),
             public_dir: None,
+            scan_options: crate::scanner::ScanOptions::default(),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }

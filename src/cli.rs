@@ -1,4 +1,48 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+
+/// Vault scanning exclusion flags shared by `build`, `index`, `serve`,
+/// `search`, and `watch`. See SPEC-026 for precedence semantics.
+#[derive(Args, Debug, Clone, Default)]
+pub struct ScanArgs {
+    /// Gitignore-syntax pattern to exclude from the vault scan. Repeatable.
+    /// Combines with `.zetlignore` and the default dotdir exclusion.
+    #[arg(long = "exclude", value_name = "PATTERN", action = clap::ArgAction::Append)]
+    pub exclude: Vec<String>,
+
+    /// Disable the default exclusion of dotdirs (`.claude/`, `.obsidian/`, etc.).
+    /// `.git/`, `.zetl/`, and `node_modules/` are still excluded.
+    #[arg(long)]
+    pub include_hidden: bool,
+}
+
+impl ScanArgs {
+    /// Convert to scanner-facing options, propagating the global verbose flag.
+    pub fn to_scan_options(&self, verbose: bool) -> crate::scanner::ScanOptions {
+        crate::scanner::ScanOptions::default()
+            .with_exclude_patterns(self.exclude.clone())
+            .with_include_hidden(self.include_hidden)
+            .with_verbose(verbose)
+    }
+}
+
+impl Cli {
+    /// Resolve the effective `ScanOptions` for this invocation.
+    ///
+    /// Commands that expose `--exclude` / `--include-hidden` use those
+    /// values; all other commands fall back to defaults. The global
+    /// `--verbose` flag is propagated in both cases (REQ-205, OBS-200).
+    pub fn scan_options(&self) -> crate::scanner::ScanOptions {
+        let verbose = self.verbose > 0;
+        match &self.command {
+            Command::Index { scan }
+            | Command::Build { scan, .. }
+            | Command::Serve { scan, .. }
+            | Command::Search { scan, .. }
+            | Command::Watch { scan, .. } => scan.to_scan_options(verbose),
+            _ => crate::scanner::ScanOptions::default().with_verbose(verbose),
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(
@@ -73,7 +117,10 @@ pub enum OutputFormat {
 #[derive(Subcommand)]
 pub enum Command {
     /// Build or refresh the link index
-    Index,
+    Index {
+        #[command(flatten)]
+        scan: ScanArgs,
+    },
 
     /// Query forward links from a page
     #[command(
@@ -185,6 +232,8 @@ pub enum Command {
         /// Hybrid BM25 + vector search via reciprocal rank fusion (requires --features semantic)
         #[arg(long)]
         hybrid: bool,
+        #[command(flatten)]
+        scan: ScanArgs,
     },
 
     /// List all pages in the vault
@@ -263,6 +312,8 @@ pub enum Command {
         /// Set to "0" to disable. Requires --collab.
         #[arg(long, default_value = "30s", requires = "collab", value_parser = parse_duration)]
         git_poll_interval: std::time::Duration,
+        #[command(flatten)]
+        scan: ScanArgs,
     },
 
     /// Generate an invitation token for a new collaborator
@@ -331,6 +382,8 @@ pub enum Command {
         /// the domain root.
         #[arg(long)]
         site_url: Option<String>,
+        #[command(flatten)]
+        scan: ScanArgs,
     },
 
     /// Launch the Xanadu-style two-pane view for a note
@@ -400,6 +453,8 @@ pub enum Command {
         /// Shell command invoked once per event with event JSON on stdin
         #[arg(long)]
         exec: Option<String>,
+        #[command(flatten)]
+        scan: ScanArgs,
     },
 
     /// Browse vault history timeline (requires --features history)

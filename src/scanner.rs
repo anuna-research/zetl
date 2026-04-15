@@ -11,48 +11,88 @@ use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, T
 use regex::Regex;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+pub mod exclude;
+pub use exclude::{Decision, ExcludeReason, ScanOptions, classify_entry};
 
 /// Scan a vault directory and parse all markdown files.
 ///
-/// Walks the directory tree using the `ignore` crate (respects .gitignore-style patterns).
-/// Applies default ignores for `.git`, `node_modules`, and `.zetl`, plus any custom patterns
-/// from a `.zetlignore` file at the vault root.
-pub fn scan_vault(root: &Path, ignore_patterns: &[String]) -> Result<Vec<ParsedFile>> {
+/// Walks the directory tree using the `ignore` crate. Applies the precedence
+/// rule stack defined in SPEC-026 §REQ-205: hardcoded force-ignores → dotdir
+/// default → .gitignore → .zetlignore → CLI `--exclude` patterns.
+pub fn scan_vault(root: &Path, opts: &ScanOptions) -> Result<Vec<ParsedFile>> {
     let mut builder = WalkBuilder::new(root);
     builder
-        .hidden(false) // don't skip hidden files by default (user may have .files as notes)
+        .hidden(false) // dotfile/dotdir handling is delegated to filter_entry below
         .git_ignore(true) // respect .gitignore
         .git_global(false)
         .git_exclude(false);
 
-    // Add .zetlignore if it exists
-    let zetlignore = root.join(".zetlignore");
-    if zetlignore.exists() {
-        builder.add_ignore(&zetlignore);
-    }
+    // Add .zetlignore if it exists. Also load it as a standalone matcher so
+    // filter_entry can consult it before vetoing a dotdir.
+    let zetlignore_path = root.join(".zetlignore");
+    let zetlignore_matcher = if zetlignore_path.exists() {
+        builder.add_ignore(&zetlignore_path);
+        let mut gi = ignore::gitignore::GitignoreBuilder::new(root);
+        gi.add(&zetlignore_path);
+        gi.build().ok().map(Arc::new)
+    } else {
+        None
+    };
 
-    // Add custom ignore patterns via an in-memory override
+    // Add custom ignore patterns via an in-memory override.
     let mut overrides = ignore::overrides::OverrideBuilder::new(root);
-    // Default ignores
+    // Hardcoded force-ignores (REQ-205 level 1).
     overrides.add("!.git/")?;
     overrides.add("!node_modules/")?;
     overrides.add("!.zetl/")?;
-    for pattern in ignore_patterns {
+    for pattern in &opts.exclude_patterns {
         overrides.add(&format!("!{pattern}"))?;
     }
     builder.overrides(overrides.build()?);
 
-    // Skip subdirectories that are nested vaults (contain their own .zetl/).
-    // This prevents a parent vault from absorbing pages that belong to a
-    // child vault, similar to how git ignores nested git repos.
-    builder.filter_entry(|entry| {
-        if entry.depth() > 0
-            && entry.file_type().is_some_and(|ft| ft.is_dir())
-            && entry.path().join(".zetl").is_dir()
-        {
-            return false;
+    // Combined filter_entry handles:
+    //   - level-1 nested-vault force-ignore (parent vault must not absorb child vault pages)
+    //   - level-2 dotdir default (overridable by .zetlignore negation)
+    let opts_for_filter = opts.clone();
+    let zetlignore_for_filter = zetlignore_matcher.clone();
+    let root_owned = root.to_path_buf();
+    let verbose = opts.verbose;
+    builder.filter_entry(move |entry| {
+        let path = entry.path();
+        let is_dir = entry.file_type().is_some_and(|ft| ft.is_dir());
+        let basename = entry
+            .file_name()
+            .to_str()
+            .unwrap_or("");
+        let rel = path.strip_prefix(&root_owned).unwrap_or(path);
+
+        // Nested-vault probe: a child directory containing its own .zetl/ is its own vault.
+        let nested_vault = entry.depth() > 0 && is_dir && path.join(".zetl").is_dir();
+
+        let decision = classify_entry(
+            rel,
+            basename,
+            is_dir,
+            &opts_for_filter,
+            || nested_vault,
+            zetlignore_for_filter.as_deref(),
+        );
+
+        match decision {
+            Decision::Include => true,
+            Decision::Exclude(reason) => {
+                if verbose && entry.depth() > 0 {
+                    eprintln!(
+                        "[zetl] scan: skipped {} reason={}",
+                        rel.display(),
+                        reason.as_str()
+                    );
+                }
+                false
+            }
         }
-        true
     });
 
     let mut parsed_files = Vec::new();
@@ -2357,7 +2397,7 @@ After
         let spl_content = "; caching theory\n(given eval-redis)\n";
         std::fs::write(spl_dir.join("caching.spl"), spl_content).unwrap();
 
-        let files = scan_vault(dir.path(), &[]).unwrap();
+        let files = scan_vault(dir.path(), &ScanOptions::default()).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].page_name, "caching");
         assert_eq!(files[0].spl_blocks.len(), 1);
@@ -2377,7 +2417,7 @@ After
         let spl_content = "(given y)\n";
         std::fs::write(dir.path().join("theory.spl"), spl_content).unwrap();
 
-        let files = scan_vault(dir.path(), &[]).unwrap();
+        let files = scan_vault(dir.path(), &ScanOptions::default()).unwrap();
         assert_eq!(files.len(), 2);
 
         let md_file = files.iter().find(|f| f.page_name == "decision").unwrap();

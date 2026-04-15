@@ -1410,7 +1410,7 @@ mod tests {
         std::fs::write(vault.join("note.md"), "# Hello\n\nWorld.\n").unwrap();
 
         // Scan once to obtain the real ParsedFile (with genuine mtime).
-        let files = scan_vault(vault, &[]).unwrap();
+        let files = scan_vault(vault, &crate::scanner::ScanOptions::default()).unwrap();
         assert_eq!(files.len(), 1, "vault must contain exactly one file");
         let parsed = &files[0];
 

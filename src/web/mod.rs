@@ -177,6 +177,10 @@ pub struct WebState {
     pub pending_writes: fs_watch::PendingWrites,
     /// Public directory whose files override generated pages in serve mode.
     pub public_dir: Option<PathBuf>,
+    /// Vault-scan exclusion options propagated from CLI flags (SPEC-026).
+    /// Reused on every reindex / on-demand scan_vault call so that flags
+    /// like `--exclude` take effect for the whole serve lifetime.
+    pub scan_options: crate::scanner::ScanOptions,
     /// Pre-loaded vector index for semantic/hybrid search in serve mode (REQ-100).
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]
@@ -185,7 +189,16 @@ pub struct WebState {
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.
 pub fn reindex(vault_root: &Path) -> anyhow::Result<VaultData> {
-    let files = scan_vault(vault_root, &[])?;
+    reindex_with(vault_root, &crate::scanner::ScanOptions::default())
+}
+
+/// Re-scan with explicit options. Prefer this from serve handlers so CLI
+/// `--exclude` / `--include-hidden` flags propagate.
+pub fn reindex_with(
+    vault_root: &Path,
+    opts: &crate::scanner::ScanOptions,
+) -> anyhow::Result<VaultData> {
+    let files = scan_vault(vault_root, opts)?;
 
     let file_index: Vec<(String, PathBuf)> = files
         .iter()

@@ -100,7 +100,7 @@ pub fn reconcile_external_edits(
     source: &ExternalSource,
 ) -> Option<String> {
     // ── Step 2: Re-scan ──────────────────────────────────────────────────
-    let new_data = match super::reindex(&state.vault_root) {
+    let new_data = match super::reindex_with(&state.vault_root, &state.scan_options) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("fs-watch: reindex error: {e}");
@@ -589,6 +589,19 @@ fn filter_event(
 
     let mut external_paths = Vec::new();
 
+    // Load .zetlignore once per event batch so a `!.archive/` negation can
+    // override the dotdir default — keeps watcher in sync with scanner
+    // (REQ-206). Falls back to None when the file is absent or unreadable.
+    let zetlignore_path = vault_root.join(".zetlignore");
+    let zetlignore = if zetlignore_path.exists() {
+        let mut gi = ignore::gitignore::GitignoreBuilder::new(vault_root);
+        gi.add(&zetlignore_path);
+        gi.build().ok()
+    } else {
+        None
+    };
+    let opts = crate::scanner::ScanOptions::default();
+
     for path in &event.paths {
         // Skip non-markdown files.
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -596,12 +609,32 @@ fn filter_event(
             continue;
         }
 
-        // Skip hidden directories (.zetl, .git, etc.).
+        // Apply the same exclusion stack as the scanner (REQ-206). Walk
+        // the relative path component-by-component; if any ancestor
+        // directory is excluded, the leaf file is excluded too.
         if let Ok(rel) = path.strip_prefix(vault_root) {
-            let is_hidden = rel
-                .components()
-                .any(|c| c.as_os_str().to_string_lossy().starts_with('.'));
-            if is_hidden {
+            let mut excluded = false;
+            let components: Vec<_> = rel.components().collect();
+            // All components except the last are intermediate directories.
+            // The last is the .md file itself; classify it as a non-dir.
+            for (i, comp) in components.iter().enumerate() {
+                let basename = comp.as_os_str().to_string_lossy();
+                let is_last = i + 1 == components.len();
+                let partial: std::path::PathBuf = components[..=i].iter().collect();
+                let decision = crate::scanner::classify_entry(
+                    &partial,
+                    &basename,
+                    !is_last,
+                    &opts,
+                    || partial.join(".zetl").is_dir(),
+                    zetlignore.as_ref(),
+                );
+                if matches!(decision, crate::scanner::Decision::Exclude(_)) {
+                    excluded = true;
+                    break;
+                }
+            }
+            if excluded {
                 continue;
             }
         }
@@ -748,6 +781,7 @@ mod tests {
             pending_writes: PendingWrites::new(),
             passkey_mgr: None,
             public_dir: None,
+            scan_options: crate::scanner::ScanOptions::default(),
             #[cfg(feature = "semantic")]
             vector_index: None,
         }
