@@ -22,7 +22,10 @@ mcp = ["dep:rmcp"]
 # Vendor and statically link OpenSSL into the binary instead of linking
 # against the system libssl. Enable this on cross-compile / static-binary
 # release builds where no target-side OpenSSL sysroot is available.
-vendored-openssl = ["dep:openssl"]
+# Also routes git2 HTTPS through vendored OpenSSL instead of Apple
+# Secure Transport — essential for macOS cross-compile from Linux
+# (osxcross doesn't ship a complete Security.framework).
+vendored-openssl = ["dep:openssl", "git2/vendored-openssl"]
 
 [dependencies]
 anyhow = "1"

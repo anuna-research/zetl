@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-04-15
+
+### Fixed
+
+- CI: macOS cross-compile was failing one level deeper than 0.2.4 —
+  `libgit2-sys` defaults to Apple Secure Transport (`stransport.c`)
+  for HTTPS on darwin targets, which requires a complete
+  `Security.framework` that osxcross doesn't ship. The
+  `vendored-openssl` feature now also enables `git2/vendored-openssl`,
+  routing libgit2's HTTPS through the already-vendored OpenSSL.
+
 ## [0.2.4] - 2026-04-15
 
 ### Fixed
