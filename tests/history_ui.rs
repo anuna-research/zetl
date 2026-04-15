@@ -392,6 +392,234 @@ fn test_build_recent_changes_respects_limit_without_midsnap_cutoff() {
     );
 }
 
+/// TEST-307 regression: a custom theme that overrides `page.html` but
+/// not `vault_history.html` MUST still render vault history from the
+/// bundled default template (three-tier fallback).
+#[test]
+fn test_307_theme_override_falls_back_to_bundled_vault_history() {
+    let (tmp, _slug) = setup_two_snapshot_vault();
+    let root = tmp.path();
+
+    // Custom theme dir with ONLY page.html overridden.
+    let theme_dir = root.join(".zetl/themes/custom");
+    fs::create_dir_all(&theme_dir).unwrap();
+    fs::write(
+        theme_dir.join("theme.toml"),
+        "name = \"custom\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        theme_dir.join("page.html"),
+        "<html><body>CUSTOM-PAGE {{ page.title }}</body></html>",
+    )
+    .unwrap();
+    // No vault_history.html override → must fall back to bundled default.
+
+    let out = tmp.path().join("dist-custom");
+    fs::create_dir_all(&out).unwrap();
+    let data = zetl::web::reindex_with(root, &zetl::scanner::ScanOptions::default()).unwrap();
+    zetl::web::build::build_static(
+        &data,
+        root,
+        out.to_str().unwrap(),
+        "custom",
+        false,
+        None,
+        None,
+    )
+    .expect("build_static under custom theme");
+
+    // page.html was overridden → index contains the marker.
+    let any_page = out.join("notes/note-a/index.html");
+    assert!(any_page.exists());
+    let page_html = fs::read_to_string(&any_page).unwrap();
+    assert!(
+        page_html.contains("CUSTOM-PAGE"),
+        "custom theme page.html should have rendered"
+    );
+
+    // vault_history.html fell through to bundled default → contains the
+    // default template's identifying markup.
+    let vh = out.join("_history.html");
+    assert!(vh.exists());
+    let vh_html = fs::read_to_string(&vh).unwrap();
+    assert!(
+        vh_html.contains("Recent changes") && vh_html.contains("vh-stats"),
+        "vault_history.html fallback must render default template markup; got excerpt: {}",
+        &vh_html[..vh_html.len().min(800)]
+    );
+}
+
+/// NFR-301 regression: the rendered static `_history.html` uses the
+/// semantic markup the spec requires — `<time datetime="...">`,
+/// `role="img"` with non-empty `aria-label` on the sparkline, and
+/// `<ol>` or `<ul>` for the recent-changes list.
+#[test]
+fn test_nfr_301_vault_history_semantic_markup() {
+    let (tmp, _) = setup_two_snapshot_vault();
+    let root = tmp.path();
+    let out = tmp.path().join("dist");
+    fs::create_dir_all(&out).unwrap();
+
+    let data = zetl::web::reindex_with(root, &zetl::scanner::ScanOptions::default()).unwrap();
+    zetl::web::build::build_static(
+        &data,
+        root,
+        out.to_str().unwrap(),
+        "default",
+        false,
+        None,
+        None,
+    )
+    .unwrap();
+
+    let html = fs::read_to_string(out.join("_history.html")).unwrap();
+    assert!(
+        html.contains("<time datetime=\""),
+        "expected <time datetime=...> for machine-readable dates"
+    );
+    assert!(
+        html.contains("role=\"img\"") && html.contains("aria-label=\""),
+        "expected sparkline role=\"img\" with aria-label"
+    );
+    // aria-label must not be empty.
+    let aria_idx = html
+        .find("aria-label=\"")
+        .expect("aria-label= present checked above");
+    let tail = &html[aria_idx + "aria-label=\"".len()..];
+    let content_end = tail.find('"').unwrap();
+    assert!(
+        content_end > 0,
+        "aria-label must not be empty; tail excerpt: {}",
+        &tail[..tail.len().min(200)]
+    );
+    assert!(
+        html.contains("<ol") || html.contains("<ul"),
+        "recent-changes list must use semantic list markup"
+    );
+}
+
+/// `humanise_days` is registered as a minijinja filter at render time.
+/// Unit tests in `src/history/core.rs` exercise the Rust function, but
+/// nothing proves the filter is actually wired into the template
+/// environment. Render a tiny inline template to verify.
+#[test]
+fn test_humanise_days_filter_registered_in_template_env() {
+    // The filter is registered by `build_env` inside TemplateEngine::new.
+    // We can't access the env directly, but we can exercise it by
+    // rendering `page_history.html` — which doesn't use the filter — and
+    // then more precisely by rendering a tempdir-overridden template
+    // that DOES use it.
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    let theme_dir = root.join(".zetl/themes/probe");
+    fs::create_dir_all(&theme_dir).unwrap();
+    fs::write(
+        theme_dir.join("theme.toml"),
+        "name = \"probe\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    // Override base.html with a minimal shell so page.html's
+    // `{% extends "base.html" %}` still works but renders a filter probe.
+    fs::write(
+        theme_dir.join("base.html"),
+        "<html><body>{% block content %}{% endblock %}PROBE={{ 7 | humanise_days }}</body></html>",
+    )
+    .unwrap();
+    // Provide an empty page.html to satisfy KNOWN_TEMPLATES without
+    // rendering anything extra.
+    fs::write(
+        theme_dir.join("page.html"),
+        "{% extends \"base.html\" %}{% block content %}{% endblock %}",
+    )
+    .unwrap();
+
+    // Render any page — a build produces at least one.
+    fs::write(root.join("x.md"), "# X").unwrap();
+    let out = tmp.path().join("dist");
+    fs::create_dir_all(&out).unwrap();
+    let data = zetl::web::reindex_with(root, &zetl::scanner::ScanOptions::default()).unwrap();
+    zetl::web::build::build_static(
+        &data,
+        root,
+        out.to_str().unwrap(),
+        "probe",
+        false,
+        None,
+        None,
+    )
+    .expect("build_static under probe theme");
+    let html = fs::read_to_string(out.join("x/index.html")).unwrap();
+    assert!(
+        html.contains("PROBE=1w"),
+        "expected humanise_days filter to render '1w' for input 7; got excerpt: {}",
+        &html[..html.len().min(400)]
+    );
+}
+
+/// NFR-300 smoke benchmark: building a 100-page vault with history
+/// enabled finishes in under 60 seconds. The spec's formal NFR-300
+/// p95-vs-baseline assertion would require a pre-change baseline; this
+/// test instead defends against catastrophic regressions.
+#[test]
+fn test_nfr_300_build_under_smoke_budget() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    for i in 0..100 {
+        let body = if i == 0 {
+            "# Page 0\n".to_string()
+        } else {
+            format!("# Page {i}\n\n[[page-{}]]\n", i - 1)
+        };
+        write(root, &format!("page-{i}.md"), &body);
+    }
+    take_snapshot(
+        root,
+        "deadbeef00000000000000000000000000000000000000000000000000000001",
+    );
+    // Modify half the pages and take a second snapshot to populate
+    // recent-changes.
+    for i in 0..50 {
+        write(
+            root,
+            &format!("page-{i}.md"),
+            &format!("# Page {i}\n\nmodified\n"),
+        );
+    }
+    take_snapshot(
+        root,
+        "deadbeef00000000000000000000000000000000000000000000000000000002",
+    );
+
+    let out = tmp.path().join("dist");
+    fs::create_dir_all(&out).unwrap();
+    let data = zetl::web::reindex_with(root, &zetl::scanner::ScanOptions::default()).unwrap();
+
+    let start = std::time::Instant::now();
+    zetl::web::build::build_static(
+        &data,
+        root,
+        out.to_str().unwrap(),
+        "default",
+        false,
+        None,
+        None,
+    )
+    .expect("build_static 100-page vault");
+    let elapsed = start.elapsed();
+
+    // Generous budget: catastrophic regressions (>60s) would fail here
+    // without masking ordinary variation.
+    assert!(
+        elapsed.as_secs() < 60,
+        "100-page build exceeded smoke budget: {elapsed:?}"
+    );
+
+    // Verify history artefacts landed.
+    assert!(out.join("_history.html").exists());
+    assert!(out.join("page-0/_history.html").exists() || out.join("page-1/_history.html").exists());
+}
+
 /// TEST-303 graceful-absence branch: build on a vault with zero snapshots
 /// still emits `_history.html` but with the "No history yet" message.
 #[test]
