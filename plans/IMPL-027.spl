@@ -9,7 +9,7 @@
   (created "2026-04-15")
   (author "agent:claude")
   (spec "SPEC-027")
-  (description "Wire the existing history data pipeline to the default-theme UI. Add a per-page metadata strip, emit per-page history pages statically, and introduce a vault-wide /history page with recent changes and trend sparkline. Maintain serve/build parity and graceful absence when history is null."))
+  (description "Wire the existing history data pipeline to the default-theme UI. Add a per-page metadata strip, emit per-page history pages statically, and introduce a vault-wide /_history page with recent changes and trend sparkline. Maintain serve/build parity and graceful absence when history is null."))
 
 ;; ── Agents ──────────────────────────────────────────────
 (given agent-claude-available)
@@ -71,7 +71,7 @@
   (trace "CON-303 REQ-303"))
 
 (meta task-page-template-metadata-strip
-  (description "Modify `themes/default/page.html` to render a metadata strip below the title and above the body. Strip contains: <time datetime=\"...\">last_changed localised date</time>, separator, stable_days humanised via history.stable_days_label (we compute in builder or inline), separator, anchor to `{{ root_path }}pages/{{ page.slug }}/history{{ index_file | default('') }}` with text 'history'. Entirely wrapped in `{% if page.history %}...{% endif %}` for graceful absence (REQ-305). Use class name 'page-history-meta' for theming.")
+  (description "Modify `themes/default/page.html` to render a metadata strip below the title and above the body. Strip contains: <time datetime=\"...\">last_changed localised date</time>, separator, stable_days humanised via history.stable_days_label (we compute in builder or inline), separator, anchor to `{{ root_path }}pages/{{ page.slug }}/_history{{ index_file | default('') }}` with text 'history' (the underscore prefix avoids collision with a user page named 'history' — see src/web/routes.rs:374). Entirely wrapped in `{% if page.history %}...{% endif %}` for graceful absence (REQ-305). Use class name 'page-history-meta' for theming.")
   (acceptance "TEST-300 and TEST-301 pass; rendering a page with page.history=null produces no .page-history-meta element in the HTML")
   (trace "REQ-300 REQ-301 REQ-305"))
 
@@ -86,27 +86,27 @@
   (trace "REQ-301 NFR-301"))
 
 (meta task-vault-history-route
-  (description "Add GET /history handler in src/web/routes.rs: calls history::build_template_vault_history_context (existing) + the new build_recent_changes, samples sparkline points, calls engine.render_vault_history. Emit OBS-301 log line when state.verbose. Under feature='history' only; otherwise return 404 with a one-line message.")
-  (acceptance "TEST-303 passes under serve mode; /history returns 200 with expected content when history feature enabled; returns 404 gracefully when feature disabled")
+  (description "Add GET /_history handler in src/web/routes.rs: calls history::build_template_vault_history_context (existing) + the new build_recent_changes, samples sparkline points, calls engine.render_vault_history. Route path is /_history (underscore prefix) to match the per-page /{slug}/_history convention and avoid collision with a user page named 'history'. Emit OBS-301 log line when state.verbose. Under feature='history' only; otherwise return 404 with a one-line message.")
+  (acceptance "TEST-303 passes under serve mode; /_history returns 200 with expected content when history feature enabled; returns 404 gracefully when feature disabled")
   (trace "REQ-303 OBS-301"))
 
 (meta task-build-emit-page-history
   (description "Extend the per-page loop in src/web/build.rs (around the render_page call) to also call engine.render_page_history when build_template_page_history_context returns Some(_) and the result has ≥1 entry. Write to `{out_dir}/pages/{slug}/history.html`. Emit OBS-300 log line when verbose. Reuse the VaultContext and breadcrumbs already built for the parent page render.")
-  (acceptance "TEST-302 passes; dist/pages/<slug>/history.html exists for all pages with history; does NOT exist for pages with None history; CON-302 error propagation works (build fails with page slug in diagnostic)")
+  (acceptance "TEST-302 passes; dist/pages/<slug>/_history.html exists for all pages with history; does NOT exist for pages with None history; CON-302 error propagation works (build fails with page slug in diagnostic)")
   (trace "REQ-302 CON-302 OBS-300"))
 
 (meta task-build-emit-vault-history
-  (description "At the end of build_static (after the per-page loop, alongside write_history_index_json), invoke engine.render_vault_history and write `{out_dir}/history.html`. Skip silently when vault.history is null or snapshot_count==0 (REQ-305). Emit one OBS line on success.")
-  (acceptance "TEST-303 (build variant) passes; dist/history.html exists when history is populated; absent when vault.history=null with no build error")
+  (description "At the end of build_static (after the per-page loop, alongside write_history_index_json), invoke engine.render_vault_history and write `{out_dir}/_history.html`. Skip silently when vault.history is null or snapshot_count==0 (REQ-305). Emit one OBS line on success.")
+  (acceptance "TEST-303 (build variant) passes; dist/_history.html exists when history is populated; absent when vault.history=null with no build error")
   (trace "REQ-303 REQ-305 OBS-300"))
 
 (meta task-integration-tests-serve
-  (description "Add tests to tests/history_integration.rs (requires --features history): TEST-300 (metadata strip serve), TEST-301 (link URL correctness), TEST-303 (vault /history serve), TEST-304 (base template link), TEST-306 (recent-changes limit). Use existing test fixtures / snapshot helpers in that file.")
+  (description "Add tests to tests/history_integration.rs (requires --features history): TEST-300 (metadata strip serve), TEST-301 (link URL correctness), TEST-303 (vault /_history serve), TEST-304 (base template link), TEST-306 (recent-changes limit). Use existing test fixtures / snapshot helpers in that file.")
   (acceptance "cargo test --features history passes all 5 named tests; tests exercise both populated and null-history fixtures")
   (trace "TEST-300 TEST-301 TEST-303 TEST-304 TEST-306"))
 
 (meta task-integration-tests-build
-  (description "Add tests covering build-mode parity: TEST-302 (per-page history.html emission), TEST-303 build variant (dist/history.html), TEST-307 (theme override with partial templates). Invoke zetl build via cargo run or the build_static function directly against a tempdir vault.")
+  (description "Add tests covering build-mode parity: TEST-302 (per-page _history.html emission), TEST-303 build variant (dist/_history.html), TEST-307 (theme override with partial templates). Invoke zetl build via cargo run or the build_static function directly against a tempdir vault.")
   (acceptance "cargo test --features history passes; temp dist/ contains the expected files; theme override fallback resolves vault_history.html to bundled default")
   (trace "TEST-302 TEST-303 TEST-307"))
 
@@ -126,7 +126,7 @@
   (trace "NFR-300 TEST-NFR-300"))
 
 (meta task-changelog-readme
-  (description "Add CHANGELOG.md entry under the next minor version (the SPEC-026 minor bump may already be in flight — coordinate) describing the new per-page metadata strip, per-page history page in static builds, and the /history vault page. Add 'History UI' section to README.md explaining the two surfaces, graceful absence, and how to override via themes.")
+  (description "Add CHANGELOG.md entry under the next minor version (the SPEC-026 minor bump may already be in flight — coordinate) describing the new per-page metadata strip, per-page history page in static builds, and the /_history vault page. Add 'History UI' section to README.md explaining the two surfaces, graceful absence, and how to override via themes.")
   (acceptance "TEST-308 doc test passes; CHANGELOG contains 'per-page history' or 'history UI'; README has the new section with a short example")
   (trace "REQ-308 TEST-308"))
 

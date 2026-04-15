@@ -33,9 +33,11 @@ related:
 
 ## 1. Overview
 
-`zetl` has invested substantial infrastructure in temporal history (SPEC-017, SPEC-019): snapshotting, per-page timelines, backlink `since` attribution, vault trend sampling, a `history-index.json` export, and a serve-only `/pages/<slug>/history` route backed by `render_page_history` and a 325-line default `page_history.html` template. The data pipeline runs on every serve and every build.
+`zetl` has invested substantial infrastructure in temporal history (SPEC-017, SPEC-019): snapshotting, per-page timelines, backlink `since` attribution, vault trend sampling, a `history-index.json` export, and a serve-only `/pages/<slug>/_history` route backed by `render_page_history` and a 325-line default `page_history.html` template. The data pipeline runs on every serve and every build.
 
 **The user-facing surface is not wired up.** The default `page.html` (`themes/default/page.html`) contains no reference to `page.history`, no link to the per-page history route, and no metadata strip. There is no per-vault "recent changes" template. Build mode emits `history-index.json` but no static HTML for either surface. A user running stock zetl cannot discover that history exists unless they type the URL by hand.
+
+**Note on URL scheme.** The existing per-page route is `/{slug}/_history` — the `_` prefix avoids collision with a user page literally named "history" (src/web/routes.rs:374–377). This spec preserves that convention and extends it to the vault-wide page: `/_history` at vault root, and `_history.html` under `zetl build`.
 
 This spec closes that gap by specifying two discoverable UI surfaces on the default theme, with parity between `serve` (dynamic) and `build` (static) modes.
 
@@ -60,9 +62,9 @@ This spec closes that gap by specifying two discoverable UI surfaces on the defa
 **In scope:**
 
 - Inline metadata strip on `themes/default/page.html` rendering `page.history.last_changed`, `stable_days`, and a link to the per-page history page.
-- Static emission of `/pages/<slug>/history.html` under `zetl build` for every page (mirrors existing serve route).
-- A new per-vault history page (`vault_history.html` template) showing recent changes, vault trend sparkline, snapshot count, and links to affected pages. Served at `/history` and emitted as static `history.html`.
-- Sidebar / footer link from default theme to `/history`.
+- Static emission of `/pages/<slug>/_history.html` under `zetl build` for every page (mirrors existing serve route).
+- A new per-vault history page (`vault_history.html` template) showing recent changes, vault trend sparkline, snapshot count, and links to affected pages. Served at `/_history` and emitted as static `_history.html`.
+- Sidebar / footer link from default theme to `/_history`.
 - Graceful absence handling (null/empty history).
 - Documentation: `README.md` "History UI" section; CHANGELOG entry.
 
@@ -104,7 +106,7 @@ Fetches HTML pages from a deployed zetl build. Uses visible metadata (last-chang
 1. User navigates to `/pages/note-a/`.
 2. Page renders with a metadata strip: `Last changed 2026-03-18 · stable 28d · [history]`.
 3. User clicks `history`.
-4. Browser loads `/pages/note-a/history`, showing timeline of changes with timestamps, diff summaries, and a link-count trend sparkline.
+4. Browser loads `/pages/note-a/_history`, showing timeline of changes with timestamps, diff summaries, and a link-count trend sparkline.
 5. User clicks browser back → returns to the page.
 
 **Postconditions:** User has seen the change history for the page without prior knowledge that the feature exists.
@@ -121,7 +123,7 @@ Fetches HTML pages from a deployed zetl build. Uses visible metadata (last-chang
 **Steps:**
 
 1. User clicks "Recent changes" link in sidebar (or footer).
-2. Browser loads `/history`.
+2. Browser loads `/_history`.
 3. Page shows: total snapshot count, oldest and newest snapshot timestamps, a small sparkline of vault-wide link count over time, and a reverse-chronological list of the last N (default 50) changed pages with their timestamps and slugs.
 4. User clicks a page title → lands on that page.
 
@@ -137,9 +139,9 @@ Fetches HTML pages from a deployed zetl build. Uses visible metadata (last-chang
 
 **Steps:**
 
-1. `dist/history.html` exists and mirrors the `/history` serve output at build time.
-2. `dist/pages/<slug>/history.html` exists for every page with history data.
-3. User opens `dist/pages/note-a/history.html` directly in a browser → renders identically to serve mode.
+1. `dist/_history.html` exists and mirrors the `/_history` serve output at build time.
+2. `dist/pages/<slug>/_history.html` exists for every page with history data.
+3. User opens `dist/pages/note-a/_history.html` directly in a browser → renders identically to serve mode.
 
 **Postconditions:** No history surface is serve-only except the explicitly mutating `/api/history/restore` and `/api/history/file-diff` endpoints.
 
@@ -157,14 +159,14 @@ Trace:
 
 ### REQ-301: Per-Page History Link Parity
 
-The per-page history link rendered by REQ-300 SHALL resolve to `/pages/<slug>/history` under `zetl serve` AND to `/pages/<slug>/history.html` under `zetl build`, using the active theme's URL scheme. The link SHALL be derived from the existing `page_slug` context, not recomputed.
+The per-page history link rendered by REQ-300 SHALL resolve to `/pages/<slug>/_history` under `zetl serve` AND to `/pages/<slug>/_history.html` under `zetl build`, using the active theme's URL scheme. The link SHALL be derived from the existing `page_slug` context, not recomputed.
 
 Trace:
 - TEST-301
 
 ### REQ-302: Static Emission of Per-Page History
 
-Under `zetl build`, the system SHALL emit `pages/<slug>/history.html` for every page for which `history::build_template_page_history_context` returns a non-null result. Each emitted file SHALL be rendered via the existing `render_page_history` engine method, with the same template (`page_history.html`) used in serve mode.
+Under `zetl build`, the system SHALL emit `pages/<slug>/_history.html` for every page for which `history::build_template_page_history_context` returns a non-null result. Each emitted file SHALL be rendered via the existing `render_page_history` engine method, with the same template (`page_history.html`) used in serve mode.
 
 Trace:
 - TEST-302
@@ -172,7 +174,7 @@ Trace:
 
 ### REQ-303: Vault Recent-Changes Page
 
-The system SHALL render a vault-wide history page at `/history` (serve) and `history.html` (build) using a new template `vault_history.html`. The page SHALL display:
+The system SHALL render a vault-wide history page at `/_history` (serve) and `_history.html` (build) using a new template `vault_history.html`. The page SHALL display:
 
 1. Snapshot count (from `vault.history.snapshot_count`).
 2. Oldest and newest snapshot timestamps (ISO 8601).
@@ -185,9 +187,9 @@ Trace:
 - TEST-303
 - CON-303
 
-### REQ-304: Sidebar or Footer Link to /history
+### REQ-304: Sidebar or Footer Link to /_history
 
-The default theme's `base.html` (or equivalent common layout) SHALL include a link labelled "Recent changes" (or localised equivalent) pointing to `/history` when served and `history.html` when built. The link SHALL be omitted when `vault.history` is null.
+The default theme's `base.html` (or equivalent common layout) SHALL include a link labelled "Recent changes" (or localised equivalent) pointing to `/_history` when served and `_history.html` when built. The link SHALL be omitted when `vault.history` is null.
 
 Trace:
 - TEST-304
@@ -242,7 +244,7 @@ Trace:
 
 ### ADR-307: Static Emission of Per-Page History via Build Loop, Not Pre-Rendered Cache
 
-**Context:** Under `serve`, `/pages/<slug>/history` is rendered on demand from live jj state + cache. Under `build`, we need the same output frozen to disk. Two options:
+**Context:** Under `serve`, `/pages/<slug>/_history` is rendered on demand from live jj state + cache. Under `build`, we need the same output frozen to disk. Two options:
 
 1. **Extend the existing per-page build loop** in `src/web/build.rs` to call `render_page_history` for each page after rendering `page.html`. One extra render per page, reusing the engine already constructed.
 2. **Generate history HTML from `history-index.json` in a separate post-build step.** Decouples but duplicates rendering logic (`history-index.json` is a flat projection; `page_history.html` expects the full context including vault, breadcrumbs, draft flag).
@@ -260,7 +262,7 @@ Trace:
 
 ### ADR-308: Vault History Page Is a First-Class Template, Not an Extension of `index.html`
 
-**Context:** The vault recent-changes view could live on the landing page (`index.html`) or as a dedicated `/history` page.
+**Context:** The vault recent-changes view could live on the landing page (`index.html`) or as a dedicated `/_history` page.
 
 **Decision:** Dedicated page. The landing page is user-customisable and often replaced or overridden; embedding recent-changes there risks disappearance. A dedicated template keeps the feature addressable and linkable.
 
@@ -301,7 +303,7 @@ Pre-conditions:
 - `out_dir` exists and is writable.
 
 Post-conditions:
-- `out_dir/pages/<slug>/history.html` exists and is non-empty.
+- `out_dir/pages/<slug>/_history.html` exists and is non-empty.
 - Content matches `engine.render_page_history(...)` output.
 
 Error model:
@@ -361,20 +363,20 @@ Verified by: TEST-303
 
 - **Given** page `Note A` and active theme `default`
 - **When** serving, the link `href` matches the route registered at `src/web/routes.rs` for per-page history (currently derived from `page_slug`).
-- **When** building, the link `href` points to `pages/<slug>/history.html` relative to `root_path`.
+- **When** building, the link `href` points to `pages/<slug>/_history.html` relative to `root_path`.
 - **Then** both URLs resolve to non-404 content on their respective hosts.
 
 ### TEST-302: Static Emission of Per-Page History
 
 - **Given** a vault with history and 3 pages (`A`, `B`, `C`)
 - **When** `zetl build --out dist/` runs
-- **Then** `dist/pages/a/history.html`, `dist/pages/b/history.html`, `dist/pages/c/history.html` exist, each is non-empty, and each contains the page title in its output.
-- **And** for a vault where `build_template_page_history_context` returns `None` for `page B`, `dist/pages/b/history.html` is NOT created (graceful absence per REQ-305).
+- **Then** `dist/pages/a/_history.html`, `dist/pages/b/_history.html`, `dist/pages/c/_history.html` exist, each is non-empty, and each contains the page title in its output.
+- **And** for a vault where `build_template_page_history_context` returns `None` for `page B`, `dist/pages/b/_history.html` is NOT created (graceful absence per REQ-305).
 
 ### TEST-303: Vault History Page Renders
 
 - **Given** a vault with `vault.history.snapshot_count == 5` and trend data
-- **When** GET `/history` under serve OR opening `dist/history.html` after build
+- **When** GET `/_history` under serve OR opening `dist/_history.html` after build
 - **Then** the response contains the snapshot count, oldest and newest timestamps, a sparkline element (inline SVG or equivalent with `aria-label`), and a list of ≤50 `<li>` entries each with a page title and a `<time>` element.
 
 ### TEST-304: Recent-Changes Link in Base Template
@@ -438,10 +440,10 @@ Trace: NFR-300.
 
 ### OBS-301: Vault History Route Access
 
-Under `serve`, the `/history` handler SHALL emit an existing-convention log line on each request when `--verbose`:
+Under `serve`, the `/_history` handler SHALL emit an existing-convention log line on each request when `--verbose`:
 
 ```
-[zetl] history-route: path=/history entries=50 duration_ms=8
+[zetl] history-route: path=/_history entries=50 duration_ms=8
 ```
 
 Trace: NFR-300.
@@ -457,7 +459,7 @@ Trace: NFR-300.
 
 ### Effectful Shell
 - `src/web/build.rs` per-page loop — orchestrates `render_page_history` and writes files.
-- `src/web/routes.rs` `/history` handler — orchestrates `build_recent_changes` + `render_vault_history` response.
+- `src/web/routes.rs` `/_history` handler — orchestrates `build_recent_changes` + `render_vault_history` response.
 - `src/web/engine.rs` `render_vault_history` — new render method; calls the pure context builder, passes to minijinja.
 
 ### Boundary Contracts
