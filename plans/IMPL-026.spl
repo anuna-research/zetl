@@ -384,3 +384,31 @@
 (claims agent:claude
   :at "2026-04-15T01:36:58Z"
   (given completed-changelog-readme))
+
+(claims agent:claude
+  :at "2026-04-15T02:11:24Z"
+  (given claim-v1-synthetic-user-run)
+  (normally r-cl-state-v1-synthetic-user-run claim-v1-synthetic-user-run state-claimed-v1-synthetic-user-run)
+  (normally r-cl-chain-v1-synthetic-user-run state-claimed-v1-synthetic-user-run claimed-synthetic-user-run)
+)
+
+;; Propagation rules: failures in 'synthetic-user-run' block downstream tasks
+(normally r-propagate-adversarial-review-from-synthetic-user-run-failed failed-synthetic-user-run upstream-blocked-adversarial-review)
+(normally r-propagate-adversarial-review-from-synthetic-user-run-permanently-failed permanently-failed-synthetic-user-run upstream-blocked-adversarial-review)
+(normally r-propagate-adversarial-review-from-synthetic-user-run-stale-v1 stale-v1-synthetic-user-run upstream-blocked-adversarial-review)
+(normally r-propagate-adversarial-review-from-synthetic-user-run-timeout-v1 timeout-v1-synthetic-user-run upstream-blocked-adversarial-review)
+
+(claims agent:claude
+  :at "2026-04-15T02:11:24Z"
+  (given completed-synthetic-user-run))
+
+(claims agent:claude
+  :at "2026-04-15T02:11:24Z"
+  (given claim-v1-adversarial-review)
+  (normally r-cl-state-v1-adversarial-review claim-v1-adversarial-review state-claimed-v1-adversarial-review)
+  (normally r-cl-chain-v1-adversarial-review state-claimed-v1-adversarial-review claimed-adversarial-review)
+)
+
+(claims agent:claude
+  :at "2026-04-15T02:11:24Z"
+  (given completed-adversarial-review))
