@@ -792,7 +792,17 @@ pub async fn page_handler(
     {
         Ok(html) => {
             if page_exists {
-                Html(html).into_response()
+                // Disable browser caching in serve mode so reloads after
+                // a save pick up the fresh content. Without this, Chrome
+                // and Safari heuristically cache responses with no
+                // Cache-Control header and the UI looks like the save
+                // failed to persist.
+                let mut resp = Html(html).into_response();
+                resp.headers_mut().insert(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("no-cache, must-revalidate"),
+                );
+                resp
             } else {
                 // BUG-002: unknown pages render a "create page" stub but MUST
                 // return 404 so crawlers / uptime probes / monitoring see the

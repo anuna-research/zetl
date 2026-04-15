@@ -267,8 +267,14 @@ async function saveEdit() {
     headers: headers,
     body: content
   });
-  if (res.ok) window.location.reload();
-  else alert('Save failed: ' + res.status);
+  if (res.ok) {
+    // Cache-bust: without a query param the browser may serve the stale
+    // cached HTML of this URL, making the save look like it didn't
+    // persist.
+    window.location.href = window.location.pathname + '?t=' + Date.now();
+  } else {
+    alert('Save failed: ' + res.status);
+  }
 }
 </script>
 {% endif %}
