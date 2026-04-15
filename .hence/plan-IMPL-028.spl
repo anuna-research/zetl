@@ -17,9 +17,7 @@
 ;; Agents
 ;; ============================================================
 
-(given agent-backend-available)
-(given agent-frontend-available)
-(given agent-testing-available)
+(given agent-claude-available)
 
 ;; ============================================================
 ;; Phase 1 — Pure core: graph index serialisation
@@ -298,40 +296,35 @@
                           completed-theme-authoring-ref) ready-changelog-release)
 
 ;; ============================================================
-;; Assignment rules — by agent specialisation
+;; Assignment rules — single agent (claude)
 ;; ============================================================
 
-;; Pure core and backend/shell work → backend
-(normally r-a-p1a (and ready-graph-serialize-core agent-backend-available) assign-to-graph-serialize-core-backend)
-(normally r-a-p1b (and ready-graph-neighbourhood-core agent-backend-available) assign-to-graph-neighbourhood-core-backend)
-(normally r-a-p2a (and ready-graph-build-emit agent-backend-available) assign-to-graph-build-emit-backend)
-(normally r-a-p2b (and ready-graph-serve-route agent-backend-available) assign-to-graph-serve-route-backend)
-(normally r-a-p2c (and ready-graph-template-vars agent-backend-available) assign-to-graph-template-vars-backend)
-(normally r-a-p2d (and ready-graph-stats-integration agent-backend-available) assign-to-graph-stats-integration-backend)
+(normally r-a-p1a (and ready-graph-serialize-core agent-claude-available) assign-to-graph-serialize-core-claude)
+(normally r-a-p1b (and ready-graph-neighbourhood-core agent-claude-available) assign-to-graph-neighbourhood-core-claude)
+(normally r-a-p2a (and ready-graph-build-emit agent-claude-available) assign-to-graph-build-emit-claude)
+(normally r-a-p2b (and ready-graph-serve-route agent-claude-available) assign-to-graph-serve-route-claude)
+(normally r-a-p2c (and ready-graph-template-vars agent-claude-available) assign-to-graph-template-vars-claude)
+(normally r-a-p2d (and ready-graph-stats-integration agent-claude-available) assign-to-graph-stats-integration-claude)
 
-;; Vendor assets → frontend (they live in the theme tree)
-(normally r-a-p3 (and ready-vendor-bundle agent-frontend-available) assign-to-vendor-bundle-frontend)
+(normally r-a-p3 (and ready-vendor-bundle agent-claude-available) assign-to-vendor-bundle-claude)
 
-;; Templates, CSS, placement, mobile, SPA, interaction → frontend
-(normally r-a-p4a (and ready-graph-partial agent-frontend-available) assign-to-graph-partial-frontend)
-(normally r-a-p4b (and ready-graph-vault-page agent-frontend-available) assign-to-graph-vault-page-frontend)
-(normally r-a-p4c (and ready-shell-and-css-contract agent-frontend-available) assign-to-shell-and-css-contract-frontend)
-(normally r-a-p4d (and ready-docked-minimap-placement agent-frontend-available) assign-to-docked-minimap-placement-frontend)
-(normally r-a-p4e (and ready-mobile-toggle agent-frontend-available) assign-to-mobile-toggle-frontend)
-(normally r-a-p4f (and ready-graceful-absence agent-frontend-available) assign-to-graceful-absence-frontend)
-(normally r-a-p5a (and ready-spa-shell agent-frontend-available) assign-to-spa-shell-frontend)
-(normally r-a-p5b (and ready-navigate-events agent-frontend-available) assign-to-navigate-events-frontend)
-(normally r-a-p6a (and ready-node-click-nav agent-frontend-available) assign-to-node-click-nav-frontend)
-(normally r-a-p6b (and ready-dead-link-styling agent-frontend-available) assign-to-dead-link-styling-frontend)
-(normally r-a-p6c (and ready-client-perf-marks agent-frontend-available) assign-to-client-perf-marks-frontend)
+(normally r-a-p4a (and ready-graph-partial agent-claude-available) assign-to-graph-partial-claude)
+(normally r-a-p4b (and ready-graph-vault-page agent-claude-available) assign-to-graph-vault-page-claude)
+(normally r-a-p4c (and ready-shell-and-css-contract agent-claude-available) assign-to-shell-and-css-contract-claude)
+(normally r-a-p4d (and ready-docked-minimap-placement agent-claude-available) assign-to-docked-minimap-placement-claude)
+(normally r-a-p4e (and ready-mobile-toggle agent-claude-available) assign-to-mobile-toggle-claude)
+(normally r-a-p4f (and ready-graceful-absence agent-claude-available) assign-to-graceful-absence-claude)
+(normally r-a-p5a (and ready-spa-shell agent-claude-available) assign-to-spa-shell-claude)
+(normally r-a-p5b (and ready-navigate-events agent-claude-available) assign-to-navigate-events-claude)
+(normally r-a-p6a (and ready-node-click-nav agent-claude-available) assign-to-node-click-nav-claude)
+(normally r-a-p6b (and ready-dead-link-styling agent-claude-available) assign-to-dead-link-styling-claude)
+(normally r-a-p6c (and ready-client-perf-marks agent-claude-available) assign-to-client-perf-marks-claude)
 
-;; Verification → testing
-(normally r-a-p7a (and ready-nfr-harness agent-testing-available) assign-to-nfr-harness-testing)
-(normally r-a-p7b (and ready-nfr-render-latency agent-testing-available) assign-to-nfr-render-latency-testing)
-(normally r-a-p7c (and ready-nfr-interaction-fps agent-testing-available) assign-to-nfr-interaction-fps-testing)
-(normally r-a-p7d (and ready-nfr-size-budgets agent-testing-available) assign-to-nfr-size-budgets-testing)
+(normally r-a-p7a (and ready-nfr-harness agent-claude-available) assign-to-nfr-harness-claude)
+(normally r-a-p7b (and ready-nfr-render-latency agent-claude-available) assign-to-nfr-render-latency-claude)
+(normally r-a-p7c (and ready-nfr-interaction-fps agent-claude-available) assign-to-nfr-interaction-fps-claude)
+(normally r-a-p7d (and ready-nfr-size-budgets agent-claude-available) assign-to-nfr-size-budgets-claude)
 
-;; Docs and release → backend (owns README and Cargo.toml) ; theme-authoring ref → frontend
-(normally r-a-p8a (and ready-readme-section agent-backend-available) assign-to-readme-section-backend)
-(normally r-a-p8b (and ready-theme-authoring-ref agent-frontend-available) assign-to-theme-authoring-ref-frontend)
-(normally r-a-p8c (and ready-changelog-release agent-backend-available) assign-to-changelog-release-backend)
+(normally r-a-p8a (and ready-readme-section agent-claude-available) assign-to-readme-section-claude)
+(normally r-a-p8b (and ready-theme-authoring-ref agent-claude-available) assign-to-theme-authoring-ref-claude)
+(normally r-a-p8c (and ready-changelog-release agent-claude-available) assign-to-changelog-release-claude)
