@@ -79,6 +79,38 @@ pub struct MostLinked {
     pub backlink_count: usize,
 }
 
+/// A node in a neighbourhood subgraph.
+#[derive(Debug, Clone, Serialize)]
+pub struct SubgraphNode {
+    /// Page name (slug).
+    pub slug: String,
+    /// BFS depth from the root node (0 = root itself).
+    pub depth: usize,
+    /// Whether this node corresponds to a real file (vs phantom/unresolved).
+    pub is_resolved: bool,
+}
+
+/// An edge in a neighbourhood subgraph.
+#[derive(Debug, Clone, Serialize)]
+pub struct SubgraphEdge {
+    pub source: String,
+    pub target: String,
+    pub meta: EdgeMeta,
+}
+
+/// The subgraph induced by a BFS neighbourhood around a root node.
+#[derive(Debug, Serialize)]
+pub struct Subgraph {
+    /// The root slug that the neighbourhood was computed from.
+    pub root: String,
+    /// The BFS depth used.
+    pub depth: usize,
+    /// All nodes within the neighbourhood, sorted by (depth, slug).
+    pub nodes: Vec<SubgraphNode>,
+    /// All edges where both endpoints are in the neighbourhood.
+    pub edges: Vec<SubgraphEdge>,
+}
+
 impl LinkGraph {
     /// Build the link graph from parsed files.
     ///
@@ -351,6 +383,106 @@ impl LinkGraph {
             .into_iter()
             .map(|idx| self.graph[idx].clone())
             .collect())
+    }
+
+    /// Return the subgraph induced by a BFS neighbourhood around `root_slug`.
+    ///
+    /// Performs a bidirectional BFS (both outgoing and incoming edges) up to
+    /// `depth` hops from the root. Returns all nodes reached and every edge
+    /// where **both** endpoints are inside the neighbourhood.
+    ///
+    /// This is a pure function — no I/O.
+    pub fn filter_neighbourhood(
+        &self,
+        root_slug: &str,
+        depth: usize,
+    ) -> Result<Subgraph> {
+        // 1. Resolve root to a node index
+        let &start_idx = self.node_map.get(root_slug).ok_or_else(|| {
+            let anchor_lower = root_slug.to_lowercase();
+            let mut similar: Vec<&str> = self
+                .node_map
+                .keys()
+                .filter(|name| {
+                    let n = name.to_lowercase();
+                    n.contains(&anchor_lower) || anchor_lower.contains(n.as_str())
+                })
+                .map(|s| s.as_str())
+                .collect();
+            similar.sort();
+            similar.truncate(5);
+            if similar.is_empty() {
+                anyhow!("Page not found: '{root_slug}'")
+            } else {
+                anyhow!(
+                    "Page not found: '{root_slug}'. Did you mean: {}",
+                    similar.join(", ")
+                )
+            }
+        })?;
+
+        // 2. BFS — bidirectional, tracking depth per node
+        let mut node_depths: HashMap<NodeIndex, usize> = HashMap::new();
+        let mut queue: VecDeque<(NodeIndex, usize)> = VecDeque::new();
+        node_depths.insert(start_idx, 0);
+        queue.push_back((start_idx, 0));
+
+        while let Some((node, d)) = queue.pop_front() {
+            if d >= depth {
+                continue;
+            }
+            let neighbors: Vec<NodeIndex> = self
+                .graph
+                .neighbors_directed(node, Direction::Outgoing)
+                .chain(self.graph.neighbors_directed(node, Direction::Incoming))
+                .collect();
+
+            for neighbor in neighbors {
+                if !node_depths.contains_key(&neighbor) {
+                    node_depths.insert(neighbor, d + 1);
+                    queue.push_back((neighbor, d + 1));
+                }
+            }
+        }
+
+        // 3. Build node list
+        let neighbourhood_indices: HashSet<NodeIndex> = node_depths.keys().copied().collect();
+
+        let mut nodes: Vec<SubgraphNode> = node_depths
+            .iter()
+            .map(|(&idx, &d)| {
+                let slug = self.graph[idx].clone();
+                let is_resolved = self.resolved.contains(&slug);
+                SubgraphNode {
+                    slug,
+                    depth: d,
+                    is_resolved,
+                }
+            })
+            .collect();
+        nodes.sort_by(|a, b| a.depth.cmp(&b.depth).then_with(|| a.slug.cmp(&b.slug)));
+
+        // 4. Collect edges where both endpoints are in the neighbourhood
+        let mut edges: Vec<SubgraphEdge> = Vec::new();
+        for edge_ref in self.graph.edge_references() {
+            let src = edge_ref.source();
+            let tgt = edge_ref.target();
+            if neighbourhood_indices.contains(&src) && neighbourhood_indices.contains(&tgt) {
+                edges.push(SubgraphEdge {
+                    source: self.graph[src].clone(),
+                    target: self.graph[tgt].clone(),
+                    meta: edge_ref.weight().clone(),
+                });
+            }
+        }
+        edges.sort_by(|a, b| a.source.cmp(&b.source).then_with(|| a.target.cmp(&b.target)));
+
+        Ok(Subgraph {
+            root: root_slug.to_string(),
+            depth,
+            nodes,
+            edges,
+        })
     }
 
     /// Compute graph statistics.
@@ -1155,5 +1287,215 @@ mod tests {
         assert_eq!(fwd[0].meta.line, 7);
         assert_eq!(fwd[0].meta.source_file, "source.md");
         assert!(!fwd[0].meta.is_embed);
+    }
+
+    // ── filter_neighbourhood() tests ────────────────────────────────────────
+
+    #[test]
+    fn test_filter_neighbourhood_depth0_root_only() {
+        let graph = simple_graph();
+        let sub = graph.filter_neighbourhood("A", 0).unwrap();
+        assert_eq!(sub.root, "A");
+        assert_eq!(sub.depth, 0);
+        assert_eq!(sub.nodes.len(), 1);
+        assert_eq!(sub.nodes[0].slug, "A");
+        assert_eq!(sub.nodes[0].depth, 0);
+        assert!(sub.nodes[0].is_resolved);
+        // A has self-loop? No — simple_graph has A->B, A->C, B->C, C->A.
+        // Only edge with both endpoints in {A} would be a self-loop, which doesn't exist.
+        assert!(sub.edges.is_empty());
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_depth1_includes_edges() {
+        // A -> B -> C (chain, no back-edges)
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![("C", 1)]),
+            make_file("C", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let sub = graph.filter_neighbourhood("A", 1).unwrap();
+        let slugs: Vec<&str> = sub.nodes.iter().map(|n| n.slug.as_str()).collect();
+        assert_eq!(slugs, vec!["A", "B"]); // sorted by (depth, slug)
+
+        assert_eq!(sub.nodes[0].depth, 0); // A is root
+        assert_eq!(sub.nodes[1].depth, 1); // B is depth 1
+
+        // Edge A->B should be present; B->C should NOT (C not in neighbourhood)
+        assert_eq!(sub.edges.len(), 1);
+        assert_eq!(sub.edges[0].source, "A");
+        assert_eq!(sub.edges[0].target, "B");
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_bidirectional_edges() {
+        // A -> B, C -> B
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![]),
+            make_file("C", vec![("B", 1)]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        // From B depth 1: reaches A (incoming) and C (incoming)
+        let sub = graph.filter_neighbourhood("B", 1).unwrap();
+        let slugs: Vec<&str> = sub.nodes.iter().map(|n| n.slug.as_str()).collect();
+        assert_eq!(slugs, vec!["B", "A", "C"]); // B@0, then A@1, C@1
+
+        // Both A->B and C->B edges should be included
+        assert_eq!(sub.edges.len(), 2);
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_full_cycle() {
+        let graph = simple_graph(); // A->B, A->C, B->C, C->A
+        let sub = graph.filter_neighbourhood("A", 10).unwrap();
+
+        // All 3 nodes reachable
+        assert_eq!(sub.nodes.len(), 3);
+        // All 4 edges should be present (both endpoints always in the set)
+        assert_eq!(sub.edges.len(), 4);
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_phantom_node() {
+        let files = vec![make_file("A", vec![("Ghost", 1)])];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let sub = graph.filter_neighbourhood("A", 1).unwrap();
+        assert_eq!(sub.nodes.len(), 2);
+
+        let ghost_node = sub.nodes.iter().find(|n| n.slug == "Ghost").unwrap();
+        assert!(!ghost_node.is_resolved);
+        assert_eq!(ghost_node.depth, 1);
+
+        let a_node = sub.nodes.iter().find(|n| n.slug == "A").unwrap();
+        assert!(a_node.is_resolved);
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_not_found() {
+        let graph = simple_graph();
+        let err = graph.filter_neighbourhood("NoSuchPage", 1).unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_isolated_node() {
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![]),
+            make_file("Isolated", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("Isolated".to_string(), "Isolated".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let sub = graph.filter_neighbourhood("Isolated", 5).unwrap();
+        assert_eq!(sub.nodes.len(), 1);
+        assert_eq!(sub.nodes[0].slug, "Isolated");
+        assert!(sub.edges.is_empty());
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_nodes_sorted_by_depth_then_slug() {
+        // A -> B -> C -> D
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![("C", 1)]),
+            make_file("C", vec![("D", 1)]),
+            make_file("D", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+            ("D".to_string(), "D".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let sub = graph.filter_neighbourhood("B", 2).unwrap();
+        // B@0, A@1 (incoming), C@1 (outgoing), D@2
+        let pairs: Vec<(&str, usize)> = sub.nodes.iter().map(|n| (n.slug.as_str(), n.depth)).collect();
+        assert_eq!(pairs, vec![("B", 0), ("A", 1), ("C", 1), ("D", 2)]);
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_edges_sorted() {
+        let graph = simple_graph(); // A->B, A->C, B->C, C->A
+        let sub = graph.filter_neighbourhood("A", 10).unwrap();
+
+        let edge_pairs: Vec<(&str, &str)> = sub
+            .edges
+            .iter()
+            .map(|e| (e.source.as_str(), e.target.as_str()))
+            .collect();
+        // Sorted by (source, target)
+        assert_eq!(
+            edge_pairs,
+            vec![("A", "B"), ("A", "C"), ("B", "C"), ("C", "A")]
+        );
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_edge_meta_preserved() {
+        let files = [
+            ParsedFile {
+                path: PathBuf::from("source.md"),
+                page_name: "source".to_string(),
+                links: vec![make_link("target", 7, Some("alias"), Some("heading"), None, true)],
+                spl_blocks: vec![],
+                diagnostics: vec![],
+                mtime: SystemTime::now(),
+                merkle_leaves: vec![],
+                file_merkle: None,
+            },
+            ParsedFile {
+                path: PathBuf::from("target.md"),
+                page_name: "target".to_string(),
+                links: vec![],
+                spl_blocks: vec![],
+                diagnostics: vec![],
+                mtime: SystemTime::now(),
+                merkle_leaves: vec![],
+                file_merkle: None,
+            },
+        ];
+        let resolved: HashMap<String, String> = [("target".to_string(), "target".to_string())]
+            .into_iter()
+            .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let sub = graph.filter_neighbourhood("source", 1).unwrap();
+        assert_eq!(sub.edges.len(), 1);
+        let e = &sub.edges[0];
+        assert_eq!(e.meta.line, 7);
+        assert_eq!(e.meta.alias.as_deref(), Some("alias"));
+        assert_eq!(e.meta.heading.as_deref(), Some("heading"));
+        assert!(e.meta.is_embed);
     }
 }
