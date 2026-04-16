@@ -1,15 +1,15 @@
 {
-  "task_id": "graph-template-vars",
+  "task_id": "graph-stats-integration",
   "token_budget": 8000,
-  "tokens_used": 59,
+  "tokens_used": 38,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend web::engine TemplateEngine to inject graph_index_url (always) and graph_index (only when theme.toml sets graph_inline=true, else empty string). Match existing search_index pattern. Cover all render paths (serve, build, error pages).",
-      "token_cost": 59,
+      "content": "Extend `zetl stats` to include a Graph: section (bytes, nodes, edges) in table output and a graph field in JSON output. Mirrors existing History: section.",
+      "token_cost": 38,
       "priority": "PlanMeta"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T06:36:45Z"
+  "constructed_at": "2026-04-16T07:47:18Z"
 }
