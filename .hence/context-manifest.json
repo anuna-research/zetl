@@ -1,12 +1,12 @@
 {
-  "task_id": "spa-shell",
+  "task_id": "navigate-events",
   "token_budget": 8000,
-  "tokens_used": 207,
+  "tokens_used": 304,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement the SPA navigation shell as a small (<100 loc) vanilla JS module loaded by base.html when theme.toml sets [spa] enabled=true. Intercepts same-origin <a> clicks, fetches next document, swaps the [data-zetl-volatile] element, updates title and history state. Bypasses on meta/ctrl/middle-click, target=_blank, cross-origin. Handles popstate. Re-executes inline <script> tags in swapped content.",
-      "token_cost": 100,
+      "content": "Dispatch window-level zetl:before-navigate (cancelable, detail={fromSlug,toSlug,url}) and zetl:after-navigate (detail={slug,contentRoot}) around each successful navigation. Document in theme authoring reference. Graph partial listens to zetl:after-navigate to update highlight state via renderer.refresh() without re-instantiating Sigma.",
+      "token_cost": 84,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,26 @@
       "content": "Modified 5 files (+351, -66): .hence/context-manifest.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html, themes/default/theme.toml",
       "token_cost": 37,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-spa-shell-changes",
+      "content": "Modified 5 files (+136, -55): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/static/spa.js, themes/default/theme.toml",
+      "token_cost": 40,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-mobile-toggle-changes",
+      "content": "Modified 6 files (+365, -78): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html and 1 more",
+      "token_cost": 39,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-graph-vault-page-changes",
+      "content": "Modified 4 files (+114, -47): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/vault_graph.html",
+      "token_cost": 34,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T15:30:19Z"
+  "constructed_at": "2026-04-16T16:31:23Z"
 }

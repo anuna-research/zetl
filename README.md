@@ -595,6 +595,56 @@ A theme that only changes the color scheme (override just `base.html`):
 
 The child templates (`index.html`, `page.html`, `folder.html`) automatically fall back to the built-ins and extend your custom `base.html`.
 
+#### SPA navigation events
+
+When `[spa] enabled=true` in `theme.toml`, same-origin `<a>` clicks are
+intercepted: the next document is fetched, and the element carrying
+`[data-zetl-volatile]` (or `<main>` as a fallback) is swapped in place so the
+persistent shell — sidebar, graph widget, long-lived scripts — is never
+unmounted. Around each successful swap, zetl dispatches two
+window-level `CustomEvent`s that themes and partials can hook:
+
+| Event | Cancelable | `event.detail` | Fires |
+|-------|------------|----------------|-------|
+| `zetl:before-navigate` | yes | `{ fromSlug, toSlug, url }` | After click/`popstate` intercept, before fetch + swap. Calling `event.preventDefault()` aborts the SPA navigation and falls back to a full-page load. |
+| `zetl:after-navigate` | no | `{ slug, contentRoot }` | After the volatile element is swapped in and inline `<script>` tags re-executed. `contentRoot` is the freshly-inserted volatile element. |
+
+Use these events to update long-lived widgets (e.g. the graph canvas) in
+place — no DOM replacement, no renderer re-instantiation. The built-in
+`_graph.html` partial listens to `zetl:after-navigate` and calls
+`renderer.refresh()` to update node/edge highlight state without
+re-running the ForceAtlas2 layout or reallocating the WebGL context.
+
+Example partial that mirrors the active slug into a custom badge:
+
+```html
+<span id="active-slug-badge"></span>
+<script>
+  (function () {
+    function render(slug) {
+      var el = document.getElementById('active-slug-badge');
+      if (el) el.textContent = slug || '/';
+    }
+    render(document.body.getAttribute('data-slug') || location.pathname);
+    window.addEventListener('zetl:after-navigate', function (e) {
+      render(e.detail && e.detail.slug);
+    });
+    /* Opt a navigation out — e.g. skip SPA swap for /admin/*. */
+    window.addEventListener('zetl:before-navigate', function (e) {
+      if (e.detail && e.detail.toSlug && e.detail.toSlug.indexOf('/admin/') === 0) {
+        e.preventDefault();
+      }
+    });
+  })();
+</script>
+```
+
+Guarantees: both events fire in order on every successful SPA navigation
+(`before-navigate` → fetch → swap → `after-navigate`). When SPA is disabled
+or the fetch fails, neither event fires and the browser performs a native
+full-page load. New-tab modifiers (⌘-click, middle-click, `target=_blank`,
+`download`, cross-origin) bypass the interceptor entirely.
+
 ### Hooks
 
 zetl supports git-style lifecycle hooks — executable scripts in `.zetl/hooks/` that run at defined points during vault operations. Hooks receive structured JSON context on stdin and environment variables, enabling custom automation without modifying the binary.
