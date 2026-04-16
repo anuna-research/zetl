@@ -1,15 +1,15 @@
 {
-  "task_id": "vendor-bundle",
+  "task_id": "nfr-size-budgets",
   "token_budget": 8000,
-  "tokens_used": 72,
+  "tokens_used": 38,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Vendor Sigma.js v3, graphology, and graphology-layout-forceatlas2 as pinned minified builds under themes/default/static/vendor/sigma/. Record pins in themes/default/theme.toml under [vendor.sigma], [vendor.graphology], [vendor.graphology-layout-forceatlas2]. No CDN dependency at runtime.",
-      "token_cost": 72,
+      "content": "Implement TEST-203 (gzip of vendor/sigma/*.min.js <= 250 kB) and TEST-204 (graph-index.json <= 1 MB for 2k-page vault; stderr warning for 5k-page vault).",
+      "token_cost": 38,
       "priority": "PlanMeta"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T13:27:22Z"
+  "constructed_at": "2026-04-16T13:50:11Z"
 }
