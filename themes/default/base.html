@@ -387,6 +387,8 @@
         {%- if vault.history and vault.history.snapshot_count and vault.history.snapshot_count > 0 %}
         <a href="{{ root_path }}_history{% if mode == 'build' %}.html{% endif %}" class="block text-xs opacity-80 hover:opacity-100 mb-3 px-2">Recent changes</a>
         {%- endif %}
+        {# SPEC-028 REQ-107: vault-wide graph link. #}
+        <a href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}" class="block text-xs opacity-80 hover:opacity-100 mb-3 px-2">Graph</a>
         {% block sidebar %}
         {% macro render_tree(nodes) %}
         <ul class="menu menu-sm sidebar-tree">
