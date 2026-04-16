@@ -331,7 +331,7 @@ pub fn build_static(
 
     // ── index.html ──────────────────────────────────────────────────────
     let index_html = engine
-        .render_index(&vault_ctx, "build", &bm25_json, &history_json)
+        .render_index(&vault_ctx, "build", &bm25_json, &history_json, "")
         .map_err(|e| {
             eprintln!("{}", e.stderr_line("index"));
             anyhow::anyhow!("{e}")
@@ -422,7 +422,7 @@ pub fn build_static(
         }
 
         let page_html = engine
-            .render_page(&vault_ctx, &page_ctx, "build", &bm25_json, &history_json)
+            .render_page(&vault_ctx, &page_ctx, "build", &bm25_json, &history_json, "")
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(&slug));
                 anyhow::anyhow!("{e}")
@@ -544,7 +544,7 @@ pub fn build_static(
         let folder_name = folder.rsplit('/').next().unwrap_or(folder);
         let folder_ctx = build_folder_context(data, folder, folder_name);
         let folder_html = engine
-            .render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json, &history_json)
+            .render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json, &history_json, "")
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(folder));
                 anyhow::anyhow!("{e}")
