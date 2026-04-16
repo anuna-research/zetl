@@ -2,7 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use petgraph::visit::EdgeRef;
 
+use crate::graph::{GraphIndexContext, GraphIndexEdge, GraphIndexNode};
 use crate::scanner::{body_text_ranges, page_slug_from_path};
 use crate::web::context::{build_folder_context, build_page_context, build_vault_context};
 use crate::web::engine::{build_search_index, bundled_theme_files, TemplateEngine};
@@ -228,6 +230,117 @@ fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) 
         .context("writing search-index.json")?;
 
     Ok(json_str)
+}
+
+/// Build a `GraphIndexContext` from the current vault snapshot.
+///
+/// Pure data assembly on top of `VaultData` + frontmatter I/O (for `tags`).
+/// Shared between `zetl build` (writes `graph-index.json` to disk) and
+/// `zetl serve` (`GET /graph-index.json`) so the two outputs are byte-equal
+/// for the same vault state — REQ-102 / REQ-103.
+pub fn build_graph_index_context<'a>(
+    data: &VaultData,
+    vault_root: &Path,
+    vault_name: &'a str,
+) -> GraphIndexContext<'a> {
+    let graph = &data.graph;
+
+    // Map from page_name → file path, for cheap frontmatter lookup.
+    let file_by_name: HashMap<&str, &Path> = data
+        .files
+        .iter()
+        .map(|f| (f.page_name.as_str(), f.path.as_path()))
+        .collect();
+
+    // Phantom (dead-link) targets have no entry in `page_slug_map`. Derive a
+    // stable kebab-case slug from the page name so node keys remain URL-safe
+    // and match build-mode output.
+    fn phantom_slug(name: &str) -> String {
+        name.to_ascii_lowercase().replace(' ', "-")
+    }
+
+    let mut nodes: Vec<GraphIndexNode> = graph
+        .node_map
+        .keys()
+        .map(|name| {
+            let slug = data
+                .page_slug_map
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| phantom_slug(name));
+            let outlink_count = graph
+                .graph
+                .edges_directed(graph.node_map[name], petgraph::Direction::Outgoing)
+                .count();
+            let backlink_count = graph
+                .graph
+                .edges_directed(graph.node_map[name], petgraph::Direction::Incoming)
+                .count();
+            let is_real = graph.resolved.contains(name);
+            let is_dead = !is_real;
+            let is_orphan = is_real && backlink_count == 0;
+
+            let tags: Vec<String> = if is_real {
+                file_by_name
+                    .get(name.as_str())
+                    .and_then(|rel| std::fs::read_to_string(vault_root.join(rel)).ok())
+                    .map(|content| {
+                        let fm = markdown::parse_frontmatter(&content);
+                        fm.get("tags")
+                            .and_then(|t| t.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+
+            GraphIndexNode {
+                label: name.clone(),
+                slug,
+                outlink_count,
+                backlink_count,
+                is_orphan,
+                is_dead,
+                tags,
+            }
+        })
+        .collect();
+    nodes.sort_by(|a, b| a.slug.cmp(&b.slug));
+
+    let resolve_slug = |name: &str| -> String {
+        data.page_slug_map
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| phantom_slug(name))
+    };
+    let edges: Vec<GraphIndexEdge> = graph
+        .graph
+        .edge_references()
+        .map(|e| {
+            let src_name = &graph.graph[e.source()];
+            let tgt_name = &graph.graph[e.target()];
+            GraphIndexEdge {
+                source: resolve_slug(src_name),
+                target: resolve_slug(tgt_name),
+            }
+        })
+        .collect();
+
+    let stats = graph.stats(0);
+
+    GraphIndexContext {
+        vault_name,
+        total_pages: stats.pages,
+        total_links: stats.links,
+        nodes,
+        edges,
+    }
 }
 
 /// Write history-index.json to `{out_dir}/history-index.json` and return the
