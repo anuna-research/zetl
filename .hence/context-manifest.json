@@ -1,15 +1,27 @@
 {
-  "task_id": "graph-partial",
+  "task_id": "graceful-absence",
   "token_budget": 8000,
-  "tokens_used": 96,
+  "tokens_used": 112,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create themes/default/_graph.html: single-Sigma-instance partial. Instantiates graphology DirectedGraph (from inline graph_index or fetched graph_index_url), runs graphology-layout-forceatlas2 in a Web Worker when available, mounts Sigma.js v3. Implements mode switching (local/vault/off) via data-mode attribute. nodeReducer/edgeReducer read CSS custom properties via getComputedStyle.",
-      "token_cost": 96,
+      "content": "Implement graceful-absence matrix: <noscript> fallback in _graph.html; empty-state copy when vault has zero pages/links; sidebar link and /_graph route tolerate theme override that removes _graph.html; keyboard/SR fallback (<details>-grouped page list alongside canvas) for NFR-105.",
+      "token_cost": 70,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-graceful-absence-changes",
+      "content": "Modified 2 files (+339, -65): .hence/context-manifest.json, themes/default/_graph.html",
+      "token_cost": 21,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-dead-link-styling-changes",
+      "content": "Modified 2 files (+468, -61): .hence/context-manifest.json, themes/default/_graph.html",
+      "token_cost": 21,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T14:03:17Z"
+  "constructed_at": "2026-04-16T15:01:08Z"
 }
