@@ -7,3 +7,11 @@ license = "AGPL-3.0"
 
 [theme.templates]
 overrides = ["base.html", "index.html", "page.html", "folder.html"]
+
+# SPEC-028 REQ-116: graph widget placement. One of:
+#   "docked"  — fixed mini-map, bottom-right of viewport (default)
+#   "tabs"    — widget shares the transclusion right rail via a two-tab header
+#   "stacked" — widget sits above the transclusion panel in the right rail
+# Unknown values fall back to "docked".
+[graph]
+placement = "docked"
