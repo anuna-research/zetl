@@ -3,11 +3,12 @@
   "confidence": 0.0,
   "exit_code": 1,
   "diff_summary": {
-    "files_changed": 17,
-    "insertions": 726,
-    "deletions": 36,
+    "files_changed": 19,
+    "insertions": 862,
+    "deletions": 48,
     "file_list": [
       ".hence/context-manifest.json",
+      ".hence/eval-result.json",
       "Makefile",
       "tests/nfr/.gitignore",
       "tests/nfr/README.md",
@@ -22,21 +23,22 @@
       "tests/nfr/scripts/clean.ts",
       "tests/nfr/scripts/seed.ts",
       "tests/nfr/tests/fixtures.ts",
+      "tests/nfr/tests/nfr-202-interaction-fps.spec.ts",
       "tests/nfr/tests/smoke.spec.ts",
       "tests/nfr/tsconfig.json"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-nfr-harness-changes",
-      "content": "Modified 17 files (+726, -36): .hence/context-manifest.json, Makefile, tests/nfr/.gitignore, tests/nfr/README.md, tests/nfr/harness/build.ts and 12 more",
+      "key": "task-nfr-interaction-fps-changes",
+      "content": "Modified 19 files (+862, -48): .hence/context-manifest.json, .hence/eval-result.json, Makefile, tests/nfr/.gitignore, tests/nfr/README.md and 14 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/nfr-harness-v2",
-  "evaluated_at": "2026-04-16T22:04:04Z",
+  "branch_name": "hence/nfr-interaction-fps-v1",
+  "evaluated_at": "2026-04-16T22:16:59Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
