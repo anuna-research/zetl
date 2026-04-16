@@ -1,12 +1,12 @@
 {
-  "task_id": "spa-shell",
+  "task_id": "client-perf-marks",
   "token_budget": 8000,
-  "tokens_used": 207,
+  "tokens_used": 322,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement the SPA navigation shell as a small (<100 loc) vanilla JS module loaded by base.html when theme.toml sets [spa] enabled=true. Intercepts same-origin <a> clicks, fetches next document, swaps the [data-zetl-volatile] element, updates title and history state. Bypasses on meta/ctrl/middle-click, target=_blank, cross-origin. Handles popstate. Re-executes inline <script> tags in swapped content.",
-      "token_cost": 100,
+      "content": "Emit performance.mark('zetl:graph:render:start') before layout and performance.measure('zetl:graph:render', ...) on layoutstop; emit performance.measure('zetl:navigate', ...) around SPA navigation (OBS-113).",
+      "token_cost": 51,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,44 @@
       "content": "Modified 5 files (+351, -66): .hence/context-manifest.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html, themes/default/theme.toml",
       "token_cost": 37,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-spa-shell-changes",
+      "content": "Modified 5 files (+136, -55): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/static/spa.js, themes/default/theme.toml",
+      "token_cost": 40,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-mobile-toggle-changes",
+      "content": "Modified 6 files (+365, -78): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html and 1 more",
+      "token_cost": 39,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-graph-vault-page-changes",
+      "content": "Modified 4 files (+114, -47): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/vault_graph.html",
+      "token_cost": 34,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-navigate-events-changes",
+      "content": "Modified 2 files (+76, -44): .hence/context-manifest.json, README.md",
+      "token_cost": 17,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-readme-section-changes",
+      "content": "Modified 2 files (+155, -41): .hence/context-manifest.json, README.md",
+      "token_cost": 17,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theme-authoring-ref-changes",
+      "content": "Modified 2 files (+210, -38): .hence/context-manifest.json, README.md",
+      "token_cost": 17,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T15:30:19Z"
+  "constructed_at": "2026-04-16T21:32:18Z"
 }
