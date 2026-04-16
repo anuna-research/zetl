@@ -1,15 +1,15 @@
 {
-  "task_id": "graph-neighbourhood-core",
+  "task_id": "graph-build-emit",
   "token_budget": 8000,
-  "tokens_used": 43,
+  "tokens_used": 67,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement graph::filter_neighbourhood(graph, root_slug, depth) -> Subgraph as a pure function. BFS from root, depth N, returns nodes+edges within the neighbourhood. No I/O.",
-      "token_cost": 43,
+      "content": "In web::build, add write_graph_index_json(vault_ctx, out_dir) writing <out_dir>/graph-index.json. Co-locate with existing search_index.json and history-index.json write passes. Emit '[zetl] graph-export: pages=N edges=M duration_ms=X bytes=Y' under --verbose (OBS-101).",
+      "token_cost": 67,
       "priority": "PlanMeta"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T02:34:53Z"
+  "constructed_at": "2026-04-16T06:55:34Z"
 }
