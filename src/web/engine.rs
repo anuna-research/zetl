@@ -284,7 +284,32 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
         },
     );
 
+    // SPEC-028 REQ-113: surface theme.toml's [spa].enabled as a global so
+    // base.html can conditionally include the persistent-shell SPA module.
+    env.add_global("spa_enabled", minijinja::Value::from(theme_spa_enabled(vault_root, theme)));
+
     env
+}
+
+/// Read `[spa].enabled` from the active theme's `theme.toml`.
+///
+/// Checks the on-disk theme directory first, then the compile-time-bundled
+/// theme. Returns `false` when the file is missing, malformed, or the key
+/// is absent — matching SPEC-028 REQ-113's default-off opt-in semantics.
+fn theme_spa_enabled(vault_root: &Path, theme: &str) -> bool {
+    let raw = if theme != "default" {
+        std::fs::read_to_string(vault_root.join(".zetl/themes").join(theme).join("theme.toml"))
+            .ok()
+            .or_else(|| bundled_template(theme, "theme.toml").map(str::to_string))
+    } else {
+        bundled_template("default", "theme.toml").map(str::to_string)
+    };
+    let Some(raw) = raw else { return false };
+    let Ok(val) = raw.parse::<toml::Value>() else { return false };
+    val.get("spa")
+        .and_then(|s| s.get("enabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 impl TemplateEngine {

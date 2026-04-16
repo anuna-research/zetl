@@ -356,7 +356,7 @@
 
     <!-- Main content -->
     <div class="drawer-content flex flex-col">
-      <!-- Top bar (mobile) -->
+      <!-- Top bar (mobile) — persistent across SPA navigation. -->
       <div class="navbar bg-base-200 lg:hidden">
         <label for="sidebar-toggle" class="btn btn-ghost drawer-button">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
@@ -368,7 +368,14 @@
         <span class="text-lg font-bold ml-2">zetl</span>
       </div>
 
-      {% block content %}{% endblock %}
+      {# SPEC-028 REQ-113: mark the volatile region so the SPA shell can swap
+         page content without unmounting the sidebar or any persistent widget
+         mounted in base.html. Themes that strip this attribute opt out of
+         no-flash navigation — they still render correctly, just with a full
+         reload per link. #}
+      <main data-zetl-volatile>
+        {% block content %}{% endblock %}
+      </main>
     </div>
 
     <!-- Sidebar -->
@@ -763,6 +770,11 @@
     });
   })();
   </script>
+  {# SPEC-028 REQ-113 / REQ-115: persistent-shell SPA navigation module.
+     Loaded only when the theme opts in via `theme.toml: [spa] enabled=true`.
+     The module swaps `[data-zetl-volatile]` on same-origin link clicks and
+     dispatches `zetl:before-navigate` / `zetl:after-navigate` events. #}
+  {% if spa_enabled %}<script src="{{ root_path }}_static/spa.js" defer></script>{% endif %}
   {% block scripts %}{% endblock %}
 
 </body>
