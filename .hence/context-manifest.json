@@ -1,27 +1,15 @@
 {
-  "task_id": "graceful-absence",
+  "task_id": "docked-minimap-placement",
   "token_budget": 8000,
-  "tokens_used": 112,
+  "tokens_used": 70,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement graceful-absence matrix: <noscript> fallback in _graph.html; empty-state copy when vault has zero pages/links; sidebar link and /_graph route tolerate theme override that removes _graph.html; keyboard/SR fallback (<details>-grouped page list alongside canvas) for NFR-105.",
+      "content": "Implement docked mini-map default placement: position:fixed bottom-right, 280x200 px default, CSS resize handle, click-to-expand navigates to /_graph. Implement tabs and stacked placements as theme.toml [graph.placement] opt-ins via data-placement attribute on the shell container.",
       "token_cost": 70,
       "priority": "PlanMeta"
-    },
-    {
-      "source": "memory/episodic/task-graceful-absence-changes",
-      "content": "Modified 2 files (+339, -65): .hence/context-manifest.json, themes/default/_graph.html",
-      "token_cost": 21,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-dead-link-styling-changes",
-      "content": "Modified 2 files (+468, -61): .hence/context-manifest.json, themes/default/_graph.html",
-      "token_cost": 21,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T15:01:08Z"
+  "constructed_at": "2026-04-16T15:14:37Z"
 }

@@ -319,6 +319,112 @@
       font-size: 0.7rem;
       opacity: 0.75;
     }
+    /* ── Graph widget placement (SPEC-028 REQ-116)
+       The default theme mounts a single persistent graph widget outside the
+       volatile content region. Three placements are supported; the active
+       one is chosen via theme.toml [graph] placement = "docked" | "tabs" |
+       "stacked" and surfaced on the shell container as data-placement.
+
+       CSS custom properties (REQ-114) make every geometric value overridable
+       without touching the template, so theme authors restyle by redeclaring
+       these vars on :root. */
+    :root {
+      --zetl-graph-widget-width: 280px;
+      --zetl-graph-widget-height: 200px;
+      --zetl-graph-widget-right: 16px;
+      --zetl-graph-widget-bottom: 16px;
+      --zetl-graph-widget-breakpoint: 900px;
+      --zetl-graph-widget-min-width: 180px;
+      --zetl-graph-widget-min-height: 140px;
+    }
+
+    .zetl-graph-widget {
+      box-sizing: border-box;
+      background: oklch(var(--b1));
+      border: 1px solid oklch(var(--b3));
+      border-radius: 0.5rem;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      overflow: hidden;
+      z-index: 40;
+    }
+    .zetl-graph-widget__canvas {
+      position: absolute;
+      inset: 0;
+      /* Sigma mounts here once vendor bundle lands (task-graph-partial). Until
+         then the canvas is an empty placeholder — the placement geometry is
+         what this task asserts. */
+    }
+    .zetl-graph-widget__expand {
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      font-size: 0.7rem;
+      line-height: 1;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      background: oklch(var(--b1) / 0.85);
+      color: oklch(var(--bc));
+      text-decoration: none;
+      border: 1px solid oklch(var(--b3));
+      opacity: 0.85;
+      transition: opacity 0.15s ease;
+    }
+    .zetl-graph-widget__expand:hover,
+    .zetl-graph-widget__expand:focus-visible {
+      opacity: 1;
+      text-decoration: underline;
+    }
+
+    /* Default "docked" placement: fixed mini-map, bottom-right, user-resizable. */
+    [data-placement="docked"] .zetl-graph-widget {
+      position: fixed;
+      right: var(--zetl-graph-widget-right);
+      bottom: var(--zetl-graph-widget-bottom);
+      width: var(--zetl-graph-widget-width);
+      height: var(--zetl-graph-widget-height);
+      min-width: var(--zetl-graph-widget-min-width);
+      min-height: var(--zetl-graph-widget-min-height);
+      /* Native CSS resize handle — bottom-right grip (REQ-116). The widget
+         only grows from the corner anchored at the opposite viewport edge, so
+         `resize: both` drags from bottom-right without flipping. */
+      resize: both;
+    }
+
+    /* "tabs" placement: widget and transclusion cards share the right rail
+       via a two-tab header. Themes that opt in render the graph as a
+       right-rail sibling; when this placement is active the fixed docked
+       widget is suppressed. */
+    [data-placement="tabs"] .zetl-graph-widget {
+      position: relative;
+      width: 100%;
+      height: 320px;
+      margin-bottom: 1rem;
+    }
+    [data-placement="tabs"] .transclusion-panel {
+      /* Nudge the rail to host both tabs; actual tab UI is the theme's
+         responsibility and lands with task-graph-partial. */
+      padding-top: 0;
+    }
+
+    /* "stacked" placement: widget sits above the transclusion cards in the
+       right rail, without the tab UI. */
+    [data-placement="stacked"] .zetl-graph-widget {
+      position: relative;
+      width: 100%;
+      height: 240px;
+      margin: 0 1rem 1rem 1rem;
+    }
+
+    /* Mobile behaviour (REQ-117 preview): below the breakpoint the docked
+       mini-map is hidden. The mobile toggle button lands with
+       task-mobile-toggle; until then we only hide. tabs/stacked flow
+       naturally with the content so they remain visible. */
+    @media (max-width: 899px) {
+      [data-placement="docked"] .zetl-graph-widget {
+        display: none;
+      }
+    }
+
     /* ── Sidebar tree */
     .sidebar-tree details > summary {
       cursor: pointer;
@@ -348,7 +454,24 @@
     {% block styles %}{% endblock %}
   </style>
 </head>
-<body class="min-h-screen bg-base-100">
+<body class="min-h-screen bg-base-100" data-placement="{{ graph_placement | default('docked') }}">
+
+  {# SPEC-028 REQ-116: persistent graph widget. Lives outside <main> so that
+     when the SPA navigation shell swaps content (REQ-113), the Sigma.js
+     instance mounted here is never unmounted. Until task-graph-partial lands
+     this is a placement-only placeholder — the geometry + data-placement
+     wiring is what this task exercises. Themes that need a different
+     placement switch via [graph] placement in theme.toml, no template edit
+     required. #}
+  <div class="zetl-graph-widget"
+       id="zetl-graph-widget"
+       aria-label="Vault graph mini-map"
+       role="region">
+    <a class="zetl-graph-widget__expand"
+       href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}"
+       title="Open full graph">Expand ↗</a>
+    <div class="zetl-graph-widget__canvas" id="zetl-graph"></div>
+  </div>
 
   <!-- Drawer layout for responsive sidebar -->
   <div class="drawer lg:drawer-open">
