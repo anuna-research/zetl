@@ -365,17 +365,33 @@
 
       renderer = new window.Sigma(graph, container, sigmaSettings);
 
-      /* REQ-111: node-click → page navigation (SPA shell intercepts where enabled). */
+      /* REQ-111: node-click → page navigation.
+         - Modifier keys (meta / ctrl / shift): open the slug in a new tab,
+           mirroring the native <a>-click muscle memory.
+         - SPA shell mounted: synthesise an anchor click so the
+           document-level interceptor swaps `[data-zetl-volatile]` without a
+           full reload.
+         - SPA disabled / failed to boot: fall through to `location.href`
+           for a standard full-page navigation. */
       renderer.on('clickNode', function(evt){
         var slug = evt.node;
+        if (!slug) return;
         var href = ROOT + slug + '/' + INDEX_FILE;
-        var a = document.createElement('a');
-        a.href = href;
-        a.rel = 'zetl-graph-nav';
-        /* Let the SPA shell intercept via a synthesised click event. */
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        var orig = evt.event && evt.event.original;
+        if (orig && (orig.metaKey || orig.ctrlKey || orig.shiftKey)) {
+          window.open(href, '_blank', 'noopener');
+          return;
+        }
+        if (window.__zetlSpaMounted) {
+          var a = document.createElement('a');
+          a.href = href;
+          a.rel = 'zetl-graph-nav';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          return;
+        }
+        location.href = href;
       });
 
       computeNeighbours(activeSlug);
