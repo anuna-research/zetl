@@ -1,75 +1,21 @@
 {
-  "task_id": "merge-notification",
+  "task_id": "dead-link-styling",
   "token_budget": 8000,
-  "tokens_used": 337,
+  "tokens_used": 72,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement agent merge notification in editor: external-merge WebSocket message, banner with summary, changed range highlighting, review button for large merges",
-      "token_cost": 39,
+      "content": "Render dead-link nodes and edges with the muted treatment used elsewhere in the UI. Read --zetl-graph-node-dead and --zetl-graph-edge-dead CSS vars via reducer; apply dashed edge pattern to dead-link edges.",
+      "token_cost": 51,
       "priority": "PlanMeta"
     },
     {
-      "source": "memory/episodic/task-user-profiles-changes",
-      "content": "Modified 3 files (+466, -65): .hence/context-manifest.json, src/lib.rs, src/user/mod.rs",
+      "source": "memory/episodic/task-graceful-absence-changes",
+      "content": "Modified 2 files (+339, -65): .hence/context-manifest.json, themes/default/_graph.html",
       "token_cost": 21,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-passkey-auth-changes",
-      "content": "Modified 5 files (+711, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/user/mod.rs, src/user/passkey.rs",
-      "token_cost": 29,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-passkey-guidance-changes",
-      "content": "Modified 5 files (+625, -7): .hence/context-manifest.json, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs, themes/default/passkey_register.html",
-      "token_cost": 37,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-session-mgmt-changes",
-      "content": "Modified 7 files (+253, -5): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs, src/web/session.rs and 2 more",
-      "token_cost": 34,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-bip39-recovery-changes",
-      "content": "Modified 10 files (+733, -6): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/main.rs, src/user/mod.rs and 5 more",
-      "token_cost": 30,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-challenge-expiry-changes",
-      "content": "Modified 1 files (+11, -5): .hence/context-manifest.json",
-      "token_cost": 14,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-recovery-ux-changes",
-      "content": "Modified 5 files (+409, -5): .hence/context-manifest.json, src/web/engine.rs, src/web/mod.rs, src/web/routes.rs, themes/default/recovery_show.html",
-      "token_cost": 36,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-mnemonic-security-changes",
-      "content": "Modified 5 files (+118, -21): .hence/context-manifest.json, src/main.rs, src/web/mod.rs, src/web/routes.rs, themes/default/recovery_show.html",
-      "token_cost": 35,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-bootstrap-owner-changes",
-      "content": "Modified 5 files (+155, -7): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/web/mod.rs, src/web/routes.rs",
-      "token_cost": 29,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-collab-gate-changes",
-      "content": "Modified 6 files (+204, -20): .hence/context-manifest.json, src/main.rs, src/user/mod.rs, src/web/mod.rs, src/web/routes.rs and 1 more",
-      "token_cost": 33,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-03-18T14:12:47Z"
+  "constructed_at": "2026-04-16T14:55:09Z"
 }
