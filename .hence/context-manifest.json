@@ -1,15 +1,15 @@
 {
-  "task_id": "graph-stats-integration",
+  "task_id": "vendor-bundle",
   "token_budget": 8000,
-  "tokens_used": 38,
+  "tokens_used": 72,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend `zetl stats` to include a Graph: section (bytes, nodes, edges) in table output and a graph field in JSON output. Mirrors existing History: section.",
-      "token_cost": 38,
+      "content": "Vendor Sigma.js v3, graphology, and graphology-layout-forceatlas2 as pinned minified builds under themes/default/static/vendor/sigma/. Record pins in themes/default/theme.toml under [vendor.sigma], [vendor.graphology], [vendor.graphology-layout-forceatlas2]. No CDN dependency at runtime.",
+      "token_cost": 72,
       "priority": "PlanMeta"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T07:47:18Z"
+  "constructed_at": "2026-04-16T13:27:22Z"
 }
