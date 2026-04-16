@@ -1,12 +1,12 @@
 {
-  "task_id": "changelog-release",
+  "task_id": "nfr-harness",
   "token_budget": 8000,
-  "tokens_used": 321,
+  "tokens_used": 329,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "CHANGELOG entry under [0.3.0] — feature addition (minor bump). Summarise: interactive graph view, SPA navigation shell, persistent widget with mode switching, CSS-var theming contract. Bump Cargo.toml version.",
-      "token_cost": 52,
+      "content": "Set up Puppeteer/Playwright harness in tests/ for the NFR tests. Seed fixtures for a 2,000-page synthetic vault and a 5,000-page vault (for the NFR-104 warning check). Harness runs against a built dist/ served via a local http server.",
+      "token_cost": 58,
       "priority": "PlanMeta"
     },
     {
@@ -41,8 +41,8 @@
     },
     {
       "source": "memory/episodic/task-mobile-toggle-changes",
-      "content": "Modified 5 files (+519, -36): .hence/context-manifest.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html, themes/default/theme.toml",
-      "token_cost": 37,
+      "content": "Modified 6 files (+365, -78): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html and 1 more",
+      "token_cost": 39,
       "priority": "AgentMemory"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T22:41:42Z"
+  "constructed_at": "2026-04-16T21:57:49Z"
 }
