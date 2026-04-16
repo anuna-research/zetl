@@ -1,12 +1,12 @@
 {
-  "task_id": "readme-section",
+  "task_id": "theme-authoring-ref",
   "token_budget": 8000,
-  "tokens_used": 286,
+  "tokens_used": 341,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add 'Graph view' section to README.md covering: default widget placement, mode switcher, /_graph route, mobile behaviour, theme.toml [graph.placement] opt-ins, CSS-var overrides, graceful absence.",
-      "token_cost": 49,
+      "content": "Extend the theme authoring reference (README.md or docs/themes) with: full --zetl-graph-* and --zetl-shell-* CSS-var table; theme.toml [spa] and [graph.placement] tables; {% block persistent_shell %}/{% block graph_widget %} contract; zetl:before-navigate and zetl:after-navigate events with code example; versioned theme contract note per REQ-114.",
+      "token_cost": 87,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 2 files (+76, -44): .hence/context-manifest.json, README.md",
       "token_cost": 17,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-readme-section-changes",
+      "content": "Modified 2 files (+155, -41): .hence/context-manifest.json, README.md",
+      "token_cost": 17,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T16:35:26Z"
+  "constructed_at": "2026-04-16T16:41:36Z"
 }

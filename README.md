@@ -721,55 +721,183 @@ A theme that only changes the color scheme (override just `base.html`):
 
 The child templates (`index.html`, `page.html`, `folder.html`) automatically fall back to the built-ins and extend your custom `base.html`.
 
-#### SPA navigation events
+#### SPA navigation shell
 
-When `[spa] enabled=true` in `theme.toml`, same-origin `<a>` clicks are
-intercepted: the next document is fetched, and the element carrying
-`[data-zetl-volatile]` (or `<main>` as a fallback) is swapped in place so the
-persistent shell — sidebar, graph widget, long-lived scripts — is never
-unmounted. Around each successful swap, zetl dispatches two
-window-level `CustomEvent`s that themes and partials can hook:
+The default theme opts into a same-origin navigation shell that intercepts `<a>` clicks and swaps only a marked volatile region — keeping the sidebar and the single Sigma graph instance mounted across page navigations (no flash, no layout recompute). Themes opt in via `theme.toml` and preserve two DOM markers in `base.html`.
 
-| Event | Cancelable | `event.detail` | Fires |
-|-------|------------|----------------|-------|
-| `zetl:before-navigate` | yes | `{ fromSlug, toSlug, url }` | After click/`popstate` intercept, before fetch + swap. Calling `event.preventDefault()` aborts the SPA navigation and falls back to a full-page load. |
-| `zetl:after-navigate` | no | `{ slug, contentRoot }` | After the volatile element is swapped in and inline `<script>` tags re-executed. `contentRoot` is the freshly-inserted volatile element. |
+**`theme.toml` — `[spa]` table:**
 
-Use these events to update long-lived widgets (e.g. the graph canvas) in
-place — no DOM replacement, no renderer re-instantiation. The built-in
-`_graph.html` partial listens to `zetl:after-navigate` and calls
-`renderer.refresh()` to update node/edge highlight state without
-re-running the ForceAtlas2 layout or reallocating the WebGL context.
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Opt in to the SPA navigation shell. |
+| `transition` | string | `"none"` | `"none"` or `"crossfade"`. Uses the View Transitions API when the browser supports it; falls back to instant swap. |
+| `persistent_regions` | array\<string\> | `[]` | Informational list of persistent region names; matches the block names below. |
 
-Example partial that mirrors the active slug into a custom badge:
-
-```html
-<span id="active-slug-badge"></span>
-<script>
-  (function () {
-    function render(slug) {
-      var el = document.getElementById('active-slug-badge');
-      if (el) el.textContent = slug || '/';
-    }
-    render(document.body.getAttribute('data-slug') || location.pathname);
-    window.addEventListener('zetl:after-navigate', function (e) {
-      render(e.detail && e.detail.slug);
-    });
-    /* Opt a navigation out — e.g. skip SPA swap for /admin/*. */
-    window.addEventListener('zetl:before-navigate', function (e) {
-      if (e.detail && e.detail.toSlug && e.detail.toSlug.indexOf('/admin/') === 0) {
-        e.preventDefault();
-      }
-    });
-  })();
-</script>
+```toml
+# .zetl/themes/<theme>/theme.toml
+[spa]
+enabled = true
+transition = "crossfade"
+persistent_regions = ["graph", "sidebar"]
 ```
 
-Guarantees: both events fire in order on every successful SPA navigation
-(`before-navigate` → fetch → swap → `after-navigate`). When SPA is disabled
-or the fetch fails, neither event fires and the browser performs a native
-full-page load. New-tab modifiers (⌘-click, middle-click, `target=_blank`,
-`download`, cross-origin) bypass the interceptor entirely.
+**`base.html` — persistent vs. volatile contract:**
+
+Two Minijinja blocks wrap regions the SPA shell keeps mounted across navigation; one DOM attribute marks the region that gets swapped.
+
+| Block / marker | Role | Rule |
+|----------------|------|------|
+| `{% block persistent_shell %}` | Everything that survives navigation — sidebar, graph widget, top-bar toggles. | Never swapped. Must be outside `data-zetl-volatile`. |
+| `{% block graph_widget %}` | The single Sigma graph mount point (inside `persistent_shell`). | Included once per document. Sigma instance, camera state, and layout coordinates persist across navigations; only `data-mode` changes. |
+| `data-zetl-volatile` attribute | The region whose `innerHTML` is replaced per navigation (default: `<main>`). | Contains `{% block content %}` and any page-specific UI (e.g. the transclusion panel). |
+
+Minimal structural skeleton:
+
+```jinja
+<body data-slug="{{ page.slug }}">
+  {% block persistent_shell %}
+    <nav class="zetl-shell zetl-shell--sidebar">
+      {% block sidebar %}{% include "_sidebar.html" %}{% endblock %}
+    </nav>
+
+    <div class="zetl-graph-widget" data-mode="local">
+      {% block graph_widget %}{% include "_graph.html" %}{% endblock %}
+    </div>
+  {% endblock %}
+
+  <main data-zetl-volatile>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+```
+
+Rules:
+
+1. Anything inside `{% block persistent_shell %}` is **never swapped** on navigation.
+2. The element carrying `data-zetl-volatile` (or the implicit `<main>` fallback) **is swapped** — its `innerHTML` is replaced by the corresponding element from the fetched document.
+3. Themes that rewrite `base.html` from scratch MUST preserve both markers to retain the no-flash property. Omitting them is a valid opt-out: the theme still works, but the graph re-initialises per page.
+4. Browser back/forward, meta-click / Ctrl-click / middle-click, and cross-origin links always fall through to native navigation.
+
+**Navigation lifecycle events:**
+
+The SPA shell dispatches two `window`-level events around each successful same-origin navigation. Theme scripts subscribe to them to re-run enhancements on swapped content (Mermaid, KaTeX, custom widgets) or to guard navigation (e.g. unsaved-edit warnings in the editor).
+
+| Event | When | `detail` | Cancelable |
+|-------|------|----------|------------|
+| `zetl:before-navigate` | After content fetch, before DOM swap. | `{ fromSlug, toSlug, url }` | Yes — `preventDefault()` falls back to native navigation. |
+| `zetl:after-navigate` | Immediately after DOM swap. | `{ slug, contentRoot }` — `contentRoot` is the newly-mounted `data-zetl-volatile` element. | No. |
+
+```js
+// .zetl/themes/<theme>/static/enhance.js
+window.addEventListener('zetl:before-navigate', (e) => {
+  // e.detail = { fromSlug, toSlug, url }
+  // Cancel to keep the current page (e.g. unsaved editor changes):
+  if (window.editorHasUnsavedChanges?.()) {
+    if (!confirm('Discard unsaved changes?')) e.preventDefault();
+  }
+});
+
+window.addEventListener('zetl:after-navigate', (e) => {
+  // e.detail = { slug, contentRoot }
+  if (window.mermaid) {
+    mermaid.run({ nodes: e.detail.contentRoot.querySelectorAll('.mermaid') });
+  }
+  if (window.renderMathInElement) {
+    renderMathInElement(e.detail.contentRoot);
+  }
+});
+```
+
+The graph's own reducers in `_graph.html` listen for `zetl:after-navigate` and call `renderer.refresh()` with the new `active_slug` — they never re-instantiate Sigma.
+
+#### Graph widget placement
+
+The default theme renders the persistent graph as a fixed docked mini-map bottom-right of the viewport. Two opt-in alternatives share the right rail with the transclusion panel; switching placement is a `theme.toml` flag + CSS-var override — no `_graph.html` rewrite required.
+
+**`theme.toml` — `[graph]` table:**
+
+| Key | Type | Default | Values | Description |
+|-----|------|---------|--------|-------------|
+| `placement` | string | `"docked"` | `"docked"`, `"tabs"`, `"stacked"` | Widget layout mode. |
+| `graph_inline` | bool | `false` | — | Inline `graph_index` JSON into every template instead of fetching `graph-index.json`. |
+
+| `placement` | Layout |
+|-------------|--------|
+| `docked` (default) | Fixed mini-map, bottom-right of viewport (280 × 200 px, resizable). |
+| `tabs` | Widget shares the transclusion right rail via a two-tab header. |
+| `stacked` | Widget sits above the transclusion panel in the right rail. |
+
+```toml
+# .zetl/themes/<theme>/theme.toml
+[graph]
+placement = "stacked"
+```
+
+Below the `--zetl-graph-widget-breakpoint` width (default 900 px) the widget is `display: none` by default and reachable via a top-bar toggle that expands to a full-screen overlay. Visibility-only manipulation preserves the Sigma instance across viewport resizes.
+
+#### Graph and shell CSS custom properties
+
+The default theme exposes a stable, versioned set of CSS custom properties as its sole mechanism for graph visual styling. Sigma reducers in `_graph.html` read them at render time via `getComputedStyle` and refresh on `data-theme` / `class` mutation or `prefers-color-scheme` change. Custom themes override any subset without touching JavaScript.
+
+**`--zetl-graph-*` — colours and typography:**
+
+| Property | Default | Purpose |
+|----------|---------|---------|
+| `--zetl-graph-node` | theme fg | Default node fill. |
+| `--zetl-graph-node-dead` | muted | Node fill for dead-link targets. |
+| `--zetl-graph-edge` | theme fg / 0.3 | Default edge colour. |
+| `--zetl-graph-edge-dead` | muted, dashed | Edge colour / pattern for dead-link edges. |
+| `--zetl-graph-label` | theme fg | Node label colour. |
+| `--zetl-graph-label-font` | theme sans | Node label `font-family` (passed to Sigma at init). |
+
+**`--zetl-graph-widget-*` — docked mini-map geometry:**
+
+| Property | Default | Purpose |
+|----------|---------|---------|
+| `--zetl-graph-widget-width` | `280px` | Docked mini-map width. |
+| `--zetl-graph-widget-height` | `200px` | Docked mini-map height. |
+| `--zetl-graph-widget-right` | `16px` | Offset from viewport right. |
+| `--zetl-graph-widget-bottom` | `16px` | Offset from viewport bottom. |
+| `--zetl-graph-widget-breakpoint` | `900px` | Min viewport width to show the widget; below this it collapses to a top-bar toggle. |
+
+**`--zetl-shell-*` — persistent shell layout:**
+
+| Property | Default | Purpose |
+|----------|---------|---------|
+| `--zetl-shell-sidebar-area` | `16rem` | Grid track size for the sidebar shell region. |
+
+Example override in a custom theme's `static/theme.css`:
+
+```css
+:root {
+  --zetl-graph-node: oklch(0.7 0.15 250);
+  --zetl-graph-edge: oklch(0.6 0.08 250 / 0.3);
+  --zetl-graph-widget-width: 360px;
+  --zetl-graph-widget-height: 260px;
+}
+```
+
+Theme authors who want structural changes (node shape, edge thickness curve, dashed patterns) override `_graph.html` itself; the CSS-var contract covers the common case of colours, sizes, and typography.
+
+#### Theme contract versioning
+
+The SPA shell, CSS custom properties, and lifecycle events form a **versioned theme contract**. The contract version is carried in the `[theme]` table of `theme.toml`:
+
+```toml
+[theme]
+name = "paper"
+version = "1.0.0"
+# Which major version of the zetl theme contract this theme targets.
+# Unset = latest supported by the running binary.
+contract = "1"
+```
+
+Rules:
+
+- Breaking changes to block names (`persistent_shell`, `graph_widget`), the `data-zetl-volatile` marker, event names, event `detail` shapes, or the `--zetl-graph-*` / `--zetl-shell-*` property names bump the contract major version.
+- Additive changes (new CSS vars, new event `detail` fields, new optional `theme.toml` keys) are backwards-compatible within a major.
+- The zetl binary is backwards-compatible with the contract major current at its release within a given major zetl release line.
+- Themes that omit `contract` render against the latest contract supported by the running binary.
 
 ### Hooks
 
