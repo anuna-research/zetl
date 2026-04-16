@@ -37,15 +37,15 @@
       cancelable: true, detail: { fromSlug: fromSlug, toSlug: toSlug, url: url }
     });
     if (!window.dispatchEvent(before)) { location.href = url; return; }
-    try { performance.mark('zetl:navigate:start'); } catch (e) {}
     if (doc.title) document.title = doc.title;
     oldRoot.replaceWith(newRoot);
     runScripts(newRoot);
     if (push) history.pushState({ zetl: true, url: url }, '', url);
-    try { performance.measure('zetl:navigate', 'zetl:navigate:start'); } catch (e) {}
     window.dispatchEvent(new CustomEvent('zetl:after-navigate', {
       detail: { slug: toSlug, contentRoot: newRoot }
     }));
+    /* OBS-113: measure spans link-click interception → after-navigate dispatch. */
+    try { performance.measure('zetl:navigate', 'zetl:navigate:start'); } catch (e) {}
   }
 
   function navigate(url, push) {
@@ -66,8 +66,14 @@
     if (!sameOrigin(a.href)) return;
     if (a.href.replace(/#.*$/, '') === location.href.replace(/#.*$/, '')) return;
     e.preventDefault();
+    /* OBS-113: mark click interception — the measure on after-navigate dispatch
+       reports total navigation-to-paint latency for NFR assertions. */
+    try { performance.mark('zetl:navigate:start'); } catch (e2) {}
     navigate(a.href, true);
   });
 
-  window.addEventListener('popstate', function () { navigate(location.href, false); });
+  window.addEventListener('popstate', function () {
+    try { performance.mark('zetl:navigate:start'); } catch (e) {}
+    navigate(location.href, false);
+  });
 })();

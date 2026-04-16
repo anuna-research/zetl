@@ -3,44 +3,30 @@
   "confidence": 0.0,
   "exit_code": 1,
   "diff_summary": {
-    "files_changed": 21,
-    "insertions": 1050,
+    "files_changed": 7,
+    "insertions": 502,
     "deletions": 49,
     "file_list": [
       ".hence/context-manifest.json",
       ".hence/eval-result.json",
-      "Makefile",
-      "tests/nfr/.gitignore",
-      "tests/nfr/README.md",
-      "tests/nfr/harness/build.ts",
-      "tests/nfr/harness/fixtures.ts",
-      "tests/nfr/harness/metrics.ts",
-      "tests/nfr/harness/paths.ts",
-      "tests/nfr/harness/server.ts",
-      "tests/nfr/package-lock.json",
-      "tests/nfr/package.json",
-      "tests/nfr/playwright.config.ts",
-      "tests/nfr/scripts/build.ts",
-      "tests/nfr/scripts/clean.ts",
-      "tests/nfr/scripts/seed.ts",
-      "tests/nfr/tests/fixtures.ts",
-      "tests/nfr/tests/nfr-201-render-latency.spec.ts",
-      "tests/nfr/tests/nfr-202-interaction-fps.spec.ts",
-      "tests/nfr/tests/smoke.spec.ts",
-      "tests/nfr/tsconfig.json"
+      "src/web/engine.rs",
+      "themes/default/_graph.html",
+      "themes/default/base.html",
+      "themes/default/static/spa.js",
+      "themes/default/theme.toml"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-nfr-render-latency-changes",
-      "content": "Modified 21 files (+1050, -49): .hence/context-manifest.json, .hence/eval-result.json, Makefile, tests/nfr/.gitignore, tests/nfr/README.md and 16 more",
+      "key": "task-client-perf-marks-changes",
+      "content": "Modified 7 files (+502, -49): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, themes/default/_graph.html, themes/default/base.html and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/nfr-render-latency-v1",
-  "evaluated_at": "2026-04-16T22:41:37Z",
+  "branch_name": "hence/client-perf-marks-v2",
+  "evaluated_at": "2026-04-16T21:57:43Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
