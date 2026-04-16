@@ -1,15 +1,15 @@
 {
-  "task_id": "graph-serve-route",
+  "task_id": "graph-template-vars",
   "token_budget": 8000,
-  "tokens_used": 42,
+  "tokens_used": 59,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "In web::routes, add GET /graph-index.json handler returning CON-101 JSON with Content-Type: application/json and Cache-Control: no-cache. Uses the same pure core as build.",
-      "token_cost": 42,
+      "content": "Extend web::engine TemplateEngine to inject graph_index_url (always) and graph_index (only when theme.toml sets graph_inline=true, else empty string). Match existing search_index pattern. Cover all render paths (serve, build, error pages).",
+      "token_cost": 59,
       "priority": "PlanMeta"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T06:08:04Z"
+  "constructed_at": "2026-04-16T06:36:45Z"
 }

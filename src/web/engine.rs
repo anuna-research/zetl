@@ -211,6 +211,11 @@ pub struct TemplateEngine {
     vault_root: PathBuf,
     theme: String,
     reload: bool,
+    /// SPEC-028 REQ-105: when true, every render receives the caller-supplied
+    /// `graph_index` string in its template context; when false, `graph_index`
+    /// is forced to `""`. Sourced from `graph_inline` in the active theme's
+    /// `theme.toml` (disk override preferred, bundled manifest as fallback).
+    graph_inline: bool,
 }
 
 const KNOWN_TEMPLATES: &[&str] = &[
@@ -314,11 +319,31 @@ impl TemplateEngine {
         }
 
         let cached_env = build_env(vault_root, theme);
+        let graph_inline = load_graph_inline(vault_root, theme);
         Self {
             cached_env,
             vault_root: vault_root.to_path_buf(),
             theme: theme.to_string(),
             reload,
+            graph_inline,
+        }
+    }
+
+    /// SPEC-028 REQ-105: returns whether the active theme requests that the
+    /// serialised graph index be inlined into every rendered page. Callers
+    /// can skip computing the (potentially large) JSON payload when this is
+    /// `false`.
+    pub fn graph_inline(&self) -> bool {
+        self.graph_inline
+    }
+
+    /// Resolve the effective `graph_index` value for the template context,
+    /// respecting the theme's `graph_inline` opt-in (SPEC-028 REQ-105).
+    fn effective_graph_index<'a>(&self, graph_index: &'a str) -> &'a str {
+        if self.graph_inline {
+            graph_index
+        } else {
+            ""
         }
     }
 
@@ -339,6 +364,7 @@ impl TemplateEngine {
         mode: &str,
         bm25_index: &str,
         history_index: &str,
+        graph_index: &str,
     ) -> Result<String, TemplateError> {
         // Build mode: don't inline the search index — it's written to pages.json
         // and fetched lazily on first Cmd+K. Serve mode keeps it inline because
@@ -350,6 +376,7 @@ impl TemplateEngine {
         };
         let root_path = compute_root_path(mode, "");
         let idx_file = index_file(mode);
+        let graph_url = graph_index_url(&root_path);
         let ctx = context! {
             vault => vault_ctx,
             mode => mode,
@@ -360,6 +387,8 @@ impl TemplateEngine {
             index_file => idx_file,
             bm25_index => bm25_index,
             history_index => history_index,
+            graph_index_url => graph_url,
+            graph_index => self.effective_graph_index(graph_index),
         };
         let env = self.env();
         let tmpl = env
@@ -385,6 +414,7 @@ impl TemplateEngine {
         };
         let root_path = compute_root_path(mode, "help");
         let idx_file = index_file(mode);
+        let graph_url = graph_index_url(&root_path);
         let ctx = context! {
             vault => vault_ctx,
             mode => mode,
@@ -395,6 +425,8 @@ impl TemplateEngine {
             index_file => idx_file,
             bm25_index => "",
             history_index => "",
+            graph_index_url => graph_url,
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -415,6 +447,7 @@ impl TemplateEngine {
         mode: &str,
         bm25_index: &str,
         history_index: &str,
+        graph_index: &str,
     ) -> Result<String, TemplateError> {
         let search_index = if mode == "build" {
             String::new()
@@ -423,6 +456,7 @@ impl TemplateEngine {
         };
         let root_path = compute_root_path(mode, &page_ctx.slug);
         let idx_file = index_file(mode);
+        let graph_url = graph_index_url(&root_path);
         let ctx = context! {
             vault => vault_ctx,
             page => page_ctx,
@@ -434,6 +468,8 @@ impl TemplateEngine {
             index_file => idx_file,
             bm25_index => bm25_index,
             history_index => history_index,
+            graph_index_url => graph_url,
+            graph_index => self.effective_graph_index(graph_index),
         };
         let env = self.env();
         let tmpl = env
@@ -469,6 +505,8 @@ impl TemplateEngine {
             active_slug => page_slug,
             root_path => "/",
             index_file => "",
+            graph_index_url => graph_index_url("/"),
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -490,6 +528,8 @@ impl TemplateEngine {
             root_path => "/",
             index_file => "",
             search_index => "[]",
+            graph_index_url => graph_index_url("/"),
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -516,6 +556,8 @@ impl TemplateEngine {
             root_path => "/",
             index_file => "",
             search_index => "[]",
+            graph_index_url => graph_index_url("/"),
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -554,6 +596,8 @@ impl TemplateEngine {
             root_path => "/",
             index_file => "",
             search_index => "[]",
+            graph_index_url => graph_index_url("/"),
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -586,6 +630,8 @@ impl TemplateEngine {
             root_path => "/",
             index_file => "",
             search_index => "[]",
+            graph_index_url => graph_index_url("/"),
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -614,6 +660,8 @@ impl TemplateEngine {
             root_path => "/",
             index_file => "",
             search_index => "[]",
+            graph_index_url => graph_index_url("/"),
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -644,6 +692,8 @@ impl TemplateEngine {
             root_path => "/",
             index_file => "",
             search_index => "[]",
+            graph_index_url => graph_index_url("/"),
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -693,6 +743,8 @@ impl TemplateEngine {
             root_path => "/",
             index_file => "",
             search_index => "[]",
+            graph_index_url => graph_index_url("/"),
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -728,6 +780,7 @@ impl TemplateEngine {
     ) -> Result<String, TemplateError> {
         let search_index = build_search_index(vault_ctx);
         let root_path = compute_root_path(mode, page_slug);
+        let graph_url = graph_index_url(&root_path);
         let ctx = context! {
             vault => vault_ctx,
             page_title => page_title,
@@ -742,6 +795,8 @@ impl TemplateEngine {
             active_slug => page_slug,
             root_path => root_path,
             index_file => index_file(mode),
+            graph_index_url => graph_url,
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -765,6 +820,7 @@ impl TemplateEngine {
     ) -> Result<String, TemplateError> {
         let search_index = build_search_index(vault_ctx);
         let root_path = compute_root_path(mode, "");
+        let graph_url = graph_index_url(&root_path);
         let ctx = context! {
             vault => vault_ctx,
             recent_changes => recent_changes,
@@ -775,6 +831,8 @@ impl TemplateEngine {
             active_slug => "",
             root_path => root_path,
             index_file => index_file(mode),
+            graph_index_url => graph_url,
+            graph_index => "",
         };
         let env = self.env();
         let tmpl = env
@@ -795,6 +853,7 @@ impl TemplateEngine {
         mode: &str,
         bm25_index: &str,
         history_index: &str,
+        graph_index: &str,
     ) -> Result<String, TemplateError> {
         let search_index = if mode == "build" {
             String::new()
@@ -803,6 +862,7 @@ impl TemplateEngine {
         };
         let root_path = compute_root_path(mode, &folder_ctx.slug);
         let idx_file = index_file(mode);
+        let graph_url = graph_index_url(&root_path);
         let ctx = context! {
             vault => vault_ctx,
             folder => folder_ctx,
@@ -814,6 +874,8 @@ impl TemplateEngine {
             index_file => idx_file,
             bm25_index => bm25_index,
             history_index => history_index,
+            graph_index_url => graph_url,
+            graph_index => self.effective_graph_index(graph_index),
         };
         let env = self.env();
         let tmpl = env
@@ -825,6 +887,46 @@ impl TemplateEngine {
         }
         Ok(html)
     }
+}
+
+/// SPEC-028 REQ-104: resolve the URL at which the emitted `graph-index.json`
+/// can be fetched, given the caller's `root_path`. In serve mode `root_path`
+/// is `/`, yielding `/graph-index.json`; in build mode it is a `../`-chain
+/// that resolves the filename against the current page's directory, so the
+/// URL remains valid under `file://` and relative CDN roots alike.
+fn graph_index_url(root_path: &str) -> String {
+    format!("{root_path}graph-index.json")
+}
+
+/// SPEC-028 REQ-105: read the top-level `graph_inline` flag from the active
+/// theme's `theme.toml`. Prefers an on-disk override (`.zetl/themes/<theme>/
+/// theme.toml`) when present, else falls back to the compile-time-bundled
+/// manifest. Any parse or IO error is treated as "flag absent" (false) — the
+/// flag is a best-effort opt-in, not a hard dependency.
+fn load_graph_inline(vault_root: &Path, theme: &str) -> bool {
+    if theme != "default" {
+        let disk = vault_root.join(".zetl/themes").join(theme).join("theme.toml");
+        if let Ok(content) = std::fs::read_to_string(&disk) {
+            if let Some(flag) = parse_graph_inline(&content) {
+                return flag;
+            }
+        }
+    }
+    if let Some(content) = bundled_template(theme, "theme.toml") {
+        if let Some(flag) = parse_graph_inline(content) {
+            return flag;
+        }
+    }
+    false
+}
+
+/// Best-effort extraction of the top-level `graph_inline` boolean from a
+/// `theme.toml` string. Returns `None` when the document is unparseable or
+/// the key is absent; returns `Some(false)` when present and set to false so
+/// callers can distinguish "absent" from "explicitly disabled" if they wish.
+fn parse_graph_inline(content: &str) -> Option<bool> {
+    let value: toml::Value = toml::from_str(content).ok()?;
+    value.get("graph_inline")?.as_bool()
 }
 
 /// Compute a relative root path for use in template links.
@@ -934,7 +1036,7 @@ mod tests {
     fn test_render_index() {
         let engine = default_engine();
         let vault = sample_vault();
-        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(html.contains("Vault"));
         assert!(html.contains("Hello"));
     }
@@ -944,7 +1046,7 @@ mod tests {
         let engine = default_engine();
         let vault = sample_vault();
         let page = sample_page();
-        let html = engine.render_page(&vault, &page, "static", "", "").unwrap();
+        let html = engine.render_page(&vault, &page, "static", "", "", "").unwrap();
         assert!(html.contains("Hello"));
         assert!(html.contains("<p>world</p>"));
     }
@@ -962,7 +1064,7 @@ mod tests {
             total_pages: 0,
         };
         let html = engine
-            .render_folder(&vault, &folder, "serve", "", "")
+            .render_folder(&vault, &folder, "serve", "", "", "")
             .unwrap();
         assert!(html.contains("docs"));
         assert!(html.contains("0 pages in this folder"));
@@ -998,7 +1100,7 @@ mod tests {
     fn test_theme_variable_in_context() {
         let engine = TemplateEngine::new(Path::new("."), "fountain", false, false);
         let vault = sample_vault();
-        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(html.contains(r#"data-theme="fountain""#));
     }
 
@@ -1007,7 +1109,7 @@ mod tests {
         // "default" theme should work without any .zetl/themes directory
         let engine = TemplateEngine::new(Path::new("/nonexistent"), "default", false, false);
         let vault = sample_vault();
-        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(html.contains("Vault"));
     }
 
@@ -1026,7 +1128,7 @@ mod tests {
         let engine = TemplateEngine::new(tmp.path(), "custom", false, false);
         let vault = sample_vault();
         let page = sample_page();
-        let html = engine.render_page(&vault, &page, "static", "", "").unwrap();
+        let html = engine.render_page(&vault, &page, "static", "", "", "").unwrap();
         // Custom template wraps content in <div class="custom">
         assert!(html.contains(r#"<div class="custom">"#));
         // base.html is still the built-in (cross-tier inheritance)
@@ -1049,7 +1151,7 @@ mod tests {
         let engine = TemplateEngine::new(tmp.path(), "live", true, false);
         let vault = sample_vault();
 
-        let html1 = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html1 = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(html1.contains("VERSION1"));
 
         // Update template on disk
@@ -1060,7 +1162,7 @@ mod tests {
         .unwrap();
 
         // Reload mode should pick up the change
-        let html2 = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html2 = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(html2.contains("VERSION2"));
     }
 
@@ -1079,7 +1181,7 @@ mod tests {
         let engine = TemplateEngine::new(tmp.path(), "cached", false, false);
         let vault = sample_vault();
 
-        let html1 = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html1 = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(html1.contains("CACHED_V1"));
 
         // Update template on disk
@@ -1090,7 +1192,7 @@ mod tests {
         .unwrap();
 
         // Cached mode should still return the old version
-        let html2 = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html2 = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(html2.contains("CACHED_V1"));
     }
 
@@ -1109,7 +1211,7 @@ mod tests {
 
         let engine = TemplateEngine::new(tmp.path(), "broken", false, false);
         let vault = sample_vault();
-        let err = engine.render_index(&vault, "serve", "", "").unwrap_err();
+        let err = engine.render_index(&vault, "serve", "", "", "").unwrap_err();
         assert!(err.template_name.is_some());
         assert!(!err.message.is_empty());
     }
@@ -1181,7 +1283,7 @@ mod tests {
 
         let engine = TemplateEngine::new(tmp.path(), "empty", false, false);
         let vault = sample_vault();
-        let err = engine.render_index(&vault, "serve", "", "").unwrap_err();
+        let err = engine.render_index(&vault, "serve", "", "", "").unwrap_err();
         assert_eq!(err.kind, "EmptyOutput");
         assert!(err.message.contains("empty output"));
     }
@@ -1386,5 +1488,172 @@ mod tests {
             )
             .unwrap();
         assert!(html.contains("my-notes"));
+    }
+
+    // ── SPEC-028 graph template variables ────────────────────────────────
+
+    /// Write a minimal valid theme.toml plus a probe template that emits
+    /// the two graph variables verbatim, so tests can inspect them without
+    /// depending on the full bundled theme.
+    fn write_probe_theme(root: &std::path::Path, name: &str, graph_inline: bool) {
+        let dir = root.join(".zetl/themes").join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let inline_line = if graph_inline {
+            "graph_inline = true\n"
+        } else {
+            ""
+        };
+        std::fs::write(
+            dir.join("theme.toml"),
+            format!(
+                "{inline_line}[theme]\nname = \"{name}\"\nversion = \"1.0.0\"\n",
+            ),
+        )
+        .unwrap();
+        // Minimal probe template that prints `URL|LEN` — inherits nothing,
+        // so it renders under every render_* method whose template name we
+        // override below. `| safe` bypasses HTML-escape of the URL slashes.
+        let probe =
+            r#"ZETL_GRAPH|{{ graph_index_url|safe }}|{{ graph_index|length }}|END"#;
+        for name in &["index.html", "page.html", "folder.html"] {
+            std::fs::write(dir.join(name), probe).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_graph_index_url_serve_mode() {
+        // REQ-104: serve mode resolves to the absolute URL.
+        let tmp = tempfile::tempdir().unwrap();
+        write_probe_theme(tmp.path(), "gprobe", false);
+        let engine = TemplateEngine::new(tmp.path(), "gprobe", false, false);
+        let vault = sample_vault();
+        let html = engine.render_index(&vault, "serve", "", "", "").unwrap();
+        assert!(
+            html.contains("ZETL_GRAPH|/graph-index.json|0|END"),
+            "expected absolute URL and empty graph_index, got: {html}"
+        );
+    }
+
+    #[test]
+    fn test_graph_index_url_build_mode_root() {
+        // REQ-104: build mode at the vault root uses a `./`-prefixed
+        // relative URL so the file:// protocol can resolve it.
+        let tmp = tempfile::tempdir().unwrap();
+        write_probe_theme(tmp.path(), "gprobe", false);
+        let engine = TemplateEngine::new(tmp.path(), "gprobe", false, false);
+        let vault = sample_vault();
+        let html = engine.render_index(&vault, "build", "", "", "").unwrap();
+        assert!(
+            html.contains("ZETL_GRAPH|./graph-index.json|0|END"),
+            "expected relative root URL, got: {html}"
+        );
+    }
+
+    #[test]
+    fn test_graph_index_url_build_mode_nested_page() {
+        // REQ-104: a nested page at depth N must prefix N ../ segments so
+        // the URL resolves against the page's own directory.
+        let tmp = tempfile::tempdir().unwrap();
+        write_probe_theme(tmp.path(), "gprobe", false);
+        let engine = TemplateEngine::new(tmp.path(), "gprobe", false, false);
+        let vault = sample_vault();
+        let mut page = sample_page();
+        page.slug = "docs/architecture/scanner".to_string();
+        let html = engine.render_page(&vault, &page, "build", "", "", "").unwrap();
+        assert!(
+            html.contains("ZETL_GRAPH|../../../graph-index.json|0|END"),
+            "expected ../../../graph-index.json for depth-3 slug, got: {html}"
+        );
+    }
+
+    #[test]
+    fn test_graph_index_absent_when_graph_inline_false() {
+        // REQ-105: with graph_inline omitted from theme.toml the engine
+        // MUST force graph_index to the empty string even if the caller
+        // supplies a non-empty value, so authors opt-in deliberately.
+        let tmp = tempfile::tempdir().unwrap();
+        write_probe_theme(tmp.path(), "gprobe", false);
+        let engine = TemplateEngine::new(tmp.path(), "gprobe", false, false);
+        assert!(!engine.graph_inline());
+        let vault = sample_vault();
+        let html = engine
+            .render_index(&vault, "serve", "", "", r#"{"nodes":[1,2,3]}"#)
+            .unwrap();
+        assert!(
+            html.contains("|0|END"),
+            "graph_index should be empty when graph_inline=false, got: {html}"
+        );
+    }
+
+    #[test]
+    fn test_graph_index_present_when_graph_inline_true() {
+        // REQ-105: with graph_inline=true the caller's JSON string flows
+        // through to the template context as-is.
+        let tmp = tempfile::tempdir().unwrap();
+        write_probe_theme(tmp.path(), "gprobe", true);
+        let engine = TemplateEngine::new(tmp.path(), "gprobe", false, false);
+        assert!(engine.graph_inline());
+        let vault = sample_vault();
+        let payload = r#"{"nodes":[1,2,3]}"#;
+        let html = engine
+            .render_index(&vault, "serve", "", "", payload)
+            .unwrap();
+        let expected_len = payload.len();
+        assert!(
+            html.contains(&format!("|{expected_len}|END")),
+            "graph_index length should be {expected_len}, got: {html}"
+        );
+    }
+
+    #[test]
+    fn test_graph_vars_flow_through_render_page_and_folder() {
+        // REQ-104/105: both variables must be present in every content
+        // render path, not only render_index.
+        let tmp = tempfile::tempdir().unwrap();
+        write_probe_theme(tmp.path(), "gprobe", true);
+        let engine = TemplateEngine::new(tmp.path(), "gprobe", false, false);
+        let vault = sample_vault();
+
+        let page = sample_page();
+        let page_html = engine
+            .render_page(&vault, &page, "serve", "", "", "abc")
+            .unwrap();
+        assert!(
+            page_html.contains("ZETL_GRAPH|/graph-index.json|3|END"),
+            "render_page missing graph vars, got: {page_html}"
+        );
+
+        let folder = FolderContext {
+            name: "docs".to_string(),
+            slug: "docs".to_string(),
+            breadcrumbs: vec![],
+            subfolders: vec![],
+            pages: vec![],
+            total_pages: 0,
+        };
+        let folder_html = engine
+            .render_folder(&vault, &folder, "serve", "", "", "xy")
+            .unwrap();
+        assert!(
+            folder_html.contains("ZETL_GRAPH|/graph-index.json|2|END"),
+            "render_folder missing graph vars, got: {folder_html}"
+        );
+    }
+
+    #[test]
+    fn test_parse_graph_inline_extracts_top_level_bool() {
+        assert_eq!(parse_graph_inline("graph_inline = true"), Some(true));
+        assert_eq!(parse_graph_inline("graph_inline = false"), Some(false));
+        assert_eq!(parse_graph_inline("[theme]\nname=\"x\""), None);
+        assert_eq!(parse_graph_inline("not valid toml ][ "), None);
+    }
+
+    #[test]
+    fn test_load_graph_inline_default_theme_has_no_flag() {
+        // The bundled default theme ships without the flag, so the
+        // engine's cached graph_inline for "default" must be false.
+        let engine =
+            TemplateEngine::new(std::path::Path::new("/nonexistent"), "default", false, false);
+        assert!(!engine.graph_inline());
     }
 }

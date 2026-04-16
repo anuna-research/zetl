@@ -449,6 +449,16 @@
 (normally r-propagate-nfr-size-budgets-from-vendor-bundle-timeout-v3 timeout-v3-vendor-bundle upstream-blocked-nfr-size-budgets)
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T02:00:38Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T02:00:43Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T02:00:48Z"
   (given delegated-v2-graph-neighbourhood-core-to-agent:claude)
   (given (during (leased-v2-graph-neighbourhood-core) (moment "2026-04-16T02:00:48Z") (moment "2026-04-16T02:30:48Z")))
@@ -517,6 +527,11 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:51:10Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:51:15Z"
   (given permanently-failed-graph-neighbourhood-core)
 )
@@ -529,6 +544,11 @@
 (claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:51:26Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:51:31Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -552,8 +572,38 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:51:56Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:52:01Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:52:06Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:52:11Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:52:16Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:52:21Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:52:26Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -577,13 +627,38 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:52:51Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:52:56Z"
   (given permanently-failed-graph-neighbourhood-core)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:53:01Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:53:06Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:53:11Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:53:17Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:53:22Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -597,8 +672,28 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:53:37Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:53:42Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:53:47Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:53:52Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:53:57Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -617,8 +712,28 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:54:17Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:54:22Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:54:27Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:54:32Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:54:37Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -632,8 +747,23 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:54:53Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:54:58Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:55:03Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:55:08Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -642,8 +772,18 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:55:18Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:55:23Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:55:28Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -657,6 +797,11 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:55:43Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:55:48Z"
   (given permanently-failed-graph-neighbourhood-core)
 )
@@ -664,6 +809,21 @@
 (claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:55:53Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:55:58Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:56:03Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:56:08Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -682,6 +842,11 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:56:29Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:56:34Z"
   (given permanently-failed-graph-neighbourhood-core)
 )
@@ -697,8 +862,48 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:56:49Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:56:54Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:56:59Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:57:04Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:57:09Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:57:14Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:57:19Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:57:24Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:57:29Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -707,13 +912,48 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:57:40Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:57:45Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:57:50Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:57:55Z"
   (given permanently-failed-graph-neighbourhood-core)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:58:00Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:58:05Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:58:10Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:58:15Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:58:20Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -727,8 +967,23 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:58:35Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:58:40Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:58:45Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:58:51Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -737,8 +992,18 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:59:01Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T05:59:06Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:59:11Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -752,8 +1017,48 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:59:26Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:59:31Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:59:36Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:59:41Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:59:46Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:59:51Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T05:59:56Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T06:00:02Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T06:00:07Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -769,6 +1074,11 @@
 (claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T06:00:22Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T06:00:27Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -792,8 +1102,18 @@
 )
 
 (claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T06:00:52Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T06:00:57Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T06:01:02Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -804,6 +1124,16 @@
 (claims supervisor:ed25519:zhT3QZyz
   :at "2026-04-16T06:01:13Z"
   (given permanently-failed-graph-neighbourhood-core)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T06:01:18Z"
+  (given permanently-failed-vendor-bundle)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-16T06:01:23Z"
+  (given permanently-failed-vendor-bundle)
 )
 
 (claims supervisor:ed25519:zhT3QZyz
@@ -890,565 +1220,3 @@
 (claims agent:claude
   :at "2026-04-16T13:21:01Z"
   (given completed-graph-stats-integration))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T13:27:21Z"
-  (given delegated-v4-vendor-bundle-to-agent:claude)
-  (given (during (leased-v4-vendor-bundle) (moment "2026-04-16T13:27:21Z") (moment "2026-04-16T13:57:21Z")))
-  (given claim-v4-vendor-bundle-by-claude)
-  (normally r-cl-state-v4-vendor-bundle-by-claude claim-v4-vendor-bundle-by-claude state-claimed-v4-vendor-bundle-by-claude)
-  (normally r-cl-chain-v4-vendor-bundle-by-claude state-claimed-v4-vendor-bundle-by-claude claimed-vendor-bundle)
-)
-
-;; Propagation rules: failures in 'vendor-bundle' block downstream tasks
-(normally r-propagate-graph-partial-from-vendor-bundle-stale-v4 stale-v4-vendor-bundle upstream-blocked-graph-partial)
-(normally r-propagate-graph-partial-from-vendor-bundle-timeout-v4 timeout-v4-vendor-bundle upstream-blocked-graph-partial)
-(normally r-propagate-nfr-size-budgets-from-vendor-bundle-stale-v4 stale-v4-vendor-bundle upstream-blocked-nfr-size-budgets)
-(normally r-propagate-nfr-size-budgets-from-vendor-bundle-timeout-v4 timeout-v4-vendor-bundle upstream-blocked-nfr-size-budgets)
-
-(claims agent:claude
-  :at "2026-04-16T13:45:02Z"
-  (given completed-vendor-bundle))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T13:50:11Z"
-  (given delegated-v1-nfr-size-budgets-to-agent:claude)
-  (given (during (leased-v1-nfr-size-budgets) (moment "2026-04-16T13:50:11Z") (moment "2026-04-16T14:20:11Z")))
-  (given claim-v1-nfr-size-budgets-by-claude)
-  (normally r-cl-state-v1-nfr-size-budgets-by-claude claim-v1-nfr-size-budgets-by-claude state-claimed-v1-nfr-size-budgets-by-claude)
-  (normally r-cl-chain-v1-nfr-size-budgets-by-claude state-claimed-v1-nfr-size-budgets-by-claude claimed-nfr-size-budgets)
-)
-
-;; Propagation rules: failures in 'nfr-size-budgets' block downstream tasks
-(normally r-propagate-changelog-release-from-nfr-size-budgets-failed failed-nfr-size-budgets upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-nfr-size-budgets-permanently-failed permanently-failed-nfr-size-budgets upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-nfr-size-budgets-stale-v1 stale-v1-nfr-size-budgets upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-nfr-size-budgets-timeout-v1 timeout-v1-nfr-size-budgets upstream-blocked-changelog-release)
-
-(claims agent:claude
-  :at "2026-04-16T14:02:53Z"
-  (given completed-nfr-size-budgets))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T14:03:16Z"
-  (given delegated-v1-graph-partial-to-agent:claude)
-  (given (during (leased-v1-graph-partial) (moment "2026-04-16T14:03:16Z") (moment "2026-04-16T14:33:16Z")))
-  (given claim-v1-graph-partial-by-claude)
-  (normally r-cl-state-v1-graph-partial-by-claude claim-v1-graph-partial-by-claude state-claimed-v1-graph-partial-by-claude)
-  (normally r-cl-chain-v1-graph-partial-by-claude state-claimed-v1-graph-partial-by-claude claimed-graph-partial)
-)
-
-;; Propagation rules: failures in 'graph-partial' block downstream tasks
-(normally r-propagate-client-perf-marks-from-graph-partial-failed failed-graph-partial upstream-blocked-client-perf-marks)
-(normally r-propagate-client-perf-marks-from-graph-partial-permanently-failed permanently-failed-graph-partial upstream-blocked-client-perf-marks)
-(normally r-propagate-client-perf-marks-from-graph-partial-stale-v1 stale-v1-graph-partial upstream-blocked-client-perf-marks)
-(normally r-propagate-client-perf-marks-from-graph-partial-timeout-v1 timeout-v1-graph-partial upstream-blocked-client-perf-marks)
-(normally r-propagate-dead-link-styling-from-graph-partial-failed failed-graph-partial upstream-blocked-dead-link-styling)
-(normally r-propagate-dead-link-styling-from-graph-partial-permanently-failed permanently-failed-graph-partial upstream-blocked-dead-link-styling)
-(normally r-propagate-dead-link-styling-from-graph-partial-stale-v1 stale-v1-graph-partial upstream-blocked-dead-link-styling)
-(normally r-propagate-dead-link-styling-from-graph-partial-timeout-v1 timeout-v1-graph-partial upstream-blocked-dead-link-styling)
-(normally r-propagate-graceful-absence-from-graph-partial-failed failed-graph-partial upstream-blocked-graceful-absence)
-(normally r-propagate-graceful-absence-from-graph-partial-permanently-failed permanently-failed-graph-partial upstream-blocked-graceful-absence)
-(normally r-propagate-graceful-absence-from-graph-partial-stale-v1 stale-v1-graph-partial upstream-blocked-graceful-absence)
-(normally r-propagate-graceful-absence-from-graph-partial-timeout-v1 timeout-v1-graph-partial upstream-blocked-graceful-absence)
-(normally r-propagate-graph-vault-page-from-graph-partial-failed failed-graph-partial upstream-blocked-graph-vault-page)
-(normally r-propagate-graph-vault-page-from-graph-partial-permanently-failed permanently-failed-graph-partial upstream-blocked-graph-vault-page)
-(normally r-propagate-graph-vault-page-from-graph-partial-stale-v1 stale-v1-graph-partial upstream-blocked-graph-vault-page)
-(normally r-propagate-graph-vault-page-from-graph-partial-timeout-v1 timeout-v1-graph-partial upstream-blocked-graph-vault-page)
-(normally r-propagate-node-click-nav-from-graph-partial-failed failed-graph-partial upstream-blocked-node-click-nav)
-(normally r-propagate-node-click-nav-from-graph-partial-permanently-failed permanently-failed-graph-partial upstream-blocked-node-click-nav)
-(normally r-propagate-node-click-nav-from-graph-partial-stale-v1 stale-v1-graph-partial upstream-blocked-node-click-nav)
-(normally r-propagate-node-click-nav-from-graph-partial-timeout-v1 timeout-v1-graph-partial upstream-blocked-node-click-nav)
-(normally r-propagate-shell-and-css-contract-from-graph-partial-failed failed-graph-partial upstream-blocked-shell-and-css-contract)
-(normally r-propagate-shell-and-css-contract-from-graph-partial-permanently-failed permanently-failed-graph-partial upstream-blocked-shell-and-css-contract)
-(normally r-propagate-shell-and-css-contract-from-graph-partial-stale-v1 stale-v1-graph-partial upstream-blocked-shell-and-css-contract)
-(normally r-propagate-shell-and-css-contract-from-graph-partial-timeout-v1 timeout-v1-graph-partial upstream-blocked-shell-and-css-contract)
-
-(claims agent:claude
-  :at "2026-04-16T14:08:50Z"
-  (given completed-graph-partial))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T14:15:26Z"
-  (given delegated-v1-graph-vault-page-to-agent:claude)
-  (given (during (leased-v1-graph-vault-page) (moment "2026-04-16T14:15:26Z") (moment "2026-04-16T14:45:26Z")))
-  (given claim-v1-graph-vault-page-by-claude)
-  (normally r-cl-state-v1-graph-vault-page-by-claude claim-v1-graph-vault-page-by-claude state-claimed-v1-graph-vault-page-by-claude)
-  (normally r-cl-chain-v1-graph-vault-page-by-claude state-claimed-v1-graph-vault-page-by-claude claimed-graph-vault-page)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T14:18:37Z"
-  (given delegated-v1-shell-and-css-contract-to-agent:claude)
-  (given (during (leased-v1-shell-and-css-contract) (moment "2026-04-16T14:18:37Z") (moment "2026-04-16T14:48:37Z")))
-  (given claim-v1-shell-and-css-contract-by-claude)
-  (normally r-cl-state-v1-shell-and-css-contract-by-claude claim-v1-shell-and-css-contract-by-claude state-claimed-v1-shell-and-css-contract-by-claude)
-  (normally r-cl-chain-v1-shell-and-css-contract-by-claude state-claimed-v1-shell-and-css-contract-by-claude claimed-shell-and-css-contract)
-)
-
-;; Propagation rules: failures in 'shell-and-css-contract' block downstream tasks
-(normally r-propagate-docked-minimap-placement-from-shell-and-css-contract-failed failed-shell-and-css-contract upstream-blocked-docked-minimap-placement)
-(normally r-propagate-docked-minimap-placement-from-shell-and-css-contract-permanently-failed permanently-failed-shell-and-css-contract upstream-blocked-docked-minimap-placement)
-(normally r-propagate-docked-minimap-placement-from-shell-and-css-contract-stale-v1 stale-v1-shell-and-css-contract upstream-blocked-docked-minimap-placement)
-(normally r-propagate-docked-minimap-placement-from-shell-and-css-contract-timeout-v1 timeout-v1-shell-and-css-contract upstream-blocked-docked-minimap-placement)
-(normally r-propagate-spa-shell-from-shell-and-css-contract-failed failed-shell-and-css-contract upstream-blocked-spa-shell)
-(normally r-propagate-spa-shell-from-shell-and-css-contract-permanently-failed permanently-failed-shell-and-css-contract upstream-blocked-spa-shell)
-(normally r-propagate-spa-shell-from-shell-and-css-contract-stale-v1 stale-v1-shell-and-css-contract upstream-blocked-spa-shell)
-(normally r-propagate-spa-shell-from-shell-and-css-contract-timeout-v1 timeout-v1-shell-and-css-contract upstream-blocked-spa-shell)
-(normally r-propagate-theme-authoring-ref-from-shell-and-css-contract-failed failed-shell-and-css-contract upstream-blocked-theme-authoring-ref)
-(normally r-propagate-theme-authoring-ref-from-shell-and-css-contract-permanently-failed permanently-failed-shell-and-css-contract upstream-blocked-theme-authoring-ref)
-(normally r-propagate-theme-authoring-ref-from-shell-and-css-contract-stale-v1 stale-v1-shell-and-css-contract upstream-blocked-theme-authoring-ref)
-(normally r-propagate-theme-authoring-ref-from-shell-and-css-contract-timeout-v1 timeout-v1-shell-and-css-contract upstream-blocked-theme-authoring-ref)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T14:21:49Z"
-  (given delegated-v1-dead-link-styling-to-agent:claude)
-  (given (during (leased-v1-dead-link-styling) (moment "2026-04-16T14:21:49Z") (moment "2026-04-16T14:51:49Z")))
-  (given claim-v1-dead-link-styling-by-claude)
-  (normally r-cl-state-v1-dead-link-styling-by-claude claim-v1-dead-link-styling-by-claude state-claimed-v1-dead-link-styling-by-claude)
-  (normally r-cl-chain-v1-dead-link-styling-by-claude state-claimed-v1-dead-link-styling-by-claude claimed-dead-link-styling)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T14:25:00Z"
-  (given delegated-v1-graceful-absence-to-agent:claude)
-  (given (during (leased-v1-graceful-absence) (moment "2026-04-16T14:25:00Z") (moment "2026-04-16T14:55:00Z")))
-  (given claim-v1-graceful-absence-by-claude)
-  (normally r-cl-state-v1-graceful-absence-by-claude claim-v1-graceful-absence-by-claude state-claimed-v1-graceful-absence-by-claude)
-  (normally r-cl-chain-v1-graceful-absence-by-claude state-claimed-v1-graceful-absence-by-claude claimed-graceful-absence)
-)
-
-
-(claims agent:claude
-  :at "2026-04-16T14:54:53Z"
-  (given unclaim-v1-graph-vault-page)
-  (normally r-ucl-state-v1-graph-vault-page unclaim-v1-graph-vault-page state-unclaimed-v1-graph-vault-page)
-  (normally r-ucl-unclaimed-v1-graph-vault-page unclaim-v1-graph-vault-page (not claimed-graph-vault-page))
-)
-
-(claims agent:claude
-  :at "2026-04-16T14:54:53Z"
-  (given unclaim-v1-shell-and-css-contract)
-  (normally r-ucl-state-v1-shell-and-css-contract unclaim-v1-shell-and-css-contract state-unclaimed-v1-shell-and-css-contract)
-  (normally r-ucl-unclaimed-v1-shell-and-css-contract unclaim-v1-shell-and-css-contract (not claimed-shell-and-css-contract))
-)
-
-(claims agent:claude
-  :at "2026-04-16T14:54:53Z"
-  (given unclaim-v1-dead-link-styling)
-  (normally r-ucl-state-v1-dead-link-styling unclaim-v1-dead-link-styling state-unclaimed-v1-dead-link-styling)
-  (normally r-ucl-unclaimed-v1-dead-link-styling unclaim-v1-dead-link-styling (not claimed-dead-link-styling))
-)
-
-(claims agent:claude
-  :at "2026-04-16T14:54:53Z"
-  (given unclaim-v1-graceful-absence)
-  (normally r-ucl-state-v1-graceful-absence unclaim-v1-graceful-absence state-unclaimed-v1-graceful-absence)
-  (normally r-ucl-unclaimed-v1-graceful-absence unclaim-v1-graceful-absence (not claimed-graceful-absence))
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T14:55:08Z"
-  (given delegated-v2-dead-link-styling-to-agent:claude)
-  (given (during (leased-v2-dead-link-styling) (moment "2026-04-16T14:55:08Z") (moment "2026-04-16T15:25:08Z")))
-  (given claim-v2-dead-link-styling-by-claude)
-  (normally r-cl-state-v2-dead-link-styling-by-claude claim-v2-dead-link-styling-by-claude state-claimed-v2-dead-link-styling-by-claude)
-  (normally r-cl-chain-v2-dead-link-styling-by-claude state-claimed-v2-dead-link-styling-by-claude claimed-dead-link-styling)
-)
-
-(claims agent:claude
-  :at "2026-04-16T15:00:59Z"
-  (given completed-dead-link-styling))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T15:01:08Z"
-  (given delegated-v2-graceful-absence-to-agent:claude)
-  (given (during (leased-v2-graceful-absence) (moment "2026-04-16T15:01:08Z") (moment "2026-04-16T15:31:08Z")))
-  (given claim-v2-graceful-absence-by-claude)
-  (normally r-cl-state-v2-graceful-absence-by-claude claim-v2-graceful-absence-by-claude state-claimed-v2-graceful-absence-by-claude)
-  (normally r-cl-chain-v2-graceful-absence-by-claude state-claimed-v2-graceful-absence-by-claude claimed-graceful-absence)
-)
-
-(claims agent:claude
-  :at "2026-04-16T15:07:45Z"
-  (given completed-graceful-absence))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T15:07:54Z"
-  (given delegated-v2-shell-and-css-contract-to-agent:claude)
-  (given (during (leased-v2-shell-and-css-contract) (moment "2026-04-16T15:07:54Z") (moment "2026-04-16T15:37:54Z")))
-  (given claim-v2-shell-and-css-contract-by-claude)
-  (normally r-cl-state-v2-shell-and-css-contract-by-claude claim-v2-shell-and-css-contract-by-claude state-claimed-v2-shell-and-css-contract-by-claude)
-  (normally r-cl-chain-v2-shell-and-css-contract-by-claude state-claimed-v2-shell-and-css-contract-by-claude claimed-shell-and-css-contract)
-)
-
-;; Propagation rules: failures in 'shell-and-css-contract' block downstream tasks
-(normally r-propagate-docked-minimap-placement-from-shell-and-css-contract-stale-v2 stale-v2-shell-and-css-contract upstream-blocked-docked-minimap-placement)
-(normally r-propagate-docked-minimap-placement-from-shell-and-css-contract-timeout-v2 timeout-v2-shell-and-css-contract upstream-blocked-docked-minimap-placement)
-(normally r-propagate-spa-shell-from-shell-and-css-contract-stale-v2 stale-v2-shell-and-css-contract upstream-blocked-spa-shell)
-(normally r-propagate-spa-shell-from-shell-and-css-contract-timeout-v2 timeout-v2-shell-and-css-contract upstream-blocked-spa-shell)
-(normally r-propagate-theme-authoring-ref-from-shell-and-css-contract-stale-v2 stale-v2-shell-and-css-contract upstream-blocked-theme-authoring-ref)
-(normally r-propagate-theme-authoring-ref-from-shell-and-css-contract-timeout-v2 timeout-v2-shell-and-css-contract upstream-blocked-theme-authoring-ref)
-
-(claims agent:claude
-  :at "2026-04-16T15:14:29Z"
-  (given completed-shell-and-css-contract))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T15:14:37Z"
-  (given delegated-v1-docked-minimap-placement-to-agent:claude)
-  (given (during (leased-v1-docked-minimap-placement) (moment "2026-04-16T15:14:37Z") (moment "2026-04-16T15:44:37Z")))
-  (given claim-v1-docked-minimap-placement-by-claude)
-  (normally r-cl-state-v1-docked-minimap-placement-by-claude claim-v1-docked-minimap-placement-by-claude state-claimed-v1-docked-minimap-placement-by-claude)
-  (normally r-cl-chain-v1-docked-minimap-placement-by-claude state-claimed-v1-docked-minimap-placement-by-claude claimed-docked-minimap-placement)
-)
-
-;; Propagation rules: failures in 'docked-minimap-placement' block downstream tasks
-(normally r-propagate-mobile-toggle-from-docked-minimap-placement-failed failed-docked-minimap-placement upstream-blocked-mobile-toggle)
-(normally r-propagate-mobile-toggle-from-docked-minimap-placement-permanently-failed permanently-failed-docked-minimap-placement upstream-blocked-mobile-toggle)
-(normally r-propagate-mobile-toggle-from-docked-minimap-placement-stale-v1 stale-v1-docked-minimap-placement upstream-blocked-mobile-toggle)
-(normally r-propagate-mobile-toggle-from-docked-minimap-placement-timeout-v1 timeout-v1-docked-minimap-placement upstream-blocked-mobile-toggle)
-(normally r-propagate-nfr-harness-from-docked-minimap-placement-failed failed-docked-minimap-placement upstream-blocked-nfr-harness)
-(normally r-propagate-nfr-harness-from-docked-minimap-placement-permanently-failed permanently-failed-docked-minimap-placement upstream-blocked-nfr-harness)
-(normally r-propagate-nfr-harness-from-docked-minimap-placement-stale-v1 stale-v1-docked-minimap-placement upstream-blocked-nfr-harness)
-(normally r-propagate-nfr-harness-from-docked-minimap-placement-timeout-v1 timeout-v1-docked-minimap-placement upstream-blocked-nfr-harness)
-(normally r-propagate-readme-section-from-docked-minimap-placement-failed failed-docked-minimap-placement upstream-blocked-readme-section)
-(normally r-propagate-readme-section-from-docked-minimap-placement-permanently-failed permanently-failed-docked-minimap-placement upstream-blocked-readme-section)
-(normally r-propagate-readme-section-from-docked-minimap-placement-stale-v1 stale-v1-docked-minimap-placement upstream-blocked-readme-section)
-(normally r-propagate-readme-section-from-docked-minimap-placement-timeout-v1 timeout-v1-docked-minimap-placement upstream-blocked-readme-section)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T15:29:40Z"
-  (given (during (leased-v1-docked-minimap-placement) (moment "2026-04-16T15:29:40Z") (moment "2026-04-16T15:59:40Z")))
-  (given lease-renewal-v1-docked-minimap-placement-by-claude-r1)
-)
-
-(claims agent:claude
-  :at "2026-04-16T15:30:10Z"
-  (given completed-docked-minimap-placement))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T15:30:19Z"
-  (given delegated-v1-spa-shell-to-agent:claude)
-  (given (during (leased-v1-spa-shell) (moment "2026-04-16T15:30:19Z") (moment "2026-04-16T16:00:19Z")))
-  (given claim-v1-spa-shell-by-claude)
-  (normally r-cl-state-v1-spa-shell-by-claude claim-v1-spa-shell-by-claude state-claimed-v1-spa-shell-by-claude)
-  (normally r-cl-chain-v1-spa-shell-by-claude state-claimed-v1-spa-shell-by-claude claimed-spa-shell)
-)
-
-;; Propagation rules: failures in 'spa-shell' block downstream tasks
-(normally r-propagate-client-perf-marks-from-spa-shell-failed failed-spa-shell upstream-blocked-client-perf-marks)
-(normally r-propagate-client-perf-marks-from-spa-shell-permanently-failed permanently-failed-spa-shell upstream-blocked-client-perf-marks)
-(normally r-propagate-client-perf-marks-from-spa-shell-stale-v1 stale-v1-spa-shell upstream-blocked-client-perf-marks)
-(normally r-propagate-client-perf-marks-from-spa-shell-timeout-v1 timeout-v1-spa-shell upstream-blocked-client-perf-marks)
-(normally r-propagate-navigate-events-from-spa-shell-failed failed-spa-shell upstream-blocked-navigate-events)
-(normally r-propagate-navigate-events-from-spa-shell-permanently-failed permanently-failed-spa-shell upstream-blocked-navigate-events)
-(normally r-propagate-navigate-events-from-spa-shell-stale-v1 stale-v1-spa-shell upstream-blocked-navigate-events)
-(normally r-propagate-navigate-events-from-spa-shell-timeout-v1 timeout-v1-spa-shell upstream-blocked-navigate-events)
-(normally r-propagate-nfr-harness-from-spa-shell-failed failed-spa-shell upstream-blocked-nfr-harness)
-(normally r-propagate-nfr-harness-from-spa-shell-permanently-failed permanently-failed-spa-shell upstream-blocked-nfr-harness)
-(normally r-propagate-nfr-harness-from-spa-shell-stale-v1 stale-v1-spa-shell upstream-blocked-nfr-harness)
-(normally r-propagate-nfr-harness-from-spa-shell-timeout-v1 timeout-v1-spa-shell upstream-blocked-nfr-harness)
-(normally r-propagate-node-click-nav-from-spa-shell-failed failed-spa-shell upstream-blocked-node-click-nav)
-(normally r-propagate-node-click-nav-from-spa-shell-permanently-failed permanently-failed-spa-shell upstream-blocked-node-click-nav)
-(normally r-propagate-node-click-nav-from-spa-shell-stale-v1 stale-v1-spa-shell upstream-blocked-node-click-nav)
-(normally r-propagate-node-click-nav-from-spa-shell-timeout-v1 timeout-v1-spa-shell upstream-blocked-node-click-nav)
-(normally r-propagate-readme-section-from-spa-shell-failed failed-spa-shell upstream-blocked-readme-section)
-(normally r-propagate-readme-section-from-spa-shell-permanently-failed permanently-failed-spa-shell upstream-blocked-readme-section)
-(normally r-propagate-readme-section-from-spa-shell-stale-v1 stale-v1-spa-shell upstream-blocked-readme-section)
-(normally r-propagate-readme-section-from-spa-shell-timeout-v1 timeout-v1-spa-shell upstream-blocked-readme-section)
-
-(claims agent:claude
-  :at "2026-04-16T15:38:37Z"
-  (given completed-spa-shell))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T15:38:45Z"
-  (given delegated-v1-client-perf-marks-to-agent:claude)
-  (given (during (leased-v1-client-perf-marks) (moment "2026-04-16T15:38:45Z") (moment "2026-04-16T16:08:45Z")))
-  (given claim-v1-client-perf-marks-by-claude)
-  (normally r-cl-state-v1-client-perf-marks-by-claude claim-v1-client-perf-marks-by-claude state-claimed-v1-client-perf-marks-by-claude)
-  (normally r-cl-chain-v1-client-perf-marks-by-claude state-claimed-v1-client-perf-marks-by-claude claimed-client-perf-marks)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T15:38:50Z"
-  (given delegated-v2-graph-vault-page-to-agent:claude)
-  (given (during (leased-v2-graph-vault-page) (moment "2026-04-16T15:38:50Z") (moment "2026-04-16T16:08:50Z")))
-  (given claim-v2-graph-vault-page-by-claude)
-  (normally r-cl-state-v2-graph-vault-page-by-claude claim-v2-graph-vault-page-by-claude state-claimed-v2-graph-vault-page-by-claude)
-  (normally r-cl-chain-v2-graph-vault-page-by-claude state-claimed-v2-graph-vault-page-by-claude claimed-graph-vault-page)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T15:40:01Z"
-  (given delegated-v1-mobile-toggle-to-agent:claude)
-  (given (during (leased-v1-mobile-toggle) (moment "2026-04-16T15:40:01Z") (moment "2026-04-16T16:10:01Z")))
-  (given claim-v1-mobile-toggle-by-claude)
-  (normally r-cl-state-v1-mobile-toggle-by-claude claim-v1-mobile-toggle-by-claude state-claimed-v1-mobile-toggle-by-claude)
-  (normally r-cl-chain-v1-mobile-toggle-by-claude state-claimed-v1-mobile-toggle-by-claude claimed-mobile-toggle)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T16:05:42Z"
-  (given delegated-v3-graph-vault-page-to-agent:claude)
-  (given (during (leased-v3-graph-vault-page) (moment "2026-04-16T16:05:42Z") (moment "2026-04-16T16:35:42Z")))
-  (given claim-v3-graph-vault-page-by-claude)
-  (normally r-cl-state-v3-graph-vault-page-by-claude claim-v3-graph-vault-page-by-claude state-claimed-v3-graph-vault-page-by-claude)
-  (normally r-cl-chain-v3-graph-vault-page-by-claude state-claimed-v3-graph-vault-page-by-claude claimed-graph-vault-page)
-)
-
-(claims agent:claude
-  :at "2026-04-16T16:11:02Z"
-  (given completed-graph-vault-page))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T16:11:10Z"
-  (given delegated-v1-nfr-harness-to-agent:claude)
-  (given (during (leased-v1-nfr-harness) (moment "2026-04-16T16:11:10Z") (moment "2026-04-16T16:41:10Z")))
-  (given claim-v1-nfr-harness-by-claude)
-  (normally r-cl-state-v1-nfr-harness-by-claude claim-v1-nfr-harness-by-claude state-claimed-v1-nfr-harness-by-claude)
-  (normally r-cl-chain-v1-nfr-harness-by-claude state-claimed-v1-nfr-harness-by-claude claimed-nfr-harness)
-)
-
-;; Propagation rules: failures in 'nfr-harness' block downstream tasks
-(normally r-propagate-nfr-interaction-fps-from-nfr-harness-failed failed-nfr-harness upstream-blocked-nfr-interaction-fps)
-(normally r-propagate-nfr-interaction-fps-from-nfr-harness-permanently-failed permanently-failed-nfr-harness upstream-blocked-nfr-interaction-fps)
-(normally r-propagate-nfr-interaction-fps-from-nfr-harness-stale-v1 stale-v1-nfr-harness upstream-blocked-nfr-interaction-fps)
-(normally r-propagate-nfr-interaction-fps-from-nfr-harness-timeout-v1 timeout-v1-nfr-harness upstream-blocked-nfr-interaction-fps)
-(normally r-propagate-nfr-render-latency-from-nfr-harness-failed failed-nfr-harness upstream-blocked-nfr-render-latency)
-(normally r-propagate-nfr-render-latency-from-nfr-harness-permanently-failed permanently-failed-nfr-harness upstream-blocked-nfr-render-latency)
-(normally r-propagate-nfr-render-latency-from-nfr-harness-stale-v1 stale-v1-nfr-harness upstream-blocked-nfr-render-latency)
-(normally r-propagate-nfr-render-latency-from-nfr-harness-timeout-v1 timeout-v1-nfr-harness upstream-blocked-nfr-render-latency)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T16:31:23Z"
-  (given delegated-v1-navigate-events-to-agent:claude)
-  (given (during (leased-v1-navigate-events) (moment "2026-04-16T16:31:23Z") (moment "2026-04-16T17:01:23Z")))
-  (given claim-v1-navigate-events-by-claude)
-  (normally r-cl-state-v1-navigate-events-by-claude claim-v1-navigate-events-by-claude state-claimed-v1-navigate-events-by-claude)
-  (normally r-cl-chain-v1-navigate-events-by-claude state-claimed-v1-navigate-events-by-claude claimed-navigate-events)
-)
-
-;; Propagation rules: failures in 'navigate-events' block downstream tasks
-(normally r-propagate-theme-authoring-ref-from-navigate-events-failed failed-navigate-events upstream-blocked-theme-authoring-ref)
-(normally r-propagate-theme-authoring-ref-from-navigate-events-permanently-failed permanently-failed-navigate-events upstream-blocked-theme-authoring-ref)
-(normally r-propagate-theme-authoring-ref-from-navigate-events-stale-v1 stale-v1-navigate-events upstream-blocked-theme-authoring-ref)
-(normally r-propagate-theme-authoring-ref-from-navigate-events-timeout-v1 timeout-v1-navigate-events upstream-blocked-theme-authoring-ref)
-
-(claims agent:claude
-  :at "2026-04-16T16:35:17Z"
-  (given completed-navigate-events))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T16:35:26Z"
-  (given delegated-v1-readme-section-to-agent:claude)
-  (given (during (leased-v1-readme-section) (moment "2026-04-16T16:35:26Z") (moment "2026-04-16T17:05:26Z")))
-  (given claim-v1-readme-section-by-claude)
-  (normally r-cl-state-v1-readme-section-by-claude claim-v1-readme-section-by-claude state-claimed-v1-readme-section-by-claude)
-  (normally r-cl-chain-v1-readme-section-by-claude state-claimed-v1-readme-section-by-claude claimed-readme-section)
-)
-
-;; Propagation rules: failures in 'readme-section' block downstream tasks
-(normally r-propagate-changelog-release-from-readme-section-failed failed-readme-section upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-readme-section-permanently-failed permanently-failed-readme-section upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-readme-section-stale-v1 stale-v1-readme-section upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-readme-section-timeout-v1 timeout-v1-readme-section upstream-blocked-changelog-release)
-
-(claims agent:claude
-  :at "2026-04-16T16:41:27Z"
-  (given completed-readme-section))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T16:41:35Z"
-  (given delegated-v1-theme-authoring-ref-to-agent:claude)
-  (given (during (leased-v1-theme-authoring-ref) (moment "2026-04-16T16:41:35Z") (moment "2026-04-16T17:11:35Z")))
-  (given claim-v1-theme-authoring-ref-by-claude)
-  (normally r-cl-state-v1-theme-authoring-ref-by-claude claim-v1-theme-authoring-ref-by-claude state-claimed-v1-theme-authoring-ref-by-claude)
-  (normally r-cl-chain-v1-theme-authoring-ref-by-claude state-claimed-v1-theme-authoring-ref-by-claude claimed-theme-authoring-ref)
-)
-
-;; Propagation rules: failures in 'theme-authoring-ref' block downstream tasks
-(normally r-propagate-changelog-release-from-theme-authoring-ref-failed failed-theme-authoring-ref upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-theme-authoring-ref-permanently-failed permanently-failed-theme-authoring-ref upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-theme-authoring-ref-stale-v1 stale-v1-theme-authoring-ref upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-theme-authoring-ref-timeout-v1 timeout-v1-theme-authoring-ref upstream-blocked-changelog-release)
-
-(claims agent:claude
-  :at "2026-04-16T16:45:37Z"
-  (given completed-theme-authoring-ref))
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T16:45:47Z"
-  (given delegated-v1-node-click-nav-to-agent:claude)
-  (given (during (leased-v1-node-click-nav) (moment "2026-04-16T16:45:47Z") (moment "2026-04-16T17:15:47Z")))
-  (given claim-v1-node-click-nav-by-claude)
-  (normally r-cl-state-v1-node-click-nav-by-claude claim-v1-node-click-nav-by-claude state-claimed-v1-node-click-nav-by-claude)
-  (normally r-cl-chain-v1-node-click-nav-by-claude state-claimed-v1-node-click-nav-by-claude claimed-node-click-nav)
-)
-
-(claims agent:claude
-  :at "2026-04-16T16:51:22Z"
-  (given completed-node-click-nav))
-
-
-(claims agent:claude
-  :at "2026-04-16T21:32:14Z"
-  (given unclaim-v1-client-perf-marks)
-  (normally r-ucl-state-v1-client-perf-marks unclaim-v1-client-perf-marks state-unclaimed-v1-client-perf-marks)
-  (normally r-ucl-unclaimed-v1-client-perf-marks unclaim-v1-client-perf-marks (not claimed-client-perf-marks))
-)
-
-(claims agent:claude
-  :at "2026-04-16T21:32:14Z"
-  (given unclaim-v1-mobile-toggle)
-  (normally r-ucl-state-v1-mobile-toggle unclaim-v1-mobile-toggle state-unclaimed-v1-mobile-toggle)
-  (normally r-ucl-unclaimed-v1-mobile-toggle unclaim-v1-mobile-toggle (not claimed-mobile-toggle))
-)
-
-(claims agent:claude
-  :at "2026-04-16T21:32:15Z"
-  (given unclaim-v1-nfr-harness)
-  (normally r-ucl-state-v1-nfr-harness unclaim-v1-nfr-harness state-unclaimed-v1-nfr-harness)
-  (normally r-ucl-unclaimed-v1-nfr-harness unclaim-v1-nfr-harness (not claimed-nfr-harness))
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T21:32:18Z"
-  (given delegated-v2-client-perf-marks-to-agent:claude)
-  (given (during (leased-v2-client-perf-marks) (moment "2026-04-16T21:32:18Z") (moment "2026-04-16T22:02:18Z")))
-  (given claim-v2-client-perf-marks-by-claude)
-  (normally r-cl-state-v2-client-perf-marks-by-claude claim-v2-client-perf-marks-by-claude state-claimed-v2-client-perf-marks-by-claude)
-  (normally r-cl-chain-v2-client-perf-marks-by-claude state-claimed-v2-client-perf-marks-by-claude claimed-client-perf-marks)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T21:47:24Z"
-  (given (during (leased-v2-client-perf-marks) (moment "2026-04-16T21:47:24Z") (moment "2026-04-16T22:17:24Z")))
-  (given lease-renewal-v2-client-perf-marks-by-claude-r1)
-)
-
-(claims evaluator:ed25519:iIOEFYgN
-  :at "2026-04-16T21:57:43Z"
-  (given failed-client-perf-marks)
-  (given eval-result-v2-client-perf-marks-by-claude)
-  (given eval-confidence-v2-client-perf-marks-0.00)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T21:57:49Z"
-  (given delegated-v2-nfr-harness-to-agent:claude)
-  (given (during (leased-v2-nfr-harness) (moment "2026-04-16T21:57:49Z") (moment "2026-04-16T22:27:49Z")))
-  (given claim-v2-nfr-harness-by-claude)
-  (normally r-cl-state-v2-nfr-harness-by-claude claim-v2-nfr-harness-by-claude state-claimed-v2-nfr-harness-by-claude)
-  (normally r-cl-chain-v2-nfr-harness-by-claude state-claimed-v2-nfr-harness-by-claude claimed-nfr-harness)
-)
-
-;; Propagation rules: failures in 'nfr-harness' block downstream tasks
-(normally r-propagate-nfr-interaction-fps-from-nfr-harness-stale-v2 stale-v2-nfr-harness upstream-blocked-nfr-interaction-fps)
-(normally r-propagate-nfr-interaction-fps-from-nfr-harness-timeout-v2 timeout-v2-nfr-harness upstream-blocked-nfr-interaction-fps)
-(normally r-propagate-nfr-render-latency-from-nfr-harness-stale-v2 stale-v2-nfr-harness upstream-blocked-nfr-render-latency)
-(normally r-propagate-nfr-render-latency-from-nfr-harness-timeout-v2 timeout-v2-nfr-harness upstream-blocked-nfr-render-latency)
-
-(claims agent:claude
-  :at "2026-04-16T22:04:01Z"
-  (given completed-nfr-harness))
-
-(claims evaluator:ed25519:iIOEFYgN
-  :at "2026-04-16T22:04:04Z"
-  (given failed-nfr-harness)
-  (given eval-result-v2-nfr-harness-by-claude)
-  (given eval-confidence-v2-nfr-harness-0.00)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T22:04:10Z"
-  (given delegated-v1-nfr-interaction-fps-to-agent:claude)
-  (given (during (leased-v1-nfr-interaction-fps) (moment "2026-04-16T22:04:10Z") (moment "2026-04-16T22:34:10Z")))
-  (given claim-v1-nfr-interaction-fps-by-claude)
-  (normally r-cl-state-v1-nfr-interaction-fps-by-claude claim-v1-nfr-interaction-fps-by-claude state-claimed-v1-nfr-interaction-fps-by-claude)
-  (normally r-cl-chain-v1-nfr-interaction-fps-by-claude state-claimed-v1-nfr-interaction-fps-by-claude claimed-nfr-interaction-fps)
-)
-
-(claims agent:claude
-  :at "2026-04-16T22:16:55Z"
-  (given completed-nfr-interaction-fps))
-
-(claims evaluator:ed25519:iIOEFYgN
-  :at "2026-04-16T22:16:59Z"
-  (given failed-nfr-interaction-fps)
-  (given eval-result-v1-nfr-interaction-fps-by-claude)
-  (given eval-confidence-v1-nfr-interaction-fps-0.00)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T22:17:04Z"
-  (given delegated-v2-mobile-toggle-to-agent:claude)
-  (given (during (leased-v2-mobile-toggle) (moment "2026-04-16T22:17:04Z") (moment "2026-04-16T22:47:04Z")))
-  (given claim-v2-mobile-toggle-by-claude)
-  (normally r-cl-state-v2-mobile-toggle-by-claude claim-v2-mobile-toggle-by-claude state-claimed-v2-mobile-toggle-by-claude)
-  (normally r-cl-chain-v2-mobile-toggle-by-claude state-claimed-v2-mobile-toggle-by-claude claimed-mobile-toggle)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T22:32:07Z"
-  (given (during (leased-v2-mobile-toggle) (moment "2026-04-16T22:32:07Z") (moment "2026-04-16T23:02:07Z")))
-  (given lease-renewal-v2-mobile-toggle-by-claude-r1)
-)
-
-(claims agent:claude
-  :at "2026-04-16T22:35:51Z"
-  (given completed-mobile-toggle))
-
-(claims evaluator:ed25519:iIOEFYgN
-  :at "2026-04-16T22:35:55Z"
-  (given failed-mobile-toggle)
-  (given eval-result-v2-mobile-toggle-by-claude)
-  (given eval-confidence-v2-mobile-toggle-0.00)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T22:36:00Z"
-  (given delegated-v1-nfr-render-latency-to-agent:claude)
-  (given (during (leased-v1-nfr-render-latency) (moment "2026-04-16T22:36:00Z") (moment "2026-04-16T23:06:00Z")))
-  (given claim-v1-nfr-render-latency-by-claude)
-  (normally r-cl-state-v1-nfr-render-latency-by-claude claim-v1-nfr-render-latency-by-claude state-claimed-v1-nfr-render-latency-by-claude)
-  (normally r-cl-chain-v1-nfr-render-latency-by-claude state-claimed-v1-nfr-render-latency-by-claude claimed-nfr-render-latency)
-)
-
-;; Propagation rules: failures in 'nfr-render-latency' block downstream tasks
-(normally r-propagate-changelog-release-from-nfr-render-latency-failed failed-nfr-render-latency upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-nfr-render-latency-permanently-failed permanently-failed-nfr-render-latency upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-nfr-render-latency-stale-v1 stale-v1-nfr-render-latency upstream-blocked-changelog-release)
-(normally r-propagate-changelog-release-from-nfr-render-latency-timeout-v1 timeout-v1-nfr-render-latency upstream-blocked-changelog-release)
-
-(claims agent:claude
-  :at "2026-04-16T22:41:33Z"
-  (given completed-nfr-render-latency))
-
-(claims evaluator:ed25519:iIOEFYgN
-  :at "2026-04-16T22:41:37Z"
-  (given failed-nfr-render-latency)
-  (given eval-result-v1-nfr-render-latency-by-claude)
-  (given eval-confidence-v1-nfr-render-latency-0.00)
-)
-
-(claims supervisor:ed25519:zhT3QZyz
-  :at "2026-04-16T22:41:42Z"
-  (given delegated-v1-changelog-release-to-agent:claude)
-  (given (during (leased-v1-changelog-release) (moment "2026-04-16T22:41:42Z") (moment "2026-04-16T23:11:42Z")))
-  (given claim-v1-changelog-release-by-claude)
-  (normally r-cl-state-v1-changelog-release-by-claude claim-v1-changelog-release-by-claude state-claimed-v1-changelog-release-by-claude)
-  (normally r-cl-chain-v1-changelog-release-by-claude state-claimed-v1-changelog-release-by-claude claimed-changelog-release)
-)
-
-(claims agent:claude
-  :at "2026-04-16T22:43:36Z"
-  (given completed-changelog-release))
-
-(claims evaluator:ed25519:iIOEFYgN
-  :at "2026-04-16T22:43:39Z"
-  (given failed-changelog-release)
-  (given eval-result-v1-changelog-release-by-claude)
-  (given eval-confidence-v1-changelog-release-0.00)
-)

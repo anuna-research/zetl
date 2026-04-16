@@ -147,6 +147,10 @@ pub fn resolve_theme_name(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeManifest {
     pub theme: ThemeInfo,
+    // SPEC-028 REQ-105: when true, the engine inlines the serialised graph
+    // JSON into every template render as the `graph_index` variable.
+    #[serde(default)]
+    pub graph_inline: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -963,6 +967,7 @@ name = "my-theme"
                 min_zetl_version: None,
                 templates: None,
             },
+            graph_inline: None,
         }
     }
 

@@ -337,7 +337,7 @@ pub async fn index_handler(
     {
         vault_ctx.semantic_available = state.vector_index.is_some();
     }
-    match state.engine.render_index(&vault_ctx, "serve", "", "") {
+    match state.engine.render_index(&vault_ctx, "serve", "", "", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
     }
@@ -608,7 +608,7 @@ pub async fn page_handler(
             let folder_ctx = build_folder_context(&data, slug, folder_name);
             return match state
                 .engine
-                .render_folder(&vault_ctx, &folder_ctx, "serve", "", "")
+                .render_folder(&vault_ctx, &folder_ctx, "serve", "", "", "")
             {
                 Ok(html) => Html(html).into_response(),
                 Err(e) => render_error_response(e),
@@ -788,7 +788,7 @@ pub async fn page_handler(
     }
     match state
         .engine
-        .render_page(&vault_ctx, &page_ctx, "serve", "", "")
+        .render_page(&vault_ctx, &page_ctx, "serve", "", "", "")
     {
         Ok(html) => {
             if page_exists {
