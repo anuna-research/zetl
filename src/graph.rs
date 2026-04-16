@@ -410,6 +410,111 @@ impl LinkGraph {
     }
 }
 
+/// Pure: serialise the vault's link graph to the CON-101 graphology JSON shape
+/// (SPEC-028 REQ-101). Stable ordering: nodes and edges sorted alphabetically by
+/// their graphology `key` so rebuilds produce deterministic diffs.
+///
+/// - `page_slug_map` maps real page names to their kebab-case slugs (node keys).
+/// - `tags_by_page` carries frontmatter-derived tags per page; pages without an
+///   entry receive an empty `tags` array.
+/// - `generated_at` is embedded into `attributes.generated_at` verbatim
+///   (passed in by the caller so this function remains pure/deterministic).
+///
+/// Multi-edges in the internal `petgraph::DiGraph` are collapsed per
+/// `options.multi = false`; self-loops are preserved (`allowSelfLoops = true`).
+pub fn serialize_graph_index(
+    graph: &LinkGraph,
+    page_slug_map: &HashMap<String, String>,
+    tags_by_page: &HashMap<String, Vec<String>>,
+    vault_name: &str,
+    generated_at: &str,
+) -> serde_json::Value {
+    let slug_for = |name: &str| -> String {
+        page_slug_map
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| name.to_string())
+    };
+
+    let mut node_entries: Vec<(String, serde_json::Value)> = Vec::with_capacity(graph.node_map.len());
+    for (page_name, &node_idx) in &graph.node_map {
+        let is_dead = !graph.resolved.contains(page_name);
+        let key = slug_for(page_name);
+        let outlink_count = graph
+            .graph
+            .edges_directed(node_idx, Direction::Outgoing)
+            .count();
+        let backlink_count = graph
+            .graph
+            .edges_directed(node_idx, Direction::Incoming)
+            .count();
+        let is_orphan = !is_dead && backlink_count == 0;
+        let tags = tags_by_page.get(page_name).cloned().unwrap_or_default();
+        let attrs = serde_json::json!({
+            "label": page_name,
+            "slug": key,
+            "outlink_count": outlink_count,
+            "backlink_count": backlink_count,
+            "is_orphan": is_orphan,
+            "is_dead": is_dead,
+            "tags": tags,
+        });
+        node_entries.push((
+            key.clone(),
+            serde_json::json!({ "key": key, "attributes": attrs }),
+        ));
+    }
+    node_entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let nodes_out: Vec<serde_json::Value> = node_entries.into_iter().map(|(_, v)| v).collect();
+
+    let mut seen_edges: HashSet<(String, String)> = HashSet::new();
+    let mut edge_entries: Vec<(String, serde_json::Value)> = Vec::new();
+    for edge_ref in graph.graph.edge_references() {
+        let source_name = &graph.graph[edge_ref.source()];
+        let target_name = &graph.graph[edge_ref.target()];
+        let source_slug = slug_for(source_name);
+        let target_slug = slug_for(target_name);
+        let pair = (source_slug.clone(), target_slug.clone());
+        if !seen_edges.insert(pair) {
+            continue;
+        }
+        let key = format!("{source_slug}->{target_slug}");
+        edge_entries.push((
+            key.clone(),
+            serde_json::json!({
+                "key": key,
+                "source": source_slug,
+                "target": target_slug,
+                "attributes": {},
+            }),
+        ));
+    }
+    edge_entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let edges_out: Vec<serde_json::Value> = edge_entries.into_iter().map(|(_, v)| v).collect();
+
+    let pages_count = graph.resolved.len();
+    let links_count = edges_out.len();
+
+    serde_json::json!({
+        "options": {
+            "type": "directed",
+            "multi": false,
+            "allowSelfLoops": true,
+        },
+        "attributes": {
+            "format": "zetl-graph/v1",
+            "generated_at": generated_at,
+            "vault": {
+                "name": vault_name,
+                "pages": pages_count,
+                "links": links_count,
+            }
+        },
+        "nodes": nodes_out,
+        "edges": edges_out,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1155,5 +1260,130 @@ mod tests {
         assert_eq!(fwd[0].meta.line, 7);
         assert_eq!(fwd[0].meta.source_file, "source.md");
         assert!(!fwd[0].meta.is_embed);
+    }
+
+    // ── SPEC-028 REQ-101 / CON-101: serialize_graph_index ─────────────
+
+    #[test]
+    fn serialize_graph_index_shape_and_ordering() {
+        let graph = simple_graph();
+        let slug_map: HashMap<String, String> = [
+            ("A".to_string(), "a".to_string()),
+            ("B".to_string(), "b".to_string()),
+            ("C".to_string(), "c".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let tags: HashMap<String, Vec<String>> = [("A".to_string(), vec!["rust".to_string()])]
+            .into_iter()
+            .collect();
+
+        let out = serialize_graph_index(&graph, &slug_map, &tags, "my-vault", "2026-04-16T00:00:00Z");
+
+        assert_eq!(out["options"]["type"], "directed");
+        assert_eq!(out["options"]["multi"], false);
+        assert_eq!(out["options"]["allowSelfLoops"], true);
+        assert_eq!(out["attributes"]["format"], "zetl-graph/v1");
+        assert_eq!(out["attributes"]["generated_at"], "2026-04-16T00:00:00Z");
+        assert_eq!(out["attributes"]["vault"]["name"], "my-vault");
+        assert_eq!(out["attributes"]["vault"]["pages"], 3);
+        assert_eq!(out["attributes"]["vault"]["links"], 4);
+
+        let nodes = out["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 3);
+        // Stable alphabetical ordering by slug (= key).
+        let keys: Vec<&str> = nodes.iter().map(|n| n["key"].as_str().unwrap()).collect();
+        assert_eq!(keys, vec!["a", "b", "c"]);
+        // Node A carries its frontmatter tag; B and C get empty arrays.
+        assert_eq!(nodes[0]["attributes"]["tags"][0], "rust");
+        assert_eq!(nodes[1]["attributes"]["tags"].as_array().unwrap().len(), 0);
+        assert_eq!(nodes[0]["attributes"]["label"], "A");
+        assert_eq!(nodes[0]["attributes"]["is_dead"], false);
+        // A has a backlink from C → not an orphan.
+        assert_eq!(nodes[0]["attributes"]["is_orphan"], false);
+
+        let edges = out["edges"].as_array().unwrap();
+        // A→B, A→C, B→C, C→A sorted alphabetically by "source->target".
+        let edge_keys: Vec<&str> = edges.iter().map(|e| e["key"].as_str().unwrap()).collect();
+        assert_eq!(edge_keys, vec!["a->b", "a->c", "b->c", "c->a"]);
+    }
+
+    #[test]
+    fn serialize_graph_index_marks_dead_and_orphan_nodes() {
+        // A → B (real) and A → Ghost (phantom/dead). A has no backlinks → orphan.
+        let files = vec![make_file("A", vec![("B", 1), ("Ghost", 2)]), make_file("B", vec![])];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+        let slug_map: HashMap<String, String> = [
+            ("A".to_string(), "a".to_string()),
+            ("B".to_string(), "b".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let out = serialize_graph_index(
+            &graph,
+            &slug_map,
+            &HashMap::new(),
+            "v",
+            "2026-04-16T00:00:00Z",
+        );
+
+        let nodes = out["nodes"].as_array().unwrap();
+        let by_key: HashMap<&str, &serde_json::Value> = nodes
+            .iter()
+            .map(|n| (n["key"].as_str().unwrap(), n))
+            .collect();
+
+        // A is a real page with no backlinks → is_orphan=true, is_dead=false.
+        assert_eq!(by_key["a"]["attributes"]["is_orphan"], true);
+        assert_eq!(by_key["a"]["attributes"]["is_dead"], false);
+        // Ghost is a phantom — key defaults to page name since there's no slug entry.
+        assert_eq!(by_key["Ghost"]["attributes"]["is_dead"], true);
+        assert_eq!(by_key["Ghost"]["attributes"]["is_orphan"], false);
+        // Links count should reflect all outgoing edges (dedup — 2 distinct edges).
+        assert_eq!(out["attributes"]["vault"]["links"], 2);
+        // Pages count counts only real pages.
+        assert_eq!(out["attributes"]["vault"]["pages"], 2);
+    }
+
+    #[test]
+    fn serialize_graph_index_dedupes_multi_edges() {
+        // A → B appears twice in the file; graphology multi=false expects one edge.
+        let files = vec![
+            make_file("A", vec![("B", 1), ("B", 2)]),
+            make_file("B", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+        let slug_map: HashMap<String, String> = [
+            ("A".to_string(), "a".to_string()),
+            ("B".to_string(), "b".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let out = serialize_graph_index(
+            &graph,
+            &slug_map,
+            &HashMap::new(),
+            "v",
+            "2026-04-16T00:00:00Z",
+        );
+
+        let edges = out["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["key"], "a->b");
+        assert_eq!(out["attributes"]["vault"]["links"], 1);
     }
 }

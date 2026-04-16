@@ -230,6 +230,76 @@ fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) 
     Ok(json_str)
 }
 
+/// Write graph-index.json to `{out_dir}/graph-index.json` and return the
+/// JSON string so it can be embedded as a template variable when a theme opts
+/// in via `graph_inline = true` (SPEC-028 REQ-102, REQ-105).
+///
+/// Emits OBS-101 `[zetl] graph-export: pages=N edges=M duration_ms=X bytes=Y`
+/// under `--verbose`, mirroring the existing `history-export:` instrumentation.
+fn write_graph_index_json(
+    data: &VaultData,
+    vault_root: &Path,
+    vault_name: &str,
+    out_dir: &Path,
+    verbose: bool,
+) -> Result<String> {
+    let export_start = std::time::Instant::now();
+
+    let mut tags_by_page: HashMap<String, Vec<String>> = HashMap::new();
+    for file in &data.files {
+        let full_path = vault_root.join(&file.path);
+        let Ok(content) = std::fs::read_to_string(&full_path) else {
+            continue;
+        };
+        let fm = markdown::parse_frontmatter(&content);
+        let Some(arr) = fm.get("tags").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        let tags: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        if !tags.is_empty() {
+            tags_by_page.insert(file.page_name.clone(), tags);
+        }
+    }
+
+    let generated_at = crate::user::access_request::now_iso8601();
+    let index = crate::graph::serialize_graph_index(
+        &data.graph,
+        &data.page_slug_map,
+        &tags_by_page,
+        vault_name,
+        &generated_at,
+    );
+    let json_str = serde_json::to_string(&index).context("serializing graph-index.json")?;
+    std::fs::write(out_dir.join("graph-index.json"), &json_str)
+        .context("writing graph-index.json")?;
+
+    if verbose {
+        let pages = index
+            .get("attributes")
+            .and_then(|a| a.get("vault"))
+            .and_then(|v| v.get("pages"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let edges = index
+            .get("edges")
+            .and_then(|e| e.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        eprintln!(
+            "[zetl] graph-export: pages={} edges={} duration_ms={} bytes={}",
+            pages,
+            edges,
+            export_start.elapsed().as_millis(),
+            json_str.len(),
+        );
+    }
+
+    Ok(json_str)
+}
+
 /// Write history-index.json to `{out_dir}/history-index.json` and return the
 /// JSON string so it can be embedded as a template variable.
 ///
@@ -322,6 +392,9 @@ pub fn build_static(
     let pages_json = build_search_index(&vault_ctx);
     std::fs::write(out.join("pages.json"), &pages_json).context("writing pages.json")?;
     let bm25_json = String::new();
+
+    // ── graph-index.json (SPEC-028 REQ-102 / OBS-101) ───────────────────
+    let _graph_json = write_graph_index_json(data, vault_root, &vault_ctx.name, out, verbose)?;
 
     // ── history-index.json ───────────────────────────────────────────────
     #[cfg(feature = "history")]
