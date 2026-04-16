@@ -228,6 +228,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "dashboard.html",
     "page_history.html",
     "vault_history.html",
+    "vault_graph.html",
     "help.html",
 ];
 
