@@ -415,13 +415,82 @@
       margin: 0 1rem 1rem 1rem;
     }
 
-    /* Mobile behaviour (REQ-117 preview): below the breakpoint the docked
-       mini-map is hidden. The mobile toggle button lands with
-       task-mobile-toggle; until then we only hide. tabs/stacked flow
-       naturally with the content so they remain visible. */
+    /* Mobile behaviour (SPEC-028 REQ-117): below the breakpoint the docked
+       widget is hidden by default and reachable via the top-bar toggle
+       (.zetl-graph-toggle) that expands it to a full-screen overlay. The
+       Sigma instance inside the widget is never unmounted — we only switch
+       the `--open` modifier class, so WebGL context identity is preserved.
+       tabs/stacked placements flow inline with the content and remain
+       visible unchanged. */
+    .zetl-graph-toggle {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      margin-left: auto;
+      padding: 0 0.6rem;
+      height: 2.25rem;
+      border: 1px solid transparent;
+      border-radius: 0.5rem;
+      background: transparent;
+      color: oklch(var(--bc));
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .zetl-graph-toggle:hover {
+      background: oklch(var(--b3) / 0.5);
+    }
+    .zetl-graph-toggle:focus-visible {
+      outline: 2px solid oklch(var(--p));
+      outline-offset: 2px;
+    }
+    .zetl-graph-widget__close {
+      display: none;
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      font-size: 1.25rem;
+      line-height: 1;
+      padding: 0.3rem 0.55rem;
+      border-radius: 0.4rem;
+      border: 1px solid oklch(var(--b3));
+      background: oklch(var(--b1) / 0.9);
+      color: oklch(var(--bc));
+      cursor: pointer;
+      z-index: 2;
+    }
+    .zetl-graph-widget__close:focus-visible {
+      outline: 2px solid oklch(var(--p));
+      outline-offset: 2px;
+    }
+
     @media (max-width: 899px) {
+      [data-placement="docked"] .zetl-graph-toggle {
+        display: inline-flex;
+      }
       [data-placement="docked"] .zetl-graph-widget {
         display: none;
+      }
+      /* Expanded state — full-screen overlay. Specificity is higher than the
+         rule above so the widget becomes visible the moment the `--open`
+         class is set, without touching layout outside the viewport box. */
+      [data-placement="docked"] .zetl-graph-widget.zetl-graph-widget--open {
+        display: block;
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        min-width: 0;
+        min-height: 0;
+        max-width: none;
+        max-height: none;
+        border: none;
+        border-radius: 0;
+        resize: none;
+        z-index: 100;
+      }
+      .zetl-graph-widget--open .zetl-graph-widget__close {
+        display: inline-flex;
       }
     }
 
@@ -467,6 +536,10 @@
        id="zetl-graph-widget"
        aria-label="Vault graph mini-map"
        role="region">
+    <button type="button"
+            class="zetl-graph-widget__close"
+            id="zetl-graph-widget-close"
+            aria-label="Close graph overlay">×</button>
     <a class="zetl-graph-widget__expand"
        href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}"
        title="Open full graph">Expand ↗</a>
@@ -489,6 +562,27 @@
           </svg>
         </label>
         <span class="text-lg font-bold ml-2">zetl</span>
+        {# SPEC-028 REQ-117: graph toggle — visible only below
+           --zetl-graph-widget-breakpoint. Opens the persistent
+           .zetl-graph-widget as a full-screen overlay by toggling a class,
+           which preserves the Sigma WebGL context identity across the
+           transition. #}
+        <button type="button"
+                class="zetl-graph-toggle"
+                id="zetl-graph-toggle"
+                aria-label="Show graph"
+                aria-expanded="false"
+                aria-controls="zetl-graph-widget">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+               fill="none" viewBox="0 0 24 24" stroke="currentColor"
+               stroke-width="2" aria-hidden="true">
+            <circle cx="5" cy="6" r="2"/>
+            <circle cx="19" cy="6" r="2"/>
+            <circle cx="12" cy="18" r="2"/>
+            <path d="M6.7 7.5 11 16.5M17.3 7.5 13 16.5M7 6h10"/>
+          </svg>
+          <span>Graph</span>
+        </button>
       </div>
 
       {% block content %}{% endblock %}
@@ -883,6 +977,50 @@
           window.location.href=ROOT+href+'/'+IDXFILE+(line?'#line-'+line:'');
         }
       }
+    });
+  })();
+  </script>
+
+  {# SPEC-028 REQ-117: mobile graph-toggle behaviour. Toggles a single modifier
+     class on the persistent widget — no DOM replacement — so the Sigma
+     instance mounted inside #zetl-graph (when task-graph-partial lands) keeps
+     its WebGL context across open/close transitions. Runs once; the SPA
+     navigation shell preserves the shell region so this init never needs to
+     re-run on navigation. #}
+  <script>
+  (function(){
+    var widget=document.getElementById('zetl-graph-widget');
+    var toggle=document.getElementById('zetl-graph-toggle');
+    var closeBtn=document.getElementById('zetl-graph-widget-close');
+    if(!widget||!toggle)return;
+    var OPEN='zetl-graph-widget--open';
+    function isOpen(){return widget.classList.contains(OPEN);}
+    function setOpen(open){
+      widget.classList.toggle(OPEN,open);
+      toggle.setAttribute('aria-expanded',open?'true':'false');
+      /* Prevent body scroll while the overlay covers the viewport. */
+      document.body.style.overflow=open?'hidden':'';
+      if(open){
+        /* Move focus inside the overlay so Escape/Tab are routed sensibly;
+           closeBtn is the primary dismiss affordance. */
+        if(closeBtn)closeBtn.focus();
+      }else{
+        /* Return focus to the toggle so keyboard users don't lose context. */
+        toggle.focus();
+      }
+    }
+    toggle.addEventListener('click',function(){setOpen(!isOpen());});
+    if(closeBtn)closeBtn.addEventListener('click',function(){setOpen(false);});
+    document.addEventListener('keydown',function(e){
+      if(e.key==='Escape'&&isOpen()){e.preventDefault();setOpen(false);}
+    });
+    /* If the viewport grows past the breakpoint while the overlay is open
+       (desktop resize, orientation change), auto-dismiss — the docked widget
+       will render inline and the overlay is no longer meaningful. 900 px is
+       the default --zetl-graph-widget-breakpoint; themes that move the
+       breakpoint should pair with a matching media query override. */
+    window.addEventListener('resize',function(){
+      if(isOpen()&&window.innerWidth>=900)setOpen(false);
     });
   })();
   </script>
