@@ -3,12 +3,14 @@
   "confidence": 0.0,
   "exit_code": 1,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 136,
-    "deletions": 55,
+    "files_changed": 7,
+    "insertions": 488,
+    "deletions": 79,
     "file_list": [
       ".hence/context-manifest.json",
+      ".hence/eval-result.json",
       "src/web/engine.rs",
+      "themes/default/_graph.html",
       "themes/default/base.html",
       "themes/default/static/spa.js",
       "themes/default/theme.toml"
@@ -17,14 +19,14 @@
   },
   "learnings": [
     {
-      "key": "task-spa-shell-changes",
-      "content": "Modified 5 files (+136, -55): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/static/spa.js, themes/default/theme.toml",
+      "key": "task-node-click-nav-changes",
+      "content": "Modified 7 files (+488, -79): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, themes/default/_graph.html, themes/default/base.html and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/spa-shell-v1",
-  "evaluated_at": "2026-04-16T15:38:40Z",
+  "branch_name": "hence/node-click-nav-v1",
+  "evaluated_at": "2026-04-16T16:51:26Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
