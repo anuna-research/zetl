@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-17
+
+### Added
+
+- **Interactive graph view.** The default theme ships a WebGL-rendered
+  graph of the vault, powered by Sigma.js v3, graphology, and
+  ForceAtlas2 (run in a Web Worker when available). A persistent widget
+  appears on every page with three modes — `local` (current page's
+  neighbourhood), `vault` (whole vault), and `off` — switchable from the
+  widget and remembered in `sessionStorage`. Clicking a node navigates
+  to that page. Dead-link nodes and edges render in a muted, dashed
+  treatment. A new `/_graph` route (and `_graph.html` under
+  `zetl build`) exposes the full-screen view, and the sidebar gains a
+  **Graph** link. Dependencies are vendored under
+  `themes/default/static/vendor/sigma/` (no CDN at runtime). (SPEC-028)
+- **SPA navigation shell.** When `theme.toml` sets `[spa] enabled=true`
+  (default on for the bundled theme), a small (<100 loc) vanilla JS
+  module intercepts same-origin link clicks, fetches the next document,
+  and swaps the `<main data-zetl-volatile>` element in place —
+  preserving the WebGL context, Sigma camera state, and any other
+  persistent-shell state across navigations. Modifier clicks
+  (meta/ctrl/shift/middle-click, `target=_blank`, cross-origin) fall
+  back to native behaviour, `popstate` is handled, and inline `<script>`
+  tags in swapped content are re-executed. The shell dispatches
+  cancelable `zetl:before-navigate` and `zetl:after-navigate` window
+  events around each transition so themes and widgets can react without
+  re-instantiating. (SPEC-028 / REQ-113 / REQ-115)
+- **Persistent widget placement.** Default placement is a docked
+  bottom-right mini-map (280×200 px, CSS resize handle, click-to-expand
+  to `/_graph`). `theme.toml [graph.placement]` opts into `tabs` or
+  `stacked` layouts via a `data-placement` attribute on the shell
+  container — no template editing required. Below
+  `--zetl-graph-widget-breakpoint` (default 900 px) the widget hides
+  and is reachable via a top-bar toggle that expands to a full-screen
+  overlay (focus ring, Enter/Space to open, Escape to dismiss);
+  visibility-only toggling keeps the same Sigma instance live.
+  (REQ-116, REQ-117)
+- **CSS custom-property theming contract.** The full `--zetl-graph-*`
+  and `--zetl-shell-*` variable surface is declared with sensible
+  defaults; Sigma node/edge reducers read them via `getComputedStyle`,
+  so themes restyle the graph with CSS alone (no JS override). The
+  theme authoring reference documents every variable, the
+  `{% block persistent_shell %}` / `{% block graph_widget %}` contract,
+  the `[spa]` and `[graph.placement]` `theme.toml` tables, and the
+  navigation events. (REQ-114)
+- **Graceful absence matrix.** `<noscript>` fallback renders a
+  `<details>`-grouped page list alongside the canvas for keyboard /
+  screen-reader users; empty-state copy covers zero-page and zero-link
+  vaults; sidebar link and `/_graph` route tolerate themes that strip
+  `_graph.html`. `axe-core` reports zero critical violations on
+  `/_graph`. (REQ-109, NFR-105)
+- `graph-index.json` — graphology-serialised directed graph
+  (`format: "zetl-graph/v1"`, stable alphabetical ordering,
+  per-node `{label, slug, outlink_count, backlink_count, is_orphan,
+  is_dead, tags}`). Written to `<out>/graph-index.json` by
+  `zetl build`, served at `GET /graph-index.json` by `zetl serve`, and
+  injected into templates as `graph_index_url` (always) plus
+  `graph_index` (when `theme.toml` sets `graph_inline=true`).
+  (REQ-101 / REQ-102 / REQ-103 / REQ-104 / REQ-105 / CON-101 / CON-102)
+- `zetl stats` gains a **Graph:** section (bytes / nodes / edges) in
+  table output and a `graph` field in `--json` output.
+- Client-side performance marks: `zetl:graph:render:start` +
+  `zetl:graph:render` around FA2 layout, and `zetl:navigate` around SPA
+  transitions, for devtools / NFR harness consumption. (OBS-201 /
+  OBS-113)
+- Verbose logging: `[zetl] graph-export: pages=N edges=M
+  duration_ms=X bytes=Y` under `zetl build --verbose`. (OBS-101)
+
+### Performance
+
+- NFR gates enforced in CI via a Playwright harness against 2k- and
+  5k-page synthetic vault fixtures: `/_graph` LCP ≤ 1500 ms P95
+  (NFR-101), scripted-drag ≥ 30 fps (NFR-102), gzipped vendor JS
+  ≤ 250 kB (NFR-103), and `graph-index.json` ≤ 1 MB at 2k pages with
+  a stderr warning at 5k (NFR-104).
+
 ## [0.2.7] - 2026-04-15
 
 ### Fixed

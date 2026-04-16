@@ -1,12 +1,12 @@
 {
-  "task_id": "theme-authoring-ref",
+  "task_id": "changelog-release",
   "token_budget": 8000,
-  "tokens_used": 341,
+  "tokens_used": 321,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extend the theme authoring reference (README.md or docs/themes) with: full --zetl-graph-* and --zetl-shell-* CSS-var table; theme.toml [spa] and [graph.placement] tables; {% block persistent_shell %}/{% block graph_widget %} contract; zetl:before-navigate and zetl:after-navigate events with code example; versioned theme contract note per REQ-114.",
-      "token_cost": 87,
+      "content": "CHANGELOG entry under [0.3.0] — feature addition (minor bump). Summarise: interactive graph view, SPA navigation shell, persistent widget with mode switching, CSS-var theming contract. Bump Cargo.toml version.",
+      "token_cost": 52,
       "priority": "PlanMeta"
     },
     {
@@ -41,8 +41,8 @@
     },
     {
       "source": "memory/episodic/task-mobile-toggle-changes",
-      "content": "Modified 6 files (+365, -78): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html and 1 more",
-      "token_cost": 39,
+      "content": "Modified 5 files (+519, -36): .hence/context-manifest.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html, themes/default/theme.toml",
+      "token_cost": 37,
       "priority": "AgentMemory"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 2 files (+155, -41): .hence/context-manifest.json, README.md",
       "token_cost": 17,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-theme-authoring-ref-changes",
+      "content": "Modified 2 files (+210, -38): .hence/context-manifest.json, README.md",
+      "token_cost": 17,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T16:41:36Z"
+  "constructed_at": "2026-04-16T22:41:42Z"
 }
