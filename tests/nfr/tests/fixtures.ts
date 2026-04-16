@@ -8,13 +8,14 @@ import { existsSync } from "node:fs";
 import { DEFAULT_HARNESS_PORT, serveDist, type StartedServer } from "../harness/server.ts";
 import { distPath } from "../harness/paths.ts";
 
-export interface HarnessFixtures {
+export interface HarnessWorkerFixtures {
   distServer: StartedServer;
   vaultSize: 2000 | 5000;
 }
 
-export const test = base.extend<HarnessFixtures, { _worker: unknown }>({
-  vaultSize: [2000, { option: true }],
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export const test = base.extend<{}, HarnessWorkerFixtures>({
+  vaultSize: [2000, { option: true, scope: "worker" }],
 
   distServer: [
     async ({ vaultSize }, use) => {

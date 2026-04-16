@@ -2,6 +2,7 @@
   "name": "zetl-nfr-harness",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "Headless-browser NFR harness for SPEC-028 (graph view). Runs Playwright against a built dist/ served by a local static server.",
   "scripts": {
     "seed:2k": "node --experimental-strip-types scripts/seed.ts 2000",
