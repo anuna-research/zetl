@@ -1,51 +1,15 @@
 {
-  "task_id": "graph-vault-page",
+  "task_id": "shell-and-css-contract",
   "token_budget": 8000,
-  "tokens_used": 233,
+  "tokens_used": 82,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create themes/default/vault_graph.html extending base.html, rendering the full-screen graph view for the /_graph route (serve) and _graph.html root (build). Sidebar entry labelled 'Graph'.",
-      "token_cost": 47,
+      "content": "Update themes/default/base.html to establish the persistent shell contract: {% block persistent_shell %} containing sidebar and zetl-graph-widget; <main data-zetl-volatile> for content. Define the full --zetl-graph-* and --zetl-shell-* CSS custom-property contract in the default stylesheet. Document in theme authoring reference.",
+      "token_cost": 82,
       "priority": "PlanMeta"
-    },
-    {
-      "source": "memory/episodic/task-graceful-absence-changes",
-      "content": "Modified 3 files (+584, -58): .hence/context-manifest.json, src/web/engine.rs, themes/default/_graph.html",
-      "token_cost": 26,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-dead-link-styling-changes",
-      "content": "Modified 2 files (+468, -61): .hence/context-manifest.json, themes/default/_graph.html",
-      "token_cost": 21,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-shell-and-css-contract-changes",
-      "content": "Modified 3 files (+121, -64): .hence/context-manifest.json, README.md, themes/default/base.html",
-      "token_cost": 23,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-docked-minimap-placement-changes",
-      "content": "Modified 5 files (+351, -66): .hence/context-manifest.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html, themes/default/theme.toml",
-      "token_cost": 37,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-spa-shell-changes",
-      "content": "Modified 5 files (+136, -55): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/static/spa.js, themes/default/theme.toml",
-      "token_cost": 40,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-mobile-toggle-changes",
-      "content": "Modified 6 files (+365, -78): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html and 1 more",
-      "token_cost": 39,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T16:05:42Z"
+  "constructed_at": "2026-04-16T14:18:37Z"
 }
