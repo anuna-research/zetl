@@ -44,3 +44,10 @@ bundled = "iife"
 # Unknown values fall back to "docked".
 [graph]
 placement = "docked"
+
+# SPEC-028 REQ-113: opt in to the persistent-shell SPA navigation module.
+# When enabled, base.html loads _static/spa.js and the element carrying
+# `data-zetl-volatile` is swapped on same-origin <a> clicks instead of
+# triggering a full page reload.
+[spa]
+enabled = true
