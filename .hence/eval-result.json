@@ -1,28 +1,27 @@
 {
-  "recommended_status": "completed",
-  "confidence": 1.0,
-  "exit_code": 0,
+  "recommended_status": "failed",
+  "confidence": 0.0,
+  "exit_code": 1,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 369,
-    "deletions": 6,
+    "files_changed": 2,
+    "insertions": 468,
+    "deletions": 61,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/ws.rs",
-      "themes/default/editor.html"
+      "themes/default/_graph.html"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-merge-notification-changes",
-      "content": "Modified 3 files (+369, -6): .hence/context-manifest.json, src/web/ws.rs, themes/default/editor.html",
+      "key": "task-dead-link-styling-changes",
+      "content": "Modified 2 files (+468, -61): .hence/context-manifest.json, themes/default/_graph.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/merge-notification-v1",
-  "evaluated_at": "2026-03-18T14:20:46Z",
+  "branch_name": "hence/dead-link-styling-v2",
+  "evaluated_at": "2026-04-16T15:01:03Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
