@@ -65,6 +65,68 @@ export async function rafFps(page: Page, durationMs: number): Promise<number> {
   );
 }
 
+export interface ScriptedDragFpsOptions {
+  /** Total drag duration, ms. Matches the fps sampling window. */
+  durationMs?: number;
+  /** Radius of the circular drag path, in CSS pixels. */
+  radiusPx?: number;
+  /** CSS selector for the drag target. Defaults to the Sigma canvas. */
+  selector?: string;
+  /** Interval between scripted mouse-move events, ms. */
+  stepMs?: number;
+}
+
+/**
+ * Drive a continuous drag gesture on the Sigma canvas while measuring the
+ * fps sustained over the same window. The drag traces a circular path so
+ * motion stays bounded inside the canvas and the camera keeps moving —
+ * Sigma schedules a render per frame while the pointer is moving, which is
+ * exactly the work NFR-102 gates on.
+ *
+ * The fps counter is started in-page, then mouse events are dispatched via
+ * CDP. Because the browser event loop remains free during CDP-driven input,
+ * the rAF callbacks interleave with the pan renders as they would under a
+ * real drag.
+ */
+export async function scriptedDragFps(
+  page: Page,
+  opts: ScriptedDragFpsOptions = {},
+): Promise<number> {
+  const durationMs = opts.durationMs ?? 2000;
+  const radiusPx = opts.radiusPx ?? 80;
+  const selector = opts.selector ?? "#zetl-graph canvas";
+  const stepMs = opts.stepMs ?? 25;
+
+  const locator = page.locator(selector).first();
+  const box = await locator.boundingBox();
+  if (!box) {
+    throw new Error(`scriptedDragFps: no bounding box for selector ${selector}`);
+  }
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+
+  // Position the pointer before starting the fps counter so the sampled
+  // window covers the drag, not the pre-drag move.
+  await page.mouse.move(cx, cy);
+  const fpsPromise = rafFps(page, durationMs);
+  await page.mouse.down();
+
+  const steps = Math.max(1, Math.floor(durationMs / stepMs));
+  const dragStart = Date.now();
+  for (let i = 0; i < steps && Date.now() - dragStart < durationMs; i += 1) {
+    const theta = (i / steps) * Math.PI * 4; // two full rotations over the window
+    const x = cx + radiusPx * Math.cos(theta);
+    const y = cy + radiusPx * Math.sin(theta);
+    // `steps: 2` splits each hop into two intermediate moves — enough to
+    // generate pointer-move events without saturating the event loop.
+    await page.mouse.move(x, y, { steps: 2 });
+    await page.waitForTimeout(stepMs);
+  }
+
+  await page.mouse.up();
+  return fpsPromise;
+}
+
 /** Percentile (0..100) over a numeric sample. Linear interpolation. */
 export function percentile(samples: number[], p: number): number {
   if (samples.length === 0) return NaN;
