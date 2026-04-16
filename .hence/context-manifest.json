@@ -1,15 +1,63 @@
 {
-  "task_id": "graph-partial",
+  "task_id": "readme-section",
   "token_budget": 8000,
-  "tokens_used": 96,
+  "tokens_used": 286,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Create themes/default/_graph.html: single-Sigma-instance partial. Instantiates graphology DirectedGraph (from inline graph_index or fetched graph_index_url), runs graphology-layout-forceatlas2 in a Web Worker when available, mounts Sigma.js v3. Implements mode switching (local/vault/off) via data-mode attribute. nodeReducer/edgeReducer read CSS custom properties via getComputedStyle.",
-      "token_cost": 96,
+      "content": "Add 'Graph view' section to README.md covering: default widget placement, mode switcher, /_graph route, mobile behaviour, theme.toml [graph.placement] opt-ins, CSS-var overrides, graceful absence.",
+      "token_cost": 49,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-graceful-absence-changes",
+      "content": "Modified 3 files (+584, -58): .hence/context-manifest.json, src/web/engine.rs, themes/default/_graph.html",
+      "token_cost": 26,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-dead-link-styling-changes",
+      "content": "Modified 2 files (+468, -61): .hence/context-manifest.json, themes/default/_graph.html",
+      "token_cost": 21,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-shell-and-css-contract-changes",
+      "content": "Modified 3 files (+121, -64): .hence/context-manifest.json, README.md, themes/default/base.html",
+      "token_cost": 23,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-docked-minimap-placement-changes",
+      "content": "Modified 5 files (+351, -66): .hence/context-manifest.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html, themes/default/theme.toml",
+      "token_cost": 37,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-spa-shell-changes",
+      "content": "Modified 5 files (+136, -55): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/static/spa.js, themes/default/theme.toml",
+      "token_cost": 40,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-mobile-toggle-changes",
+      "content": "Modified 6 files (+365, -78): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html and 1 more",
+      "token_cost": 39,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-graph-vault-page-changes",
+      "content": "Modified 4 files (+114, -47): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/vault_graph.html",
+      "token_cost": 34,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-navigate-events-changes",
+      "content": "Modified 2 files (+76, -44): .hence/context-manifest.json, README.md",
+      "token_cost": 17,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T14:03:17Z"
+  "constructed_at": "2026-04-16T16:35:26Z"
 }

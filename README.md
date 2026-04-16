@@ -440,6 +440,132 @@ templates in `.zetl/themes/<theme>/` — remove the `page-history-meta`
 block from `page.html`, delete the "Recent changes" link in `base.html`,
 or ship an empty `vault_history.html`.
 
+### Graph view
+
+An interactive link-graph widget — Sigma.js v3 on WebGL with the
+graphology data model and the ForceAtlas2 layout. A single persistent
+Sigma instance lives in the sidebar's shell (outside the volatile
+content region), so camera position, computed layout coordinates, and
+the WebGL context survive every page navigation — no flash, no
+re-layout.
+
+- **Default placement** — docked mini-map, `position: fixed` at the
+  bottom-right of the viewport, 280 × 200 px, CSS-resizable (`resize:
+  both`), click-to-expand navigates to `/_graph`. Never overlaps the
+  sidebar or transclusion panel in the default desktop layout.
+- **Mode switcher** — the widget's `data-mode` attribute is one of
+  `local` (current page + 1-hop neighbourhood, non-neighbours faded via
+  a reducer), `vault` (zoom-to-fit the full graph; default on `/_graph`
+  and the vault index), or `off` (hidden via `display: none`, DOM and
+  Sigma instance preserved for re-activation). Mode switching is
+  instantaneous — a reducer refresh only, no layout recompute — and
+  persisted across navigation in `sessionStorage` under
+  `zetl:graph:mode`.
+- **`/_graph` route** — a dedicated full-screen view rendered via
+  `vault_graph.html`, served at `/_graph` under `zetl serve` and
+  emitted as `_graph.html` at the output root by `zetl build`. The
+  default theme's sidebar gets a "Graph" entry alongside "Help &
+  install" and "Recent changes".
+- **Mobile** — below `--zetl-graph-widget-breakpoint` (default 900 px)
+  the docked widget is `display: none` and reachable via a top-bar
+  toggle that expands it to a full-screen overlay. The toggle is
+  keyboard-accessible (focus ring, Enter / Space to activate, Escape
+  to dismiss). Resizing across the breakpoint swaps placement without
+  re-instantiating Sigma.
+
+#### Alternative placements
+
+Opt in via `theme.toml` without editing `_graph.html`:
+
+```toml
+[graph]
+placement = "docked"   # "docked" (default), "tabs", or "stacked"
+```
+
+| `placement` | Layout                                                               |
+|-------------|----------------------------------------------------------------------|
+| `docked`    | Fixed mini-map, bottom-right of viewport (default).                  |
+| `tabs`      | Widget shares the transclusion right rail via a two-tab header.      |
+| `stacked`   | Widget sits above the transclusion panel in the right rail.          |
+
+Switching placement sets a `data-placement` attribute on the shell
+container and flips CSS — the Sigma instance, persistent DOM contract,
+and `_graph.html` partial are untouched.
+
+#### CSS custom-property contract
+
+Visual styling is driven entirely by CSS variables declared on the
+default theme. Override any subset in a custom theme; the Sigma
+reducers in `_graph.html` read them via `getComputedStyle` and refresh
+on `data-theme` / `class` mutation or `prefers-color-scheme` change.
+
+| Property                         | Purpose                                      |
+|----------------------------------|----------------------------------------------|
+| `--zetl-graph-node`              | Default node fill                            |
+| `--zetl-graph-node-dead`         | Node fill for dead-link targets              |
+| `--zetl-graph-edge`              | Default edge colour                          |
+| `--zetl-graph-edge-dead`         | Edge colour / pattern for dead-link edges    |
+| `--zetl-graph-label`             | Node label colour                            |
+| `--zetl-graph-label-font`        | Node label `font-family`                     |
+| `--zetl-graph-widget-width`      | Docked mini-map width (default 280 px)       |
+| `--zetl-graph-widget-height`     | Docked mini-map height (default 200 px)      |
+| `--zetl-graph-widget-right`      | Offset from viewport right (default 16 px)   |
+| `--zetl-graph-widget-bottom`     | Offset from viewport bottom (default 16 px)  |
+| `--zetl-graph-widget-breakpoint` | Min viewport width to show widget (900 px)   |
+| `--zetl-shell-sidebar-area`      | Grid track size for the sidebar shell region |
+
+Structural changes (node shapes, edge-thickness curves, custom dashed
+patterns) require overriding `_graph.html` and editing its Sigma
+reducers directly.
+
+#### SPA shell and navigation events
+
+When `theme.toml` sets `[spa] enabled = true`, a small (~80 LOC)
+vanilla-JS module loaded by `base.html` intercepts same-origin `<a>`
+clicks, fetches the next document, and swaps only the `<main
+data-zetl-volatile>` element. Everything inside `{% block
+persistent_shell %}` — the sidebar and graph widget — is never
+unmounted.
+
+Two `window`-level events fire around each successful navigation:
+
+- `zetl:before-navigate` — cancelable, `detail = { fromSlug, toSlug, url }`.
+  Call `preventDefault()` (e.g. when the collab editor has unsaved CRDT
+  deltas) to fall back to native navigation.
+- `zetl:after-navigate` — `detail = { slug, contentRoot }`, where
+  `contentRoot` is the newly-mounted volatile element. Use it to re-run
+  Mermaid, KaTeX, or any other enhancement on swapped content. The
+  graph partial listens for it and calls `renderer.refresh()` to update
+  highlight state — never re-instantiating Sigma.
+
+Meta-click / Ctrl-click / middle-click, `target="_blank"`, cross-origin
+links, and browser back/forward continue to behave as native browser
+navigation. Setting `spa.enabled` to `false` (or omitting it) disables
+the shell; the graph re-initialises per page.
+
+#### Graceful absence
+
+Every graph surface degrades silently:
+
+- **JS disabled** — the graph container renders a `<noscript>` message
+  with a link back to `/` (the page list).
+- **Empty vault / zero links** — the canvas is replaced by an
+  empty-state message ("No links yet — create `[[wikilinks]]` between
+  pages to build a graph").
+- **Theme override deletes `_graph.html`** — the sidebar link hides
+  itself and `/_graph` no-ops; no console errors, no broken links from
+  `base.html`.
+- **Screen readers** — every rendered graph is accompanied by a
+  `<details>`-grouped page list containing every node, tab-navigable
+  to meet the a11y baseline. WCAG 2.2 AA contrast applies to the
+  default node / edge colours.
+
+Sigma.js, graphology, and `graphology-layout-forceatlas2` ship bundled
+under `_static/vendor/sigma/` — no CDN dependency at runtime. Pinned
+versions (and SHA-256 checksums) live in `theme.toml` under
+`[vendor.sigma]`, `[vendor.graphology]`, and
+`[vendor.graphology-layout-forceatlas2]`.
+
 ### Vault scanning and ignore files
 
 `zetl` walks the vault using a layered exclusion stack. From lowest to

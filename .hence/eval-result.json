@@ -3,30 +3,25 @@
   "confidence": 0.0,
   "exit_code": 1,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 488,
-    "deletions": 79,
+    "files_changed": 2,
+    "insertions": 155,
+    "deletions": 41,
     "file_list": [
       ".hence/context-manifest.json",
-      ".hence/eval-result.json",
-      "src/web/engine.rs",
-      "themes/default/_graph.html",
-      "themes/default/base.html",
-      "themes/default/static/spa.js",
-      "themes/default/theme.toml"
+      "README.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-node-click-nav-changes",
-      "content": "Modified 7 files (+488, -79): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, themes/default/_graph.html, themes/default/base.html and 2 more",
+      "key": "task-readme-section-changes",
+      "content": "Modified 2 files (+155, -41): .hence/context-manifest.json, README.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/node-click-nav-v1",
-  "evaluated_at": "2026-04-16T16:51:26Z",
+  "branch_name": "hence/readme-section-v1",
+  "evaluated_at": "2026-04-16T16:41:30Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
