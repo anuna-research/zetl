@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all check lint clippy fmt fmt-fix install uninstall clean doc doc-open release help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release help
 
 all: build
 
@@ -25,6 +25,17 @@ test-history:
 
 test-all:
 	cargo test --features "reason,history"
+
+# NFR harness (SPEC-028): headless-browser timing checks on a built dist/.
+# First run needs `make test-nfr-install` to fetch Playwright's Chromium.
+test-nfr-install:
+	cd tests/nfr && npm install && npm run install-browsers
+
+test-nfr-build:
+	cd tests/nfr && npm run build:2k
+
+test-nfr: test-nfr-build
+	cd tests/nfr && npm test
 
 check: test lint
 
@@ -85,6 +96,9 @@ help:
 	@echo "  make test-reason  - Run tests with reason feature"
 	@echo "  make test-history - Run tests with history feature"
 	@echo "  make test-all     - Run tests with all features"
+	@echo "  make test-nfr-install - Install Playwright + Chromium for NFR harness"
+	@echo "  make test-nfr-build   - Seed + build the 2k-page NFR fixture"
+	@echo "  make test-nfr         - Run headless NFR harness (SPEC-028)"
 	@echo "  make check        - Run tests and lint"
 	@echo "  make lint         - Run fmt check and clippy"
 	@echo "  make clippy       - Run clippy lints"
