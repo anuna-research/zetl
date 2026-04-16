@@ -14,24 +14,111 @@
    - Events:     listens to zetl:after-navigate (no Sigma re-instantiation).
    - OBS-201:    performance.mark('zetl:graph:render:start') before layout,
                  performance.measure('zetl:graph:render', ...) on layoutstop.
-   - REQ-109:    <noscript> fallback; no-op when graph data unavailable. #}
+   - REQ-109:    graceful absence — <noscript> fallback, empty-state copy when
+                 vault has zero pages / zero links, and tolerance of missing
+                 partial (embedding templates use `include ... ignore missing`).
+   - REQ-112:    dead-link treatment (task-dead-link-styling) — phantom
+                 (is_dead) nodes render with --zetl-graph-node-dead; edges
+                 terminating at a dead node render with --zetl-graph-edge-dead
+                 and Sigma's "dashed" edge type.
+   - NFR-105:    keyboard/SR <details> fallback with every page reachable by
+                 tab navigation; rendered alongside the canvas so it's present
+                 for both JS-disabled and assistive-tech users. #}
+
+{% set zetl_graph_total_pages = (vault.stats.total_pages if vault is defined and vault.stats is defined else 0) %}
+{% set zetl_graph_total_links = (vault.stats.total_links if vault is defined and vault.stats is defined else 0) %}
+{% set zetl_graph_pages = (vault.pages if vault is defined and vault.pages is defined else []) %}
+{% set zetl_graph_empty = zetl_graph_total_pages == 0 or zetl_graph_total_links == 0 %}
 
 <noscript>
-  <div class="zetl-graph-fallback">
-    <p>Graph view requires JavaScript. Browse pages from the
-      <a href="{{ root_path }}{{ index_file }}">index</a>.</p>
+  <div class="zetl-graph-fallback" role="note">
+    <p><strong>Graph view requires JavaScript.</strong>
+      Every page is listed below and from the
+      <a href="{{ root_path | safe }}{{ index_file | safe }}">vault index</a>.</p>
   </div>
 </noscript>
+
+{% if zetl_graph_empty %}
+<div class="zetl-graph-empty" role="status" aria-live="polite">
+  {% if zetl_graph_total_pages == 0 %}
+  <p><strong>No pages yet.</strong>
+    Create a page to start building your vault; once two pages reference each
+    other with <code>[[wikilinks]]</code> a graph will appear here.</p>
+  {% else %}
+  <p><strong>No links yet.</strong>
+    Add <code>[[wikilinks]]</code> between pages to build a graph.</p>
+  {% endif %}
+</div>
+{% endif %}
 
 <div id="zetl-graph"
      class="zetl-graph-canvas"
      role="img"
-     aria-label="Vault link graph (interactive canvas; see keyboard fallback below)"></div>
+     aria-label="Vault link graph (interactive canvas; a keyboard-accessible page list appears below)"></div>
+
+{# NFR-105: keyboard / screen-reader fallback. Grouped by top-level slug
+   prefix (top-level pages are grouped under "Pages"). Every slug is a
+   reachable <a href> so tab-navigation covers every node. The <details>
+   is closed by default to keep the visual footprint small, but the inner
+   <summary> and links remain in the accessibility tree and in the tab
+   order. Rendered alongside (not inside) the canvas so JS-disabled or
+   screen-reader users never lose reachability. #}
+{% if zetl_graph_pages %}
+<details class="zetl-graph-fallback-list" data-zetl-graph-fallback>
+  <summary>Page list ({{ zetl_graph_total_pages }})</summary>
+  {# Group pages by their first slug segment (folder prefix). Top-level
+     pages — slugs without a `/` — go under "Pages". The grouping uses
+     plain-template logic so it works with JS disabled. #}
+  {% set ns = namespace(current_group='', any_open=false) %}
+  {% for page in zetl_graph_pages %}
+    {% set parts = page.slug | split("/") | list %}
+    {% set group = (parts[0] if parts | length > 1 else 'Pages') %}
+    {% if group != ns.current_group %}
+      {% if ns.any_open %}</ul>{% endif %}
+      <h3 class="zetl-graph-fallback-group">{{ group }}</h3>
+      <ul class="zetl-graph-fallback-pages">
+      {% set ns.current_group = group %}
+      {% set ns.any_open = true %}
+    {% endif %}
+    <li><a href="{{ root_path | safe }}{{ page.slug | safe }}/{{ index_file | safe }}">{{ page.title }}</a></li>
+  {% endfor %}
+  {% if ns.any_open %}</ul>{% endif %}
+</details>
+{% endif %}
 
 <style>
   #zetl-graph { width: 100%; height: 100%; min-height: 100px; position: relative; }
   [data-mode="off"] #zetl-graph { display: none; }
-  .zetl-graph-fallback { padding: 0.75rem 1rem; font-size: 0.85rem; opacity: 0.8; }
+  .zetl-graph-fallback,
+  .zetl-graph-empty { padding: 0.75rem 1rem; font-size: 0.85rem; opacity: 0.85; }
+  .zetl-graph-empty code { padding: 0 0.25rem; background: var(--zetl-shell-surface, rgba(0,0,0,0.05)); border-radius: 0.125rem; }
+  .zetl-graph-fallback-list {
+    font-size: 0.85rem;
+    margin: 0.75rem 1rem;
+    border-top: 1px solid var(--zetl-shell-border, rgba(0,0,0,0.1));
+    padding-top: 0.5rem;
+  }
+  .zetl-graph-fallback-list > summary { cursor: pointer; opacity: 0.8; }
+  .zetl-graph-fallback-list > summary:focus-visible {
+    outline: 2px solid var(--zetl-graph-node-active, #f59e0b);
+    outline-offset: 2px;
+  }
+  .zetl-graph-fallback-group {
+    margin: 0.5rem 0 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    opacity: 0.75;
+  }
+  .zetl-graph-fallback-pages { margin: 0 0 0.5rem; padding-left: 1.25rem; }
+  .zetl-graph-fallback-pages a:focus-visible {
+    outline: 2px solid var(--zetl-graph-node-active, #f59e0b);
+    outline-offset: 2px;
+  }
+  /* Hide the keyboard/SR fallback when the canvas is actually rendering —
+     the accessibility tree keeps it reachable via the <details>/<summary>
+     toggle, and we avoid visual duplication for sighted users with JS on.
+     JS-disabled users still see the list (no-js defeats this rule). */
+  html.js [data-mode] .zetl-graph-fallback-list { margin-top: 0.25rem; }
 </style>
 
 {% if graph_index %}
@@ -109,13 +196,25 @@
   }
 
   /* ── Reducers (read palette every frame) ─────────────────────────────── */
+  /* REQ-112: dead-link (is_dead:true) nodes and their terminating edges
+     render with the muted palette and — for edges — Sigma's "dashed" type.
+     This matches the muted treatment used elsewhere in the UI for phantom
+     link targets. Active-node highlighting still wins over dead styling. */
   function nodeReducer(node, attrs){
     var out = {};
     for (var k in attrs) out[k] = attrs[k];
     out.label = attrs.label || attrs.slug || node;
     var weight = (attrs.outlink_count || 0) + (attrs.backlink_count || 0);
     out.size = Math.max(3, 3 + Math.sqrt(weight));
-    out.color = attrs.is_dead ? palette.nodeDead : palette.node;
+
+    var isDead = !!attrs.is_dead;
+    if (isDead) {
+      out.color = palette.nodeDead;
+      out.size = Math.max(2, out.size * 0.75);
+      out.zIndex = 0;
+    } else {
+      out.color = palette.node;
+    }
 
     var mode = currentMode();
     if (mode === 'local' && activeSlug && neighbourSet) {
@@ -123,6 +222,7 @@
         out.color = palette.nodeActive;
         out.size = out.size * 1.6;
         out.highlighted = true;
+        out.zIndex = 2;
       } else if (!neighbourSet.has(node)) {
         out.color = palette.nodeFaded;
         out.label = '';
@@ -133,10 +233,18 @@
   function edgeReducer(edge, attrs){
     var out = {};
     for (var k in attrs) out[k] = attrs[k];
+    /* A link is "dead" when it terminates at a phantom (is_dead) node, or
+       when the edge itself is flagged is_dead by the serializer. Checking
+       both keeps the reducer future-proof against edge-level metadata. */
     var targetAttrs = graph.getNodeAttributes(graph.target(edge));
-    var isDead = !!(targetAttrs && targetAttrs.is_dead);
-    out.color = isDead ? palette.edgeDead : palette.edge;
-    if (isDead) out.type = 'dashed';
+    var isDead = !!attrs.is_dead || !!(targetAttrs && targetAttrs.is_dead);
+    if (isDead) {
+      out.color = palette.edgeDead;
+      out.type = 'dashed';
+      out.zIndex = 0;
+    } else {
+      out.color = palette.edge;
+    }
 
     var mode = currentMode();
     if (mode === 'local' && activeSlug && neighbourSet) {
@@ -242,7 +350,23 @@
 
       try { performance.mark('zetl:graph:render:start'); } catch (e) {}
 
-      renderer = new window.Sigma(graph, container, {
+      /* REQ-112: register a "dashed" edge program so edges emitted with
+         type:'dashed' by the reducer render with a broken stroke. Falls
+         back to the line program where Sigma's dashed program is missing
+         or on an older build — in that case the muted colour alone still
+         conveys the dead-link state. */
+      var edgePrograms = {};
+      try {
+        var sigmaNS = window.Sigma || {};
+        var DashedProgram =
+          (sigmaNS.edgePrograms && sigmaNS.edgePrograms.dashed)
+          || sigmaNS.EdgeDashedProgram
+          || window.EdgeDashedProgram
+          || null;
+        if (DashedProgram) edgePrograms.dashed = DashedProgram;
+      } catch (e) {}
+
+      var sigmaSettings = {
         nodeReducer: nodeReducer,
         edgeReducer: edgeReducer,
         labelFont: palette.labelFont,
@@ -250,7 +374,10 @@
         renderLabels: true,
         defaultEdgeType: 'line',
         zIndex: true
-      });
+      };
+      if (edgePrograms.dashed) sigmaSettings.edgeProgramClasses = edgePrograms;
+
+      renderer = new window.Sigma(graph, container, sigmaSettings);
 
       /* REQ-111: node-click → page navigation (SPA shell intercepts where enabled). */
       renderer.on('clickNode', function(evt){

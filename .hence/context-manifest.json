@@ -1,15 +1,21 @@
 {
-  "task_id": "shell-and-css-contract",
+  "task_id": "dead-link-styling",
   "token_budget": 8000,
-  "tokens_used": 82,
+  "tokens_used": 72,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Update themes/default/base.html to establish the persistent shell contract: {% block persistent_shell %} containing sidebar and zetl-graph-widget; <main data-zetl-volatile> for content. Define the full --zetl-graph-* and --zetl-shell-* CSS custom-property contract in the default stylesheet. Document in theme authoring reference.",
-      "token_cost": 82,
+      "content": "Render dead-link nodes and edges with the muted treatment used elsewhere in the UI. Read --zetl-graph-node-dead and --zetl-graph-edge-dead CSS vars via reducer; apply dashed edge pattern to dead-link edges.",
+      "token_cost": 51,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-graceful-absence-changes",
+      "content": "Modified 2 files (+339, -65): .hence/context-manifest.json, themes/default/_graph.html",
+      "token_cost": 21,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T14:18:37Z"
+  "constructed_at": "2026-04-16T14:55:09Z"
 }
