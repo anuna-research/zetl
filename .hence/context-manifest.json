@@ -1,15 +1,15 @@
 {
-  "task_id": "graph-build-emit",
+  "task_id": "graph-stats-integration",
   "token_budget": 8000,
-  "tokens_used": 67,
+  "tokens_used": 38,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "In web::build, add write_graph_index_json(vault_ctx, out_dir) writing <out_dir>/graph-index.json. Co-locate with existing search_index.json and history-index.json write passes. Emit '[zetl] graph-export: pages=N edges=M duration_ms=X bytes=Y' under --verbose (OBS-101).",
-      "token_cost": 67,
+      "content": "Extend `zetl stats` to include a Graph: section (bytes, nodes, edges) in table output and a graph field in JSON output. Mirrors existing History: section.",
+      "token_cost": 38,
       "priority": "PlanMeta"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T06:55:34Z"
+  "constructed_at": "2026-04-16T07:47:18Z"
 }
