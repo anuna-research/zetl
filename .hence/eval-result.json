@@ -1,28 +1,29 @@
 {
-  "recommended_status": "completed",
-  "confidence": 1.0,
-  "exit_code": 0,
+  "recommended_status": "failed",
+  "confidence": 0.0,
+  "exit_code": 1,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 369,
-    "deletions": 6,
+    "files_changed": 4,
+    "insertions": 113,
+    "deletions": 37,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/ws.rs",
-      "themes/default/editor.html"
+      "CHANGELOG.md",
+      "Cargo.lock",
+      "Cargo.toml"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-merge-notification-changes",
-      "content": "Modified 3 files (+369, -6): .hence/context-manifest.json, src/web/ws.rs, themes/default/editor.html",
+      "key": "task-changelog-release-changes",
+      "content": "Modified 4 files (+113, -37): .hence/context-manifest.json, CHANGELOG.md, Cargo.lock, Cargo.toml",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/merge-notification-v1",
-  "evaluated_at": "2026-03-18T14:20:46Z",
+  "branch_name": "hence/changelog-release-v1",
+  "evaluated_at": "2026-04-16T22:43:39Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
