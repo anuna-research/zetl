@@ -4,6 +4,7 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 use serde::Serialize;
+use serde_json::json;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// The link graph built from parsed files
@@ -408,6 +409,111 @@ impl LinkGraph {
             most_linked: backlink_counts,
         }
     }
+}
+
+// ── Graph index serialisation (CON-101) ────────────────────────────
+
+/// A node in the graph index, pre-computed by the caller.
+#[derive(Debug, Clone)]
+pub struct GraphIndexNode {
+    /// Human-readable page title (e.g. "My Page").
+    pub label: String,
+    /// URL-safe slug used as the node key (e.g. "my-page").
+    pub slug: String,
+    pub outlink_count: usize,
+    pub backlink_count: usize,
+    /// True when the page has zero incoming edges.
+    pub is_orphan: bool,
+    /// True for phantom/dead-link targets (not backed by a file).
+    pub is_dead: bool,
+    /// Frontmatter tags; empty vec when none.
+    pub tags: Vec<String>,
+}
+
+/// A directed edge in the graph index.
+#[derive(Debug, Clone)]
+pub struct GraphIndexEdge {
+    /// Slug of the source node.
+    pub source: String,
+    /// Slug of the target node.
+    pub target: String,
+}
+
+/// All data needed to produce the graph index JSON.
+/// Built by the caller from `VaultData`; the serialiser is pure (no I/O).
+pub struct GraphIndexContext<'a> {
+    pub vault_name: &'a str,
+    pub total_pages: usize,
+    pub total_links: usize,
+    pub nodes: Vec<GraphIndexNode>,
+    pub edges: Vec<GraphIndexEdge>,
+}
+
+/// Produce a graphology-compatible JSON value (CON-101).
+///
+/// Stable ordering: nodes sorted alphabetically by slug, edges sorted by
+/// `"{source}->{target}"` key. Pure function — no I/O.
+pub fn serialize_graph_index(ctx: &GraphIndexContext) -> serde_json::Value {
+    // ── Nodes (sorted by slug) ──────────────────────────────────────
+    let mut nodes = ctx.nodes.clone();
+    nodes.sort_by(|a, b| a.slug.cmp(&b.slug));
+
+    let nodes_json: Vec<serde_json::Value> = nodes
+        .iter()
+        .map(|n| {
+            json!({
+                "key": n.slug,
+                "attributes": {
+                    "label": n.label,
+                    "slug": n.slug,
+                    "outlink_count": n.outlink_count,
+                    "backlink_count": n.backlink_count,
+                    "is_orphan": n.is_orphan,
+                    "is_dead": n.is_dead,
+                    "tags": n.tags,
+                }
+            })
+        })
+        .collect();
+
+    // ── Edges (sorted by key) ───────────────────────────────────────
+    let mut edges = ctx.edges.clone();
+    edges.sort_by(|a, b| {
+        let key_a = format!("{}->{}", a.source, a.target);
+        let key_b = format!("{}->{}", b.source, b.target);
+        key_a.cmp(&key_b)
+    });
+
+    let edges_json: Vec<serde_json::Value> = edges
+        .iter()
+        .map(|e| {
+            json!({
+                "key": format!("{}->{}", e.source, e.target),
+                "source": e.source,
+                "target": e.target,
+                "attributes": {}
+            })
+        })
+        .collect();
+
+    // ── Top-level envelope ──────────────────────────────────────────
+    json!({
+        "attributes": {
+            "format": "zetl-graph/v1",
+            "vault": {
+                "name": ctx.vault_name,
+                "pages": ctx.total_pages,
+                "links": ctx.total_links,
+            }
+        },
+        "options": {
+            "type": "directed",
+            "multi": false,
+            "allowSelfLoops": true,
+        },
+        "nodes": nodes_json,
+        "edges": edges_json,
+    })
 }
 
 #[cfg(test)]
@@ -1155,5 +1261,234 @@ mod tests {
         assert_eq!(fwd[0].meta.line, 7);
         assert_eq!(fwd[0].meta.source_file, "source.md");
         assert!(!fwd[0].meta.is_embed);
+    }
+
+    // ── serialize_graph_index tests (CON-101) ───────────────────────
+
+    fn make_node(
+        label: &str,
+        slug: &str,
+        outlinks: usize,
+        backlinks: usize,
+        is_orphan: bool,
+        is_dead: bool,
+        tags: Vec<&str>,
+    ) -> GraphIndexNode {
+        GraphIndexNode {
+            label: label.to_string(),
+            slug: slug.to_string(),
+            outlink_count: outlinks,
+            backlink_count: backlinks,
+            is_orphan,
+            is_dead,
+            tags: tags.into_iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    fn make_edge(source: &str, target: &str) -> GraphIndexEdge {
+        GraphIndexEdge {
+            source: source.to_string(),
+            target: target.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_serialize_graph_index_structure() {
+        let ctx = GraphIndexContext {
+            vault_name: "my-vault",
+            total_pages: 2,
+            total_links: 1,
+            nodes: vec![
+                make_node("Beta", "beta", 0, 1, false, false, vec![]),
+                make_node("Alpha", "alpha", 1, 0, true, false, vec!["rust"]),
+            ],
+            edges: vec![make_edge("alpha", "beta")],
+        };
+        let val = serialize_graph_index(&ctx);
+
+        // Top-level keys
+        assert_eq!(val["attributes"]["format"], "zetl-graph/v1");
+        assert_eq!(val["attributes"]["vault"]["name"], "my-vault");
+        assert_eq!(val["attributes"]["vault"]["pages"], 2);
+        assert_eq!(val["attributes"]["vault"]["links"], 1);
+        assert_eq!(val["options"]["type"], "directed");
+        assert_eq!(val["options"]["multi"], false);
+        assert_eq!(val["options"]["allowSelfLoops"], true);
+
+        // Nodes
+        let nodes = val["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 2);
+
+        // Edges
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["key"], "alpha->beta");
+        assert_eq!(edges[0]["source"], "alpha");
+        assert_eq!(edges[0]["target"], "beta");
+        assert_eq!(edges[0]["attributes"], json!({}));
+    }
+
+    #[test]
+    fn test_serialize_graph_index_node_attributes() {
+        let ctx = GraphIndexContext {
+            vault_name: "v",
+            total_pages: 1,
+            total_links: 0,
+            nodes: vec![make_node(
+                "My Page",
+                "my-page",
+                3,
+                5,
+                false,
+                false,
+                vec!["rust", "cli"],
+            )],
+            edges: vec![],
+        };
+        let val = serialize_graph_index(&ctx);
+        let node = &val["nodes"][0];
+
+        assert_eq!(node["key"], "my-page");
+        assert_eq!(node["attributes"]["label"], "My Page");
+        assert_eq!(node["attributes"]["slug"], "my-page");
+        assert_eq!(node["attributes"]["outlink_count"], 3);
+        assert_eq!(node["attributes"]["backlink_count"], 5);
+        assert_eq!(node["attributes"]["is_orphan"], false);
+        assert_eq!(node["attributes"]["is_dead"], false);
+        assert_eq!(node["attributes"]["tags"], json!(["rust", "cli"]));
+    }
+
+    #[test]
+    fn test_serialize_graph_index_dead_node() {
+        let ctx = GraphIndexContext {
+            vault_name: "v",
+            total_pages: 1,
+            total_links: 1,
+            nodes: vec![
+                make_node("Alpha", "alpha", 1, 0, true, false, vec![]),
+                make_node("Ghost", "ghost", 0, 1, false, true, vec![]),
+            ],
+            edges: vec![make_edge("alpha", "ghost")],
+        };
+        let val = serialize_graph_index(&ctx);
+        let nodes = val["nodes"].as_array().unwrap();
+
+        // Sorted by slug: alpha, ghost
+        assert_eq!(nodes[0]["attributes"]["is_dead"], false);
+        assert_eq!(nodes[0]["attributes"]["is_orphan"], true);
+        assert_eq!(nodes[1]["attributes"]["is_dead"], true);
+        assert_eq!(nodes[1]["attributes"]["is_orphan"], false);
+    }
+
+    #[test]
+    fn test_serialize_graph_index_stable_node_ordering() {
+        let ctx = GraphIndexContext {
+            vault_name: "v",
+            total_pages: 3,
+            total_links: 0,
+            nodes: vec![
+                make_node("Charlie", "charlie", 0, 0, true, false, vec![]),
+                make_node("Alpha", "alpha", 0, 0, true, false, vec![]),
+                make_node("Bravo", "bravo", 0, 0, true, false, vec![]),
+            ],
+            edges: vec![],
+        };
+        let val = serialize_graph_index(&ctx);
+        let nodes = val["nodes"].as_array().unwrap();
+
+        assert_eq!(nodes[0]["key"], "alpha");
+        assert_eq!(nodes[1]["key"], "bravo");
+        assert_eq!(nodes[2]["key"], "charlie");
+    }
+
+    #[test]
+    fn test_serialize_graph_index_stable_edge_ordering() {
+        let ctx = GraphIndexContext {
+            vault_name: "v",
+            total_pages: 3,
+            total_links: 3,
+            nodes: vec![
+                make_node("A", "a", 2, 0, true, false, vec![]),
+                make_node("B", "b", 1, 1, false, false, vec![]),
+                make_node("C", "c", 0, 2, false, false, vec![]),
+            ],
+            edges: vec![
+                make_edge("b", "c"),
+                make_edge("a", "c"),
+                make_edge("a", "b"),
+            ],
+        };
+        let val = serialize_graph_index(&ctx);
+        let edges = val["edges"].as_array().unwrap();
+
+        assert_eq!(edges[0]["key"], "a->b");
+        assert_eq!(edges[1]["key"], "a->c");
+        assert_eq!(edges[2]["key"], "b->c");
+    }
+
+    #[test]
+    fn test_serialize_graph_index_empty() {
+        let ctx = GraphIndexContext {
+            vault_name: "empty",
+            total_pages: 0,
+            total_links: 0,
+            nodes: vec![],
+            edges: vec![],
+        };
+        let val = serialize_graph_index(&ctx);
+
+        assert_eq!(val["attributes"]["format"], "zetl-graph/v1");
+        assert_eq!(val["nodes"].as_array().unwrap().len(), 0);
+        assert_eq!(val["edges"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_serialize_graph_index_empty_tags() {
+        let ctx = GraphIndexContext {
+            vault_name: "v",
+            total_pages: 1,
+            total_links: 0,
+            nodes: vec![make_node("Page", "page", 0, 0, true, false, vec![])],
+            edges: vec![],
+        };
+        let val = serialize_graph_index(&ctx);
+        assert_eq!(val["nodes"][0]["attributes"]["tags"], json!([]));
+    }
+
+    #[test]
+    fn test_serialize_graph_index_self_loop() {
+        let ctx = GraphIndexContext {
+            vault_name: "v",
+            total_pages: 1,
+            total_links: 1,
+            nodes: vec![make_node("A", "a", 1, 1, false, false, vec![])],
+            edges: vec![make_edge("a", "a")],
+        };
+        let val = serialize_graph_index(&ctx);
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["key"], "a->a");
+        assert_eq!(edges[0]["source"], "a");
+        assert_eq!(edges[0]["target"], "a");
+    }
+
+    #[test]
+    fn test_serialize_graph_index_roundtrip_json() {
+        let ctx = GraphIndexContext {
+            vault_name: "test",
+            total_pages: 2,
+            total_links: 1,
+            nodes: vec![
+                make_node("Alpha", "alpha", 1, 0, true, false, vec!["tag1"]),
+                make_node("Beta", "beta", 0, 1, false, false, vec![]),
+            ],
+            edges: vec![make_edge("alpha", "beta")],
+        };
+        let val = serialize_graph_index(&ctx);
+
+        // Should serialise to valid JSON and back without loss
+        let json_str = serde_json::to_string(&val).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(val, parsed);
     }
 }
