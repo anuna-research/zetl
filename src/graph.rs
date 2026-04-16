@@ -543,92 +543,44 @@ impl LinkGraph {
     }
 }
 
-/// Pure: serialise the vault's link graph to the CON-101 graphology JSON shape
-/// (SPEC-028 REQ-101). Stable ordering: nodes and edges sorted alphabetically by
-/// their graphology `key` so rebuilds produce deterministic diffs.
-///
-/// - `page_slug_map` maps real page names to their kebab-case slugs (node keys).
-/// - `tags_by_page` carries frontmatter-derived tags per page; pages without an
-///   entry receive an empty `tags` array.
-/// - `generated_at` is embedded into `attributes.generated_at` verbatim
-///   (passed in by the caller so this function remains pure/deterministic).
-///
-/// Multi-edges in the internal `petgraph::DiGraph` are collapsed per
-/// `options.multi = false`; self-loops are preserved (`allowSelfLoops = true`).
-pub fn serialize_graph_index(
-    graph: &LinkGraph,
-    page_slug_map: &HashMap<String, String>,
-    tags_by_page: &HashMap<String, Vec<String>>,
-    vault_name: &str,
-    generated_at: &str,
-) -> serde_json::Value {
-    let slug_for = |name: &str| -> String {
-        page_slug_map
-            .get(name)
-            .cloned()
-            .unwrap_or_else(|| name.to_string())
-    };
+// ── Graph index serialisation (CON-101) ────────────────────────────
 
-    let mut node_entries: Vec<(String, serde_json::Value)> = Vec::with_capacity(graph.node_map.len());
-    for (page_name, &node_idx) in &graph.node_map {
-        let is_dead = !graph.resolved.contains(page_name);
-        let key = slug_for(page_name);
-        let outlink_count = graph
-            .graph
-            .edges_directed(node_idx, Direction::Outgoing)
-            .count();
-        let backlink_count = graph
-            .graph
-            .edges_directed(node_idx, Direction::Incoming)
-            .count();
-        let is_orphan = !is_dead && backlink_count == 0;
-        let tags = tags_by_page.get(page_name).cloned().unwrap_or_default();
-        let attrs = serde_json::json!({
-            "label": page_name,
-            "slug": key,
-            "outlink_count": outlink_count,
-            "backlink_count": backlink_count,
-            "is_orphan": is_orphan,
-            "is_dead": is_dead,
-            "tags": tags,
-        });
-        node_entries.push((
-            key.clone(),
-            serde_json::json!({ "key": key, "attributes": attrs }),
-        ));
-    }
-    node_entries.sort_by(|a, b| a.0.cmp(&b.0));
-    let nodes_out: Vec<serde_json::Value> = node_entries.into_iter().map(|(_, v)| v).collect();
+/// A node in the graph index, pre-computed by the caller.
+#[derive(Debug, Clone)]
+pub struct GraphIndexNode {
+    /// Human-readable page title (e.g. "My Page").
+    pub label: String,
+    /// URL-safe slug used as the node key (e.g. "my-page").
+    pub slug: String,
+    pub outlink_count: usize,
+    pub backlink_count: usize,
+    /// True when the page has zero incoming edges.
+    pub is_orphan: bool,
+    /// True for phantom/dead-link targets (not backed by a file).
+    pub is_dead: bool,
+    /// Frontmatter tags; empty vec when none.
+    pub tags: Vec<String>,
+}
 
-    let mut seen_edges: HashSet<(String, String)> = HashSet::new();
-    let mut edge_entries: Vec<(String, serde_json::Value)> = Vec::new();
-    for edge_ref in graph.graph.edge_references() {
-        let source_name = &graph.graph[edge_ref.source()];
-        let target_name = &graph.graph[edge_ref.target()];
-        let source_slug = slug_for(source_name);
-        let target_slug = slug_for(target_name);
-        let pair = (source_slug.clone(), target_slug.clone());
-        if !seen_edges.insert(pair) {
-            continue;
-        }
-        let key = format!("{source_slug}->{target_slug}");
-        edge_entries.push((
-            key.clone(),
-            serde_json::json!({
-                "key": key,
-                "source": source_slug,
-                "target": target_slug,
-                "attributes": {},
-            }),
-        ));
-    }
-    edge_entries.sort_by(|a, b| a.0.cmp(&b.0));
-    let edges_out: Vec<serde_json::Value> = edge_entries.into_iter().map(|(_, v)| v).collect();
+/// A directed edge in the graph index.
+#[derive(Debug, Clone)]
+pub struct GraphIndexEdge {
+    /// Slug of the source node.
+    pub source: String,
+    /// Slug of the target node.
+    pub target: String,
+}
 
-    let pages_count = graph.resolved.len();
-    let links_count = edges_out.len();
+/// All data needed to produce the graph index JSON.
+/// Built by the caller from `VaultData`; the serialiser is pure (no I/O).
+pub struct GraphIndexContext<'a> {
+    pub vault_name: &'a str,
+    pub total_pages: usize,
+    pub total_links: usize,
+    pub nodes: Vec<GraphIndexNode>,
+    pub edges: Vec<GraphIndexEdge>,
+}
 
-    serde_json::json!({
 /// Pure: serialise the vault's link graph to the CON-101 graphology JSON shape
 /// (SPEC-028 REQ-101). Stable ordering: nodes and edges sorted alphabetically by
 /// their graphology `key` so rebuilds produce deterministic diffs.
@@ -731,6 +683,69 @@ pub fn serialize_graph_index(
         },
         "nodes": nodes_out,
         "edges": edges_out,
+    })
+}
+
+/// Context-based variant of [`serialize_graph_index`] that takes a pre-built
+/// [`GraphIndexContext`] instead of raw arguments. Used by `zetl serve` route
+/// handlers via `build_graph_index_context`.
+pub fn serialize_graph_index_ctx(ctx: &GraphIndexContext) -> serde_json::Value {
+    let mut nodes = ctx.nodes.clone();
+    nodes.sort_by(|a, b| a.slug.cmp(&b.slug));
+
+    let nodes_json: Vec<serde_json::Value> = nodes
+        .iter()
+        .map(|n| {
+            serde_json::json!({
+                "key": n.slug,
+                "attributes": {
+                    "label": n.label,
+                    "slug": n.slug,
+                    "outlink_count": n.outlink_count,
+                    "backlink_count": n.backlink_count,
+                    "is_orphan": n.is_orphan,
+                    "is_dead": n.is_dead,
+                    "tags": n.tags,
+                }
+            })
+        })
+        .collect();
+
+    let mut edges = ctx.edges.clone();
+    edges.sort_by(|a, b| {
+        let key_a = format!("{}->{}", a.source, a.target);
+        let key_b = format!("{}->{}", b.source, b.target);
+        key_a.cmp(&key_b)
+    });
+
+    let edges_json: Vec<serde_json::Value> = edges
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "key": format!("{}->{}", e.source, e.target),
+                "source": e.source,
+                "target": e.target,
+                "attributes": {}
+            })
+        })
+        .collect();
+
+    serde_json::json!({
+        "attributes": {
+            "format": "zetl-graph/v1",
+            "vault": {
+                "name": ctx.vault_name,
+                "pages": ctx.total_pages,
+                "links": ctx.total_links,
+            }
+        },
+        "options": {
+            "type": "directed",
+            "multi": false,
+            "allowSelfLoops": true,
+        },
+        "nodes": nodes_json,
+        "edges": edges_json,
     })
 }
 

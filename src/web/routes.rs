@@ -5500,7 +5500,7 @@ pub async fn graph_index_handler(State(state): State<WebState>) -> Response {
         .unwrap_or_else(|| "vault".to_string());
 
     let ctx = crate::web::build::build_graph_index_context(&data, &state.vault_root, &vault_name);
-    let json_value = crate::graph::serialize_graph_index(&ctx);
+    let json_value = crate::graph::serialize_graph_index_ctx(&ctx);
 
     match serde_json::to_string(&json_value) {
         Ok(body) => (
