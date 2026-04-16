@@ -1,15 +1,15 @@
 {
-  "task_id": "graph-build-emit",
+  "task_id": "graph-serve-route",
   "token_budget": 8000,
-  "tokens_used": 67,
+  "tokens_used": 42,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "In web::build, add write_graph_index_json(vault_ctx, out_dir) writing <out_dir>/graph-index.json. Co-locate with existing search_index.json and history-index.json write passes. Emit '[zetl] graph-export: pages=N edges=M duration_ms=X bytes=Y' under --verbose (OBS-101).",
-      "token_cost": 67,
+      "content": "In web::routes, add GET /graph-index.json handler returning CON-101 JSON with Content-Type: application/json and Cache-Control: no-cache. Uses the same pure core as build.",
+      "token_cost": 42,
       "priority": "PlanMeta"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T06:55:34Z"
+  "constructed_at": "2026-04-16T06:08:04Z"
 }
