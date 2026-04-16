@@ -1,15 +1,15 @@
 {
-  "task_id": "nfr-size-budgets",
+  "task_id": "graph-partial",
   "token_budget": 8000,
-  "tokens_used": 38,
+  "tokens_used": 96,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement TEST-203 (gzip of vendor/sigma/*.min.js <= 250 kB) and TEST-204 (graph-index.json <= 1 MB for 2k-page vault; stderr warning for 5k-page vault).",
-      "token_cost": 38,
+      "content": "Create themes/default/_graph.html: single-Sigma-instance partial. Instantiates graphology DirectedGraph (from inline graph_index or fetched graph_index_url), runs graphology-layout-forceatlas2 in a Web Worker when available, mounts Sigma.js v3. Implements mode switching (local/vault/off) via data-mode attribute. nodeReducer/edgeReducer read CSS custom properties via getComputedStyle.",
+      "token_cost": 96,
       "priority": "PlanMeta"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T13:50:11Z"
+  "constructed_at": "2026-04-16T14:03:17Z"
 }
