@@ -3,28 +3,30 @@
   "confidence": 0.0,
   "exit_code": 1,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 136,
-    "deletions": 55,
+    "files_changed": 7,
+    "insertions": 502,
+    "deletions": 49,
     "file_list": [
       ".hence/context-manifest.json",
+      ".hence/eval-result.json",
       "src/web/engine.rs",
+      "themes/default/_graph.html",
       "themes/default/base.html",
       "themes/default/static/spa.js",
       "themes/default/theme.toml"
     ],
-    "dirty_files": 0
+    "dirty_files": 1
   },
   "learnings": [
     {
-      "key": "task-spa-shell-changes",
-      "content": "Modified 5 files (+136, -55): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/static/spa.js, themes/default/theme.toml",
+      "key": "task-client-perf-marks-changes",
+      "content": "Modified 7 files (+502, -49): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, themes/default/_graph.html, themes/default/base.html and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/spa-shell-v1",
-  "evaluated_at": "2026-04-16T15:38:40Z",
+  "branch_name": "hence/client-perf-marks-v2",
+  "evaluated_at": "2026-04-16T21:57:43Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
