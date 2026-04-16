@@ -1657,4 +1657,180 @@ mod tests {
             TemplateEngine::new(std::path::Path::new("/nonexistent"), "default", false, false);
         assert!(!engine.graph_inline());
     }
+
+    // ── Graph partial graceful-absence (SPEC-028 REQ-109, NFR-105) ──
+
+    fn empty_vault_ctx(pages: usize, links: usize) -> VaultContext {
+        VaultContext {
+            name: "empty".to_string(),
+            pages: Vec::new(),
+            sidebar_tree: Vec::new(),
+            stats: StatsContext {
+                total_pages: pages,
+                total_links: links,
+                dead_links: 0,
+                orphans: 0,
+            },
+            history: serde_json::Value::Null,
+            semantic_available: false,
+            site_url: String::new(),
+        }
+    }
+
+    fn render_graph_partial(vault: &VaultContext) -> String {
+        let engine = default_engine();
+        let ctx = context! {
+            vault => vault,
+            root_path => "/",
+            index_file => "",
+            graph_index_url => "/graph-index.json",
+            graph_index => "",
+            mode => "serve",
+            theme => "default",
+        };
+        let env = engine.env();
+        let tmpl = env
+            .get_template("_graph.html")
+            .expect("bundled default theme must provide _graph.html");
+        tmpl.render(ctx).expect("graph partial must render")
+    }
+
+    #[test]
+    fn test_graph_partial_bundled_exists() {
+        // REQ-109 prerequisite: the default theme must bundle _graph.html so
+        // the graceful-absence contract (noscript, empty state, keyboard
+        // fallback) is available everywhere.
+        assert!(
+            bundled_template("default", "_graph.html").is_some(),
+            "default theme must bundle _graph.html"
+        );
+    }
+
+    #[test]
+    fn test_graph_partial_noscript_fallback() {
+        let html = render_graph_partial(&sample_vault());
+        assert!(html.contains("<noscript>"), "must provide a <noscript> block");
+        assert!(
+            html.contains("Graph view requires JavaScript"),
+            "<noscript> must explain JS requirement"
+        );
+        assert!(
+            html.contains("href=\"/\""),
+            "<noscript> must link to the vault index"
+        );
+    }
+
+    #[test]
+    fn test_graph_partial_empty_vault_no_pages() {
+        let html = render_graph_partial(&empty_vault_ctx(0, 0));
+        assert!(
+            html.contains("No pages yet"),
+            "zero pages must render the no-pages empty-state"
+        );
+        // Canvas container still present so JS-enabled future-population
+        // does not require a re-render of the partial.
+        assert!(html.contains("id=\"zetl-graph\""));
+    }
+
+    #[test]
+    fn test_graph_partial_empty_vault_no_links() {
+        let mut vault = sample_vault();
+        vault.stats.total_links = 0;
+        let html = render_graph_partial(&vault);
+        assert!(
+            html.contains("No links yet"),
+            "zero links must render the no-links empty-state"
+        );
+        assert!(
+            html.contains("[[wikilinks]]"),
+            "empty-state must teach the [[wikilink]] syntax"
+        );
+    }
+
+    #[test]
+    fn test_graph_partial_details_fallback_has_every_page() {
+        let vault = VaultContext {
+            name: "v".to_string(),
+            pages: vec![
+                PageEntry {
+                    title: "Alpha".to_string(),
+                    slug: "alpha".to_string(),
+                    outlink_count: 1,
+                    backlink_count: 0,
+                    extension: "md".to_string(),
+                },
+                PageEntry {
+                    title: "Guide Intro".to_string(),
+                    slug: "guides/intro".to_string(),
+                    outlink_count: 0,
+                    backlink_count: 1,
+                    extension: "md".to_string(),
+                },
+                PageEntry {
+                    title: "Guide Next".to_string(),
+                    slug: "guides/next".to_string(),
+                    outlink_count: 0,
+                    backlink_count: 0,
+                    extension: "md".to_string(),
+                },
+            ],
+            sidebar_tree: Vec::new(),
+            stats: StatsContext {
+                total_pages: 3,
+                total_links: 2,
+                dead_links: 0,
+                orphans: 0,
+            },
+            history: serde_json::Value::Null,
+            semantic_available: false,
+            site_url: String::new(),
+        };
+        let html = render_graph_partial(&vault);
+        assert!(html.contains("<details"), "NFR-105 requires a <details> fallback");
+        assert!(html.contains("<summary>Page list (3)</summary>"));
+        // Every slug reachable by tab — rendered as an anchor.
+        assert!(html.contains("href=\"/alpha/\""));
+        assert!(html.contains("href=\"/guides/intro/\""));
+        assert!(html.contains("href=\"/guides/next/\""));
+        // Slug disclosed as a <small> next to the nested page title so
+        // sighted users can distinguish same-titled pages across folders.
+        assert!(html.contains("guides/intro"));
+    }
+
+    #[test]
+    fn test_graph_partial_tolerates_embedding_with_ignore_missing() {
+        // REQ-109 contract: embedders (sidebar, /_graph route) must include
+        // the partial via `{% include "_graph.html" ignore missing %}` so a
+        // theme that removes the file does not crash the render. This test
+        // proves the pattern works — both when the partial resolves (via
+        // the bundled default) and when a theme shadows it with nothing.
+        let tmp = tempfile::tempdir().unwrap();
+        let theme_dir = tmp.path().join(".zetl/themes/no-graph");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        // Host template that wraps the widget exactly how the /_graph route
+        // / sidebar entry will wrap it once those tasks land.
+        std::fs::write(
+            theme_dir.join("host.html"),
+            r#"<div id="host">{% include "_graph.html" ignore missing %}</div>"#,
+        )
+        .unwrap();
+
+        let engine = TemplateEngine::new(tmp.path(), "no-graph", false, false);
+        let env = engine.env();
+        let tmpl = env
+            .get_template("host.html")
+            .expect("host template must load");
+        let html = tmpl
+            .render(context! {
+                vault => empty_vault_ctx(0, 0),
+                root_path => "/",
+                index_file => "",
+                graph_index_url => "",
+                graph_index => "",
+                mode => "serve",
+                theme => "no-graph",
+            })
+            .expect("host must render even when `_graph.html` is missing or inert");
+        assert!(html.contains("<div id=\"host\">"));
+    }
 }

@@ -1,12 +1,12 @@
 {
-  "task_id": "dead-link-styling",
+  "task_id": "graceful-absence",
   "token_budget": 8000,
-  "tokens_used": 72,
+  "tokens_used": 112,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Render dead-link nodes and edges with the muted treatment used elsewhere in the UI. Read --zetl-graph-node-dead and --zetl-graph-edge-dead CSS vars via reducer; apply dashed edge pattern to dead-link edges.",
-      "token_cost": 51,
+      "content": "Implement graceful-absence matrix: <noscript> fallback in _graph.html; empty-state copy when vault has zero pages/links; sidebar link and /_graph route tolerate theme override that removes _graph.html; keyboard/SR fallback (<details>-grouped page list alongside canvas) for NFR-105.",
+      "token_cost": 70,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 2 files (+339, -65): .hence/context-manifest.json, themes/default/_graph.html",
       "token_cost": 21,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-dead-link-styling-changes",
+      "content": "Modified 2 files (+468, -61): .hence/context-manifest.json, themes/default/_graph.html",
+      "token_cost": 21,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T14:55:09Z"
+  "constructed_at": "2026-04-16T15:01:08Z"
 }

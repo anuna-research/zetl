@@ -1,4 +1,4 @@
-{# themes/default/_graph.html — SPEC-028 / IMPL-028 task-graph-partial
+{# themes/default/_graph.html — SPEC-028 / IMPL-028 task-graph-partial + task-graceful-absence
    Single persistent Sigma.js + graphology widget.
 
    Contract:
@@ -14,40 +14,42 @@
    - Events:     listens to zetl:after-navigate (no Sigma re-instantiation).
    - OBS-201:    performance.mark('zetl:graph:render:start') before layout,
                  performance.measure('zetl:graph:render', ...) on layoutstop.
-   - REQ-109:    graceful absence — <noscript> fallback, empty-state copy when
-                 vault has zero pages / zero links, and tolerance of missing
-                 partial (embedding templates use `include ... ignore missing`).
+   - REQ-109:    graceful absence — <noscript> fallback, empty-state copy
+                 when vault has zero pages / zero links, and tolerance of
+                 theme-override removal: embedders MUST include the partial
+                 via `{% include "_graph.html" ignore missing %}` so that a
+                 theme author can delete this file without breaking the
+                 sidebar entry or the /_graph route.
    - REQ-112:    dead-link treatment (task-dead-link-styling) — phantom
                  (is_dead) nodes render with --zetl-graph-node-dead; edges
                  terminating at a dead node render with --zetl-graph-edge-dead
                  and Sigma's "dashed" edge type.
-   - NFR-105:    keyboard/SR <details> fallback with every page reachable by
-                 tab navigation; rendered alongside the canvas so it's present
-                 for both JS-disabled and assistive-tech users. #}
+   - NFR-105:    keyboard / screen-reader fallback — a <details> page list
+                 alongside the canvas, every slug a focusable <a>, so every
+                 node is reachable by tab navigation and discoverable by
+                 assistive tech regardless of JS state. #}
 
-{% set zetl_graph_total_pages = (vault.stats.total_pages if vault is defined and vault.stats is defined else 0) %}
-{% set zetl_graph_total_links = (vault.stats.total_links if vault is defined and vault.stats is defined else 0) %}
-{% set zetl_graph_pages = (vault.pages if vault is defined and vault.pages is defined else []) %}
-{% set zetl_graph_empty = zetl_graph_total_pages == 0 or zetl_graph_total_links == 0 %}
+{% set zetl_graph_total_pages = vault.stats.total_pages | default(0) %}
+{% set zetl_graph_total_links = vault.stats.total_links | default(0) %}
 
 <noscript>
   <div class="zetl-graph-fallback" role="note">
     <p><strong>Graph view requires JavaScript.</strong>
-      Every page is listed below and from the
+      Every page is listed below, and is reachable from the
       <a href="{{ root_path | safe }}{{ index_file | safe }}">vault index</a>.</p>
   </div>
 </noscript>
 
-{% if zetl_graph_empty %}
+{% if zetl_graph_total_pages == 0 %}
 <div class="zetl-graph-empty" role="status" aria-live="polite">
-  {% if zetl_graph_total_pages == 0 %}
   <p><strong>No pages yet.</strong>
-    Create a page to start building your vault; once two pages reference each
-    other with <code>[[wikilinks]]</code> a graph will appear here.</p>
-  {% else %}
+    Create a page to start building your vault — a graph will appear here
+    once two pages reference each other with <code>[[wikilinks]]</code>.</p>
+</div>
+{% elif zetl_graph_total_links == 0 %}
+<div class="zetl-graph-empty" role="status" aria-live="polite">
   <p><strong>No links yet.</strong>
     Add <code>[[wikilinks]]</code> between pages to build a graph.</p>
-  {% endif %}
 </div>
 {% endif %}
 
@@ -56,33 +58,21 @@
      role="img"
      aria-label="Vault link graph (interactive canvas; a keyboard-accessible page list appears below)"></div>
 
-{# NFR-105: keyboard / screen-reader fallback. Grouped by top-level slug
-   prefix (top-level pages are grouped under "Pages"). Every slug is a
-   reachable <a href> so tab-navigation covers every node. The <details>
-   is closed by default to keep the visual footprint small, but the inner
-   <summary> and links remain in the accessibility tree and in the tab
-   order. Rendered alongside (not inside) the canvas so JS-disabled or
-   screen-reader users never lose reachability. #}
-{% if zetl_graph_pages %}
+{# NFR-105: keyboard/SR fallback. Every page is a focusable <a>, so tab
+   navigation reaches every node in the graph. The <details> element keeps
+   the visible footprint small for sighted users while leaving the list in
+   the accessibility tree and in the DOM order. #}
+{% if vault.pages %}
 <details class="zetl-graph-fallback-list" data-zetl-graph-fallback>
   <summary>Page list ({{ zetl_graph_total_pages }})</summary>
-  {# Group pages by their first slug segment (folder prefix). Top-level
-     pages — slugs without a `/` — go under "Pages". The grouping uses
-     plain-template logic so it works with JS disabled. #}
-  {% set ns = namespace(current_group='', any_open=false) %}
-  {% for page in zetl_graph_pages %}
-    {% set parts = page.slug | split("/") | list %}
-    {% set group = (parts[0] if parts | length > 1 else 'Pages') %}
-    {% if group != ns.current_group %}
-      {% if ns.any_open %}</ul>{% endif %}
-      <h3 class="zetl-graph-fallback-group">{{ group }}</h3>
-      <ul class="zetl-graph-fallback-pages">
-      {% set ns.current_group = group %}
-      {% set ns.any_open = true %}
-    {% endif %}
-    <li><a href="{{ root_path | safe }}{{ page.slug | safe }}/{{ index_file | safe }}">{{ page.title }}</a></li>
-  {% endfor %}
-  {% if ns.any_open %}</ul>{% endif %}
+  <ul class="zetl-graph-fallback-pages">
+    {% for page in vault.pages %}
+    <li>
+      <a href="{{ root_path | safe }}{{ page.slug | safe }}/{{ index_file | safe }}">{{ page.title }}</a>
+      {% if "/" in page.slug %}<small class="zetl-graph-fallback-slug">{{ page.slug }}</small>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
 </details>
 {% endif %}
 
@@ -91,29 +81,25 @@
   [data-mode="off"] #zetl-graph { display: none; }
   .zetl-graph-fallback,
   .zetl-graph-empty { padding: 0.75rem 1rem; font-size: 0.85rem; opacity: 0.85; }
-  .zetl-graph-empty code { padding: 0 0.25rem; background: var(--zetl-shell-surface, rgba(0,0,0,0.05)); border-radius: 0.125rem; }
+  .zetl-graph-empty code {
+    padding: 0 0.25rem;
+    background: var(--zetl-shell-surface, rgba(0,0,0,0.05));
+    border-radius: 0.125rem;
+  }
   .zetl-graph-fallback-list {
     font-size: 0.85rem;
-    margin: 0.75rem 1rem;
+    margin: 0.5rem 1rem;
     border-top: 1px solid var(--zetl-shell-border, rgba(0,0,0,0.1));
     padding-top: 0.5rem;
   }
   .zetl-graph-fallback-list > summary { cursor: pointer; opacity: 0.8; }
-  .zetl-graph-fallback-list > summary:focus-visible {
-    outline: 2px solid var(--zetl-graph-node-active, #f59e0b);
-    outline-offset: 2px;
-  }
-  .zetl-graph-fallback-group {
-    margin: 0.5rem 0 0.25rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    opacity: 0.75;
-  }
-  .zetl-graph-fallback-pages { margin: 0 0 0.5rem; padding-left: 1.25rem; }
+  .zetl-graph-fallback-list > summary:focus-visible,
   .zetl-graph-fallback-pages a:focus-visible {
     outline: 2px solid var(--zetl-graph-node-active, #f59e0b);
     outline-offset: 2px;
   }
+  .zetl-graph-fallback-pages { margin: 0.25rem 0 0.5rem; padding-left: 1.25rem; }
+  .zetl-graph-fallback-slug { margin-left: 0.35rem; opacity: 0.6; }
   /* Hide the keyboard/SR fallback when the canvas is actually rendering —
      the accessibility tree keeps it reachable via the <details>/<summary>
      toggle, and we avoid visual duplication for sighted users with JS on.
