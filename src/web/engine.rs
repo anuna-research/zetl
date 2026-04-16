@@ -231,6 +231,27 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "help.html",
 ];
 
+/// Resolve the graph widget placement (SPEC-028 REQ-116) for a given vault
+/// and theme, using the same disk-first / bundled-fallback order as the
+/// template loader. Returns `"docked"` when the manifest is unreadable,
+/// absent, or specifies an unknown value.
+pub(crate) fn resolve_graph_placement_for(vault_root: &Path, theme: &str) -> &'static str {
+    use super::theme::{load_bundled_manifest, load_theme_manifest, resolve_graph_placement};
+    if theme != "default" {
+        let theme_dir = vault_root.join(".zetl/themes").join(theme);
+        if let Ok(Some(m)) = load_theme_manifest(&theme_dir) {
+            return resolve_graph_placement(Some(&m));
+        }
+    }
+    if let Ok(Some(m)) = load_bundled_manifest(theme) {
+        return resolve_graph_placement(Some(&m));
+    }
+    if let Ok(Some(m)) = load_bundled_manifest("default") {
+        return resolve_graph_placement(Some(&m));
+    }
+    "docked"
+}
+
 /// Build a minijinja Environment with the three-tier template loader.
 fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
     let mut env = Environment::new();
@@ -251,6 +272,15 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
         // Tier 3: fall back to built-in default theme embedded at compile time
         Ok(bundled_template("default", name).map(|s| s.to_string()))
     });
+
+    // SPEC-028 REQ-116: inject the resolved graph widget placement as a
+    // global so every render path (and third-party templates that extend
+    // base.html) can reference `{{ graph_placement }}` without plumbing
+    // the value through each call site's context.
+    env.add_global(
+        "graph_placement",
+        resolve_graph_placement_for(vault_root, theme),
+    );
 
     // SPEC-027 REQ-300: expose humanise_days (e.g. `3d`, `2w`, `9mo`) as a
     // template filter for history-metadata rendering.
@@ -1092,6 +1122,116 @@ mod tests {
         // Cached mode should still return the old version
         let html2 = engine.render_index(&vault, "serve", "", "").unwrap();
         assert!(html2.contains("CACHED_V1"));
+    }
+
+    // ── SPEC-028 REQ-116: docked-minimap placement ──────────────────────────
+
+    #[test]
+    fn test_docked_is_default_placement_on_rendered_index() {
+        // With no on-disk theme override, the bundled default theme's
+        // theme.toml sets `[graph] placement = "docked"`, so every render
+        // should carry `data-placement="docked"` on the shell container.
+        let engine = default_engine();
+        let vault = sample_vault();
+        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        assert!(
+            html.contains(r#"data-placement="docked""#),
+            "rendered HTML missing docked data-placement attribute:\n{html}"
+        );
+        assert!(
+            html.contains(r#"class="zetl-graph-widget""#),
+            "rendered HTML missing graph widget container"
+        );
+        assert!(
+            html.contains(r#"id="zetl-graph""#),
+            "rendered HTML missing graph canvas mount point"
+        );
+    }
+
+    #[test]
+    fn test_expand_link_points_at_vault_graph_route() {
+        // The click-to-expand control routes to /_graph in serve mode and to
+        // _graph.html in build mode so that static exports resolve the link
+        // relative to the current page.
+        let engine = default_engine();
+        let vault = sample_vault();
+
+        // minijinja HTML-escapes `/` to `&#x2f;` in attribute context; match
+        // on either encoding so the test stays agnostic to that detail.
+        let serve_html = engine.render_index(&vault, "serve", "", "").unwrap();
+        let has_unescaped = serve_html.contains("href=\"/_graph\"");
+        let has_escaped = serve_html.contains("href=\"&#x2f;_graph\"");
+        assert!(
+            has_unescaped || has_escaped,
+            "serve-mode expand link should target /_graph (escaped or raw); got no match"
+        );
+        // Must not accidentally carry the build-mode .html suffix in serve.
+        assert!(!serve_html.contains("_graph.html"));
+
+        let build_html = engine.render_index(&vault, "build", "", "").unwrap();
+        assert!(
+            build_html.contains("_graph.html"),
+            "build-mode expand link should target _graph.html"
+        );
+    }
+
+    #[test]
+    fn test_graph_placement_theme_opt_in_tabs() {
+        // An on-disk theme with `[graph] placement = "tabs"` in theme.toml
+        // flips the data-placement attribute without editing the partial.
+        let tmp = tempfile::tempdir().unwrap();
+        let theme_dir = tmp.path().join(".zetl/themes/tabby");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        std::fs::write(
+            theme_dir.join("theme.toml"),
+            "[theme]\nname = \"tabby\"\nversion = \"1.0.0\"\n[graph]\nplacement = \"tabs\"\n",
+        )
+        .unwrap();
+        let engine = TemplateEngine::new(tmp.path(), "tabby", false, false);
+        let vault = sample_vault();
+        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        assert!(
+            html.contains(r#"data-placement="tabs""#),
+            "tabs-opt-in theme should emit data-placement=\"tabs\""
+        );
+    }
+
+    #[test]
+    fn test_graph_placement_theme_opt_in_stacked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let theme_dir = tmp.path().join(".zetl/themes/stacky");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        std::fs::write(
+            theme_dir.join("theme.toml"),
+            "[theme]\nname = \"stacky\"\nversion = \"1.0.0\"\n[graph]\nplacement = \"stacked\"\n",
+        )
+        .unwrap();
+        let engine = TemplateEngine::new(tmp.path(), "stacky", false, false);
+        let vault = sample_vault();
+        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        assert!(
+            html.contains(r#"data-placement="stacked""#),
+            "stacked-opt-in theme should emit data-placement=\"stacked\""
+        );
+    }
+
+    #[test]
+    fn test_graph_placement_unknown_value_falls_back_to_docked_in_render() {
+        // Defensive: a typo or future-only value must not break the layout —
+        // it coerces to `docked` so the widget still renders somewhere valid.
+        let tmp = tempfile::tempdir().unwrap();
+        let theme_dir = tmp.path().join(".zetl/themes/typo");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        std::fs::write(
+            theme_dir.join("theme.toml"),
+            "[theme]\nname = \"typo\"\nversion = \"1.0.0\"\n[graph]\nplacement = \"floating-island\"\n",
+        )
+        .unwrap();
+        let engine = TemplateEngine::new(tmp.path(), "typo", false, false);
+        let vault = sample_vault();
+        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        assert!(html.contains(r#"data-placement="docked""#));
+        assert!(!html.contains("floating-island"));
     }
 
     // ── TemplateError tests ────────────────────────────────────────────────
