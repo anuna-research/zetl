@@ -1,12 +1,12 @@
 {
-  "task_id": "ws-wire-format",
+  "task_id": "flip-default-backend",
   "token_budget": 8000,
-  "tokens_used": 312,
+  "tokens_used": 318,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Migrate src/web/ws.rs's initial-sync and op messages from automerge bytes (base64) to diamond-types bytes (base64). Update CrdtDocEntry to hold a Box<dyn CrdtBackend>. Replace the automerge::ScalarValue conversion in json_to_scalar with a project-owned Scalar enum (defined in src/crdt/marks.rs) so the ws module no longer imports automerge::*. Update existing ws.rs tests to use the new wire shape. WAL format change is acceptable — clear .zetl/wal/ on first run after the swap (documented in commit message).",
-      "token_cost": 128,
+      "content": "Make DiamondCrdtDocument the default CrdtBackend everywhere. Remove the automerge-backed CrdtDocument from src/crdt/mod.rs (move marks-related code that does not depend on automerge into src/crdt/marks.rs). Remove the `automerge` line from Cargo.toml and the corresponding lockfile entries. Re-run the SPEC-020 conformance test list (mark types, block-token round-trip, multi-client convergence) end-to-end against the new default.",
+      "token_cost": 107,
       "priority": "PlanMeta"
     },
     {
@@ -44,8 +44,14 @@
       "content": "Modified 9 files (+1404, -164): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/diamond.rs, src/crdt/marks.rs and 4 more",
       "token_cost": 33,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-ws-wire-format-changes",
+      "content": "Modified 4 files (+121, -22): .hence/context-manifest.json, src/crdt/diamond.rs, src/crdt/mod.rs, src/web/ws.rs",
+      "token_cost": 27,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T08:59:57Z"
+  "constructed_at": "2026-04-17T09:16:03Z"
 }

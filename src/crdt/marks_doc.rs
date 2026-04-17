@@ -364,8 +364,8 @@ fn apply_mark(
 
 /// Apply an `Unmark` op — carve `[start, end)` out of any matching span.
 ///
-/// Behaviour matches automerge's `unmark`: disjoint spans pass through,
-/// fully-covered spans drop, partial overlaps clip / split.
+/// Behaviour: disjoint spans pass through, fully-covered spans drop,
+/// partial overlaps clip / split.
 fn apply_unmark(
     spans: &mut Vec<MarkSpan>,
     name: &str,
@@ -379,7 +379,7 @@ fn apply_unmark(
     let mut out = Vec::with_capacity(spans.len());
     for s in spans.drain(..) {
         let name_matches = s.name == name;
-        let value_matches = value.map_or(true, |v| &s.value == v);
+        let value_matches = value.is_none_or(|v| &s.value == v);
         if !(name_matches && value_matches) {
             out.push(s);
             continue;

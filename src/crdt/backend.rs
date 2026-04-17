@@ -1,9 +1,9 @@
-//! Engine-agnostic CRDT backend trait (IMPL-029 Phase 3).
+//! Engine-agnostic CRDT backend trait.
 //!
-//! The automerge-based [`crate::crdt::CrdtDocument`] implements this today;
-//! a future diamond-types-based backend (Phase 4+) will implement it too.
-//! Consumers in `src/web/ws.rs` hold a `Box<dyn CrdtBackend>` so the
-//! concrete engine is swappable without touching call sites.
+//! [`crate::crdt::diamond::DiamondCrdtDocument`] is the sole implementation
+//! after IMPL-029 Phase 7. Consumers in `src/web/ws.rs` hold a
+//! `Box<dyn CrdtBackend>` so alternative engines remain swappable without
+//! touching call sites.
 
 use std::any::Any;
 
@@ -13,8 +13,8 @@ use crate::crdt::marks::{Mark, MarkType};
 
 /// The public surface required of a CRDT document backend.
 ///
-/// Returns project-owned types (`Mark`, `MarkType`) so no automerge
-/// borrowed types (`automerge::marks::Mark<'_>`) leak into the trait.
+/// Returns project-owned types (`Mark`, `MarkType`) so no engine-specific
+/// borrowed types leak into the trait.
 pub trait CrdtBackend: Send + Sync {
     /// Create an empty CRDT document.
     fn new() -> Result<Self>

@@ -21,7 +21,8 @@ use diamond_types::list::OpLog;
 use diamond_types::AgentId;
 
 use crate::crdt::backend::CrdtBackend;
-use crate::crdt::marks::{Mark, MarkType};
+use crate::crdt::blocks::BlockToken;
+use crate::crdt::marks::{parse_inline_marks, serialize_to_markdown, ExpandMark, Mark, MarkType};
 use crate::crdt::marks_doc::MarksDoc;
 
 /// Default agent name used for the local writer.
@@ -54,6 +55,98 @@ impl DiamondCrdtDocument {
         let a = self.oplog.get_or_create_agent_id(&self.agent_name);
         self.agent = Some(a);
         a
+    }
+
+    /// Ingest a markdown document: insert every line's plain text (with
+    /// block prefixes preserved) and then apply inline marks.
+    ///
+    /// Text is inserted first and marks are applied afterwards so that
+    /// inclusive marks at line boundaries never grow to absorb the
+    /// structural newlines we inject between lines.
+    fn load_markdown(&mut self, markdown: &str) -> Result<()> {
+        let lines: Vec<&str> = markdown.lines().collect();
+        let mut pending_marks: Vec<(MarkType, usize, usize, ExpandMark)> = Vec::new();
+        let mut pos: usize = 0;
+        let mut in_code_fence = false;
+        let mut in_frontmatter = false;
+        let mut is_first_line = true;
+
+        for (line_idx, line) in lines.iter().enumerate() {
+            if line_idx > 0 {
+                <Self as CrdtBackend>::splice_text(self, pos, 0, "\n")?;
+                pos += 1;
+            }
+
+            // Frontmatter boundary — atomic token, no marks.
+            if *line == "---" && (is_first_line || in_frontmatter) {
+                <Self as CrdtBackend>::splice_text(self, pos, 0, line)?;
+                pos += line.chars().count();
+                in_frontmatter = is_first_line;
+                is_first_line = false;
+                continue;
+            }
+            is_first_line = false;
+
+            if in_frontmatter {
+                <Self as CrdtBackend>::splice_text(self, pos, 0, line)?;
+                pos += line.chars().count();
+                continue;
+            }
+
+            // Code fence boundary toggles opaque mode.
+            if line.starts_with("```") {
+                <Self as CrdtBackend>::splice_text(self, pos, 0, line)?;
+                pos += line.chars().count();
+                in_code_fence = !in_code_fence;
+                continue;
+            }
+
+            if in_code_fence {
+                <Self as CrdtBackend>::splice_text(self, pos, 0, line)?;
+                pos += line.chars().count();
+                continue;
+            }
+
+            if line.is_empty() {
+                continue;
+            }
+
+            if let Some((block_token, content)) = BlockToken::parse_line_prefix(line) {
+                let prefix = block_token.to_markdown();
+                <Self as CrdtBackend>::splice_text(self, pos, 0, &prefix)?;
+                pos += prefix.chars().count();
+                pos = self.insert_inline(content, pos, &mut pending_marks)?;
+            } else {
+                pos = self.insert_inline(line, pos, &mut pending_marks)?;
+            }
+        }
+
+        // Trailing newline invariant (REQ-020-027).
+        let text = <Self as CrdtBackend>::text(self)?;
+        if !text.is_empty() && !text.ends_with('\n') {
+            <Self as CrdtBackend>::splice_text(self, pos, 0, "\n")?;
+        }
+
+        for (mt, start, end, _expand) in pending_marks {
+            <Self as CrdtBackend>::mark(self, &mt, start, end)?;
+        }
+
+        Ok(())
+    }
+
+    fn insert_inline(
+        &mut self,
+        line: &str,
+        start_pos: usize,
+        pending: &mut Vec<(MarkType, usize, usize, ExpandMark)>,
+    ) -> Result<usize> {
+        let parsed = parse_inline_marks(line);
+        <Self as CrdtBackend>::splice_text(self, start_pos, 0, &parsed.plain_text)?;
+        for m in parsed.marks {
+            let expand = m.mark_type.expand();
+            pending.push((m.mark_type, start_pos + m.start, start_pos + m.end, expand));
+        }
+        Ok(start_pos + parsed.plain_text.chars().count())
     }
 }
 
@@ -101,10 +194,7 @@ impl CrdtBackend for DiamondCrdtDocument {
 
     fn from_markdown(markdown: &str) -> Result<Self> {
         let mut this = <Self as CrdtBackend>::new()?;
-        if !markdown.is_empty() {
-            let agent = this.agent();
-            this.oplog.add_insert(agent, 0, markdown);
-        }
+        this.load_markdown(markdown)?;
         Ok(this)
     }
 
@@ -167,7 +257,12 @@ impl CrdtBackend for DiamondCrdtDocument {
     }
 
     fn to_markdown(&self) -> Result<String> {
-        <Self as CrdtBackend>::text(self)
+        let text = <Self as CrdtBackend>::text(self)?;
+        if text.is_empty() {
+            return Ok(String::new());
+        }
+        let marks = <Self as CrdtBackend>::marks(self)?;
+        Ok(serialize_to_markdown(&text, &marks))
     }
 
     fn save(&mut self) -> Vec<u8> {
@@ -220,13 +315,17 @@ mod tests {
     }
 
     #[test]
-    fn from_markdown_preserves_text() {
-        // from_markdown is raw-text-only on the diamond backend today;
-        // markdown→marks parsing lives on the automerge backend's
-        // `load_markdown`. `task-diamond-markdown-ingest` will port it.
+    fn from_markdown_round_trips_with_marks() {
         let md = "# Heading\n\n**bold** and *italic*\n";
         let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
-        assert_eq!(doc.text().unwrap(), md);
+        // Raw text has the inline mark syntax stripped.
+        assert_eq!(doc.text().unwrap(), "# Heading\n\nbold and italic\n");
+        // Marks were extracted while parsing.
+        let marks = doc.marks().unwrap();
+        let mark_names: Vec<&str> = marks.iter().map(|m| m.name.as_str()).collect();
+        assert!(mark_names.contains(&"bold"));
+        assert!(mark_names.contains(&"italic"));
+        // Serializing back re-emits the original markdown.
         assert_eq!(doc.to_markdown().unwrap(), md);
     }
 
@@ -252,9 +351,11 @@ mod tests {
 
     #[test]
     fn multibyte_char_positions() {
+        // `from_markdown` also enforces the trailing-newline invariant
+        // (REQ-020-027), so the loaded text ends with `\n`.
         let mut doc = DiamondCrdtDocument::from_markdown("café — 🌊").unwrap();
         doc.splice_text(5, 0, "[after é] ").unwrap();
-        assert_eq!(doc.text().unwrap(), "café [after é] — 🌊");
+        assert_eq!(doc.text().unwrap(), "café [after é] — 🌊\n");
     }
 
     #[test]
@@ -441,12 +542,298 @@ mod tests {
         assert_eq!(
             wikilinks.len(),
             1,
-            "exclusive marks LWW: expect 1, got {:?}",
-            marks
+            "exclusive marks LWW: expect 1, got {marks:?}",
         );
         // And the surviving value is one of the two we set.
         let v = &wikilinks[0].value;
         assert!(v == &Scalar::Str("A".into()) || v == &Scalar::Str("B".into()));
+    }
+
+    // ── SPEC-020 markdown conformance (REQ-020-024 … REQ-020-029) ────
+    //
+    // Markdown ingestion, inline-mark round-trip, block-token round-trip,
+    // and multi-client convergence — exercised against the diamond-types
+    // backend as the only implementation after IMPL-029 Phase 7.
+
+    #[test]
+    fn plain_text_round_trip() {
+        let md = "Hello world\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn bold_round_trip() {
+        let md = "Some **bold** text\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn italic_round_trip() {
+        let md = "Some *italic* text\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn code_round_trip() {
+        let md = "Some `code` text\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn wikilink_round_trip() {
+        let md = "See [[Project X]] for details\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn wikilink_with_alias_round_trip() {
+        let md = "See [[Project X|the project]] for details\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn strikethrough_round_trip() {
+        let md = "Some ~~deleted~~ text\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn highlight_round_trip() {
+        let md = "Some ==highlighted== text\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn comment_round_trip() {
+        let md = "Some %%hidden%% text\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn md_link_round_trip() {
+        let md = "Click [here](https://example.com) now\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn heading_round_trip() {
+        let md = "## My Heading\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn code_fence_round_trip() {
+        let md = "```spl\naccess(alice, read).\n```\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn list_item_round_trip() {
+        let md = "- first item\n- second item\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn ordered_list_round_trip() {
+        let md = "1. first\n2. second\n3. third\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn frontmatter_round_trip() {
+        let md = "---\ntitle: Test\ntags: [a, b]\n---\n\n## Content\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn mixed_marks_round_trip() {
+        // TEST-020-025: bold, italic, wikilink
+        let md = "**bold** and *italic* and [[Link]]\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+
+        let marks = doc.marks().unwrap();
+        let mark_names: Vec<&str> = marks.iter().map(|m| m.name.as_str()).collect();
+        assert!(mark_names.contains(&"bold"));
+        assert!(mark_names.contains(&"italic"));
+        assert!(mark_names.contains(&"wikilink"));
+
+        let bold_mark = marks.iter().find(|m| m.name == "bold").unwrap();
+        let mt = MarkType::from_mark(&bold_mark.name, &bold_mark.value).unwrap();
+        assert!(mt.is_inclusive());
+
+        let wikilink_mark = marks.iter().find(|m| m.name == "wikilink").unwrap();
+        let mt = MarkType::from_mark(&wikilink_mark.name, &wikilink_mark.value).unwrap();
+        assert!(!mt.is_inclusive());
+
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn code_mark_is_non_growing() {
+        let md = "Use `code` here\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+
+        let marks = doc.marks().unwrap();
+        let code_mark = marks.iter().find(|m| m.name == "code").unwrap();
+        let mt = MarkType::from_mark(&code_mark.name, &code_mark.value).unwrap();
+        assert_eq!(mt.expand(), ExpandMark::None);
+    }
+
+    #[test]
+    fn block_heading_is_atomic() {
+        // TEST-020-026: heading prefix is atomic
+        let md = "## Heading\n\nParagraph text\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        let text = doc.text().unwrap();
+        assert!(text.starts_with("## Heading"));
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn code_fence_is_opaque() {
+        // TEST-020-026: code fence content is plain text, no formatting
+        let md = "```spl\n**not bold** and *not italic*\n```\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+
+        let marks = doc.marks().unwrap();
+        assert!(
+            marks.is_empty(),
+            "Code fence content should have no marks, got: {:?}",
+            marks.iter().map(|m| m.name.as_str()).collect::<Vec<_>>()
+        );
+
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn deterministic_serialization() {
+        // TEST-020-027: same state always produces byte-identical output
+        let md = "**bold** and *italic* text\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), doc.to_markdown().unwrap());
+    }
+
+    #[test]
+    fn concurrent_edit_merge() {
+        let md = "Hello world\n";
+        let mut doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        let mut fork = doc.fork();
+
+        // Alice bolds "Hello" (chars 0..5)
+        doc.mark(&MarkType::Bold, 0, 5).unwrap();
+        // Bob italicizes "world" (chars 6..11)
+        fork.mark(&MarkType::Italic, 6, 11).unwrap();
+
+        doc.merge(&mut *fork).unwrap();
+
+        let out = doc.to_markdown().unwrap();
+        assert!(out.contains("**Hello**"), "got: {out:?}");
+        assert!(out.contains("*world*"), "got: {out:?}");
+    }
+
+    #[test]
+    fn wikilink_non_growing_behavior() {
+        // TEST-020-024: typing after ]] is plain text
+        let md = "See [[Project X]] here\n";
+        let mut doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+
+        let marks = doc.marks().unwrap();
+        let wl = marks.iter().find(|m| m.name == "wikilink").unwrap();
+        let wl_end = wl.end;
+        drop(marks);
+
+        doc.splice_text(wl_end, 0, " is great").unwrap();
+
+        let marks_after = doc.marks().unwrap();
+        let wl_after = marks_after.iter().find(|m| m.name == "wikilink").unwrap();
+        assert_eq!(
+            wl_after.end, wl_end,
+            "Wikilink should not grow when text is inserted at boundary"
+        );
+    }
+
+    #[test]
+    fn save_and_load_round_trip() {
+        let md = "**bold** and [[Link]]\n";
+        let mut doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        let bytes = doc.save();
+
+        let loaded = DiamondCrdtDocument::load(&bytes).unwrap();
+        assert_eq!(loaded.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn test_020_027_canonical_serialization_after_concurrent_edits() {
+        // CRDT text: "Hello world\n\nSome text here\n"
+        //             0123456789012 3456789012345678
+        // "Some" = 13..17, "text" = 18..22
+        let md = "Hello world\n\nSome text here\n";
+        let mut doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        let mut fork = doc.fork();
+
+        // Alice bolds "Hello" (0..5)
+        doc.mark(&MarkType::Bold, 0, 5).unwrap();
+
+        // Bob italicizes "text" (18..22) and strikethroughs "Some" (13..17)
+        fork.mark(&MarkType::Italic, 18, 22).unwrap();
+        fork.mark(&MarkType::Strikethrough, 13, 17).unwrap();
+
+        doc.merge(&mut *fork).unwrap();
+
+        let out1 = doc.to_markdown().unwrap();
+        let out2 = doc.to_markdown().unwrap();
+        assert_eq!(out1, out2, "serialization must be deterministic");
+
+        assert!(out1.contains("**Hello**"), "got: {out1:?}");
+        assert!(out1.contains("*text*"), "got: {out1:?}");
+        assert!(out1.contains("~~Some~~"), "got: {out1:?}");
+    }
+
+    #[test]
+    fn parse_serialize_round_trip_equivalence() {
+        let md =
+            "## Heading\n\n**bold** and *italic* with [[Link]] and `code`\n\n- list ~~item~~\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+
+        let serialized = doc.to_markdown().unwrap();
+        let doc2 = DiamondCrdtDocument::from_markdown(&serialized).unwrap();
+        let serialized2 = doc2.to_markdown().unwrap();
+        assert_eq!(
+            serialized, serialized2,
+            "parse(serialize(state)) must round-trip"
+        );
+    }
+
+    #[test]
+    fn nested_marks_canonical_order() {
+        // strikethrough > bold > italic (outermost → innermost)
+        let md = "~~**text**~~\n";
+        let doc = DiamondCrdtDocument::from_markdown(md).unwrap();
+        assert_eq!(doc.to_markdown().unwrap(), md);
+    }
+
+    #[test]
+    fn cache_md_loads_with_multibyte_chars() {
+        // Regression guard: embedded em-dash used to trip up char- vs
+        // byte-indexed splices.
+        let content = std::fs::read_to_string("demo-vault/architecture/Cache.md").unwrap();
+        let doc = DiamondCrdtDocument::from_markdown(&content);
+        assert!(doc.is_ok(), "Cache.md should load: {:?}", doc.err());
     }
 
     #[test]

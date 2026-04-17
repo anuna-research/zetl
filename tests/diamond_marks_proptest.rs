@@ -7,10 +7,8 @@
 //!   (d) concurrent splice / mark / unmark ops converge across replicas
 //!       with marks intact
 //!
-//! All tests are gated on the `collab` feature since `DiamondCrdtDocument`
-//! only exists behind that flag.
-
-#![cfg(feature = "collab")]
+//! `DiamondCrdtDocument` became the unconditional CRDT backend in IMPL-029
+//! Phase 7, so these tests run on every build.
 
 use proptest::prelude::*;
 use zetl::crdt::backend::CrdtBackend;
