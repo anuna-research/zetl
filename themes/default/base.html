@@ -355,6 +355,16 @@
       z-index: 40;
       resize: both;
     }
+    .zetl-graph-widget[data-placement="fullscreen"],
+    [data-placement="docked"] .zetl-graph-widget[data-placement="fullscreen"] {
+      position: relative !important;
+      width: 100% !important;
+      height: 100% !important;
+      right: auto !important;
+      bottom: auto !important;
+      box-shadow: none;
+      resize: none;
+    }
     .zetl-graph-widget__canvas {
       position: absolute;
       inset: 0;
@@ -540,6 +550,7 @@
      wiring is what this task exercises. Themes that need a different
      placement switch via [graph] placement in theme.toml, no template edit
      required. #}
+  {% if active_slug != "_graph" %}
   <div class="zetl-graph-widget"
        id="zetl-graph-widget"
        aria-label="Vault graph mini-map"
@@ -551,12 +562,9 @@
     <a class="zetl-graph-widget__expand"
        href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}"
        title="Open full graph">Expand ↗</a>
-    {# IMPL-028 fix: include the graph partial so that vendor scripts
-       (sigma, graphology) and the boot JS are loaded on every page.
-       The partial creates <div id="zetl-graph"> and loads the data +
-       renderer. `ignore missing` honours REQ-109 graceful absence. #}
     {% include "_graph.html" ignore missing %}
   </div>
+  {% endif %}
 
   <!-- Drawer layout for responsive sidebar -->
   <div class="drawer lg:drawer-open">

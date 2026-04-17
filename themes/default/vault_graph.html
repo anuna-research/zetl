@@ -10,6 +10,8 @@
 
 {% block styles %}
 <style>
+  /* Hide the docked mini-widget on the full-page graph view */
+  body > .zetl-graph-widget:not([data-placement="fullscreen"]) { display: none !important; }
   .vg-main {
     display: flex;
     flex-direction: column;
