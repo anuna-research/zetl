@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 61,
+    "insertions": 33,
     "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/markdown.rs"
+      "themes/default/base.html"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-preview-heading-demotion-changes",
-      "content": "Modified 2 files (+61, -6): .hence/context-manifest.json, src/web/markdown.rs",
+      "key": "task-mobile-overflow-changes",
+      "content": "Modified 2 files (+33, -6): .hence/context-manifest.json, themes/default/base.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/preview-heading-demotion-v1",
-  "evaluated_at": "2026-04-17T10:34:59Z",
+  "branch_name": "hence/mobile-overflow-v1",
+  "evaluated_at": "2026-04-17T10:37:52Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
