@@ -3,25 +3,30 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 68,
-    "deletions": 6,
+    "files_changed": 7,
+    "insertions": 450,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
-      "themes/default/base.html"
+      "src/web/build.rs",
+      "src/web/context.rs",
+      "src/web/engine.rs",
+      "src/web/routes.rs",
+      "tests/web_integration.rs",
+      "themes/default/tag_cloud.html"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-search-dialog-a11y-changes",
-      "content": "Modified 2 files (+68, -6): .hence/context-manifest.json, themes/default/base.html",
+      "key": "task-tag-cloud-changes",
+      "content": "Modified 7 files (+450, -7): .hence/context-manifest.json, src/web/build.rs, src/web/context.rs, src/web/engine.rs, src/web/routes.rs and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/search-dialog-a11y-v1",
-  "evaluated_at": "2026-04-17T10:46:19Z",
+  "branch_name": "hence/tag-cloud-v1",
+  "evaluated_at": "2026-04-17T10:59:08Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
