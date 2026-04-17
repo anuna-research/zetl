@@ -1,12 +1,12 @@
 {
-  "task_id": "crdt-backend-trait",
+  "task_id": "diamond-text-engine",
   "token_budget": 8000,
-  "tokens_used": 235,
+  "tokens_used": 248,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Extract the public surface of CrdtDocument (new, from_markdown, text, marks, splice_text, mark, unmark, to_markdown, save, load, fork, merge) into a CrdtBackend trait in src/crdt/backend.rs. Make the existing automerge-based CrdtDocument implement it. Update src/web/ws.rs to take `&dyn CrdtBackend` (or `Box<dyn CrdtBackend>`) instead of the concrete type. No behavior change. Trait MUST be designed so the diamond-types impl can satisfy it without a marks::Mark<'_> return type leaking automerge — return a project-owned Mark struct in src/crdt/marks.rs.",
-      "token_cost": 139,
+      "content": "Implement DiamondCrdtDocument in src/crdt/diamond.rs satisfying CrdtBackend, but only the text-shaped operations (new, from_markdown, text, splice_text, to_markdown, save, load, fork, merge). Marks-shaped operations (mark, unmark, marks) return a not-yet-implemented sentinel for now — Phase 5 fills them in. Wire format SHOULD use diamond-types' native binary encoding (smaller than automerge); add round-trip tests that load(save(doc)) is byte-identical and content-equivalent.",
+      "token_cost": 120,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 3 files (+182, -7): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-crdt-backend-trait-changes",
+      "content": "Modified 5 files (+185, -85): .hence/context-manifest.json, src/crdt/backend.rs, src/crdt/marks.rs, src/crdt/mod.rs, src/web/ws.rs",
+      "token_cost": 32,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T08:11:43Z"
+  "constructed_at": "2026-04-17T08:28:48Z"
 }
