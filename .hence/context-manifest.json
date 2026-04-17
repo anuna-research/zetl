@@ -1,12 +1,12 @@
 {
-  "task_id": "search-match-precision",
+  "task_id": "search-dialog-a11y",
   "token_budget": 8000,
-  "tokens_used": 202,
+  "tokens_used": 216,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Search implementation at base.html:704-745 fuzzy-matches across non-contiguous letters (typing \"hard\" hits both \"hardship\" and \"Pharmacy Depot 2019\" by matching `P**ha**rmacy **D**epot`). As the corpus grows this will confuse users. Prefer a prefix/substring match on title (case-insensitive), optionally falling back to subsequence-fuzzy when nothing matches. Body-text indexing is a larger follow-up and out of scope for this task.",
-      "token_cost": 108,
+      "content": "Search palette at themes/default/base.html:663-668 is a bare `<div class=\"search-dialog\">` with no `role=\"dialog\"`, no `aria-modal=\"true\"`, no `aria-labelledby`, and (per review) no focus trap. Screen reader users are not told a modal opened. Add the ARIA attributes, ensure the input receives focus on open, trap focus within the palette while open, and restore focus to the invoking element on close (Esc).",
+      "token_cost": 102,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 5 files (+15, -7): .hence/context-manifest.json, src/web/build.rs, src/web/html.rs, src/web/routes.rs, themes/default/base.html",
       "token_cost": 34,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-search-match-precision-changes",
+      "content": "Modified 2 files (+38, -7): .hence/context-manifest.json, themes/default/base.html",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T10:40:58Z"
+  "constructed_at": "2026-04-17T10:43:24Z"
 }
