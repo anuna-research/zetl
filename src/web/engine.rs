@@ -495,6 +495,45 @@ impl TemplateEngine {
         Ok(html)
     }
 
+    /// Render the full-page graph view (/_graph).
+    pub fn render_vault_graph(
+        &self,
+        vault_ctx: &VaultContext,
+        mode: &str,
+        graph_index: &str,
+    ) -> Result<String, TemplateError> {
+        let search_index = if mode == "build" {
+            String::new()
+        } else {
+            build_search_index(vault_ctx)
+        };
+        let root_path = compute_root_path(mode, "_graph");
+        let idx_file = index_file(mode);
+        let graph_url = graph_index_url(&root_path);
+        let ctx = context! {
+            vault => vault_ctx,
+            mode => mode,
+            search_index => search_index,
+            theme => &self.theme,
+            active_slug => "_graph",
+            root_path => root_path,
+            index_file => idx_file,
+            bm25_index => "",
+            history_index => "",
+            graph_index_url => graph_url,
+            graph_index => self.effective_graph_index(graph_index),
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("vault_graph.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("vault_graph.html"));
+        }
+        Ok(html)
+    }
+
     /// Render a single page.
     pub fn render_page(
         &self,

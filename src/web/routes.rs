@@ -5525,6 +5525,21 @@ pub async fn graph_index_handler(State(state): State<WebState>) -> Response {
     }
 }
 
+// ── GET /_graph — full-page graph view (REQ-107) ─────────────────────────
+pub async fn vault_graph_handler(State(state): State<WebState>) -> Response {
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+    let vault_ctx = build_vault_context(&data, &vault_name);
+    match state.engine.render_vault_graph(&vault_ctx, "serve", "") {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => render_error_response(e),
+    }
+}
+
 // ── POST /api/index — trigger re-index (REQ-020-018) ─────────────────────
 
 pub async fn api_index_handler(
