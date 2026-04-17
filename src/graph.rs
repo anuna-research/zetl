@@ -717,6 +717,7 @@ pub fn serialize_graph_index_ctx(ctx: &GraphIndexContext) -> serde_json::Value {
         let key_b = format!("{}->{}", b.source, b.target);
         key_a.cmp(&key_b)
     });
+    edges.dedup_by(|a, b| a.source == b.source && a.target == b.target);
 
     let edges_json: Vec<serde_json::Value> = edges
         .iter()
