@@ -1,5 +1,6 @@
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::Path;
 
 use crate::scanner::page_slug_from_path;
 use crate::web::markdown::{extract_description, parse_frontmatter};
@@ -74,6 +75,10 @@ pub struct BacklinkEntry {
     pub title: String,
     pub slug: String,
     pub line: usize,
+    /// Number of times this source page links to the target. A source that
+    /// links twice (e.g. once in body prose, once in an index list) collapses
+    /// to a single entry with `count = 2` rather than two duplicate rows.
+    pub count: usize,
     /// RFC 3339 timestamp of the earliest snapshot where this backlink existed.
     /// `null` (JSON) when history is unavailable.
     pub since: Option<String>,
@@ -125,6 +130,30 @@ pub struct FolderContext {
     pub subfolders: Vec<SubfolderEntry>,
     pub pages: Vec<PageEntry>,
     pub total_pages: usize,
+}
+
+// ── Tag-cloud structs ───────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct TagPageEntry {
+    pub title: String,
+    pub slug: String,
+}
+
+#[derive(Serialize)]
+pub struct TagEntry {
+    pub tag: String,
+    pub count: usize,
+    pub pages: Vec<TagPageEntry>,
+}
+
+#[derive(Serialize)]
+pub struct TagCloudContext {
+    /// Tags sorted by count descending, then alphabetically. Empty when the
+    /// vault has no frontmatter `tags:` arrays.
+    pub tags: Vec<TagEntry>,
+    pub total_tags: usize,
+    pub total_tagged_pages: usize,
 }
 
 // ── Builder functions ───────────────────────────────────────────────
@@ -336,24 +365,33 @@ pub fn build_page_context(
     content_html: &str,
     content_raw: &str,
 ) -> PageContext {
-    let backlinks: Vec<BacklinkEntry> = data
-        .graph
-        .backlinks(page_name)
-        .into_iter()
-        .map(|bl| {
-            let bl_slug = data
-                .page_slug_map
-                .get(&bl.source)
-                .cloned()
-                .unwrap_or_default();
-            BacklinkEntry {
-                title: bl.source,
-                slug: bl_slug,
-                line: bl.line as usize,
-                since: None,
+    // Deduplicate backlinks by source page: a page that links to the target
+    // multiple times (e.g. prose mention + index list) collapses to one entry
+    // anchored at the earliest line, with `count` reflecting the total.
+    let mut backlinks: Vec<BacklinkEntry> = Vec::new();
+    let mut backlink_index: HashMap<String, usize> = HashMap::new();
+    for bl in data.graph.backlinks(page_name) {
+        if let Some(&i) = backlink_index.get(&bl.source) {
+            backlinks[i].count += 1;
+            if (bl.line as usize) < backlinks[i].line {
+                backlinks[i].line = bl.line as usize;
             }
-        })
-        .collect();
+            continue;
+        }
+        let bl_slug = data
+            .page_slug_map
+            .get(&bl.source)
+            .cloned()
+            .unwrap_or_default();
+        backlink_index.insert(bl.source.clone(), backlinks.len());
+        backlinks.push(BacklinkEntry {
+            title: bl.source,
+            slug: bl_slug,
+            line: bl.line as usize,
+            count: 1,
+            since: None,
+        });
+    }
 
     let outlinks: Vec<OutlinkEntry> = data
         .graph
@@ -496,6 +534,70 @@ pub fn build_folder_context(
     }
 }
 
+/// Build a `TagCloudContext` from vault data by scanning each page's
+/// frontmatter `tags:` array.
+///
+/// Tags are grouped case-sensitively (since users often distinguish `Rust`
+/// and `rust` deliberately); pages under each tag are sorted alphabetically
+/// and deduplicated by slug. The returned `tags` vector is sorted by page
+/// count descending, then alphabetically by tag name (lowercase).
+pub fn build_tag_cloud_context(data: &VaultData, vault_root: &Path) -> TagCloudContext {
+    let mut tags_map: BTreeMap<String, Vec<TagPageEntry>> = BTreeMap::new();
+    let mut tagged_pages: HashSet<String> = HashSet::new();
+
+    for file in &data.files {
+        let full_path = vault_root.join(&file.path);
+        let Ok(content) = std::fs::read_to_string(&full_path) else {
+            continue;
+        };
+        let fm = parse_frontmatter(&content);
+        let Some(arr) = fm.get("tags").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        let slug = page_slug_from_path(&file.path);
+
+        let mut page_had_tag = false;
+        for raw in arr.iter().filter_map(|v| v.as_str()) {
+            let tag = raw.trim();
+            if tag.is_empty() {
+                continue;
+            }
+            page_had_tag = true;
+            tags_map
+                .entry(tag.to_string())
+                .or_default()
+                .push(TagPageEntry {
+                    title: file.page_name.clone(),
+                    slug: slug.clone(),
+                });
+        }
+        if page_had_tag {
+            tagged_pages.insert(file.page_name.clone());
+        }
+    }
+
+    let mut tags: Vec<TagEntry> = tags_map
+        .into_iter()
+        .map(|(tag, mut pages)| {
+            pages.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+            pages.dedup_by(|a, b| a.slug == b.slug);
+            let count = pages.len();
+            TagEntry { tag, count, pages }
+        })
+        .collect();
+    tags.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.tag.to_lowercase().cmp(&b.tag.to_lowercase()))
+    });
+
+    TagCloudContext {
+        total_tags: tags.len(),
+        total_tagged_pages: tagged_pages.len(),
+        tags,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -619,10 +721,28 @@ mod tests {
         assert_eq!(ctx.frontmatter, serde_json::json!({}));
         assert_eq!(ctx.backlinks.len(), 1);
         assert_eq!(ctx.backlinks[0].title, "Beta");
+        assert_eq!(ctx.backlinks[0].count, 1);
         assert_eq!(ctx.outlinks.len(), 2);
         assert!(!ctx.is_new);
         assert!(ctx.raw_escaped.is_none());
         assert!(ctx.transclusion_cards.is_empty());
+    }
+
+    #[test]
+    fn test_backlinks_dedupe_by_source() {
+        // A page that links to "Target" twice should collapse into one
+        // backlink entry with count=2 anchored at the earliest line.
+        let files = vec![
+            make_file("Source", vec![("Target", 12), ("Target", 3)]),
+            make_file("Target", vec![]),
+        ];
+        let data = make_vault_data(files);
+        let ctx = build_page_context(&data, "Target", "Target", "", "");
+
+        assert_eq!(ctx.backlinks.len(), 1);
+        assert_eq!(ctx.backlinks[0].title, "Source");
+        assert_eq!(ctx.backlinks[0].count, 2);
+        assert_eq!(ctx.backlinks[0].line, 3);
     }
 
     #[test]
@@ -817,6 +937,54 @@ mod tests {
             secret_node.unwrap().denied_style,
             Some("grayed".to_string())
         );
+    }
+
+    // ── Tag-cloud tests ────────────────────────────────────────────────
+
+    #[test]
+    fn build_tag_cloud_context_groups_by_tag_and_sorts_by_count() {
+        let tmp = tempfile::tempdir().unwrap();
+        let write = |rel: &str, body: &str| {
+            let p = tmp.path().join(rel);
+            if let Some(parent) = p.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(p, body).unwrap();
+        };
+        write("Alpha.md", "---\ntags:\n  - rust\n  - cli\n---\n# Alpha\n");
+        write("Beta.md", "---\ntags:\n  - rust\n---\n# Beta\n");
+        write("Gamma.md", "# Gamma (no frontmatter)\n");
+
+        let files = vec![
+            make_file("Alpha", vec![]),
+            make_file("Beta", vec![]),
+            make_file("Gamma", vec![]),
+        ];
+        let data = make_vault_data(files);
+
+        let ctx = build_tag_cloud_context(&data, tmp.path());
+        assert_eq!(ctx.total_tags, 2);
+        assert_eq!(ctx.total_tagged_pages, 2);
+        // `rust` has 2 pages, `cli` has 1 — `rust` first.
+        assert_eq!(ctx.tags[0].tag, "rust");
+        assert_eq!(ctx.tags[0].count, 2);
+        assert_eq!(ctx.tags[1].tag, "cli");
+        assert_eq!(ctx.tags[1].count, 1);
+        // Pages under `rust` sorted alphabetically.
+        assert_eq!(ctx.tags[0].pages[0].title, "Alpha");
+        assert_eq!(ctx.tags[0].pages[1].title, "Beta");
+    }
+
+    #[test]
+    fn build_tag_cloud_context_empty_when_no_tags() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("Alpha.md"), "# Alpha\n").unwrap();
+        let files = vec![make_file("Alpha", vec![])];
+        let data = make_vault_data(files);
+        let ctx = build_tag_cloud_context(&data, tmp.path());
+        assert_eq!(ctx.total_tags, 0);
+        assert_eq!(ctx.total_tagged_pages, 0);
+        assert!(ctx.tags.is_empty());
     }
 
     #[test]

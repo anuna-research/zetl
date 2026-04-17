@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use include_dir::{include_dir, Dir};
 use minijinja::{context, Environment};
 
-use super::context::{FolderContext, PageContext, VaultContext};
+use super::context::{FolderContext, PageContext, TagCloudContext, VaultContext};
 
 // ── Bundled themes ──────────────────────────────────────────────────────────
 
@@ -234,6 +234,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "page_history.html",
     "vault_history.html",
     "vault_graph.html",
+    "tag_cloud.html",
     "help.html",
 ];
 
@@ -946,6 +947,47 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("vault_history.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the tag-cloud page (/tag-cloud) — a vault-wide index of
+    /// frontmatter `tags:` with per-tag page listings.
+    pub fn render_tag_cloud(
+        &self,
+        vault_ctx: &VaultContext,
+        tag_cloud: &TagCloudContext,
+        mode: &str,
+    ) -> Result<String, TemplateError> {
+        let search_index = if mode == "build" {
+            String::new()
+        } else {
+            build_search_index(vault_ctx)
+        };
+        let root_path = compute_root_path(mode, "tag-cloud");
+        let idx_file = index_file(mode);
+        let graph_url = graph_index_url(&root_path);
+        let ctx = context! {
+            vault => vault_ctx,
+            tag_cloud => tag_cloud,
+            mode => mode,
+            search_index => search_index,
+            theme => &self.theme,
+            active_slug => "tag-cloud",
+            root_path => root_path,
+            index_file => idx_file,
+            bm25_index => "",
+            history_index => "",
+            graph_index_url => graph_url,
+            graph_index => "",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("tag_cloud.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("tag_cloud.html"));
         }
         Ok(html)
     }

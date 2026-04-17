@@ -52,7 +52,9 @@
         {%- for bl in page.backlinks %}
         <li>
           <a href="{{ root_path }}{{ bl.slug | safe }}/{{ index_file }}#line-{{ bl.line }}" class="link link-secondary">{{ bl.title }}</a>
-          <span class="text-xs opacity-75 ml-2">line {{ bl.line }}</span>
+          {%- if bl.count and bl.count > 1 %}
+          <span class="text-xs opacity-60 ml-1" aria-label="{{ bl.count }} references">×{{ bl.count }}</span>
+          {%- endif %}
         </li>
         {%- endfor %}
       </ul>

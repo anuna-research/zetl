@@ -507,7 +507,19 @@ pub fn build_static(
     let bm25_json = String::new();
 
     // ── graph-index.json (SPEC-028 REQ-102 / OBS-101) ───────────────────
-    let _graph_json = write_graph_index_json(data, vault_root, &vault_ctx.name, out, verbose)?;
+    let graph_json = write_graph_index_json(data, vault_root, &vault_ctx.name, out, verbose)?;
+
+    // ── _graph.html (SPEC-028 REQ-107) ──────────────────────────────────
+    // Base.html's sidebar "Graph" link and the widget's "Expand ↗" button
+    // both href `{root_path}_graph.html` in build mode; render the vault
+    // graph template to disk so those links resolve.
+    let graph_html = engine
+        .render_vault_graph(&vault_ctx, "build", &graph_json)
+        .map_err(|e| {
+            eprintln!("{}", e.stderr_line("_graph"));
+            anyhow::anyhow!("{e}")
+        })?;
+    std::fs::write(out.join("_graph.html"), graph_html)?;
 
     // ── history-index.json ───────────────────────────────────────────────
     #[cfg(feature = "history")]
@@ -843,6 +855,34 @@ pub fn build_static(
         }
     }
 
+    // ── tag-cloud page (/tag-cloud/index.html) ──────────────────────────
+    // Skip when a real file already claims the `tag-cloud` slug so we don't
+    // shadow a user-authored `Tag Cloud.md`.
+    let tag_cloud_taken = data
+        .files
+        .iter()
+        .any(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case("tag-cloud"));
+    if !tag_cloud_taken {
+        let tag_cloud_ctx = crate::web::context::build_tag_cloud_context(data, vault_root);
+        match engine.render_tag_cloud(&vault_ctx, &tag_cloud_ctx, "build") {
+            Ok(html) => {
+                let tc_dir = out.join("tag-cloud");
+                std::fs::create_dir_all(&tc_dir)?;
+                std::fs::write(tc_dir.join("index.html"), html)?;
+                if verbose {
+                    eprintln!(
+                        "[zetl] tag-cloud: tags={} tagged_pages={}",
+                        tag_cloud_ctx.total_tags, tag_cloud_ctx.total_tagged_pages
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("{}", e.stderr_line("tag-cloud"));
+                return Err(anyhow::anyhow!("{e}"));
+            }
+        }
+    }
+
     if let Some(warning) = graph_index_size_warning(out, count) {
         eprintln!("warning: {warning}");
     }
@@ -1019,7 +1059,7 @@ fn build_transclusion_cards(
 
         cards.push_str(&format!(
             r#"<div class="transclusion-card" data-target-href="{root_path}{href}/index.html" style="border-left-color: {color};">
-  <a href="{root_path}{href}/index.html" class="tc-title" style="color: {color};">{name}</a>
+  <a href="{root_path}{href}/index.html" class="tc-title">{name}</a>
   <div class="tc-excerpt prose prose-sm max-w-none">{preview}</div>
 </div>"#,
             root_path = root_path,

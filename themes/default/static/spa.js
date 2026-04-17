@@ -16,6 +16,16 @@
     try { return new URL(href, location.href).origin === location.origin; }
     catch (e) { return false; }
   }
+  /* The full-page graph route (/_graph or /_graph.html) suppresses the
+     persistent mini-widget from the shell via `{% if active_slug != "_graph" %}`.
+     SPA nav doesn't re-render the shell, so swapping into /_graph leaves two
+     #zetl-graph in the DOM (mini + full, boot-guard blocks the full one), and
+     swapping back out leaves the shell widgetless. Force a full reload on any
+     transition that crosses /_graph in either direction. */
+  function isGraphRoute(url) {
+    try { return /^\/_graph(\.html)?(\/|$|[?#])/.test(new URL(url, location.href).pathname); }
+    catch (e) { return false; }
+  }
 
   function runScripts(root) {
     /* Inline + same-origin <script> tags in swapped content don't execute on
@@ -65,6 +75,7 @@
     if (a.dataset.zetlSpa === 'off') return;
     if (!sameOrigin(a.href)) return;
     if (a.href.replace(/#.*$/, '') === location.href.replace(/#.*$/, '')) return;
+    if (isGraphRoute(location.href) || isGraphRoute(a.href)) return;
     e.preventDefault();
     /* OBS-113: mark click interception — the measure on after-navigate dispatch
        reports total navigation-to-paint latency for NFR assertions. */

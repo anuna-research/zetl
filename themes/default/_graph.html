@@ -112,12 +112,13 @@
 <script type="application/json" id="zetl-graph-index">{{ graph_index | safe }}</script>
 {% endif %}
 
-<script src="{{ root_path }}_static/vendor/sigma/graphology.min.js" defer></script>
-<script src="{{ root_path }}_static/vendor/sigma/graphology-layout-forceatlas2.min.js" defer></script>
-<script src="{{ root_path }}_static/vendor/sigma/sigma.min.js" defer></script>
+{# Vendor bundles are NOT preloaded — window.__zetlEnsureGraph (defined in
+   base.html) lazy-injects graphology + FA2 + sigma only when the widget is
+   actually expanded or when the full-page /_graph route is rendered. Saves
+   the ~150 kB bundle on every non-graph page view. #}
 
 <script>
-(function(){
+window.__zetlBootGraph = function(){
   if (window.__zetlGraphBooted) return;
   window.__zetlGraphBooted = true;
 
@@ -171,6 +172,7 @@
 
   /* ── Graph/renderer state ────────────────────────────────────────────── */
   var graph = null, renderer = null, layoutSupervisor = null;
+  var hasDashedProgram = false;
   var activeSlug = document.body.getAttribute('data-slug') || '';
   var neighbourSet = null;
   var hoveredNode = null;
@@ -243,7 +245,7 @@
     var isDead = !!attrs.is_dead || !!(targetAttrs && targetAttrs.is_dead);
     if (isDead) {
       out.color = palette.edgeDead;
-      out.type = 'dashed';
+      if (hasDashedProgram) out.type = 'dashed';
       out.zIndex = 0;
     } else {
       out.color = palette.edge;
@@ -364,90 +366,156 @@
         }
       });
 
-      try { performance.mark('zetl:graph:render:start'); } catch (e) {}
+      /* REQ-117 follow-up: mobile + collapsed-docked states apply display:none
+         to the widget, so the canvas has a 0×0 box at DOM-ready. Calling
+         `new Sigma(...)` against such a container throws "Container has no
+         width" and leaves the widget permanently broken once the user opens
+         the overlay. Defer instantiation until the container actually has
+         layout, then retry via a ResizeObserver on the canvas and a
+         MutationObserver on the widget — whichever fires first when the
+         overlay/launcher reveals the canvas. */
+      function hasSize(){
+        return container.offsetWidth > 0 && container.offsetHeight > 0;
+      }
+      function instantiate(){
+        if (renderer) return true;
+        if (!hasSize()) return false;
 
-      /* REQ-112: register a "dashed" edge program so edges emitted with
-         type:'dashed' by the reducer render with a broken stroke. Falls
-         back to the line program where Sigma's dashed program is missing
-         or on an older build — in that case the muted colour alone still
-         conveys the dead-link state. */
-      var edgePrograms = {};
-      try {
-        var sigmaNS = window.Sigma || {};
-        var DashedProgram =
-          (sigmaNS.edgePrograms && sigmaNS.edgePrograms.dashed)
-          || sigmaNS.EdgeDashedProgram
-          || window.EdgeDashedProgram
-          || null;
-        if (DashedProgram) edgePrograms.dashed = DashedProgram;
-      } catch (e) {}
+        try { performance.mark('zetl:graph:render:start'); } catch (e) {}
 
-      var sigmaSettings = {
-        nodeReducer: nodeReducer,
-        edgeReducer: edgeReducer,
-        labelFont: palette.labelFont,
-        labelColor: { color: palette.label },
-        renderLabels: true,
-        defaultEdgeType: 'line',
-        zIndex: true
-      };
-      if (edgePrograms.dashed) sigmaSettings.edgeProgramClasses = edgePrograms;
+        /* REQ-112: register a "dashed" edge program so edges emitted with
+           type:'dashed' by the reducer render with a broken stroke. Falls
+           back to the line program where Sigma's dashed program is missing
+           or on an older build — in that case the muted colour alone still
+           conveys the dead-link state. */
+        var edgePrograms = {};
+        try {
+          var sigmaNS = window.Sigma || {};
+          var DashedProgram =
+            (sigmaNS.edgePrograms && sigmaNS.edgePrograms.dashed)
+            || sigmaNS.EdgeDashedProgram
+            || window.EdgeDashedProgram
+            || null;
+          if (DashedProgram) edgePrograms.dashed = DashedProgram;
+        } catch (e) {}
+        hasDashedProgram = !!edgePrograms.dashed;
 
-      renderer = new window.Sigma(graph, container, sigmaSettings);
+        var sigmaSettings = {
+          nodeReducer: nodeReducer,
+          edgeReducer: edgeReducer,
+          labelFont: palette.labelFont,
+          labelColor: { color: palette.label },
+          renderLabels: true,
+          defaultEdgeType: 'line',
+          zIndex: true,
+          /* Sigma's internal resize loop (ResizeObserver) fires a resize()
+             whenever the container's width transitions through 0 — which
+             happens at every SPA nav and every media-query toggle that
+             hides the mini-widget. Setting this to true tells Sigma to
+             skip the render pass instead of throwing. Our `hasSize()`
+             probe still guards the initial `new Sigma(...)` call. */
+          allowInvalidContainer: true
+        };
+        if (hasDashedProgram) sigmaSettings.edgeProgramClasses = edgePrograms;
 
-      /* REQ-111: node-click → page navigation.
-         - Modifier keys (meta / ctrl / shift): open the slug in a new tab,
-           mirroring the native <a>-click muscle memory.
-         - SPA shell mounted: synthesise an anchor click so the
-           document-level interceptor swaps `[data-zetl-volatile]` without a
-           full reload.
-         - SPA disabled / failed to boot: fall through to `location.href`
-           for a standard full-page navigation. */
-      /* Hover: show only connected nodes + edges */
-      renderer.on('enterNode', function(evt){
-        hoveredNode = evt.node;
-        hoveredNeighbours = new Set();
-        graph.forEachNeighbor(evt.node, function(n){ hoveredNeighbours.add(n); });
-        renderer.refresh();
-      });
-      renderer.on('leaveNode', function(){
-        hoveredNode = null;
-        hoveredNeighbours = null;
-        renderer.refresh();
-      });
-
-      renderer.on('clickNode', function(evt){
-        var slug = evt.node;
-        if (!slug) return;
-        var href = ROOT + slug + '/' + INDEX_FILE;
-        var orig = evt.event && evt.event.original;
-        if (orig && (orig.metaKey || orig.ctrlKey || orig.shiftKey)) {
-          window.open(href, '_blank', 'noopener');
-          return;
+        try {
+          renderer = new window.Sigma(graph, container, sigmaSettings);
+        } catch (e) {
+          /* Lost the race — container reported size but Sigma still refused.
+             Leave renderer null so the observer retries on the next tick. */
+          renderer = null;
+          return false;
         }
-        if (window.__zetlSpaMounted) {
-          var a = document.createElement('a');
-          a.href = href;
-          a.rel = 'zetl-graph-nav';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          return;
+
+        /* REQ-111: node-click → page navigation.
+           - Modifier keys (meta / ctrl / shift): open the slug in a new tab,
+             mirroring the native <a>-click muscle memory.
+           - SPA shell mounted: synthesise an anchor click so the
+             document-level interceptor swaps `[data-zetl-volatile]` without a
+             full reload.
+           - SPA disabled / failed to boot: fall through to `location.href`
+             for a standard full-page navigation. */
+        /* Hover: show only connected nodes + edges */
+        renderer.on('enterNode', function(evt){
+          hoveredNode = evt.node;
+          hoveredNeighbours = new Set();
+          graph.forEachNeighbor(evt.node, function(n){ hoveredNeighbours.add(n); });
+          if (hasSize()) renderer.refresh();
+        });
+        renderer.on('leaveNode', function(){
+          hoveredNode = null;
+          hoveredNeighbours = null;
+          if (hasSize()) renderer.refresh();
+        });
+
+        renderer.on('clickNode', function(evt){
+          var slug = evt.node;
+          if (!slug) return;
+          var href = ROOT + slug + '/' + INDEX_FILE;
+          var orig = evt.event && evt.event.original;
+          if (orig && (orig.metaKey || orig.ctrlKey || orig.shiftKey)) {
+            window.open(href, '_blank', 'noopener');
+            return;
+          }
+          if (window.__zetlSpaMounted) {
+            var a = document.createElement('a');
+            a.href = href;
+            a.rel = 'zetl-graph-nav';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            return;
+          }
+          location.href = href;
+        });
+
+        computeNeighbours(activeSlug);
+        runLayout();
+        applyMode();
+
+        window.__zetlGraph = {
+          getRenderer: function(){ return renderer; },
+          getGraph: function(){ return graph; },
+          setMode: setMode,
+          getMode: currentMode,
+          refreshPalette: function(){ palette = readPalette(); if (renderer && hasSize()) renderer.refresh(); }
+        };
+        return true;
+      }
+
+      if (!instantiate()) {
+        var ro = null, mo = null, resizeHandler = null;
+        function stopWaiting(){
+          if (ro) { try { ro.disconnect(); } catch (e) {} ro = null; }
+          if (mo) { try { mo.disconnect(); } catch (e) {} mo = null; }
+          if (resizeHandler) {
+            window.removeEventListener('resize', resizeHandler);
+            resizeHandler = null;
+          }
         }
-        location.href = href;
-      });
-
-      computeNeighbours(activeSlug);
-      runLayout();
-      applyMode();
-
-      window.__zetlGraph = {
-        getRenderer: function(){ return renderer; },
-        getGraph: function(){ return graph; },
-        setMode: setMode,
-        getMode: currentMode,
-        refreshPalette: function(){ palette = readPalette(); if (renderer) renderer.refresh(); }
-      };
+        function retry(){ if (instantiate()) stopWaiting(); }
+        if (typeof ResizeObserver === 'function') {
+          try { ro = new ResizeObserver(retry); ro.observe(container); }
+          catch (e) { ro = null; }
+        }
+        /* Mobile `--open` toggle and desktop `data-graph="expanded"` flips
+           cascade into the canvas's display; ResizeObserver picks most of
+           those up, but a class/attribute observer on the widget is a cheap
+           belt-and-braces for browsers that skip RO on display transitions. */
+        try {
+          mo = new MutationObserver(retry);
+          mo.observe(widget, {
+            attributes: true,
+            attributeFilter: ['class', 'style', 'data-mode', 'data-placement']
+          });
+          mo.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-graph']
+          });
+        } catch (e) { mo = null; }
+        resizeHandler = retry;
+        window.addEventListener('resize', resizeHandler);
+      }
     });
     return true;
   }
@@ -502,5 +570,5 @@
     setMode(isVault ? 'vault' : 'local');
     applyMode();
   });
-})();
+};
 </script>

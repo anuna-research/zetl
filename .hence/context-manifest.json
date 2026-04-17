@@ -1,63 +1,75 @@
 {
-  "task_id": "update-spec-020",
+  "task_id": "backlinks-presentation",
   "token_budget": 8000,
-  "tokens_used": 348,
+  "tokens_used": 345,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Update specs/SPEC-020.md frontmatter (`dependencies:` line currently reads `automerge (Peritext CRDT for collaborative editing)`) and any prose mentioning automerge or Peritext-the-crate to reference diamond-types. Preserve Peritext-the-algorithm references where the design intent is unchanged (e.g. inclusive vs non-growing marks). Add a short subsection explaining the marks-layer architecture chosen in Phase 1.",
-      "token_cost": 103,
+      "content": "themes/default/page.html:54 renders every backlink as `line {{ bl.line }}` — raw Markdown line offsets exposed to readers. Also, togias-2019 shows the Memo index twice because it is linked twice from the source (no dedup in src/graph.rs:190-210 backlinks()). Fix both: (a) remove or hide-behind-a-disclosure the `line N` label in the backlinks template, and (b) deduplicate backlink entries by source page — show a single entry, optionally with a `(×N)` count.",
+      "token_cost": 116,
       "priority": "PlanMeta"
     },
     {
-      "source": "memory/episodic/task-spike-diamond-types-changes",
-      "content": "Modified 6 files (+1738, -65): .hence/context-manifest.json, research/diamond-types-spike.md, tools/diamond-types-spike/.gitignore, tools/diamond-types-spike/Cargo.lock, tools/diamond-types-spike/Cargo.toml and 1 more",
-      "token_cost": 54,
+      "source": "memory/episodic/task-widget-overlay-changes",
+      "content": "Modified 2 files (+155, -72): .hence/context-manifest.json, themes/default/base.html",
+      "token_cost": 21,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-marks-layer-design-changes",
-      "content": "Modified 2 files (+609, -5): .hence/context-manifest.json, research/diamond-types-marks.md",
-      "token_cost": 22,
+      "source": "memory/episodic/task-preview-heading-demotion-changes",
+      "content": "Modified 2 files (+61, -6): .hence/context-manifest.json, src/web/markdown.rs",
+      "token_cost": 19,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-add-diamond-types-dep-changes",
-      "content": "Modified 3 files (+182, -7): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "source": "memory/episodic/task-mobile-overflow-changes",
+      "content": "Modified 2 files (+33, -6): .hence/context-manifest.json, themes/default/base.html",
       "token_cost": 20,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-crdt-backend-trait-changes",
-      "content": "Modified 5 files (+185, -85): .hence/context-manifest.json, src/crdt/backend.rs, src/crdt/marks.rs, src/crdt/mod.rs, src/web/ws.rs",
-      "token_cost": 32,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-diamond-text-engine-changes",
-      "content": "Modified 3 files (+370, -5): .hence/context-manifest.json, src/crdt/diamond.rs, src/crdt/mod.rs",
-      "token_cost": 23,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-diamond-marks-layer-changes",
-      "content": "Modified 9 files (+1404, -164): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/diamond.rs, src/crdt/marks.rs and 4 more",
-      "token_cost": 33,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-ws-wire-format-changes",
-      "content": "Modified 4 files (+121, -22): .hence/context-manifest.json, src/crdt/diamond.rs, src/crdt/mod.rs, src/web/ws.rs",
-      "token_cost": 27,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-flip-default-backend-changes",
-      "content": "Modified 11 files (+917, -1295): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/backend.rs, src/crdt/diamond.rs and 6 more",
+      "source": "memory/episodic/task-chip-contrast-changes",
+      "content": "Modified 5 files (+15, -7): .hence/context-manifest.json, src/web/build.rs, src/web/html.rs, src/web/routes.rs, themes/default/base.html",
       "token_cost": 34,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-search-match-precision-changes",
+      "content": "Modified 2 files (+38, -7): .hence/context-manifest.json, themes/default/base.html",
+      "token_cost": 20,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-search-dialog-a11y-changes",
+      "content": "Modified 2 files (+68, -6): .hence/context-manifest.json, themes/default/base.html",
+      "token_cost": 20,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-tag-cloud-changes",
+      "content": "Modified 7 files (+450, -7): .hence/context-manifest.json, src/web/build.rs, src/web/context.rs, src/web/engine.rs, src/web/routes.rs and 2 more",
+      "token_cost": 36,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-widget-zerowidth-guard-changes",
+      "content": "Modified 2 files (+150, -86): .hence/context-manifest.json, themes/default/_graph.html",
+      "token_cost": 21,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-favicon-changes",
+      "content": "Modified 2 files (+12, -5): .hence/context-manifest.json, themes/default/base.html",
+      "token_cost": 20,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-graph-page-changes",
+      "content": "Modified 2 files (+24, -6): .hence/context-manifest.json, src/web/build.rs",
+      "token_cost": 18,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T09:42:58Z"
+  "constructed_at": "2026-04-17T11:09:11Z"
 }

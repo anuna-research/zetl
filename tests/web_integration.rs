@@ -1818,3 +1818,83 @@ fn test_bundled_theme_size_within_budget() {
         "bundled theme content totals {total_bytes} bytes, exceeds 200 KB budget (NFR-014-002)"
     );
 }
+
+/// `/tag-cloud/` serves a real tag index sourced from frontmatter `tags:`
+/// rather than the phantom-page placeholder it used to show.
+#[tokio::test]
+async fn tag_cloud_renders_tags_from_frontmatter() {
+    let tmp = tempfile::tempdir().unwrap();
+    build_test_vault(tmp.path());
+
+    let state = build_web_state(tmp.path(), "default");
+    let app = full_router(state);
+
+    let (status, body, _ct) = get_response(&app, "/tag-cloud").await;
+    assert_eq!(status, StatusCode::OK);
+    // Real heading, not the phantom-page placeholder.
+    assert!(
+        body.contains("<h1") && body.contains("Tags"),
+        "should render Tags heading"
+    );
+    // Tags from page-one.md's frontmatter (rust + testing) appear.
+    assert!(body.contains("rust"), "should list `rust` tag");
+    assert!(body.contains("testing"), "should list `testing` tag");
+    // Tag-block anchors exist for in-page navigation.
+    assert!(
+        body.contains("id=\"tag-rust\""),
+        "should anchor rust tag block"
+    );
+    // Link to the tagged page, not a raw backlink list.
+    assert!(
+        body.contains("/page-one/") && body.contains("page-one"),
+        "should link to the tagged page"
+    );
+    // No phantom-page placeholder text.
+    assert!(
+        !body.contains("page does not exist"),
+        "tag-cloud should not render the phantom-page placeholder"
+    );
+}
+
+/// When no page carries a `tags:` frontmatter key, `/tag-cloud/` explains that
+/// — it does not 404 or masquerade as a working feature with an empty list.
+#[tokio::test]
+async fn tag_cloud_shows_empty_state_when_no_tags() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_file(
+        tmp.path(),
+        "only.md",
+        "# Only\n\nNo frontmatter tags here.\n",
+    );
+
+    let state = build_web_state(tmp.path(), "default");
+    let app = full_router(state);
+
+    let (status, body, _ct) = get_response(&app, "/tag-cloud").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("No tags found"),
+        "empty vault should surface the empty-state copy"
+    );
+}
+
+/// A user-authored `Tag Cloud.md` takes precedence over the generated index.
+#[tokio::test]
+async fn tag_cloud_does_not_shadow_real_page() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_file(
+        tmp.path(),
+        "Tag Cloud.md",
+        "# Tag Cloud\n\nI wrote this myself.\n",
+    );
+
+    let state = build_web_state(tmp.path(), "default");
+    let app = full_router(state);
+
+    let (status, body, _ct) = get_response(&app, "/tag-cloud").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("I wrote this myself."),
+        "real Tag Cloud.md should win over the generated index"
+    );
+}

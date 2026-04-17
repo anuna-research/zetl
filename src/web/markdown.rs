@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use regex::Regex;
 
 use crate::web::html::{html_escape, urlencoding};
@@ -138,6 +138,27 @@ pub fn render_preview_html(
     let max_blocks = 12;
 
     for event in parser {
+        // Demote headings inside transclusion previews so the outer page's
+        // outline (<h1 class="page-title">) is preserved. The target page's
+        // own `# Title` would otherwise emit a competing <h1> for every chip.
+        let event = match event {
+            Event::Start(Tag::Heading {
+                level,
+                id,
+                classes,
+                attrs,
+            }) => Event::Start(Tag::Heading {
+                level: demote_heading_level(level),
+                id,
+                classes,
+                attrs,
+            }),
+            Event::End(TagEnd::Heading(level)) => {
+                Event::End(TagEnd::Heading(demote_heading_level(level)))
+            }
+            other => other,
+        };
+
         let is_block_end = matches!(
             &event,
             Event::End(
@@ -161,6 +182,15 @@ pub fn render_preview_html(
     pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
 
     rewrite_wikilinks_for_preview(&html_output, &wikilink_re, slug_map, root_path, index_file)
+}
+
+fn demote_heading_level(level: HeadingLevel) -> HeadingLevel {
+    match level {
+        HeadingLevel::H1 => HeadingLevel::H3,
+        HeadingLevel::H2 => HeadingLevel::H4,
+        HeadingLevel::H3 => HeadingLevel::H5,
+        HeadingLevel::H4 | HeadingLevel::H5 | HeadingLevel::H6 => HeadingLevel::H6,
+    }
 }
 
 /// Replace [[wikilinks]] with plain <a> tags in preview/excerpt HTML.
@@ -956,6 +986,25 @@ mod tests {
         // Should NOT contain lock or grayed styling
         assert!(!html.contains("wikilink-denied-locked"));
         assert!(!html.contains("wikilink-denied-transparent"));
+    }
+
+    #[test]
+    fn preview_demotes_headings_by_two_levels() {
+        // Transclusion previews live inside a page that already owns the <h1>.
+        // Target page `# Title` must render as <h3>, not <h1>, so every chip
+        // doesn't inject a top-level heading into the outline (see memo-index
+        // where 36 <h1> elements were counted across previews).
+        let slug_map = HashMap::new();
+        let md = "# Top\n\n## Sub\n\n### Deep\n\n#### Deeper\n\n##### Deepest\n\n###### Bottom\n";
+        let html = render_preview_html(md, &slug_map, "/", "");
+        assert!(!html.contains("<h1"), "preview must not emit <h1>: {html}");
+        assert!(!html.contains("<h2"), "preview must not emit <h2>: {html}");
+        assert!(html.contains("<h3>Top</h3>"));
+        assert!(html.contains("<h4>Sub</h4>"));
+        assert!(html.contains("<h5>Deep</h5>"));
+        assert!(html.contains("<h6>Deeper</h6>"));
+        assert!(html.contains("<h6>Deepest</h6>"));
+        assert!(html.contains("<h6>Bottom</h6>"));
     }
 
     #[test]
