@@ -1832,7 +1832,10 @@ async fn tag_cloud_renders_tags_from_frontmatter() {
     let (status, body, _ct) = get_response(&app, "/tag-cloud").await;
     assert_eq!(status, StatusCode::OK);
     // Real heading, not the phantom-page placeholder.
-    assert!(body.contains("<h1") && body.contains("Tags"), "should render Tags heading");
+    assert!(
+        body.contains("<h1") && body.contains("Tags"),
+        "should render Tags heading"
+    );
     // Tags from page-one.md's frontmatter (rust + testing) appear.
     assert!(body.contains("rust"), "should list `rust` tag");
     assert!(body.contains("testing"), "should list `testing` tag");
@@ -1858,7 +1861,11 @@ async fn tag_cloud_renders_tags_from_frontmatter() {
 #[tokio::test]
 async fn tag_cloud_shows_empty_state_when_no_tags() {
     let tmp = tempfile::tempdir().unwrap();
-    write_file(tmp.path(), "only.md", "# Only\n\nNo frontmatter tags here.\n");
+    write_file(
+        tmp.path(),
+        "only.md",
+        "# Only\n\nNo frontmatter tags here.\n",
+    );
 
     let state = build_web_state(tmp.path(), "default");
     let app = full_router(state);

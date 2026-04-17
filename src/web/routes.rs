@@ -582,9 +582,11 @@ pub async fn page_handler(
         {
             vault_ctx.semantic_available = state.vector_index.is_some();
         }
-        let tag_cloud =
-            crate::web::context::build_tag_cloud_context(&data, &state.vault_root);
-        return match state.engine.render_tag_cloud(&vault_ctx, &tag_cloud, "serve") {
+        let tag_cloud = crate::web::context::build_tag_cloud_context(&data, &state.vault_root);
+        return match state
+            .engine
+            .render_tag_cloud(&vault_ctx, &tag_cloud, "serve")
+        {
             Ok(html) => Html(html).into_response(),
             Err(e) => render_error_response(e),
         };

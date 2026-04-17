@@ -951,10 +951,7 @@ mod tests {
             }
             std::fs::write(p, body).unwrap();
         };
-        write(
-            "Alpha.md",
-            "---\ntags:\n  - rust\n  - cli\n---\n# Alpha\n",
-        );
+        write("Alpha.md", "---\ntags:\n  - rust\n  - cli\n---\n# Alpha\n");
         write("Beta.md", "---\ntags:\n  - rust\n---\n# Beta\n");
         write("Gamma.md", "# Gamma (no frontmatter)\n");
 
