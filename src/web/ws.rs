@@ -26,7 +26,7 @@ use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
-use crate::crdt::CrdtDocument;
+use crate::crdt::{CrdtBackend, CrdtDocument};
 
 use super::wal::WalStore;
 use super::WebState;
@@ -344,7 +344,7 @@ const DEFAULT_MAX_DOCS: usize = 50;
 
 /// A loaded CRDT document with lifecycle metadata.
 pub struct CrdtDocEntry {
-    pub doc: CrdtDocument,
+    pub doc: Box<dyn CrdtBackend>,
     /// Last time any edit was received.
     pub last_edit: Instant,
     /// Last time the document was flushed to disk.
@@ -363,7 +363,7 @@ pub struct CrdtDocEntry {
 }
 
 impl CrdtDocEntry {
-    fn new(doc: CrdtDocument) -> Self {
+    fn new(doc: Box<dyn CrdtBackend>) -> Self {
         let now = Instant::now();
         Self {
             doc,
@@ -449,15 +449,15 @@ impl CrdtDocStore {
         Ok(())
     }
 
-    /// Read a page's markdown file and parse it into a `CrdtDocument`.
-    fn load_from_disk(&self, slug: &str) -> Result<CrdtDocument, anyhow::Error> {
+    /// Read a page's markdown file and parse it into a [`CrdtBackend`].
+    fn load_from_disk(&self, slug: &str) -> Result<Box<dyn CrdtBackend>, anyhow::Error> {
         let md_path = self.md_path_for_slug(slug);
         if md_path.exists() {
             let markdown = std::fs::read_to_string(&md_path)
                 .map_err(|e| anyhow::anyhow!("read {}: {e}", md_path.display()))?;
-            CrdtDocument::from_markdown(&markdown)
+            Ok(Box::new(CrdtDocument::from_markdown(&markdown)?))
         } else {
-            CrdtDocument::new()
+            Ok(Box::new(CrdtDocument::new()?))
         }
     }
 
@@ -532,7 +532,7 @@ impl CrdtDocStore {
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(doc_b64)
             .map_err(|e| anyhow::anyhow!("invalid base64: {e}"))?;
-        let incoming = CrdtDocument::load(&bytes)?;
+        let incoming: Box<dyn CrdtBackend> = Box::new(CrdtDocument::load(&bytes)?);
 
         let mut docs = self.docs.lock().expect("crdt store lock");
         if let Some(entry) = docs.get_mut(slug) {
@@ -831,7 +831,7 @@ impl CrdtDocStore {
             match std::fs::read_to_string(&md_path) {
                 Ok(markdown) => match CrdtDocument::from_markdown(&markdown) {
                     Ok(new_doc) => {
-                        entry.doc = new_doc;
+                        entry.doc = Box::new(new_doc);
                         entry.last_access = Instant::now();
                         entry.last_flush = Instant::now();
                         // Send fresh sync to all connected editors.
@@ -859,7 +859,7 @@ impl CrdtDocStore {
                         // Capture text before merge for diff computation (REQ-020-052).
                         let text_before = entry.doc.text().unwrap_or_default();
 
-                        if let Err(e) = entry.doc.merge(&mut external_doc) {
+                        if let Err(e) = entry.doc.merge(&mut external_doc as &mut dyn CrdtBackend) {
                             eprintln!("crdt-reconcile: merge error for {slug}: {e}");
                         } else {
                             entry.last_access = Instant::now();

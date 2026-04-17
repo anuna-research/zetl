@@ -1,6 +1,30 @@
 use automerge::marks::ExpandMark;
 use automerge::ScalarValue;
 
+/// Project-owned CRDT mark span.
+///
+/// Returned from [`crate::crdt::CrdtBackend::marks`] instead of
+/// `automerge::marks::Mark<'_>` so alternative backends (e.g. diamond-types)
+/// can satisfy the trait without leaking automerge's borrowed mark type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mark {
+    pub name: String,
+    pub value: ScalarValue,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl<'a> From<automerge::marks::Mark<'a>> for Mark {
+    fn from(m: automerge::marks::Mark<'a>) -> Self {
+        Self {
+            name: m.name().to_string(),
+            value: m.value().clone(),
+            start: m.start,
+            end: m.end,
+        }
+    }
+}
+
 /// Mark types supported by the Peritext CRDT engine (REQ-020-025).
 ///
 /// Each variant maps to a markdown syntax and carries Peritext growth behavior

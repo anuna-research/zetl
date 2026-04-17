@@ -4,16 +4,20 @@
 //! markdown syntax. Block-level structure is handled as indivisible atomic
 //! tokens; inline formatting uses Peritext growth behavior.
 
+pub mod backend;
 pub mod blocks;
 pub mod marks;
 
+use std::any::Any;
+
 use anyhow::{Context, Result};
-use automerge::marks::{ExpandMark, Mark};
+use automerge::marks::{ExpandMark, Mark as AutoMark};
 use automerge::transaction::Transactable;
 use automerge::{AutoCommit, ObjType, ReadDoc, ROOT};
 
+pub use backend::CrdtBackend;
 use blocks::BlockToken;
-use marks::MarkType;
+use marks::{Mark, MarkType};
 
 /// A CRDT document wrapping an automerge `AutoCommit` with Peritext-style
 /// rich text. The text object lives at `root.content` as an automerge Text.
@@ -23,23 +27,6 @@ pub struct CrdtDocument {
 }
 
 impl CrdtDocument {
-    /// Create a new empty CRDT document.
-    pub fn new() -> Result<Self> {
-        let mut doc = AutoCommit::new();
-        let text_id = doc
-            .put_object(ROOT, "content", ObjType::Text)
-            .context("failed to create text object")?;
-        Ok(Self { text_id, doc })
-    }
-
-    /// Load a CRDT document from markdown text. Parses the markdown into
-    /// the automerge text object with appropriate marks (REQ-020-024 load flow).
-    pub fn from_markdown(markdown: &str) -> Result<Self> {
-        let mut crdt = Self::new()?;
-        crdt.load_markdown(markdown)?;
-        Ok(crdt)
-    }
-
     /// Load markdown content into this (empty) document.
     fn load_markdown(&mut self, markdown: &str) -> Result<()> {
         let lines: Vec<&str> = markdown.lines().collect();
@@ -182,7 +169,7 @@ impl CrdtDocument {
                 self.doc
                     .mark(
                         &self.text_id,
-                        Mark::new(
+                        AutoMark::new(
                             inline_mark.mark_type.name().to_string(),
                             inline_mark.mark_type.scalar_value(),
                             mark_start,
@@ -196,30 +183,53 @@ impl CrdtDocument {
 
         Ok(start_pos + parsed.plain_text.chars().count())
     }
+}
 
-    /// Get the raw text content of the document.
-    pub fn text(&self) -> Result<String> {
+impl CrdtBackend for CrdtDocument {
+    fn new() -> Result<Self> {
+        let mut doc = AutoCommit::new();
+        let text_id = doc
+            .put_object(ROOT, "content", ObjType::Text)
+            .context("failed to create text object")?;
+        Ok(Self { text_id, doc })
+    }
+
+    fn from_markdown(markdown: &str) -> Result<Self> {
+        let mut crdt = <Self as CrdtBackend>::new()?;
+        crdt.load_markdown(markdown)?;
+        Ok(crdt)
+    }
+
+    fn load(data: &[u8]) -> Result<Self> {
+        let doc = AutoCommit::load(data).context("load automerge doc")?;
+        let text_id = doc
+            .get(ROOT, "content")
+            .context("get content")?
+            .map(|(_, id)| id)
+            .context("content not found")?;
+        Ok(Self { doc, text_id })
+    }
+
+    fn text(&self) -> Result<String> {
         self.doc.text(&self.text_id).context("read text")
     }
 
-    /// Get all marks on the document's text object.
-    pub fn marks(&self) -> Result<Vec<Mark<'_>>> {
-        self.doc.marks(&self.text_id).context("read marks")
+    fn marks(&self) -> Result<Vec<Mark>> {
+        let raw = self.doc.marks(&self.text_id).context("read marks")?;
+        Ok(raw.into_iter().map(Mark::from).collect())
     }
 
-    /// Insert text at a position.
-    pub fn splice_text(&mut self, pos: usize, del: isize, text: &str) -> Result<()> {
+    fn splice_text(&mut self, pos: usize, del: isize, text: &str) -> Result<()> {
         self.doc
             .splice_text(&self.text_id, pos, del, text)
             .context("splice_text")
     }
 
-    /// Apply a mark to a range.
-    pub fn mark(&mut self, mark_type: &MarkType, start: usize, end: usize) -> Result<()> {
+    fn mark(&mut self, mark_type: &MarkType, start: usize, end: usize) -> Result<()> {
         self.doc
             .mark(
                 &self.text_id,
-                Mark::new(
+                AutoMark::new(
                     mark_type.name().to_string(),
                     mark_type.scalar_value(),
                     start,
@@ -230,8 +240,7 @@ impl CrdtDocument {
             .context("mark")
     }
 
-    /// Remove a mark from a range.
-    pub fn unmark(&mut self, mark_type: &MarkType, start: usize, end: usize) -> Result<()> {
+    fn unmark(&mut self, mark_type: &MarkType, start: usize, end: usize) -> Result<()> {
         self.doc
             .unmark(
                 &self.text_id,
@@ -243,10 +252,9 @@ impl CrdtDocument {
             .context("unmark")
     }
 
-    /// Serialize the CRDT state to canonical markdown (REQ-020-027).
-    pub fn to_markdown(&self) -> Result<String> {
-        let text = self.text()?;
-        let marks = self.marks()?;
+    fn to_markdown(&self) -> Result<String> {
+        let text = <Self as CrdtBackend>::text(self)?;
+        let marks = <Self as CrdtBackend>::marks(self)?;
 
         if text.is_empty() {
             return Ok(String::new());
@@ -255,36 +263,29 @@ impl CrdtDocument {
         serialize_to_markdown(&text, &marks)
     }
 
-    /// Save the automerge document to bytes.
-    pub fn save(&mut self) -> Vec<u8> {
+    fn save(&mut self) -> Vec<u8> {
         self.doc.save()
     }
 
-    /// Load a CRDT document from saved automerge bytes.
-    pub fn load(data: &[u8]) -> Result<Self> {
-        let doc = AutoCommit::load(data).context("load automerge doc")?;
-        // Find the text object at root.content
-        let text_id = doc
-            .get(ROOT, "content")
-            .context("get content")?
-            .map(|(_, id)| id)
-            .context("content not found")?;
-        Ok(Self { doc, text_id })
-    }
-
-    /// Fork the document for concurrent editing simulation.
-    pub fn fork(&mut self) -> Self {
+    fn fork(&mut self) -> Box<dyn CrdtBackend> {
         let forked = self.doc.fork();
-        Self {
+        Box::new(Self {
             doc: forked,
             text_id: self.text_id.clone(),
-        }
+        })
     }
 
-    /// Merge another document's changes into this one.
-    pub fn merge(&mut self, other: &mut Self) -> Result<()> {
+    fn merge(&mut self, other: &mut dyn CrdtBackend) -> Result<()> {
+        let other = other
+            .as_any_mut()
+            .downcast_mut::<CrdtDocument>()
+            .context("merge: incompatible CRDT backend")?;
         self.doc.merge(&mut other.doc).context("merge")?;
         Ok(())
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
@@ -575,14 +576,14 @@ fn parse_md_link(chars: &[char], start: usize) -> Option<(String, String, usize)
 ///
 /// Mark nesting order (outermost → innermost):
 /// strikethrough > bold > italic > code > highlight
-fn serialize_to_markdown(text: &str, marks: &[Mark<'_>]) -> Result<String> {
+fn serialize_to_markdown(text: &str, marks: &[Mark]) -> Result<String> {
     let chars: Vec<char> = text.chars().collect();
     let len = chars.len();
 
     // Build a list of active mark types at each character position
     let mut typed_marks: Vec<(MarkType, usize, usize)> = Vec::new();
     for m in marks {
-        if let Some(mt) = MarkType::from_mark(m.name(), m.value()) {
+        if let Some(mt) = MarkType::from_mark(&m.name, &m.value) {
             typed_marks.push((mt, m.start, m.end));
         }
     }
@@ -835,18 +836,18 @@ mod tests {
 
         // Verify mark types
         let marks = doc.marks().unwrap();
-        let mark_names: Vec<&str> = marks.iter().map(|m| m.name()).collect();
+        let mark_names: Vec<&str> = marks.iter().map(|m| m.name.as_str()).collect();
         assert!(mark_names.contains(&"bold"));
         assert!(mark_names.contains(&"italic"));
         assert!(mark_names.contains(&"wikilink"));
 
         // Verify growth behavior
-        let bold_mark = marks.iter().find(|m| m.name() == "bold").unwrap();
-        let mt = MarkType::from_mark(bold_mark.name(), bold_mark.value()).unwrap();
+        let bold_mark = marks.iter().find(|m| m.name == "bold").unwrap();
+        let mt = MarkType::from_mark(&bold_mark.name, &bold_mark.value).unwrap();
         assert!(mt.is_inclusive()); // bold is inclusive
 
-        let wikilink_mark = marks.iter().find(|m| m.name() == "wikilink").unwrap();
-        let mt = MarkType::from_mark(wikilink_mark.name(), wikilink_mark.value()).unwrap();
+        let wikilink_mark = marks.iter().find(|m| m.name == "wikilink").unwrap();
+        let mt = MarkType::from_mark(&wikilink_mark.name, &wikilink_mark.value).unwrap();
         assert!(!mt.is_inclusive()); // wikilink is non-growing
 
         // Serialize back — byte-identical
@@ -861,8 +862,8 @@ mod tests {
 
         // The code mark should be non-growing
         let marks = doc.marks().unwrap();
-        let code_mark = marks.iter().find(|m| m.name() == "code").unwrap();
-        let mt = MarkType::from_mark(code_mark.name(), code_mark.value()).unwrap();
+        let code_mark = marks.iter().find(|m| m.name == "code").unwrap();
+        let mt = MarkType::from_mark(&code_mark.name, &code_mark.value).unwrap();
         assert_eq!(mt.expand(), ExpandMark::None);
     }
 
@@ -892,7 +893,7 @@ mod tests {
         assert!(
             marks.is_empty(),
             "Code fence content should have no marks, got: {:?}",
-            marks.iter().map(|m| m.name()).collect::<Vec<_>>()
+            marks.iter().map(|m| m.name.as_str()).collect::<Vec<_>>()
         );
 
         let out = doc.to_markdown().unwrap();
@@ -922,7 +923,7 @@ mod tests {
         fork.mark(&MarkType::Italic, 6, 11).unwrap();
 
         // Merge
-        doc.merge(&mut fork).unwrap();
+        doc.merge(&mut *fork).unwrap();
 
         let out = doc.to_markdown().unwrap();
         assert!(out.contains("**Hello**"));
@@ -937,7 +938,7 @@ mod tests {
 
         // The wikilink mark covers "Project X" in the plain text
         let marks = doc.marks().unwrap();
-        let wl = marks.iter().find(|m| m.name() == "wikilink").unwrap();
+        let wl = marks.iter().find(|m| m.name == "wikilink").unwrap();
         let wl_end = wl.end;
 
         // Insert text right after the wikilink end position
@@ -947,7 +948,7 @@ mod tests {
 
         // Verify the wikilink mark did not expand
         let marks_after = doc.marks().unwrap();
-        let wl_after = marks_after.iter().find(|m| m.name() == "wikilink").unwrap();
+        let wl_after = marks_after.iter().find(|m| m.name == "wikilink").unwrap();
         assert_eq!(
             wl_after.end, wl_end,
             "Wikilink should not grow when text is inserted at boundary"
@@ -999,7 +1000,7 @@ mod tests {
         fork.mark(&MarkType::Strikethrough, 13, 17).unwrap();
 
         // Merge both directions
-        doc.merge(&mut fork).unwrap();
+        doc.merge(&mut *fork).unwrap();
 
         // Serialize twice — must be byte-identical (deterministic)
         let out1 = doc.to_markdown().unwrap();
