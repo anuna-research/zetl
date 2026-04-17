@@ -12,6 +12,11 @@
 <style>
   /* Hide the docked mini-widget on the full-page graph view */
   body > .zetl-graph-widget:not([data-placement="fullscreen"]) { display: none !important; }
+  /* Hide fallback page list — fullscreen graph IS the primary content */
+  .vg-stage .zetl-graph-fallback-list { display: none; }
+  .vg-stage .zetl-graph-fallback { display: none; }
+  /* Expand the canvas to fill the stage */
+  .vg-stage #zetl-graph { position: absolute; inset: 0; }
   .vg-main {
     display: flex;
     flex-direction: column;
