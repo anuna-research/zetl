@@ -1,12 +1,12 @@
 {
-  "task_id": "add-diamond-types-dep",
+  "task_id": "crdt-backend-trait",
   "token_budget": 8000,
-  "tokens_used": 175,
+  "tokens_used": 235,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Add diamond-types to Cargo.toml as an optional dependency under the existing `collab` feature (alongside automerge for the duration of the swap). Confirm `cargo build --features collab` and `cargo build --no-default-features` both compile. Record the chosen version in the commit message and pin a minor version (matches the project's existing dependency-pinning style — see automerge = \"0.5\").",
-      "token_cost": 99,
+      "content": "Extract the public surface of CrdtDocument (new, from_markdown, text, marks, splice_text, mark, unmark, to_markdown, save, load, fork, merge) into a CrdtBackend trait in src/crdt/backend.rs. Make the existing automerge-based CrdtDocument implement it. Update src/web/ws.rs to take `&dyn CrdtBackend` (or `Box<dyn CrdtBackend>`) instead of the concrete type. No behavior change. Trait MUST be designed so the diamond-types impl can satisfy it without a marks::Mark<'_> return type leaking automerge — return a project-owned Mark struct in src/crdt/marks.rs.",
+      "token_cost": 139,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 2 files (+609, -5): .hence/context-manifest.json, research/diamond-types-marks.md",
       "token_cost": 22,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-add-diamond-types-dep-changes",
+      "content": "Modified 3 files (+182, -7): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T08:08:18Z"
+  "constructed_at": "2026-04-17T08:11:43Z"
 }
