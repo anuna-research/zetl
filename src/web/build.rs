@@ -843,6 +843,34 @@ pub fn build_static(
         }
     }
 
+    // ── tag-cloud page (/tag-cloud/index.html) ──────────────────────────
+    // Skip when a real file already claims the `tag-cloud` slug so we don't
+    // shadow a user-authored `Tag Cloud.md`.
+    let tag_cloud_taken = data
+        .files
+        .iter()
+        .any(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case("tag-cloud"));
+    if !tag_cloud_taken {
+        let tag_cloud_ctx = crate::web::context::build_tag_cloud_context(data, vault_root);
+        match engine.render_tag_cloud(&vault_ctx, &tag_cloud_ctx, "build") {
+            Ok(html) => {
+                let tc_dir = out.join("tag-cloud");
+                std::fs::create_dir_all(&tc_dir)?;
+                std::fs::write(tc_dir.join("index.html"), html)?;
+                if verbose {
+                    eprintln!(
+                        "[zetl] tag-cloud: tags={} tagged_pages={}",
+                        tag_cloud_ctx.total_tags, tag_cloud_ctx.total_tagged_pages
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("{}", e.stderr_line("tag-cloud"));
+                return Err(anyhow::anyhow!("{e}"));
+            }
+        }
+    }
+
     if let Some(warning) = graph_index_size_warning(out, count) {
         eprintln!("warning: {warning}");
     }

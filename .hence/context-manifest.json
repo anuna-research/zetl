@@ -1,12 +1,12 @@
 {
-  "task_id": "search-dialog-a11y",
+  "task_id": "tag-cloud",
   "token_budget": 8000,
-  "tokens_used": 216,
+  "tokens_used": 253,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Search palette at themes/default/base.html:663-668 is a bare `<div class=\"search-dialog\">` with no `role=\"dialog\"`, no `aria-modal=\"true\"`, no `aria-labelledby`, and (per review) no focus trap. Screen reader users are not told a modal opened. Add the ARIA attributes, ensure the input receives focus on open, trap focus within the palette while open, and restore focus to the invoking element on close (Esc).",
-      "token_cost": 102,
+      "content": "The advertised `/tag-cloud/` page contains only a placeholder sentence and a raw list of backlinks. There is no tag-cloud route in src/web/routes.rs and no generator in src/web/build.rs. Either (a) build a real tag index from vault frontmatter `tags:` and render counts/links, (b) replace the page body with a clear \"Tag index not yet built\" notice and remove the sidebar link, or (c) drop the page entirely. Preferred: (a) if frontmatter tags are already parsed, otherwise (b).",
+      "token_cost": 119,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 2 files (+38, -7): .hence/context-manifest.json, themes/default/base.html",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-search-dialog-a11y-changes",
+      "content": "Modified 2 files (+68, -6): .hence/context-manifest.json, themes/default/base.html",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T10:43:24Z"
+  "constructed_at": "2026-04-17T10:46:26Z"
 }
