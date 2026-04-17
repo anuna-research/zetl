@@ -170,11 +170,16 @@ pub fn replay_pending_wals(state: &super::WebState) {
             continue;
         }
 
-        // Step 2: Replay WAL operations
+        // Step 2: Replay WAL operations.
+        // The WAL doesn't persist the originating user, and the operators
+        // who sent these ops may no longer be connected; attributing the
+        // recovery-triggered flush to any of them would be incorrect.
+        // Pass an empty user_id so the contributor list stays unpopulated
+        // and the flush pipeline falls back to the generic identity.
         let batches = state.wal_store.replay(slug);
         let mut op_count = 0;
         for ops in &batches {
-            if let Err(e) = state.crdt_store.apply_ops(slug, ops) {
+            if let Err(e) = state.crdt_store.apply_ops(slug, "", ops) {
                 eprintln!("[zetl] WAL recovery: op apply failed for {slug}: {e}");
             }
             op_count += ops.len();

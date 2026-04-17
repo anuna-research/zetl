@@ -342,6 +342,11 @@ pub struct CrdtDocEntry {
     /// Monotonically increasing counter, bumped on each edit. Used to detect
     /// edits that arrive between serialize_for_flush and mark_flushed (C3).
     pub generation: u64,
+    /// User IDs that have contributed ops since the last successful flush,
+    /// in insertion order with dedup. Consumed and cleared by
+    /// `CrdtDocStore::take_contributors` when the flush pipeline attributes
+    /// the commit.
+    pub contributors: Vec<String>,
 }
 
 impl CrdtDocEntry {
@@ -356,6 +361,7 @@ impl CrdtDocEntry {
             disconnected_at: None,
             last_access: now,
             generation: 0,
+            contributors: Vec::new(),
         }
     }
 
@@ -366,6 +372,17 @@ impl CrdtDocEntry {
         self.last_access = now;
         self.dirty = true;
         self.generation = self.generation.wrapping_add(1);
+    }
+
+    /// Record a contributor to the current flush window. Inserts `user_id`
+    /// only if it isn't already present so the list remains ordered + deduped.
+    fn push_contributor(&mut self, user_id: &str) {
+        if user_id.is_empty() {
+            return;
+        }
+        if !self.contributors.iter().any(|u| u == user_id) {
+            self.contributors.push(user_id.to_string());
+        }
     }
 
     /// Mark that the document was flushed to disk.
@@ -509,7 +526,16 @@ impl CrdtDocStore {
     }
 
     /// Apply a sync message (full CRDT state from a client) to the stored doc.
-    pub fn apply_sync(&self, slug: &str, doc_b64: &str) -> Result<(), anyhow::Error> {
+    ///
+    /// `user_id` is the authenticated user who pushed the sync; it's recorded
+    /// on the entry's contributor list so the flush pipeline can attribute
+    /// the resulting commit to them.
+    pub fn apply_sync(
+        &self,
+        slug: &str,
+        user_id: &str,
+        doc_b64: &str,
+    ) -> Result<(), anyhow::Error> {
         use base64::Engine;
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(doc_b64)
@@ -521,12 +547,22 @@ impl CrdtDocStore {
             // Replace with the incoming state (client push)
             entry.doc = incoming;
             entry.touch_edit();
+            entry.push_contributor(user_id);
         }
         Ok(())
     }
 
     /// Apply incremental operations to the stored CRDT document.
-    pub fn apply_ops(&self, slug: &str, ops: &[OpEntry]) -> Result<(), anyhow::Error> {
+    ///
+    /// `user_id` is the authenticated user who sent the ops; it's recorded
+    /// on the entry's contributor list so the flush pipeline can attribute
+    /// the resulting commit to them.
+    pub fn apply_ops(
+        &self,
+        slug: &str,
+        user_id: &str,
+        ops: &[OpEntry],
+    ) -> Result<(), anyhow::Error> {
         let mut docs = self.docs.lock().expect("crdt store lock");
         if let Some(entry) = docs.get_mut(slug) {
             for op in ops {
@@ -553,8 +589,19 @@ impl CrdtDocStore {
                 }
             }
             entry.touch_edit();
+            entry.push_contributor(user_id);
         }
         Ok(())
+    }
+
+    /// Atomically read and clear the contributor list for `slug`. Returns
+    /// the user IDs in insertion order; empty when the slug is unknown or
+    /// has no recorded contributors (e.g. after a prior `take_contributors`).
+    pub fn take_contributors(&self, slug: &str) -> Vec<String> {
+        let mut docs = self.docs.lock().expect("crdt store lock");
+        docs.get_mut(slug)
+            .map(|entry| std::mem::take(&mut entry.contributors))
+            .unwrap_or_default()
     }
 
     /// Collect slugs that need quiescence flush (dirty + idle for >= quiescence_delay).
@@ -1212,7 +1259,7 @@ fn process_client_msg(
     match msg {
         ClientMsg::Sync { doc } => {
             // Client pushes full doc state — apply to CRDT store and broadcast
-            if let Err(e) = crdt_store.apply_sync(slug, &doc) {
+            if let Err(e) = crdt_store.apply_sync(slug, user_id, &doc) {
                 eprintln!("warning: CRDT sync apply failed for {slug}: {e}");
             }
             {
@@ -1227,7 +1274,7 @@ fn process_client_msg(
                 eprintln!("warning: WAL append failed for {slug}: {e}");
             }
             // Apply operations to the server-side CRDT document
-            if let Err(e) = crdt_store.apply_ops(slug, &ops) {
+            if let Err(e) = crdt_store.apply_ops(slug, user_id, &ops) {
                 eprintln!("warning: CRDT op apply failed for {slug}: {e}");
             }
             crdt_store.record_edit(slug);
@@ -1435,6 +1482,7 @@ mod tests {
         store
             .apply_ops(
                 "page",
+                "seed",
                 &[OpEntry::Splice {
                     pos: 0,
                     del: 0,
@@ -1708,7 +1756,7 @@ mod tests {
             del: 0,
             text: "Hello ".to_string(),
         }];
-        store.apply_ops("readme", &ops).unwrap();
+        store.apply_ops("readme", "test", &ops).unwrap();
 
         store.flush_all();
 
@@ -1774,7 +1822,7 @@ mod tests {
             del: 0,
             text: "NEW ".to_string(),
         }];
-        store.apply_ops("page", &ops).unwrap();
+        store.apply_ops("page", "test", &ops).unwrap();
 
         let hash_after = store.crdt_meta("page").unwrap().content_hash.unwrap();
         assert_ne!(hash_before, hash_after, "hash should change after edit");
@@ -1814,5 +1862,63 @@ mod tests {
         assert!(!meta.dirty);
         // secs_since_flush should be very small (just marked)
         assert!(meta.secs_since_flush < 2);
+    }
+
+    // ── Contributor tracking (plan-author-attribution / task-crdt-track-contributors) ──
+
+    #[test]
+    fn contributors_preserve_insertion_order_and_dedup() {
+        let store = test_crdt_store();
+        store.load_or_get("page").unwrap();
+
+        let op = vec![OpEntry::Splice {
+            pos: 0,
+            del: 0,
+            text: "x".into(),
+        }];
+        store.apply_ops("page", "alice", &op).unwrap();
+        store.apply_ops("page", "bob", &op).unwrap();
+        // Alice edits again — must not be recorded twice.
+        store.apply_ops("page", "alice", &op).unwrap();
+        // Empty user_id is ignored.
+        store.apply_ops("page", "", &op).unwrap();
+
+        let contribs = store.take_contributors("page");
+        assert_eq!(contribs, vec!["alice".to_string(), "bob".to_string()]);
+    }
+
+    #[test]
+    fn take_contributors_clears_the_list() {
+        let store = test_crdt_store();
+        store.load_or_get("page").unwrap();
+        let op = vec![OpEntry::Splice {
+            pos: 0,
+            del: 0,
+            text: "x".into(),
+        }];
+        store.apply_ops("page", "alice", &op).unwrap();
+        assert_eq!(store.take_contributors("page"), vec!["alice".to_string()]);
+        // Second call after the take returns empty — the list was consumed.
+        assert!(store.take_contributors("page").is_empty());
+    }
+
+    #[test]
+    fn apply_sync_records_contributor() {
+        use base64::Engine;
+        let store = test_crdt_store();
+        store.load_or_get("page").unwrap();
+
+        let mut seed = WsCrdtBackend::from_markdown("seed\n").unwrap();
+        let doc_b64 = base64::engine::general_purpose::STANDARD.encode(seed.save());
+
+        store.apply_sync("page", "carol", &doc_b64).unwrap();
+
+        assert_eq!(store.take_contributors("page"), vec!["carol".to_string()]);
+    }
+
+    #[test]
+    fn take_contributors_unknown_slug_is_empty() {
+        let store = test_crdt_store();
+        assert!(store.take_contributors("never-loaded").is_empty());
     }
 }
