@@ -1,0 +1,186 @@
+(meta plan
+  (id "author-attribution")
+  (title "CRDT flush — per-user + co-author attribution")
+  (status "active")
+  (created "2026-04-18")
+  (description "When zetl serve --collab flushes a CRDT document, attribute the jj snapshot and git commit to the authenticated user(s) who drove the edits, not to the hardcoded `zetl-crdt` / `zetl@localhost` fallback. Primary author is the user whose last op entered the quiescence window; every other user who contributed ops since the previous flush is emitted as a `Co-authored-by:` trailer in the commit / jj description body. The page-history byline template surfaces the co-authors alongside the primary author. Scope covers the collab editor flush path; the fs-watch path (for edits originating outside zetl) continues to fall back to the generic identity, since there's no authenticated user to attribute to."))
+
+;; ── Agents ──────────────────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── Tasks ───────────────────────────────────────────────────────────
+
+(given task-crdt-track-contributors)
+(meta task-crdt-track-contributors
+  (description "Per-slug contributor tracking in the WS-layer CRDT store. Add `contributors: Vec<String>` to `CrdtDocEntry` at src/web/ws.rs:328; preserve insertion order, dedup on push. Update the list on every successful `apply_ops()` (src/web/ws.rs:529) and `process_sync()` (the push-new-state path) with the authenticated `user_id` passed in by the WS handler — both fns currently take `slug` only, so extend them to take `user_id: &str` (callers are `handle_socket` at src/web/ws.rs:1060 and the test harness). Expose `pub fn take_contributors(&self, slug: &str) -> Vec<String>` that atomically reads+clears the list; flush will call this exactly once per successful flush. No behaviour change yet — only data capture. Unit tests in src/web/ws.rs that seed an entry, apply ops under two different user_ids, and assert take_contributors returns both in insertion order with no dupes, and that a second call returns empty.")
+  (acceptance "CrdtDocEntry carries contributors; apply_ops + process_sync accept user_id and insert it with dedup; take_contributors returns+clears; new unit tests pass under `cargo test`; existing tests still green (update their call sites to pass a user_id).")
+  (priority "P0"))
+
+(given task-flush-author-attribution)
+(meta task-flush-author-attribution
+  (description "Thread per-user attribution through `flush_pipeline` at src/web/flush.rs:43. After the write+reindex steps, call `state.crdt_store.take_contributors(slug)` to get the ordered user_ids. Resolve each to (name, email) via `crate::user::load_profile(vault_root, uid)` — mirrors the pattern at src/web/routes.rs:1122-1130. Primary author = the last user_id in the list (whose idle drove quiescence); co-authors = all others in insertion order. Replace the hardcoded `\"zetl-crdt\"` / `\"zetl-crdt\"` at src/web/flush.rs:134-135 with the primary name/email; replace `auto_snapshot(...)` at src/web/flush.rs:161 with `auto_snapshot_as(..., Some((&name, &email)))`. Extend the git commit message AND the jj snapshot description to carry `Co-authored-by: Name <email>` trailers (one per line, conventional git format) when co-authors are non-empty. When contributors is empty (flush fires without any tracked ops — unusual, but possible on first-connect sync), fall back to the generic identity as before.")
+  (acceptance "On quiescence flush, git log shows the primary user as committer and any co-authors as `Co-authored-by:` trailers in the body; `jj log` description carries the same trailers; both identities come from the user profile, not the zetl-crdt fallback. Integration test exercises a two-user flush and asserts on the committed message + jj description.")
+  (priority "P0"))
+
+(given task-history-parse-coauthors)
+(meta task-history-parse-coauthors
+  (description "Extend `PageHistoryEntry` at src/history/core.rs:595 with `pub co_authors: Vec<(String, String)>` — pairs of (name, email) parsed from `Co-authored-by:` trailers in the snapshot description. Parser handles the conventional format `Co-authored-by: Name <email>` (case-insensitive header, trimmed whitespace, multiple lines). Populate inside `extract_page_history` at src/history/core.rs:628 from `ChangeInfo.description` — add a description field if it isn't already carried (check jj_backend.rs ChangeInfo). Unit test the parser with: zero trailers → empty; one trailer → one pair; multiple interspersed with other body text → all captured in order; malformed trailer (no `<email>`) → skipped.")
+  (acceptance "PageHistoryEntry.co_authors populated from description trailers; unit tests cover the parser shapes above; history_ui integration tests pass unchanged; the JSON serialization of page.history now exposes co_authors on each recent-changes entry.")
+  (priority "P1"))
+
+(given task-byline-multi-author)
+(meta task-byline-multi-author
+  (description "Update the page history byline in themes/default/page.html (the `<footer class=\"page-history-meta\">` block around the `latest` set expression) to render co-authors. Rules:\n  - Solo: `by <author_name>`\n  - Two: `by <a> and <b>`\n  - Three+: `by <a> and N others`\nImplementation reads `latest.co_authors` (Vec of name/email pairs). Keep the existing `page-history-author` span for the primary; add a `page-history-coauthors` span for the rest so themes can style them distinctly. No email rendered in the byline — just names. The full list remains visible on the per-page /_history page (out of scope for this task; follow-up if needed).")
+  (acceptance "Byline renders \"by X\" / \"by X and Y\" / \"by X and N others\" depending on co-author count; no PII leaked; a11y label preserved; existing history_ui tests that assert on `page-history-meta` presence still pass.")
+  (priority "P1"))
+
+(given task-integration-test)
+(meta task-integration-test
+  (description "End-to-end test (tests/history_ui.rs or a sibling test file) that simulates the collab-flush happy path: boot a tmp vault with two user profiles, instantiate a CrdtDocStore, apply_ops under user-A then user-B, call flush_pipeline, and assert (a) the git commit author is user-B with user-A as a Co-authored-by trailer in the message body, (b) the jj snapshot's ChangeInfo.description carries the same trailer, (c) the PageHistoryContext built from the resulting snapshot has co_authors populated with user-A's name, and (d) the rendered page.html byline string contains \"by <B> and <A>\". Uses the existing SessionStore / user::save_profile helpers to create the two profiles; uses the JjBackend directly for the snapshot (no WS server needed).")
+  (acceptance "New integration test green under `cargo test --features history`; no regressions in the rest of history_ui.rs; test runs in under 2 seconds.")
+  (priority "P1"))
+
+;; ── Readiness ───────────────────────────────────────────────────────
+
+(normally r-ready-crdt-track
+  task-crdt-track-contributors
+  ready-crdt-track-contributors)
+
+(normally r-ready-flush
+  (and task-flush-author-attribution completed-crdt-track-contributors)
+  ready-flush-author-attribution)
+
+(normally r-ready-history-parse
+  task-history-parse-coauthors
+  ready-history-parse-coauthors)
+
+(normally r-ready-byline
+  (and task-byline-multi-author completed-history-parse-coauthors)
+  ready-byline-multi-author)
+
+(normally r-ready-integration
+  (and task-integration-test
+       completed-crdt-track-contributors
+       completed-flush-author-attribution
+       completed-history-parse-coauthors
+       completed-byline-multi-author)
+  ready-integration-test)
+
+;; ── Assignments ─────────────────────────────────────────────────────
+
+(normally r-assign-crdt-track
+  (and ready-crdt-track-contributors agent-claude-available)
+  assign-to-crdt-track-contributors-claude)
+
+(normally r-assign-flush
+  (and ready-flush-author-attribution agent-claude-available)
+  assign-to-flush-author-attribution-claude)
+
+(normally r-assign-history-parse
+  (and ready-history-parse-coauthors agent-claude-available)
+  assign-to-history-parse-coauthors-claude)
+
+(normally r-assign-byline
+  (and ready-byline-multi-author agent-claude-available)
+  assign-to-byline-multi-author-claude)
+
+(normally r-assign-integration
+  (and ready-integration-test agent-claude-available)
+  assign-to-integration-test-claude)
+
+(claims agent:claude
+  :at "2026-04-17T23:32:40Z"
+  (given claim-v1-crdt-track-contributors)
+  (normally r-cl-state-v1-crdt-track-contributors claim-v1-crdt-track-contributors state-claimed-v1-crdt-track-contributors)
+  (normally r-cl-chain-v1-crdt-track-contributors state-claimed-v1-crdt-track-contributors claimed-crdt-track-contributors)
+)
+
+;; Propagation rules: failures in 'crdt-track-contributors' block downstream tasks
+(normally r-propagate-flush-author-attribution-from-crdt-track-contributors-failed failed-crdt-track-contributors upstream-blocked-flush-author-attribution)
+(normally r-propagate-flush-author-attribution-from-crdt-track-contributors-permanently-failed permanently-failed-crdt-track-contributors upstream-blocked-flush-author-attribution)
+(normally r-propagate-flush-author-attribution-from-crdt-track-contributors-stale-v1 stale-v1-crdt-track-contributors upstream-blocked-flush-author-attribution)
+(normally r-propagate-flush-author-attribution-from-crdt-track-contributors-timeout-v1 timeout-v1-crdt-track-contributors upstream-blocked-flush-author-attribution)
+(normally r-propagate-flush-author-attribution-from-crdt-track-contributors-blocked upstream-blocked-crdt-track-contributors upstream-blocked-flush-author-attribution)
+(normally r-propagate-integration-test-from-crdt-track-contributors-failed failed-crdt-track-contributors upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-crdt-track-contributors-permanently-failed permanently-failed-crdt-track-contributors upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-crdt-track-contributors-stale-v1 stale-v1-crdt-track-contributors upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-crdt-track-contributors-timeout-v1 timeout-v1-crdt-track-contributors upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-crdt-track-contributors-blocked upstream-blocked-crdt-track-contributors upstream-blocked-integration-test)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-integration-test-from-flush-author-attribution-blocked upstream-blocked-flush-author-attribution upstream-blocked-integration-test)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-17T23:36:22Z"
+  (given completed-crdt-track-contributors))
+
+(claims agent:claude
+  :at "2026-04-17T23:36:30Z"
+  (given claim-v1-flush-author-attribution)
+  (normally r-cl-state-v1-flush-author-attribution claim-v1-flush-author-attribution state-claimed-v1-flush-author-attribution)
+  (normally r-cl-chain-v1-flush-author-attribution state-claimed-v1-flush-author-attribution claimed-flush-author-attribution)
+)
+
+;; Propagation rules: failures in 'flush-author-attribution' block downstream tasks
+(normally r-propagate-integration-test-from-flush-author-attribution-failed failed-flush-author-attribution upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-flush-author-attribution-permanently-failed permanently-failed-flush-author-attribution upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-flush-author-attribution-stale-v1 stale-v1-flush-author-attribution upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-flush-author-attribution-timeout-v1 timeout-v1-flush-author-attribution upstream-blocked-integration-test)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-17T23:43:52Z"
+  (given completed-flush-author-attribution))
+
+(claims agent:claude
+  :at "2026-04-17T23:44:00Z"
+  (given claim-v1-history-parse-coauthors)
+  (normally r-cl-state-v1-history-parse-coauthors claim-v1-history-parse-coauthors state-claimed-v1-history-parse-coauthors)
+  (normally r-cl-chain-v1-history-parse-coauthors state-claimed-v1-history-parse-coauthors claimed-history-parse-coauthors)
+)
+
+;; Propagation rules: failures in 'history-parse-coauthors' block downstream tasks
+(normally r-propagate-byline-multi-author-from-history-parse-coauthors-failed failed-history-parse-coauthors upstream-blocked-byline-multi-author)
+(normally r-propagate-byline-multi-author-from-history-parse-coauthors-permanently-failed permanently-failed-history-parse-coauthors upstream-blocked-byline-multi-author)
+(normally r-propagate-byline-multi-author-from-history-parse-coauthors-stale-v1 stale-v1-history-parse-coauthors upstream-blocked-byline-multi-author)
+(normally r-propagate-byline-multi-author-from-history-parse-coauthors-timeout-v1 timeout-v1-history-parse-coauthors upstream-blocked-byline-multi-author)
+(normally r-propagate-byline-multi-author-from-history-parse-coauthors-blocked upstream-blocked-history-parse-coauthors upstream-blocked-byline-multi-author)
+(normally r-propagate-integration-test-from-history-parse-coauthors-failed failed-history-parse-coauthors upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-history-parse-coauthors-permanently-failed permanently-failed-history-parse-coauthors upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-history-parse-coauthors-stale-v1 stale-v1-history-parse-coauthors upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-history-parse-coauthors-timeout-v1 timeout-v1-history-parse-coauthors upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-history-parse-coauthors-blocked upstream-blocked-history-parse-coauthors upstream-blocked-integration-test)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-integration-test-from-byline-multi-author-blocked upstream-blocked-byline-multi-author upstream-blocked-integration-test)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-17T23:52:21Z"
+  (given completed-history-parse-coauthors))
+
+(claims agent:claude
+  :at "2026-04-17T23:52:26Z"
+  (given claim-v1-byline-multi-author)
+  (normally r-cl-state-v1-byline-multi-author claim-v1-byline-multi-author state-claimed-v1-byline-multi-author)
+  (normally r-cl-chain-v1-byline-multi-author state-claimed-v1-byline-multi-author claimed-byline-multi-author)
+)
+
+;; Propagation rules: failures in 'byline-multi-author' block downstream tasks
+(normally r-propagate-integration-test-from-byline-multi-author-failed failed-byline-multi-author upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-byline-multi-author-permanently-failed permanently-failed-byline-multi-author upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-byline-multi-author-stale-v1 stale-v1-byline-multi-author upstream-blocked-integration-test)
+(normally r-propagate-integration-test-from-byline-multi-author-timeout-v1 timeout-v1-byline-multi-author upstream-blocked-integration-test)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-17T23:53:15Z"
+  (given completed-byline-multi-author))
+
+(claims agent:claude
+  :at "2026-04-17T23:53:19Z"
+  (given claim-v1-integration-test)
+  (normally r-cl-state-v1-integration-test claim-v1-integration-test state-claimed-v1-integration-test)
+  (normally r-cl-chain-v1-integration-test state-claimed-v1-integration-test claimed-integration-test)
+)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-17T23:56:53Z"
+  (given completed-integration-test))
