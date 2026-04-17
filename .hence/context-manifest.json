@@ -1,12 +1,12 @@
 {
-  "task_id": "marks-layer-design",
+  "task_id": "add-diamond-types-dep",
   "token_budget": 8000,
-  "tokens_used": 199,
+  "tokens_used": 175,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Produce a short design note (research/diamond-types-marks.md) describing the replacement for automerge's RichText marks. Cover: data model (sibling diamond-types document of mark-spans? separate crdt-marks crate? interval CRDT?), Peritext expand semantics (Both/None) preservation per mark type, mark name → ScalarValue equivalent payload, conflict resolution behavior, and the algorithm for translating splice_text(pos, del, text) into mark-span shifts. Must enumerate exactly which automerge::* symbols disappear and what replaces them. Reviewed with hugo before implementation.",
-      "token_cost": 145,
+      "content": "Add diamond-types to Cargo.toml as an optional dependency under the existing `collab` feature (alongside automerge for the duration of the swap). Confirm `cargo build --features collab` and `cargo build --no-default-features` both compile. Record the chosen version in the commit message and pin a minor version (matches the project's existing dependency-pinning style — see automerge = \"0.5\").",
+      "token_cost": 99,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 6 files (+1738, -65): .hence/context-manifest.json, research/diamond-types-spike.md, tools/diamond-types-spike/.gitignore, tools/diamond-types-spike/Cargo.lock, tools/diamond-types-spike/Cargo.toml and 1 more",
       "token_cost": 54,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-marks-layer-design-changes",
+      "content": "Modified 2 files (+609, -5): .hence/context-manifest.json, research/diamond-types-marks.md",
+      "token_cost": 22,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T08:01:19Z"
+  "constructed_at": "2026-04-17T08:08:18Z"
 }
