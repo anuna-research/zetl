@@ -1,28 +1,85 @@
-use automerge::marks::ExpandMark;
-use automerge::ScalarValue;
+//! Project-owned mark types for the Peritext CRDT engine.
+//!
+//! The `Mark` / `Scalar` / `ExpandMark` types here replace automerge's borrowed
+//! `automerge::marks::Mark<'_>`, `automerge::ScalarValue`, and
+//! `automerge::marks::ExpandMark` so that alternative backends (diamond-types)
+//! can satisfy the [`crate::crdt::CrdtBackend`] trait without leaking
+//! third-party types.
+//!
+//! `Scalar` is intentionally the narrow subset of automerge scalar values
+//! zetl ever stored on a mark (bool / string, plus reserved int/null for
+//! forward compatibility) — not counters, timestamps, or bytes. This keeps
+//! (de)serialisation cheap and the wire format wire-stable.
+//!
+//! `Scalar::Bool(true)` decodes cleanly from WAL entries written by the
+//! automerge backend, so `.zetl/wal/` payloads stay readable across the
+//! backend cut-over.
+
+use serde::{Deserialize, Serialize};
+
+/// Peritext expand behaviour for a mark span.
+///
+/// - `Both`: text inserted at either boundary inherits the mark (bold, italic,
+///   strikethrough, highlight).
+/// - `None`: text inserted at either boundary does NOT inherit the mark (code,
+///   wikilink, link, comment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpandMark {
+    Both,
+    None,
+}
+
+/// Project-owned scalar value carried on a mark.
+///
+/// Kept to the subset zetl actually stores so (de)serialisation is cheap and
+/// wire-stable. `Int` / `Null` are reserved for future mark types (e.g. a
+/// severity-carrying callout mark) so adding them doesn't require a wire bump.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Scalar {
+    Bool(bool),
+    Str(String),
+    Int(i64),
+    Null,
+}
+
+impl Scalar {
+    /// Construct a `Scalar` from a `serde_json::Value`, matching the
+    /// wire-level encoding used by `OpEntry::Mark.value`.
+    ///
+    /// Unknown / non-scalar JSON values collapse to `Scalar::Bool(true)` to
+    /// match the automerge backend's historical behaviour.
+    pub fn from_json(v: &serde_json::Value) -> Self {
+        match v {
+            serde_json::Value::Bool(b) => Self::Bool(*b),
+            serde_json::Value::String(s) => Self::Str(s.clone()),
+            serde_json::Value::Null => Self::Null,
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Self::Int(i)
+                } else {
+                    // Fall back to the presence-sentinel rather than invent a
+                    // lossy i64 from a float; no MarkType today emits floats.
+                    Self::Bool(true)
+                }
+            }
+            _ => Self::Bool(true),
+        }
+    }
+}
 
 /// Project-owned CRDT mark span.
 ///
 /// Returned from [`crate::crdt::CrdtBackend::marks`] instead of
 /// `automerge::marks::Mark<'_>` so alternative backends (e.g. diamond-types)
 /// can satisfy the trait without leaking automerge's borrowed mark type.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mark {
     pub name: String,
-    pub value: ScalarValue,
+    pub value: Scalar,
     pub start: usize,
     pub end: usize,
-}
-
-impl<'a> From<automerge::marks::Mark<'a>> for Mark {
-    fn from(m: automerge::marks::Mark<'a>) -> Self {
-        Self {
-            name: m.name().to_string(),
-            value: m.value().clone(),
-            start: m.start,
-            end: m.end,
-        }
-    }
 }
 
 /// Mark types supported by the Peritext CRDT engine (REQ-020-025).
@@ -47,7 +104,7 @@ pub enum MarkType {
 }
 
 impl MarkType {
-    /// The automerge mark name used as the key in the CRDT.
+    /// The mark name used as the key in the CRDT.
     pub fn name(&self) -> &'static str {
         match self {
             Self::Bold => "bold",
@@ -79,26 +136,23 @@ impl MarkType {
         matches!(self.expand(), ExpandMark::Both)
     }
 
-    /// The scalar value stored in automerge for this mark.
-    pub fn scalar_value(&self) -> ScalarValue {
+    /// The scalar value stored on the CRDT for this mark.
+    pub fn scalar_value(&self) -> Scalar {
         match self {
             Self::Bold | Self::Italic | Self::Code | Self::Strikethrough | Self::Highlight => {
-                ScalarValue::from(true)
+                Scalar::Bool(true)
             }
-            Self::Wikilink { target, alias } => {
-                // Encode as "target" or "target|alias"
-                match alias {
-                    Some(a) => ScalarValue::from(format!("{target}|{a}")),
-                    None => ScalarValue::from(target.clone()),
-                }
-            }
-            Self::Link { url } => ScalarValue::from(url.clone()),
-            Self::Comment => ScalarValue::from(true),
+            Self::Wikilink { target, alias } => match alias {
+                Some(a) => Scalar::Str(format!("{target}|{a}")),
+                None => Scalar::Str(target.clone()),
+            },
+            Self::Link { url } => Scalar::Str(url.clone()),
+            Self::Comment => Scalar::Bool(true),
         }
     }
 
-    /// Reconstruct a MarkType from an automerge mark name and scalar value.
-    pub fn from_mark(name: &str, value: &ScalarValue) -> Option<Self> {
+    /// Reconstruct a MarkType from a mark name and scalar value.
+    pub fn from_mark(name: &str, value: &Scalar) -> Option<Self> {
         match name {
             "bold" => Some(Self::Bold),
             "italic" => Some(Self::Italic),
@@ -167,9 +221,9 @@ impl MarkType {
     }
 }
 
-fn scalar_to_string(v: &ScalarValue) -> Option<String> {
+fn scalar_to_string(v: &Scalar) -> Option<String> {
     match v {
-        ScalarValue::Str(s) => Some(s.to_string()),
+        Scalar::Str(s) => Some(s.clone()),
         _ => None,
     }
 }
@@ -242,5 +296,22 @@ mod tests {
         assert!(MarkType::Bold.nesting_order() < MarkType::Italic.nesting_order());
         assert!(MarkType::Italic.nesting_order() < MarkType::Code.nesting_order());
         assert!(MarkType::Code.nesting_order() < MarkType::Highlight.nesting_order());
+    }
+
+    #[test]
+    fn scalar_from_json_roundtrip_wire_stable() {
+        // WAL entries written by the automerge backend encode mark values as
+        // JSON via serde_json::Value — `Scalar::from_json` must decode them
+        // to the same `Scalar` that a fresh MarkType would produce.
+        assert_eq!(
+            Scalar::from_json(&serde_json::json!(true)),
+            Scalar::Bool(true)
+        );
+        assert_eq!(
+            Scalar::from_json(&serde_json::json!("Project X")),
+            Scalar::Str("Project X".into())
+        );
+        assert_eq!(Scalar::from_json(&serde_json::json!(42)), Scalar::Int(42));
+        assert_eq!(Scalar::from_json(&serde_json::json!(null)), Scalar::Null);
     }
 }
