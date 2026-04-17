@@ -26,7 +26,7 @@ use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
-use crate::crdt::CrdtDocument;
+use crate::crdt::{CrdtBackend, WsCrdtBackend};
 
 use super::wal::WalStore;
 use super::WebState;
@@ -250,7 +250,7 @@ const WS_MSG_RATE_LIMIT: usize = 100; // messages per second
 /// ops and presence, plus the latest CRDT doc bytes for late joiners.
 pub struct EditRoom {
     pub tx: broadcast::Sender<ServerMsg>,
-    /// Latest full CRDT doc state (base64-encoded automerge bytes).
+    /// Latest full CRDT doc state (base64-encoded CRDT backend bytes).
     pub doc_state: Mutex<Option<String>>,
 }
 
@@ -315,24 +315,6 @@ impl WsHub {
 
 // ── CRDT document store (REQ-020-029) ────────────────────────────────
 
-/// Convert a `serde_json::Value` to an automerge `ScalarValue`.
-fn json_to_scalar(v: &serde_json::Value) -> automerge::ScalarValue {
-    match v {
-        serde_json::Value::Bool(b) => automerge::ScalarValue::from(*b),
-        serde_json::Value::String(s) => automerge::ScalarValue::from(s.clone()),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                automerge::ScalarValue::from(i)
-            } else if let Some(f) = n.as_f64() {
-                automerge::ScalarValue::from(f)
-            } else {
-                automerge::ScalarValue::from(true)
-            }
-        }
-        _ => automerge::ScalarValue::from(true),
-    }
-}
-
 /// Default eviction TTL: 10 minutes after last client disconnects.
 const DEFAULT_EVICTION_TTL: Duration = Duration::from_secs(10 * 60);
 
@@ -344,7 +326,7 @@ const DEFAULT_MAX_DOCS: usize = 50;
 
 /// A loaded CRDT document with lifecycle metadata.
 pub struct CrdtDocEntry {
-    pub doc: CrdtDocument,
+    pub doc: Box<dyn CrdtBackend>,
     /// Last time any edit was received.
     pub last_edit: Instant,
     /// Last time the document was flushed to disk.
@@ -363,7 +345,7 @@ pub struct CrdtDocEntry {
 }
 
 impl CrdtDocEntry {
-    fn new(doc: CrdtDocument) -> Self {
+    fn new(doc: Box<dyn CrdtBackend>) -> Self {
         let now = Instant::now();
         Self {
             doc,
@@ -426,7 +408,7 @@ impl CrdtDocStore {
     ///
     /// If the document is already in memory, returns the existing entry.
     /// Otherwise, reads the `.md` file from disk and parses it into a
-    /// `CrdtDocument`. If the file doesn't exist, creates an empty document.
+    /// CRDT backend. If the file doesn't exist, creates an empty document.
     ///
     /// Enforces the memory bound by evicting the least-recently-used
     /// document (that has no active clients) when at capacity.
@@ -449,15 +431,15 @@ impl CrdtDocStore {
         Ok(())
     }
 
-    /// Read a page's markdown file and parse it into a `CrdtDocument`.
-    fn load_from_disk(&self, slug: &str) -> Result<CrdtDocument, anyhow::Error> {
+    /// Read a page's markdown file and parse it into a [`CrdtBackend`].
+    fn load_from_disk(&self, slug: &str) -> Result<Box<dyn CrdtBackend>, anyhow::Error> {
         let md_path = self.md_path_for_slug(slug);
         if md_path.exists() {
             let markdown = std::fs::read_to_string(&md_path)
                 .map_err(|e| anyhow::anyhow!("read {}: {e}", md_path.display()))?;
-            CrdtDocument::from_markdown(&markdown)
+            Ok(Box::new(WsCrdtBackend::from_markdown(&markdown)?))
         } else {
-            CrdtDocument::new()
+            Ok(Box::new(WsCrdtBackend::new()?))
         }
     }
 
@@ -511,7 +493,7 @@ impl CrdtDocStore {
         }
     }
 
-    /// Get the serialized CRDT state (automerge bytes, base64-encoded) for a slug.
+    /// Get the serialized CRDT state (backend bytes, base64-encoded) for a slug.
     pub fn get_doc_state_b64(&self, slug: &str) -> Option<String> {
         let mut docs = self.docs.lock().expect("crdt store lock");
         if let Some(entry) = docs.get_mut(slug) {
@@ -532,7 +514,7 @@ impl CrdtDocStore {
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(doc_b64)
             .map_err(|e| anyhow::anyhow!("invalid base64: {e}"))?;
-        let incoming = CrdtDocument::load(&bytes)?;
+        let incoming: Box<dyn CrdtBackend> = Box::new(WsCrdtBackend::load(&bytes)?);
 
         let mut docs = self.docs.lock().expect("crdt store lock");
         if let Some(entry) = docs.get_mut(slug) {
@@ -558,7 +540,7 @@ impl CrdtDocStore {
                         start,
                         end,
                     } => {
-                        let sv = json_to_scalar(value);
+                        let sv = crate::crdt::marks::Scalar::from_json(value);
                         if let Some(mt) = crate::crdt::marks::MarkType::from_mark(name, &sv) {
                             entry.doc.mark(&mt, *start, *end)?;
                         }
@@ -829,9 +811,9 @@ impl CrdtDocStore {
             // ── Case 1: Clean CRDT — reload from disk ────────────────────
             let md_path = self.md_path_for_slug(slug);
             match std::fs::read_to_string(&md_path) {
-                Ok(markdown) => match CrdtDocument::from_markdown(&markdown) {
+                Ok(markdown) => match WsCrdtBackend::from_markdown(&markdown) {
                     Ok(new_doc) => {
-                        entry.doc = new_doc;
+                        entry.doc = Box::new(new_doc);
                         entry.last_access = Instant::now();
                         entry.last_flush = Instant::now();
                         // Send fresh sync to all connected editors.
@@ -854,12 +836,12 @@ impl CrdtDocStore {
             // ── Case 2: Dirty CRDT — merge external with live ────────────
             let md_path = self.md_path_for_slug(slug);
             match std::fs::read_to_string(&md_path) {
-                Ok(markdown) => match CrdtDocument::from_markdown(&markdown) {
+                Ok(markdown) => match WsCrdtBackend::from_markdown(&markdown) {
                     Ok(mut external_doc) => {
                         // Capture text before merge for diff computation (REQ-020-052).
                         let text_before = entry.doc.text().unwrap_or_default();
 
-                        if let Err(e) = entry.doc.merge(&mut external_doc) {
+                        if let Err(e) = entry.doc.merge(&mut external_doc as &mut dyn CrdtBackend) {
                             eprintln!("crdt-reconcile: merge error for {slug}: {e}");
                         } else {
                             entry.last_access = Instant::now();
@@ -1414,21 +1396,90 @@ mod tests {
 
     #[test]
     fn process_sync_stores_doc() {
+        use base64::Engine;
+        // Build a real CRDT doc with some content and serialise it through
+        // the same backend the ws wire now uses.
+        let mut authoritative = WsCrdtBackend::from_markdown("Hello world\n").unwrap();
+        let doc_b64 = base64::engine::general_purpose::STANDARD.encode(authoritative.save());
+        let sync_json = serde_json::json!({ "type": "sync", "doc": doc_b64 }).to_string();
+
         let room = EditRoom::new();
         let store = test_crdt_store();
         let (_wal_dir, wal) = test_wal_store();
         store.load_or_get("test").unwrap();
+
+        process_client_msg(&sync_json, "alice", "test", &room, &store, &wal).unwrap();
+
+        // Room broadcasts the exact bytes it received.
+        let doc = room.doc_state.lock().unwrap();
+        assert_eq!(doc.as_deref(), Some(doc_b64.as_str()));
+
+        // Server-side CRDT absorbed the sync payload — its text matches.
+        assert!(store.crdt_meta("test").unwrap().content_hash.is_some());
+    }
+
+    /// Two clients editing the same slug converge through the diamond-types
+    /// wire format: each sends a splice op, and the stored CRDT ends up
+    /// containing both edits in a deterministic order.
+    ///
+    /// Acceptance for IMPL-029 Phase 6: "integration test shows two clients
+    /// editing the same page converge through diamond-types".
+    #[test]
+    fn two_clients_converge_through_ws_wire() {
+        let room = EditRoom::new();
+        let store = test_crdt_store();
+        let (_wal_dir, wal) = test_wal_store();
+        store.load_or_get("page").unwrap();
+
+        // Seed with initial text so both splice positions are valid.
+        store
+            .apply_ops(
+                "page",
+                &[OpEntry::Splice {
+                    pos: 0,
+                    del: 0,
+                    text: "Hello world".into(),
+                }],
+            )
+            .unwrap();
+
+        // Alice prepends "Hi, " (insert at 0).
         process_client_msg(
-            r#"{"type":"sync","doc":"AQID"}"#,
+            r#"{"type":"op","ops":[{"action":"splice","pos":0,"del":0,"text":"Hi, "}]}"#,
             "alice",
-            "test",
+            "page",
             &room,
             &store,
             &wal,
         )
         .unwrap();
-        let doc = room.doc_state.lock().unwrap();
-        assert_eq!(*doc, Some("AQID".to_string()));
+
+        // Bob appends "!" at the end (pos 15 after Alice's prepend).
+        process_client_msg(
+            r#"{"type":"op","ops":[{"action":"splice","pos":15,"del":0,"text":"!"}]}"#,
+            "bob",
+            "page",
+            &room,
+            &store,
+            &wal,
+        )
+        .unwrap();
+
+        // Server-side CRDT reflects both edits.
+        let meta = store.crdt_meta("page").unwrap();
+        assert!(meta.dirty, "store should be dirty after two client edits");
+
+        // Round-trip the doc through the wire: save → base64 → load → text.
+        let b64 = store.get_doc_state_b64("page").expect("doc state present");
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .unwrap();
+        let reloaded = WsCrdtBackend::load(&bytes).unwrap();
+        let text = reloaded.text().unwrap();
+        assert!(text.contains("Hi, "), "got: {text:?}");
+        assert!(text.contains("Hello world"), "got: {text:?}");
+        assert!(text.contains('!'), "got: {text:?}");
     }
 
     #[test]

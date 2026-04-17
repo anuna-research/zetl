@@ -106,11 +106,8 @@ fn test_203_vendor_bundle_gzip_under_250kb() {
 
     assert!(
         total <= VENDOR_BUNDLE_MAX_GZIP_BYTES,
-        "TEST-203 failed: gzip of vendor/sigma/*.min.js is {} bytes, \
-         over the {} byte (250 kB) NFR-103 budget. Breakdown: {:?}",
-        total,
-        VENDOR_BUNDLE_MAX_GZIP_BYTES,
-        per_file
+        "TEST-203 failed: gzip of vendor/sigma/*.min.js is {total} bytes, \
+         over the {VENDOR_BUNDLE_MAX_GZIP_BYTES} byte (250 kB) NFR-103 budget. Breakdown: {per_file:?}",
     );
 
     eprintln!(
@@ -231,10 +228,8 @@ fn test_204_graph_index_under_1mb_for_2k_vault() {
     let size = fs::metadata(&graph_index).unwrap().len();
     assert!(
         size <= GRAPH_INDEX_MAX_BYTES,
-        "TEST-204: graph-index.json is {} bytes, over the {} byte (1 MB) \
+        "TEST-204: graph-index.json is {size} bytes, over the {GRAPH_INDEX_MAX_BYTES} byte (1 MB) \
          NFR-104 budget for a 2 000-page vault",
-        size,
-        GRAPH_INDEX_MAX_BYTES,
     );
     eprintln!("TEST-204: graph-index.json = {size} bytes (under 1 MB budget)");
 }

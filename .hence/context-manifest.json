@@ -1,75 +1,63 @@
 {
-  "task_id": "client-perf-marks",
+  "task_id": "update-spec-020",
   "token_budget": 8000,
-  "tokens_used": 322,
+  "tokens_used": 348,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Emit performance.mark('zetl:graph:render:start') before layout and performance.measure('zetl:graph:render', ...) on layoutstop; emit performance.measure('zetl:navigate', ...) around SPA navigation (OBS-113).",
-      "token_cost": 51,
+      "content": "Update specs/SPEC-020.md frontmatter (`dependencies:` line currently reads `automerge (Peritext CRDT for collaborative editing)`) and any prose mentioning automerge or Peritext-the-crate to reference diamond-types. Preserve Peritext-the-algorithm references where the design intent is unchanged (e.g. inclusive vs non-growing marks). Add a short subsection explaining the marks-layer architecture chosen in Phase 1.",
+      "token_cost": 103,
       "priority": "PlanMeta"
     },
     {
-      "source": "memory/episodic/task-graceful-absence-changes",
-      "content": "Modified 3 files (+584, -58): .hence/context-manifest.json, src/web/engine.rs, themes/default/_graph.html",
-      "token_cost": 26,
+      "source": "memory/episodic/task-spike-diamond-types-changes",
+      "content": "Modified 6 files (+1738, -65): .hence/context-manifest.json, research/diamond-types-spike.md, tools/diamond-types-spike/.gitignore, tools/diamond-types-spike/Cargo.lock, tools/diamond-types-spike/Cargo.toml and 1 more",
+      "token_cost": 54,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-dead-link-styling-changes",
-      "content": "Modified 2 files (+468, -61): .hence/context-manifest.json, themes/default/_graph.html",
-      "token_cost": 21,
+      "source": "memory/episodic/task-marks-layer-design-changes",
+      "content": "Modified 2 files (+609, -5): .hence/context-manifest.json, research/diamond-types-marks.md",
+      "token_cost": 22,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-shell-and-css-contract-changes",
-      "content": "Modified 3 files (+121, -64): .hence/context-manifest.json, README.md, themes/default/base.html",
+      "source": "memory/episodic/task-add-diamond-types-dep-changes",
+      "content": "Modified 3 files (+182, -7): .hence/context-manifest.json, Cargo.lock, Cargo.toml",
+      "token_cost": 20,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-crdt-backend-trait-changes",
+      "content": "Modified 5 files (+185, -85): .hence/context-manifest.json, src/crdt/backend.rs, src/crdt/marks.rs, src/crdt/mod.rs, src/web/ws.rs",
+      "token_cost": 32,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-diamond-text-engine-changes",
+      "content": "Modified 3 files (+370, -5): .hence/context-manifest.json, src/crdt/diamond.rs, src/crdt/mod.rs",
       "token_cost": 23,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-docked-minimap-placement-changes",
-      "content": "Modified 5 files (+351, -66): .hence/context-manifest.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html, themes/default/theme.toml",
-      "token_cost": 37,
+      "source": "memory/episodic/task-diamond-marks-layer-changes",
+      "content": "Modified 9 files (+1404, -164): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/diamond.rs, src/crdt/marks.rs and 4 more",
+      "token_cost": 33,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-spa-shell-changes",
-      "content": "Modified 5 files (+136, -55): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/static/spa.js, themes/default/theme.toml",
-      "token_cost": 40,
+      "source": "memory/episodic/task-ws-wire-format-changes",
+      "content": "Modified 4 files (+121, -22): .hence/context-manifest.json, src/crdt/diamond.rs, src/crdt/mod.rs, src/web/ws.rs",
+      "token_cost": 27,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-mobile-toggle-changes",
-      "content": "Modified 6 files (+365, -78): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html and 1 more",
-      "token_cost": 39,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-graph-vault-page-changes",
-      "content": "Modified 4 files (+114, -47): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/vault_graph.html",
+      "source": "memory/episodic/task-flip-default-backend-changes",
+      "content": "Modified 11 files (+917, -1295): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/backend.rs, src/crdt/diamond.rs and 6 more",
       "token_cost": 34,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-navigate-events-changes",
-      "content": "Modified 2 files (+76, -44): .hence/context-manifest.json, README.md",
-      "token_cost": 17,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-readme-section-changes",
-      "content": "Modified 2 files (+155, -41): .hence/context-manifest.json, README.md",
-      "token_cost": 17,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-theme-authoring-ref-changes",
-      "content": "Modified 2 files (+210, -38): .hence/context-manifest.json, README.md",
-      "token_cost": 17,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T21:32:18Z"
+  "constructed_at": "2026-04-17T09:42:58Z"
 }

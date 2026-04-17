@@ -1,0 +1,215 @@
+;; ============================================================
+;; IMPL-029: Swap automerge → diamond-types CRDT backend
+;; ============================================================
+
+(meta plan
+  (id "IMPL-029")
+  (title "Swap automerge dependency for diamond-types as the collaborative editing CRDT backend")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-04-17")
+  (author "agent:hugo")
+  (spec "SPEC-020")
+  (description "Replace automerge (Peritext rich-text CRDT) with diamond-types (Yjs-style high-performance text CRDT) as the backing engine for collaborative page editing. Currently used in src/crdt/ and src/web/ws.rs behind --features collab. Diamond-types is text-only — there is no built-in rich-text mark store — so this migration must also redesign the marks layer (currently piggybacking on automerge's RichText). The plan is structured as: spike → core text engine → marks redesign → wire/persistence format → call-site migration → automerge removal."))
+
+;; ============================================================
+;; Agents
+;; ============================================================
+
+(given agent-hugo-available)
+(given agent-claude-available)
+
+;; ============================================================
+;; Phase 0: Research spike
+;; Validate diamond-types covers the operations CrdtDocument needs
+;; (text splice/marks/save/load/fork/merge) before committing to the
+;; full migration. If marks cannot be cleanly layered, the plan body
+;; itself may need to change.
+;; ============================================================
+
+(given task-spike-diamond-types)
+(given no-deps-spike-diamond-types)
+
+(meta task-spike-diamond-types
+  (description "Author a standalone Rust spike (in tools/ or examples/) that exercises diamond-types' OpLog/Branch APIs for: insert, delete, save/load, fork/merge, char-position addressing. Document gaps vs the current automerge usage in src/crdt/mod.rs and src/web/ws.rs. Capture findings in research/diamond-types-spike.md including: minimum supported version, wire-format size compared to automerge, and a recommended marks-layering strategy.")
+  (acceptance "research/diamond-types-spike.md exists and answers: (1) does diamond-types cover splice_text/save/load/fork/merge? (2) what does the wire format look like (size, JSON-friendliness)? (3) can marks be layered as a sibling structure (e.g. a separate diamond-types document of (start,end,mark-name,scalar) tuples) or do we need a different crate? (4) recommended migration path. Spike compiles and runs end-to-end."))
+
+(normally r-ready-spike-diamond-types
+  (and task-spike-diamond-types no-deps-spike-diamond-types)
+  ready-spike-diamond-types)
+(normally r-assign-spike-diamond-types-claude
+  (and ready-spike-diamond-types agent-claude-available)
+  assign-to-spike-diamond-types-claude)
+
+;; ============================================================
+;; Phase 1: Marks-layer design
+;; Diamond-types is text-only. Decide how Peritext-style marks
+;; (bold/italic/code/wikilink/link/highlight/comment) get persisted,
+;; merged, and round-tripped to markdown without automerge::marks.
+;; ============================================================
+
+(given task-marks-layer-design)
+(given completed-spike-diamond-types-required-marks)
+
+(meta task-marks-layer-design
+  (description "Produce a short design note (research/diamond-types-marks.md) describing the replacement for automerge's RichText marks. Cover: data model (sibling diamond-types document of mark-spans? separate crdt-marks crate? interval CRDT?), Peritext expand semantics (Both/None) preservation per mark type, mark name → ScalarValue equivalent payload, conflict resolution behavior, and the algorithm for translating splice_text(pos, del, text) into mark-span shifts. Must enumerate exactly which automerge::* symbols disappear and what replaces them. Reviewed with hugo before implementation.")
+  (acceptance "research/diamond-types-marks.md exists, hugo has signed off (recorded with `hence task assert (given decided-marks-layer-design)`). Doc enumerates every current MarkType variant and shows its post-migration storage. Doc explicitly addresses concurrent insert-at-mark-boundary semantics for inclusive (Both) vs non-growing (None) marks."))
+
+(normally r-ready-marks-layer-design
+  (and task-marks-layer-design completed-spike-diamond-types)
+  ready-marks-layer-design)
+(normally r-assign-marks-layer-design-hugo
+  (and ready-marks-layer-design agent-hugo-available)
+  assign-to-marks-layer-design-hugo)
+(normally r-assign-marks-layer-design-claude
+  (and ready-marks-layer-design agent-claude-available)
+  assign-to-marks-layer-design-claude)
+(prefer r-assign-marks-layer-design-hugo r-assign-marks-layer-design-claude)
+(meta r-assign-marks-layer-design-hugo
+  (description "Marks redesign is an architectural call — author defaults to hugo")
+  (justification "Hugo owns the SPEC-020 collab editing surface; design doc affects on-disk format"))
+
+;; ============================================================
+;; Phase 2: Cargo + feature-flag plumbing
+;; Add diamond-types behind --features collab while leaving
+;; automerge in place; the two coexist for the duration of the
+;; migration so individual call sites can flip independently.
+;; ============================================================
+
+(given task-add-diamond-types-dep)
+(given completed-marks-layer-design-required-add-dep)
+
+(meta task-add-diamond-types-dep
+  (description "Add diamond-types to Cargo.toml as an optional dependency under the existing `collab` feature (alongside automerge for the duration of the swap). Confirm `cargo build --features collab` and `cargo build --no-default-features` both compile. Record the chosen version in the commit message and pin a minor version (matches the project's existing dependency-pinning style — see automerge = \"0.5\").")
+  (acceptance "Cargo.toml lists diamond-types under the collab feature; cargo build/test passes with and without --features collab; no behavioral change yet."))
+
+(normally r-ready-add-diamond-types-dep
+  (and task-add-diamond-types-dep completed-marks-layer-design)
+  ready-add-diamond-types-dep)
+(normally r-assign-add-diamond-types-dep-claude
+  (and ready-add-diamond-types-dep agent-claude-available)
+  assign-to-add-diamond-types-dep-claude)
+
+;; ============================================================
+;; Phase 3: New CRDT engine module behind a trait
+;; Introduce a CrdtBackend trait that both engines can implement.
+;; Existing CrdtDocument keeps its automerge guts; new
+;; DiamondCrdtDocument implements the same trait. Tests and call
+;; sites then migrate one at a time.
+;; ============================================================
+
+(given task-crdt-backend-trait)
+(given completed-add-diamond-types-dep-required-trait)
+
+(meta task-crdt-backend-trait
+  (description "Extract the public surface of CrdtDocument (new, from_markdown, text, marks, splice_text, mark, unmark, to_markdown, save, load, fork, merge) into a CrdtBackend trait in src/crdt/backend.rs. Make the existing automerge-based CrdtDocument implement it. Update src/web/ws.rs to take `&dyn CrdtBackend` (or `Box<dyn CrdtBackend>`) instead of the concrete type. No behavior change. Trait MUST be designed so the diamond-types impl can satisfy it without a marks::Mark<'_> return type leaking automerge — return a project-owned Mark struct in src/crdt/marks.rs.")
+  (acceptance "src/crdt/backend.rs defines CrdtBackend; src/crdt/mod.rs's CrdtDocument implements it; src/web/ws.rs uses the trait; cargo test --features collab passes; no automerge::* types appear in any signature outside src/crdt/."))
+
+(normally r-ready-crdt-backend-trait
+  (and task-crdt-backend-trait completed-add-diamond-types-dep)
+  ready-crdt-backend-trait)
+(normally r-assign-crdt-backend-trait-claude
+  (and ready-crdt-backend-trait agent-claude-available)
+  assign-to-crdt-backend-trait-claude)
+
+;; ============================================================
+;; Phase 4: diamond-types implementation of the trait
+;; ============================================================
+
+(given task-diamond-text-engine)
+(given completed-crdt-backend-trait-required-diamond-text)
+
+(meta task-diamond-text-engine
+  (description "Implement DiamondCrdtDocument in src/crdt/diamond.rs satisfying CrdtBackend, but only the text-shaped operations (new, from_markdown, text, splice_text, to_markdown, save, load, fork, merge). Marks-shaped operations (mark, unmark, marks) return a not-yet-implemented sentinel for now — Phase 5 fills them in. Wire format SHOULD use diamond-types' native binary encoding (smaller than automerge); add round-trip tests that load(save(doc)) is byte-identical and content-equivalent.")
+  (acceptance "src/crdt/diamond.rs exists; new unit tests in src/crdt/diamond.rs cover: new+empty save/load round trip, from_markdown→to_markdown identity for plain prose, splice_text against a long document, fork+merge convergence on concurrent edits. cargo test --features collab passes (marks tests still target the automerge backend for now)."))
+
+(normally r-ready-diamond-text-engine
+  (and task-diamond-text-engine completed-crdt-backend-trait)
+  ready-diamond-text-engine)
+(normally r-assign-diamond-text-engine-claude
+  (and ready-diamond-text-engine agent-claude-available)
+  assign-to-diamond-text-engine-claude)
+
+;; ============================================================
+;; Phase 5: Marks-layer implementation
+;; ============================================================
+
+(given task-diamond-marks-layer)
+(given completed-diamond-text-engine-required-marks)
+
+(meta task-diamond-marks-layer)
+(meta task-diamond-marks-layer
+  (description "Implement the marks layer for DiamondCrdtDocument as decided in research/diamond-types-marks.md. Likely shape: a sibling diamond-types document keyed by mark-name carrying (start, end, scalar) intervals; updated atomically alongside text splices so positions stay consistent. Cover Peritext expand behavior per MarkType (Both for bold/italic/strikethrough/highlight; None for code/wikilink/link/comment). Reuse src/crdt/marks.rs MarkType verbatim — only its scalar_value/from_mark plumbing needs new internals. Property tests (proptest) for: (a) marks survive save/load, (b) inclusive marks grow at boundaries, (c) non-growing marks do not, (d) concurrent splices on different replicas converge with marks intact.")
+  (acceptance "DiamondCrdtDocument's mark/unmark/marks methods pass the same conformance tests the automerge backend passes; new property tests live in src/crdt/diamond.rs; cargo test --features collab green."))
+
+(normally r-ready-diamond-marks-layer
+  (and task-diamond-marks-layer completed-diamond-text-engine)
+  ready-diamond-marks-layer)
+(normally r-assign-diamond-marks-layer-claude
+  (and ready-diamond-marks-layer agent-claude-available)
+  assign-to-diamond-marks-layer-claude)
+
+;; ============================================================
+;; Phase 6: Wire-format migration in src/web/ws.rs
+;; The ws layer currently base64-encodes automerge bytes for
+;; the initial-sync payload. Switch to diamond-types' encoding
+;; on the wire. No backward compat needed — feature is
+;; --features collab only and has no production users yet.
+;; ============================================================
+
+(given task-ws-wire-format)
+(given completed-diamond-marks-layer-required-ws)
+
+(meta task-ws-wire-format
+  (description "Migrate src/web/ws.rs's initial-sync and op messages from automerge bytes (base64) to diamond-types bytes (base64). Update CrdtDocEntry to hold a Box<dyn CrdtBackend>. Replace the automerge::ScalarValue conversion in json_to_scalar with a project-owned Scalar enum (defined in src/crdt/marks.rs) so the ws module no longer imports automerge::*. Update existing ws.rs tests to use the new wire shape. WAL format change is acceptable — clear .zetl/wal/ on first run after the swap (documented in commit message).")
+  (acceptance "src/web/ws.rs has no `use automerge` or `automerge::` references; `cargo test --features collab` passes including the existing crdt_store_* and ws_* tests; integration test shows two clients editing the same page converge through diamond-types."))
+
+(normally r-ready-ws-wire-format
+  (and task-ws-wire-format completed-diamond-marks-layer)
+  ready-ws-wire-format)
+(normally r-assign-ws-wire-format-claude
+  (and ready-ws-wire-format agent-claude-available)
+  assign-to-ws-wire-format-claude)
+
+;; ============================================================
+;; Phase 7: Flip the default and remove automerge
+;; ============================================================
+
+(given task-flip-default-backend)
+(given completed-ws-wire-format-required-flip)
+
+(meta task-flip-default-backend
+  (description "Make DiamondCrdtDocument the default CrdtBackend everywhere. Remove the automerge-backed CrdtDocument from src/crdt/mod.rs (move marks-related code that does not depend on automerge into src/crdt/marks.rs). Remove the `automerge` line from Cargo.toml and the corresponding lockfile entries. Re-run the SPEC-020 conformance test list (mark types, block-token round-trip, multi-client convergence) end-to-end against the new default.")
+  (acceptance "rg automerge --type rust returns zero hits; Cargo.toml does not list automerge; cargo build, cargo test, cargo test --features collab, cargo clippy -- -D warnings, and cargo fmt --check all pass; the SPEC-020 acceptance scenarios (REQ-020-024 through REQ-020-029) still pass."))
+
+(normally r-ready-flip-default-backend
+  (and task-flip-default-backend completed-ws-wire-format)
+  ready-flip-default-backend)
+(normally r-assign-flip-default-backend-claude
+  (and ready-flip-default-backend agent-claude-available)
+  assign-to-flip-default-backend-claude)
+
+;; ============================================================
+;; Phase 8: Spec + docs reconciliation
+;; ============================================================
+
+(given task-update-spec-020)
+(given completed-flip-default-backend-required-spec)
+
+(meta task-update-spec-020
+  (description "Update specs/SPEC-020.md frontmatter (`dependencies:` line currently reads `automerge (Peritext CRDT for collaborative editing)`) and any prose mentioning automerge or Peritext-the-crate to reference diamond-types. Preserve Peritext-the-algorithm references where the design intent is unchanged (e.g. inclusive vs non-growing marks). Add a short subsection explaining the marks-layer architecture chosen in Phase 1.")
+  (acceptance "specs/SPEC-020.md no longer references automerge; the dependencies block lists diamond-types; the new marks-layer subsection links to research/diamond-types-marks.md; spec markdown lints clean."))
+
+(normally r-ready-update-spec-020
+  (and task-update-spec-020 completed-flip-default-backend)
+  ready-update-spec-020)
+(normally r-assign-update-spec-020-hugo
+  (and ready-update-spec-020 agent-hugo-available)
+  assign-to-update-spec-020-hugo)
+(normally r-assign-update-spec-020-claude
+  (and ready-update-spec-020 agent-claude-available)
+  assign-to-update-spec-020-claude)
+(prefer r-assign-update-spec-020-hugo r-assign-update-spec-020-claude)
+(meta r-assign-update-spec-020-hugo
+  (description "Spec edits default to hugo")
+  (justification "Hugo is the SPEC author of record per the SPEC-020 frontmatter"))
