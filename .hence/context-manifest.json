@@ -1,12 +1,12 @@
 {
-  "task_id": "preview-heading-demotion",
+  "task_id": "mobile-overflow",
   "token_budget": 8000,
-  "tokens_used": 173,
+  "tokens_used": 178,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Reviewer counted 36 `<h1>` elements in the memo-index DOM, breaking the heading outline for screen readers. Root cause: the transclusion preview rendered into `.tc-excerpt` at src/web/build.rs:1023 and src/web/routes.rs:720 embeds the target page's markdown, whose own `# Title` becomes an `<h1>` inside every chip. Demote headings in transclusion previews (h1→h3, h2→h4, etc.) — either strip them in the preview builder or apply a heading-shift pass when rendering excerpts. The chip anchor itself already uses `<a class=\"tc-title\">` (not `<h1>`), so the fix is in the preview body, not the card shell.",
-      "token_cost": 152,
+      "content": "Three related mobile clipping bugs at 375px: (a) long H1 on Lordianto 2018 clips final letter of \"Commissioner\" — add `hyphens:auto; overflow-wrap:anywhere` to `h1` in base.html or step H1 down at narrow breakpoints; (b) help page `<pre>` / code block `cargo install --path . --features \"reason,history,semantic,mcp\"` clips at right edge — add `overflow-x:auto` (and/or `white-space:pre-wrap` for non-code) on `pre` inside `.prose`; (c) landing-page stat-bar shows only 3 of 4 tiles (Orphans clipped) — let the stat grid wrap to 2×2 below ~420px.",
+      "token_cost": 138,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 2 files (+155, -72): .hence/context-manifest.json, themes/default/base.html",
       "token_cost": 21,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-preview-heading-demotion-changes",
+      "content": "Modified 2 files (+61, -6): .hence/context-manifest.json, src/web/markdown.rs",
+      "token_cost": 19,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T10:32:40Z"
+  "constructed_at": "2026-04-17T10:35:05Z"
 }

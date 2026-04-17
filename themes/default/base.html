@@ -95,8 +95,29 @@
         display: block;
       }
     }
-    /* stats: horizontal scroll on small screens */
+    /* stats: horizontal scroll on wider small screens; wrap to 2×2 below
+       ~420px where even scrolling leaves the last tile clipped off-viewport. */
     .stats { overflow-x: auto; }
+    @media (max-width: 419px) {
+      .stats-horizontal {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        overflow-x: visible;
+      }
+    }
+
+    /* Content headings only — chrome titles stay single-line. */
+    main h1, .prose h1 {
+      hyphens: auto;
+      overflow-wrap: anywhere;
+    }
+
+    /* daisy-typography's `.prose pre` doesn't set overflow, so long single-line
+       code samples push the article wider than the viewport. */
+    .prose pre {
+      overflow-x: auto;
+      max-width: 100%;
+    }
     .tp-header {
       font-size: 0.65rem;
       font-weight: 600;
