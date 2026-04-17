@@ -1,19 +1,17 @@
 //! Project-owned mark types for the Peritext CRDT engine.
 //!
-//! The `Mark` / `Scalar` / `ExpandMark` types here replace automerge's borrowed
-//! `automerge::marks::Mark<'_>`, `automerge::ScalarValue`, and
-//! `automerge::marks::ExpandMark` so that alternative backends (diamond-types)
-//! can satisfy the [`crate::crdt::CrdtBackend`] trait without leaking
-//! third-party types.
+//! The `Mark` / `Scalar` / `ExpandMark` types here form the engine-agnostic
+//! surface [`crate::crdt::CrdtBackend`] hands back to callers, so no
+//! third-party CRDT types leak into the trait.
 //!
-//! `Scalar` is intentionally the narrow subset of automerge scalar values
-//! zetl ever stored on a mark (bool / string, plus reserved int/null for
-//! forward compatibility) — not counters, timestamps, or bytes. This keeps
-//! (de)serialisation cheap and the wire format wire-stable.
+//! `Scalar` is intentionally the narrow subset of scalar values zetl ever
+//! stores on a mark (bool / string, plus reserved int/null for forward
+//! compatibility) — not counters, timestamps, or bytes. This keeps
+//! (de)serialisation cheap and the wire format stable.
 //!
-//! `Scalar::Bool(true)` decodes cleanly from WAL entries written by the
-//! automerge backend, so `.zetl/wal/` payloads stay readable across the
-//! backend cut-over.
+//! This module also houses the markdown ⇄ (text + marks) parser and
+//! serializer shared by every CRDT backend — see [`parse_inline_marks`] and
+//! [`serialize_to_markdown`].
 
 use serde::{Deserialize, Serialize};
 
@@ -48,8 +46,9 @@ impl Scalar {
     /// Construct a `Scalar` from a `serde_json::Value`, matching the
     /// wire-level encoding used by `OpEntry::Mark.value`.
     ///
-    /// Unknown / non-scalar JSON values collapse to `Scalar::Bool(true)` to
-    /// match the automerge backend's historical behaviour.
+    /// Unknown / non-scalar JSON values collapse to `Scalar::Bool(true)` —
+    /// the presence-sentinel semantics the WAL relies on for round-tripping
+    /// mark values through prior wire-format revisions.
     pub fn from_json(v: &serde_json::Value) -> Self {
         match v {
             serde_json::Value::Bool(b) => Self::Bool(*b),
@@ -71,9 +70,8 @@ impl Scalar {
 
 /// Project-owned CRDT mark span.
 ///
-/// Returned from [`crate::crdt::CrdtBackend::marks`] instead of
-/// `automerge::marks::Mark<'_>` so alternative backends (e.g. diamond-types)
-/// can satisfy the trait without leaking automerge's borrowed mark type.
+/// Returned from [`crate::crdt::CrdtBackend::marks`] so every backend hands
+/// back the same owned struct regardless of its internal storage format.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mark {
     pub name: String,
@@ -228,6 +226,428 @@ fn scalar_to_string(v: &Scalar) -> Option<String> {
     }
 }
 
+// ── Markdown ⇄ (text + marks) ─────────────────────────────────────────
+//
+// These helpers are engine-agnostic: `parse_inline_marks` turns a line of
+// markdown into plain text + inline-mark ranges without touching the CRDT;
+// `serialize_to_markdown` is its inverse, emitting canonical markdown from
+// text + marks per REQ-020-027. The diamond backend drives them via
+// `CrdtBackend::splice_text` / `mark` / `unmark`.
+
+/// Plain text extracted from a line of markdown along with the inline marks
+/// discovered while parsing it.
+pub struct ParsedInline {
+    pub plain_text: String,
+    pub marks: Vec<InlineMark>,
+}
+
+/// A single inline mark range mapped onto the plain-text offsets produced by
+/// [`parse_inline_marks`]. Both ends are counted in `chars`, matching how
+/// the CRDT text indexes positions.
+pub struct InlineMark {
+    pub start: usize,
+    pub end: usize,
+    pub mark_type: MarkType,
+}
+
+/// Parse inline markdown text, extracting formatting marks and producing
+/// the plain text content with mark positions mapped to the plain text.
+///
+/// Block-level tokens (headings, list markers, code fences, frontmatter)
+/// are NOT handled here — see [`BlockToken::parse_line_prefix`]; callers
+/// strip the block prefix before passing the remaining inline text to
+/// this function.
+pub fn parse_inline_marks(text: &str) -> ParsedInline {
+    let mut plain = String::with_capacity(text.len());
+    let mut marks: Vec<InlineMark> = Vec::new();
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    // Stack for tracking open marks
+    let mut open_marks: Vec<(MarkType, usize)> = Vec::new(); // (type, start_in_plain)
+
+    while i < len {
+        // Wikilinks: [[target]] or [[target|alias]]
+        if i + 1 < len && chars[i] == '[' && chars[i + 1] == '[' {
+            if let Some((target, alias, end_idx)) = parse_wikilink(&chars, i) {
+                let start = plain.chars().count();
+                let display = alias.as_deref().unwrap_or(&target);
+                plain.push_str(display);
+                marks.push(InlineMark {
+                    start,
+                    end: plain.chars().count(),
+                    mark_type: MarkType::Wikilink { target, alias },
+                });
+                i = end_idx;
+                continue;
+            }
+        }
+
+        // Markdown links: [text](url)
+        if chars[i] == '[' {
+            if let Some((link_text, url, end_idx)) = parse_md_link(&chars, i) {
+                let start = plain.chars().count();
+                plain.push_str(&link_text);
+                marks.push(InlineMark {
+                    start,
+                    end: plain.chars().count(),
+                    mark_type: MarkType::Link { url },
+                });
+                i = end_idx;
+                continue;
+            }
+        }
+
+        // Strikethrough: ~~text~~
+        if i + 1 < len && chars[i] == '~' && chars[i + 1] == '~' {
+            if let Some(close_idx) = find_closing(&chars, i + 2, &['~', '~']) {
+                handle_delimited_mark(
+                    &chars,
+                    i + 2,
+                    close_idx,
+                    MarkType::Strikethrough,
+                    &mut plain,
+                    &mut marks,
+                );
+                i = close_idx + 2;
+                continue;
+            }
+        }
+
+        // Bold: **text**
+        if i + 1 < len && chars[i] == '*' && chars[i + 1] == '*' {
+            if let Some(close_idx) = find_closing(&chars, i + 2, &['*', '*']) {
+                handle_delimited_mark(
+                    &chars,
+                    i + 2,
+                    close_idx,
+                    MarkType::Bold,
+                    &mut plain,
+                    &mut marks,
+                );
+                i = close_idx + 2;
+                continue;
+            }
+        }
+
+        // Highlight: ==text==
+        if i + 1 < len && chars[i] == '=' && chars[i + 1] == '=' {
+            if let Some(close_idx) = find_closing(&chars, i + 2, &['=', '=']) {
+                handle_delimited_mark(
+                    &chars,
+                    i + 2,
+                    close_idx,
+                    MarkType::Highlight,
+                    &mut plain,
+                    &mut marks,
+                );
+                i = close_idx + 2;
+                continue;
+            }
+        }
+
+        // Comment: %%text%%
+        if i + 1 < len && chars[i] == '%' && chars[i + 1] == '%' {
+            if let Some(close_idx) = find_closing(&chars, i + 2, &['%', '%']) {
+                handle_delimited_mark(
+                    &chars,
+                    i + 2,
+                    close_idx,
+                    MarkType::Comment,
+                    &mut plain,
+                    &mut marks,
+                );
+                i = close_idx + 2;
+                continue;
+            }
+        }
+
+        // Italic: *text* (single asterisk, not preceded by *)
+        if chars[i] == '*' && (i + 1 >= len || chars[i + 1] != '*') {
+            // Check if this is opening or closing
+            if let Some(pos) = find_open_mark_idx(&open_marks, "italic") {
+                // Closing
+                let (_, start) = open_marks.remove(pos);
+                marks.push(InlineMark {
+                    start,
+                    end: plain.chars().count(),
+                    mark_type: MarkType::Italic,
+                });
+                i += 1;
+                continue;
+            } else {
+                // Opening
+                open_marks.push((MarkType::Italic, plain.chars().count()));
+                i += 1;
+                continue;
+            }
+        }
+
+        // Code: `text`
+        if chars[i] == '`' {
+            if let Some(close_idx) = find_single_closing(&chars, i + 1, '`') {
+                let start = plain.chars().count();
+                for &c in &chars[i + 1..close_idx] {
+                    plain.push(c);
+                }
+                marks.push(InlineMark {
+                    start,
+                    end: plain.chars().count(),
+                    mark_type: MarkType::Code,
+                });
+                i = close_idx + 1;
+                continue;
+            }
+        }
+
+        plain.push(chars[i]);
+        i += 1;
+    }
+
+    ParsedInline {
+        plain_text: plain,
+        marks,
+    }
+}
+
+/// Handle a delimited inline mark (like ~~text~~). Recursively parses the
+/// inner content for nested marks.
+fn handle_delimited_mark(
+    chars: &[char],
+    inner_start: usize,
+    inner_end: usize,
+    mark_type: MarkType,
+    plain: &mut String,
+    marks: &mut Vec<InlineMark>,
+) {
+    let inner: String = chars[inner_start..inner_end].iter().collect();
+    let outer_start = plain.chars().count();
+    let inner_parsed = parse_inline_marks(&inner);
+    plain.push_str(&inner_parsed.plain_text);
+    let outer_end = plain.chars().count();
+
+    for mut m in inner_parsed.marks {
+        m.start += outer_start;
+        m.end += outer_start;
+        marks.push(m);
+    }
+
+    marks.push(InlineMark {
+        start: outer_start,
+        end: outer_end,
+        mark_type,
+    });
+}
+
+fn find_open_mark_idx(open_marks: &[(MarkType, usize)], name: &str) -> Option<usize> {
+    open_marks.iter().rposition(|(mt, _)| mt.name() == name)
+}
+
+fn find_closing(chars: &[char], start: usize, delim: &[char]) -> Option<usize> {
+    let dlen = delim.len();
+    if start + dlen > chars.len() {
+        return None;
+    }
+    let mut i = start;
+    while i + dlen <= chars.len() {
+        if &chars[i..i + dlen] == delim {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+fn find_single_closing(chars: &[char], start: usize, delim: char) -> Option<usize> {
+    chars[start..]
+        .iter()
+        .position(|&c| c == delim)
+        .map(|p| start + p)
+}
+
+fn parse_wikilink(chars: &[char], start: usize) -> Option<(String, Option<String>, usize)> {
+    let mut i = start + 2;
+    let mut content = String::new();
+    while i + 1 < chars.len() {
+        if chars[i] == ']' && chars[i + 1] == ']' {
+            if let Some(pipe_pos) = content.find('|') {
+                let target = content[..pipe_pos].to_string();
+                let alias = content[pipe_pos + 1..].to_string();
+                return Some((target, Some(alias), i + 2));
+            } else {
+                return Some((content, None, i + 2));
+            }
+        }
+        content.push(chars[i]);
+        i += 1;
+    }
+    None
+}
+
+fn parse_md_link(chars: &[char], start: usize) -> Option<(String, String, usize)> {
+    let mut i = start + 1;
+    let mut link_text = String::new();
+    while i < chars.len() && chars[i] != ']' {
+        link_text.push(chars[i]);
+        i += 1;
+    }
+    if i >= chars.len() || chars[i] != ']' {
+        return None;
+    }
+    i += 1;
+    if i >= chars.len() || chars[i] != '(' {
+        return None;
+    }
+    i += 1;
+    let mut url = String::new();
+    while i < chars.len() && chars[i] != ')' {
+        url.push(chars[i]);
+        i += 1;
+    }
+    if i >= chars.len() || chars[i] != ')' {
+        return None;
+    }
+    Some((link_text, url, i + 1))
+}
+
+/// Serialize CRDT text + marks to canonical markdown (REQ-020-027).
+///
+/// Mark nesting order (outermost → innermost):
+/// strikethrough > bold > italic > code > highlight
+pub fn serialize_to_markdown(text: &str, marks: &[Mark]) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+
+    let mut typed_marks: Vec<(MarkType, usize, usize)> = Vec::new();
+    for m in marks {
+        if let Some(mt) = MarkType::from_mark(&m.name, &m.value) {
+            typed_marks.push((mt, m.start, m.end));
+        }
+    }
+
+    typed_marks.sort_by(|a, b| {
+        a.1.cmp(&b.1)
+            .then(a.0.nesting_order().cmp(&b.0.nesting_order()))
+    });
+
+    let mut opens: Vec<Vec<usize>> = vec![Vec::new(); len + 1];
+    let mut closes: Vec<Vec<usize>> = vec![Vec::new(); len + 1];
+
+    for (idx, (_, start, end)) in typed_marks.iter().enumerate() {
+        if *start < len + 1 {
+            opens[*start].push(idx);
+        }
+        if *end <= len {
+            closes[*end].push(idx);
+        }
+    }
+
+    let mut out = String::with_capacity(text.len() * 2);
+
+    for pos in 0..=len {
+        // Close marks (innermost closes first)
+        let mut closing = closes[pos].clone();
+        closing.sort_by(|a, b| {
+            typed_marks[*b]
+                .0
+                .nesting_order()
+                .cmp(&typed_marks[*a].0.nesting_order())
+        });
+        for idx in &closing {
+            write_mark_close(&typed_marks[*idx].0, &mut out);
+        }
+
+        // Open marks (outermost opens first)
+        let mut opening = opens[pos].clone();
+        opening.sort_by(|a, b| {
+            typed_marks[*a]
+                .0
+                .nesting_order()
+                .cmp(&typed_marks[*b].0.nesting_order())
+        });
+        for idx in &opening {
+            write_mark_open(&typed_marks[*idx].0, &mut out);
+        }
+
+        if pos < len {
+            out.push(chars[pos]);
+        }
+    }
+
+    normalize_whitespace(&out)
+}
+
+fn write_mark_open(mark: &MarkType, out: &mut String) {
+    match mark {
+        MarkType::Bold => out.push_str("**"),
+        MarkType::Italic => out.push('*'),
+        MarkType::Code => out.push('`'),
+        MarkType::Strikethrough => out.push_str("~~"),
+        MarkType::Highlight => out.push_str("=="),
+        MarkType::Comment => out.push_str("%%"),
+        MarkType::Wikilink { target, alias } => {
+            out.push_str("[[");
+            // Aliased: [[target| … and the alias is plain text.
+            // Unaliased: [[ … and the target is plain text.
+            if alias.is_some() {
+                out.push_str(target);
+                out.push('|');
+            }
+        }
+        MarkType::Link { .. } => {
+            out.push('[');
+        }
+    }
+}
+
+fn write_mark_close(mark: &MarkType, out: &mut String) {
+    match mark {
+        MarkType::Bold => out.push_str("**"),
+        MarkType::Italic => out.push('*'),
+        MarkType::Code => out.push('`'),
+        MarkType::Strikethrough => out.push_str("~~"),
+        MarkType::Highlight => out.push_str("=="),
+        MarkType::Comment => out.push_str("%%"),
+        MarkType::Wikilink { .. } => {
+            out.push_str("]]");
+        }
+        MarkType::Link { url } => {
+            out.push_str("](");
+            out.push_str(url);
+            out.push(')');
+        }
+    }
+}
+
+/// Normalize whitespace per REQ-020-027: trim trailing space per line,
+/// collapse consecutive blank lines, ensure a single trailing newline.
+pub fn normalize_whitespace(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+
+    let trimmed: Vec<String> = lines.iter().map(|l| l.trim_end().to_string()).collect();
+
+    let mut result = String::with_capacity(text.len());
+    let mut prev_blank = false;
+    for line in &trimmed {
+        let is_blank = line.is_empty();
+        if is_blank && prev_blank {
+            continue;
+        }
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str(line);
+        prev_blank = is_blank;
+    }
+
+    if !result.is_empty() && !result.ends_with('\n') {
+        result.push('\n');
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,10 +719,40 @@ mod tests {
     }
 
     #[test]
+    fn normalize_whitespace_trims_and_collapses() {
+        let text = "line one  \n\n\n\nline two";
+        assert_eq!(normalize_whitespace(text), "line one\n\nline two\n");
+    }
+
+    #[test]
+    fn parse_inline_marks_extracts_bold() {
+        let out = parse_inline_marks("hi **bold** there");
+        assert_eq!(out.plain_text, "hi bold there");
+        let bold = out
+            .marks
+            .iter()
+            .find(|m| m.mark_type == MarkType::Bold)
+            .expect("bold mark");
+        assert_eq!(bold.start, 3);
+        assert_eq!(bold.end, 7);
+    }
+
+    #[test]
+    fn serialize_to_markdown_round_trips_bold() {
+        let marks = vec![Mark {
+            name: "bold".into(),
+            value: Scalar::Bool(true),
+            start: 0,
+            end: 4,
+        }];
+        assert_eq!(serialize_to_markdown("bold", &marks), "**bold**\n");
+    }
+
+    #[test]
     fn scalar_from_json_roundtrip_wire_stable() {
-        // WAL entries written by the automerge backend encode mark values as
-        // JSON via serde_json::Value — `Scalar::from_json` must decode them
-        // to the same `Scalar` that a fresh MarkType would produce.
+        // WAL entries encode mark values as JSON via serde_json::Value —
+        // `Scalar::from_json` must decode them to the same `Scalar` that a
+        // fresh MarkType would produce.
         assert_eq!(
             Scalar::from_json(&serde_json::json!(true)),
             Scalar::Bool(true)

@@ -1415,10 +1415,7 @@ mod tests {
         assert_eq!(doc.as_deref(), Some(doc_b64.as_str()));
 
         // Server-side CRDT absorbed the sync payload — its text matches.
-        assert_eq!(
-            store.crdt_meta("test").unwrap().content_hash.is_some(),
-            true
-        );
+        assert!(store.crdt_meta("test").unwrap().content_hash.is_some());
     }
 
     /// Two clients editing the same slug converge through the diamond-types
