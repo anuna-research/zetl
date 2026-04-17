@@ -716,7 +716,7 @@ pub async fn page_handler(
 
         transclusion_cards.push_str(&format!(
             r#"<div class="transclusion-card" data-target-href="/{href}/" style="border-left-color: {color};">
-  <a href="/{href}/" class="tc-title" style="color: {color};">{name}</a>
+  <a href="/{href}/" class="tc-title">{name}</a>
   <div class="tc-excerpt prose prose-sm max-w-none">{preview}</div>
 </div>"#,
             href = href,
