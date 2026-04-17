@@ -569,6 +569,27 @@ pub async fn page_handler(
         }
     }
 
+    // Intercept the advertised `/tag-cloud/` slug — only when no real file
+    // claims it, so users who genuinely author a `Tag Cloud.md` keep winning.
+    if file.is_none() && slug.eq_ignore_ascii_case("tag-cloud") {
+        #[allow(unused_mut)]
+        let mut vault_ctx = build_vault_context(&data, &vault_name);
+        #[cfg(feature = "history")]
+        if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
+        #[cfg(feature = "semantic")]
+        {
+            vault_ctx.semantic_available = state.vector_index.is_some();
+        }
+        let tag_cloud =
+            crate::web::context::build_tag_cloud_context(&data, &state.vault_root);
+        return match state.engine.render_tag_cloud(&vault_ctx, &tag_cloud, "serve") {
+            Ok(html) => Html(html).into_response(),
+            Err(e) => render_error_response(e),
+        };
+    }
+
     // If no page matches, check if slug is a folder prefix → render folder index
     if file.is_none() {
         let folder_prefix = format!("{}/", slug.to_lowercase());
