@@ -213,3 +213,265 @@
 (meta r-assign-update-spec-020-hugo
   (description "Spec edits default to hugo")
   (justification "Hugo is the SPEC author of record per the SPEC-020 frontmatter"))
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T07:51:55Z"
+  (given delegated-v1-spike-diamond-types-to-agent:claude)
+  (given (during (leased-v1-spike-diamond-types) (moment "2026-04-17T07:51:55Z") (moment "2026-04-17T08:21:55Z")))
+  (given claim-v1-spike-diamond-types-by-claude)
+  (normally r-cl-state-v1-spike-diamond-types-by-claude claim-v1-spike-diamond-types-by-claude state-claimed-v1-spike-diamond-types-by-claude)
+  (normally r-cl-chain-v1-spike-diamond-types-by-claude state-claimed-v1-spike-diamond-types-by-claude claimed-spike-diamond-types)
+)
+
+;; Propagation rules: failures in 'spike-diamond-types' block downstream tasks
+(normally r-propagate-marks-layer-design-from-spike-diamond-types-failed failed-spike-diamond-types upstream-blocked-marks-layer-design)
+(normally r-propagate-marks-layer-design-from-spike-diamond-types-permanently-failed permanently-failed-spike-diamond-types upstream-blocked-marks-layer-design)
+(normally r-propagate-marks-layer-design-from-spike-diamond-types-stale-v1 stale-v1-spike-diamond-types upstream-blocked-marks-layer-design)
+(normally r-propagate-marks-layer-design-from-spike-diamond-types-timeout-v1 timeout-v1-spike-diamond-types upstream-blocked-marks-layer-design)
+(normally r-propagate-marks-layer-design-from-spike-diamond-types-blocked upstream-blocked-spike-diamond-types upstream-blocked-marks-layer-design)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-add-diamond-types-dep-from-marks-layer-design-blocked upstream-blocked-marks-layer-design upstream-blocked-add-diamond-types-dep)
+(normally r-propagate-crdt-backend-trait-from-add-diamond-types-dep-blocked upstream-blocked-add-diamond-types-dep upstream-blocked-crdt-backend-trait)
+(normally r-propagate-diamond-text-engine-from-crdt-backend-trait-blocked upstream-blocked-crdt-backend-trait upstream-blocked-diamond-text-engine)
+(normally r-propagate-diamond-marks-layer-from-diamond-text-engine-blocked upstream-blocked-diamond-text-engine upstream-blocked-diamond-marks-layer)
+(normally r-propagate-ws-wire-format-from-diamond-marks-layer-blocked upstream-blocked-diamond-marks-layer upstream-blocked-ws-wire-format)
+(normally r-propagate-flip-default-backend-from-ws-wire-format-blocked upstream-blocked-ws-wire-format upstream-blocked-flip-default-backend)
+(normally r-propagate-update-spec-020-from-flip-default-backend-blocked upstream-blocked-flip-default-backend upstream-blocked-update-spec-020)
+
+(claims agent:claude
+  :at "2026-04-17T08:01:10Z"
+  (given completed-spike-diamond-types))
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-04-17T08:01:14Z"
+  (given completed-spike-diamond-types)
+  (given eval-result-v1-spike-diamond-types-by-claude)
+  (given eval-confidence-v1-spike-diamond-types-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T08:01:19Z"
+  (given delegated-v1-marks-layer-design-to-agent:claude)
+  (given (during (leased-v1-marks-layer-design) (moment "2026-04-17T08:01:19Z") (moment "2026-04-17T08:31:19Z")))
+  (given claim-v1-marks-layer-design-by-claude)
+  (normally r-cl-state-v1-marks-layer-design-by-claude claim-v1-marks-layer-design-by-claude state-claimed-v1-marks-layer-design-by-claude)
+  (normally r-cl-chain-v1-marks-layer-design-by-claude state-claimed-v1-marks-layer-design-by-claude claimed-marks-layer-design)
+)
+
+;; Propagation rules: failures in 'marks-layer-design' block downstream tasks
+(normally r-propagate-add-diamond-types-dep-from-marks-layer-design-failed failed-marks-layer-design upstream-blocked-add-diamond-types-dep)
+(normally r-propagate-add-diamond-types-dep-from-marks-layer-design-permanently-failed permanently-failed-marks-layer-design upstream-blocked-add-diamond-types-dep)
+(normally r-propagate-add-diamond-types-dep-from-marks-layer-design-stale-v1 stale-v1-marks-layer-design upstream-blocked-add-diamond-types-dep)
+(normally r-propagate-add-diamond-types-dep-from-marks-layer-design-timeout-v1 timeout-v1-marks-layer-design upstream-blocked-add-diamond-types-dep)
+
+(claims agent:claude
+  :at "2026-04-17T08:08:09Z"
+  (given completed-marks-layer-design))
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-04-17T08:08:12Z"
+  (given completed-marks-layer-design)
+  (given eval-result-v1-marks-layer-design-by-claude)
+  (given eval-confidence-v1-marks-layer-design-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T08:08:18Z"
+  (given delegated-v1-add-diamond-types-dep-to-agent:claude)
+  (given (during (leased-v1-add-diamond-types-dep) (moment "2026-04-17T08:08:18Z") (moment "2026-04-17T08:38:18Z")))
+  (given claim-v1-add-diamond-types-dep-by-claude)
+  (normally r-cl-state-v1-add-diamond-types-dep-by-claude claim-v1-add-diamond-types-dep-by-claude state-claimed-v1-add-diamond-types-dep-by-claude)
+  (normally r-cl-chain-v1-add-diamond-types-dep-by-claude state-claimed-v1-add-diamond-types-dep-by-claude claimed-add-diamond-types-dep)
+)
+
+;; Propagation rules: failures in 'add-diamond-types-dep' block downstream tasks
+(normally r-propagate-crdt-backend-trait-from-add-diamond-types-dep-failed failed-add-diamond-types-dep upstream-blocked-crdt-backend-trait)
+(normally r-propagate-crdt-backend-trait-from-add-diamond-types-dep-permanently-failed permanently-failed-add-diamond-types-dep upstream-blocked-crdt-backend-trait)
+(normally r-propagate-crdt-backend-trait-from-add-diamond-types-dep-stale-v1 stale-v1-add-diamond-types-dep upstream-blocked-crdt-backend-trait)
+(normally r-propagate-crdt-backend-trait-from-add-diamond-types-dep-timeout-v1 timeout-v1-add-diamond-types-dep upstream-blocked-crdt-backend-trait)
+
+(claims agent:claude
+  :at "2026-04-17T08:11:32Z"
+  (given completed-add-diamond-types-dep))
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-04-17T08:11:36Z"
+  (given completed-add-diamond-types-dep)
+  (given eval-result-v1-add-diamond-types-dep-by-claude)
+  (given eval-confidence-v1-add-diamond-types-dep-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T08:11:43Z"
+  (given delegated-v1-crdt-backend-trait-to-agent:claude)
+  (given (during (leased-v1-crdt-backend-trait) (moment "2026-04-17T08:11:43Z") (moment "2026-04-17T08:41:43Z")))
+  (given claim-v1-crdt-backend-trait-by-claude)
+  (normally r-cl-state-v1-crdt-backend-trait-by-claude claim-v1-crdt-backend-trait-by-claude state-claimed-v1-crdt-backend-trait-by-claude)
+  (normally r-cl-chain-v1-crdt-backend-trait-by-claude state-claimed-v1-crdt-backend-trait-by-claude claimed-crdt-backend-trait)
+)
+
+;; Propagation rules: failures in 'crdt-backend-trait' block downstream tasks
+(normally r-propagate-diamond-text-engine-from-crdt-backend-trait-failed failed-crdt-backend-trait upstream-blocked-diamond-text-engine)
+(normally r-propagate-diamond-text-engine-from-crdt-backend-trait-permanently-failed permanently-failed-crdt-backend-trait upstream-blocked-diamond-text-engine)
+(normally r-propagate-diamond-text-engine-from-crdt-backend-trait-stale-v1 stale-v1-crdt-backend-trait upstream-blocked-diamond-text-engine)
+(normally r-propagate-diamond-text-engine-from-crdt-backend-trait-timeout-v1 timeout-v1-crdt-backend-trait upstream-blocked-diamond-text-engine)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T08:26:46Z"
+  (given (during (leased-v1-crdt-backend-trait) (moment "2026-04-17T08:26:46Z") (moment "2026-04-17T08:56:46Z")))
+  (given lease-renewal-v1-crdt-backend-trait-by-claude-r1)
+)
+
+(claims agent:claude
+  :at "2026-04-17T08:28:37Z"
+  (given completed-crdt-backend-trait))
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-04-17T08:28:42Z"
+  (given completed-crdt-backend-trait)
+  (given eval-result-v1-crdt-backend-trait-by-claude)
+  (given eval-confidence-v1-crdt-backend-trait-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T08:28:48Z"
+  (given delegated-v1-diamond-text-engine-to-agent:claude)
+  (given (during (leased-v1-diamond-text-engine) (moment "2026-04-17T08:28:48Z") (moment "2026-04-17T08:58:48Z")))
+  (given claim-v1-diamond-text-engine-by-claude)
+  (normally r-cl-state-v1-diamond-text-engine-by-claude claim-v1-diamond-text-engine-by-claude state-claimed-v1-diamond-text-engine-by-claude)
+  (normally r-cl-chain-v1-diamond-text-engine-by-claude state-claimed-v1-diamond-text-engine-by-claude claimed-diamond-text-engine)
+)
+
+;; Propagation rules: failures in 'diamond-text-engine' block downstream tasks
+(normally r-propagate-diamond-marks-layer-from-diamond-text-engine-failed failed-diamond-text-engine upstream-blocked-diamond-marks-layer)
+(normally r-propagate-diamond-marks-layer-from-diamond-text-engine-permanently-failed permanently-failed-diamond-text-engine upstream-blocked-diamond-marks-layer)
+(normally r-propagate-diamond-marks-layer-from-diamond-text-engine-stale-v1 stale-v1-diamond-text-engine upstream-blocked-diamond-marks-layer)
+(normally r-propagate-diamond-marks-layer-from-diamond-text-engine-timeout-v1 timeout-v1-diamond-text-engine upstream-blocked-diamond-marks-layer)
+
+(claims agent:claude
+  :at "2026-04-17T08:35:28Z"
+  (given completed-diamond-text-engine))
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-04-17T08:35:31Z"
+  (given completed-diamond-text-engine)
+  (given eval-result-v1-diamond-text-engine-by-claude)
+  (given eval-confidence-v1-diamond-text-engine-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T08:35:37Z"
+  (given delegated-v1-diamond-marks-layer-to-agent:claude)
+  (given (during (leased-v1-diamond-marks-layer) (moment "2026-04-17T08:35:37Z") (moment "2026-04-17T09:05:37Z")))
+  (given claim-v1-diamond-marks-layer-by-claude)
+  (normally r-cl-state-v1-diamond-marks-layer-by-claude claim-v1-diamond-marks-layer-by-claude state-claimed-v1-diamond-marks-layer-by-claude)
+  (normally r-cl-chain-v1-diamond-marks-layer-by-claude state-claimed-v1-diamond-marks-layer-by-claude claimed-diamond-marks-layer)
+)
+
+;; Propagation rules: failures in 'diamond-marks-layer' block downstream tasks
+(normally r-propagate-ws-wire-format-from-diamond-marks-layer-failed failed-diamond-marks-layer upstream-blocked-ws-wire-format)
+(normally r-propagate-ws-wire-format-from-diamond-marks-layer-permanently-failed permanently-failed-diamond-marks-layer upstream-blocked-ws-wire-format)
+(normally r-propagate-ws-wire-format-from-diamond-marks-layer-stale-v1 stale-v1-diamond-marks-layer upstream-blocked-ws-wire-format)
+(normally r-propagate-ws-wire-format-from-diamond-marks-layer-timeout-v1 timeout-v1-diamond-marks-layer upstream-blocked-ws-wire-format)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T08:50:40Z"
+  (given (during (leased-v1-diamond-marks-layer) (moment "2026-04-17T08:50:40Z") (moment "2026-04-17T09:20:40Z")))
+  (given lease-renewal-v1-diamond-marks-layer-by-claude-r1)
+)
+
+(claims agent:claude
+  :at "2026-04-17T08:59:44Z"
+  (given completed-diamond-marks-layer))
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-04-17T08:59:48Z"
+  (given completed-diamond-marks-layer)
+  (given eval-result-v1-diamond-marks-layer-by-claude)
+  (given eval-confidence-v1-diamond-marks-layer-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T08:59:56Z"
+  (given delegated-v1-ws-wire-format-to-agent:claude)
+  (given (during (leased-v1-ws-wire-format) (moment "2026-04-17T08:59:56Z") (moment "2026-04-17T09:29:56Z")))
+  (given claim-v1-ws-wire-format-by-claude)
+  (normally r-cl-state-v1-ws-wire-format-by-claude claim-v1-ws-wire-format-by-claude state-claimed-v1-ws-wire-format-by-claude)
+  (normally r-cl-chain-v1-ws-wire-format-by-claude state-claimed-v1-ws-wire-format-by-claude claimed-ws-wire-format)
+)
+
+;; Propagation rules: failures in 'ws-wire-format' block downstream tasks
+(normally r-propagate-flip-default-backend-from-ws-wire-format-failed failed-ws-wire-format upstream-blocked-flip-default-backend)
+(normally r-propagate-flip-default-backend-from-ws-wire-format-permanently-failed permanently-failed-ws-wire-format upstream-blocked-flip-default-backend)
+(normally r-propagate-flip-default-backend-from-ws-wire-format-stale-v1 stale-v1-ws-wire-format upstream-blocked-flip-default-backend)
+(normally r-propagate-flip-default-backend-from-ws-wire-format-timeout-v1 timeout-v1-ws-wire-format upstream-blocked-flip-default-backend)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T09:15:00Z"
+  (given (during (leased-v1-ws-wire-format) (moment "2026-04-17T09:15:00Z") (moment "2026-04-17T09:45:00Z")))
+  (given lease-renewal-v1-ws-wire-format-by-claude-r1)
+)
+
+(claims agent:claude
+  :at "2026-04-17T09:15:52Z"
+  (given completed-ws-wire-format))
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-04-17T09:15:56Z"
+  (given completed-ws-wire-format)
+  (given eval-result-v1-ws-wire-format-by-claude)
+  (given eval-confidence-v1-ws-wire-format-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T09:16:03Z"
+  (given delegated-v1-flip-default-backend-to-agent:claude)
+  (given (during (leased-v1-flip-default-backend) (moment "2026-04-17T09:16:03Z") (moment "2026-04-17T09:46:03Z")))
+  (given claim-v1-flip-default-backend-by-claude)
+  (normally r-cl-state-v1-flip-default-backend-by-claude claim-v1-flip-default-backend-by-claude state-claimed-v1-flip-default-backend-by-claude)
+  (normally r-cl-chain-v1-flip-default-backend-by-claude state-claimed-v1-flip-default-backend-by-claude claimed-flip-default-backend)
+)
+
+;; Propagation rules: failures in 'flip-default-backend' block downstream tasks
+(normally r-propagate-update-spec-020-from-flip-default-backend-failed failed-flip-default-backend upstream-blocked-update-spec-020)
+(normally r-propagate-update-spec-020-from-flip-default-backend-permanently-failed permanently-failed-flip-default-backend upstream-blocked-update-spec-020)
+(normally r-propagate-update-spec-020-from-flip-default-backend-stale-v1 stale-v1-flip-default-backend upstream-blocked-update-spec-020)
+(normally r-propagate-update-spec-020-from-flip-default-backend-timeout-v1 timeout-v1-flip-default-backend upstream-blocked-update-spec-020)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T09:31:06Z"
+  (given (during (leased-v1-flip-default-backend) (moment "2026-04-17T09:31:06Z") (moment "2026-04-17T10:01:06Z")))
+  (given lease-renewal-v1-flip-default-backend-by-claude-r1)
+)
+
+(claims agent:claude
+  :at "2026-04-17T09:42:47Z"
+  (given completed-flip-default-backend))
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-04-17T09:42:51Z"
+  (given completed-flip-default-backend)
+  (given eval-result-v1-flip-default-backend-by-claude)
+  (given eval-confidence-v1-flip-default-backend-1.00)
+)
+
+(claims supervisor:ed25519:zhT3QZyz
+  :at "2026-04-17T09:42:58Z"
+  (given delegated-v1-update-spec-020-to-agent:claude)
+  (given (during (leased-v1-update-spec-020) (moment "2026-04-17T09:42:58Z") (moment "2026-04-17T10:12:58Z")))
+  (given claim-v1-update-spec-020-by-claude)
+  (normally r-cl-state-v1-update-spec-020-by-claude claim-v1-update-spec-020-by-claude state-claimed-v1-update-spec-020-by-claude)
+  (normally r-cl-chain-v1-update-spec-020-by-claude state-claimed-v1-update-spec-020-by-claude claimed-update-spec-020)
+)
+
+(claims agent:claude
+  :at "2026-04-17T09:47:08Z"
+  (given completed-update-spec-020))
+
+(claims evaluator:ed25519:iIOEFYgN
+  :at "2026-04-17T09:47:12Z"
+  (given completed-update-spec-020)
+  (given eval-result-v1-update-spec-020-by-claude)
+  (given eval-confidence-v1-update-spec-020-1.00)
+)
