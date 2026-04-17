@@ -2475,6 +2475,7 @@ fn test_138_serialize_history_index_structure() {
             timestamp: "2026-02-01T00:00:00+00:00".to_owned(),
             author_name: "test".to_string(),
             author_email: "test@example".to_string(),
+            co_authors: Vec::new(),
             link_count: 2,
             backlink_count: 1,
             is_orphan: false,
