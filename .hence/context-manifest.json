@@ -1,12 +1,12 @@
 {
-  "task_id": "chip-contrast",
+  "task_id": "search-match-precision",
   "token_budget": 8000,
-  "tokens_used": 182,
+  "tokens_used": 202,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "All eight chip hues in `.transclusion-panel` (#f472b6 #60a5fa #34d399 #fbbf24 #a78bfa #fb923c #2dd4bf #f87171) fail WCAG 2.1 AA against white — measured contrast 1.67:1 to 2.77:1 vs a 4.5:1 minimum. Chip text colour is applied inline in src/web/build.rs:1022 and src/web/routes.rs:719. Either darken the text palette to AA-compliant variants (e.g. Tailwind *-700 shades), add a subtle filled pill background, or move colour to the left border only and use a single accessible text colour.",
-      "token_cost": 122,
+      "content": "Search implementation at base.html:704-745 fuzzy-matches across non-contiguous letters (typing \"hard\" hits both \"hardship\" and \"Pharmacy Depot 2019\" by matching `P**ha**rmacy **D**epot`). As the corpus grows this will confuse users. Prefer a prefix/substring match on title (case-insensitive), optionally falling back to subsequence-fuzzy when nothing matches. Body-text indexing is a larger follow-up and out of scope for this task.",
+      "token_cost": 108,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 2 files (+33, -6): .hence/context-manifest.json, themes/default/base.html",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-chip-contrast-changes",
+      "content": "Modified 5 files (+15, -7): .hence/context-manifest.json, src/web/build.rs, src/web/html.rs, src/web/routes.rs, themes/default/base.html",
+      "token_cost": 34,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T10:37:57Z"
+  "constructed_at": "2026-04-17T10:40:58Z"
 }
