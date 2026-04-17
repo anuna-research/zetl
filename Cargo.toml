@@ -19,6 +19,10 @@ reason = ["dep:spindle-core", "dep:spindle-parser"]
 history = ["dep:jj-lib", "dep:chrono", "dep:pollster"]
 semantic = ["dep:ort", "dep:tokenizers", "dep:ureq"]
 mcp = ["dep:rmcp"]
+# Pulls in diamond-types alongside the existing automerge backend during
+# the IMPL-029 swap. Both engines coexist behind this flag until Phase 7
+# flips the default and removes automerge entirely.
+collab = ["dep:diamond-types"]
 # Vendor and statically link OpenSSL into the binary instead of linking
 # against the system libssl. Enable this on cross-compile / static-binary
 # release builds where no target-side OpenSSL sysroot is available.
@@ -78,6 +82,7 @@ getrandom = "0.2"
 # cross-compile from Linux via osxcross (incomplete SDK).
 git2 = { version = "0.19", default-features = false }
 automerge = "0.5"
+diamond-types = { version = "1.0", optional = true }
 rmcp = { version = "1", optional = true, features = ["server", "transport-io", "server-side-http", "transport-streamable-http-server"] }
 # Optional, only pulled in by the `vendored-openssl` feature. Its sole
 # purpose is to propagate the `vendored` feature flag to the transitive
