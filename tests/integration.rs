@@ -2400,7 +2400,12 @@ fn find_free_port() -> u16 {
     listener.local_addr().unwrap().port()
 }
 
-/// Spawn `zetl serve` and wait up to 3 seconds for it to accept TCP connections.
+/// Spawn `zetl serve` and wait up to 5 seconds for it to respond to an HTTP probe.
+///
+/// A raw TCP connect is not enough: between `find_free_port` dropping its
+/// probe listener and `zetl` binding the port, another process can grab it
+/// on a busy test host. Probing with an actual HTTP request confirms we are
+/// talking to `zetl`, not a squatter, and that axum's state is live.
 #[allow(clippy::zombie_processes)] // caller owns the returned Child and kills it when the test finishes
 fn spawn_serve(vault: &Path, port: u16, theme: &str) -> std::process::Child {
     let bin = assert_cmd::cargo::cargo_bin!("zetl");
@@ -2418,14 +2423,33 @@ fn spawn_serve(vault: &Path, port: u16, theme: &str) -> std::process::Child {
         .spawn()
         .expect("spawn zetl serve");
 
-    // Poll until the port is accepting connections (max ~3s).
-    for _ in 0..30 {
-        if std::net::TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+    for _ in 0..50 {
+        if probe_http(port) {
             return child;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     panic!("zetl serve did not become ready on port {port}");
+}
+
+/// Send a tiny HTTP request and return true iff we got back an `HTTP/` status line.
+fn probe_http(port: u16) -> bool {
+    use std::io::{Read, Write};
+    let Ok(mut stream) = std::net::TcpStream::connect(format!("127.0.0.1:{port}")) else {
+        return false;
+    };
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_millis(500)))
+        .ok();
+    stream
+        .set_write_timeout(Some(std::time::Duration::from_millis(500)))
+        .ok();
+    let req = format!("GET / HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    if stream.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut prefix = [0u8; 5];
+    stream.read_exact(&mut prefix).is_ok() && &prefix == b"HTTP/"
 }
 
 /// Send a raw HTTP/1.1 GET and return (status_line, headers, body).

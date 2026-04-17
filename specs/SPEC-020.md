@@ -17,7 +17,7 @@ dependencies:
   - bip39 (mnemonic recovery keys)
   - ed25519-dalek (key derivation for agent tokens)
   - git2 (libgit2 bindings for auto-commit)
-  - automerge (Peritext CRDT for collaborative editing)
+  - diamond-types (text CRDT backend for collaborative editing; Peritext-style marks layered by zetl)
 ---
 
 | Field        | Value                                        |
@@ -63,7 +63,7 @@ Access control policy belongs *in the wiki itself*, expressed as defeasible logi
 - Agent authentication via derived API tokens
 - Invitation and onboarding flow
 - Hook context extensions for user identity
-- Peritext CRDT-based real-time collaborative editing
+- Peritext-style rich-text CRDT (diamond-types text oplog + sibling marks oplog) for real-time collaborative editing
 - Presence awareness (who is viewing/editing, cursors)
 
 **Out of scope (future):**
@@ -718,6 +718,21 @@ The system SHALL use the Peritext algorithm (Ink & Switch, 2021) as the live edi
 4. If markdown is unchanged → no-op
 
 Trace: TEST-020-024, CON-020-008
+
+#### Marks Layer Architecture
+
+Peritext was first published with a TypeScript implementation riding on automerge's `RichText`. zetl implements the same algorithm natively in Rust on top of `diamond-types = "1.0"`. The backend is split into two co-operating CRDT oplogs inside a single document (`DiamondCrdtDocument`):
+
+- **Text oplog** (`diamond_types::list::OpLog`): owns the character sequence and merges concurrent splices. Every character carries a DT op-id (agent + seq) — the equivalent of Peritext's `opId` anchor, stable under concurrent insert and delete.
+- **Marks oplog** (project-owned `MarksDoc`, wrapping a *sibling* `diamond_types::list::OpLog`): carries span-level edits as newline-delimited JSON entries appended at the oplog tail. Three op kinds:
+  - `Mark { name, value, start, end, expand }` — open a span of the given `MarkType` (REQ-020-025) with its per-mark `ExpandMark` (inclusive for `bold`/`italic`/`strikethrough`/`highlight`; non-growing for `code`/`wikilink`/`link`/`comment`).
+  - `Unmark { name, value?, start, end, expand }` — carve any overlapping same-named span out of the range.
+  - `Shift { pos, delta }` — emitted automatically by every text splice so open spans track the text-oplog's char positions under concurrent edits.
+- **Atomic writes.** `DiamondCrdtDocument` brackets each splice so the text and marks oplogs advance together. The two oplogs share agent ids and are serialised side-by-side in the WAL blob.
+- **Materialisation.** To read the current mark set, replay the marks oplog in DT's canonical merge order and fold the ops into a `Vec<Mark>`. `Shift` ops are applied with per-span growth awareness at each boundary — this is where Peritext's inclusive vs non-growing distinction is enforced (REQ-020-025). Exclusive marks (`wikilink`, `link`) are last-write-wins per overlapping range; DT's canonical order is Lamport-total, matching the "Lamport timestamp ordering of the opId" contract in REQ-020-025.
+- **No extra CRDT dependency.** The marks layer rides the same `diamond-types` crate as the text layer. zetl does not depend on `diamond-types-extended`, `automerge-rs` `RichText`, or a hand-rolled Lamport store. The `MarkType` surface (mark name, `ExpandMark`, nesting order, conflict mode) is unchanged from the earlier automerge-based design, so `CrdtBackend::{mark, unmark, marks}` callers are byte-identical on the wire.
+
+Rationale for the split-oplog shape: storing mark ops inline in the text oplog would corrupt char offsets for text splices and complicate markdown serialisation. Two parallel DT documents lets DT do all RLE packing, agent-ordering, and merge bookkeeping for free on both sides.
 
 #### REQ-020-025: Peritext Mark Types
 
@@ -1597,11 +1612,11 @@ Trace: TEST-020-033
 - Peritext handles inline formatting only; block-level structure (headings, lists, code fences) requires separate handling (REQ-020-026 treats blocks as atomic tokens)
 - CRDT state is larger than plain text — memory overhead per loaded document. Mitigated by eviction TTL and max concurrent document limit (REQ-020-029)
 - Canonical markdown serialization must be carefully defined to ensure clean git diffs (REQ-020-027)
-- The reference implementation is TypeScript (Automerge-based). A Rust implementation is needed — either port Peritext's algorithm or use `automerge-rs` which has integrated Peritext's approach into its `RichText` type
+- The reference implementation is TypeScript (Automerge-based). zetl implements Peritext's semantics natively in Rust over `diamond-types = "1.0"`: diamond-types provides the text oplog, and a project-owned sibling marks oplog (`MarksDoc`) carries `Mark`/`Unmark`/`Shift` span ops with per-span `ExpandMark` — see "Marks Layer Architecture" under §3.7. This replaces the earlier plan to lean on `automerge-rs` `RichText`, whose rich-text API churned across 0.5/0.6 and did not give us stable Peritext boundary-growth semantics
 
 **Alternatives rejected:**
 - Soft page locks (one writer at a time): creates contention on the most valuable pages — exactly the wrong trade-off for a team wiki
-- Plain-text CRDT on markdown source (Yjs/Automerge `Text`): concurrent formatting edits produce broken markdown — the exact problem Peritext was designed to solve
+- Plain-text CRDT on markdown source (Yjs `Text`, automerge `Text`, or diamond-types with no marks layer): concurrent formatting edits produce broken markdown — the exact problem Peritext was designed to solve, and the reason zetl layers an explicit marks oplog over diamond-types rather than treating markdown source as flat text
 - OT (Operational Transform): requires a central server for total ordering; more complex to implement correctly; does not support offline/async editing
 
 ---
@@ -1795,8 +1810,11 @@ Implements: REQ-020-018
 struct CrdtDocument {
     /// Page slug this document represents
     slug: String,
-    /// Peritext CRDT state (sequence of characters with opIds + mark operations)
-    state: PeritextState,
+    /// CRDT state: a diamond-types text oplog paired with a sibling
+    /// marks oplog (see §3.7 "Marks Layer Architecture"). Characters
+    /// carry DT op-ids; mark spans are Peritext-style Mark/Unmark/Shift
+    /// ops replayed in DT's canonical merge order.
+    state: DiamondCrdtDocument,
     /// Connected editing sessions
     sessions: HashMap<SessionId, CrdtSession>,
     /// Last edit timestamp (for quiescence flush)
@@ -2662,7 +2680,7 @@ The system SHALL log authorization decisions when verbose:
 **Goal:** Real-time multi-user editing via Peritext CRDT with markdown round-trip.
 
 **Changes:**
-- Implement Peritext CRDT engine in Rust (port from automerge-rs `RichText` or standalone implementation)
+- Implement Peritext-style rich-text CRDT in Rust on top of `diamond-types = "1.0"` (text oplog) + a project-owned sibling marks oplog carrying `Mark`/`Unmark`/`Shift` span ops (see §3.7 "Marks Layer Architecture")
 - Define mark types for markdown formatting + wikilinks (REQ-020-025)
 - Implement block-level atomic tokens (REQ-020-026)
 - Implement markdown → CRDT parser
@@ -2786,7 +2804,7 @@ The system SHALL log authorization decisions when verbose:
 | `ed25519-dalek`  | 2       | Ed25519 key derivation and signing     | `collab`     |
 | `git2`           | 0.19    | libgit2 bindings for auto-commit       | `collab`     |
 | `jsonwebtoken`   | 9       | JWT creation/validation for invitations| `collab`     |
-| `automerge`      | 0.5     | CRDT engine with Peritext RichText     | `collab`     |
+| `diamond-types`  | 1.0     | Text CRDT oplog (zetl adds a Peritext-style marks layer on top) | `collab`     |
 | `spindle-core`   | (git)   | Defeasible reasoning for ACL           | `reason`     |
 | `spindle-parser` | (git)   | SPL parsing for policy documents       | `reason`     |
 | `rand`           | 0.8     | Nonce and token generation             | `collab`     |
