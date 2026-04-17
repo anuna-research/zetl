@@ -1,15 +1,21 @@
 {
-  "task_id": "widget-overlay",
+  "task_id": "preview-heading-demotion",
   "token_budget": 8000,
-  "tokens_used": 122,
+  "tokens_used": 173,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Mini-graph widget in base.html:341-357 is `position:fixed; right:16px; bottom:16px; width:400px; height:320px` and is open by default, permanently occluding the last chips of the transclusion-panel and (on help page) body prose. Widget already has a `.zetl-graph-widget__toggle` (base.html:595) and close `×` (base.html:560-563) but no collapsed-default state. Default the widget to collapsed (toggle reveals it); persist last-state in localStorage so returning readers aren't re-prompted.",
-      "token_cost": 122,
+      "content": "Reviewer counted 36 `<h1>` elements in the memo-index DOM, breaking the heading outline for screen readers. Root cause: the transclusion preview rendered into `.tc-excerpt` at src/web/build.rs:1023 and src/web/routes.rs:720 embeds the target page's markdown, whose own `# Title` becomes an `<h1>` inside every chip. Demote headings in transclusion previews (h1→h3, h2→h4, etc.) — either strip them in the preview builder or apply a heading-shift pass when rendering excerpts. The chip anchor itself already uses `<a class=\"tc-title\">` (not `<h1>`), so the fix is in the preview body, not the card shell.",
+      "token_cost": 152,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-widget-overlay-changes",
+      "content": "Modified 2 files (+155, -72): .hence/context-manifest.json, themes/default/base.html",
+      "token_cost": 21,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T10:13:24Z"
+  "constructed_at": "2026-04-17T10:32:40Z"
 }
