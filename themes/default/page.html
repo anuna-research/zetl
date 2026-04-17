@@ -30,11 +30,14 @@
       </div>
       {% endif %}
     {% endif %}
-      {# SPEC-027 REQ-300 / REQ-305: page metadata strip.
-         Omitted when page.history is null or last_changed is empty
-         (feature disabled, no snapshots, or first-snapshot edge). #}
+      <article class="prose prose-lg max-w-none">{{ page.content_html | safe }}</article>
+      {# SPEC-027 REQ-300 / REQ-305: page metadata strip rendered as an
+         article footer so it reads as closure after the content, not
+         preamble above the title. Omitted when page.history is null
+         or last_changed is empty (feature disabled, no snapshots, or
+         first-snapshot edge). #}
       {%- if page.history and page.history.last_changed %}
-      <div class="text-xs opacity-70 mb-3 page-history-meta" aria-label="Page history metadata">
+      <footer class="text-xs opacity-70 mt-6 page-history-meta" aria-label="Page history metadata">
         <span>Last changed <time datetime="{{ page.history.last_changed }}">{{ page.history.last_changed[:10] }}</time></span>
         {# Synthetic-user Finding 2: suppress "stable today" — reads as
            stability when the page literally just changed. #}
@@ -42,9 +45,8 @@
         <span> · stable {{ page.history.stable_days | humanise_days }}</span>
         {%- endif %}
         <span> · <a href="{{ root_path }}{{ page.slug | safe }}/_history{% if mode == 'build' %}.html{% endif %}" class="link">history</a></span>
-      </div>
+      </footer>
       {%- endif %}
-      <article class="prose prose-lg max-w-none">{{ page.content_html | safe }}</article>
       {% if page.backlinks %}
       <div class="divider"></div>
       <h2 class="text-lg font-semibold mb-2">Backlinks</h2>
