@@ -816,7 +816,26 @@
     function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
     function slugFromPath(path){return path.replace(/\.[^/.]+$/,'').toLowerCase().replace(/ /g,'-');}
 
-    /* ── Fuzzy matching (works in all modes, no fetch needed) */
+    /* ── Title matching (works in all modes, no fetch needed).
+       Try case-insensitive contiguous substring first; only fall back
+       to subsequence-fuzzy when nothing contains the query as a run,
+       so letters scattered across word boundaries don't match unless
+       there are no contiguous hits. */
+    function substringMatch(query,text){
+      var ql=query.length;
+      if(ql===0)return{score:0,indices:[]};
+      var qLow=query.toLowerCase(),tLow=text.toLowerCase();
+      var idx=tLow.indexOf(qLow);
+      if(idx<0)return null;
+      var indices=[];for(var i=0;i<ql;i++)indices.push(idx+i);
+      var score=100;
+      if(idx===0)score+=50;
+      else{var prev=text[idx-1];if(prev===' '||prev==='-'||prev==='_'||prev==='/'||prev==='.')score+=25;}
+      score-=Math.min(idx,20);
+      score-=Math.max(0,text.length-ql);
+      return{score:score,indices:indices};
+    }
+
     function fuzzyMatch(query,text){
       var ql=query.length,tl=text.length;
       if(ql===0)return{score:0,indices:[]};
@@ -858,9 +877,15 @@
       if(!q)return list.map(function(p){return{n:p.n,s:p.s,_indices:null};});
       var scored=[];
       list.forEach(function(p){
-        var m=fuzzyMatch(q,p.n);
+        var m=substringMatch(q,p.n);
         if(m)scored.push({n:p.n,s:p.s,score:m.score,_indices:m.indices});
       });
+      if(scored.length===0){
+        list.forEach(function(p){
+          var m=fuzzyMatch(q,p.n);
+          if(m)scored.push({n:p.n,s:p.s,score:m.score,_indices:m.indices});
+        });
+      }
       scored.sort(function(a,b){return b.score-a.score;});
       return scored;
     }
