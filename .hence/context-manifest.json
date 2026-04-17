@@ -1,12 +1,12 @@
 {
-  "task_id": "diamond-marks-layer",
+  "task_id": "ws-wire-format",
   "token_budget": 8000,
-  "tokens_used": 329,
+  "tokens_used": 312,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement the marks layer for DiamondCrdtDocument as decided in research/diamond-types-marks.md. Likely shape: a sibling diamond-types document keyed by mark-name carrying (start, end, scalar) intervals; updated atomically alongside text splices so positions stay consistent. Cover Peritext expand behavior per MarkType (Both for bold/italic/strikethrough/highlight; None for code/wikilink/link/comment). Reuse src/crdt/marks.rs MarkType verbatim — only its scalar_value/from_mark plumbing needs new internals. Property tests (proptest) for: (a) marks survive save/load, (b) inclusive marks grow at boundaries, (c) non-growing marks do not, (d) concurrent splices on different replicas converge with marks intact.",
-      "token_cost": 178,
+      "content": "Migrate src/web/ws.rs's initial-sync and op messages from automerge bytes (base64) to diamond-types bytes (base64). Update CrdtDocEntry to hold a Box<dyn CrdtBackend>. Replace the automerge::ScalarValue conversion in json_to_scalar with a project-owned Scalar enum (defined in src/crdt/marks.rs) so the ws module no longer imports automerge::*. Update existing ws.rs tests to use the new wire shape. WAL format change is acceptable — clear .zetl/wal/ on first run after the swap (documented in commit message).",
+      "token_cost": 128,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 3 files (+370, -5): .hence/context-manifest.json, src/crdt/diamond.rs, src/crdt/mod.rs",
       "token_cost": 23,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-diamond-marks-layer-changes",
+      "content": "Modified 9 files (+1404, -164): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/diamond.rs, src/crdt/marks.rs and 4 more",
+      "token_cost": 33,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T08:35:37Z"
+  "constructed_at": "2026-04-17T08:59:57Z"
 }
