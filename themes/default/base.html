@@ -25,6 +25,21 @@
   {% if mode == "build" %}<link rel="prefetch" href="{{ root_path }}pages.json">
   <link rel="prefetch" href="{{ root_path }}search-index.json">{% endif %}
   <link rel="stylesheet" href="{{ root_path }}_static/theme.css">
+  {# Graph-widget state restoration. Runs in <head> so the persisted
+     collapsed/expanded preference is applied to <html> before the widget
+     paints — without this, returning readers who previously expanded the
+     widget would see a brief flash of the collapsed state on every load.
+     Default (no localStorage entry, private mode, storage disabled) is
+     collapsed, matching the at-rest state set by the widget CSS. #}
+  <script>
+  (function(){
+    try {
+      if (localStorage.getItem('zetl.graphWidget') === 'expanded') {
+        document.documentElement.setAttribute('data-graph', 'expanded');
+      }
+    } catch (_) { /* storage unavailable — keep default (collapsed) */ }
+  })();
+  </script>
   {% block head %}{% endblock %}
   <style>
     /* dead link */
@@ -464,7 +479,11 @@
       outline-offset: 2px;
     }
     .zetl-graph-widget__close {
-      display: none;
+      /* Visible on desktop so readers can dismiss the docked mini-map. On
+         mobile, the widget itself is hidden by default (see media query
+         below), which cascades to hide this button too — the --open
+         overlay state then shows it along with the widget. */
+      display: inline-flex;
       position: absolute;
       top: 6px;
       left: 8px;
@@ -482,6 +501,62 @@
     .zetl-graph-widget__close:focus-visible {
       outline: 2px solid oklch(var(--p));
       outline-offset: 2px;
+    }
+
+    /* Collapsed-by-default state for the docked mini-map. Readers who haven't
+       explicitly expanded the widget see a compact launcher pill in the
+       bottom-right corner; clicking it shows the widget. The
+       html[data-graph="expanded"] attribute is set by the head-script when
+       the persisted preference is expanded, inverting the two rules below.
+       Only applies to the "docked" placement (tabs / stacked flow inline
+       with content and are always visible). */
+    .zetl-graph-widget-launcher {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      position: fixed;
+      right: var(--zetl-graph-widget-right, 16px);
+      bottom: var(--zetl-graph-widget-bottom, 16px);
+      padding: 0.4rem 0.8rem;
+      background: oklch(var(--b1));
+      color: oklch(var(--bc));
+      border: 1px solid oklch(var(--b3));
+      border-radius: 999px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+      font-size: 0.82rem;
+      cursor: pointer;
+      z-index: 40;
+    }
+    .zetl-graph-widget-launcher:hover {
+      background: oklch(var(--b2));
+    }
+    .zetl-graph-widget-launcher:focus-visible {
+      outline: 2px solid oklch(var(--p));
+      outline-offset: 2px;
+    }
+    /* Desktop-only collapsed/expanded behaviour. Mobile (below the
+       breakpoint) keeps its overlay model — widget hidden, navbar toggle
+       reveals it full-screen via `--open` — and the launcher pill is
+       redundant there. Scoping to min-width ensures the `data-graph`
+       attribute never forces a non-overlay widget on narrow viewports. */
+    @media (min-width: 900px) {
+      [data-placement="docked"] .zetl-graph-widget {
+        display: none;
+      }
+      html[data-graph="expanded"] [data-placement="docked"] .zetl-graph-widget {
+        display: block;
+      }
+      html[data-graph="expanded"] [data-placement="docked"] .zetl-graph-widget-launcher {
+        display: none;
+      }
+    }
+    /* Suppress the launcher on mobile — the navbar `.zetl-graph-toggle`
+       already provides the reveal affordance, and a second button would
+       be noise at narrow widths. */
+    @media (max-width: 899px) {
+      .zetl-graph-widget-launcher {
+        display: none;
+      }
     }
 
     @media (max-width: 899px) {
@@ -566,6 +641,25 @@
        title="Open full graph">Expand ↗</a>
     {% include "_graph.html" ignore missing %}
   </div>
+  {# Launcher pill — desktop affordance to re-open the widget after dismissal.
+     CSS (see .zetl-graph-widget-launcher) flips visibility against
+     html[data-graph="expanded"], set by the head-script from localStorage. #}
+  <button type="button"
+          class="zetl-graph-widget-launcher"
+          id="zetl-graph-widget-launcher"
+          aria-label="Show graph"
+          aria-controls="zetl-graph-widget"
+          aria-expanded="false">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+         fill="none" viewBox="0 0 24 24" stroke="currentColor"
+         stroke-width="2" aria-hidden="true">
+      <circle cx="5" cy="6" r="2"/>
+      <circle cx="19" cy="6" r="2"/>
+      <circle cx="12" cy="18" r="2"/>
+      <path d="M6.7 7.5 11 16.5M17.3 7.5 13 16.5M7 6h10"/>
+    </svg>
+    <span>Graph</span>
+  </button>
   {% endif %}
 
   <!-- Drawer layout for responsive sidebar -->
@@ -1017,31 +1111,80 @@
      instance mounted inside #zetl-graph (when task-graph-partial lands) keeps
      its WebGL context across open/close transitions. Runs once; the SPA
      navigation shell preserves the shell region so this init never needs to
-     re-run on navigation. #}
+     re-run on navigation.
+
+     Desktop collapse/expand is wired here too: the close (×) persists a
+     dismissal, and the launcher pill re-opens. State is written to
+     localStorage under `zetl.graphWidget` so returning readers aren't
+     re-prompted. #}
   <script>
   (function(){
     var widget=document.getElementById('zetl-graph-widget');
     var toggle=document.getElementById('zetl-graph-toggle');
     var closeBtn=document.getElementById('zetl-graph-widget-close');
-    if(!widget||!toggle)return;
+    var launcher=document.getElementById('zetl-graph-widget-launcher');
+    if(!widget)return;
     var OPEN='zetl-graph-widget--open';
+    var STORAGE_KEY='zetl.graphWidget';
+
+    /* ── Desktop collapse/expand (persisted). */
+    function isExpanded(){
+      return document.documentElement.getAttribute('data-graph')==='expanded';
+    }
+    function setExpanded(expanded){
+      if(expanded){
+        document.documentElement.setAttribute('data-graph','expanded');
+      }else{
+        document.documentElement.removeAttribute('data-graph');
+      }
+      try{localStorage.setItem(STORAGE_KEY,expanded?'expanded':'collapsed');}
+      catch(_){/* storage unavailable — session-only toggle */}
+      if(launcher)launcher.setAttribute('aria-expanded',expanded?'true':'false');
+    }
+    /* Reconcile launcher aria with the state the head-script already
+       applied (e.g. restored-expanded), so screen readers see the correct
+       initial value without waiting for user interaction. */
+    if(launcher)launcher.setAttribute('aria-expanded',isExpanded()?'true':'false');
+    if(launcher){
+      launcher.addEventListener('click',function(){
+        setExpanded(true);
+        /* Hand focus to the widget's close so keyboard users can dismiss
+           again without tabbing through the whole page. */
+        if(closeBtn)closeBtn.focus();
+      });
+    }
+
+    /* ── Mobile overlay (unchanged behaviour from REQ-117). */
     function isOpen(){return widget.classList.contains(OPEN);}
     function setOpen(open){
       widget.classList.toggle(OPEN,open);
-      toggle.setAttribute('aria-expanded',open?'true':'false');
+      if(toggle)toggle.setAttribute('aria-expanded',open?'true':'false');
       /* Prevent body scroll while the overlay covers the viewport. */
       document.body.style.overflow=open?'hidden':'';
       if(open){
         /* Move focus inside the overlay so Escape/Tab are routed sensibly;
            closeBtn is the primary dismiss affordance. */
         if(closeBtn)closeBtn.focus();
-      }else{
+      }else if(toggle){
         /* Return focus to the toggle so keyboard users don't lose context. */
         toggle.focus();
       }
     }
-    toggle.addEventListener('click',function(){setOpen(!isOpen());});
-    if(closeBtn)closeBtn.addEventListener('click',function(){setOpen(false);});
+    if(toggle)toggle.addEventListener('click',function(){setOpen(!isOpen());});
+
+    /* ── Close button is dual-role: dismisses the mobile overlay when
+       active, otherwise persists a desktop collapse. */
+    if(closeBtn){
+      closeBtn.addEventListener('click',function(){
+        if(isOpen()){
+          setOpen(false);
+        }else{
+          setExpanded(false);
+          if(launcher)launcher.focus();
+        }
+      });
+    }
+
     document.addEventListener('keydown',function(e){
       if(e.key==='Escape'&&isOpen()){e.preventDefault();setOpen(false);}
     });
