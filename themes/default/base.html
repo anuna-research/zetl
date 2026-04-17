@@ -1227,9 +1227,9 @@
      sigma bundle is only injected when the reader actually reveals the
      graph: launcher click (desktop), navbar toggle (mobile), or landing on
      the full-page /_graph route. Resolves a singleton promise so repeat
-     callers hit the existing load. __zetlBootGraph is defined by the
-     _graph.html partial when it's present; the loader tolerates its
-     absence (theme-override case, REQ-109). */
+     callers hit the existing load. __zetlBootGraph is defined by the graph
+     partial when it is present; the loader tolerates its absence
+     (theme-override case, REQ-109). */
   window.__zetlEnsureGraph = (function(){
     var promise = null;
     var ROOT = "{{ root_path | safe }}";
