@@ -172,6 +172,8 @@
   var graph = null, renderer = null, layoutSupervisor = null;
   var activeSlug = document.body.getAttribute('data-slug') || '';
   var neighbourSet = null;
+  var hoveredNode = null;
+  var hoveredNeighbours = null;
 
   function computeNeighbours(slug){
     neighbourSet = null;
@@ -201,6 +203,24 @@
       out.color = palette.node;
     }
 
+    /* Hover: highlight hovered node + its neighbours, fade everything else */
+    if (hoveredNode && hoveredNeighbours) {
+      if (node === hoveredNode) {
+        out.color = palette.nodeActive;
+        out.size = out.size * 1.4;
+        out.highlighted = true;
+        out.zIndex = 2;
+      } else if (hoveredNeighbours.has(node)) {
+        /* keep current color, show label */
+        out.zIndex = 1;
+      } else {
+        out.color = palette.nodeFaded;
+        out.label = '';
+        out.zIndex = 0;
+      }
+      return out;
+    }
+
     var mode = currentMode();
     if (mode === 'local' && activeSlug && neighbourSet) {
       if (node === activeSlug) {
@@ -218,9 +238,6 @@
   function edgeReducer(edge, attrs){
     var out = {};
     for (var k in attrs) out[k] = attrs[k];
-    /* A link is "dead" when it terminates at a phantom (is_dead) node, or
-       when the edge itself is flagged is_dead by the serializer. Checking
-       both keeps the reducer future-proof against edge-level metadata. */
     var targetAttrs = graph.getNodeAttributes(graph.target(edge));
     var isDead = !!attrs.is_dead || !!(targetAttrs && targetAttrs.is_dead);
     if (isDead) {
@@ -229,6 +246,19 @@
       out.zIndex = 0;
     } else {
       out.color = palette.edge;
+    }
+
+    /* Hover: only show edges connected to the hovered node */
+    if (hoveredNode && hoveredNeighbours) {
+      var s = graph.source(edge), t = graph.target(edge);
+      if (s === hoveredNode || t === hoveredNode) {
+        out.color = palette.edge;
+        out.size = 2;
+        out.zIndex = 1;
+      } else {
+        out.hidden = true;
+      }
+      return out;
     }
 
     var mode = currentMode();
@@ -372,6 +402,19 @@
            full reload.
          - SPA disabled / failed to boot: fall through to `location.href`
            for a standard full-page navigation. */
+      /* Hover: show only connected nodes + edges */
+      renderer.on('enterNode', function(evt){
+        hoveredNode = evt.node;
+        hoveredNeighbours = new Set();
+        graph.forEachNeighbor(evt.node, function(n){ hoveredNeighbours.add(n); });
+        renderer.refresh();
+      });
+      renderer.on('leaveNode', function(){
+        hoveredNode = null;
+        hoveredNeighbours = null;
+        renderer.refresh();
+      });
+
       renderer.on('clickNode', function(evt){
         var slug = evt.node;
         if (!slug) return;
