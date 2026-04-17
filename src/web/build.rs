@@ -1019,7 +1019,7 @@ fn build_transclusion_cards(
 
         cards.push_str(&format!(
             r#"<div class="transclusion-card" data-target-href="{root_path}{href}/index.html" style="border-left-color: {color};">
-  <a href="{root_path}{href}/index.html" class="tc-title" style="color: {color};">{name}</a>
+  <a href="{root_path}{href}/index.html" class="tc-title">{name}</a>
   <div class="tc-excerpt prose prose-sm max-w-none">{preview}</div>
 </div>"#,
             root_path = root_path,

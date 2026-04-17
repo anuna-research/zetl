@@ -399,6 +399,7 @@ pub fn layout(
       font-size: 0.85rem;
       font-weight: 600;
       text-decoration: none;
+      color: oklch(var(--bc));
     }}
     .transclusion-card .tc-title:hover {{
       text-decoration: underline;

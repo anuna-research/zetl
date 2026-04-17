@@ -1,12 +1,12 @@
 {
-  "task_id": "mobile-overflow",
+  "task_id": "chip-contrast",
   "token_budget": 8000,
-  "tokens_used": 178,
+  "tokens_used": 182,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Three related mobile clipping bugs at 375px: (a) long H1 on Lordianto 2018 clips final letter of \"Commissioner\" — add `hyphens:auto; overflow-wrap:anywhere` to `h1` in base.html or step H1 down at narrow breakpoints; (b) help page `<pre>` / code block `cargo install --path . --features \"reason,history,semantic,mcp\"` clips at right edge — add `overflow-x:auto` (and/or `white-space:pre-wrap` for non-code) on `pre` inside `.prose`; (c) landing-page stat-bar shows only 3 of 4 tiles (Orphans clipped) — let the stat grid wrap to 2×2 below ~420px.",
-      "token_cost": 138,
+      "content": "All eight chip hues in `.transclusion-panel` (#f472b6 #60a5fa #34d399 #fbbf24 #a78bfa #fb923c #2dd4bf #f87171) fail WCAG 2.1 AA against white — measured contrast 1.67:1 to 2.77:1 vs a 4.5:1 minimum. Chip text colour is applied inline in src/web/build.rs:1022 and src/web/routes.rs:719. Either darken the text palette to AA-compliant variants (e.g. Tailwind *-700 shades), add a subtle filled pill background, or move colour to the left border only and use a single accessible text colour.",
+      "token_cost": 122,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 2 files (+61, -6): .hence/context-manifest.json, src/web/markdown.rs",
       "token_cost": 19,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-mobile-overflow-changes",
+      "content": "Modified 2 files (+33, -6): .hence/context-manifest.json, themes/default/base.html",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T10:35:05Z"
+  "constructed_at": "2026-04-17T10:37:57Z"
 }
