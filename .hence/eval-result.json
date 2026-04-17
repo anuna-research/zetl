@@ -3,28 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 15,
+    "files_changed": 2,
+    "insertions": 38,
     "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/build.rs",
-      "src/web/html.rs",
-      "src/web/routes.rs",
       "themes/default/base.html"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-chip-contrast-changes",
-      "content": "Modified 5 files (+15, -7): .hence/context-manifest.json, src/web/build.rs, src/web/html.rs, src/web/routes.rs, themes/default/base.html",
+      "key": "task-search-match-precision-changes",
+      "content": "Modified 2 files (+38, -7): .hence/context-manifest.json, themes/default/base.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/chip-contrast-v1",
-  "evaluated_at": "2026-04-17T10:40:51Z",
+  "branch_name": "hence/search-match-precision-v1",
+  "evaluated_at": "2026-04-17T10:43:17Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
