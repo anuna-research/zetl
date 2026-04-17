@@ -132,37 +132,47 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     // jj snapshot description. When the list is empty (rare — WAL
     // recovery, first-sync edge), fall back to the generic zetl-crdt
     // identity so downstream tooling still sees a valid author.
+    // Resolve each contributor user_id → (display_name, user_id). The
+    // user_id doubles as the local-part of the `{id}@vault` email used
+    // by both git (via git_commit::auto_commit, which appends @vault
+    // internally) and jj (which takes an explicit email string).
     let contributor_ids = state.crdt_store.take_contributors(slug);
     let resolve_identity = |uid: &str| -> (String, String) {
         match crate::user::load_profile(&state.vault_root, uid) {
-            Ok(Some(p)) => (p.name.clone(), format!("{}@vault", p.id)),
-            _ => ("zetl-crdt".to_string(), "zetl-crdt@vault".to_string()),
+            Ok(Some(p)) => (p.name.clone(), p.id.clone()),
+            _ => ("zetl-crdt".to_string(), "zetl-crdt".to_string()),
         }
     };
-    let (primary_name, primary_email, co_authors): (String, String, Vec<(String, String)>) =
+    let (primary_name, primary_id, co_authors): (String, String, Vec<(String, String)>) =
         if let Some(last_uid) = contributor_ids.last() {
-            let (pname, pemail) = resolve_identity(last_uid);
+            let (pname, pid) = resolve_identity(last_uid);
             let co_authors: Vec<(String, String)> = contributor_ids
                 .iter()
                 .take(contributor_ids.len().saturating_sub(1))
                 .map(|uid| resolve_identity(uid))
                 .collect();
-            (pname, pemail, co_authors)
+            (pname, pid, co_authors)
         } else {
             (
                 "zetl-crdt".to_string(),
-                "zetl-crdt@vault".to_string(),
+                "zetl-crdt".to_string(),
                 Vec::new(),
             )
         };
+    let primary_email = format!("{primary_id}@vault");
+    // jj takes explicit emails, git::auto_commit takes a bare user_id.
+    let co_authors_with_email: Vec<(String, String)> = co_authors
+        .iter()
+        .map(|(name, id)| (name.clone(), format!("{id}@vault")))
+        .collect();
 
     // Build the commit / snapshot message body, appending Co-authored-by
     // trailers in insertion order when the flush window had more than
     // one contributor.
     let mut commit_msg = format!("edit: {slug} (crdt flush)");
-    if !co_authors.is_empty() {
+    if !co_authors_with_email.is_empty() {
         commit_msg.push('\n');
-        for (name, email) in &co_authors {
+        for (name, email) in &co_authors_with_email {
             commit_msg.push_str(&format!("\nCo-authored-by: {name} <{email}>"));
         }
     }
@@ -175,7 +185,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
                     &repo,
                     &path,
                     &primary_name,
-                    &primary_email,
+                    &primary_id,
                     Some(&commit_msg),
                 ) {
                     Ok(_oid) => {
@@ -205,7 +215,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
             &state.vault_root,
             Some(&vault_root_hash),
             Some((&primary_name, &primary_email)),
-            &co_authors,
+            &co_authors_with_email,
         ) {
             Ok(Some(change_id)) => {
                 eprintln!("flush: jj snapshot {change_id} for {slug}");
@@ -585,5 +595,142 @@ mod tests {
             git_warnings.is_empty(),
             "should have no git warnings: {git_warnings:?}"
         );
+    }
+
+    /// plan-author-attribution / task-integration-test.
+    ///
+    /// Two authenticated users apply ops under different user_ids during a
+    /// single quiescence window. Flush must attribute the git commit to the
+    /// last editor and add every earlier contributor as a `Co-authored-by`
+    /// trailer in the commit message body. Under --features history the jj
+    /// snapshot description carries the same trailers.
+    #[test]
+    fn flush_attributes_primary_and_coauthors() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("note.md"), "# Note\n\nseed\n").unwrap();
+
+        // Git repo + initial commit (required for auto_commit to have a
+        // HEAD to parent onto).
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        {
+            let mut config = repo.config().unwrap();
+            config.set_str("user.name", "test").unwrap();
+            config.set_str("user.email", "test@test").unwrap();
+        }
+        {
+            let sig = git2::Signature::now("test", "test@test").unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("note.md")).unwrap();
+            index.write().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_oid).unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+                .unwrap();
+        }
+
+        // Two user profiles under the vault so flush's load_profile path
+        // resolves both user_ids to their display names.
+        let alice = crate::user::UserProfile {
+            id: "alice-11111111".to_string(),
+            name: "Alice Example".to_string(),
+            created_at: "2026-04-18T00:00:00Z".to_string(),
+            invited_by: None,
+            owner: true,
+            credentials: Vec::new(),
+            recovery_pubkey: String::new(),
+            agent_token_generation: 0,
+        };
+        let bob = crate::user::UserProfile {
+            id: "bob-22222222".to_string(),
+            name: "Bob Example".to_string(),
+            created_at: "2026-04-18T00:00:00Z".to_string(),
+            invited_by: Some(alice.id.clone()),
+            owner: false,
+            credentials: Vec::new(),
+            recovery_pubkey: String::new(),
+            agent_token_generation: 0,
+        };
+        crate::user::save_profile(dir.path(), &alice).unwrap();
+        crate::user::save_profile(dir.path(), &bob).unwrap();
+
+        let mut state = test_state(&dir);
+        state.git_commit_lock = Some(Arc::new(Mutex::new(repo)));
+
+        // Load the doc and apply ops under alice, then under bob. Bob is
+        // the last editor → he becomes the primary author.
+        state.crdt_store.load_or_get("note").unwrap();
+        let op = vec![crate::web::ws::OpEntry::Splice {
+            pos: 0,
+            del: 0,
+            text: "edit-".to_string(),
+        }];
+        state
+            .crdt_store
+            .apply_ops("note", &alice.id, &op)
+            .unwrap();
+        state.crdt_store.apply_ops("note", &bob.id, &op).unwrap();
+
+        let result = flush_pipeline(&state, "note");
+        assert!(result.is_some());
+
+        // Inspect the git commit that flush just wrote.
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let author = head.author();
+        assert_eq!(
+            author.name().unwrap(),
+            bob.name,
+            "primary author should be the last editor (bob)"
+        );
+        let email_suffix = format!("{}@vault", bob.id);
+        assert_eq!(author.email().unwrap(), email_suffix);
+
+        let msg = head.message().unwrap();
+        assert!(
+            msg.contains("edit: note (crdt flush)"),
+            "commit subject missing: {msg}"
+        );
+        let alice_trailer = format!("Co-authored-by: {} <{}@vault>", alice.name, alice.id);
+        assert!(
+            msg.contains(&alice_trailer),
+            "Alice should appear as Co-authored-by trailer; got body:\n{msg}"
+        );
+        // Bob is the primary — must NOT also appear as a co-author.
+        let bob_trailer = format!("Co-authored-by: {} <{}@vault>", bob.name, bob.id);
+        assert!(
+            !msg.contains(&bob_trailer),
+            "primary author should not be duplicated as a co-author; got body:\n{msg}"
+        );
+
+        // Under --features history the jj snapshot description carries the
+        // same trailer — parse_co_authored_by picks it out.
+        #[cfg(feature = "history")]
+        {
+            use crate::history::jj_backend::VcsBackend;
+            let backend =
+                crate::history::jj_backend::JjBackend::open_or_init_at_vault_root(dir.path())
+                    .unwrap();
+            let changes = backend.list_changes(1).unwrap();
+            let latest = changes.first().expect("expected at least one jj snapshot");
+            let parsed = crate::history::core::parse_co_authored_by(&latest.description);
+            assert_eq!(
+                parsed,
+                vec![(alice.name.clone(), format!("{}@vault", alice.id))],
+                "jj snapshot description should carry Alice as co-author; got:\n{}",
+                latest.description
+            );
+            assert_eq!(latest.author_name, bob.name);
+        }
+
+        // A second flush with no further edits has an empty contributor
+        // list — attribution falls back to the zetl-crdt identity,
+        // preserving behaviour for WAL-recovery / first-connect flushes.
+        state.crdt_store.record_edit("note");
+        let result2 = flush_pipeline(&state, "note");
+        if let Some(_r) = result2 {
+            let repo = git2::Repository::open(dir.path()).unwrap();
+            let head = repo.head().unwrap().peel_to_commit().unwrap();
+            assert_eq!(head.author().name().unwrap(), "zetl-crdt");
+        }
     }
 }
