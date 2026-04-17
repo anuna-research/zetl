@@ -1,12 +1,12 @@
 {
-  "task_id": "widget-zerowidth-guard",
+  "task_id": "favicon",
   "token_budget": 8000,
-  "tokens_used": 291,
+  "tokens_used": 241,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "At viewports ≤899px the widget is `display:none` via base.html:487-515, but the Sigma instantiation in themes/default/_graph.html:396 (or the mini-widget's init path) still runs on render tick and throws `Error: Sigma: Container has no width` — reviewer captured 23 instances. Guard instantiation/resize: check `container.offsetWidth > 0` before `new Sigma(...)`, and bail out of resize ticks when width is zero. Related to but narrower than widget-overlay; can ship independently.",
-      "token_cost": 121,
+      "content": "Every page hits `/favicon.ico` and 404s (confirmed in console log). base.html:1-30 has no favicon link. Ship a small favicon (inline SVG or ship a file) and add `<link rel=\"icon\">` to the base template.",
+      "token_cost": 50,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,14 @@
       "content": "Modified 7 files (+450, -7): .hence/context-manifest.json, src/web/build.rs, src/web/context.rs, src/web/engine.rs, src/web/routes.rs and 2 more",
       "token_cost": 36,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-widget-zerowidth-guard-changes",
+      "content": "Modified 2 files (+150, -86): .hence/context-manifest.json, themes/default/_graph.html",
+      "token_cost": 21,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T10:59:16Z"
+  "constructed_at": "2026-04-17T11:04:29Z"
 }
