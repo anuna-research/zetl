@@ -3,34 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 11,
-    "insertions": 917,
-    "deletions": 1295,
+    "files_changed": 2,
+    "insertions": 37,
+    "deletions": 13,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml",
-      "src/crdt/backend.rs",
-      "src/crdt/diamond.rs",
-      "src/crdt/marks.rs",
-      "src/crdt/marks_doc.rs",
-      "src/crdt/mod.rs",
-      "src/web/ws.rs",
-      "tests/diamond_marks_proptest.rs",
-      "tests/nfr_size_budgets.rs"
+      "specs/SPEC-020.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-flip-default-backend-changes",
-      "content": "Modified 11 files (+917, -1295): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/backend.rs, src/crdt/diamond.rs and 6 more",
+      "key": "task-update-spec-020-changes",
+      "content": "Modified 2 files (+37, -13): .hence/context-manifest.json, specs/SPEC-020.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/flip-default-backend-v1",
-  "evaluated_at": "2026-04-17T09:42:51Z",
+  "branch_name": "hence/update-spec-020-v1",
+  "evaluated_at": "2026-04-17T09:47:12Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
