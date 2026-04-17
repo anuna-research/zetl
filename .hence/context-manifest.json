@@ -1,12 +1,12 @@
 {
-  "task_id": "favicon",
+  "task_id": "graph-page",
   "token_budget": 8000,
-  "tokens_used": 241,
+  "tokens_used": 334,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Every page hits `/favicon.ico` and 404s (confirmed in console log). base.html:1-30 has no favicon link. Ship a small favicon (inline SVG or ship a file) and add `<link rel=\"icon\">` to the base template.",
-      "token_cost": 50,
+      "content": "`_graph.html` 404s on every page in the static build. themes/default/base.html:565 and :637 both href `./_graph.html` (\"Expand ↗\" widget button and sidebar \"Graph\" link). The serve-mode `/_graph` route exists in src/web/mod.rs:410 and the template themes/default/_graph.html exists, but `src/web/build.rs` never renders it to disk. Either emit `_graph.html` during static build (render the existing template against the same graph payload the widget uses) or gate the links to serve mode only.",
+      "token_cost": 123,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 2 files (+150, -86): .hence/context-manifest.json, themes/default/_graph.html",
       "token_cost": 21,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-favicon-changes",
+      "content": "Modified 2 files (+12, -5): .hence/context-manifest.json, themes/default/base.html",
+      "token_cost": 20,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T11:04:29Z"
+  "constructed_at": "2026-04-17T11:05:15Z"
 }
