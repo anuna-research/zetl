@@ -650,6 +650,84 @@
       margin-left: 0.75rem;
       padding-left: 0;
     }
+
+    /* ── Print ─────────────────────────────────────────────────────────
+       Drop the interactive shell (sidebar, graph widget, search palette,
+       tooltips, mobile navbar) and let the article flow full-width in
+       black-on-white. The transclusion rail and the on-page backlinks
+       are kept because both are reference material that a reader
+       printing a page is likely to want on paper. */
+    @media print {
+      @page { margin: 2cm; }
+      html, body {
+        background: #fff !important;
+        color: #000 !important;
+      }
+      /* Chrome + interactive widgets. */
+      .drawer-side,
+      .navbar,
+      .zetl-graph-widget,
+      .zetl-graph-widget-launcher,
+      .zetl-graph-toggle,
+      .search-overlay,
+      .search-dialog,
+      .search-btn,
+      .wikilink-tooltip,
+      .drawer-toggle,
+      [data-zetl-graph-fallback] {
+        display: none !important;
+      }
+      /* Collapse the daisyUI drawer so main content flows full-width. */
+      .drawer,
+      .drawer-content {
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
+      }
+      /* The page/transclusion two-column layout stacks on paper. */
+      .page-with-panel { flex-direction: column !important; }
+      .transclusion-panel {
+        position: static !important;
+        width: 100% !important;
+        max-height: none !important;
+        overflow: visible !important;
+        border-left: none !important;
+        border-top: 1px solid #ccc !important;
+        page-break-before: avoid;
+      }
+      /* Links: underlined, black. No visited variance. External URLs
+         print after the link text so the reader can follow them from
+         paper; internal wikilinks stay unadorned (the slug is rarely
+         useful out-of-context). */
+      a { color: #000 !important; text-decoration: underline !important; }
+      a[href^="http://"]:after,
+      a[href^="https://"]:after {
+        content: " (" attr(href) ")";
+        font-size: 0.85em;
+        word-break: break-all;
+      }
+      /* Code blocks wrap instead of clipping at the page edge. */
+      pre, code {
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        background: transparent !important;
+        border: 1px solid #ddd;
+      }
+      /* Keep structural elements intact across page breaks. */
+      h1, h2, h3, h4 {
+        page-break-after: avoid;
+        break-after: avoid-page;
+      }
+      img, pre, blockquote, table, .transclusion-card {
+        page-break-inside: avoid;
+        break-inside: avoid-page;
+      }
+      /* Drop all shadows and decorative backgrounds that waste toner. */
+      * {
+        box-shadow: none !important;
+        text-shadow: none !important;
+      }
+    }
     {% block styles %}{% endblock %}
   </style>
 </head>
