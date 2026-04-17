@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 12,
-    "deletions": 5,
+    "insertions": 24,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "themes/default/base.html"
+      "src/web/build.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-favicon-changes",
-      "content": "Modified 2 files (+12, -5): .hence/context-manifest.json, themes/default/base.html",
+      "key": "task-graph-page-changes",
+      "content": "Modified 2 files (+24, -6): .hence/context-manifest.json, src/web/build.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/favicon-v1",
-  "evaluated_at": "2026-04-17T11:05:09Z",
+  "branch_name": "hence/graph-page-v1",
+  "evaluated_at": "2026-04-17T11:09:04Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
