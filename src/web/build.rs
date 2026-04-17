@@ -507,7 +507,19 @@ pub fn build_static(
     let bm25_json = String::new();
 
     // ── graph-index.json (SPEC-028 REQ-102 / OBS-101) ───────────────────
-    let _graph_json = write_graph_index_json(data, vault_root, &vault_ctx.name, out, verbose)?;
+    let graph_json = write_graph_index_json(data, vault_root, &vault_ctx.name, out, verbose)?;
+
+    // ── _graph.html (SPEC-028 REQ-107) ──────────────────────────────────
+    // Base.html's sidebar "Graph" link and the widget's "Expand ↗" button
+    // both href `{root_path}_graph.html` in build mode; render the vault
+    // graph template to disk so those links resolve.
+    let graph_html = engine
+        .render_vault_graph(&vault_ctx, "build", &graph_json)
+        .map_err(|e| {
+            eprintln!("{}", e.stderr_line("_graph"));
+            anyhow::anyhow!("{e}")
+        })?;
+    std::fs::write(out.join("_graph.html"), graph_html)?;
 
     // ── history-index.json ───────────────────────────────────────────────
     #[cfg(feature = "history")]
