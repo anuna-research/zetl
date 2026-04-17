@@ -112,12 +112,13 @@
 <script type="application/json" id="zetl-graph-index">{{ graph_index | safe }}</script>
 {% endif %}
 
-<script src="{{ root_path }}_static/vendor/sigma/graphology.min.js" defer></script>
-<script src="{{ root_path }}_static/vendor/sigma/graphology-layout-forceatlas2.min.js" defer></script>
-<script src="{{ root_path }}_static/vendor/sigma/sigma.min.js" defer></script>
+{# Vendor bundles are NOT preloaded — window.__zetlEnsureGraph (defined in
+   base.html) lazy-injects graphology + FA2 + sigma only when the widget is
+   actually expanded or when the full-page /_graph route is rendered. Saves
+   the ~150 kB bundle on every non-graph page view. #}
 
 <script>
-(function(){
+window.__zetlBootGraph = function(){
   if (window.__zetlGraphBooted) return;
   window.__zetlGraphBooted = true;
 
@@ -171,6 +172,7 @@
 
   /* ── Graph/renderer state ────────────────────────────────────────────── */
   var graph = null, renderer = null, layoutSupervisor = null;
+  var hasDashedProgram = false;
   var activeSlug = document.body.getAttribute('data-slug') || '';
   var neighbourSet = null;
   var hoveredNode = null;
@@ -243,7 +245,7 @@
     var isDead = !!attrs.is_dead || !!(targetAttrs && targetAttrs.is_dead);
     if (isDead) {
       out.color = palette.edgeDead;
-      out.type = 'dashed';
+      if (hasDashedProgram) out.type = 'dashed';
       out.zIndex = 0;
     } else {
       out.color = palette.edge;
@@ -396,6 +398,7 @@
             || null;
           if (DashedProgram) edgePrograms.dashed = DashedProgram;
         } catch (e) {}
+        hasDashedProgram = !!edgePrograms.dashed;
 
         var sigmaSettings = {
           nodeReducer: nodeReducer,
@@ -404,9 +407,16 @@
           labelColor: { color: palette.label },
           renderLabels: true,
           defaultEdgeType: 'line',
-          zIndex: true
+          zIndex: true,
+          /* Sigma's internal resize loop (ResizeObserver) fires a resize()
+             whenever the container's width transitions through 0 — which
+             happens at every SPA nav and every media-query toggle that
+             hides the mini-widget. Setting this to true tells Sigma to
+             skip the render pass instead of throwing. Our `hasSize()`
+             probe still guards the initial `new Sigma(...)` call. */
+          allowInvalidContainer: true
         };
-        if (edgePrograms.dashed) sigmaSettings.edgeProgramClasses = edgePrograms;
+        if (hasDashedProgram) sigmaSettings.edgeProgramClasses = edgePrograms;
 
         try {
           renderer = new window.Sigma(graph, container, sigmaSettings);
@@ -560,5 +570,5 @@
     setMode(isVault ? 'vault' : 'local');
     applyMode();
   });
-})();
+};
 </script>
