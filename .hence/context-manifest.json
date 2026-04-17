@@ -1,15 +1,21 @@
 {
-  "task_id": "spike-diamond-types",
+  "task_id": "marks-layer-design",
   "token_budget": 8000,
-  "tokens_used": 107,
+  "tokens_used": 199,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Author a standalone Rust spike (in tools/ or examples/) that exercises diamond-types' OpLog/Branch APIs for: insert, delete, save/load, fork/merge, char-position addressing. Document gaps vs the current automerge usage in src/crdt/mod.rs and src/web/ws.rs. Capture findings in research/diamond-types-spike.md including: minimum supported version, wire-format size compared to automerge, and a recommended marks-layering strategy.",
-      "token_cost": 107,
+      "content": "Produce a short design note (research/diamond-types-marks.md) describing the replacement for automerge's RichText marks. Cover: data model (sibling diamond-types document of mark-spans? separate crdt-marks crate? interval CRDT?), Peritext expand semantics (Both/None) preservation per mark type, mark name → ScalarValue equivalent payload, conflict resolution behavior, and the algorithm for translating splice_text(pos, del, text) into mark-span shifts. Must enumerate exactly which automerge::* symbols disappear and what replaces them. Reviewed with hugo before implementation.",
+      "token_cost": 145,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-spike-diamond-types-changes",
+      "content": "Modified 6 files (+1738, -65): .hence/context-manifest.json, research/diamond-types-spike.md, tools/diamond-types-spike/.gitignore, tools/diamond-types-spike/Cargo.lock, tools/diamond-types-spike/Cargo.toml and 1 more",
+      "token_cost": 54,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T07:51:56Z"
+  "constructed_at": "2026-04-17T08:01:19Z"
 }
