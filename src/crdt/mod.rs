@@ -6,6 +6,8 @@
 
 pub mod backend;
 pub mod blocks;
+#[cfg(feature = "collab")]
+pub mod diamond;
 pub mod marks;
 
 use std::any::Any;
