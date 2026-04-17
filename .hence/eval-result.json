@@ -3,29 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 1738,
-    "deletions": 65,
+    "files_changed": 2,
+    "insertions": 609,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "research/diamond-types-spike.md",
-      "tools/diamond-types-spike/.gitignore",
-      "tools/diamond-types-spike/Cargo.lock",
-      "tools/diamond-types-spike/Cargo.toml",
-      "tools/diamond-types-spike/src/main.rs"
+      "research/diamond-types-marks.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-spike-diamond-types-changes",
-      "content": "Modified 6 files (+1738, -65): .hence/context-manifest.json, research/diamond-types-spike.md, tools/diamond-types-spike/.gitignore, tools/diamond-types-spike/Cargo.lock, tools/diamond-types-spike/Cargo.toml and 1 more",
+      "key": "task-marks-layer-design-changes",
+      "content": "Modified 2 files (+609, -5): .hence/context-manifest.json, research/diamond-types-marks.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/spike-diamond-types-v1",
-  "evaluated_at": "2026-04-17T08:01:14Z",
+  "branch_name": "hence/marks-layer-design-v1",
+  "evaluated_at": "2026-04-17T08:08:12Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
