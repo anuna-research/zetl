@@ -1,12 +1,12 @@
 {
-  "task_id": "diamond-text-engine",
+  "task_id": "diamond-marks-layer",
   "token_budget": 8000,
-  "tokens_used": 248,
+  "tokens_used": 329,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement DiamondCrdtDocument in src/crdt/diamond.rs satisfying CrdtBackend, but only the text-shaped operations (new, from_markdown, text, splice_text, to_markdown, save, load, fork, merge). Marks-shaped operations (mark, unmark, marks) return a not-yet-implemented sentinel for now — Phase 5 fills them in. Wire format SHOULD use diamond-types' native binary encoding (smaller than automerge); add round-trip tests that load(save(doc)) is byte-identical and content-equivalent.",
-      "token_cost": 120,
+      "content": "Implement the marks layer for DiamondCrdtDocument as decided in research/diamond-types-marks.md. Likely shape: a sibling diamond-types document keyed by mark-name carrying (start, end, scalar) intervals; updated atomically alongside text splices so positions stay consistent. Cover Peritext expand behavior per MarkType (Both for bold/italic/strikethrough/highlight; None for code/wikilink/link/comment). Reuse src/crdt/marks.rs MarkType verbatim — only its scalar_value/from_mark plumbing needs new internals. Property tests (proptest) for: (a) marks survive save/load, (b) inclusive marks grow at boundaries, (c) non-growing marks do not, (d) concurrent splices on different replicas converge with marks intact.",
+      "token_cost": 178,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 5 files (+185, -85): .hence/context-manifest.json, src/crdt/backend.rs, src/crdt/marks.rs, src/crdt/mod.rs, src/web/ws.rs",
       "token_cost": 32,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-diamond-text-engine-changes",
+      "content": "Modified 3 files (+370, -5): .hence/context-manifest.json, src/crdt/diamond.rs, src/crdt/mod.rs",
+      "token_cost": 23,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T08:28:48Z"
+  "constructed_at": "2026-04-17T08:35:37Z"
 }

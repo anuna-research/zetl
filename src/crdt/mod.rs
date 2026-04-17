@@ -9,17 +9,19 @@ pub mod blocks;
 #[cfg(feature = "collab")]
 pub mod diamond;
 pub mod marks;
+#[cfg(feature = "collab")]
+pub mod marks_doc;
 
 use std::any::Any;
 
 use anyhow::{Context, Result};
-use automerge::marks::{ExpandMark, Mark as AutoMark};
+use automerge::marks::{ExpandMark as AmExpandMark, Mark as AutoMark};
 use automerge::transaction::Transactable;
-use automerge::{AutoCommit, ObjType, ReadDoc, ROOT};
+use automerge::{AutoCommit, ObjType, ReadDoc, ScalarValue, ROOT};
 
 pub use backend::CrdtBackend;
 use blocks::BlockToken;
-use marks::{Mark, MarkType};
+use marks::{ExpandMark, Mark, MarkType, Scalar};
 
 /// A CRDT document wrapping an automerge `AutoCommit` with Peritext-style
 /// rich text. The text object lives at `root.content` as an automerge Text.
@@ -133,7 +135,8 @@ impl CrdtDocument {
             marks
                 .iter()
                 .filter_map(|m| {
-                    let mt = MarkType::from_mark(m.name(), m.value())?;
+                    let sv = scalar_from_automerge(m.value());
+                    let mt = MarkType::from_mark(m.name(), &sv)?;
                     if mt.is_inclusive() && m.end == pos + 1 && m.start <= pos {
                         Some((m.name().to_string(), mt.expand()))
                     } else {
@@ -145,7 +148,7 @@ impl CrdtDocument {
 
         for (name, expand) in &to_unmark {
             self.doc
-                .unmark(&self.text_id, name, pos, pos + 1, *expand)
+                .unmark(&self.text_id, name, pos, pos + 1, expand_to_automerge(*expand))
                 .context("unmark structural newline")?;
         }
 
@@ -173,11 +176,11 @@ impl CrdtDocument {
                         &self.text_id,
                         AutoMark::new(
                             inline_mark.mark_type.name().to_string(),
-                            inline_mark.mark_type.scalar_value(),
+                            scalar_to_automerge(&inline_mark.mark_type.scalar_value()),
                             mark_start,
                             mark_end,
                         ),
-                        inline_mark.mark_type.expand(),
+                        expand_to_automerge(inline_mark.mark_type.expand()),
                     )
                     .context("apply mark")?;
             }
@@ -218,7 +221,15 @@ impl CrdtBackend for CrdtDocument {
 
     fn marks(&self) -> Result<Vec<Mark>> {
         let raw = self.doc.marks(&self.text_id).context("read marks")?;
-        Ok(raw.into_iter().map(Mark::from).collect())
+        Ok(raw
+            .into_iter()
+            .map(|m| Mark {
+                name: m.name().to_string(),
+                value: scalar_from_automerge(m.value()),
+                start: m.start,
+                end: m.end,
+            })
+            .collect())
     }
 
     fn splice_text(&mut self, pos: usize, del: isize, text: &str) -> Result<()> {
@@ -233,11 +244,11 @@ impl CrdtBackend for CrdtDocument {
                 &self.text_id,
                 AutoMark::new(
                     mark_type.name().to_string(),
-                    mark_type.scalar_value(),
+                    scalar_to_automerge(&mark_type.scalar_value()),
                     start,
                     end,
                 ),
-                mark_type.expand(),
+                expand_to_automerge(mark_type.expand()),
             )
             .context("mark")
     }
@@ -249,7 +260,7 @@ impl CrdtBackend for CrdtDocument {
                 mark_type.name(),
                 start,
                 end,
-                mark_type.expand(),
+                expand_to_automerge(mark_type.expand()),
             )
             .context("unmark")
     }
@@ -288,6 +299,43 @@ impl CrdtBackend for CrdtDocument {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+}
+
+/// Translate project-owned [`Scalar`] into the automerge wire type.
+///
+/// Only used by the legacy automerge backend at the call boundary — the
+/// diamond-types backend stores `Scalar` natively.
+fn scalar_to_automerge(s: &Scalar) -> ScalarValue {
+    match s {
+        Scalar::Bool(b) => ScalarValue::from(*b),
+        Scalar::Str(s) => ScalarValue::from(s.clone()),
+        Scalar::Int(i) => ScalarValue::from(*i),
+        Scalar::Null => ScalarValue::Null,
+    }
+}
+
+/// Translate an automerge scalar into the project-owned [`Scalar`].
+///
+/// Unsupported variants collapse to `Scalar::Bool(true)` — no zetl MarkType
+/// emits counters / timestamps / bytes, so this matches the presence-sentinel
+/// semantics used on the wire.
+fn scalar_from_automerge(s: &ScalarValue) -> Scalar {
+    match s {
+        ScalarValue::Boolean(b) => Scalar::Bool(*b),
+        ScalarValue::Str(s) => Scalar::Str(s.to_string()),
+        ScalarValue::Int(i) => Scalar::Int(*i),
+        ScalarValue::Uint(u) => Scalar::Int(*u as i64),
+        ScalarValue::Null => Scalar::Null,
+        _ => Scalar::Bool(true),
+    }
+}
+
+/// Translate project-owned [`ExpandMark`] into automerge's enum.
+fn expand_to_automerge(e: ExpandMark) -> AmExpandMark {
+    match e {
+        ExpandMark::Both => AmExpandMark::Both,
+        ExpandMark::None => AmExpandMark::None,
     }
 }
 

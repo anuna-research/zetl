@@ -315,24 +315,6 @@ impl WsHub {
 
 // ── CRDT document store (REQ-020-029) ────────────────────────────────
 
-/// Convert a `serde_json::Value` to an automerge `ScalarValue`.
-fn json_to_scalar(v: &serde_json::Value) -> automerge::ScalarValue {
-    match v {
-        serde_json::Value::Bool(b) => automerge::ScalarValue::from(*b),
-        serde_json::Value::String(s) => automerge::ScalarValue::from(s.clone()),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                automerge::ScalarValue::from(i)
-            } else if let Some(f) = n.as_f64() {
-                automerge::ScalarValue::from(f)
-            } else {
-                automerge::ScalarValue::from(true)
-            }
-        }
-        _ => automerge::ScalarValue::from(true),
-    }
-}
-
 /// Default eviction TTL: 10 minutes after last client disconnects.
 const DEFAULT_EVICTION_TTL: Duration = Duration::from_secs(10 * 60);
 
@@ -558,7 +540,7 @@ impl CrdtDocStore {
                         start,
                         end,
                     } => {
-                        let sv = json_to_scalar(value);
+                        let sv = crate::crdt::marks::Scalar::from_json(value);
                         if let Some(mt) = crate::crdt::marks::MarkType::from_mark(name, &sv) {
                             entry.doc.mark(&mt, *start, *end)?;
                         }
