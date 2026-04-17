@@ -1,75 +1,15 @@
 {
-  "task_id": "client-perf-marks",
+  "task_id": "spike-diamond-types",
   "token_budget": 8000,
-  "tokens_used": 322,
+  "tokens_used": 107,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Emit performance.mark('zetl:graph:render:start') before layout and performance.measure('zetl:graph:render', ...) on layoutstop; emit performance.measure('zetl:navigate', ...) around SPA navigation (OBS-113).",
-      "token_cost": 51,
+      "content": "Author a standalone Rust spike (in tools/ or examples/) that exercises diamond-types' OpLog/Branch APIs for: insert, delete, save/load, fork/merge, char-position addressing. Document gaps vs the current automerge usage in src/crdt/mod.rs and src/web/ws.rs. Capture findings in research/diamond-types-spike.md including: minimum supported version, wire-format size compared to automerge, and a recommended marks-layering strategy.",
+      "token_cost": 107,
       "priority": "PlanMeta"
-    },
-    {
-      "source": "memory/episodic/task-graceful-absence-changes",
-      "content": "Modified 3 files (+584, -58): .hence/context-manifest.json, src/web/engine.rs, themes/default/_graph.html",
-      "token_cost": 26,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-dead-link-styling-changes",
-      "content": "Modified 2 files (+468, -61): .hence/context-manifest.json, themes/default/_graph.html",
-      "token_cost": 21,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-shell-and-css-contract-changes",
-      "content": "Modified 3 files (+121, -64): .hence/context-manifest.json, README.md, themes/default/base.html",
-      "token_cost": 23,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-docked-minimap-placement-changes",
-      "content": "Modified 5 files (+351, -66): .hence/context-manifest.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html, themes/default/theme.toml",
-      "token_cost": 37,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-spa-shell-changes",
-      "content": "Modified 5 files (+136, -55): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/static/spa.js, themes/default/theme.toml",
-      "token_cost": 40,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-mobile-toggle-changes",
-      "content": "Modified 6 files (+365, -78): .hence/context-manifest.json, .hence/eval-result.json, src/web/engine.rs, src/web/theme.rs, themes/default/base.html and 1 more",
-      "token_cost": 39,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-graph-vault-page-changes",
-      "content": "Modified 4 files (+114, -47): .hence/context-manifest.json, src/web/engine.rs, themes/default/base.html, themes/default/vault_graph.html",
-      "token_cost": 34,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-navigate-events-changes",
-      "content": "Modified 2 files (+76, -44): .hence/context-manifest.json, README.md",
-      "token_cost": 17,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-readme-section-changes",
-      "content": "Modified 2 files (+155, -41): .hence/context-manifest.json, README.md",
-      "token_cost": 17,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-theme-authoring-ref-changes",
-      "content": "Modified 2 files (+210, -38): .hence/context-manifest.json, README.md",
-      "token_cost": 17,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-16T21:32:18Z"
+  "constructed_at": "2026-04-17T07:51:56Z"
 }

@@ -1,0 +1,16 @@
+[package]
+name = "diamond-types-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "IMPL-029 Phase 0 spike: exercise diamond-types CRDT APIs and compare against automerge."
+
+# Standalone, not a member of the zetl workspace. Running `cargo run` from
+# this directory builds only the spike and its CRDT deps — the main crate
+# stays untouched.
+
+[dependencies]
+diamond-types = "1.0"
+# Pinned to the same major.minor as the main crate's Cargo.toml so wire-format
+# size comparisons reflect the version we would actually be replacing.
+automerge = "0.5"
