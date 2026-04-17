@@ -3,25 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 24,
-    "deletions": 6,
+    "files_changed": 5,
+    "insertions": 68,
+    "deletions": 25,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/build.rs"
+      "src/web/context.rs",
+      "themes/default/page.html",
+      "themes/docs/page.html",
+      "themes/minimal/page.html"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-graph-page-changes",
-      "content": "Modified 2 files (+24, -6): .hence/context-manifest.json, src/web/build.rs",
+      "key": "task-backlinks-presentation-changes",
+      "content": "Modified 5 files (+68, -25): .hence/context-manifest.json, src/web/context.rs, themes/default/page.html, themes/docs/page.html, themes/minimal/page.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/graph-page-v1",
-  "evaluated_at": "2026-04-17T11:09:04Z",
+  "branch_name": "hence/backlinks-presentation-v1",
+  "evaluated_at": "2026-04-17T11:14:14Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
