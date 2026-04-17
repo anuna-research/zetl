@@ -1,12 +1,12 @@
 {
-  "task_id": "flip-default-backend",
+  "task_id": "update-spec-020",
   "token_budget": 8000,
-  "tokens_used": 318,
+  "tokens_used": 348,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Make DiamondCrdtDocument the default CrdtBackend everywhere. Remove the automerge-backed CrdtDocument from src/crdt/mod.rs (move marks-related code that does not depend on automerge into src/crdt/marks.rs). Remove the `automerge` line from Cargo.toml and the corresponding lockfile entries. Re-run the SPEC-020 conformance test list (mark types, block-token round-trip, multi-client convergence) end-to-end against the new default.",
-      "token_cost": 107,
+      "content": "Update specs/SPEC-020.md frontmatter (`dependencies:` line currently reads `automerge (Peritext CRDT for collaborative editing)`) and any prose mentioning automerge or Peritext-the-crate to reference diamond-types. Preserve Peritext-the-algorithm references where the design intent is unchanged (e.g. inclusive vs non-growing marks). Add a short subsection explaining the marks-layer architecture chosen in Phase 1.",
+      "token_cost": 103,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,14 @@
       "content": "Modified 4 files (+121, -22): .hence/context-manifest.json, src/crdt/diamond.rs, src/crdt/mod.rs, src/web/ws.rs",
       "token_cost": 27,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-flip-default-backend-changes",
+      "content": "Modified 11 files (+917, -1295): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/backend.rs, src/crdt/diamond.rs and 6 more",
+      "token_cost": 34,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T09:16:03Z"
+  "constructed_at": "2026-04-17T09:42:58Z"
 }
