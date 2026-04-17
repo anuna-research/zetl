@@ -123,17 +123,60 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
         warnings.push(format!("search index: {e}"));
     }
 
+    // ── Step 6.5: Resolve contributors → (primary, co-authors) ───────────
+    // `take_contributors` atomically drains the per-slug contributor list
+    // captured by apply_ops/apply_sync since the previous flush. The
+    // primary author is the user whose last op drove the quiescence
+    // window; every earlier contributor is surfaced as a
+    // `Co-authored-by:` trailer in both the git commit message and the
+    // jj snapshot description. When the list is empty (rare — WAL
+    // recovery, first-sync edge), fall back to the generic zetl-crdt
+    // identity so downstream tooling still sees a valid author.
+    let contributor_ids = state.crdt_store.take_contributors(slug);
+    let resolve_identity = |uid: &str| -> (String, String) {
+        match crate::user::load_profile(&state.vault_root, uid) {
+            Ok(Some(p)) => (p.name.clone(), format!("{}@vault", p.id)),
+            _ => ("zetl-crdt".to_string(), "zetl-crdt@vault".to_string()),
+        }
+    };
+    let (primary_name, primary_email, co_authors): (String, String, Vec<(String, String)>) =
+        if let Some(last_uid) = contributor_ids.last() {
+            let (pname, pemail) = resolve_identity(last_uid);
+            let co_authors: Vec<(String, String)> = contributor_ids
+                .iter()
+                .take(contributor_ids.len().saturating_sub(1))
+                .map(|uid| resolve_identity(uid))
+                .collect();
+            (pname, pemail, co_authors)
+        } else {
+            (
+                "zetl-crdt".to_string(),
+                "zetl-crdt@vault".to_string(),
+                Vec::new(),
+            )
+        };
+
+    // Build the commit / snapshot message body, appending Co-authored-by
+    // trailers in insertion order when the flush window had more than
+    // one contributor.
+    let mut commit_msg = format!("edit: {slug} (crdt flush)");
+    if !co_authors.is_empty() {
+        commit_msg.push('\n');
+        for (name, email) in &co_authors {
+            commit_msg.push_str(&format!("\nCo-authored-by: {name} <{email}>"));
+        }
+    }
+
     // ── Step 7: Git commit ───────────────────────────────────────────────
     if let Some(ref lock) = state.git_commit_lock {
         match lock.lock() {
             Ok(repo) => {
-                let msg = format!("edit: {slug} (crdt flush)");
                 match super::git_commit::auto_commit(
                     &repo,
                     &path,
-                    "zetl-crdt",
-                    "zetl-crdt",
-                    Some(&msg),
+                    &primary_name,
+                    &primary_email,
+                    Some(&commit_msg),
                 ) {
                     Ok(_oid) => {
                         // ── Step 8: jj import ────────────────────────────
@@ -158,7 +201,12 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
     // neighbourhood deltas.
     #[cfg(feature = "history")]
     {
-        match crate::history::auto_snapshot(&state.vault_root, Some(&vault_root_hash)) {
+        match crate::history::auto_snapshot_with_trailers(
+            &state.vault_root,
+            Some(&vault_root_hash),
+            Some((&primary_name, &primary_email)),
+            &co_authors,
+        ) {
             Ok(Some(change_id)) => {
                 eprintln!("flush: jj snapshot {change_id} for {slug}");
                 let cache = crate::history::cache::HistoricalIndexCache::with_default_capacity();

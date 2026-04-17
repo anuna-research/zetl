@@ -337,12 +337,34 @@ pub fn auto_snapshot_as(
     vault_root_hash: Option<&str>,
     author: Option<(&str, &str)>,
 ) -> anyhow::Result<Option<String>> {
+    auto_snapshot_with_trailers(vault_root, vault_root_hash, author, &[])
+}
+
+/// Like [`auto_snapshot_as`] but appends `Co-authored-by: Name <email>`
+/// trailers to the snapshot description when co-authors are present.
+/// Each entry in `co_authors` is `(name, email)`; the trailers are
+/// emitted in the order supplied after a blank line, matching the
+/// conventional git trailer format so tooling that surfaces
+/// co-authors (GitHub/Gitea UIs, the page-history parser) picks them
+/// up without further wire changes.
+pub fn auto_snapshot_with_trailers(
+    vault_root: &Path,
+    vault_root_hash: Option<&str>,
+    author: Option<(&str, &str)>,
+    co_authors: &[(String, String)],
+) -> anyhow::Result<Option<String>> {
     let mut backend = jj_backend::JjBackend::open_or_init_at_vault_root(vault_root)?;
 
-    let description = match vault_root_hash {
+    let mut description = match vault_root_hash {
         Some(hash) => format!("zetl-snapshot vault_root_hash={hash}"),
         None => "zetl-snapshot".to_owned(),
     };
+    if !co_authors.is_empty() {
+        description.push_str("\n");
+        for (name, email) in co_authors {
+            description.push_str(&format!("\nCo-authored-by: {name} <{email}>"));
+        }
+    }
 
     // Fast deduplication: skip if the most recent commit already carries this
     // vault_root_hash (REQ-076, ADR-048).
