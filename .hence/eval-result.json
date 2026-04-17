@@ -3,26 +3,32 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 370,
-    "deletions": 5,
+    "files_changed": 9,
+    "insertions": 1404,
+    "deletions": 164,
     "file_list": [
       ".hence/context-manifest.json",
+      "Cargo.lock",
+      "Cargo.toml",
       "src/crdt/diamond.rs",
-      "src/crdt/mod.rs"
+      "src/crdt/marks.rs",
+      "src/crdt/marks_doc.rs",
+      "src/crdt/mod.rs",
+      "src/web/ws.rs",
+      "tests/diamond_marks_proptest.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-diamond-text-engine-changes",
-      "content": "Modified 3 files (+370, -5): .hence/context-manifest.json, src/crdt/diamond.rs, src/crdt/mod.rs",
+      "key": "task-diamond-marks-layer-changes",
+      "content": "Modified 9 files (+1404, -164): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/diamond.rs, src/crdt/marks.rs and 4 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/diamond-text-engine-v1",
-  "evaluated_at": "2026-04-17T08:35:31Z",
+  "branch_name": "hence/diamond-marks-layer-v1",
+  "evaluated_at": "2026-04-17T08:59:48Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
