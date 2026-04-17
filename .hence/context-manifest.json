@@ -1,12 +1,12 @@
 {
-  "task_id": "tag-cloud",
+  "task_id": "widget-zerowidth-guard",
   "token_budget": 8000,
-  "tokens_used": 253,
+  "tokens_used": 291,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "The advertised `/tag-cloud/` page contains only a placeholder sentence and a raw list of backlinks. There is no tag-cloud route in src/web/routes.rs and no generator in src/web/build.rs. Either (a) build a real tag index from vault frontmatter `tags:` and render counts/links, (b) replace the page body with a clear \"Tag index not yet built\" notice and remove the sidebar link, or (c) drop the page entirely. Preferred: (a) if frontmatter tags are already parsed, otherwise (b).",
-      "token_cost": 119,
+      "content": "At viewports ≤899px the widget is `display:none` via base.html:487-515, but the Sigma instantiation in themes/default/_graph.html:396 (or the mini-widget's init path) still runs on render tick and throws `Error: Sigma: Container has no width` — reviewer captured 23 instances. Guard instantiation/resize: check `container.offsetWidth > 0` before `new Sigma(...)`, and bail out of resize ticks when width is zero. Related to but narrower than widget-overlay; can ship independently.",
+      "token_cost": 121,
       "priority": "PlanMeta"
     },
     {
@@ -44,8 +44,14 @@
       "content": "Modified 2 files (+68, -6): .hence/context-manifest.json, themes/default/base.html",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-tag-cloud-changes",
+      "content": "Modified 7 files (+450, -7): .hence/context-manifest.json, src/web/build.rs, src/web/context.rs, src/web/engine.rs, src/web/routes.rs and 2 more",
+      "token_cost": 36,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T10:46:26Z"
+  "constructed_at": "2026-04-17T10:59:16Z"
 }
