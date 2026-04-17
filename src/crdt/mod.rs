@@ -23,6 +23,17 @@ pub use backend::CrdtBackend;
 use blocks::BlockToken;
 use marks::{ExpandMark, Mark, MarkType, Scalar};
 
+/// The CRDT backend used by the WebSocket editing layer.
+///
+/// Under `--features collab` this aliases [`diamond::DiamondCrdtDocument`]
+/// (native diamond-types wire format). Without the feature we fall back to
+/// the legacy automerge-backed [`CrdtDocument`] so default builds still
+/// compile — both live behind the `CrdtBackend` trait (IMPL-029 Phase 6).
+#[cfg(feature = "collab")]
+pub use diamond::DiamondCrdtDocument as WsCrdtBackend;
+#[cfg(not(feature = "collab"))]
+pub use CrdtDocument as WsCrdtBackend;
+
 /// A CRDT document wrapping an automerge `AutoCommit` with Peritext-style
 /// rich text. The text object lives at `root.content` as an automerge Text.
 pub struct CrdtDocument {
@@ -148,7 +159,13 @@ impl CrdtDocument {
 
         for (name, expand) in &to_unmark {
             self.doc
-                .unmark(&self.text_id, name, pos, pos + 1, expand_to_automerge(*expand))
+                .unmark(
+                    &self.text_id,
+                    name,
+                    pos,
+                    pos + 1,
+                    expand_to_automerge(*expand),
+                )
                 .context("unmark structural newline")?;
         }
 

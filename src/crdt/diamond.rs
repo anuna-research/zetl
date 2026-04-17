@@ -79,8 +79,7 @@ fn decode_framed(data: &[u8]) -> Result<(&[u8], &[u8])> {
     if data.len() < 4 {
         anyhow::bail!("diamond framed blob too short ({}B)", data.len());
     }
-    let text_len =
-        u32::from_le_bytes(data[0..4].try_into().expect("4-byte slice")) as usize;
+    let text_len = u32::from_le_bytes(data[0..4].try_into().expect("4-byte slice")) as usize;
     if 4 + text_len > data.len() {
         anyhow::bail!(
             "diamond framed blob: text_len {text_len} exceeds payload {}B",
@@ -439,7 +438,12 @@ mod tests {
         // order. Which wins is deterministic but depends on DT's agent
         // ordering; we only assert the count here.
         let wikilinks: Vec<_> = marks.iter().filter(|m| m.name == "wikilink").collect();
-        assert_eq!(wikilinks.len(), 1, "exclusive marks LWW: expect 1, got {:?}", marks);
+        assert_eq!(
+            wikilinks.len(),
+            1,
+            "exclusive marks LWW: expect 1, got {:?}",
+            marks
+        );
         // And the surviving value is one of the two we set.
         let v = &wikilinks[0].value;
         assert!(v == &Scalar::Str("A".into()) || v == &Scalar::Str("B".into()));

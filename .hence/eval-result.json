@@ -3,32 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 9,
-    "insertions": 1404,
-    "deletions": 164,
+    "files_changed": 4,
+    "insertions": 121,
+    "deletions": 22,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml",
       "src/crdt/diamond.rs",
-      "src/crdt/marks.rs",
-      "src/crdt/marks_doc.rs",
       "src/crdt/mod.rs",
-      "src/web/ws.rs",
-      "tests/diamond_marks_proptest.rs"
+      "src/web/ws.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-diamond-marks-layer-changes",
-      "content": "Modified 9 files (+1404, -164): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/crdt/diamond.rs, src/crdt/marks.rs and 4 more",
+      "key": "task-ws-wire-format-changes",
+      "content": "Modified 4 files (+121, -22): .hence/context-manifest.json, src/crdt/diamond.rs, src/crdt/mod.rs, src/web/ws.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/diamond-marks-layer-v1",
-  "evaluated_at": "2026-04-17T08:59:48Z",
+  "branch_name": "hence/ws-wire-format-v1",
+  "evaluated_at": "2026-04-17T09:15:56Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
