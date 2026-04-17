@@ -75,6 +75,10 @@ pub struct BacklinkEntry {
     pub title: String,
     pub slug: String,
     pub line: usize,
+    /// Number of times this source page links to the target. A source that
+    /// links twice (e.g. once in body prose, once in an index list) collapses
+    /// to a single entry with `count = 2` rather than two duplicate rows.
+    pub count: usize,
     /// RFC 3339 timestamp of the earliest snapshot where this backlink existed.
     /// `null` (JSON) when history is unavailable.
     pub since: Option<String>,
@@ -361,24 +365,33 @@ pub fn build_page_context(
     content_html: &str,
     content_raw: &str,
 ) -> PageContext {
-    let backlinks: Vec<BacklinkEntry> = data
-        .graph
-        .backlinks(page_name)
-        .into_iter()
-        .map(|bl| {
-            let bl_slug = data
-                .page_slug_map
-                .get(&bl.source)
-                .cloned()
-                .unwrap_or_default();
-            BacklinkEntry {
-                title: bl.source,
-                slug: bl_slug,
-                line: bl.line as usize,
-                since: None,
+    // Deduplicate backlinks by source page: a page that links to the target
+    // multiple times (e.g. prose mention + index list) collapses to one entry
+    // anchored at the earliest line, with `count` reflecting the total.
+    let mut backlinks: Vec<BacklinkEntry> = Vec::new();
+    let mut backlink_index: HashMap<String, usize> = HashMap::new();
+    for bl in data.graph.backlinks(page_name) {
+        if let Some(&i) = backlink_index.get(&bl.source) {
+            backlinks[i].count += 1;
+            if (bl.line as usize) < backlinks[i].line {
+                backlinks[i].line = bl.line as usize;
             }
-        })
-        .collect();
+            continue;
+        }
+        let bl_slug = data
+            .page_slug_map
+            .get(&bl.source)
+            .cloned()
+            .unwrap_or_default();
+        backlink_index.insert(bl.source.clone(), backlinks.len());
+        backlinks.push(BacklinkEntry {
+            title: bl.source,
+            slug: bl_slug,
+            line: bl.line as usize,
+            count: 1,
+            since: None,
+        });
+    }
 
     let outlinks: Vec<OutlinkEntry> = data
         .graph
@@ -708,10 +721,28 @@ mod tests {
         assert_eq!(ctx.frontmatter, serde_json::json!({}));
         assert_eq!(ctx.backlinks.len(), 1);
         assert_eq!(ctx.backlinks[0].title, "Beta");
+        assert_eq!(ctx.backlinks[0].count, 1);
         assert_eq!(ctx.outlinks.len(), 2);
         assert!(!ctx.is_new);
         assert!(ctx.raw_escaped.is_none());
         assert!(ctx.transclusion_cards.is_empty());
+    }
+
+    #[test]
+    fn test_backlinks_dedupe_by_source() {
+        // A page that links to "Target" twice should collapse into one
+        // backlink entry with count=2 anchored at the earliest line.
+        let files = vec![
+            make_file("Source", vec![("Target", 12), ("Target", 3)]),
+            make_file("Target", vec![]),
+        ];
+        let data = make_vault_data(files);
+        let ctx = build_page_context(&data, "Target", "Target", "", "");
+
+        assert_eq!(ctx.backlinks.len(), 1);
+        assert_eq!(ctx.backlinks[0].title, "Source");
+        assert_eq!(ctx.backlinks[0].count, 2);
+        assert_eq!(ctx.backlinks[0].line, 3);
     }
 
     #[test]

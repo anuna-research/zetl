@@ -1,12 +1,12 @@
 {
-  "task_id": "graph-page",
+  "task_id": "backlinks-presentation",
   "token_budget": 8000,
-  "tokens_used": 334,
+  "tokens_used": 345,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`_graph.html` 404s on every page in the static build. themes/default/base.html:565 and :637 both href `./_graph.html` (\"Expand ↗\" widget button and sidebar \"Graph\" link). The serve-mode `/_graph` route exists in src/web/mod.rs:410 and the template themes/default/_graph.html exists, but `src/web/build.rs` never renders it to disk. Either emit `_graph.html` during static build (render the existing template against the same graph payload the widget uses) or gate the links to serve mode only.",
-      "token_cost": 123,
+      "content": "themes/default/page.html:54 renders every backlink as `line {{ bl.line }}` — raw Markdown line offsets exposed to readers. Also, togias-2019 shows the Memo index twice because it is linked twice from the source (no dedup in src/graph.rs:190-210 backlinks()). Fix both: (a) remove or hide-behind-a-disclosure the `line N` label in the backlinks template, and (b) deduplicate backlink entries by source page — show a single entry, optionally with a `(×N)` count.",
+      "token_cost": 116,
       "priority": "PlanMeta"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 2 files (+12, -5): .hence/context-manifest.json, themes/default/base.html",
       "token_cost": 20,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-graph-page-changes",
+      "content": "Modified 2 files (+24, -6): .hence/context-manifest.json, src/web/build.rs",
+      "token_cost": 18,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T11:05:15Z"
+  "constructed_at": "2026-04-17T11:09:11Z"
 }
