@@ -543,7 +543,11 @@
     <a class="zetl-graph-widget__expand"
        href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}"
        title="Open full graph">Expand ↗</a>
-    <div class="zetl-graph-widget__canvas" id="zetl-graph"></div>
+    {# IMPL-028 fix: include the graph partial so that vendor scripts
+       (sigma, graphology) and the boot JS are loaded on every page.
+       The partial creates <div id="zetl-graph"> and loads the data +
+       renderer. `ignore missing` honours REQ-109 graceful absence. #}
+    {% include "_graph.html" ignore missing %}
   </div>
 
   <!-- Drawer layout for responsive sidebar -->
