@@ -37,8 +37,20 @@
          or last_changed is empty (feature disabled, no snapshots, or
          first-snapshot edge). #}
       {%- if page.history and page.history.last_changed %}
+      {%- set latest = page.history.recent_changes[0] if page.history.recent_changes else none %}
+      {%- set co_authors = latest.co_authors if (latest and latest.co_authors) else [] %}
       <footer class="text-xs opacity-70 mt-6 page-history-meta" aria-label="Page history metadata">
-        <span>Last changed <time datetime="{{ page.history.last_changed }}">{{ page.history.last_changed[:10] }}</time></span>
+        <span>Last changed <time datetime="{{ page.history.last_changed }}">{{ page.history.last_changed[:10] }}</time>
+          {%- if latest and latest.author_name %} by <span class="page-history-author">{{ latest.author_name }}</span>
+            {#- Co-author formatting (plan-author-attribution): solo → "by X";
+               one co-author → "by X and Y"; two-plus → "by X and N others".
+               Only names are rendered — emails stay private. The full list
+               is available on the per-page /_history route. -#}
+            {%- if co_authors | length == 1 %} and <span class="page-history-coauthors">{{ co_authors[0][0] }}</span>
+            {%- elif co_authors | length > 1 %} and <span class="page-history-coauthors">{{ co_authors | length }} others</span>
+            {%- endif -%}
+          {%- endif -%}
+        </span>
         {# Synthetic-user Finding 2: suppress "stable today" — reads as
            stability when the page literally just changed. #}
         {%- if page.history.stable_days is number and page.history.stable_days > 0 %}
