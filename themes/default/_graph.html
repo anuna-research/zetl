@@ -1,0 +1,506 @@
+{# themes/default/_graph.html — SPEC-028 / IMPL-028 task-graph-partial + task-graceful-absence
+   Single persistent Sigma.js + graphology widget.
+
+   Contract:
+   - Container:  <div id="zetl-graph"> — Sigma mounts here.
+   - Mode:       parent element's [data-mode] attribute ∈ {local, vault, off}.
+                 Mutations trigger a reducer-only refresh (no relayout).
+                 Persisted in sessionStorage under 'zetl:graph:mode'.
+   - Data:       inline {{ graph_index }} JSON when present (graph_inline=true),
+                 otherwise fetched from {{ graph_index_url }}.
+   - Theming:    nodeReducer/edgeReducer read --zetl-graph-* CSS custom
+                 properties via getComputedStyle (REQ-114). Refreshed on
+                 data-theme/class mutation or prefers-color-scheme change.
+   - Events:     listens to zetl:after-navigate (no Sigma re-instantiation).
+   - OBS-201:    performance.mark('zetl:graph:render:start') before layout,
+                 performance.measure('zetl:graph:render', ...) on layoutstop.
+   - REQ-109:    graceful absence — <noscript> fallback, empty-state copy
+                 when vault has zero pages / zero links, and tolerance of
+                 theme-override removal: embedders MUST include the partial
+                 via `{% include "_graph.html" ignore missing %}` so that a
+                 theme author can delete this file without breaking the
+                 sidebar entry or the /_graph route.
+   - REQ-112:    dead-link treatment (task-dead-link-styling) — phantom
+                 (is_dead) nodes render with --zetl-graph-node-dead; edges
+                 terminating at a dead node render with --zetl-graph-edge-dead
+                 and Sigma's "dashed" edge type.
+   - NFR-105:    keyboard / screen-reader fallback — a <details> page list
+                 alongside the canvas, every slug a focusable <a>, so every
+                 node is reachable by tab navigation and discoverable by
+                 assistive tech regardless of JS state. #}
+
+{% set zetl_graph_stats = vault.stats | default({}) %}
+{% set zetl_graph_total_pages = zetl_graph_stats.total_pages | default(0) %}
+{% set zetl_graph_total_links = zetl_graph_stats.total_links | default(0) %}
+
+<noscript>
+  <div class="zetl-graph-fallback" role="note">
+    <p><strong>Graph view requires JavaScript.</strong>
+      Every page is listed below, and is reachable from the
+      <a href="{{ root_path | safe }}{{ index_file | safe }}">vault index</a>.</p>
+  </div>
+</noscript>
+
+{% if zetl_graph_total_pages == 0 %}
+<div class="zetl-graph-empty" role="status" aria-live="polite">
+  <p><strong>No pages yet.</strong>
+    Create a page to start building your vault — a graph will appear here
+    once two pages reference each other with <code>[[wikilinks]]</code>.</p>
+</div>
+{% elif zetl_graph_total_links == 0 %}
+<div class="zetl-graph-empty" role="status" aria-live="polite">
+  <p><strong>No links yet.</strong>
+    Add <code>[[wikilinks]]</code> between pages to build a graph.</p>
+</div>
+{% endif %}
+
+<div id="zetl-graph"
+     class="zetl-graph-canvas"
+     role="img"
+     aria-label="Vault link graph (interactive canvas; a keyboard-accessible page list appears below)"></div>
+
+{# NFR-105: keyboard/SR fallback. Every page is a focusable <a>, so tab
+   navigation reaches every node in the graph. The <details> element keeps
+   the visible footprint small for sighted users while leaving the list in
+   the accessibility tree and in the DOM order. #}
+{% if vault.pages %}
+<details class="zetl-graph-fallback-list" data-zetl-graph-fallback>
+  <summary>Page list ({{ zetl_graph_total_pages }})</summary>
+  <ul class="zetl-graph-fallback-pages">
+    {% for page in vault.pages %}
+    <li>
+      <a href="{{ root_path | safe }}{{ page.slug | safe }}/{{ index_file | safe }}">{{ page.title }}</a>
+      {% if "/" in page.slug %}<small class="zetl-graph-fallback-slug">{{ page.slug }}</small>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
+
+<style>
+  #zetl-graph { width: 100%; height: 100%; min-height: 100px; position: relative; }
+  [data-mode="off"] #zetl-graph { display: none; }
+  .zetl-graph-fallback,
+  .zetl-graph-empty { padding: 0.75rem 1rem; font-size: 0.85rem; opacity: 0.85; }
+  .zetl-graph-empty code {
+    padding: 0 0.25rem;
+    background: var(--zetl-shell-surface, rgba(0,0,0,0.05));
+    border-radius: 0.125rem;
+  }
+  .zetl-graph-fallback-list {
+    font-size: 0.85rem;
+    margin: 0.5rem 1rem;
+    border-top: 1px solid var(--zetl-shell-border, rgba(0,0,0,0.1));
+    padding-top: 0.5rem;
+  }
+  .zetl-graph-fallback-list > summary { cursor: pointer; opacity: 0.8; }
+  .zetl-graph-fallback-list > summary:focus-visible,
+  .zetl-graph-fallback-pages a:focus-visible {
+    outline: 2px solid var(--zetl-graph-node-active, #f59e0b);
+    outline-offset: 2px;
+  }
+  .zetl-graph-fallback-pages { margin: 0.25rem 0 0.5rem; padding-left: 1.25rem; }
+  .zetl-graph-fallback-slug { margin-left: 0.35rem; opacity: 0.6; }
+  /* Hide the keyboard/SR fallback when the canvas is actually rendering —
+     the accessibility tree keeps it reachable via the <details>/<summary>
+     toggle, and we avoid visual duplication for sighted users with JS on.
+     JS-disabled users still see the list (no-js defeats this rule). */
+  html.js [data-mode] .zetl-graph-fallback-list { margin-top: 0.25rem; }
+</style>
+
+{% if graph_index %}
+<script type="application/json" id="zetl-graph-index">{{ graph_index | safe }}</script>
+{% endif %}
+
+<script src="{{ root_path }}_static/vendor/sigma/graphology.min.js" defer></script>
+<script src="{{ root_path }}_static/vendor/sigma/graphology-layout-forceatlas2.min.js" defer></script>
+<script src="{{ root_path }}_static/vendor/sigma/sigma.min.js" defer></script>
+
+<script>
+(function(){
+  if (window.__zetlGraphBooted) return;
+  window.__zetlGraphBooted = true;
+
+  var ROOT = "{{ root_path | safe }}";
+  var INDEX_FILE = "{{ index_file }}";
+  var GRAPH_URL = "{{ graph_index_url | default('') | safe }}";
+  var MODE_KEY = "zetl:graph:mode";
+  var MODE_FALLBACK = "local";
+
+  var container = document.getElementById('zetl-graph');
+  if (!container) return;
+  var widget = container.closest('[data-mode]') || container.parentElement || container;
+
+  /* ── CSS custom-property palette (REQ-114) ───────────────────────────── */
+  function cssVar(name, fallback) {
+    try {
+      var v = getComputedStyle(widget).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch (e) { return fallback; }
+  }
+  function readPalette() {
+    return {
+      node:       cssVar('--zetl-graph-node',       '#6366f1'),
+      nodeDead:   cssVar('--zetl-graph-node-dead',  '#9ca3af'),
+      nodeFaded:  cssVar('--zetl-graph-node-faded', 'rgba(99,102,241,0.25)'),
+      nodeActive: cssVar('--zetl-graph-node-active','#f59e0b'),
+      edge:       cssVar('--zetl-graph-edge',       '#9ca3af'),
+      edgeDead:   cssVar('--zetl-graph-edge-dead',  'rgba(156,163,175,0.6)'),
+      edgeFaded:  cssVar('--zetl-graph-edge-faded', 'rgba(156,163,175,0.15)'),
+      label:      cssVar('--zetl-graph-label',      '#1f2937'),
+      labelFont:  cssVar('--zetl-graph-label-font', 'ui-sans-serif, system-ui, sans-serif')
+    };
+  }
+  var palette = readPalette();
+
+  /* ── Mode state (REQ-108) ────────────────────────────────────────────── */
+  function restoreMode(){
+    try {
+      var saved = sessionStorage.getItem(MODE_KEY);
+      if (saved) widget.setAttribute('data-mode', saved);
+    } catch (e) {}
+    if (!widget.getAttribute('data-mode')) widget.setAttribute('data-mode', MODE_FALLBACK);
+  }
+  restoreMode();
+  function currentMode(){ return widget.getAttribute('data-mode') || MODE_FALLBACK; }
+  function setMode(mode){
+    if (mode !== 'local' && mode !== 'vault' && mode !== 'off') return;
+    widget.setAttribute('data-mode', mode);
+    try { sessionStorage.setItem(MODE_KEY, mode); } catch (e) {}
+  }
+
+  /* ── Graph/renderer state ────────────────────────────────────────────── */
+  var graph = null, renderer = null, layoutSupervisor = null;
+  var activeSlug = document.body.getAttribute('data-slug') || '';
+  var neighbourSet = null;
+  var hoveredNode = null;
+  var hoveredNeighbours = null;
+
+  function computeNeighbours(slug){
+    neighbourSet = null;
+    if (!graph || !slug || !graph.hasNode(slug)) return;
+    neighbourSet = new Set([slug]);
+    graph.forEachNeighbor(slug, function(n){ neighbourSet.add(n); });
+  }
+
+  /* ── Reducers (read palette every frame) ─────────────────────────────── */
+  /* REQ-112: dead-link (is_dead:true) nodes and their terminating edges
+     render with the muted palette and — for edges — Sigma's "dashed" type.
+     This matches the muted treatment used elsewhere in the UI for phantom
+     link targets. Active-node highlighting still wins over dead styling. */
+  function nodeReducer(node, attrs){
+    var out = {};
+    for (var k in attrs) out[k] = attrs[k];
+    out.label = attrs.label || attrs.slug || node;
+    var weight = (attrs.outlink_count || 0) + (attrs.backlink_count || 0);
+    out.size = Math.max(3, 3 + Math.sqrt(weight));
+
+    var isDead = !!attrs.is_dead;
+    if (isDead) {
+      out.color = palette.nodeDead;
+      out.size = Math.max(2, out.size * 0.75);
+      out.zIndex = 0;
+    } else {
+      out.color = palette.node;
+    }
+
+    /* Hover: highlight hovered node + its neighbours, fade everything else */
+    if (hoveredNode && hoveredNeighbours) {
+      if (node === hoveredNode) {
+        out.color = palette.nodeActive;
+        out.size = out.size * 1.4;
+        out.highlighted = true;
+        out.zIndex = 2;
+      } else if (hoveredNeighbours.has(node)) {
+        /* keep current color, show label */
+        out.zIndex = 1;
+      } else {
+        out.color = palette.nodeFaded;
+        out.label = '';
+        out.zIndex = 0;
+      }
+      return out;
+    }
+
+    var mode = currentMode();
+    if (mode === 'local' && activeSlug && neighbourSet) {
+      if (node === activeSlug) {
+        out.color = palette.nodeActive;
+        out.size = out.size * 1.6;
+        out.highlighted = true;
+        out.zIndex = 2;
+      } else if (!neighbourSet.has(node)) {
+        out.color = palette.nodeFaded;
+        out.label = '';
+      }
+    }
+    return out;
+  }
+  function edgeReducer(edge, attrs){
+    var out = {};
+    for (var k in attrs) out[k] = attrs[k];
+    var targetAttrs = graph.getNodeAttributes(graph.target(edge));
+    var isDead = !!attrs.is_dead || !!(targetAttrs && targetAttrs.is_dead);
+    if (isDead) {
+      out.color = palette.edgeDead;
+      out.type = 'dashed';
+      out.zIndex = 0;
+    } else {
+      out.color = palette.edge;
+    }
+
+    /* Hover: only show edges connected to the hovered node */
+    if (hoveredNode && hoveredNeighbours) {
+      var s = graph.source(edge), t = graph.target(edge);
+      if (s === hoveredNode || t === hoveredNode) {
+        out.color = palette.edge;
+        out.size = 2;
+        out.zIndex = 1;
+      } else {
+        out.hidden = true;
+      }
+      return out;
+    }
+
+    var mode = currentMode();
+    if (mode === 'local' && activeSlug && neighbourSet) {
+      var s = graph.source(edge), t = graph.target(edge);
+      if (!neighbourSet.has(s) || !neighbourSet.has(t)) {
+        out.color = palette.edgeFaded;
+      }
+    }
+    return out;
+  }
+
+  /* ── Mode application: reducer-only refresh, no relayout ─────────────── */
+  function applyMode(){
+    if (!renderer) return;
+    var mode = currentMode();
+    if (mode === 'local') computeNeighbours(activeSlug);
+    else neighbourSet = null;
+    renderer.refresh();
+    if (mode === 'vault' && renderer.getCamera) {
+      try { renderer.getCamera().animatedReset({ duration: 250 }); } catch (e) {}
+    }
+  }
+
+  /* ── Data loading (inline → fetch) ───────────────────────────────────── */
+  function loadGraph(){
+    var inline = document.getElementById('zetl-graph-index');
+    if (inline && inline.textContent.trim()) {
+      try { return Promise.resolve(JSON.parse(inline.textContent)); }
+      catch (e) { /* fall through to fetch */ }
+    }
+    if (!GRAPH_URL) return Promise.resolve(null);
+    if (typeof fetch !== 'function') return Promise.resolve(null);
+    return fetch(GRAPH_URL, { credentials: 'same-origin' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .catch(function(){ return null; });
+  }
+
+  /* ── FA2: Web Worker when available, sync fallback ───────────────────── */
+  function resolveFA2(){
+    return window.graphologyLayoutForceatlas2
+        || window.graphologyLibForceatlas2
+        || window.forceAtlas2
+        || null;
+  }
+  function resolveFA2Supervisor(){
+    var fa2 = resolveFA2();
+    if (fa2 && fa2.FA2LayoutSupervisor) return fa2.FA2LayoutSupervisor;
+    return window.FA2LayoutSupervisor
+        || window.graphologyLayoutForceatlas2Supervisor
+        || null;
+  }
+  function runLayout(){
+    var fa2 = resolveFA2();
+    var Supervisor = resolveFA2Supervisor();
+    var settings = (fa2 && typeof fa2.inferSettings === 'function')
+      ? fa2.inferSettings(graph)
+      : { barnesHutOptimize: graph.order > 500, strongGravityMode: true, gravity: 1 };
+
+    if (Supervisor && typeof Worker !== 'undefined') {
+      try {
+        layoutSupervisor = new Supervisor(graph, { settings: settings });
+        layoutSupervisor.start();
+        setTimeout(function(){
+          if (layoutSupervisor) { try { layoutSupervisor.stop(); } catch (e) {} }
+          onLayoutStop();
+        }, 2000);
+        return;
+      } catch (e) { /* fall through to sync */ }
+    }
+    if (fa2 && typeof fa2.assign === 'function') {
+      fa2.assign(graph, { iterations: 150, settings: settings });
+    }
+    onLayoutStop();
+  }
+
+  function onLayoutStop(){
+    try { performance.measure('zetl:graph:render', 'zetl:graph:render:start'); }
+    catch (e) { /* marks may be disabled */ }
+    if (renderer) renderer.refresh();
+    window.dispatchEvent(new CustomEvent('zetl:graph:layoutstop'));
+  }
+
+  /* ── Boot: runs after vendor scripts load ────────────────────────────── */
+  function boot(){
+    if (!window.graphology || !window.Sigma) return false;
+    var DirectedGraph = window.graphology.DirectedGraph || window.graphology.Graph;
+    if (!DirectedGraph) return false;
+
+    loadGraph().then(function(data){
+      if (!data) return;
+      try {
+        graph = new DirectedGraph();
+        graph.import(data);
+      } catch (e) { return; }
+
+      /* FA2 requires initial coordinates; seed randomly if absent. */
+      graph.forEachNode(function(n, a){
+        if (typeof a.x !== 'number' || typeof a.y !== 'number') {
+          graph.setNodeAttribute(n, 'x', Math.random());
+          graph.setNodeAttribute(n, 'y', Math.random());
+        }
+      });
+
+      try { performance.mark('zetl:graph:render:start'); } catch (e) {}
+
+      /* REQ-112: register a "dashed" edge program so edges emitted with
+         type:'dashed' by the reducer render with a broken stroke. Falls
+         back to the line program where Sigma's dashed program is missing
+         or on an older build — in that case the muted colour alone still
+         conveys the dead-link state. */
+      var edgePrograms = {};
+      try {
+        var sigmaNS = window.Sigma || {};
+        var DashedProgram =
+          (sigmaNS.edgePrograms && sigmaNS.edgePrograms.dashed)
+          || sigmaNS.EdgeDashedProgram
+          || window.EdgeDashedProgram
+          || null;
+        if (DashedProgram) edgePrograms.dashed = DashedProgram;
+      } catch (e) {}
+
+      var sigmaSettings = {
+        nodeReducer: nodeReducer,
+        edgeReducer: edgeReducer,
+        labelFont: palette.labelFont,
+        labelColor: { color: palette.label },
+        renderLabels: true,
+        defaultEdgeType: 'line',
+        zIndex: true
+      };
+      if (edgePrograms.dashed) sigmaSettings.edgeProgramClasses = edgePrograms;
+
+      renderer = new window.Sigma(graph, container, sigmaSettings);
+
+      /* REQ-111: node-click → page navigation.
+         - Modifier keys (meta / ctrl / shift): open the slug in a new tab,
+           mirroring the native <a>-click muscle memory.
+         - SPA shell mounted: synthesise an anchor click so the
+           document-level interceptor swaps `[data-zetl-volatile]` without a
+           full reload.
+         - SPA disabled / failed to boot: fall through to `location.href`
+           for a standard full-page navigation. */
+      /* Hover: show only connected nodes + edges */
+      renderer.on('enterNode', function(evt){
+        hoveredNode = evt.node;
+        hoveredNeighbours = new Set();
+        graph.forEachNeighbor(evt.node, function(n){ hoveredNeighbours.add(n); });
+        renderer.refresh();
+      });
+      renderer.on('leaveNode', function(){
+        hoveredNode = null;
+        hoveredNeighbours = null;
+        renderer.refresh();
+      });
+
+      renderer.on('clickNode', function(evt){
+        var slug = evt.node;
+        if (!slug) return;
+        var href = ROOT + slug + '/' + INDEX_FILE;
+        var orig = evt.event && evt.event.original;
+        if (orig && (orig.metaKey || orig.ctrlKey || orig.shiftKey)) {
+          window.open(href, '_blank', 'noopener');
+          return;
+        }
+        if (window.__zetlSpaMounted) {
+          var a = document.createElement('a');
+          a.href = href;
+          a.rel = 'zetl-graph-nav';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          return;
+        }
+        location.href = href;
+      });
+
+      computeNeighbours(activeSlug);
+      runLayout();
+      applyMode();
+
+      window.__zetlGraph = {
+        getRenderer: function(){ return renderer; },
+        getGraph: function(){ return graph; },
+        setMode: setMode,
+        getMode: currentMode,
+        refreshPalette: function(){ palette = readPalette(); if (renderer) renderer.refresh(); }
+      };
+    });
+    return true;
+  }
+
+  function whenVendorReady(tries){
+    if (boot()) return;
+    if (tries <= 0) return;
+    setTimeout(function(){ whenVendorReady(tries - 1); }, 60);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ whenVendorReady(50); });
+  } else {
+    whenVendorReady(50);
+  }
+
+  /* ── Live observers ──────────────────────────────────────────────────── */
+  /* [data-mode] mutation → reducer-only refresh (REQ-108). */
+  try {
+    new MutationObserver(function(muts){
+      for (var i = 0; i < muts.length; i++) {
+        if (muts[i].attributeName === 'data-mode') { applyMode(); return; }
+      }
+    }).observe(widget, { attributes: true, attributeFilter: ['data-mode'] });
+  } catch (e) {}
+
+  /* Theme mutation → re-read CSS vars. */
+  function refreshPalette(){
+    palette = readPalette();
+    if (renderer) renderer.refresh();
+  }
+  try {
+    new MutationObserver(refreshPalette).observe(document.documentElement, {
+      attributes: true, attributeFilter: ['data-theme', 'class']
+    });
+  } catch (e) {}
+  if (window.matchMedia) {
+    try {
+      var mm = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mm.addEventListener) mm.addEventListener('change', refreshPalette);
+      else if (mm.addListener) mm.addListener(refreshPalette);
+    } catch (e) {}
+  }
+
+  /* SPA navigation lifecycle (REQ-115): update active slug + mode, refresh,
+     no Sigma re-instantiation. */
+  window.addEventListener('zetl:after-navigate', function(e){
+    var detail = e && e.detail ? e.detail : {};
+    var root = detail.contentRoot || document.querySelector('[data-zetl-volatile]') || document.body;
+    activeSlug = detail.slug || root.getAttribute('data-slug') || document.body.getAttribute('data-slug') || '';
+    var url = detail.url || (typeof location !== 'undefined' ? location.pathname : '');
+    var isVault = /(^|\/)_graph(\.html)?($|[?#])/.test(url) || url === ROOT || url === '/' || url === (ROOT + INDEX_FILE);
+    setMode(isVault ? 'vault' : 'local');
+    applyMode();
+  });
+})();
+</script>

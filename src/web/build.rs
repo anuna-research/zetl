@@ -2,7 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use petgraph::visit::EdgeRef;
 
+use crate::graph::{GraphIndexContext, GraphIndexEdge, GraphIndexNode};
 use crate::scanner::{body_text_ranges, page_slug_from_path};
 use crate::web::context::{build_folder_context, build_page_context, build_vault_context};
 use crate::web::engine::{build_search_index, bundled_theme_files, TemplateEngine};
@@ -230,6 +232,187 @@ fn write_search_index_json(data: &VaultData, vault_root: &Path, out_dir: &Path) 
     Ok(json_str)
 }
 
+/// Write graph-index.json to `{out_dir}/graph-index.json` and return the
+/// JSON string so it can be embedded as a template variable when a theme opts
+/// in via `graph_inline = true` (SPEC-028 REQ-102, REQ-105).
+///
+/// Emits OBS-101 `[zetl] graph-export: pages=N edges=M duration_ms=X bytes=Y`
+/// under `--verbose`, mirroring the existing `history-export:` instrumentation.
+fn write_graph_index_json(
+    data: &VaultData,
+    vault_root: &Path,
+    vault_name: &str,
+    out_dir: &Path,
+    verbose: bool,
+) -> Result<String> {
+    let export_start = std::time::Instant::now();
+
+    let mut tags_by_page: HashMap<String, Vec<String>> = HashMap::new();
+    for file in &data.files {
+        let full_path = vault_root.join(&file.path);
+        let Ok(content) = std::fs::read_to_string(&full_path) else {
+            continue;
+        };
+        let fm = markdown::parse_frontmatter(&content);
+        let Some(arr) = fm.get("tags").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        let tags: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        if !tags.is_empty() {
+            tags_by_page.insert(file.page_name.clone(), tags);
+        }
+    }
+
+    let generated_at = crate::user::access_request::now_iso8601();
+    let index = crate::graph::serialize_graph_index(
+        &data.graph,
+        &data.page_slug_map,
+        &tags_by_page,
+        vault_name,
+        &generated_at,
+    );
+    let json_str = serde_json::to_string(&index).context("serializing graph-index.json")?;
+    std::fs::write(out_dir.join("graph-index.json"), &json_str)
+        .context("writing graph-index.json")?;
+
+    if verbose {
+        let pages = index
+            .get("attributes")
+            .and_then(|a| a.get("vault"))
+            .and_then(|v| v.get("pages"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let edges = index
+            .get("edges")
+            .and_then(|e| e.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        eprintln!(
+            "[zetl] graph-export: pages={} edges={} duration_ms={} bytes={}",
+            pages,
+            edges,
+            export_start.elapsed().as_millis(),
+            json_str.len(),
+        );
+    }
+
+    Ok(json_str)
+}
+
+/// Build a `GraphIndexContext` from the current vault snapshot.
+///
+/// Pure data assembly on top of `VaultData` + frontmatter I/O (for `tags`).
+/// Shared between `zetl build` (writes `graph-index.json` to disk) and
+/// `zetl serve` (`GET /graph-index.json`) so the two outputs are byte-equal
+/// for the same vault state — REQ-102 / REQ-103.
+pub fn build_graph_index_context<'a>(
+    data: &VaultData,
+    vault_root: &Path,
+    vault_name: &'a str,
+) -> GraphIndexContext<'a> {
+    let graph = &data.graph;
+
+    // Map from page_name → file path, for cheap frontmatter lookup.
+    let file_by_name: HashMap<&str, &Path> = data
+        .files
+        .iter()
+        .map(|f| (f.page_name.as_str(), f.path.as_path()))
+        .collect();
+
+    // Phantom (dead-link) targets have no entry in `page_slug_map`. Derive a
+    // stable kebab-case slug from the page name so node keys remain URL-safe
+    // and match build-mode output.
+    fn phantom_slug(name: &str) -> String {
+        name.to_ascii_lowercase().replace(' ', "-")
+    }
+
+    let mut nodes: Vec<GraphIndexNode> = graph
+        .node_map
+        .keys()
+        .map(|name| {
+            let slug = data
+                .page_slug_map
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| phantom_slug(name));
+            let outlink_count = graph
+                .graph
+                .edges_directed(graph.node_map[name], petgraph::Direction::Outgoing)
+                .count();
+            let backlink_count = graph
+                .graph
+                .edges_directed(graph.node_map[name], petgraph::Direction::Incoming)
+                .count();
+            let is_real = graph.resolved.contains(name);
+            let is_dead = !is_real;
+            let is_orphan = is_real && backlink_count == 0;
+
+            let tags: Vec<String> = if is_real {
+                file_by_name
+                    .get(name.as_str())
+                    .and_then(|rel| std::fs::read_to_string(vault_root.join(rel)).ok())
+                    .map(|content| {
+                        let fm = markdown::parse_frontmatter(&content);
+                        fm.get("tags")
+                            .and_then(|t| t.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+
+            GraphIndexNode {
+                label: name.clone(),
+                slug,
+                outlink_count,
+                backlink_count,
+                is_orphan,
+                is_dead,
+                tags,
+            }
+        })
+        .collect();
+    nodes.sort_by(|a, b| a.slug.cmp(&b.slug));
+
+    let resolve_slug = |name: &str| -> String {
+        data.page_slug_map
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| phantom_slug(name))
+    };
+    let edges: Vec<GraphIndexEdge> = graph
+        .graph
+        .edge_references()
+        .map(|e| {
+            let src_name = &graph.graph[e.source()];
+            let tgt_name = &graph.graph[e.target()];
+            GraphIndexEdge {
+                source: resolve_slug(src_name),
+                target: resolve_slug(tgt_name),
+            }
+        })
+        .collect();
+
+    let stats = graph.stats(0);
+
+    GraphIndexContext {
+        vault_name,
+        total_pages: stats.pages,
+        total_links: stats.links,
+        nodes,
+        edges,
+    }
+}
+
 /// Write history-index.json to `{out_dir}/history-index.json` and return the
 /// JSON string so it can be embedded as a template variable.
 ///
@@ -323,6 +506,9 @@ pub fn build_static(
     std::fs::write(out.join("pages.json"), &pages_json).context("writing pages.json")?;
     let bm25_json = String::new();
 
+    // ── graph-index.json (SPEC-028 REQ-102 / OBS-101) ───────────────────
+    let _graph_json = write_graph_index_json(data, vault_root, &vault_ctx.name, out, verbose)?;
+
     // ── history-index.json ───────────────────────────────────────────────
     #[cfg(feature = "history")]
     let history_json = write_history_index_json(data, vault_root, out, verbose);
@@ -331,7 +517,7 @@ pub fn build_static(
 
     // ── index.html ──────────────────────────────────────────────────────
     let index_html = engine
-        .render_index(&vault_ctx, "build", &bm25_json, &history_json)
+        .render_index(&vault_ctx, "build", &bm25_json, &history_json, "")
         .map_err(|e| {
             eprintln!("{}", e.stderr_line("index"));
             anyhow::anyhow!("{e}")
@@ -422,7 +608,14 @@ pub fn build_static(
         }
 
         let page_html = engine
-            .render_page(&vault_ctx, &page_ctx, "build", &bm25_json, &history_json)
+            .render_page(
+                &vault_ctx,
+                &page_ctx,
+                "build",
+                &bm25_json,
+                &history_json,
+                "",
+            )
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(&slug));
                 anyhow::anyhow!("{e}")
@@ -544,7 +737,14 @@ pub fn build_static(
         let folder_name = folder.rsplit('/').next().unwrap_or(folder);
         let folder_ctx = build_folder_context(data, folder, folder_name);
         let folder_html = engine
-            .render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json, &history_json)
+            .render_folder(
+                &vault_ctx,
+                &folder_ctx,
+                "build",
+                &bm25_json,
+                &history_json,
+                "",
+            )
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(folder));
                 anyhow::anyhow!("{e}")
@@ -643,6 +843,10 @@ pub fn build_static(
         }
     }
 
+    if let Some(warning) = graph_index_size_warning(out, count) {
+        eprintln!("warning: {warning}");
+    }
+
     let suffix = match (static_copied, public_copied) {
         (true, true) => " (static assets + public overlay copied)",
         (true, false) => " (static assets copied)",
@@ -657,6 +861,39 @@ pub fn build_static(
         folder_indexes: folder_count,
         out_dir: out_dir.to_string(),
     })
+}
+
+/// NFR-104: graph-index.json uncompressed size budget (1 MB).
+pub const GRAPH_INDEX_MAX_BYTES: u64 = 1024 * 1024;
+
+/// NFR-104: page-count proxy threshold above which the build emits the
+/// size-budget warning even when graph-index.json is not yet emitted.
+pub const GRAPH_PAGE_WARN_THRESHOLD: usize = 5_000;
+
+/// NFR-104 (TEST-204): produce the warning text when the emitted
+/// graph-index.json exceeds the 1 MB budget, or — as a page-count proxy —
+/// when the vault itself exceeds [`GRAPH_PAGE_WARN_THRESHOLD`] pages. Returns
+/// `None` when both checks pass.
+pub fn graph_index_size_warning(out_dir: &Path, page_count: usize) -> Option<String> {
+    let graph_index_path = out_dir.join("graph-index.json");
+    let graph_index_bytes = std::fs::metadata(&graph_index_path).ok().map(|m| m.len());
+    let graph_over_budget = graph_index_bytes.is_some_and(|n| n > GRAPH_INDEX_MAX_BYTES);
+    let vault_over_budget = page_count >= GRAPH_PAGE_WARN_THRESHOLD;
+    if !graph_over_budget && !vault_over_budget {
+        return None;
+    }
+    let detail = match graph_index_bytes {
+        Some(n) if graph_over_budget => format!(
+            "graph-index.json is {:.2} MB (> 1 MB budget, NFR-104)",
+            n as f64 / (1024.0 * 1024.0)
+        ),
+        _ => format!(
+            "vault has {page_count} pages (≥ {GRAPH_PAGE_WARN_THRESHOLD}); graph-index.json will exceed the 1 MB budget (NFR-104)"
+        ),
+    };
+    Some(format!(
+        "{detail} — consider `zetl serve` (server-mode deployment) or link-graph filtering"
+    ))
 }
 
 /// Copy static assets from `.zetl/static/`, `.zetl/themes/<theme>/static/`, and

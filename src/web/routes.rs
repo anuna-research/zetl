@@ -337,7 +337,7 @@ pub async fn index_handler(
     {
         vault_ctx.semantic_available = state.vector_index.is_some();
     }
-    match state.engine.render_index(&vault_ctx, "serve", "", "") {
+    match state.engine.render_index(&vault_ctx, "serve", "", "", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
     }
@@ -608,7 +608,7 @@ pub async fn page_handler(
             let folder_ctx = build_folder_context(&data, slug, folder_name);
             return match state
                 .engine
-                .render_folder(&vault_ctx, &folder_ctx, "serve", "", "")
+                .render_folder(&vault_ctx, &folder_ctx, "serve", "", "", "")
             {
                 Ok(html) => Html(html).into_response(),
                 Err(e) => render_error_response(e),
@@ -788,7 +788,7 @@ pub async fn page_handler(
     }
     match state
         .engine
-        .render_page(&vault_ctx, &page_ctx, "serve", "", "")
+        .render_page(&vault_ctx, &page_ctx, "serve", "", "", "")
     {
         Ok(html) => {
             if page_exists {
@@ -5485,6 +5485,61 @@ pub async fn api_graph_handler(
     .into_response()
 }
 
+// ── GET /graph-index.json — graphology CON-101 export (REQ-103) ──────────
+//
+// Mirrors the build-mode `<out-dir>/graph-index.json` asset so themes can
+// fetch a single URL regardless of serve/build. Uses the same pure core
+// (`graph::serialize_graph_index`) as `zetl build` via the shared
+// `web::build::build_graph_index_context` helper.
+pub async fn graph_index_handler(State(state): State<WebState>) -> Response {
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    let ctx = crate::web::build::build_graph_index_context(&data, &state.vault_root, &vault_name);
+    let json_value = crate::graph::serialize_graph_index_ctx(&ctx);
+
+    match serde_json::to_string(&json_value) {
+        Ok(body) => (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+                (header::CACHE_CONTROL, "no-cache"),
+            ],
+            body,
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+            serde_json::json!({
+                "error": "serialization_failed",
+                "message": e.to_string(),
+            })
+            .to_string(),
+        )
+            .into_response(),
+    }
+}
+
+// ── GET /_graph — full-page graph view (REQ-107) ─────────────────────────
+pub async fn vault_graph_handler(State(state): State<WebState>) -> Response {
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+    let vault_ctx = build_vault_context(&data, &vault_name);
+    match state.engine.render_vault_graph(&vault_ctx, "serve", "") {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => render_error_response(e),
+    }
+}
+
 // ── POST /api/index — trigger re-index (REQ-020-018) ─────────────────────
 
 pub async fn api_index_handler(
@@ -6659,6 +6714,120 @@ mod tests {
     }
 
     // ── Passkey register handler tests ───────────────────────────────────
+
+    // ── GET /graph-index.json (TEST-103) ─────────────────────────────────
+
+    #[tokio::test]
+    async fn graph_index_json_serves_con101_body() {
+        use crate::types::{ParsedFile, WikiLink};
+        use std::path::PathBuf;
+        use std::time::SystemTime;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let vault_root = tmp.path();
+
+        // Write a real "Alpha" page with tags + a wikilink to Beta (phantom).
+        std::fs::write(
+            vault_root.join("Alpha.md"),
+            "---\ntags:\n  - rust\n  - cli\n---\nHi [[Beta]]\n",
+        )
+        .unwrap();
+
+        let files = vec![ParsedFile {
+            path: PathBuf::from("Alpha.md"),
+            page_name: "Alpha".to_string(),
+            links: vec![WikiLink {
+                target_page: "Beta".to_string(),
+                raw_target: "Beta".to_string(),
+                heading: None,
+                block_ref: None,
+                alias: None,
+                is_embed: false,
+                line: 4,
+                column: 1,
+            }],
+            spl_blocks: vec![],
+            diagnostics: vec![],
+            mtime: SystemTime::now(),
+            merkle_leaves: vec![],
+            file_merkle: None,
+        }];
+        let resolved_map: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved_map);
+        let (page_slug_map, collision_names) = crate::web::build_slug_map(&files);
+        let page_slug_map_lower: HashMap<String, String> = page_slug_map
+            .iter()
+            .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
+            .collect();
+        let resolved = graph.resolved.clone();
+
+        let data = VaultData {
+            files,
+            graph,
+            page_names: vec!["Alpha".to_string()],
+            resolved,
+            page_slug_map,
+            page_slug_map_lower,
+            collision_names,
+        };
+
+        // Swap the empty test_state data for our populated vault.
+        let mut state = test_state(vault_root, "default");
+        state.data = Arc::new(RwLock::new(data));
+
+        let app = Router::new()
+            .route("/graph-index.json", get(graph_index_handler))
+            .with_state(state);
+
+        let (status, body, ct) = get_body(&app, "/graph-index.json").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(ct, "application/json; charset=utf-8");
+
+        let val: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        // Envelope (CON-101)
+        assert_eq!(val["attributes"]["format"], "zetl-graph/v1");
+        assert_eq!(val["options"]["type"], "directed");
+        assert_eq!(val["attributes"]["vault"]["pages"], 1);
+        assert_eq!(val["attributes"]["vault"]["links"], 1);
+
+        // Nodes: Alpha (real, orphan) and Beta (phantom/dead); sorted by slug.
+        let nodes = val["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0]["key"], "alpha");
+        assert_eq!(nodes[0]["attributes"]["label"], "Alpha");
+        assert_eq!(nodes[0]["attributes"]["is_orphan"], true);
+        assert_eq!(nodes[0]["attributes"]["is_dead"], false);
+        assert_eq!(
+            nodes[0]["attributes"]["tags"],
+            serde_json::json!(["rust", "cli"])
+        );
+        assert_eq!(nodes[1]["key"], "beta");
+        assert_eq!(nodes[1]["attributes"]["is_dead"], true);
+
+        // Edge: alpha → beta
+        let edges = val["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["source"], "alpha");
+        assert_eq!(edges[0]["target"], "beta");
+    }
+
+    #[tokio::test]
+    async fn graph_index_json_sets_no_cache_header() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+
+        let app = Router::new()
+            .route("/graph-index.json", get(graph_index_handler))
+            .with_state(state);
+
+        let req = Request::builder()
+            .uri("/graph-index.json")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.headers().get("cache-control").unwrap(), "no-cache");
+    }
 
     #[tokio::test]
     async fn passkey_register_page_renders() {

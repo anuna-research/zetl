@@ -406,6 +406,8 @@ pub async fn run(
                 .delete(routes::api_pages_delete_handler),
         )
         .route("/api/graph", get(routes::api_graph_handler))
+        .route("/graph-index.json", get(routes::graph_index_handler))
+        .route("/_graph", get(routes::vault_graph_handler))
         .route("/api/index", post(routes::api_index_handler))
         .route("/_me", get(routes::dashboard_handler))
         .route("/api/access-request", post(routes::access_request_handler))

@@ -6467,7 +6467,7 @@ dependencies = [
 
 [[package]]
 name = "zetl"
-version = "0.2.7"
+version = "0.3.0"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -6484,6 +6484,7 @@ dependencies = [
  "comfy-table",
  "crossterm 0.28.1",
  "ed25519-dalek",
+ "flate2",
  "getrandom 0.2.17",
  "git2",
  "globset",

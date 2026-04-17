@@ -1,0 +1,25 @@
+{
+  "name": "zetl-nfr-harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless-browser NFR harness for SPEC-028 (graph view). Runs Playwright against a built dist/ served by a local static server.",
+  "scripts": {
+    "seed:2k": "node --experimental-strip-types scripts/seed.ts 2000",
+    "seed:5k": "node --experimental-strip-types scripts/seed.ts 5000",
+    "build:2k": "node --experimental-strip-types scripts/build.ts 2000",
+    "build:5k": "node --experimental-strip-types scripts/build.ts 5000",
+    "clean": "node --experimental-strip-types scripts/clean.ts",
+    "test": "playwright test",
+    "test:smoke": "playwright test --grep @smoke",
+    "install-browsers": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -79,6 +79,38 @@ pub struct MostLinked {
     pub backlink_count: usize,
 }
 
+/// A node in a neighbourhood subgraph.
+#[derive(Debug, Clone, Serialize)]
+pub struct SubgraphNode {
+    /// Page name (slug).
+    pub slug: String,
+    /// BFS depth from the root node (0 = root itself).
+    pub depth: usize,
+    /// Whether this node corresponds to a real file (vs phantom/unresolved).
+    pub is_resolved: bool,
+}
+
+/// An edge in a neighbourhood subgraph.
+#[derive(Debug, Clone, Serialize)]
+pub struct SubgraphEdge {
+    pub source: String,
+    pub target: String,
+    pub meta: EdgeMeta,
+}
+
+/// The subgraph induced by a BFS neighbourhood around a root node.
+#[derive(Debug, Serialize)]
+pub struct Subgraph {
+    /// The root slug that the neighbourhood was computed from.
+    pub root: String,
+    /// The BFS depth used.
+    pub depth: usize,
+    /// All nodes within the neighbourhood, sorted by (depth, slug).
+    pub nodes: Vec<SubgraphNode>,
+    /// All edges where both endpoints are in the neighbourhood.
+    pub edges: Vec<SubgraphEdge>,
+}
+
 impl LinkGraph {
     /// Build the link graph from parsed files.
     ///
@@ -353,6 +385,106 @@ impl LinkGraph {
             .collect())
     }
 
+    /// Return the subgraph induced by a BFS neighbourhood around `root_slug`.
+    ///
+    /// Performs a bidirectional BFS (both outgoing and incoming edges) up to
+    /// `depth` hops from the root. Returns all nodes reached and every edge
+    /// where **both** endpoints are inside the neighbourhood.
+    ///
+    /// This is a pure function — no I/O.
+    pub fn filter_neighbourhood(&self, root_slug: &str, depth: usize) -> Result<Subgraph> {
+        // 1. Resolve root to a node index
+        let &start_idx = self.node_map.get(root_slug).ok_or_else(|| {
+            let anchor_lower = root_slug.to_lowercase();
+            let mut similar: Vec<&str> = self
+                .node_map
+                .keys()
+                .filter(|name| {
+                    let n = name.to_lowercase();
+                    n.contains(&anchor_lower) || anchor_lower.contains(n.as_str())
+                })
+                .map(|s| s.as_str())
+                .collect();
+            similar.sort();
+            similar.truncate(5);
+            if similar.is_empty() {
+                anyhow!("Page not found: '{root_slug}'")
+            } else {
+                anyhow!(
+                    "Page not found: '{root_slug}'. Did you mean: {}",
+                    similar.join(", ")
+                )
+            }
+        })?;
+
+        // 2. BFS — bidirectional, tracking depth per node
+        let mut node_depths: HashMap<NodeIndex, usize> = HashMap::new();
+        let mut queue: VecDeque<(NodeIndex, usize)> = VecDeque::new();
+        node_depths.insert(start_idx, 0);
+        queue.push_back((start_idx, 0));
+
+        while let Some((node, d)) = queue.pop_front() {
+            if d >= depth {
+                continue;
+            }
+            let neighbors: Vec<NodeIndex> = self
+                .graph
+                .neighbors_directed(node, Direction::Outgoing)
+                .chain(self.graph.neighbors_directed(node, Direction::Incoming))
+                .collect();
+
+            for neighbor in neighbors {
+                if let std::collections::hash_map::Entry::Vacant(e) = node_depths.entry(neighbor) {
+                    e.insert(d + 1);
+                    queue.push_back((neighbor, d + 1));
+                }
+            }
+        }
+
+        // 3. Build node list
+        let neighbourhood_indices: HashSet<NodeIndex> = node_depths.keys().copied().collect();
+
+        let mut nodes: Vec<SubgraphNode> = node_depths
+            .iter()
+            .map(|(&idx, &d)| {
+                let slug = self.graph[idx].clone();
+                let is_resolved = self.resolved.contains(&slug);
+                SubgraphNode {
+                    slug,
+                    depth: d,
+                    is_resolved,
+                }
+            })
+            .collect();
+        nodes.sort_by(|a, b| a.depth.cmp(&b.depth).then_with(|| a.slug.cmp(&b.slug)));
+
+        // 4. Collect edges where both endpoints are in the neighbourhood
+        let mut edges: Vec<SubgraphEdge> = Vec::new();
+        for edge_ref in self.graph.edge_references() {
+            let src = edge_ref.source();
+            let tgt = edge_ref.target();
+            if neighbourhood_indices.contains(&src) && neighbourhood_indices.contains(&tgt) {
+                edges.push(SubgraphEdge {
+                    source: self.graph[src].clone(),
+                    target: self.graph[tgt].clone(),
+                    meta: edge_ref.weight().clone(),
+                });
+            }
+        }
+        edges.sort_by(|a, b| {
+            a.source
+                .cmp(&b.source)
+                .then_with(|| a.target.cmp(&b.target))
+        });
+
+        Ok(Subgraph {
+            root: root_slug.to_string(),
+            depth,
+            nodes,
+            edges,
+        })
+    }
+
     /// Compute graph statistics.
     ///
     /// - `top_n`: how many entries to include in the `most_linked` list.
@@ -408,6 +540,214 @@ impl LinkGraph {
             most_linked: backlink_counts,
         }
     }
+}
+
+// ── Graph index serialisation (CON-101) ────────────────────────────
+
+/// A node in the graph index, pre-computed by the caller.
+#[derive(Debug, Clone)]
+pub struct GraphIndexNode {
+    /// Human-readable page title (e.g. "My Page").
+    pub label: String,
+    /// URL-safe slug used as the node key (e.g. "my-page").
+    pub slug: String,
+    pub outlink_count: usize,
+    pub backlink_count: usize,
+    /// True when the page has zero incoming edges.
+    pub is_orphan: bool,
+    /// True for phantom/dead-link targets (not backed by a file).
+    pub is_dead: bool,
+    /// Frontmatter tags; empty vec when none.
+    pub tags: Vec<String>,
+}
+
+/// A directed edge in the graph index.
+#[derive(Debug, Clone)]
+pub struct GraphIndexEdge {
+    /// Slug of the source node.
+    pub source: String,
+    /// Slug of the target node.
+    pub target: String,
+}
+
+/// All data needed to produce the graph index JSON.
+/// Built by the caller from `VaultData`; the serialiser is pure (no I/O).
+pub struct GraphIndexContext<'a> {
+    pub vault_name: &'a str,
+    pub total_pages: usize,
+    pub total_links: usize,
+    pub nodes: Vec<GraphIndexNode>,
+    pub edges: Vec<GraphIndexEdge>,
+}
+
+/// Pure: serialise the vault's link graph to the CON-101 graphology JSON shape
+/// (SPEC-028 REQ-101). Stable ordering: nodes and edges sorted alphabetically by
+/// their graphology `key` so rebuilds produce deterministic diffs.
+///
+/// - `page_slug_map` maps real page names to their kebab-case slugs (node keys).
+/// - `tags_by_page` carries frontmatter-derived tags per page; pages without an
+///   entry receive an empty `tags` array.
+/// - `generated_at` is embedded into `attributes.generated_at` verbatim
+///   (passed in by the caller so this function remains pure/deterministic).
+///
+/// Multi-edges in the internal `petgraph::DiGraph` are collapsed per
+/// `options.multi = false`; self-loops are preserved (`allowSelfLoops = true`).
+pub fn serialize_graph_index(
+    graph: &LinkGraph,
+    page_slug_map: &HashMap<String, String>,
+    tags_by_page: &HashMap<String, Vec<String>>,
+    vault_name: &str,
+    generated_at: &str,
+) -> serde_json::Value {
+    let slug_for = |name: &str| -> String {
+        page_slug_map
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| name.to_string())
+    };
+
+    let mut node_entries: Vec<(String, serde_json::Value)> =
+        Vec::with_capacity(graph.node_map.len());
+    for (page_name, &node_idx) in &graph.node_map {
+        let is_dead = !graph.resolved.contains(page_name);
+        let key = slug_for(page_name);
+        let outlink_count = graph
+            .graph
+            .edges_directed(node_idx, Direction::Outgoing)
+            .count();
+        let backlink_count = graph
+            .graph
+            .edges_directed(node_idx, Direction::Incoming)
+            .count();
+        let is_orphan = !is_dead && backlink_count == 0;
+        let tags = tags_by_page.get(page_name).cloned().unwrap_or_default();
+        let attrs = serde_json::json!({
+            "label": page_name,
+            "slug": key,
+            "outlink_count": outlink_count,
+            "backlink_count": backlink_count,
+            "is_orphan": is_orphan,
+            "is_dead": is_dead,
+            "tags": tags,
+        });
+        node_entries.push((
+            key.clone(),
+            serde_json::json!({ "key": key, "attributes": attrs }),
+        ));
+    }
+    node_entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let nodes_out: Vec<serde_json::Value> = node_entries.into_iter().map(|(_, v)| v).collect();
+
+    let mut seen_edges: HashSet<(String, String)> = HashSet::new();
+    let mut edge_entries: Vec<(String, serde_json::Value)> = Vec::new();
+    for edge_ref in graph.graph.edge_references() {
+        let source_name = &graph.graph[edge_ref.source()];
+        let target_name = &graph.graph[edge_ref.target()];
+        let source_slug = slug_for(source_name);
+        let target_slug = slug_for(target_name);
+        let pair = (source_slug.clone(), target_slug.clone());
+        if !seen_edges.insert(pair) {
+            continue;
+        }
+        let key = format!("{source_slug}->{target_slug}");
+        edge_entries.push((
+            key.clone(),
+            serde_json::json!({
+                "key": key,
+                "source": source_slug,
+                "target": target_slug,
+                "attributes": {},
+            }),
+        ));
+    }
+    edge_entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let edges_out: Vec<serde_json::Value> = edge_entries.into_iter().map(|(_, v)| v).collect();
+
+    let pages_count = graph.resolved.len();
+    let links_count = edges_out.len();
+
+    serde_json::json!({
+        "options": {
+            "type": "directed",
+            "multi": false,
+            "allowSelfLoops": true,
+        },
+        "attributes": {
+            "format": "zetl-graph/v1",
+            "generated_at": generated_at,
+            "vault": {
+                "name": vault_name,
+                "pages": pages_count,
+                "links": links_count,
+            }
+        },
+        "nodes": nodes_out,
+        "edges": edges_out,
+    })
+}
+
+/// Context-based variant of [`serialize_graph_index`] that takes a pre-built
+/// [`GraphIndexContext`] instead of raw arguments. Used by `zetl serve` route
+/// handlers via `build_graph_index_context`.
+pub fn serialize_graph_index_ctx(ctx: &GraphIndexContext) -> serde_json::Value {
+    let mut nodes = ctx.nodes.clone();
+    nodes.sort_by(|a, b| a.slug.cmp(&b.slug));
+
+    let nodes_json: Vec<serde_json::Value> = nodes
+        .iter()
+        .map(|n| {
+            serde_json::json!({
+                "key": n.slug,
+                "attributes": {
+                    "label": n.label,
+                    "slug": n.slug,
+                    "outlink_count": n.outlink_count,
+                    "backlink_count": n.backlink_count,
+                    "is_orphan": n.is_orphan,
+                    "is_dead": n.is_dead,
+                    "tags": n.tags,
+                }
+            })
+        })
+        .collect();
+
+    let mut edges = ctx.edges.clone();
+    edges.sort_by(|a, b| {
+        let key_a = format!("{}->{}", a.source, a.target);
+        let key_b = format!("{}->{}", b.source, b.target);
+        key_a.cmp(&key_b)
+    });
+    edges.dedup_by(|a, b| a.source == b.source && a.target == b.target);
+
+    let edges_json: Vec<serde_json::Value> = edges
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "key": format!("{}->{}", e.source, e.target),
+                "source": e.source,
+                "target": e.target,
+                "attributes": {}
+            })
+        })
+        .collect();
+
+    serde_json::json!({
+        "attributes": {
+            "format": "zetl-graph/v1",
+            "vault": {
+                "name": ctx.vault_name,
+                "pages": ctx.total_pages,
+                "links": ctx.total_links,
+            }
+        },
+        "options": {
+            "type": "directed",
+            "multi": false,
+            "allowSelfLoops": true,
+        },
+        "nodes": nodes_json,
+        "edges": edges_json,
+    })
 }
 
 #[cfg(test)]
@@ -1155,5 +1495,355 @@ mod tests {
         assert_eq!(fwd[0].meta.line, 7);
         assert_eq!(fwd[0].meta.source_file, "source.md");
         assert!(!fwd[0].meta.is_embed);
+    }
+
+    // ── filter_neighbourhood() tests ────────────────────────────────────────
+
+    #[test]
+    fn test_filter_neighbourhood_depth0_root_only() {
+        let graph = simple_graph();
+        let sub = graph.filter_neighbourhood("A", 0).unwrap();
+        assert_eq!(sub.root, "A");
+        assert_eq!(sub.depth, 0);
+        assert_eq!(sub.nodes.len(), 1);
+        assert_eq!(sub.nodes[0].slug, "A");
+        assert_eq!(sub.nodes[0].depth, 0);
+        assert!(sub.nodes[0].is_resolved);
+        // A has self-loop? No — simple_graph has A->B, A->C, B->C, C->A.
+        // Only edge with both endpoints in {A} would be a self-loop, which doesn't exist.
+        assert!(sub.edges.is_empty());
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_depth1_includes_edges() {
+        // A -> B -> C (chain, no back-edges)
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![("C", 1)]),
+            make_file("C", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let sub = graph.filter_neighbourhood("A", 1).unwrap();
+        let slugs: Vec<&str> = sub.nodes.iter().map(|n| n.slug.as_str()).collect();
+        assert_eq!(slugs, vec!["A", "B"]); // sorted by (depth, slug)
+
+        assert_eq!(sub.nodes[0].depth, 0); // A is root
+        assert_eq!(sub.nodes[1].depth, 1); // B is depth 1
+
+        // Edge A->B should be present; B->C should NOT (C not in neighbourhood)
+        assert_eq!(sub.edges.len(), 1);
+        assert_eq!(sub.edges[0].source, "A");
+        assert_eq!(sub.edges[0].target, "B");
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_bidirectional_edges() {
+        // A -> B, C -> B
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![]),
+            make_file("C", vec![("B", 1)]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        // From B depth 1: reaches A (incoming) and C (incoming)
+        let sub = graph.filter_neighbourhood("B", 1).unwrap();
+        let slugs: Vec<&str> = sub.nodes.iter().map(|n| n.slug.as_str()).collect();
+        assert_eq!(slugs, vec!["B", "A", "C"]); // B@0, then A@1, C@1
+
+        // Both A->B and C->B edges should be included
+        assert_eq!(sub.edges.len(), 2);
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_full_cycle() {
+        let graph = simple_graph(); // A->B, A->C, B->C, C->A
+        let sub = graph.filter_neighbourhood("A", 10).unwrap();
+
+        // All 3 nodes reachable
+        assert_eq!(sub.nodes.len(), 3);
+        // All 4 edges should be present (both endpoints always in the set)
+        assert_eq!(sub.edges.len(), 4);
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_phantom_node() {
+        let files = vec![make_file("A", vec![("Ghost", 1)])];
+        let resolved: HashMap<String, String> = HashMap::new();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let sub = graph.filter_neighbourhood("A", 1).unwrap();
+        assert_eq!(sub.nodes.len(), 2);
+
+        let ghost_node = sub.nodes.iter().find(|n| n.slug == "Ghost").unwrap();
+        assert!(!ghost_node.is_resolved);
+        assert_eq!(ghost_node.depth, 1);
+
+        let a_node = sub.nodes.iter().find(|n| n.slug == "A").unwrap();
+        assert!(a_node.is_resolved);
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_not_found() {
+        let graph = simple_graph();
+        let err = graph.filter_neighbourhood("NoSuchPage", 1).unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_isolated_node() {
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![]),
+            make_file("Isolated", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("Isolated".to_string(), "Isolated".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let sub = graph.filter_neighbourhood("Isolated", 5).unwrap();
+        assert_eq!(sub.nodes.len(), 1);
+        assert_eq!(sub.nodes[0].slug, "Isolated");
+        assert!(sub.edges.is_empty());
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_nodes_sorted_by_depth_then_slug() {
+        // A -> B -> C -> D
+        let files = vec![
+            make_file("A", vec![("B", 1)]),
+            make_file("B", vec![("C", 1)]),
+            make_file("C", vec![("D", 1)]),
+            make_file("D", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+            ("C".to_string(), "C".to_string()),
+            ("D".to_string(), "D".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let sub = graph.filter_neighbourhood("B", 2).unwrap();
+        // B@0, A@1 (incoming), C@1 (outgoing), D@2
+        let pairs: Vec<(&str, usize)> = sub
+            .nodes
+            .iter()
+            .map(|n| (n.slug.as_str(), n.depth))
+            .collect();
+        assert_eq!(pairs, vec![("B", 0), ("A", 1), ("C", 1), ("D", 2)]);
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_edges_sorted() {
+        let graph = simple_graph(); // A->B, A->C, B->C, C->A
+        let sub = graph.filter_neighbourhood("A", 10).unwrap();
+
+        let edge_pairs: Vec<(&str, &str)> = sub
+            .edges
+            .iter()
+            .map(|e| (e.source.as_str(), e.target.as_str()))
+            .collect();
+        // Sorted by (source, target)
+        assert_eq!(
+            edge_pairs,
+            vec![("A", "B"), ("A", "C"), ("B", "C"), ("C", "A")]
+        );
+    }
+
+    #[test]
+    fn test_filter_neighbourhood_edge_meta_preserved() {
+        let files = [
+            ParsedFile {
+                path: PathBuf::from("source.md"),
+                page_name: "source".to_string(),
+                links: vec![make_link(
+                    "target",
+                    7,
+                    Some("alias"),
+                    Some("heading"),
+                    None,
+                    true,
+                )],
+                spl_blocks: vec![],
+                diagnostics: vec![],
+                mtime: SystemTime::now(),
+                merkle_leaves: vec![],
+                file_merkle: None,
+            },
+            ParsedFile {
+                path: PathBuf::from("target.md"),
+                page_name: "target".to_string(),
+                links: vec![],
+                spl_blocks: vec![],
+                diagnostics: vec![],
+                mtime: SystemTime::now(),
+                merkle_leaves: vec![],
+                file_merkle: None,
+            },
+        ];
+        let resolved: HashMap<String, String> = [("target".to_string(), "target".to_string())]
+            .into_iter()
+            .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+
+        let sub = graph.filter_neighbourhood("source", 1).unwrap();
+        assert_eq!(sub.edges.len(), 1);
+        let e = &sub.edges[0];
+        assert_eq!(e.meta.line, 7);
+        assert_eq!(e.meta.alias.as_deref(), Some("alias"));
+        assert_eq!(e.meta.heading.as_deref(), Some("heading"));
+        assert!(e.meta.is_embed);
+    }
+
+    // ── SPEC-028 REQ-101 / CON-101: serialize_graph_index ─────────────
+
+    #[test]
+    fn serialize_graph_index_shape_and_ordering() {
+        let graph = simple_graph();
+        let slug_map: HashMap<String, String> = [
+            ("A".to_string(), "a".to_string()),
+            ("B".to_string(), "b".to_string()),
+            ("C".to_string(), "c".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let tags: HashMap<String, Vec<String>> = [("A".to_string(), vec!["rust".to_string()])]
+            .into_iter()
+            .collect();
+
+        let out =
+            serialize_graph_index(&graph, &slug_map, &tags, "my-vault", "2026-04-16T00:00:00Z");
+
+        assert_eq!(out["options"]["type"], "directed");
+        assert_eq!(out["options"]["multi"], false);
+        assert_eq!(out["options"]["allowSelfLoops"], true);
+        assert_eq!(out["attributes"]["format"], "zetl-graph/v1");
+        assert_eq!(out["attributes"]["generated_at"], "2026-04-16T00:00:00Z");
+        assert_eq!(out["attributes"]["vault"]["name"], "my-vault");
+        assert_eq!(out["attributes"]["vault"]["pages"], 3);
+        assert_eq!(out["attributes"]["vault"]["links"], 4);
+
+        let nodes = out["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 3);
+        // Stable alphabetical ordering by slug (= key).
+        let keys: Vec<&str> = nodes.iter().map(|n| n["key"].as_str().unwrap()).collect();
+        assert_eq!(keys, vec!["a", "b", "c"]);
+        // Node A carries its frontmatter tag; B and C get empty arrays.
+        assert_eq!(nodes[0]["attributes"]["tags"][0], "rust");
+        assert_eq!(nodes[1]["attributes"]["tags"].as_array().unwrap().len(), 0);
+        assert_eq!(nodes[0]["attributes"]["label"], "A");
+        assert_eq!(nodes[0]["attributes"]["is_dead"], false);
+        // A has a backlink from C → not an orphan.
+        assert_eq!(nodes[0]["attributes"]["is_orphan"], false);
+
+        let edges = out["edges"].as_array().unwrap();
+        // A→B, A→C, B→C, C→A sorted alphabetically by "source->target".
+        let edge_keys: Vec<&str> = edges.iter().map(|e| e["key"].as_str().unwrap()).collect();
+        assert_eq!(edge_keys, vec!["a->b", "a->c", "b->c", "c->a"]);
+    }
+
+    #[test]
+    fn serialize_graph_index_marks_dead_and_orphan_nodes() {
+        // A → B (real) and A → Ghost (phantom/dead). A has no backlinks → orphan.
+        let files = vec![
+            make_file("A", vec![("B", 1), ("Ghost", 2)]),
+            make_file("B", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+        let slug_map: HashMap<String, String> = [
+            ("A".to_string(), "a".to_string()),
+            ("B".to_string(), "b".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let out = serialize_graph_index(
+            &graph,
+            &slug_map,
+            &HashMap::new(),
+            "v",
+            "2026-04-16T00:00:00Z",
+        );
+
+        let nodes = out["nodes"].as_array().unwrap();
+        let by_key: HashMap<&str, &serde_json::Value> = nodes
+            .iter()
+            .map(|n| (n["key"].as_str().unwrap(), n))
+            .collect();
+
+        // A is a real page with no backlinks → is_orphan=true, is_dead=false.
+        assert_eq!(by_key["a"]["attributes"]["is_orphan"], true);
+        assert_eq!(by_key["a"]["attributes"]["is_dead"], false);
+        // Ghost is a phantom — key defaults to page name since there's no slug entry.
+        assert_eq!(by_key["Ghost"]["attributes"]["is_dead"], true);
+        assert_eq!(by_key["Ghost"]["attributes"]["is_orphan"], false);
+        // Links count should reflect all outgoing edges (dedup — 2 distinct edges).
+        assert_eq!(out["attributes"]["vault"]["links"], 2);
+        // Pages count counts only real pages.
+        assert_eq!(out["attributes"]["vault"]["pages"], 2);
+    }
+
+    #[test]
+    fn serialize_graph_index_dedupes_multi_edges() {
+        // A → B appears twice in the file; graphology multi=false expects one edge.
+        let files = vec![
+            make_file("A", vec![("B", 1), ("B", 2)]),
+            make_file("B", vec![]),
+        ];
+        let resolved: HashMap<String, String> = [
+            ("A".to_string(), "A".to_string()),
+            ("B".to_string(), "B".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let graph = LinkGraph::build(&files, &resolved);
+        let slug_map: HashMap<String, String> = [
+            ("A".to_string(), "a".to_string()),
+            ("B".to_string(), "b".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let out = serialize_graph_index(
+            &graph,
+            &slug_map,
+            &HashMap::new(),
+            "v",
+            "2026-04-16T00:00:00Z",
+        );
+
+        let edges = out["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["key"], "a->b");
+        assert_eq!(out["attributes"]["vault"]["links"], 1);
     }
 }

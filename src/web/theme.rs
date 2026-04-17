@@ -147,6 +147,12 @@ pub fn resolve_theme_name(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeManifest {
     pub theme: ThemeInfo,
+    // SPEC-028 REQ-105: when true, the engine inlines the serialised graph
+    // JSON into every template render as the `graph_index` variable.
+    #[serde(default)]
+    pub graph_inline: Option<bool>,
+    #[serde(default)]
+    pub graph: Option<ThemeGraph>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,6 +177,32 @@ pub struct ThemeInfo {
 pub struct ThemeTemplates {
     #[serde(default)]
     pub overrides: Vec<String>,
+}
+
+/// SPEC-028 REQ-116: `[graph]` section of `theme.toml` carries graph-widget
+/// configuration. Presently just `placement`; future fields may control
+/// per-page local-graph depth, node-colour policy, etc.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeGraph {
+    #[serde(default)]
+    pub placement: Option<String>,
+}
+
+/// Resolve the graph widget placement from a parsed manifest, coerced to one
+/// of the three supported values. Unknown strings fall back to `"docked"` so
+/// a stale or typo'd `theme.toml` degrades to the default placement rather
+/// than breaking the layout.
+pub fn resolve_graph_placement(manifest: Option<&ThemeManifest>) -> &'static str {
+    match manifest
+        .and_then(|m| m.graph.as_ref())
+        .and_then(|g| g.placement.as_deref())
+        .map(|s| s.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("tabs") => "tabs",
+        Some("stacked") => "stacked",
+        _ => "docked",
+    }
 }
 
 // ── Provenance struct ────────────────────────────────────────────────────────
@@ -857,6 +889,51 @@ name = "my-theme"
         assert!(result.is_none());
     }
 
+    // ── resolve_graph_placement (SPEC-028 REQ-116) ───────────────────────────
+
+    #[test]
+    fn test_graph_placement_defaults_to_docked_when_missing() {
+        let m = parse_theme_manifest("[theme]\nname = \"t\"\nversion = \"1.0.0\"\n").unwrap();
+        assert!(m.graph.is_none());
+        assert_eq!(resolve_graph_placement(Some(&m)), "docked");
+        assert_eq!(resolve_graph_placement(None), "docked");
+    }
+
+    #[test]
+    fn test_graph_placement_accepts_tabs_and_stacked() {
+        let tabs = parse_theme_manifest(
+            "[theme]\nname = \"t\"\nversion = \"1.0.0\"\n[graph]\nplacement = \"tabs\"\n",
+        )
+        .unwrap();
+        assert_eq!(resolve_graph_placement(Some(&tabs)), "tabs");
+
+        let stacked = parse_theme_manifest(
+            "[theme]\nname = \"t\"\nversion = \"1.0.0\"\n[graph]\nplacement = \"stacked\"\n",
+        )
+        .unwrap();
+        assert_eq!(resolve_graph_placement(Some(&stacked)), "stacked");
+    }
+
+    #[test]
+    fn test_graph_placement_unknown_falls_back_to_docked() {
+        // Typos and future-unknown values must not break the layout — coerce
+        // anything unrecognised to the documented default.
+        let m = parse_theme_manifest(
+            "[theme]\nname = \"t\"\nversion = \"1.0.0\"\n[graph]\nplacement = \"FLOATING\"\n",
+        )
+        .unwrap();
+        assert_eq!(resolve_graph_placement(Some(&m)), "docked");
+    }
+
+    #[test]
+    fn test_graph_placement_case_insensitive_and_trimmed() {
+        let m = parse_theme_manifest(
+            "[theme]\nname = \"t\"\nversion = \"1.0.0\"\n[graph]\nplacement = \"  Tabs  \"\n",
+        )
+        .unwrap();
+        assert_eq!(resolve_graph_placement(Some(&m)), "tabs");
+    }
+
     // ── parse_install_source ─────────────────────────────────────────────────
 
     #[test]
@@ -963,6 +1040,8 @@ name = "my-theme"
                 min_zetl_version: None,
                 templates: None,
             },
+            graph_inline: None,
+            graph: None,
         }
     }
 

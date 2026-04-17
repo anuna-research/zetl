@@ -2235,6 +2235,61 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
     #[cfg(not(feature = "semantic"))]
     let semantic_stats: Option<serde_json::Value> = None;
 
+    // OBS-102: graph-index export stats (bytes/nodes/edges) mirror what
+    // `zetl build` would emit as graph-index.json, so authors can size the
+    // asset before enabling `graph_inline = true` in a theme.
+    let (page_slug_map, _slug_collisions) = zetl::web::build_slug_map(&pipeline.files);
+    let mut tags_by_page: HashMap<String, Vec<String>> = HashMap::new();
+    for file in &pipeline.files {
+        let full_path = pipeline.vault_root.join(&file.path);
+        let Ok(content) = std::fs::read_to_string(&full_path) else {
+            continue;
+        };
+        let fm = zetl::web::markdown::parse_frontmatter(&content);
+        let Some(arr) = fm.get("tags").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        let tags: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        if !tags.is_empty() {
+            tags_by_page.insert(file.page_name.clone(), tags);
+        }
+    }
+    let vault_name = pipeline
+        .vault_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("vault")
+        .to_string();
+    let generated_at = zetl::user::access_request::now_iso8601();
+    let graph_index_json = zetl::graph::serialize_graph_index(
+        &pipeline.graph,
+        &page_slug_map,
+        &tags_by_page,
+        &vault_name,
+        &generated_at,
+    );
+    let graph_index_bytes = serde_json::to_string(&graph_index_json)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    let graph_index_nodes = graph_index_json
+        .get("nodes")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    let graph_index_edges = graph_index_json
+        .get("edges")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    let graph_export_stats = serde_json::json!({
+        "bytes": graph_index_bytes,
+        "nodes": graph_index_nodes,
+        "edges": graph_index_edges,
+    });
+
     #[derive(Serialize)]
     struct StatsOutput {
         #[serde(flatten)]
@@ -2243,6 +2298,8 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
         spl_blocks: usize,
         grounded_spl_blocks: usize,
         explicitly_grounded_facts: usize,
+        #[serde(rename = "graph")]
+        graph_export: serde_json::Value,
         #[serde(skip_serializing_if = "Option::is_none")]
         history: Option<serde_json::Value>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -2255,6 +2312,7 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
         spl_blocks,
         grounded_spl_blocks,
         explicitly_grounded_facts,
+        graph_export: graph_export_stats,
         history: history_stats,
         semantic: semantic_stats,
     };
@@ -2308,6 +2366,22 @@ fn cmd_stats(cli: &Cli, top: usize) -> Result<()> {
                 println!("Most linked pages:");
                 println!("{ml_table}");
             }
+
+            // OBS-102: print graph-index export section (bytes/nodes/edges).
+            println!();
+            println!("Graph:");
+            println!(
+                "  Nodes:          {}",
+                output.graph_export["nodes"].as_u64().unwrap_or(0)
+            );
+            println!(
+                "  Edges:          {}",
+                output.graph_export["edges"].as_u64().unwrap_or(0)
+            );
+            println!(
+                "  Bytes:          {}",
+                output.graph_export["bytes"].as_u64().unwrap_or(0)
+            );
 
             // OBS-012: print history storage section when available.
             if let Some(ref hs) = output.history {

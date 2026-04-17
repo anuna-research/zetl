@@ -88,9 +88,19 @@
     }
   });
 
+  // Remove any leftover SVG overlay from a previous SPA navigation.
+  document.querySelectorAll('svg[data-zetl-bridge]').forEach(function(el){ el.remove(); });
+
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('data-zetl-bridge', '');
   svg.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:40;';
   document.body.appendChild(svg);
+
+  // Clean up on SPA navigation away from this page.
+  document.addEventListener('zetl:before-navigate', function onNav() {
+    svg.remove();
+    document.removeEventListener('zetl:before-navigate', onNav);
+  });
 
   function drawBridge(fromEl, toEl, color) {
     svg.innerHTML = '';
@@ -160,14 +170,23 @@
   });
 
   // ── Mobile tooltip preview ──────────────────────────────────────
+  // Remove leftover tooltips from previous SPA navigation.
+  document.querySelectorAll('.wikilink-tooltip[data-zetl-tc]').forEach(function(el){ el.remove(); });
+
   if (isMobile() && cards.length) {
     var tooltip = document.createElement('div');
     tooltip.className = 'wikilink-tooltip';
+    tooltip.setAttribute('data-zetl-tc', '');
     tooltip.innerHTML =
       '<div class="tt-header"><a class="tt-title" href="">Title</a><button class="tt-close">&times;</button></div>' +
       '<div class="tt-body prose prose-sm max-w-none"></div>' +
       '<div class="tt-footer"><a class="tt-go" href="">Go to page &rarr;</a></div>';
     document.body.appendChild(tooltip);
+
+    document.addEventListener('zetl:before-navigate', function onNav() {
+      tooltip.remove();
+      document.removeEventListener('zetl:before-navigate', onNav);
+    });
 
     var ttTitle = tooltip.querySelector('.tt-title');
     var ttBody  = tooltip.querySelector('.tt-body');

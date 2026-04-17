@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{# SPEC-028 REQ-107: vault-wide graph page. Embeds the _graph.html partial in
+   a full-page layout. Served at /_graph (serve) and _graph.html (build root).
+   `ignore missing` honours REQ-109 graceful absence when a theme omits the
+   partial. #}
+
+{% block title %}Graph — {{ vault.name }} — zetl{% endblock %}
+{% block description %}Interactive link graph for {{ vault.name }} — explore pages and wikilinks.{% endblock %}
+
+{% block styles %}
+<style>
+  /* Hide the docked mini-widget on the full-page graph view */
+  body > .zetl-graph-widget:not([data-placement="fullscreen"]) { display: none !important; }
+  /* Hide fallback page list — fullscreen graph IS the primary content */
+  .vg-stage .zetl-graph-fallback-list { display: none; }
+  .vg-stage .zetl-graph-fallback { display: none; }
+  /* Expand the canvas to fill the stage */
+  .vg-stage #zetl-graph { position: absolute; inset: 0; }
+  .vg-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: calc(100vh - 4rem);
+    padding: 1rem;
+  }
+  @media (min-width: 1024px) {
+    .vg-main { min-height: 100vh; padding: 1.5rem; }
+  }
+  .vg-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+  .vg-header h1 { font-size: 1.5rem; font-weight: 600; }
+  .vg-header .vg-meta { font-size: 0.85rem; opacity: 0.75; }
+  .vg-stage {
+    flex: 1;
+    position: relative;
+    border: 1px solid oklch(var(--b3));
+    border-radius: 0.5rem;
+    background: oklch(var(--b1));
+    overflow: hidden;
+    min-height: 24rem;
+  }
+  /* The _graph.html partial mounts <div id="zetl-graph"> inside .vg-stage
+     and stretches to fill it via the canvas's 100% width/height rules. */
+  .vg-stage > * { width: 100%; height: 100%; }
+  .vg-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 2rem;
+    text-align: center;
+    font-size: 0.9rem;
+    opacity: 0.75;
+    font-style: italic;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="vg-main">
+  <nav class="text-sm breadcrumbs mb-2" aria-label="Breadcrumb">
+    <ul>
+      <li><a href="{{ root_path }}{{ index_file }}">{{ vault.name }}</a></li>
+      <li>Graph</li>
+    </ul>
+  </nav>
+
+  <header class="vg-header">
+    <h1>Graph</h1>
+    <span class="vg-meta">Interactive vault map — click a node to open a page.</span>
+  </header>
+
+  {# data-mode="vault" requests full-graph zoom-to-fit per REQ-108.
+     The _graph partial mounts a persistent Sigma instance here; if a theme
+     omits the partial, the empty-state copy below is shown instead. #}
+  <div class="vg-stage zetl-graph-widget" data-mode="vault" data-placement="fullscreen">
+    {% block graph_widget %}
+      {% include "_graph.html" ignore missing %}
+    {% endblock %}
+    <noscript>
+      <div class="vg-empty">
+        Graph view requires JavaScript. Browse pages from the
+        <a href="{{ root_path }}{{ index_file }}">index</a>.
+      </div>
+    </noscript>
+  </div>
+</main>
+{% endblock %}

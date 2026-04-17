@@ -160,7 +160,122 @@ pub fn render_preview_html(
     let mut html_output = String::new();
     pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
 
-    rewrite_wikilinks(&html_output, &wikilink_re, slug_map, root_path, index_file)
+    rewrite_wikilinks_for_preview(&html_output, &wikilink_re, slug_map, root_path, index_file)
+}
+
+/// Replace [[wikilinks]] with plain <a> tags in preview/excerpt HTML.
+///
+/// Unlike `rewrite_wikilinks`, the links emitted here do NOT carry the
+/// `wikilink` CSS class. This prevents the transclusion-panel interaction
+/// JS (bridge lines, hover highlights) from treating links *inside*
+/// transclusion card excerpts as first-class wikilinks — which would cause
+/// "transclusion links persisting" across nested previews.
+fn rewrite_wikilinks_for_preview(
+    html: &str,
+    re: &Regex,
+    slug_map: &HashMap<String, String>,
+    root_path: &str,
+    index_file: &str,
+) -> String {
+    let mut result = String::with_capacity(html.len());
+    let mut depth: usize = 0;
+
+    let mut chars = html.char_indices().peekable();
+    let mut segment_start = 0;
+
+    while let Some(&(i, _)) = chars.peek() {
+        if html[i..].starts_with("<code") || html[i..].starts_with("<pre") {
+            if depth == 0 && i > segment_start {
+                result.push_str(&replace_wikilinks_in_segment_preview(
+                    &html[segment_start..i],
+                    re,
+                    slug_map,
+                    root_path,
+                    index_file,
+                ));
+            } else if i > segment_start {
+                result.push_str(&html[segment_start..i]);
+            }
+            segment_start = i;
+            depth += 1;
+            chars.next();
+        } else if html[i..].starts_with("</code>") || html[i..].starts_with("</pre>") {
+            let tag_end = html[i..].find('>').map(|p| i + p + 1).unwrap_or(html.len());
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                result.push_str(&html[segment_start..tag_end]);
+                segment_start = tag_end;
+            }
+            while let Some(&(j, _)) = chars.peek() {
+                if j >= tag_end {
+                    break;
+                }
+                chars.next();
+            }
+        } else {
+            chars.next();
+        }
+    }
+
+    if segment_start < html.len() {
+        if depth == 0 {
+            result.push_str(&replace_wikilinks_in_segment_preview(
+                &html[segment_start..],
+                re,
+                slug_map,
+                root_path,
+                index_file,
+            ));
+        } else {
+            result.push_str(&html[segment_start..]);
+        }
+    }
+
+    result
+}
+
+/// Preview variant of wikilink replacement: emits plain links without the
+/// `wikilink` class so they do not participate in transclusion interaction.
+fn replace_wikilinks_in_segment_preview(
+    segment: &str,
+    re: &Regex,
+    slug_map: &HashMap<String, String>,
+    root_path: &str,
+    index_file: &str,
+) -> String {
+    re.replace_all(segment, |caps: &regex::Captures| {
+        let inner = &caps[1];
+        let (target, display) = if let Some(pipe_pos) = inner.find('|') {
+            (&inner[..pipe_pos], &inner[pipe_pos + 1..])
+        } else {
+            (inner, inner)
+        };
+        let page = target.split('#').next().unwrap_or(target).trim();
+        let display = html_escape(display.trim());
+        let slug = slug_map
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(page))
+            .map(|(_, v)| v.as_str());
+
+        if let Some(slug) = slug {
+            format!(
+                r#"<a href="{root_path}{href}/{index_file}" class="link link-primary">{display}</a>"#,
+                root_path = root_path,
+                href = urlencoding(slug),
+                index_file = index_file,
+                display = display,
+            )
+        } else {
+            format!(
+                r#"<a href="{root_path}{href}/{index_file}" class="link-error">{display}</a>"#,
+                root_path = root_path,
+                href = urlencoding(page),
+                index_file = index_file,
+                display = display,
+            )
+        }
+    })
+    .to_string()
 }
 
 /// Replace [[wikilinks]] with <a> tags in HTML, skipping content inside <code>/<pre>.
