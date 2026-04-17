@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 150,
-    "deletions": 86,
+    "insertions": 12,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "themes/default/_graph.html"
+      "themes/default/base.html"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-widget-zerowidth-guard-changes",
-      "content": "Modified 2 files (+150, -86): .hence/context-manifest.json, themes/default/_graph.html",
+      "key": "task-favicon-changes",
+      "content": "Modified 2 files (+12, -5): .hence/context-manifest.json, themes/default/base.html",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/widget-zerowidth-guard-v1",
-  "evaluated_at": "2026-04-17T11:04:23Z",
+  "branch_name": "hence/favicon-v1",
+  "evaluated_at": "2026-04-17T11:05:09Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
