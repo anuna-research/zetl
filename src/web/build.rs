@@ -608,7 +608,14 @@ pub fn build_static(
         }
 
         let page_html = engine
-            .render_page(&vault_ctx, &page_ctx, "build", &bm25_json, &history_json, "")
+            .render_page(
+                &vault_ctx,
+                &page_ctx,
+                "build",
+                &bm25_json,
+                &history_json,
+                "",
+            )
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(&slug));
                 anyhow::anyhow!("{e}")
@@ -730,7 +737,14 @@ pub fn build_static(
         let folder_name = folder.rsplit('/').next().unwrap_or(folder);
         let folder_ctx = build_folder_context(data, folder, folder_name);
         let folder_html = engine
-            .render_folder(&vault_ctx, &folder_ctx, "build", &bm25_json, &history_json, "")
+            .render_folder(
+                &vault_ctx,
+                &folder_ctx,
+                "build",
+                &bm25_json,
+                &history_json,
+                "",
+            )
             .map_err(|e| {
                 eprintln!("{}", e.stderr_line(folder));
                 anyhow::anyhow!("{e}")
@@ -829,27 +843,8 @@ pub fn build_static(
         }
     }
 
-    // NFR-104 (TEST-204): warn when the emitted graph-index.json exceeds the
-    // 1 MB budget, or — as a page-count proxy, valid even before graph-emit
-    // lands — when the vault itself exceeds 5,000 pages. Either path should
-    // be surfaced to the operator with a single actionable recommendation.
-    let graph_index_path = out.join("graph-index.json");
-    let graph_index_bytes = std::fs::metadata(&graph_index_path).ok().map(|m| m.len());
-    let graph_over_budget = graph_index_bytes.is_some_and(|n| n > GRAPH_INDEX_MAX_BYTES);
-    let vault_over_budget = count >= GRAPH_PAGE_WARN_THRESHOLD;
-    if graph_over_budget || vault_over_budget {
-        let detail = match graph_index_bytes {
-            Some(n) if graph_over_budget => format!(
-                "graph-index.json is {:.2} MB (> 1 MB budget, NFR-104)",
-                n as f64 / (1024.0 * 1024.0)
-            ),
-            _ => format!(
-                "vault has {count} pages (≥ {GRAPH_PAGE_WARN_THRESHOLD}); graph-index.json will exceed the 1 MB budget (NFR-104)"
-            ),
-        };
-        eprintln!(
-            "warning: {detail} — consider `zetl serve` (server-mode deployment) or link-graph filtering",
-        );
+    if let Some(warning) = graph_index_size_warning(out, count) {
+        eprintln!("warning: {warning}");
     }
 
     let suffix = match (static_copied, public_copied) {
@@ -874,6 +869,32 @@ pub const GRAPH_INDEX_MAX_BYTES: u64 = 1024 * 1024;
 /// NFR-104: page-count proxy threshold above which the build emits the
 /// size-budget warning even when graph-index.json is not yet emitted.
 pub const GRAPH_PAGE_WARN_THRESHOLD: usize = 5_000;
+
+/// NFR-104 (TEST-204): produce the warning text when the emitted
+/// graph-index.json exceeds the 1 MB budget, or — as a page-count proxy —
+/// when the vault itself exceeds [`GRAPH_PAGE_WARN_THRESHOLD`] pages. Returns
+/// `None` when both checks pass.
+pub fn graph_index_size_warning(out_dir: &Path, page_count: usize) -> Option<String> {
+    let graph_index_path = out_dir.join("graph-index.json");
+    let graph_index_bytes = std::fs::metadata(&graph_index_path).ok().map(|m| m.len());
+    let graph_over_budget = graph_index_bytes.is_some_and(|n| n > GRAPH_INDEX_MAX_BYTES);
+    let vault_over_budget = page_count >= GRAPH_PAGE_WARN_THRESHOLD;
+    if !graph_over_budget && !vault_over_budget {
+        return None;
+    }
+    let detail = match graph_index_bytes {
+        Some(n) if graph_over_budget => format!(
+            "graph-index.json is {:.2} MB (> 1 MB budget, NFR-104)",
+            n as f64 / (1024.0 * 1024.0)
+        ),
+        _ => format!(
+            "vault has {page_count} pages (≥ {GRAPH_PAGE_WARN_THRESHOLD}); graph-index.json will exceed the 1 MB budget (NFR-104)"
+        ),
+    };
+    Some(format!(
+        "{detail} — consider `zetl serve` (server-mode deployment) or link-graph filtering"
+    ))
+}
 
 /// Copy static assets from `.zetl/static/`, `.zetl/themes/<theme>/static/`, and
 /// the bundled theme's `static/` directory into `{out}/_static/`.

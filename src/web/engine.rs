@@ -322,7 +322,10 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
 
     // SPEC-028 REQ-113: surface theme.toml's [spa].enabled as a global so
     // base.html can conditionally include the persistent-shell SPA module.
-    env.add_global("spa_enabled", minijinja::Value::from(theme_spa_enabled(vault_root, theme)));
+    env.add_global(
+        "spa_enabled",
+        minijinja::Value::from(theme_spa_enabled(vault_root, theme)),
+    );
 
     env
 }
@@ -334,14 +337,21 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
 /// is absent — matching SPEC-028 REQ-113's default-off opt-in semantics.
 fn theme_spa_enabled(vault_root: &Path, theme: &str) -> bool {
     let raw = if theme != "default" {
-        std::fs::read_to_string(vault_root.join(".zetl/themes").join(theme).join("theme.toml"))
-            .ok()
-            .or_else(|| bundled_template(theme, "theme.toml").map(str::to_string))
+        std::fs::read_to_string(
+            vault_root
+                .join(".zetl/themes")
+                .join(theme)
+                .join("theme.toml"),
+        )
+        .ok()
+        .or_else(|| bundled_template(theme, "theme.toml").map(str::to_string))
     } else {
         bundled_template("default", "theme.toml").map(str::to_string)
     };
     let Some(raw) = raw else { return false };
-    let Ok(val) = raw.parse::<toml::Value>() else { return false };
+    let Ok(val) = raw.parse::<toml::Value>() else {
+        return false;
+    };
     val.get("spa")
         .and_then(|s| s.get("enabled"))
         .and_then(|v| v.as_bool())
@@ -1000,7 +1010,10 @@ fn graph_index_url(root_path: &str) -> String {
 /// flag is a best-effort opt-in, not a hard dependency.
 fn load_graph_inline(vault_root: &Path, theme: &str) -> bool {
     if theme != "default" {
-        let disk = vault_root.join(".zetl/themes").join(theme).join("theme.toml");
+        let disk = vault_root
+            .join(".zetl/themes")
+            .join(theme)
+            .join("theme.toml");
         if let Ok(content) = std::fs::read_to_string(&disk) {
             if let Some(flag) = parse_graph_inline(&content) {
                 return flag;
@@ -1141,7 +1154,9 @@ mod tests {
         let engine = default_engine();
         let vault = sample_vault();
         let page = sample_page();
-        let html = engine.render_page(&vault, &page, "static", "", "", "").unwrap();
+        let html = engine
+            .render_page(&vault, &page, "static", "", "", "")
+            .unwrap();
         assert!(html.contains("Hello"));
         assert!(html.contains("<p>world</p>"));
     }
@@ -1223,7 +1238,9 @@ mod tests {
         let engine = TemplateEngine::new(tmp.path(), "custom", false, false);
         let vault = sample_vault();
         let page = sample_page();
-        let html = engine.render_page(&vault, &page, "static", "", "", "").unwrap();
+        let html = engine
+            .render_page(&vault, &page, "static", "", "", "")
+            .unwrap();
         // Custom template wraps content in <div class="custom">
         assert!(html.contains(r#"<div class="custom">"#));
         // base.html is still the built-in (cross-tier inheritance)
@@ -1300,7 +1317,7 @@ mod tests {
         // should carry `data-placement="docked"` on the shell container.
         let engine = default_engine();
         let vault = sample_vault();
-        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(
             html.contains(r#"data-placement="docked""#),
             "rendered HTML missing docked data-placement attribute:\n{html}"
@@ -1325,7 +1342,7 @@ mod tests {
 
         // minijinja HTML-escapes `/` to `&#x2f;` in attribute context; match
         // on either encoding so the test stays agnostic to that detail.
-        let serve_html = engine.render_index(&vault, "serve", "", "").unwrap();
+        let serve_html = engine.render_index(&vault, "serve", "", "", "").unwrap();
         let has_unescaped = serve_html.contains("href=\"/_graph\"");
         let has_escaped = serve_html.contains("href=\"&#x2f;_graph\"");
         assert!(
@@ -1335,7 +1352,7 @@ mod tests {
         // Must not accidentally carry the build-mode .html suffix in serve.
         assert!(!serve_html.contains("_graph.html"));
 
-        let build_html = engine.render_index(&vault, "build", "", "").unwrap();
+        let build_html = engine.render_index(&vault, "build", "", "", "").unwrap();
         assert!(
             build_html.contains("_graph.html"),
             "build-mode expand link should target _graph.html"
@@ -1356,7 +1373,7 @@ mod tests {
         .unwrap();
         let engine = TemplateEngine::new(tmp.path(), "tabby", false, false);
         let vault = sample_vault();
-        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(
             html.contains(r#"data-placement="tabs""#),
             "tabs-opt-in theme should emit data-placement=\"tabs\""
@@ -1375,7 +1392,7 @@ mod tests {
         .unwrap();
         let engine = TemplateEngine::new(tmp.path(), "stacky", false, false);
         let vault = sample_vault();
-        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(
             html.contains(r#"data-placement="stacked""#),
             "stacked-opt-in theme should emit data-placement=\"stacked\""
@@ -1396,7 +1413,7 @@ mod tests {
         .unwrap();
         let engine = TemplateEngine::new(tmp.path(), "typo", false, false);
         let vault = sample_vault();
-        let html = engine.render_index(&vault, "serve", "", "").unwrap();
+        let html = engine.render_index(&vault, "serve", "", "", "").unwrap();
         assert!(html.contains(r#"data-placement="docked""#));
         assert!(!html.contains("floating-island"));
     }
@@ -1416,7 +1433,9 @@ mod tests {
 
         let engine = TemplateEngine::new(tmp.path(), "broken", false, false);
         let vault = sample_vault();
-        let err = engine.render_index(&vault, "serve", "", "", "").unwrap_err();
+        let err = engine
+            .render_index(&vault, "serve", "", "", "")
+            .unwrap_err();
         assert!(err.template_name.is_some());
         assert!(!err.message.is_empty());
     }
@@ -1488,7 +1507,9 @@ mod tests {
 
         let engine = TemplateEngine::new(tmp.path(), "empty", false, false);
         let vault = sample_vault();
-        let err = engine.render_index(&vault, "serve", "", "", "").unwrap_err();
+        let err = engine
+            .render_index(&vault, "serve", "", "", "")
+            .unwrap_err();
         assert_eq!(err.kind, "EmptyOutput");
         assert!(err.message.contains("empty output"));
     }
@@ -1710,16 +1731,13 @@ mod tests {
         };
         std::fs::write(
             dir.join("theme.toml"),
-            format!(
-                "{inline_line}[theme]\nname = \"{name}\"\nversion = \"1.0.0\"\n",
-            ),
+            format!("{inline_line}[theme]\nname = \"{name}\"\nversion = \"1.0.0\"\n",),
         )
         .unwrap();
         // Minimal probe template that prints `URL|LEN` — inherits nothing,
         // so it renders under every render_* method whose template name we
         // override below. `| safe` bypasses HTML-escape of the URL slashes.
-        let probe =
-            r#"ZETL_GRAPH|{{ graph_index_url|safe }}|{{ graph_index|length }}|END"#;
+        let probe = r#"ZETL_GRAPH|{{ graph_index_url|safe }}|{{ graph_index|length }}|END"#;
         for name in &["index.html", "page.html", "folder.html"] {
             std::fs::write(dir.join(name), probe).unwrap();
         }
@@ -1764,7 +1782,9 @@ mod tests {
         let vault = sample_vault();
         let mut page = sample_page();
         page.slug = "docs/architecture/scanner".to_string();
-        let html = engine.render_page(&vault, &page, "build", "", "", "").unwrap();
+        let html = engine
+            .render_page(&vault, &page, "build", "", "", "")
+            .unwrap();
         assert!(
             html.contains("ZETL_GRAPH|../../../graph-index.json|0|END"),
             "expected ../../../graph-index.json for depth-3 slug, got: {html}"
@@ -1857,8 +1877,12 @@ mod tests {
     fn test_load_graph_inline_default_theme_has_no_flag() {
         // The bundled default theme ships without the flag, so the
         // engine's cached graph_inline for "default" must be false.
-        let engine =
-            TemplateEngine::new(std::path::Path::new("/nonexistent"), "default", false, false);
+        let engine = TemplateEngine::new(
+            std::path::Path::new("/nonexistent"),
+            "default",
+            false,
+            false,
+        );
         assert!(!engine.graph_inline());
     }
 
@@ -1913,7 +1937,10 @@ mod tests {
     #[test]
     fn test_graph_partial_noscript_fallback() {
         let html = render_graph_partial(&sample_vault());
-        assert!(html.contains("<noscript>"), "must provide a <noscript> block");
+        assert!(
+            html.contains("<noscript>"),
+            "must provide a <noscript> block"
+        );
         assert!(
             html.contains("Graph view requires JavaScript"),
             "<noscript> must explain JS requirement"
@@ -1990,7 +2017,10 @@ mod tests {
             site_url: String::new(),
         };
         let html = render_graph_partial(&vault);
-        assert!(html.contains("<details"), "NFR-105 requires a <details> fallback");
+        assert!(
+            html.contains("<details"),
+            "NFR-105 requires a <details> fallback"
+        );
         assert!(html.contains("<summary>Page list (3)</summary>"));
         // Every slug reachable by tab — rendered as an anchor.
         assert!(html.contains("href=\"/alpha/\""));

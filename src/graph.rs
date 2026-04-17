@@ -4,7 +4,6 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 use serde::Serialize;
-use serde_json::json;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// The link graph built from parsed files
@@ -393,11 +392,7 @@ impl LinkGraph {
     /// where **both** endpoints are inside the neighbourhood.
     ///
     /// This is a pure function — no I/O.
-    pub fn filter_neighbourhood(
-        &self,
-        root_slug: &str,
-        depth: usize,
-    ) -> Result<Subgraph> {
+    pub fn filter_neighbourhood(&self, root_slug: &str, depth: usize) -> Result<Subgraph> {
         // 1. Resolve root to a node index
         let &start_idx = self.node_map.get(root_slug).ok_or_else(|| {
             let anchor_lower = root_slug.to_lowercase();
@@ -439,8 +434,8 @@ impl LinkGraph {
                 .collect();
 
             for neighbor in neighbors {
-                if !node_depths.contains_key(&neighbor) {
-                    node_depths.insert(neighbor, d + 1);
+                if let std::collections::hash_map::Entry::Vacant(e) = node_depths.entry(neighbor) {
+                    e.insert(d + 1);
                     queue.push_back((neighbor, d + 1));
                 }
             }
@@ -476,7 +471,11 @@ impl LinkGraph {
                 });
             }
         }
-        edges.sort_by(|a, b| a.source.cmp(&b.source).then_with(|| a.target.cmp(&b.target)));
+        edges.sort_by(|a, b| {
+            a.source
+                .cmp(&b.source)
+                .then_with(|| a.target.cmp(&b.target))
+        });
 
         Ok(Subgraph {
             root: root_slug.to_string(),
@@ -607,7 +606,8 @@ pub fn serialize_graph_index(
             .unwrap_or_else(|| name.to_string())
     };
 
-    let mut node_entries: Vec<(String, serde_json::Value)> = Vec::with_capacity(graph.node_map.len());
+    let mut node_entries: Vec<(String, serde_json::Value)> =
+        Vec::with_capacity(graph.node_map.len());
     for (page_name, &node_idx) in &graph.node_map {
         let is_dead = !graph.resolved.contains(page_name);
         let key = slug_for(page_name);
@@ -1648,7 +1648,11 @@ mod tests {
 
         let sub = graph.filter_neighbourhood("B", 2).unwrap();
         // B@0, A@1 (incoming), C@1 (outgoing), D@2
-        let pairs: Vec<(&str, usize)> = sub.nodes.iter().map(|n| (n.slug.as_str(), n.depth)).collect();
+        let pairs: Vec<(&str, usize)> = sub
+            .nodes
+            .iter()
+            .map(|n| (n.slug.as_str(), n.depth))
+            .collect();
         assert_eq!(pairs, vec![("B", 0), ("A", 1), ("C", 1), ("D", 2)]);
     }
 
@@ -1675,7 +1679,14 @@ mod tests {
             ParsedFile {
                 path: PathBuf::from("source.md"),
                 page_name: "source".to_string(),
-                links: vec![make_link("target", 7, Some("alias"), Some("heading"), None, true)],
+                links: vec![make_link(
+                    "target",
+                    7,
+                    Some("alias"),
+                    Some("heading"),
+                    None,
+                    true,
+                )],
                 spl_blocks: vec![],
                 diagnostics: vec![],
                 mtime: SystemTime::now(),
@@ -1723,7 +1734,8 @@ mod tests {
             .into_iter()
             .collect();
 
-        let out = serialize_graph_index(&graph, &slug_map, &tags, "my-vault", "2026-04-16T00:00:00Z");
+        let out =
+            serialize_graph_index(&graph, &slug_map, &tags, "my-vault", "2026-04-16T00:00:00Z");
 
         assert_eq!(out["options"]["type"], "directed");
         assert_eq!(out["options"]["multi"], false);
@@ -1756,7 +1768,10 @@ mod tests {
     #[test]
     fn serialize_graph_index_marks_dead_and_orphan_nodes() {
         // A → B (real) and A → Ghost (phantom/dead). A has no backlinks → orphan.
-        let files = vec![make_file("A", vec![("B", 1), ("Ghost", 2)]), make_file("B", vec![])];
+        let files = vec![
+            make_file("A", vec![("B", 1), ("Ghost", 2)]),
+            make_file("B", vec![]),
+        ];
         let resolved: HashMap<String, String> = [
             ("A".to_string(), "A".to_string()),
             ("B".to_string(), "B".to_string()),

@@ -1779,7 +1779,9 @@ fn test_125_vault_history_null_when_no_history() {
     };
 
     let engine = TemplateEngine::new(tmp.path(), "hist-test", false, false);
-    let html = engine.render_index(&vault_ctx, "serve", "", "", "").unwrap();
+    let html = engine
+        .render_index(&vault_ctx, "serve", "", "", "")
+        .unwrap();
     assert!(
         html.contains("HISTORY_NULL"),
         "vault.history must be null/none when unavailable"
@@ -1832,7 +1834,9 @@ fn test_126_vault_history_populated_in_template() {
     vault_ctx.history = serde_json::to_value(hist).unwrap();
 
     let engine = TemplateEngine::new(tmp.path(), "hist-test2", false, false);
-    let html = engine.render_index(&vault_ctx, "serve", "", "", "").unwrap();
+    let html = engine
+        .render_index(&vault_ctx, "serve", "", "", "")
+        .unwrap();
     assert!(
         html.contains("SC:5"),
         "snapshot_count must be accessible in template"

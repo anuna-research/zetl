@@ -29,8 +29,9 @@
                  node is reachable by tab navigation and discoverable by
                  assistive tech regardless of JS state. #}
 
-{% set zetl_graph_total_pages = vault.stats.total_pages | default(0) %}
-{% set zetl_graph_total_links = vault.stats.total_links | default(0) %}
+{% set zetl_graph_stats = vault.stats | default({}) %}
+{% set zetl_graph_total_pages = zetl_graph_stats.total_pages | default(0) %}
+{% set zetl_graph_total_links = zetl_graph_stats.total_links | default(0) %}
 
 <noscript>
   <div class="zetl-graph-fallback" role="note">

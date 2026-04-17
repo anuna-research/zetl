@@ -147,44 +147,34 @@ fn run_build(vault: &Path, out: &Path) -> assert_cmd::assert::Assert {
     cmd.assert()
 }
 
-/// TEST-204 (warning arm, fast path): when `{out}/graph-index.json` already
-/// exceeds the 1 MB budget when `build_static` completes, the build must
-/// emit the NFR-104 warning to stderr.
+/// TEST-204 (warning arm, fast path): when `{out}/graph-index.json` exceeds
+/// the 1 MB budget, the warning helper must produce the NFR-104 message.
 ///
-/// This drives the file-size branch of the warning logic without needing
-/// graph-index emission to be wired up, and without seeding a large vault.
+/// Drives the file-size branch directly via `graph_index_size_warning` so the
+/// test stays fast and deterministic — `build_static` itself rewrites
+/// `{out}/graph-index.json` on every run, which would otherwise erase any
+/// pre-seeded oversize file before the size check runs.
 #[test]
 fn test_204_warning_when_graph_index_over_budget() {
     let tmp = TempDir::new().unwrap();
-    let vault = tmp.path().join("vault");
-    let out = tmp.path().join("dist");
-    fs::create_dir_all(&vault).unwrap();
-    fs::create_dir_all(&out).unwrap();
-    fs::write(vault.join("a.md"), "# A\n").unwrap();
-
-    // Pre-seed the output dir with an oversize graph-index.json. build_static
-    // never overwrites this path (nothing in the current build pipeline
-    // writes it), so the post-build NFR-104 check will observe our seed and
-    // emit the warning.
+    let out = tmp.path().to_path_buf();
     let oversized = vec![b' '; (GRAPH_INDEX_MAX_BYTES as usize) + 16];
     fs::write(out.join("graph-index.json"), &oversized).unwrap();
 
-    let assert = run_build(&vault, &out);
-    let output = assert.get_output();
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let warning = zetl::web::build::graph_index_size_warning(&out, 1)
+        .expect("TEST-204: oversize graph-index.json must produce a warning");
 
     assert!(
-        stderr.contains("NFR-104"),
-        "TEST-204: expected stderr to mention NFR-104 when \
-         graph-index.json exceeds 1 MB. stderr:\n{stderr}"
+        warning.contains("NFR-104"),
+        "TEST-204: warning must mention NFR-104. got: {warning}"
     );
     assert!(
-        stderr.contains("1 MB") || stderr.contains("1 MB budget"),
-        "TEST-204: expected stderr to reference the 1 MB budget. stderr:\n{stderr}"
+        warning.contains("1 MB"),
+        "TEST-204: warning must reference the 1 MB budget. got: {warning}"
     );
     assert!(
-        stderr.contains("zetl serve") || stderr.contains("server-mode"),
-        "TEST-204: expected stderr to recommend server-mode deployment. stderr:\n{stderr}"
+        warning.contains("zetl serve") || warning.contains("server-mode"),
+        "TEST-204: warning must recommend server-mode deployment. got: {warning}"
     );
 }
 
