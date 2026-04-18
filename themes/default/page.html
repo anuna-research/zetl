@@ -26,7 +26,7 @@
     {% if mode == "serve" %}<div id="view-mode"{% if page.is_new %} style="display:none"{% endif %}>
       {% if page.raw_escaped %}
       <div class="flex justify-end mb-4">
-        <a href="/edit/{{ page.slug | safe }}/" class="btn btn-sm btn-outline">Edit</a>
+        <a href="/edit/{{ page.slug | safe }}/" data-zetl-spa="off" class="btn btn-sm btn-outline">Edit</a>
       </div>
       {% endif %}
     {% endif %}
