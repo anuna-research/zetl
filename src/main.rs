@@ -4200,11 +4200,12 @@ fn cmd_theme_install(
     write_provenance(&target_dir, &prov_source, &clone_result)
         .with_context(|| "failed to write provenance")?;
 
-    // 10. Make hook files executable and collect their names.
+    // 10. Make hook files executable and collect their names. Windows has
+    // no Unix mode bit — we just enumerate the hook files and rely on the
+    // hook runner to invoke them via their shebang / interpreter.
     let mut installed_hooks = Vec::<String>::new();
     let hooks_dir = target_dir.join("hooks");
     if hooks_dir.is_dir() {
-        use std::os::unix::fs::PermissionsExt;
         for entry in std::fs::read_dir(&hooks_dir)
             .with_context(|| format!("failed to read {}", hooks_dir.display()))?
             .flatten()
@@ -4220,14 +4221,18 @@ fn cmd_theme_install(
             if !zetl::hooks::HOOK_NAMES.contains(&name.as_str()) {
                 continue;
             }
-            let mut perms = std::fs::metadata(&path)
-                .with_context(|| format!("failed to read metadata for {}", path.display()))?
-                .permissions();
-            let mode = perms.mode();
-            if mode & 0o111 == 0 {
-                perms.set_mode(mode | 0o755);
-                std::fs::set_permissions(&path, perms)
-                    .with_context(|| format!("failed to chmod +x {}", path.display()))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&path)
+                    .with_context(|| format!("failed to read metadata for {}", path.display()))?
+                    .permissions();
+                let mode = perms.mode();
+                if mode & 0o111 == 0 {
+                    perms.set_mode(mode | 0o755);
+                    std::fs::set_permissions(&path, perms)
+                        .with_context(|| format!("failed to chmod +x {}", path.display()))?;
+                }
             }
             installed_hooks.push(name);
         }
