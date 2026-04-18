@@ -103,9 +103,58 @@ fn recent_git_edits(
 
 /// GET /_me — User dashboard with recent edits, accessible pages, role summary, etc.
 #[allow(unused_variables)]
+async fn dashboard_signed_out(State(state): State<WebState>, vault_name: String) -> Response {
+    // Minimal centred sign-in CTA served inline to avoid a template round-trip
+    // for a page the extractor already short-circuited.
+    //
+    // vault_name is derived from a directory name on the host filesystem. The
+    // owner is the person who'd see this page, so XSS here is self-inflicted,
+    // but escape anyway so a directory named `"><script>` doesn't break the
+    // markup on someone else's machine who clones the vault.
+    let vault = html_escape(&vault_name);
+    let login = if state.collab { "/auth/login" } else { "/" };
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign in — {vault}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {{ font-family: ui-sans-serif, system-ui, sans-serif; margin: 0;
+          min-height: 100vh; display: flex; align-items: center; justify-content: center;
+          background: #fafafa; color: #1f2937; }}
+  .signed-out {{ max-width: 24rem; padding: 2rem; text-align: center; }}
+  .signed-out h1 {{ font-size: 1.25rem; font-weight: 600; margin: 0 0 0.5rem; }}
+  .signed-out p  {{ font-size: 0.9rem; opacity: 0.75; margin: 0 0 1.25rem; }}
+  .signed-out .primary {{ display: inline-block; padding: 0.55rem 1.1rem;
+                    border-radius: 0.5rem; background: #6366f1; color: #fff;
+                    text-decoration: none; font-size: 0.9rem; font-weight: 500; }}
+  .signed-out .primary:hover {{ background: #4f46e5; }}
+  .signed-out .alt {{ display: block; margin-top: 0.9rem; color: #6b7280;
+                      background: transparent;
+                      text-decoration: none;
+                      font-size: 0.8rem; }}
+  .signed-out .alt:hover {{ text-decoration: underline; }}
+</style>
+</head>
+<body>
+  <main class="signed-out">
+    <h1>Sign in to see your dashboard</h1>
+    <p>Your dashboard shows accessible pages, recent edits, and active sessions — but first we need to know who you are.</p>
+    <a class="primary" href="{login}">Sign in</a>
+    <a class="alt" href="/">Back to {vault}</a>
+  </main>
+</body>
+</html>
+"#
+    );
+    (StatusCode::UNAUTHORIZED, Html(html)).into_response()
+}
+
 pub async fn dashboard_handler(
     State(state): State<WebState>,
-    session: crate::web::session::SessionUser,
+    session: Result<crate::web::session::SessionUser, StatusCode>,
 ) -> Response {
     let vault_root = &*state.vault_root;
     let vault_name = state
@@ -113,6 +162,15 @@ pub async fn dashboard_handler(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
+
+    // Unauthenticated — render a sign-in CTA instead of a blank 401
+    // (task-me-empty-state).
+    let session = match session {
+        Ok(s) => s,
+        Err(_) => {
+            return dashboard_signed_out(State(state), vault_name).await;
+        }
+    };
 
     // Load user profile
     let profile = match crate::user::load_profile(vault_root, &session.user_id) {
@@ -138,10 +196,10 @@ pub async fn dashboard_handler(
     let accessible_pages: Vec<serde_json::Value> = data
         .page_names
         .iter()
-        .filter(|name| {
+        .filter(|_name| {
             #[cfg(feature = "reason")]
             if state.collab {
-                let slug = data.slug_for_page(name);
+                let slug = data.slug_for_page(_name);
                 return check_page_acl_read(&state, &session.user_id, &slug).is_ok();
             }
             true
@@ -351,7 +409,16 @@ pub async fn help_handler(State(state): State<WebState>) -> Response {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    // Sidebar-parity with page_handler — populate history so "Recent changes"
+    // renders on /help too (BUG-502 class).
+    #[allow(unused_mut)]
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
+    #[cfg(feature = "history")]
+    {
+        if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
+    }
     match state.engine.render_help(&vault_ctx, "serve") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
@@ -381,6 +448,12 @@ pub async fn page_handler(
         return page_history_handler_inner(State(state), page_slug.to_string()).await;
     }
 
+    // /_search → redirect to the vault index with ?focus=search so the sidebar
+    // search can grab focus on page load.
+    if slug == "_search" {
+        return axum::response::Redirect::to("/?focus=search").into_response();
+    }
+
     let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     let vault_name = state
@@ -394,6 +467,25 @@ pub async fn page_handler(
         .files
         .iter()
         .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
+
+    // Reserve the /_* URL prefix (task-reserved-underscore-routes).
+    // Shell routes (/_graph, /_me, /_print, /_history, /_static/*) are matched
+    // before page_handler. Real vault pages whose slug legitimately starts with
+    // `_` (e.g. /_meta/ia) are found via the lookup above. Anything left — an
+    // unknown /_* path — returns 404 rather than falling through to the
+    // "this page doesn't exist yet" creation flow, which burns the underscore
+    // namespace and confuses URL-hackers.
+    if file.is_none() && slug.starts_with('_') {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "text/plain; charset=utf-8",
+            )],
+            format!("Unknown route: /{slug}\n"),
+        )
+            .into_response();
+    }
 
     // ── ACL check for collab mode (REQ-020-030, REQ-020-033) ──────────
     #[cfg(feature = "reason")]
@@ -902,6 +994,9 @@ pub async fn edit_handler(
     })
     .to_string();
 
+    // `mut` is only required under `history` or `semantic` — allow unused so
+    // the default build doesn't trip the lint.
+    #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(&data, &vault_name);
 
     // BUG-502: sidebar parity with page_handler. Without this the
@@ -2178,7 +2273,15 @@ async fn page_history_handler_inner(State(state): State<WebState>, page_slug: St
         Vec::new()
     };
 
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    // Sidebar-parity: populate vault_ctx.history so "Recent changes" renders.
+    #[allow(unused_mut)]
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
+    #[cfg(feature = "history")]
+    {
+        if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
+    }
     let breadcrumbs: Vec<crate::web::context::BreadcrumbEntry> = {
         let parts: Vec<&str> = current_slug.split('/').collect();
         let mut crumbs = Vec::new();
@@ -5571,7 +5674,17 @@ pub async fn vault_graph_handler(State(state): State<WebState>) -> Response {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    // Sidebar-parity with page_handler / editor_handler — without this the
+    // "Recent changes" link is gated on vault.history.snapshot_count and
+    // silently disappears from the /_graph sidebar.
+    #[allow(unused_mut)]
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
+    #[cfg(feature = "history")]
+    {
+        if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
+    }
     match state.engine.render_vault_graph(&vault_ctx, "serve", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
@@ -6912,5 +7025,101 @@ mod tests {
 
         let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ── Design-review follow-ups (plans/DESIGN-REVIEW-2026-04-18.spl) ────
+
+    #[tokio::test]
+    async fn dashboard_unauth_returns_signin_cta() {
+        // /_me with no session → 401 + HTML containing the CTA copy.
+        // Prior to task-me-empty-state this rendered an empty page.
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+
+        let app = Router::new()
+            .route("/_me", get(dashboard_handler))
+            .with_state(state);
+
+        let (status, body, ct) = get_body(&app, "/_me").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(ct.starts_with("text/html"), "content-type was {ct}");
+        let html = std::str::from_utf8(&body).unwrap();
+        assert!(
+            html.contains("Sign in to see your dashboard"),
+            "missing CTA heading in: {html}"
+        );
+        assert!(
+            html.contains(r#"class="primary""#),
+            "missing primary link class"
+        );
+    }
+
+    #[tokio::test]
+    async fn dashboard_unauth_escapes_vault_name() {
+        // A vault directory named `<vault>` must not break markup — the
+        // vault_name lands in <title> and link text, so it needs HTML escape.
+        // Call the helper directly with a crafted name (some filesystems
+        // won't accept `<>` in a directory name, so skip the filesystem).
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+        let evil = String::from("<script>alert(1)</script>");
+        let resp = dashboard_signed_out(State(state), evil).await;
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let body = axum::body::to_bytes(resp.into_body(), 100_000)
+            .await
+            .unwrap();
+        let html = std::str::from_utf8(&body).unwrap();
+        assert!(
+            !html.contains("<script>alert(1)</script>"),
+            "raw script tag leaked into HTML"
+        );
+        assert!(
+            html.contains("&lt;script&gt;alert(1)&lt;&#x2f;script&gt;")
+                || html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"),
+            "vault_name should be HTML-escaped; got: {html}"
+        );
+    }
+
+    #[tokio::test]
+    async fn underscore_route_search_redirects_to_sidebar() {
+        // task-reserved-underscore-routes: /_search → /?focus=search
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+
+        let app = Router::new()
+            .route("/{*path}", get(page_handler))
+            .with_state(state);
+
+        let req = Request::builder()
+            .uri("/_search")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        // Redirect::to() emits 303 See Other.
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        let loc = resp
+            .headers()
+            .get("location")
+            .map(|v| v.to_str().unwrap().to_string())
+            .unwrap_or_default();
+        assert_eq!(loc, "/?focus=search");
+    }
+
+    #[tokio::test]
+    async fn underscore_route_unknown_returns_404() {
+        // Unknown /_* paths 404 rather than fall through to the "this page
+        // doesn't exist yet" create flow, which would burn the namespace.
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+
+        let app = Router::new()
+            .route("/{*path}", get(page_handler))
+            .with_state(state);
+
+        let status = get_status(&app, "/_nonsense").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        let status = get_status(&app, "/_not-a-shell-route").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }

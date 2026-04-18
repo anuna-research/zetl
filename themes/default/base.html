@@ -387,6 +387,20 @@
       font-size: 0.7rem;
       opacity: 0.75;
     }
+    /* Sidebar actions group, wordmark hover, drawer z-index over graph
+       overlays, and mobile breadcrumb truncation — DESIGN-REVIEW-2026-04-18. */
+    .zetl-actions{margin-bottom:.5rem}
+    .zetl-actions-heading{font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.5;padding:0 .5rem;margin:.25rem 0 .35rem}
+    .zetl-action{display:flex;align-items:center;gap:.5rem;padding:.3rem .5rem;border-radius:.3rem;font-size:.8rem;color:oklch(var(--bc));opacity:.85;line-height:1.2}
+    .zetl-action:hover{background:oklch(var(--b3)/.6);opacity:1}
+    .zetl-action-icon{width:1rem;text-align:center;opacity:.6;font-size:.85rem;line-height:1}
+    .zetl-action:hover .zetl-action-icon{opacity:1}
+    .zetl-wordmark{cursor:pointer}
+    .drawer-side{z-index:50}
+    @media (max-width:420px){
+      .breadcrumbs ul>li:not(:first-child):not(:last-child){display:none}
+      .breadcrumbs ul>li:first-child:not(:nth-last-child(-n+1)):not(:nth-last-child(2))::after{content:"\00A0›\00A0…";opacity:.6;margin-left:.15em}
+    }
     /* ── Graph widget placement (SPEC-028 REQ-116)
        The default theme mounts a single persistent graph widget outside the
        volatile content region. Three placements are supported; the active
@@ -432,6 +446,9 @@
       bottom: auto !important;
       box-shadow: none;
       resize: none;
+      /* Fullscreen placement sits in normal flow — drop the z-index boost so
+         the daisyUI mobile drawer (position:fixed) overlays it correctly. */
+      z-index: auto !important;
     }
     .zetl-graph-widget__canvas {
       position: absolute;
@@ -710,9 +727,23 @@
       .wikilink-tooltip,
       .drawer-toggle,
       [data-zetl-graph-fallback],
-      /* Edit button serves no purpose on paper (BUG-503). */
+      /* Edit button and View-in-graph link serve no purpose on paper
+         (BUG-503, task-print-css-audit). */
       a[href^="/edit/"],
-      a[href^="&#x2f;edit/"] {
+      a[href^="&#x2f;edit/"],
+      a[href^="/_graph"],
+      a[href^="&#x2f;_graph"],
+      /* Home-page interactive toolbar (sort pills + folder filter). */
+      .zetl-index-toolbar,
+      /* Fullscreen-graph overlay UI (task-print-css-audit). */
+      .vg-controls,
+      .vg-legend,
+      .vg-focus-chip,
+      /* Editor affordances — a printed editor is a printed document. */
+      .editor-toolbar,
+      .editor-overflow,
+      .editor-status-badge,
+      .presence-bar {
         display: none !important;
       }
       /* daisyUI's .breadcrumbs styling relies on utility classes that
@@ -884,20 +915,34 @@
     <div class="drawer-side">
       <label for="sidebar-toggle" aria-label="close sidebar" class="drawer-overlay"></label>
       <aside class="bg-base-200 w-64 min-h-screen p-4">
-        <a href="{{ root_path }}{{ index_file }}" class="text-xl font-bold mb-4 block">zetl</a>
+        <a href="{{ root_path }}{{ index_file }}" class="zetl-wordmark text-xl font-bold mb-4 block hover:underline" aria-label="Vault index">zetl</a>
         <div class="divider my-1"></div>
         <button class="search-btn" onclick="openSearch()">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           Search…
           <kbd>⌘K</kbd>
         </button>
-        <a href="{{ root_path }}help/{{ index_file }}" class="block text-xs opacity-80 hover:opacity-100 mb-3 px-2">Help &amp; install</a>
-        {# SPEC-027 REQ-304 / REQ-305: vault-history link, omitted when history absent. #}
-        {%- if vault.history and vault.history.snapshot_count and vault.history.snapshot_count > 0 %}
-        <a href="{{ root_path }}_history{% if mode == 'build' %}.html{% endif %}" class="block text-xs opacity-80 hover:opacity-100 mb-3 px-2">Recent changes</a>
-        {%- endif %}
-        {# SPEC-028 REQ-107: vault-wide graph link. #}
-        <a href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}" data-zetl-spa="off" class="block text-xs opacity-80 hover:opacity-100 mb-3 px-2">Graph</a>
+        <nav class="zetl-actions" aria-label="Vault actions">
+          <p class="zetl-actions-heading">Vault</p>
+          <a href="{{ root_path }}help/{{ index_file }}" class="zetl-action">
+            <span class="zetl-action-icon" aria-hidden="true">?</span>
+            <span>Help &amp; install</span>
+          </a>
+          {# SPEC-027 REQ-304 / REQ-305: vault-history link, omitted when history absent.
+             data-zetl-spa="off" forces a full page load — /_history isn't in the SPA. #}
+          {%- if vault.history and vault.history.snapshot_count and vault.history.snapshot_count > 0 %}
+          <a href="{{ root_path }}_history{% if mode == 'build' %}.html{% endif %}" data-zetl-spa="off" class="zetl-action">
+            <span class="zetl-action-icon" aria-hidden="true">↻</span>
+            <span>Recent changes</span>
+          </a>
+          {%- endif %}
+          {# SPEC-028 REQ-107: vault-wide graph link. #}
+          <a href="{{ root_path }}_graph{% if mode == 'build' %}.html{% endif %}" data-zetl-spa="off" class="zetl-action">
+            <span class="zetl-action-icon" aria-hidden="true">◈</span>
+            <span>Graph</span>
+          </a>
+        </nav>
+        <div class="divider my-2 opacity-50"></div>
         {% block sidebar %}
         {% macro render_tree(nodes) %}
         <ul class="menu menu-sm sidebar-tree">

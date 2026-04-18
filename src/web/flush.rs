@@ -153,11 +153,7 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
                 .collect();
             (pname, pid, co_authors)
         } else {
-            (
-                "zetl-crdt".to_string(),
-                "zetl-crdt".to_string(),
-                Vec::new(),
-            )
+            ("zetl-crdt".to_string(), "zetl-crdt".to_string(), Vec::new())
         };
     // primary_email is only consumed by the history-gated jj snapshot
     // below; silence the unused-variable warning in builds without the
@@ -669,10 +665,7 @@ mod tests {
             del: 0,
             text: "edit-".to_string(),
         }];
-        state
-            .crdt_store
-            .apply_ops("note", &alice.id, &op)
-            .unwrap();
+        state.crdt_store.apply_ops("note", &alice.id, &op).unwrap();
         state.crdt_store.apply_ops("note", &bob.id, &op).unwrap();
 
         let result = flush_pipeline(&state, "note");

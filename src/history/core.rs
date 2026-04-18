@@ -632,8 +632,12 @@ pub fn parse_co_authored_by(description: &str) -> Vec<(String, String)> {
             Some((header, rest)) if header.eq_ignore_ascii_case("Co-authored-by") => rest.trim(),
             _ => continue,
         };
-        let Some(open) = rest.rfind('<') else { continue };
-        let Some(close) = rest.rfind('>') else { continue };
+        let Some(open) = rest.rfind('<') else {
+            continue;
+        };
+        let Some(close) = rest.rfind('>') else {
+            continue;
+        };
         if close <= open {
             continue;
         }

@@ -37,9 +37,32 @@
   }
   .vg-header h1 { font-size: 1.5rem; font-weight: 600; }
   .vg-header .vg-meta { font-size: 0.85rem; opacity: 0.75; }
+  .vg-focus-chip {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    background: oklch(var(--p) / 0.08);
+    border: 1px solid oklch(var(--p) / 0.3);
+    color: oklch(var(--p));
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    font-size: 0.78rem;
+  }
+  .vg-focus-chip[hidden] { display: none; }
+  .vg-focus-label { opacity: 0.7; font-weight: 500; }
+  .vg-focus-target { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; }
+  .vg-focus-depth { opacity: 0.7; font-size: 0.72rem; }
+  .vg-focus-clear {
+    background: transparent; border: 0; color: inherit;
+    cursor: pointer; padding: 0 0.15rem; font-size: 0.85rem; line-height: 1;
+    opacity: 0.7;
+  }
+  .vg-focus-clear:hover { opacity: 1; }
   .vg-stage {
     flex: 1;
     position: relative;
+    /* Explicit z-index creates a local stacking context so .vg-controls,
+       .vg-legend and .vg-focus-chip (each z-index: 5) stay trapped inside
+       the stage rather than painting over a later-in-DOM mobile drawer. */
+    z-index: 0;
     border: 1px solid oklch(var(--b3));
     border-radius: 0.5rem;
     background: oklch(var(--b1));
@@ -60,6 +83,152 @@
     opacity: 0.75;
     font-style: italic;
   }
+  /* Graph controls overlay — absolute-positioned in the top-right corner of the stage.
+     Sigma owns all pointer events on the canvas itself; the controls sit above
+     (pointer-events: auto) only where the buttons exist. */
+  .vg-controls {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    background: oklch(var(--b1) / 0.85);
+    backdrop-filter: blur(4px);
+    border: 1px solid oklch(var(--b3));
+    border-radius: 0.375rem;
+    padding: 0.25rem;
+    width: 180px !important;   /* override .vg-stage > * { width: 100% } */
+    height: auto !important;
+  }
+  .vg-controls button {
+    font-size: 0.75rem;
+    line-height: 1;
+    padding: 0.375rem 0.5rem;
+    border-radius: 0.25rem;
+    background: transparent;
+    border: 0;
+    color: oklch(var(--bc));
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .vg-controls button:hover { background: oklch(var(--b2)); }
+  .vg-controls button[aria-pressed="true"] { background: oklch(var(--b2)); font-weight: 500; }
+  .vg-controls .vg-ctrl-divider {
+    height: 1px;
+    background: oklch(var(--b3));
+    margin: 0.15rem 0;
+  }
+  .vg-controls .vg-ctrl-key {
+    margin-left: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.65rem;
+    opacity: 0.5;
+  }
+  .vg-controls-hint {
+    font-size: 0.65rem;
+    opacity: 0.55;
+    padding: 0.25rem 0.5rem;
+    line-height: 1.3;
+  }
+  /* Mobile: shrink the controls panel so it doesn't eat half the canvas.
+     Buttons become icon-only, keyboard hints and the scroll/drag hint hide
+     (touch has no scroll-to-zoom convention), and the panel collapses into
+     a toolbar that still fits on a 390 px viewport. */
+  @media (max-width: 600px) {
+    .vg-controls {
+      width: auto !important;
+      min-width: 0;
+      padding: 0.15rem;
+      gap: 0.1rem;
+    }
+    .vg-controls button {
+      padding: 0.3rem 0.4rem;
+      font-size: 0.7rem;
+      gap: 0;
+    }
+    /* Swallow the mid-button label text; keep only the leading glyph
+       (+ / − / ⟲ / ◇) and hide the keyboard hint. */
+    .vg-controls .vg-ctrl-text,
+    .vg-controls .vg-ctrl-key,
+    .vg-controls-hint {
+      display: none;
+    }
+    .vg-controls button > span[aria-hidden] {
+      font-size: 0.95rem;
+    }
+    /* Hide the search + degree fields by default on mobile; reveal when the
+       user taps the "more tools" toggle (details/summary below). */
+    .vg-controls .vg-ctrl-field { display: none; }
+    .vg-controls.vg-ctrl-open .vg-ctrl-field { display: flex; }
+  }
+  .vg-ctrl-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.25rem 0.5rem;
+  }
+  .vg-ctrl-field-label {
+    font-size: 0.65rem;
+    opacity: 0.7;
+    display: flex; justify-content: space-between;
+  }
+  .vg-ctrl-field-val { font-variant-numeric: tabular-nums; opacity: 0.8; }
+  .vg-ctrl-field input[type="search"] {
+    width: 100%;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.35rem;
+    border: 1px solid oklch(var(--b3));
+    border-radius: 0.25rem;
+    background: oklch(var(--b1));
+    color: oklch(var(--bc));
+  }
+  .vg-ctrl-field input[type="range"] {
+    width: 100%;
+    accent-color: oklch(var(--p));
+  }
+  /* Folder-colour legend — bottom-left of the stage, collapsible via <details>. */
+  .vg-legend {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    z-index: 5;
+    background: oklch(var(--b1) / 0.85);
+    backdrop-filter: blur(4px);
+    border: 1px solid oklch(var(--b3));
+    border-radius: 0.375rem;
+    font-size: 0.7rem;
+    max-width: 220px;
+    width: auto !important;
+    height: auto !important;
+  }
+  .vg-legend[hidden] { display: none; }
+  .vg-legend summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.3rem 0.6rem;
+    opacity: 0.75;
+    user-select: none;
+  }
+  .vg-legend summary::-webkit-details-marker { display: none; }
+  .vg-legend summary::before { content: '▸'; margin-right: 0.3rem; font-size: 0.6rem; display: inline-block; transition: transform 0.15s; }
+  .vg-legend[open] summary::before { transform: rotate(90deg); }
+  .vg-legend ul { list-style: none; margin: 0; padding: 0.1rem 0.6rem 0.5rem; display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; }
+  .vg-legend li { display: flex; align-items: center; gap: 0.3rem; line-height: 1.4; }
+  .vg-legend .vg-legend-swatch {
+    width: 10px; height: 10px; border-radius: 50%;
+    box-shadow: 0 0 0 1px oklch(var(--b3));
+    flex-shrink: 0;
+  }
+  /* Mobile: legend starts collapsed, and the focus chip wraps to its own row. */
+  @media (max-width: 600px) {
+    .vg-legend { max-width: 60vw; font-size: 0.65rem; }
+    .vg-focus-chip { flex-basis: 100%; justify-content: center; font-size: 0.7rem; }
+  }
 </style>
 {% endblock %}
 
@@ -75,6 +244,12 @@
   <header class="vg-header">
     <h1>Graph</h1>
     <span class="vg-meta">Interactive vault map — click a node to open a page.</span>
+    <div class="vg-focus-chip" hidden data-vg-focus-chip aria-live="polite">
+      <span class="vg-focus-label">Focus:</span>
+      <span class="vg-focus-target" data-vg-focus-slug></span>
+      <span class="vg-focus-depth">depth <span data-vg-focus-depth>1</span></span>
+      <button type="button" class="vg-focus-clear" data-vg-focus-clear aria-label="Clear focus">✕</button>
+    </div>
   </header>
 
   {# data-mode="vault" requests full-graph zoom-to-fit per REQ-108.
@@ -84,6 +259,35 @@
     {% block graph_widget %}
       {% include "_graph.html" ignore missing %}
     {% endblock %}
+    <div class="vg-controls" role="toolbar" aria-label="Graph controls">
+      <button type="button" data-vg-action="zoom-in" aria-label="Zoom in">
+        <span aria-hidden="true">+</span> <span class="vg-ctrl-text">Zoom in</span> <span class="vg-ctrl-key">+</span>
+      </button>
+      <button type="button" data-vg-action="zoom-out" aria-label="Zoom out">
+        <span aria-hidden="true">−</span> <span class="vg-ctrl-text">Zoom out</span> <span class="vg-ctrl-key">−</span>
+      </button>
+      <button type="button" data-vg-action="reset" aria-label="Fit to screen">
+        <span aria-hidden="true">⟲</span> <span class="vg-ctrl-text">Fit</span> <span class="vg-ctrl-key">0</span>
+      </button>
+      <div class="vg-ctrl-divider" role="separator"></div>
+      <button type="button" data-vg-action="labels-toggle" aria-pressed="true" aria-label="Toggle labels">
+        <span aria-hidden="true">◇</span> <span class="vg-ctrl-text">Labels</span> <span class="vg-ctrl-key">L</span>
+      </button>
+      <div class="vg-ctrl-divider" role="separator"></div>
+      <label class="vg-ctrl-field" for="vg-search">
+        <span class="vg-ctrl-field-label">Find</span>
+        <input id="vg-search" type="search" placeholder="dim non-matching…" autocomplete="off" />
+      </label>
+      <label class="vg-ctrl-field" for="vg-degree">
+        <span class="vg-ctrl-field-label">Min links <span class="vg-ctrl-field-val" data-vg-degree-val>0</span></span>
+        <input id="vg-degree" type="range" min="0" max="10" value="0" />
+      </label>
+      <div class="vg-controls-hint">Scroll to zoom · drag to pan</div>
+    </div>
+    <details class="vg-legend" hidden aria-label="Folder colour legend">
+      <summary>Folders</summary>
+      <ul></ul>
+    </details>
     <noscript>
       <div class="vg-empty">
         Graph view requires JavaScript. Browse pages from the
@@ -91,5 +295,173 @@
       </div>
     </noscript>
   </div>
+
+  <script>
+  (function(){
+    /* Wire controls to the Sigma renderer exposed on window.__zetlGraph.
+       Boot is async (vendor bundles lazy-load); poll until the renderer is live. */
+    var stage = document.currentScript.previousElementSibling;
+    while (stage && !stage.matches('.vg-stage')) stage = stage.previousElementSibling;
+    if (!stage) return;
+    var controls = stage.querySelector('.vg-controls');
+    if (!controls) return;
+
+    var labelsOn = true;
+
+    function getCamera(){
+      var api = window.__zetlGraph;
+      if (!api) return null;
+      var r = api.getRenderer && api.getRenderer();
+      return r && r.getCamera ? r.getCamera() : null;
+    }
+    function getRenderer(){
+      return window.__zetlGraph && window.__zetlGraph.getRenderer && window.__zetlGraph.getRenderer();
+    }
+
+    function zoomIn(){
+      var c = getCamera(); if (!c) return;
+      if (c.animatedZoom) c.animatedZoom({ factor: 1.5, duration: 200 });
+      else if (c.setState) c.setState({ ratio: (c.getState && c.getState().ratio || 1) / 1.5 });
+    }
+    function zoomOut(){
+      var c = getCamera(); if (!c) return;
+      if (c.animatedUnzoom) c.animatedUnzoom({ factor: 1.5, duration: 200 });
+      else if (c.setState) c.setState({ ratio: (c.getState && c.getState().ratio || 1) * 1.5 });
+    }
+    function reset(){
+      var c = getCamera(); if (!c) return;
+      if (c.animatedReset) c.animatedReset({ duration: 300 });
+    }
+    function toggleLabels(){
+      var r = getRenderer(); if (!r) return;
+      labelsOn = !labelsOn;
+      if (r.setSetting) r.setSetting('renderLabels', labelsOn);
+      if (r.refresh) r.refresh();
+      var btn = controls.querySelector('[data-vg-action="labels-toggle"]');
+      if (btn) btn.setAttribute('aria-pressed', labelsOn ? 'true' : 'false');
+    }
+
+    controls.addEventListener('click', function(e){
+      var btn = e.target.closest('[data-vg-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-vg-action');
+      if (action === 'zoom-in') zoomIn();
+      else if (action === 'zoom-out') zoomOut();
+      else if (action === 'reset') reset();
+      else if (action === 'labels-toggle') toggleLabels();
+    });
+
+    /* Search + degree filter → window.__zetlGraph.setFilter({...}).
+       Debounce typing so the renderer refresh doesn't fire on every keystroke. */
+    var searchEl = stage.querySelector('#vg-search');
+    var degreeEl = stage.querySelector('#vg-degree');
+    var degreeVal = stage.querySelector('[data-vg-degree-val]');
+    var searchTimer = null;
+    function pushFilter(patch){
+      if (window.__zetlGraph && window.__zetlGraph.setFilter) {
+        window.__zetlGraph.setFilter(patch);
+      }
+    }
+    if (searchEl) {
+      searchEl.addEventListener('input', function(){
+        clearTimeout(searchTimer);
+        var v = searchEl.value;
+        searchTimer = setTimeout(function(){ pushFilter({ search: v }); }, 120);
+      });
+    }
+    if (degreeEl) {
+      degreeEl.addEventListener('input', function(){
+        if (degreeVal) degreeVal.textContent = degreeEl.value;
+        pushFilter({ minDegree: +degreeEl.value });
+      });
+    }
+
+    /* Size the degree slider against the graph's actual max once it's live. */
+    window.addEventListener('zetl:graph:ready', function(){
+      if (!degreeEl || !window.__zetlGraph || !window.__zetlGraph.maxDegree) return;
+      var m = window.__zetlGraph.maxDegree();
+      if (m > 0) degreeEl.max = String(m);
+    });
+
+    /* Focus mode (task-graph-focus-mode) — /_graph?focus=<slug>&depth=<N>.
+       The chip sits outside .vg-stage, in the header, so query the document. */
+    var focusChip = document.querySelector('[data-vg-focus-chip]');
+    var focusSlugEl = document.querySelector('[data-vg-focus-slug]');
+    var focusDepthEl = document.querySelector('[data-vg-focus-depth]');
+    var focusClearBtn = document.querySelector('[data-vg-focus-clear]');
+    function applyFocusFromUrl(){
+      var q = new URLSearchParams(window.location.search);
+      var slug = q.get('focus') || '';
+      /* `|| 1` would coerce an explicit depth=0 to 1 because 0 is falsy —
+         use an explicit null check so depth=0 (isolate a single node) works. */
+      var raw = q.get('depth');
+      var depth = raw === null || raw === '' ? 1 : Math.max(0, parseInt(raw, 10) || 0);
+      if (window.__zetlGraph && window.__zetlGraph.setFocus) {
+        window.__zetlGraph.setFocus({ slug: slug, depth: depth });
+      }
+      if (slug) {
+        focusChip.hidden = false;
+        focusSlugEl.textContent = slug;
+        focusDepthEl.textContent = String(depth);
+      } else {
+        focusChip.hidden = true;
+      }
+    }
+    if (focusClearBtn) {
+      focusClearBtn.addEventListener('click', function(){
+        var url = window.location.pathname + window.location.hash;
+        window.history.replaceState(null, '', url);
+        applyFocusFromUrl();
+      });
+    }
+    window.addEventListener('zetl:graph:ready', applyFocusFromUrl);
+    /* Layout finishes asynchronously — node x/y aren't final until
+       zetl:graph:layoutstop fires. Re-apply then so the camera lands on the
+       focus node's final position, not its seed coordinates. */
+    window.addEventListener('zetl:graph:layoutstop', applyFocusFromUrl);
+    /* Re-apply on SPA navigation (depth can change within session). */
+    window.addEventListener('zetl:after-navigate', applyFocusFromUrl);
+
+    /* Folder-colour legend — populate from window.__zetlGraph.folderLegend().
+       The zetl:graph:ready event fires after Sigma mounts + nodes are coloured. */
+    var legendEl = stage.querySelector('.vg-legend');
+    function renderLegend(items){
+      if (!legendEl || !items || !items.length) return;
+      var ul = legendEl.querySelector('ul');
+      ul.innerHTML = '';
+      items.forEach(function(it){
+        var li = document.createElement('li');
+        var sw = document.createElement('span');
+        sw.className = 'vg-legend-swatch';
+        sw.style.background = it.colour;
+        var t = document.createElement('span');
+        t.textContent = it.folder;
+        li.appendChild(sw); li.appendChild(t);
+        ul.appendChild(li);
+      });
+      legendEl.hidden = false;
+      /* Open by default on desktop, collapsed on mobile to save real estate. */
+      legendEl.open = window.matchMedia('(min-width: 601px)').matches;
+    }
+    window.addEventListener('zetl:graph:ready', function(e){
+      renderLegend(e && e.detail && e.detail.legend);
+    });
+    /* If the graph booted before this script attached, pull the legend now. */
+    if (window.__zetlGraph && window.__zetlGraph.folderLegend) {
+      renderLegend(window.__zetlGraph.folderLegend());
+    }
+
+    /* Keyboard: +, -, 0, L — only when not typing in a field */
+    document.addEventListener('keydown', function(e){
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      var tgt = e.target;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+      if (e.key === '+' || e.key === '=') { zoomIn(); e.preventDefault(); }
+      else if (e.key === '-' || e.key === '_') { zoomOut(); e.preventDefault(); }
+      else if (e.key === '0') { reset(); e.preventDefault(); }
+      else if (e.key === 'l' || e.key === 'L') { toggleLabels(); e.preventDefault(); }
+    });
+  })();
+  </script>
 </main>
 {% endblock %}

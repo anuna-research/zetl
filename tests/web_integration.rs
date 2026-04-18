@@ -1792,8 +1792,14 @@ fn test_verbose_shows_template_resolution_tiers() {
 /// upper-bound proxy. The actual binary impact is smaller after compression, so if
 /// the raw content fits within 200 KB we are well within the NFR budget.
 ///
-/// Budget increased from 100 KB to 200 KB to accommodate the fountain theme, which
-/// bundles a complete search implementation, sidebar, and screenplay-specific CSS/JS.
+/// Budget history:
+///   100 KB → 200 KB (fountain theme: search + sidebar + screenplay CSS/JS)
+///   200 KB → 220 KB (design-review-2026-04-18: home sort/filter toolbar,
+///                     stat-card click-through, sidebar actions group, mobile
+///                     breadcrumb truncation, print-CSS expansion. Per-page
+///                     JS was extracted to themes/default/static/*.js to keep
+///                     the template bundle minimal; remaining delta is markup
+///                     that necessarily lives in the templates.)
 #[test]
 fn test_bundled_theme_size_within_budget() {
     use zetl::web::engine::{bundled_template, bundled_theme_names};
@@ -1812,10 +1818,10 @@ fn test_bundled_theme_size_within_budget() {
             }
         }
     }
-    const BUDGET_BYTES: usize = 200 * 1024; // 200 KB
+    const BUDGET_BYTES: usize = 220 * 1024; // 220 KB
     assert!(
         total_bytes <= BUDGET_BYTES,
-        "bundled theme content totals {total_bytes} bytes, exceeds 200 KB budget (NFR-014-002)"
+        "bundled theme content totals {total_bytes} bytes, exceeds 220 KB budget (NFR-014-002)"
     );
 }
 

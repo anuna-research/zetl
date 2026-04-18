@@ -288,11 +288,7 @@ fn build_env_with_strictness(
     env
 }
 
-fn __build_env_finish(
-    env: &mut Environment<'static>,
-    vault_root: &Path,
-    theme: &str,
-) {
+fn __build_env_finish(env: &mut Environment<'static>, vault_root: &Path, theme: &str) {
     let vr = vault_root.to_path_buf();
     let t = theme.to_string();
     env.set_loader(move |name: &str| {

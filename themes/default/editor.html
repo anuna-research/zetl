@@ -188,6 +188,77 @@
 .editor-status.disconnected { color: oklch(var(--er)); opacity: 0.8; }
 .editor-status.connecting { color: oklch(var(--wa)); opacity: 0.8; }
 
+/* Connection indicator badge — dot + label. Reads as status, not action. */
+.editor-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  line-height: 1;
+  background: oklch(var(--b2));
+  color: oklch(var(--bc) / 0.65);
+}
+.editor-status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px oklch(var(--b2));
+}
+.editor-status-badge.connected { color: oklch(var(--su)); }
+.editor-status-badge.connected .editor-status-dot { background: oklch(var(--su)); }
+.editor-status-badge.disconnected { color: oklch(var(--er)); }
+.editor-status-badge.disconnected .editor-status-dot { background: oklch(var(--er)); }
+.editor-status-badge.connecting { color: oklch(var(--wa)); }
+.editor-status-badge.connecting .editor-status-dot {
+  background: oklch(var(--wa));
+  animation: editor-status-pulse 1.2s ease-in-out infinite;
+}
+@keyframes editor-status-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+/* Overflow menu — kebab + popover. Uses native <details> so it closes on
+   Escape / outside click via normal summary toggle behaviour. */
+.editor-overflow {
+  position: relative;
+  margin-left: 0.25rem;
+}
+.editor-overflow > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.25rem 0.6rem;
+}
+.editor-overflow > summary::-webkit-details-marker { display: none; }
+.editor-overflow-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 100;
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--b3));
+  border-radius: 0.375rem;
+  min-width: 11rem;
+  padding: 0.25rem;
+  box-shadow: 0 8px 24px -12px oklch(0 0 0 / 0.2);
+}
+.editor-overflow-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+  color: oklch(var(--bc));
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.editor-overflow-item:hover { background: oklch(var(--b2)); }
+.editor-overflow-danger { color: oklch(var(--er)); }
+.editor-overflow-danger:hover { background: oklch(var(--er) / 0.12); }
+
 /* ── Delete confirmation dialog ─────────────────────────────── */
 .delete-overlay {
   position: fixed;
@@ -258,14 +329,25 @@
     </ul>
   </nav>
 
-  {# Toolbar #}
+  {# Toolbar — primary actions left, presence/overflow right.
+     Delete lives in a kebab menu so destructive actions can't be mis-clicked
+     as sibling of Save. The connection status reads as a quiet badge
+     (dot + label), not a fourth button. #}
   <div class="editor-toolbar">
     <a href="{{ root_path }}{{ page_slug | safe }}/" class="btn btn-sm btn-outline btn-ghost">&larr; Back</a>
     <button id="save-btn" class="btn btn-sm btn-primary" onclick="saveDoc()">Save</button>
-    <span id="ws-status" class="editor-status connecting">connecting&hellip;</span>
+    <span id="ws-status" class="editor-status-badge connecting" role="status" aria-live="polite">
+      <span class="editor-status-dot" aria-hidden="true"></span>
+      <span class="editor-status-label">connecting&hellip;</span>
+    </span>
     <div class="flex-1"></div>
     <div id="presence-bar" class="presence-bar"></div>
-    <button id="delete-btn" class="btn btn-sm btn-outline btn-error" onclick="showDeleteDialog()">Delete</button>
+    <details class="editor-overflow" aria-label="More actions">
+      <summary class="btn btn-sm btn-ghost" aria-label="More actions">&hellip;</summary>
+      <div class="editor-overflow-menu" role="menu">
+        <button type="button" class="editor-overflow-item editor-overflow-danger" onclick="showDeleteDialog()" role="menuitem">Delete page&hellip;</button>
+      </div>
+    </details>
   </div>
 
   {# Delete confirmation dialog #}
@@ -424,8 +506,14 @@ function updatePresenceBar() {
 // ── Status indicator ───────────────────────────────────────────────────
 const statusEl = document.getElementById("ws-status");
 function setStatus(state, text) {
-  statusEl.className = "editor-status " + state;
-  statusEl.textContent = text;
+  statusEl.className = "editor-status-badge " + state;
+  let label = statusEl.querySelector(".editor-status-label");
+  if (!label) {
+    /* Template was stripped (older cached HTML) — recreate. */
+    statusEl.innerHTML = '<span class="editor-status-dot" aria-hidden="true"></span><span class="editor-status-label"></span>';
+    label = statusEl.querySelector(".editor-status-label");
+  }
+  label.textContent = text;
 }
 
 // ── CodeMirror setup ───────────────────────────────────────────────────
