@@ -697,8 +697,28 @@
       .search-btn,
       .wikilink-tooltip,
       .drawer-toggle,
-      [data-zetl-graph-fallback] {
+      [data-zetl-graph-fallback],
+      /* Edit button serves no purpose on paper (BUG-503). */
+      a[href^="/edit/"],
+      a[href^="&#x2f;edit/"] {
         display: none !important;
+      }
+      /* daisyUI's .breadcrumbs styling relies on utility classes that
+         don't apply in print; flatten the underlying <ul><li> into a
+         single-line chevron-separated trail (BUG-503). */
+      .breadcrumbs ul {
+        list-style: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: flex !important;
+        flex-wrap: wrap;
+        gap: 0.25em;
+      }
+      .breadcrumbs li { display: inline; }
+      .breadcrumbs li + li::before {
+        content: "›";
+        margin-right: 0.4em;
+        opacity: 0.6;
       }
       /* Collapse the daisyUI drawer so main content flows full-width. */
       .drawer,
