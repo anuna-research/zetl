@@ -378,3 +378,51 @@
 (claims agent:frontend
   :at "2026-04-18T11:57:08Z"
   (given completed-graph-controls))
+
+(claims agent:designer
+  :at "2026-04-18T12:12:32Z"
+  (given completed-sidebar-actions-group))
+
+(claims agent:designer
+  :at "2026-04-18T12:12:32Z"
+  (given completed-wordmark-clickable))
+
+(claims agent:designer
+  :at "2026-04-18T12:12:32Z"
+  (given completed-default-theme-heading-rule))
+
+(claims agent:frontend
+  :at "2026-04-18T12:12:32Z"
+  (given completed-stat-cards-click-through))
+
+(claims agent:frontend
+  :at "2026-04-18T12:12:32Z"
+  (given completed-graph-folder-color))
+
+(claims agent:backend
+  :at "2026-04-18T12:12:32Z"
+  (given completed-reserved-underscore-routes))
+
+(claims agent:frontend
+  :at "2026-04-18T12:13:35Z"
+  (given completed-home-card-folder-path))
+
+(claims agent:frontend
+  :at "2026-04-18T12:13:35Z"
+  (given completed-home-card-hit-target))
+
+(claims agent:designer
+  :at "2026-04-18T12:13:35Z"
+  (given completed-graph-empty-state))
+
+(claims agent:designer
+  :at "2026-04-18T12:13:35Z"
+  (given completed-graph-pill-relabel))
+
+(claims agent:frontend
+  :at "2026-04-18T12:16:11Z"
+  (given completed-graph-search-highlight))
+
+(claims agent:frontend
+  :at "2026-04-18T12:16:11Z"
+  (given completed-graph-filter-degree))

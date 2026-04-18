@@ -76,7 +76,7 @@
     border: 1px solid oklch(var(--b3));
     border-radius: 0.375rem;
     padding: 0.25rem;
-    width: 130px !important;   /* override .vg-stage > * { width: 100% } */
+    width: 180px !important;   /* override .vg-stage > * { width: 100% } */
     height: auto !important;
   }
   .vg-controls button {
@@ -111,6 +111,31 @@
     opacity: 0.55;
     padding: 0.25rem 0.5rem;
     line-height: 1.3;
+  }
+  .vg-ctrl-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.25rem 0.5rem;
+  }
+  .vg-ctrl-field-label {
+    font-size: 0.65rem;
+    opacity: 0.7;
+    display: flex; justify-content: space-between;
+  }
+  .vg-ctrl-field-val { font-variant-numeric: tabular-nums; opacity: 0.8; }
+  .vg-ctrl-field input[type="search"] {
+    width: 100%;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.35rem;
+    border: 1px solid oklch(var(--b3));
+    border-radius: 0.25rem;
+    background: oklch(var(--b1));
+    color: oklch(var(--bc));
+  }
+  .vg-ctrl-field input[type="range"] {
+    width: 100%;
+    accent-color: oklch(var(--p));
   }
   /* Folder-colour legend — bottom-left of the stage, collapsible via <details>. */
   .vg-legend {
@@ -183,6 +208,15 @@
       <button type="button" data-vg-action="labels-toggle" aria-pressed="true" aria-label="Toggle labels">
         <span aria-hidden="true">◇</span> Labels <span class="vg-ctrl-key">L</span>
       </button>
+      <div class="vg-ctrl-divider" role="separator"></div>
+      <label class="vg-ctrl-field" for="vg-search">
+        <span class="vg-ctrl-field-label">Find</span>
+        <input id="vg-search" type="search" placeholder="dim non-matching…" autocomplete="off" />
+      </label>
+      <label class="vg-ctrl-field" for="vg-degree">
+        <span class="vg-ctrl-field-label">Min links <span class="vg-ctrl-field-val" data-vg-degree-val>0</span></span>
+        <input id="vg-degree" type="range" min="0" max="10" value="0" />
+      </label>
       <div class="vg-controls-hint">Scroll to zoom · drag to pan</div>
     </div>
     <details class="vg-legend" open hidden aria-label="Folder colour legend">
@@ -250,6 +284,38 @@
       else if (action === 'zoom-out') zoomOut();
       else if (action === 'reset') reset();
       else if (action === 'labels-toggle') toggleLabels();
+    });
+
+    /* Search + degree filter → window.__zetlGraph.setFilter({...}).
+       Debounce typing so the renderer refresh doesn't fire on every keystroke. */
+    var searchEl = stage.querySelector('#vg-search');
+    var degreeEl = stage.querySelector('#vg-degree');
+    var degreeVal = stage.querySelector('[data-vg-degree-val]');
+    var searchTimer = null;
+    function pushFilter(patch){
+      if (window.__zetlGraph && window.__zetlGraph.setFilter) {
+        window.__zetlGraph.setFilter(patch);
+      }
+    }
+    if (searchEl) {
+      searchEl.addEventListener('input', function(){
+        clearTimeout(searchTimer);
+        var v = searchEl.value;
+        searchTimer = setTimeout(function(){ pushFilter({ search: v }); }, 120);
+      });
+    }
+    if (degreeEl) {
+      degreeEl.addEventListener('input', function(){
+        if (degreeVal) degreeVal.textContent = degreeEl.value;
+        pushFilter({ minDegree: +degreeEl.value });
+      });
+    }
+
+    /* Size the degree slider against the graph's actual max once it's live. */
+    window.addEventListener('zetl:graph:ready', function(){
+      if (!degreeEl || !window.__zetlGraph || !window.__zetlGraph.maxDegree) return;
+      var m = window.__zetlGraph.maxDegree();
+      if (m > 0) degreeEl.max = String(m);
     });
 
     /* Folder-colour legend — populate from window.__zetlGraph.folderLegend().
