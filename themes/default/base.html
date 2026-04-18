@@ -338,6 +338,12 @@
       white-space: nowrap;
       text-overflow: ellipsis;
     }
+    .search-result .sr-match {
+      background: oklch(var(--wa) / 0.25);
+      color: inherit;
+      padding: 0 0.1em;
+      border-radius: 0.125rem;
+    }
     .search-result .score {
       font-size: 0.7rem;
       opacity: 0.7;
@@ -933,6 +939,27 @@
     }
 
     function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    /* BUG-504: body-match snippet highlighter. Escapes the source text
+       first, then locates case-insensitive occurrences of the query as a
+       literal substring (no regex interpretation) and wraps them in
+       <mark class="sr-match">. The escape pass runs before wrapping so
+       HTML injected via page content stays neutralised. */
+    function escAndMark(s, q){
+      var safe = esc(s || '');
+      if (!q) return safe;
+      var lc = safe.toLowerCase();
+      var ql = q.toLowerCase();
+      if (!ql) return safe;
+      var out = '';
+      var i = 0;
+      while (i < safe.length) {
+        var hit = lc.indexOf(ql, i);
+        if (hit < 0) { out += safe.slice(i); break; }
+        out += safe.slice(i, hit) + '<mark class="sr-match">' + safe.slice(hit, hit + ql.length) + '</mark>';
+        i = hit + ql.length;
+      }
+      return out;
+    }
     function slugFromPath(path){return path.replace(/\.[^/.]+$/,'').toLowerCase().replace(/ /g,'-');}
 
     /* ── Title matching (works in all modes, no fetch needed).
@@ -1038,13 +1065,14 @@
         active=-1;return;
       }
       active=0;
+      var currentQuery = input.value || '';
       items.forEach(function(item,i){
         var a=document.createElement('a');
         a.className='search-result'+(i===0?' sr-active':'');
         a.href=ROOT+item.slug+'/'+IDXFILE+(item.line?'#line-'+item.line:'');
-        var html='<span class="page-name">'+esc(item.page)+'</span>';
-        if(item.heading)html+='<span class="heading">'+esc(item.heading)+'</span>';
-        if(item.context)html+='<span class="context">'+esc(item.context)+'</span>';
+        var html='<span class="page-name">'+escAndMark(item.page, currentQuery)+'</span>';
+        if(item.heading)html+='<span class="heading">'+escAndMark(item.heading, currentQuery)+'</span>';
+        if(item.context)html+='<span class="context">'+escAndMark(item.context, currentQuery)+'</span>';
         if(item.score)html+='<span class="score">'+item.score.toFixed(2)+'</span>';
         a.innerHTML=html;
         a.addEventListener('mouseenter',function(){active=i;updateActive();});
