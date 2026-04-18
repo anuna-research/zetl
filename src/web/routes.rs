@@ -111,8 +111,8 @@ async fn dashboard_signed_out(State(state): State<WebState>, vault_name: String)
     // owner is the person who'd see this page, so XSS here is self-inflicted,
     // but escape anyway so a directory named `"><script>` doesn't break the
     // markup on someone else's machine who clones the vault.
-    let vault_escaped = html_escape(&vault_name);
-    let login_path = if state.collab { "/auth/login" } else { "/" };
+    let vault = html_escape(&vault_name);
+    let login = if state.collab { "/auth/login" } else { "/" };
     let html = format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -147,9 +147,7 @@ async fn dashboard_signed_out(State(state): State<WebState>, vault_name: String)
   </main>
 </body>
 </html>
-"#,
-        vault = vault_escaped,
-        login = login_path,
+"#
     );
     (StatusCode::UNAUTHORIZED, Html(html)).into_response()
 }
@@ -198,10 +196,10 @@ pub async fn dashboard_handler(
     let accessible_pages: Vec<serde_json::Value> = data
         .page_names
         .iter()
-        .filter(|name| {
+        .filter(|_name| {
             #[cfg(feature = "reason")]
             if state.collab {
-                let slug = data.slug_for_page(name);
+                let slug = data.slug_for_page(_name);
                 return check_page_acl_read(&state, &session.user_id, &slug).is_ok();
             }
             true
@@ -471,7 +469,10 @@ pub async fn page_handler(
     if file.is_none() && slug.starts_with('_') {
         return (
             axum::http::StatusCode::NOT_FOUND,
-            [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "text/plain; charset=utf-8",
+            )],
             format!("Unknown route: /{slug}\n"),
         )
             .into_response();
@@ -984,6 +985,9 @@ pub async fn edit_handler(
     })
     .to_string();
 
+    // `mut` is only required under `history` or `semantic` — allow unused so
+    // the default build doesn't trip the lint.
+    #[allow(unused_mut)]
     let mut vault_ctx = build_vault_context(&data, &vault_name);
 
     // BUG-502: sidebar parity with page_handler. Without this the
@@ -7034,7 +7038,9 @@ mod tests {
         let evil = String::from("<script>alert(1)</script>");
         let resp = dashboard_signed_out(State(state), evil).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-        let body = axum::body::to_bytes(resp.into_body(), 100_000).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 100_000)
+            .await
+            .unwrap();
         let html = std::str::from_utf8(&body).unwrap();
         assert!(
             !html.contains("<script>alert(1)</script>"),
@@ -7057,7 +7063,10 @@ mod tests {
             .route("/{*path}", get(page_handler))
             .with_state(state);
 
-        let req = Request::builder().uri("/_search").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/_search")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         // Redirect::to() emits 303 See Other.
         assert_eq!(resp.status(), StatusCode::SEE_OTHER);

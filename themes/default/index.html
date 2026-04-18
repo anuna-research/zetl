@@ -11,28 +11,17 @@
   {% block index_intro %}{% endblock %}
 
   {% block index_stats %}
+  {% set dead = vault.stats.dead_links %}{% set orph = vault.stats.orphans %}
   <div class="stats stats-horizontal shadow mb-8 w-full sm:w-auto">
-    <div class="stat">
-      <div class="stat-title">Pages</div>
-      <div class="stat-value opacity-60">{{ vault.stats.total_pages }}</div>
-    </div>
-    <div class="stat">
-      <div class="stat-title">Links</div>
-      <div class="stat-value opacity-60">{{ vault.stats.total_links }}</div>
-    </div>
-    <a class="stat hover:bg-base-200/50 transition-colors {% if vault.stats.dead_links == 0 %}pointer-events-none{% endif %}"
-       href="?filter=dead"
-       aria-label="Show dead links"
-       data-zetl-spa="off">
+    <div class="stat"><div class="stat-title">Pages</div><div class="stat-value opacity-60">{{ vault.stats.total_pages }}</div></div>
+    <div class="stat"><div class="stat-title">Links</div><div class="stat-value opacity-60">{{ vault.stats.total_links }}</div></div>
+    <a class="stat hover:bg-base-200/50 {% if dead == 0 %}pointer-events-none{% endif %}" href="?filter=dead" data-zetl-spa="off">
       <div class="stat-title"><span aria-hidden="true">⚠︎</span> Dead links</div>
-      <div class="stat-value text-error">{{ vault.stats.dead_links }}</div>
+      <div class="stat-value text-error">{{ dead }}</div>
     </a>
-    <a class="stat hover:bg-base-200/50 transition-colors {% if vault.stats.orphans == 0 %}pointer-events-none{% endif %}"
-       href="?filter=orphans"
-       aria-label="Show orphan pages"
-       data-zetl-spa="off">
+    <a class="stat hover:bg-base-200/50 {% if orph == 0 %}pointer-events-none{% endif %}" href="?filter=orphans" data-zetl-spa="off">
       <div class="stat-title"><span aria-hidden="true">⌀</span> Orphans</div>
-      <div class="stat-value text-warning">{{ vault.stats.orphans }}</div>
+      <div class="stat-value text-warning">{{ orph }}</div>
     </a>
   </div>
   {% endblock %}
@@ -42,14 +31,12 @@
   {% block index_pages %}
   <div class="flex flex-wrap items-baseline justify-between gap-3 mb-4">
     <h2 class="text-xl font-semibold">{% block index_pages_heading %}All Pages{% endblock %}</h2>
-    <div class="zetl-index-toolbar flex flex-wrap items-center gap-1 text-xs" role="toolbar" aria-label="Sort and filter pages">
+    <div class="zetl-index-toolbar flex flex-wrap items-center gap-1 text-xs" role="toolbar" aria-label="Sort/filter">
       <button type="button" class="btn btn-xs btn-ghost zetl-index-sort" data-sort="alpha" aria-pressed="true">A–Z</button>
-      <button type="button" class="btn btn-xs btn-ghost zetl-index-sort" data-sort="linked" aria-pressed="false">Most linked</button>
-      <button type="button" class="btn btn-xs btn-ghost zetl-index-sort" data-sort="orphans" aria-pressed="false">Orphans</button>
+      <button type="button" class="btn btn-xs btn-ghost zetl-index-sort" data-sort="linked">Most linked</button>
+      <button type="button" class="btn btn-xs btn-ghost zetl-index-sort" data-sort="orphans">Orphans</button>
       <span class="mx-1 opacity-40" aria-hidden="true">·</span>
-      <select class="select select-xs select-ghost zetl-index-folder" aria-label="Filter by folder">
-        <option value="">All folders</option>
-      </select>
+      <select class="select select-xs select-ghost zetl-index-folder" aria-label="Folder"><option value="">All folders</option></select>
       <span class="zetl-index-count opacity-60 ml-2" aria-live="polite"></span>
     </div>
   </div>
@@ -57,10 +44,8 @@
     {% for page in vault.pages %}
     <a href="{{ root_path }}{{ page.slug | safe }}/{{ index_file }}"
        class="card bg-base-200 shadow-sm hover:shadow-md transition-shadow zetl-index-card"
-       data-slug="{{ page.slug }}"
-       data-title="{{ page.title }}"
-       data-outlinks="{{ page.outlink_count }}"
-       data-backlinks="{{ page.backlink_count }}">
+       data-s="{{ page.slug }}"
+       data-m="{{ page.outlink_count }},{{ page.backlink_count }}">
       <div class="card-body p-4">
         <p class="zetl-index-card-folder text-[11px] uppercase tracking-wide opacity-50 mb-0.5" hidden></p>
         <h3 class="card-title text-sm">{{ page.title }}</h3>
@@ -70,183 +55,7 @@
     {% endfor %}
   </div>
 
-  <script>
-  /* /_search → /?focus=search → open sidebar search on load. */
-  (function(){
-    var q = new URLSearchParams(window.location.search);
-    if (q.get('focus') === 'search' && typeof window.openSearch === 'function') {
-      setTimeout(window.openSearch, 50);
-      q.delete('focus');
-      var s = q.toString();
-      var url = window.location.pathname + (s ? '?' + s : '') + window.location.hash;
-      window.history.replaceState(null, '', url);
-    }
-  })();
-  (function(){
-    var grid = document.querySelector('.zetl-index-grid');
-    if (!grid) return;
-    var cards = Array.prototype.slice.call(grid.querySelectorAll('.zetl-index-card'));
-    if (!cards.length) return;
-    var sortBtns = document.querySelectorAll('.zetl-index-sort');
-    var folderSel = document.querySelector('.zetl-index-folder');
-    var counter = document.querySelector('.zetl-index-count');
-    var pageState = { showAll: false };
-
-    /* Append a "Show N more" button after the grid. Hidden-via-display
-       rather than the HTML hidden attribute because DaisyUI's .btn sets
-       display:inline-flex which wins over [hidden]. */
-    var showMoreBtn = document.createElement('button');
-    showMoreBtn.type = 'button';
-    showMoreBtn.style.display = 'none';
-    showMoreBtn.className = 'btn btn-sm btn-outline mt-4 mx-auto zetl-index-more';
-    showMoreBtn.setAttribute('aria-expanded', 'false');
-    showMoreBtn.addEventListener('click', function(){
-      pageState.showAll = true;
-      showMoreBtn.setAttribute('aria-expanded', 'true');
-      apply();
-    });
-    grid.parentNode.insertBefore(showMoreBtn, grid.nextSibling);
-
-    /* Derive folder from slug, render folder-path label, collect unique top-level folders */
-    var topFolders = {};
-    cards.forEach(function(c){
-      var slug = c.getAttribute('data-slug') || '';
-      var lastSlash = slug.lastIndexOf('/');
-      var folder = lastSlash > 0 ? slug.slice(0, lastSlash) : '';
-      c.dataset.folder = folder;
-      c.dataset.linksTotal = String((+c.dataset.outlinks || 0) + (+c.dataset.backlinks || 0));
-      c.dataset.orphan = c.dataset.backlinks === '0' ? '1' : '0';
-      if (folder) {
-        topFolders[folder.split('/')[0]] = true;
-        var label = c.querySelector('.zetl-index-card-folder');
-        if (label) { label.textContent = folder; label.hidden = false; }
-      }
-    });
-    Object.keys(topFolders).sort().forEach(function(f){
-      var o = document.createElement('option');
-      o.value = f; o.textContent = f;
-      folderSel.appendChild(o);
-    });
-
-    function getParams(){
-      var q = new URLSearchParams(window.location.search);
-      return {
-        sort: q.get('sort') || 'alpha',
-        folder: q.get('folder') || '',
-        filter: q.get('filter') || ''
-      };
-    }
-    function setParams(p){
-      var q = new URLSearchParams();
-      if (p.sort && p.sort !== 'alpha') q.set('sort', p.sort);
-      if (p.folder) q.set('folder', p.folder);
-      if (p.filter) q.set('filter', p.filter);
-      var s = q.toString();
-      var url = window.location.pathname + (s ? '?' + s : '') + window.location.hash;
-      window.history.replaceState(null, '', url);
-    }
-
-    /* Dead-link detection needs the graph index (pages with an outgoing edge
-       whose target is a phantom/dead node). Fetched lazily on first use. */
-    var deadSources = null;
-    var deadPromise = null;
-    function loadDeadSources(){
-      if (deadSources) return Promise.resolve(deadSources);
-      if (deadPromise) return deadPromise;
-      deadPromise = fetch('/graph-index.json', { credentials: 'same-origin' })
-        .then(function(r){ return r.ok ? r.json() : null; })
-        .then(function(g){
-          if (!g || !g.nodes || !g.edges) { deadSources = {}; return deadSources; }
-          var dead = {};
-          g.nodes.forEach(function(n){ if (n.attributes && n.attributes.is_dead) dead[n.key] = true; });
-          var srcs = {};
-          g.edges.forEach(function(e){ if (dead[e.target]) srcs[e.source] = true; });
-          deadSources = srcs;
-          return srcs;
-        })
-        .catch(function(){ deadSources = {}; return deadSources; });
-      return deadPromise;
-    }
-
-    function apply(){
-      var p = getParams();
-      sortBtns.forEach(function(b){
-        b.setAttribute('aria-pressed', b.getAttribute('data-sort') === p.sort ? 'true' : 'false');
-      });
-      folderSel.value = p.folder;
-
-      var ordered = cards.slice();
-      if (p.sort === 'linked') {
-        ordered.sort(function(a, b){
-          return (+b.dataset.linksTotal) - (+a.dataset.linksTotal)
-              || a.dataset.title.localeCompare(b.dataset.title);
-        });
-      } else {
-        ordered.sort(function(a, b){
-          return a.dataset.title.localeCompare(b.dataset.title);
-        });
-      }
-
-      var needsDead = p.filter === 'dead';
-      /* Pagination threshold: vaults under PAGE_SIZE always render everything.
-         Past that, the first PAGE_SIZE visible cards render immediately and
-         the rest get a "Show N more" button at the bottom (task-home-pagination).
-         Keeps a 1000-page vault's first paint snappy without virtualising. */
-      var PAGE_SIZE = 60;
-      var proceed = function(){
-        var visible = 0, shown = 0, pastLimit = 0;
-        ordered.forEach(function(c, i){
-          c.style.order = String(i);
-          var show = true;
-          var top = (c.dataset.folder || '').split('/')[0];
-          if (p.folder && top !== p.folder) show = false;
-          if ((p.sort === 'orphans' || p.filter === 'orphans') && c.dataset.orphan !== '1') show = false;
-          if (needsDead && !(deadSources && deadSources[c.dataset.slug])) show = false;
-          if (show) {
-            visible++;
-            if (!pageState.showAll && cards.length > PAGE_SIZE && shown >= PAGE_SIZE) {
-              c.style.display = 'none';
-              pastLimit++;
-            } else {
-              c.style.display = '';
-              shown++;
-            }
-          } else {
-            c.style.display = 'none';
-          }
-        });
-        var filtered = !!p.folder || p.filter === 'dead' || p.filter === 'orphans' || p.sort === 'orphans';
-        counter.textContent = filtered ? (visible + ' / ' + cards.length) : '';
-        if (pastLimit > 0) {
-          showMoreBtn.style.display = '';
-          showMoreBtn.textContent = 'Show ' + pastLimit + ' more';
-        } else {
-          showMoreBtn.style.display = 'none';
-        }
-      };
-      if (needsDead) loadDeadSources().then(proceed);
-      else proceed();
-    }
-
-    sortBtns.forEach(function(b){
-      b.addEventListener('click', function(){
-        var p = getParams();
-        p.sort = b.getAttribute('data-sort');
-        /* Any explicit sort pill clears any leftover ?filter= from a stat-card click. */
-        p.filter = '';
-        setParams(p);
-        apply();
-      });
-    });
-    folderSel.addEventListener('change', function(){
-      var p = getParams();
-      p.folder = folderSel.value;
-      setParams(p);
-      apply();
-    });
-    apply();
-  })();
-  </script>
+  <script src="{{ root_path }}_static/index-toolbar.js" defer></script>
   {% endblock %}
 
   {% block index_after_pages %}{% endblock %}
