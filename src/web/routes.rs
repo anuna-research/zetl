@@ -381,6 +381,12 @@ pub async fn page_handler(
         return page_history_handler_inner(State(state), page_slug.to_string()).await;
     }
 
+    // /_search → redirect to the vault index with ?focus=search so the sidebar
+    // search can grab focus on page load.
+    if slug == "_search" {
+        return axum::response::Redirect::to("/?focus=search").into_response();
+    }
+
     let data = state.data.read().unwrap_or_else(|e| e.into_inner());
 
     let vault_name = state
@@ -394,6 +400,22 @@ pub async fn page_handler(
         .files
         .iter()
         .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(slug));
+
+    // Reserve the /_* URL prefix (task-reserved-underscore-routes).
+    // Shell routes (/_graph, /_me, /_print, /_history, /_static/*) are matched
+    // before page_handler. Real vault pages whose slug legitimately starts with
+    // `_` (e.g. /_meta/ia) are found via the lookup above. Anything left — an
+    // unknown /_* path — returns 404 rather than falling through to the
+    // "this page doesn't exist yet" creation flow, which burns the underscore
+    // namespace and confuses URL-hackers.
+    if file.is_none() && slug.starts_with('_') {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            format!("Unknown route: /{slug}\n"),
+        )
+            .into_response();
+    }
 
     // ── ACL check for collab mode (REQ-020-030, REQ-020-033) ──────────
     #[cfg(feature = "reason")]

@@ -366,3 +366,15 @@
   (normally r-cl-state-v1-graph-controls claim-v1-graph-controls state-claimed-v1-graph-controls)
   (normally r-cl-chain-v1-graph-controls state-claimed-v1-graph-controls claimed-graph-controls)
 )
+
+(claims agent:designer
+  :at "2026-04-18T11:57:08Z"
+  (given completed-stat-cards-reweight))
+
+(claims agent:frontend
+  :at "2026-04-18T11:57:08Z"
+  (given completed-home-sort-filter))
+
+(claims agent:frontend
+  :at "2026-04-18T11:57:08Z"
+  (given completed-graph-controls))

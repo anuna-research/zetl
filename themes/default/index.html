@@ -5,7 +5,7 @@
 {% block content %}
 <main class="flex-1 p-4 sm:p-6 max-w-4xl mx-auto w-full">
   {% block index_header %}
-  <h1 class="text-3xl font-bold mb-6">{% block index_heading %}{{ vault.name }}{% endblock %}</h1>
+  <h1 class="text-3xl font-bold mb-6 pb-3 border-b border-base-300">{% block index_heading %}{{ vault.name }}{% endblock %}</h1>
   {% endblock %}
 
   {% block index_intro %}{% endblock %}
@@ -71,6 +71,17 @@
   </div>
 
   <script>
+  /* /_search → /?focus=search → open sidebar search on load. */
+  (function(){
+    var q = new URLSearchParams(window.location.search);
+    if (q.get('focus') === 'search' && typeof window.openSearch === 'function') {
+      setTimeout(window.openSearch, 50);
+      q.delete('focus');
+      var s = q.toString();
+      var url = window.location.pathname + (s ? '?' + s : '') + window.location.hash;
+      window.history.replaceState(null, '', url);
+    }
+  })();
   (function(){
     var grid = document.querySelector('.zetl-index-grid');
     if (!grid) return;
@@ -119,6 +130,28 @@
       window.history.replaceState(null, '', url);
     }
 
+    /* Dead-link detection needs the graph index (pages with an outgoing edge
+       whose target is a phantom/dead node). Fetched lazily on first use. */
+    var deadSources = null;
+    var deadPromise = null;
+    function loadDeadSources(){
+      if (deadSources) return Promise.resolve(deadSources);
+      if (deadPromise) return deadPromise;
+      deadPromise = fetch('/graph-index.json', { credentials: 'same-origin' })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(g){
+          if (!g || !g.nodes || !g.edges) { deadSources = {}; return deadSources; }
+          var dead = {};
+          g.nodes.forEach(function(n){ if (n.attributes && n.attributes.is_dead) dead[n.key] = true; });
+          var srcs = {};
+          g.edges.forEach(function(e){ if (dead[e.target]) srcs[e.source] = true; });
+          deadSources = srcs;
+          return srcs;
+        })
+        .catch(function(){ deadSources = {}; return deadSources; });
+      return deadPromise;
+    }
+
     function apply(){
       var p = getParams();
       sortBtns.forEach(function(b){
@@ -138,24 +171,32 @@
         });
       }
 
-      var visible = 0;
-      ordered.forEach(function(c, i){
-        c.style.order = String(i);
-        var show = true;
-        var top = (c.dataset.folder || '').split('/')[0];
-        if (p.folder && top !== p.folder) show = false;
-        if ((p.sort === 'orphans' || p.filter === 'orphans') && c.dataset.orphan !== '1') show = false;
-        c.style.display = show ? '' : 'none';
-        if (show) visible++;
-      });
-      counter.textContent = visible === cards.length ? '' : (visible + ' / ' + cards.length);
+      var needsDead = p.filter === 'dead';
+      var proceed = function(){
+        var visible = 0;
+        ordered.forEach(function(c, i){
+          c.style.order = String(i);
+          var show = true;
+          var top = (c.dataset.folder || '').split('/')[0];
+          if (p.folder && top !== p.folder) show = false;
+          if ((p.sort === 'orphans' || p.filter === 'orphans') && c.dataset.orphan !== '1') show = false;
+          if (needsDead && !(deadSources && deadSources[c.dataset.slug])) show = false;
+          c.style.display = show ? '' : 'none';
+          if (show) visible++;
+        });
+        var filtered = !!p.folder || p.filter === 'dead' || p.filter === 'orphans' || p.sort === 'orphans';
+        counter.textContent = filtered ? (visible + ' / ' + cards.length) : '';
+      };
+      if (needsDead) loadDeadSources().then(proceed);
+      else proceed();
     }
 
     sortBtns.forEach(function(b){
       b.addEventListener('click', function(){
         var p = getParams();
         p.sort = b.getAttribute('data-sort');
-        if (p.sort === 'orphans') p.filter = '';
+        /* Any explicit sort pill clears any leftover ?filter= from a stat-card click. */
+        p.filter = '';
         setParams(p);
         apply();
       });

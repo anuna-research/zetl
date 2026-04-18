@@ -112,6 +112,39 @@
     padding: 0.25rem 0.5rem;
     line-height: 1.3;
   }
+  /* Folder-colour legend — bottom-left of the stage, collapsible via <details>. */
+  .vg-legend {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    z-index: 5;
+    background: oklch(var(--b1) / 0.85);
+    backdrop-filter: blur(4px);
+    border: 1px solid oklch(var(--b3));
+    border-radius: 0.375rem;
+    font-size: 0.7rem;
+    max-width: 220px;
+    width: auto !important;
+    height: auto !important;
+  }
+  .vg-legend[hidden] { display: none; }
+  .vg-legend summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.3rem 0.6rem;
+    opacity: 0.75;
+    user-select: none;
+  }
+  .vg-legend summary::-webkit-details-marker { display: none; }
+  .vg-legend summary::before { content: '▸'; margin-right: 0.3rem; font-size: 0.6rem; display: inline-block; transition: transform 0.15s; }
+  .vg-legend[open] summary::before { transform: rotate(90deg); }
+  .vg-legend ul { list-style: none; margin: 0; padding: 0.1rem 0.6rem 0.5rem; display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; }
+  .vg-legend li { display: flex; align-items: center; gap: 0.3rem; line-height: 1.4; }
+  .vg-legend .vg-legend-swatch {
+    width: 10px; height: 10px; border-radius: 50%;
+    box-shadow: 0 0 0 1px oklch(var(--b3));
+    flex-shrink: 0;
+  }
 </style>
 {% endblock %}
 
@@ -152,6 +185,10 @@
       </button>
       <div class="vg-controls-hint">Scroll to zoom · drag to pan</div>
     </div>
+    <details class="vg-legend" open hidden aria-label="Folder colour legend">
+      <summary>Folders</summary>
+      <ul></ul>
+    </details>
     <noscript>
       <div class="vg-empty">
         Graph view requires JavaScript. Browse pages from the
@@ -214,6 +251,33 @@
       else if (action === 'reset') reset();
       else if (action === 'labels-toggle') toggleLabels();
     });
+
+    /* Folder-colour legend — populate from window.__zetlGraph.folderLegend().
+       The zetl:graph:ready event fires after Sigma mounts + nodes are coloured. */
+    var legendEl = stage.querySelector('.vg-legend');
+    function renderLegend(items){
+      if (!legendEl || !items || !items.length) return;
+      var ul = legendEl.querySelector('ul');
+      ul.innerHTML = '';
+      items.forEach(function(it){
+        var li = document.createElement('li');
+        var sw = document.createElement('span');
+        sw.className = 'vg-legend-swatch';
+        sw.style.background = it.colour;
+        var t = document.createElement('span');
+        t.textContent = it.folder;
+        li.appendChild(sw); li.appendChild(t);
+        ul.appendChild(li);
+      });
+      legendEl.hidden = false;
+    }
+    window.addEventListener('zetl:graph:ready', function(e){
+      renderLegend(e && e.detail && e.detail.legend);
+    });
+    /* If the graph booted before this script attached, pull the legend now. */
+    if (window.__zetlGraph && window.__zetlGraph.folderLegend) {
+      renderLegend(window.__zetlGraph.folderLegend());
+    }
 
     /* Keyboard: +, -, 0, L — only when not typing in a field */
     document.addEventListener('keydown', function(e){
