@@ -191,7 +191,29 @@ window.__zetlBootGraph = function(){
      nodes render at full prominence. Edges whose endpoints are hidden vanish
      too. Both predicates AND together. */
   var filterState = { search: '', minDegree: 0 };
+  var focusState  = { slug: '', depth: 1, reachable: null };
+
+  function recomputeFocus(){
+    focusState.reachable = null;
+    if (!graph || !focusState.slug || !graph.hasNode(focusState.slug)) return;
+    var depth = Math.max(0, focusState.depth | 0);
+    var reach = new Set([focusState.slug]);
+    var frontier = [focusState.slug];
+    for (var h = 0; h < depth; h++) {
+      var next = [];
+      for (var i = 0; i < frontier.length; i++) {
+        graph.forEachNeighbor(frontier[i], function(n){
+          if (!reach.has(n)) { reach.add(n); next.push(n); }
+        });
+      }
+      frontier = next;
+      if (!frontier.length) break;
+    }
+    focusState.reachable = reach;
+  }
+
   function passesFilter(node, attrs){
+    if (focusState.reachable && !focusState.reachable.has(node)) return false;
     if (filterState.minDegree > 0) {
       var d = (attrs.outlink_count || 0) + (attrs.backlink_count || 0);
       if (d < filterState.minDegree) return false;
@@ -590,6 +612,16 @@ window.__zetlBootGraph = function(){
             if (renderer) renderer.refresh();
           },
           getFilter: function(){ return { search: filterState.search, minDegree: filterState.minDegree }; },
+          /* Focus mode: restrict the visible graph to the N-hop neighbourhood
+             of a named slug. Pass {slug: ''} to clear. */
+          setFocus: function(next){
+            if (!next) return;
+            if ('slug' in next) focusState.slug = String(next.slug || '');
+            if ('depth' in next) focusState.depth = Math.max(0, +next.depth || 0);
+            recomputeFocus();
+            if (renderer) renderer.refresh();
+          },
+          getFocus: function(){ return { slug: focusState.slug, depth: focusState.depth }; },
           /* Max degree in the current graph — lets hosts size their slider. */
           maxDegree: function(){
             var m = 0;

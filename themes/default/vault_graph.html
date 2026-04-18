@@ -37,6 +37,25 @@
   }
   .vg-header h1 { font-size: 1.5rem; font-weight: 600; }
   .vg-header .vg-meta { font-size: 0.85rem; opacity: 0.75; }
+  .vg-focus-chip {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    background: oklch(var(--p) / 0.08);
+    border: 1px solid oklch(var(--p) / 0.3);
+    color: oklch(var(--p));
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    font-size: 0.78rem;
+  }
+  .vg-focus-chip[hidden] { display: none; }
+  .vg-focus-label { opacity: 0.7; font-weight: 500; }
+  .vg-focus-target { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; }
+  .vg-focus-depth { opacity: 0.7; font-size: 0.72rem; }
+  .vg-focus-clear {
+    background: transparent; border: 0; color: inherit;
+    cursor: pointer; padding: 0 0.15rem; font-size: 0.85rem; line-height: 1;
+    opacity: 0.7;
+  }
+  .vg-focus-clear:hover { opacity: 1; }
   .vg-stage {
     flex: 1;
     position: relative;
@@ -185,6 +204,12 @@
   <header class="vg-header">
     <h1>Graph</h1>
     <span class="vg-meta">Interactive vault map — click a node to open a page.</span>
+    <div class="vg-focus-chip" hidden data-vg-focus-chip aria-live="polite">
+      <span class="vg-focus-label">Focus:</span>
+      <span class="vg-focus-target" data-vg-focus-slug></span>
+      <span class="vg-focus-depth">depth <span data-vg-focus-depth>1</span></span>
+      <button type="button" class="vg-focus-clear" data-vg-focus-clear aria-label="Clear focus">✕</button>
+    </div>
   </header>
 
   {# data-mode="vault" requests full-graph zoom-to-fit per REQ-108.
@@ -317,6 +342,38 @@
       var m = window.__zetlGraph.maxDegree();
       if (m > 0) degreeEl.max = String(m);
     });
+
+    /* Focus mode (task-graph-focus-mode) — /_graph?focus=<slug>&depth=<N>.
+       The chip sits outside .vg-stage, in the header, so query the document. */
+    var focusChip = document.querySelector('[data-vg-focus-chip]');
+    var focusSlugEl = document.querySelector('[data-vg-focus-slug]');
+    var focusDepthEl = document.querySelector('[data-vg-focus-depth]');
+    var focusClearBtn = document.querySelector('[data-vg-focus-clear]');
+    function applyFocusFromUrl(){
+      var q = new URLSearchParams(window.location.search);
+      var slug = q.get('focus') || '';
+      var depth = Math.max(0, +q.get('depth') || 1);
+      if (window.__zetlGraph && window.__zetlGraph.setFocus) {
+        window.__zetlGraph.setFocus({ slug: slug, depth: depth });
+      }
+      if (slug) {
+        focusChip.hidden = false;
+        focusSlugEl.textContent = slug;
+        focusDepthEl.textContent = String(depth);
+      } else {
+        focusChip.hidden = true;
+      }
+    }
+    if (focusClearBtn) {
+      focusClearBtn.addEventListener('click', function(){
+        var url = window.location.pathname + window.location.hash;
+        window.history.replaceState(null, '', url);
+        applyFocusFromUrl();
+      });
+    }
+    window.addEventListener('zetl:graph:ready', applyFocusFromUrl);
+    /* Re-apply on SPA navigation (depth can change within session). */
+    window.addEventListener('zetl:after-navigate', applyFocusFromUrl);
 
     /* Folder-colour legend — populate from window.__zetlGraph.folderLegend().
        The zetl:graph:ready event fires after Sigma mounts + nodes are coloured. */

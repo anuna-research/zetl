@@ -442,3 +442,11 @@
 (claims agent:designer
   :at "2026-04-18T12:32:54Z"
   (given completed-breadcrumb-mobile-truncate))
+
+(claims agent:frontend
+  :at "2026-04-18T12:46:06Z"
+  (given completed-graph-focus-mode))
+
+(claims agent:frontend
+  :at "2026-04-18T12:46:06Z"
+  (given completed-backlinks-grouping))
