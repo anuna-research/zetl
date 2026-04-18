@@ -426,3 +426,19 @@
 (claims agent:frontend
   :at "2026-04-18T12:16:11Z"
   (given completed-graph-filter-degree))
+
+(claims agent:frontend
+  :at "2026-04-18T12:32:54Z"
+  (given completed-me-empty-state))
+
+(claims agent:frontend
+  :at "2026-04-18T12:32:54Z"
+  (given completed-edit-delete-overflow))
+
+(claims agent:designer
+  :at "2026-04-18T12:32:54Z"
+  (given completed-connected-indicator-badge))
+
+(claims agent:designer
+  :at "2026-04-18T12:32:54Z"
+  (given completed-breadcrumb-mobile-truncate))
