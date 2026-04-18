@@ -902,7 +902,21 @@ pub async fn edit_handler(
     })
     .to_string();
 
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
+
+    // BUG-502: sidebar parity with page_handler. Without this the
+    // "Recent changes" link is gated on vault.history.snapshot_count and
+    // silently disappears from the editor's sidebar.
+    #[cfg(feature = "history")]
+    {
+        if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
+    }
+    #[cfg(feature = "semantic")]
+    {
+        vault_ctx.semantic_available = state.vector_index.is_some();
+    }
 
     match state.engine.render_editor(
         &vault_ctx,
@@ -921,6 +935,7 @@ pub async fn edit_handler(
                  style-src 'self' 'unsafe-inline' https://esm.sh https://cdn.jsdelivr.net; \
                  connect-src 'self' ws: wss: https://esm.sh https://cdn.jsdelivr.net; \
                  font-src 'self' https://cdn.jsdelivr.net; \
+                 img-src 'self' data:; \
                  frame-ancestors 'none'"
                     .parse()
                     .unwrap(),

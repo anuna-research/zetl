@@ -1,0 +1,165 @@
+(meta plan
+  (id "ar-crawl-findings")
+  (title "ar-crawl session findings — UX + print + search remediation")
+  (status "active")
+  (created "2026-04-18")
+  (description "Remediate the six bugs surfaced by the 2026-04-18 ar-crawl session against the default theme on the fix/misc branch: BUG-501 typo'd URL silent-create, BUG-502 sidebar parity on /edit/, BUG-503 print-mode polish (Edit button + breadcrumb list style), BUG-504 unhighlighted body-match snippets in search, BUG-505 Sigma node labels clipping at the right viewport edge on mobile, BUG-506 default-browser fuchsia on visited wikilinks (pre-existing, deferred from 2026-04-17 wiki review). Scope is theme + template changes only; no new Rust dependencies, no new CRDT/history features."))
+
+;; ── Agents ──────────────────────────────────────────────────────────
+(given agent-claude-available)
+
+;; ── Tasks ───────────────────────────────────────────────────────────
+
+(given task-new-page-notice)
+(meta task-new-page-notice
+  (description "BUG-501. Visiting a non-existent slug at /{slug}/ currently drops the user into a CREATE-PAGE editor (Save/Cancel textarea) pre-populated with `# {slug}` and no affordance distinguishing a typo from intentional creation. themes/default/page.html:80 renders the edit-mode <div> unconditionally when page.is_new is true. Add a dismissible notice banner at the top of that div that reads (approx.) \"This page doesn't exist yet. Save to create it, or [go back].\" The go-back link SHOULD resolve to the parent breadcrumb (or vault root if none). Notice MUST only appear when page.is_new is true AND mode == 'serve'. Static build output is unaffected (is_new is always false there).")
+  (acceptance "Visiting /does-not-exist/ shows the notice banner above the Save/Cancel buttons; the existing Save flow still persists on first save; visiting any existing page is unchanged; the ar-crawl p2-404 screenshot for the same URL now shows the banner.")
+  (priority "P1"))
+
+(given task-editor-sidebar-parity)
+(meta task-editor-sidebar-parity
+  (description "BUG-502. The sidebar on /edit/<slug>/ (rendered by render_editor → editor.html) is missing the \"Recent changes\" link that the base.html sidebar provides on every other page. Compare themes/default/base.html:842 (where the link lives inside the standard sidebar fragment) against themes/default/editor.html's rendered sidebar. Root-cause is one of: (a) editor.html opts out of `{% extends \"base.html\" %}` and re-implements the sidebar fragment, dropping the Recent changes entry, or (b) the sidebar block is guarded by a context variable that render_editor doesn't provide. Restore sidebar parity so every shell-rendered page shows an identical global-nav block. Preferred approach: keep a single source of truth in base.html and have editor.html extend it.")
+  (acceptance "Sidebar on /edit/good-idea-2/ shows the same three top links (Help & install, Recent changes, Graph) as the landing page sidebar. No regressions on /edit for the editor pane itself. theme_contract_all_user_facing_templates_render_cleanly test in src/web/engine.rs still passes.")
+  (priority "P2"))
+
+(given task-print-polish)
+(meta task-print-polish
+  (description "BUG-503. The print CSS block in themes/default/base.html (near the end of the inline <style>) hides the interactive shell but leaves two artefacts: (a) the per-page Edit anchor at /edit/<slug>/ renders in the printed output even though it serves no purpose on paper; (b) daisyUI's `.breadcrumbs` styling doesn't apply in print, so the underlying <ul><li> falls back to default bulleted-list rendering (breadcrumbs show as a real bulleted list). Extend the @media print block with: `a[href^=\"/edit/\"], a[href^=\"&#x2f;edit/\"] { display: none !important }` plus a tight set of breadcrumb rules that flatten the list into a horizontal chevron-separated line (`list-style: none; padding: 0; display: flex; gap: 0.5em`; plus a `::before { content: \"›\" }` on `li + li`).")
+  (acceptance "Printing any page at 1024px produces a layout where breadcrumbs read as a single-line crumb trail (e.g. \"demo-vault › good-idea-2\") and no Edit anchor appears. Existing print rules remain unchanged for the rest of the page. No regression on the screen-only view.")
+  (priority "P3"))
+
+(given task-search-match-highlight)
+(meta task-search-match-highlight
+  (description "BUG-504. The body-text branch of the ⌘K search palette (themes/default/base.html:renderFullText, around line 1024) renders `item.context` (the BM25-ranked body snippet) via `esc(item.context)` with no query-term highlighting. Users can't tell why a result like `Cache` matches the query `idea` (because the body contains `[[good-idea-2]]`). Add a lightweight highlighter: for each match of the query string (case-insensitive, whole-substring, all occurrences) in item.context, wrap the match in `<mark class=\"sr-match\">…</mark>`. The existing `esc()` sanitisation MUST still run before insertion — preserve the order: escape → tokenise → wrap. Also add a faint default style for `.sr-match` (yellow-ish bg, no border) so the highlight is visually obvious.")
+  (acceptance "Typing \"idea\" and hitting a result whose snippet contains `good-idea-2` shows the substring `idea` wrapped in <mark>. Typing a query with regex special characters (e.g. `a.b`) does NOT regex-interpret — literal match only. No XSS vector: injected HTML in page titles or snippets stays escaped.")
+  (priority "P2"))
+
+(given task-graph-label-clip)
+(meta task-graph-label-clip
+  (description "BUG-505. At 375px viewport on /_graph, Sigma renders node labels to the right of node centres with no viewport-edge awareness, so labels near the right edge of the canvas clip mid-text (observed: \"Performance\" → \"Per\", \"Cache\" truncated). The fix lives in themes/default/_graph.html's nodeReducer (where the palette and reducer for node attributes is defined around line 200-240). Two options: (a) swap `out.labelPosition = 'left'` for nodes whose x-coordinate falls in the right 20% of the canvas (needs the current layout positions), or (b) apply generous horizontal padding to `.vg-stage` so labels have room. (b) is a simpler CSS-only change with no runtime measurement; start there. If (b) doesn't fully cure the clipping, layer (a) on top.")
+  (acceptance "On mobile 375px, no visible label-clipping on /_graph for any node in the demo-vault fixture. Desktop rendering unchanged (graph still fills the stage). ar-crawl p2-graph-mobile screenshot no longer shows truncated labels at the right edge.")
+  (priority "P3"))
+
+(given task-visited-link-colour)
+(meta task-visited-link-colour
+  (description "BUG-506. Visited wikilinks and backlink anchors in the default theme render in the browser default `:visited` colour (bright magenta on white), which clashes with the muted palette and surfaces prominently on every page after a reader has browsed even a single link. The review item #7 from the 2026-04-17 wiki design review flagged this; it was deliberately deferred from the correctness remediation. Now in scope. Add a scoped CSS rule in themes/default/base.html's inline <style>: `a.wikilink:visited, .link-secondary:visited, .backlinks-list a:visited { color: inherit }` — or a more specific tone (e.g. oklch(var(--p) / 0.8)) that sits within the palette. The active-link indicator (--p or similar) should remain distinguishable from visited; test by visiting a page, returning, and confirming the link is readable and still visually linked.")
+  (acceptance "After clicking a wikilink and returning to the source page, the visited link is no longer bright magenta but a palette-consistent muted tone that still reads as a link (underline or colour distinction preserved). Affects both in-body wikilinks and backlink list entries.")
+  (priority "P3"))
+
+;; ── Readiness ───────────────────────────────────────────────────────
+
+(normally r-ready-new-page-notice
+  task-new-page-notice
+  ready-new-page-notice)
+
+(normally r-ready-editor-sidebar
+  task-editor-sidebar-parity
+  ready-editor-sidebar-parity)
+
+(normally r-ready-print-polish
+  task-print-polish
+  ready-print-polish)
+
+(normally r-ready-search-highlight
+  task-search-match-highlight
+  ready-search-match-highlight)
+
+(normally r-ready-graph-label-clip
+  task-graph-label-clip
+  ready-graph-label-clip)
+
+(normally r-ready-visited-link
+  task-visited-link-colour
+  ready-visited-link-colour)
+
+;; ── Assignments ─────────────────────────────────────────────────────
+
+(normally r-assign-new-page-notice
+  (and ready-new-page-notice agent-claude-available)
+  assign-to-new-page-notice-claude)
+
+(normally r-assign-editor-sidebar
+  (and ready-editor-sidebar-parity agent-claude-available)
+  assign-to-editor-sidebar-parity-claude)
+
+(normally r-assign-print-polish
+  (and ready-print-polish agent-claude-available)
+  assign-to-print-polish-claude)
+
+(normally r-assign-search-highlight
+  (and ready-search-match-highlight agent-claude-available)
+  assign-to-search-match-highlight-claude)
+
+(normally r-assign-graph-label-clip
+  (and ready-graph-label-clip agent-claude-available)
+  assign-to-graph-label-clip-claude)
+
+(normally r-assign-visited-link
+  (and ready-visited-link-colour agent-claude-available)
+  assign-to-visited-link-colour-claude)
+
+(claims agent:claude
+  :at "2026-04-18T01:53:28Z"
+  (given claim-v1-new-page-notice)
+  (normally r-cl-state-v1-new-page-notice claim-v1-new-page-notice state-claimed-v1-new-page-notice)
+  (normally r-cl-chain-v1-new-page-notice state-claimed-v1-new-page-notice claimed-new-page-notice)
+)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-18T01:57:41Z"
+  (given completed-new-page-notice))
+
+(claims agent:claude
+  :at "2026-04-18T01:57:46Z"
+  (given claim-v1-editor-sidebar-parity)
+  (normally r-cl-state-v1-editor-sidebar-parity claim-v1-editor-sidebar-parity state-claimed-v1-editor-sidebar-parity)
+  (normally r-cl-chain-v1-editor-sidebar-parity state-claimed-v1-editor-sidebar-parity claimed-editor-sidebar-parity)
+)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-18T02:02:04Z"
+  (given completed-editor-sidebar-parity))
+
+(claims agent:claude
+  :at "2026-04-18T02:02:10Z"
+  (given claim-v1-search-match-highlight)
+  (normally r-cl-state-v1-search-match-highlight claim-v1-search-match-highlight state-claimed-v1-search-match-highlight)
+  (normally r-cl-chain-v1-search-match-highlight state-claimed-v1-search-match-highlight claimed-search-match-highlight)
+)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-18T02:07:05Z"
+  (given completed-search-match-highlight))
+
+(claims agent:claude
+  :at "2026-04-18T02:07:13Z"
+  (given claim-v1-print-polish)
+  (normally r-cl-state-v1-print-polish claim-v1-print-polish state-claimed-v1-print-polish)
+  (normally r-cl-chain-v1-print-polish state-claimed-v1-print-polish claimed-print-polish)
+)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-18T02:10:59Z"
+  (given completed-print-polish))
+
+(claims agent:claude
+  :at "2026-04-18T02:11:04Z"
+  (given claim-v1-graph-label-clip)
+  (normally r-cl-state-v1-graph-label-clip claim-v1-graph-label-clip state-claimed-v1-graph-label-clip)
+  (normally r-cl-chain-v1-graph-label-clip state-claimed-v1-graph-label-clip claimed-graph-label-clip)
+)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-18T02:18:56Z"
+  (given completed-graph-label-clip))
+
+(claims agent:claude
+  :at "2026-04-18T02:19:02Z"
+  (given claim-v1-visited-link-colour)
+  (normally r-cl-state-v1-visited-link-colour claim-v1-visited-link-colour state-claimed-v1-visited-link-colour)
+  (normally r-cl-chain-v1-visited-link-colour state-claimed-v1-visited-link-colour claimed-visited-link-colour)
+)
+
+(claims agent:ed25519:zhT3QZyz
+  :at "2026-04-18T02:22:57Z"
+  (given completed-visited-link-colour))

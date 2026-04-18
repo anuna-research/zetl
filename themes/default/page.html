@@ -26,25 +26,39 @@
     {% if mode == "serve" %}<div id="view-mode"{% if page.is_new %} style="display:none"{% endif %}>
       {% if page.raw_escaped %}
       <div class="flex justify-end mb-4">
-        <a href="/edit/{{ page.slug | safe }}/" class="btn btn-sm btn-outline">Edit</a>
+        <a href="/edit/{{ page.slug | safe }}/" data-zetl-spa="off" class="btn btn-sm btn-outline">Edit</a>
       </div>
       {% endif %}
     {% endif %}
-      {# SPEC-027 REQ-300 / REQ-305: page metadata strip.
-         Omitted when page.history is null or last_changed is empty
-         (feature disabled, no snapshots, or first-snapshot edge). #}
+      <article class="prose prose-lg max-w-none">{{ page.content_html | safe }}</article>
+      {# SPEC-027 REQ-300 / REQ-305: page metadata strip rendered as an
+         article footer so it reads as closure after the content, not
+         preamble above the title. Omitted when page.history is null
+         or last_changed is empty (feature disabled, no snapshots, or
+         first-snapshot edge). #}
       {%- if page.history and page.history.last_changed %}
-      <div class="text-xs opacity-70 mb-3 page-history-meta" aria-label="Page history metadata">
-        <span>Last changed <time datetime="{{ page.history.last_changed }}">{{ page.history.last_changed[:10] }}</time></span>
+      {%- set latest = page.history.recent_changes[0] if page.history.recent_changes else none %}
+      {%- set co_authors = latest.co_authors if (latest and latest.co_authors) else [] %}
+      <footer class="text-xs opacity-70 mt-6 page-history-meta" aria-label="Page history metadata">
+        <span>Last changed <time datetime="{{ page.history.last_changed }}">{{ page.history.last_changed[:10] }}</time>
+          {%- if latest and latest.author_name %} by <span class="page-history-author">{{ latest.author_name }}</span>
+            {#- Co-author formatting (plan-author-attribution): solo → "by X";
+               one co-author → "by X and Y"; two-plus → "by X and N others".
+               Only names are rendered — emails stay private. The full list
+               is available on the per-page /_history route. -#}
+            {%- if co_authors | length == 1 %} and <span class="page-history-coauthors">{{ co_authors[0][0] }}</span>
+            {%- elif co_authors | length > 1 %} and <span class="page-history-coauthors">{{ co_authors | length }} others</span>
+            {%- endif -%}
+          {%- endif -%}
+        </span>
         {# Synthetic-user Finding 2: suppress "stable today" — reads as
            stability when the page literally just changed. #}
         {%- if page.history.stable_days is number and page.history.stable_days > 0 %}
         <span> · stable {{ page.history.stable_days | humanise_days }}</span>
         {%- endif %}
         <span> · <a href="{{ root_path }}{{ page.slug | safe }}/_history{% if mode == 'build' %}.html{% endif %}" class="link">history</a></span>
-      </div>
+      </footer>
       {%- endif %}
-      <article class="prose prose-lg max-w-none">{{ page.content_html | safe }}</article>
       {% if page.backlinks %}
       <div class="divider"></div>
       <h2 class="text-lg font-semibold mb-2">Backlinks</h2>
@@ -64,6 +78,24 @@
     {# Edit mode (serve only) #}
     {% if mode == "serve" and page.raw_escaped %}
     <div id="edit-mode"{% if not page.is_new %} style="display:none"{% endif %}>
+      {# New-page notice (BUG-501): visitors who reach a slug that has no
+         backing file are dropped straight into the create-flow. Show an
+         explicit "doesn't exist yet" banner so typos don't masquerade as
+         intentional page creation. Banner is only rendered when the page
+         is new; it collapses the moment a save succeeds and the URL
+         resolves to a real file. #}
+      {%- if page.is_new %}
+      <div class="new-page-notice" role="status" aria-live="polite">
+        <strong>This page doesn't exist yet.</strong>
+        <span>Save to create it, or
+          {%- if page.breadcrumbs %}
+            <a href="{{ root_path }}{{ page.breadcrumbs[-1].slug | safe }}/{{ index_file }}">go back to {{ page.breadcrumbs[-1].title }}</a>.
+          {%- else %}
+            <a href="{{ root_path }}{{ index_file }}">go back to {{ vault.name }}</a>.
+          {%- endif %}
+        </span>
+      </div>
+      {%- endif %}
       <div class="flex gap-2 mb-4">
         <button onclick="saveEdit()" class="btn btn-sm btn-primary">Save</button>
         <button onclick="toggleEdit()" class="btn btn-sm btn-outline">Cancel</button>

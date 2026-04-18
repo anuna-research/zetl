@@ -26,6 +26,17 @@
     try { return /^\/_graph(\.html)?(\/|$|[?#])/.test(new URL(url, location.href).pathname); }
     catch (e) { return false; }
   }
+  /* The collab editor route (/edit/<slug>/) loads CodeMirror via
+     <script type="module"> imports from esm.sh. SPA nav re-clones
+     scripts but module import graphs don't always re-execute the way
+     naive script cloning expects — the editor silently fails to
+     mount on same-origin link clicks and only works after a full
+     reload. Force a full page reload on any transition in or out of
+     /edit/. */
+  function isEditRoute(url) {
+    try { return /^\/edit(\/|$)/.test(new URL(url, location.href).pathname); }
+    catch (e) { return false; }
+  }
 
   function runScripts(root) {
     /* Inline + same-origin <script> tags in swapped content don't execute on
@@ -76,6 +87,7 @@
     if (!sameOrigin(a.href)) return;
     if (a.href.replace(/#.*$/, '') === location.href.replace(/#.*$/, '')) return;
     if (isGraphRoute(location.href) || isGraphRoute(a.href)) return;
+    if (isEditRoute(location.href) || isEditRoute(a.href)) return;
     e.preventDefault();
     /* OBS-113: mark click interception — the measure on after-navigate dispatch
        reports total navigation-to-paint latency for NFR assertions. */

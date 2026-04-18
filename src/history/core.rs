@@ -601,6 +601,10 @@ pub struct PageHistoryEntry {
     pub author_name: String,
     /// Author email from the jj commit.
     pub author_email: String,
+    /// Additional contributors parsed from `Co-authored-by:` trailers in the
+    /// commit description, in the order they appear. Each pair is
+    /// `(name, email)`. Empty for solo commits.
+    pub co_authors: Vec<(String, String)>,
     /// Number of forward links from the page in this snapshot.
     pub link_count: usize,
     /// Number of pages that link to this page in this snapshot.
@@ -609,6 +613,38 @@ pub struct PageHistoryEntry {
     pub is_orphan: bool,
     /// Neighbourhood delta vs. the previous snapshot that had cached data.
     pub delta: Option<PageNeighborhoodDelta>,
+}
+
+/// Parse `Co-authored-by: Name <email>` trailer lines from a jj / git
+/// commit description. Each matching line becomes a `(name, email)`
+/// pair in insertion order; malformed trailers (missing angle brackets
+/// or name) are silently skipped. The header match is case-insensitive
+/// and ignores surrounding whitespace.
+pub fn parse_co_authored_by(description: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for raw_line in description.lines() {
+        let line = raw_line.trim();
+        let rest = match line
+            .char_indices()
+            .find(|(_, c)| *c == ':')
+            .map(|(i, _)| (&line[..i], &line[i + 1..]))
+        {
+            Some((header, rest)) if header.eq_ignore_ascii_case("Co-authored-by") => rest.trim(),
+            _ => continue,
+        };
+        let Some(open) = rest.rfind('<') else { continue };
+        let Some(close) = rest.rfind('>') else { continue };
+        if close <= open {
+            continue;
+        }
+        let name = rest[..open].trim();
+        let email = rest[open + 1..close].trim();
+        if name.is_empty() || email.is_empty() {
+            continue;
+        }
+        out.push((name.to_string(), email.to_string()));
+    }
+    out
 }
 
 /// Extract the per-page evolution timeline for `page_name` (REQ-081, CON-025).
@@ -726,6 +762,7 @@ pub fn extract_page_history(
                 timestamp: snap.timestamp.to_rfc3339(),
                 author_name: snap.author_name.clone(),
                 author_email: snap.author_email.clone(),
+                co_authors: parse_co_authored_by(&snap.description),
                 link_count: forward.len(),
                 backlink_count: backlinks.len(),
                 is_orphan: forward.is_empty() && backlinks.is_empty(),
@@ -1777,5 +1814,64 @@ mod page_history_tests {
         assert_eq!(entries[0].change_id, "snap1");
         let d = entries[0].delta.as_ref().unwrap();
         assert!(d.appeared);
+    }
+
+    // ── parse_co_authored_by (plan-author-attribution / task-history-parse-coauthors) ──
+
+    #[test]
+    fn parse_coauthors_empty_description() {
+        assert!(parse_co_authored_by("").is_empty());
+        assert!(parse_co_authored_by("zetl-snapshot vault_root_hash=ab").is_empty());
+    }
+
+    #[test]
+    fn parse_coauthors_single_trailer() {
+        let desc = "edit: note (crdt flush)\n\nCo-authored-by: Alice <alice@vault>";
+        let out = parse_co_authored_by(desc);
+        assert_eq!(out, vec![("Alice".to_string(), "alice@vault".to_string())]);
+    }
+
+    #[test]
+    fn parse_coauthors_multiple_trailers_preserve_order() {
+        let desc = "edit: note\n\nCo-authored-by: Alice <a@x>\nCo-authored-by: Bob <b@x>\nCo-authored-by: Carol <c@x>";
+        let out = parse_co_authored_by(desc);
+        assert_eq!(
+            out,
+            vec![
+                ("Alice".to_string(), "a@x".to_string()),
+                ("Bob".to_string(), "b@x".to_string()),
+                ("Carol".to_string(), "c@x".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_coauthors_header_is_case_insensitive() {
+        let desc = "co-authored-BY: Alice <a@x>\nCO-AUTHORED-BY: Bob <b@x>";
+        let out = parse_co_authored_by(desc);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].0, "Alice");
+        assert_eq!(out[1].0, "Bob");
+    }
+
+    #[test]
+    fn parse_coauthors_ignores_malformed_lines() {
+        let desc = "Co-authored-by: NoEmail\n\
+                    Co-authored-by: <only-email@x>\n\
+                    Co-authored-by: \n\
+                    Co-authored-by: Good <g@x>\n\
+                    Not-a-trailer: Ignored <i@x>";
+        let out = parse_co_authored_by(desc);
+        assert_eq!(out, vec![("Good".to_string(), "g@x".to_string())]);
+    }
+
+    #[test]
+    fn parse_coauthors_trims_whitespace() {
+        let desc = "  Co-authored-by:   Spaced Name   < spaced@x >  ";
+        let out = parse_co_authored_by(desc);
+        assert_eq!(
+            out,
+            vec![("Spaced Name".to_string(), "spaced@x".to_string())]
+        );
     }
 }

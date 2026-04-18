@@ -1189,6 +1189,7 @@ mod tests {
             .crdt_store
             .apply_ops(
                 "note",
+                "test",
                 &[super::super::ws::OpEntry::Splice {
                     pos: 0,
                     del: 0,
@@ -1238,6 +1239,7 @@ mod tests {
             .crdt_store
             .apply_ops(
                 "note",
+                "test",
                 &[super::super::ws::OpEntry::Splice {
                     pos: 0,
                     del: 0,

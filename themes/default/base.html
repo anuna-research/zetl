@@ -13,7 +13,7 @@
      (/slug/og.png) works when served from a domain root; pair with
      `zetl build --site-url https://example.com` to emit fully-qualified
      URLs for sub-path deployments or strict scrapers. #}
-  <meta property="og:image" content="{% block og_image %}{{ vault.site_url or '' }}{% if page and page.slug %}/{{ page.slug }}/og.png{% else %}/og.png{% endif %}{% endblock %}">
+  <meta property="og:image" content="{% block og_image %}{{ vault.site_url or '' }}{% if page is defined and page and page.slug %}/{{ page.slug }}/og.png{% else %}/og.png{% endif %}{% endblock %}">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
@@ -185,6 +185,18 @@
       padding: 1px 3px;
       margin: 0 -3px;
     }
+    /* BUG-506: suppress the browser-default magenta :visited colour on
+       wikilinks and the per-page backlink list. Inherits the surrounding
+       text colour so visited links stay on-palette; the underline
+       continues to mark the element as a link. The coloured-transclusion
+       underline (set inline by the page.html bridge script) still wins
+       where it's applied because inline styles outrank this rule. */
+    a.wikilink:visited,
+    a.wikilink:link,
+    .link.link-secondary,
+    .link.link-secondary:visited {
+      color: inherit;
+    }
 
     /* Mobile link-preview tooltip */
     .wikilink-tooltip {
@@ -337,6 +349,12 @@
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
+    }
+    .search-result .sr-match {
+      background: oklch(var(--wa) / 0.25);
+      color: inherit;
+      padding: 0 0.1em;
+      border-radius: 0.125rem;
     }
     .search-result .score {
       font-size: 0.7rem;
@@ -650,6 +668,121 @@
       margin-left: 0.75rem;
       padding-left: 0;
     }
+
+    /* New-page notice banner — shown above the editor when a visitor
+       reaches a slug that has no on-disk file yet. Distinguishes typo
+       from intentional creation per BUG-501. */
+    .new-page-notice {
+      margin: 0 0 1rem;
+      padding: 0.75rem 1rem;
+      border-left: 3px solid oklch(var(--wa));
+      background: oklch(var(--wa) / 0.08);
+      font-size: 0.9rem;
+      border-radius: 0.25rem;
+    }
+    .new-page-notice strong { margin-right: 0.35em; }
+    .new-page-notice a {
+      color: oklch(var(--p));
+      text-decoration: underline;
+    }
+
+    /* ── Print ─────────────────────────────────────────────────────────
+       Drop the interactive shell (sidebar, graph widget, search palette,
+       tooltips, mobile navbar) and let the article flow full-width in
+       black-on-white. The transclusion rail and the on-page backlinks
+       are kept because both are reference material that a reader
+       printing a page is likely to want on paper. */
+    @media print {
+      @page { margin: 2cm; }
+      html, body {
+        background: #fff !important;
+        color: #000 !important;
+      }
+      /* Chrome + interactive widgets. */
+      .drawer-side,
+      .navbar,
+      .zetl-graph-widget,
+      .zetl-graph-widget-launcher,
+      .zetl-graph-toggle,
+      .search-overlay,
+      .search-dialog,
+      .search-btn,
+      .wikilink-tooltip,
+      .drawer-toggle,
+      [data-zetl-graph-fallback],
+      /* Edit button serves no purpose on paper (BUG-503). */
+      a[href^="/edit/"],
+      a[href^="&#x2f;edit/"] {
+        display: none !important;
+      }
+      /* daisyUI's .breadcrumbs styling relies on utility classes that
+         don't apply in print; flatten the underlying <ul><li> into a
+         single-line chevron-separated trail (BUG-503). */
+      .breadcrumbs ul {
+        list-style: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: flex !important;
+        flex-wrap: wrap;
+        gap: 0.25em;
+      }
+      .breadcrumbs li { display: inline; }
+      .breadcrumbs li + li::before {
+        content: "›";
+        margin-right: 0.4em;
+        opacity: 0.6;
+      }
+      /* Collapse the daisyUI drawer so main content flows full-width. */
+      .drawer,
+      .drawer-content {
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
+      }
+      /* The page/transclusion two-column layout stacks on paper. */
+      .page-with-panel { flex-direction: column !important; }
+      .transclusion-panel {
+        position: static !important;
+        width: 100% !important;
+        max-height: none !important;
+        overflow: visible !important;
+        border-left: none !important;
+        border-top: 1px solid #ccc !important;
+        page-break-before: avoid;
+      }
+      /* Links: underlined, black. No visited variance. External URLs
+         print after the link text so the reader can follow them from
+         paper; internal wikilinks stay unadorned (the slug is rarely
+         useful out-of-context). */
+      a { color: #000 !important; text-decoration: underline !important; }
+      a[href^="http://"]:after,
+      a[href^="https://"]:after {
+        content: " (" attr(href) ")";
+        font-size: 0.85em;
+        word-break: break-all;
+      }
+      /* Code blocks wrap instead of clipping at the page edge. */
+      pre, code {
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        background: transparent !important;
+        border: 1px solid #ddd;
+      }
+      /* Keep structural elements intact across page breaks. */
+      h1, h2, h3, h4 {
+        page-break-after: avoid;
+        break-after: avoid-page;
+      }
+      img, pre, blockquote, table, .transclusion-card {
+        page-break-inside: avoid;
+        break-inside: avoid-page;
+      }
+      /* Drop all shadows and decorative backgrounds that waste toner. */
+      * {
+        box-shadow: none !important;
+        text-shadow: none !important;
+      }
+    }
     {% block styles %}{% endblock %}
   </style>
 </head>
@@ -838,6 +971,27 @@
     }
 
     function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    /* BUG-504: body-match snippet highlighter. Escapes the source text
+       first, then locates case-insensitive occurrences of the query as a
+       literal substring (no regex interpretation) and wraps them in
+       <mark class="sr-match">. The escape pass runs before wrapping so
+       HTML injected via page content stays neutralised. */
+    function escAndMark(s, q){
+      var safe = esc(s || '');
+      if (!q) return safe;
+      var lc = safe.toLowerCase();
+      var ql = q.toLowerCase();
+      if (!ql) return safe;
+      var out = '';
+      var i = 0;
+      while (i < safe.length) {
+        var hit = lc.indexOf(ql, i);
+        if (hit < 0) { out += safe.slice(i); break; }
+        out += safe.slice(i, hit) + '<mark class="sr-match">' + safe.slice(hit, hit + ql.length) + '</mark>';
+        i = hit + ql.length;
+      }
+      return out;
+    }
     function slugFromPath(path){return path.replace(/\.[^/.]+$/,'').toLowerCase().replace(/ /g,'-');}
 
     /* ── Title matching (works in all modes, no fetch needed).
@@ -943,13 +1097,14 @@
         active=-1;return;
       }
       active=0;
+      var currentQuery = input.value || '';
       items.forEach(function(item,i){
         var a=document.createElement('a');
         a.className='search-result'+(i===0?' sr-active':'');
         a.href=ROOT+item.slug+'/'+IDXFILE+(item.line?'#line-'+item.line:'');
-        var html='<span class="page-name">'+esc(item.page)+'</span>';
-        if(item.heading)html+='<span class="heading">'+esc(item.heading)+'</span>';
-        if(item.context)html+='<span class="context">'+esc(item.context)+'</span>';
+        var html='<span class="page-name">'+escAndMark(item.page, currentQuery)+'</span>';
+        if(item.heading)html+='<span class="heading">'+escAndMark(item.heading, currentQuery)+'</span>';
+        if(item.context)html+='<span class="context">'+escAndMark(item.context, currentQuery)+'</span>';
         if(item.score)html+='<span class="score">'+item.score.toFixed(2)+'</span>';
         a.innerHTML=html;
         a.addEventListener('mouseenter',function(){active=i;updateActive();});
