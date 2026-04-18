@@ -192,11 +192,18 @@ window.__zetlBootGraph = function(){
      too. Both predicates AND together. */
   var filterState = { search: '', minDegree: 0 };
   var focusState  = { slug: '', depth: 1, reachable: null };
+  /* Memoised BFS results keyed by "slug@depth". Invalidated on graph rebuild
+     (see onGraphReload below). Keeps focus-slider input responsive on large
+     graphs where the walk is non-trivial. */
+  var focusCache = Object.create(null);
 
   function recomputeFocus(){
     focusState.reachable = null;
     if (!graph || !focusState.slug || !graph.hasNode(focusState.slug)) return;
     var depth = Math.max(0, focusState.depth | 0);
+    var key = focusState.slug + '@' + depth;
+    var cached = focusCache[key];
+    if (cached) { focusState.reachable = cached; return; }
     var reach = new Set([focusState.slug]);
     var frontier = [focusState.slug];
     for (var h = 0; h < depth; h++) {
@@ -210,7 +217,11 @@ window.__zetlBootGraph = function(){
       if (!frontier.length) break;
     }
     focusState.reachable = reach;
+    focusCache[key] = reach;
   }
+  /* Invalidate the cache whenever the underlying graph is replaced — called
+     from the data-load path if the host ever swaps graphs at runtime. */
+  function invalidateFocusCache(){ focusCache = Object.create(null); }
 
   function passesFilter(node, attrs){
     if (focusState.reachable && !focusState.reachable.has(node)) return false;

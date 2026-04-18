@@ -106,6 +106,12 @@ fn recent_git_edits(
 async fn dashboard_signed_out(State(state): State<WebState>, vault_name: String) -> Response {
     // Minimal centred sign-in CTA served inline to avoid a template round-trip
     // for a page the extractor already short-circuited.
+    //
+    // vault_name is derived from a directory name on the host filesystem. The
+    // owner is the person who'd see this page, so XSS here is self-inflicted,
+    // but escape anyway so a directory named `"><script>` doesn't break the
+    // markup on someone else's machine who clones the vault.
+    let vault_escaped = html_escape(&vault_name);
     let login_path = if state.collab { "/auth/login" } else { "/" };
     let html = format!(
         r#"<!DOCTYPE html>
@@ -142,7 +148,7 @@ async fn dashboard_signed_out(State(state): State<WebState>, vault_name: String)
 </body>
 </html>
 "#,
-        vault = vault_name,
+        vault = vault_escaped,
         login = login_path,
     );
     (StatusCode::UNAUTHORIZED, Html(html)).into_response()
@@ -6988,5 +6994,96 @@ mod tests {
 
         let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ── Design-review follow-ups (plans/DESIGN-REVIEW-2026-04-18.spl) ────
+
+    #[tokio::test]
+    async fn dashboard_unauth_returns_signin_cta() {
+        // /_me with no session → 401 + HTML containing the CTA copy.
+        // Prior to task-me-empty-state this rendered an empty page.
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+
+        let app = Router::new()
+            .route("/_me", get(dashboard_handler))
+            .with_state(state);
+
+        let (status, body, ct) = get_body(&app, "/_me").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(ct.starts_with("text/html"), "content-type was {ct}");
+        let html = std::str::from_utf8(&body).unwrap();
+        assert!(
+            html.contains("Sign in to see your dashboard"),
+            "missing CTA heading in: {html}"
+        );
+        assert!(
+            html.contains(r#"class="primary""#),
+            "missing primary link class"
+        );
+    }
+
+    #[tokio::test]
+    async fn dashboard_unauth_escapes_vault_name() {
+        // A vault directory named `<vault>` must not break markup — the
+        // vault_name lands in <title> and link text, so it needs HTML escape.
+        // Call the helper directly with a crafted name (some filesystems
+        // won't accept `<>` in a directory name, so skip the filesystem).
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+        let evil = String::from("<script>alert(1)</script>");
+        let resp = dashboard_signed_out(State(state), evil).await;
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let body = axum::body::to_bytes(resp.into_body(), 100_000).await.unwrap();
+        let html = std::str::from_utf8(&body).unwrap();
+        assert!(
+            !html.contains("<script>alert(1)</script>"),
+            "raw script tag leaked into HTML"
+        );
+        assert!(
+            html.contains("&lt;script&gt;alert(1)&lt;&#x2f;script&gt;")
+                || html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"),
+            "vault_name should be HTML-escaped; got: {html}"
+        );
+    }
+
+    #[tokio::test]
+    async fn underscore_route_search_redirects_to_sidebar() {
+        // task-reserved-underscore-routes: /_search → /?focus=search
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+
+        let app = Router::new()
+            .route("/{*path}", get(page_handler))
+            .with_state(state);
+
+        let req = Request::builder().uri("/_search").body(Body::empty()).unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        // Redirect::to() emits 303 See Other.
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        let loc = resp
+            .headers()
+            .get("location")
+            .map(|v| v.to_str().unwrap().to_string())
+            .unwrap_or_default();
+        assert_eq!(loc, "/?focus=search");
+    }
+
+    #[tokio::test]
+    async fn underscore_route_unknown_returns_404() {
+        // Unknown /_* paths 404 rather than fall through to the "this page
+        // doesn't exist yet" create flow, which would burn the namespace.
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path(), "default");
+
+        let app = Router::new()
+            .route("/{*path}", get(page_handler))
+            .with_state(state);
+
+        let status = get_status(&app, "/_nonsense").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        let status = get_status(&app, "/_not-a-shell-route").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }
