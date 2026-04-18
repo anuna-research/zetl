@@ -416,6 +416,21 @@
     .zetl-action:hover svg { opacity: 1; }
     /* Wordmark — already an <a>, but make the linkness visible. */
     .zetl-wordmark { cursor: pointer; }
+    /* Mobile breadcrumb truncation (task-breadcrumb-mobile-truncate).
+       Below 420 px, keep the first segment (vault name) and the last
+       segment (current page); hide everything in between and insert a
+       single `…` via ::after on the first <li>. Tapping any visible
+       segment still navigates normally. */
+    @media (max-width: 420px) {
+      .breadcrumbs ul > li:not(:first-child):not(:last-child) {
+        display: none;
+      }
+      .breadcrumbs ul > li:first-child:not(:nth-last-child(-n+1)):not(:nth-last-child(2))::after {
+        content: "\00A0›\00A0…";
+        opacity: 0.6;
+        margin-left: 0.15em;
+      }
+    }
     /* ── Graph widget placement (SPEC-028 REQ-116)
        The default theme mounts a single persistent graph widget outside the
        volatile content region. Three placements are supported; the active

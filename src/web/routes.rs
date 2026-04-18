@@ -103,9 +103,54 @@ fn recent_git_edits(
 
 /// GET /_me — User dashboard with recent edits, accessible pages, role summary, etc.
 #[allow(unused_variables)]
+async fn dashboard_signed_out(State(state): State<WebState>, vault_name: String) -> Response {
+    // Minimal centred sign-in CTA served inline to avoid a template round-trip
+    // for a page the extractor already short-circuited.
+    let login_path = if state.collab { "/auth/login" } else { "/" };
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign in — {vault}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {{ font-family: ui-sans-serif, system-ui, sans-serif; margin: 0;
+          min-height: 100vh; display: flex; align-items: center; justify-content: center;
+          background: #fafafa; color: #1f2937; }}
+  .signed-out {{ max-width: 24rem; padding: 2rem; text-align: center; }}
+  .signed-out h1 {{ font-size: 1.25rem; font-weight: 600; margin: 0 0 0.5rem; }}
+  .signed-out p  {{ font-size: 0.9rem; opacity: 0.75; margin: 0 0 1.25rem; }}
+  .signed-out .primary {{ display: inline-block; padding: 0.55rem 1.1rem;
+                    border-radius: 0.5rem; background: #6366f1; color: #fff;
+                    text-decoration: none; font-size: 0.9rem; font-weight: 500; }}
+  .signed-out .primary:hover {{ background: #4f46e5; }}
+  .signed-out .alt {{ display: block; margin-top: 0.9rem; color: #6b7280;
+                      background: transparent;
+                      text-decoration: none;
+                      font-size: 0.8rem; }}
+  .signed-out .alt:hover {{ text-decoration: underline; }}
+</style>
+</head>
+<body>
+  <main class="signed-out">
+    <h1>Sign in to see your dashboard</h1>
+    <p>Your dashboard shows accessible pages, recent edits, and active sessions — but first we need to know who you are.</p>
+    <a class="primary" href="{login}">Sign in</a>
+    <a class="alt" href="/">Back to {vault}</a>
+  </main>
+</body>
+</html>
+"#,
+        vault = vault_name,
+        login = login_path,
+    );
+    (StatusCode::UNAUTHORIZED, Html(html)).into_response()
+}
+
 pub async fn dashboard_handler(
     State(state): State<WebState>,
-    session: crate::web::session::SessionUser,
+    session: Result<crate::web::session::SessionUser, StatusCode>,
 ) -> Response {
     let vault_root = &*state.vault_root;
     let vault_name = state
@@ -113,6 +158,15 @@ pub async fn dashboard_handler(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
+
+    // Unauthenticated — render a sign-in CTA instead of a blank 401
+    // (task-me-empty-state).
+    let session = match session {
+        Ok(s) => s,
+        Err(_) => {
+            return dashboard_signed_out(State(state), vault_name).await;
+        }
+    };
 
     // Load user profile
     let profile = match crate::user::load_profile(vault_root, &session.user_id) {
