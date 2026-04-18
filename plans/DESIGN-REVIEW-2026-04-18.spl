@@ -1,0 +1,368 @@
+;; Plan — address web-UI design-review findings (2026-04-18)
+;; Branch: design/review-2026-04-18
+;; Source: research/design-review-2026-04-18.md
+
+(meta plan
+  (id "DESIGN-REVIEW-2026-04-18")
+  (title "Design review — web UI fixes")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-04-18")
+  (author "agent:claude")
+  (spec "research/design-review-2026-04-18.md")
+  (description
+   "Address P1/P2/P3 findings from the 2026-04-18 design review: graph UX, home-page scale, stat-card signal, sidebar hierarchy, small polish."))
+
+;; ----------------------------------------------------------------------------
+;; Agents
+;; ----------------------------------------------------------------------------
+
+(given agent-designer-available)   ;; visual/design pass
+(given agent-frontend-available)   ;; template + JS changes
+(given agent-backend-available)    ;; router / handler changes
+
+;; ----------------------------------------------------------------------------
+;; Tasks
+;; ----------------------------------------------------------------------------
+
+;; ---- P1 graph ------------------------------------------------------------
+
+(given task-graph-controls)
+(meta task-graph-controls
+  (priority "P1")
+  (description "Add visible zoom / pan / reset controls to /_graph, plus a label-density toggle (always · on-hover · never).")
+  (acceptance "Zoom + pan buttons render in a corner on /_graph; label toggle changes rendered labels; keyboard shortcuts documented inline."))
+
+(given task-graph-filter-degree)
+(meta task-graph-filter-degree
+  (priority "P1")
+  (description "Degree-filter slider on /_graph: hide nodes with fewer than N links.")
+  (acceptance "Slider renders; dragging re-renders visible nodes; filter state persists in URL query string."))
+
+(given task-graph-search-highlight)
+(meta task-graph-search-highlight
+  (priority "P1")
+  (description "Text input on /_graph that dims non-matching nodes using the existing zetl-search-index JSON already embedded in <head>.")
+  (acceptance "Typing filters visually without full re-render; clearing restores; reuses the same search index as sidebar."))
+
+(given task-graph-folder-color)
+(meta task-graph-folder-color
+  (priority "P1")
+  (description "Colour nodes on /_graph by their top-level folder (architecture, concepts, features, decisions, theories, ...), with a compact legend.")
+  (acceptance "Each folder renders a distinct colour; legend shows folder→colour mapping; collapsible."))
+
+(given task-graph-empty-state)
+(meta task-graph-empty-state
+  (priority "P3")
+  (description "Empty-state illustration + copy for /_graph when the vault has zero pages.")
+  (acceptance "Zero-page vault shows 'Create your first page to see the graph' CTA linking to /edit/new."))
+
+(given task-graph-focus-mode)
+(meta task-graph-focus-mode
+  (priority "P2")
+  (description "Neighbourhood mode: /_graph?focus=<slug>&depth=N renders only the N-hop subgraph around a page. Link to it from each page's 'Linked Pages' pane.")
+  (acceptance "URL with ?focus=slug renders subgraph; page view's Links pill has a 'View in graph' affordance that launches this mode."))
+
+;; ---- P1 home page -------------------------------------------------------
+
+(given task-home-sort-filter)
+(meta task-home-sort-filter
+  (priority "P1")
+  (description "Add sort pills on / index: A–Z · Recent · Most linked · Orphans · Dead links. Clicking a sidebar folder filters the grid to that folder.")
+  (acceptance "Five sort options work and persist in URL; folder filter narrows grid; 'All' restores."))
+
+(given task-home-card-folder-path)
+(meta task-home-card-folder-path
+  (priority "P1")
+  (description "Each 'All Pages' card shows its folder path as 12-px grey text above the title (e.g. architecture / Link Graph).")
+  (acceptance "Pages in subfolders display their folder path; root pages show nothing or 'root'."))
+
+(given task-home-card-hit-target)
+(meta task-home-card-hit-target
+  (priority "P3")
+  (description "Ensure the full card is a single clickable link target (title + metadata line), not just the title.")
+  (acceptance "Clicking any whitespace inside the card navigates to the page; cursor:pointer on the whole card."))
+
+(given task-home-pagination)
+(meta task-home-pagination
+  (priority "P2")
+  (description "Virtualise or paginate the 'All Pages' grid when there are more than 100 pages.")
+  (acceptance "1000-page vault renders in < 200 ms; scroll is smooth; no layout shift."))
+
+;; ---- P2 stat cards ------------------------------------------------------
+
+(given task-stat-cards-reweight)
+(meta task-stat-cards-reweight
+  (priority "P2")
+  (description "Reweight the four home stat cards: de-emphasise Pages / Links (body-grey numerals), keep Dead-links red + Orphans orange. Add a ⚠︎ / ⌀ glyph to the warning stats for colour-blind readers.")
+  (acceptance "Pages/Links numerals use neutral colour; Dead/Orphan retain warning colour + glyph."))
+
+(given task-stat-cards-click-through)
+(meta task-stat-cards-click-through
+  (priority "P2")
+  (description "Make Dead-links and Orphans cards clickable, linking to a filtered list view (/?filter=dead and /?filter=orphans).")
+  (acceptance "Clicking the card navigates to the filtered list; list shows only matching pages; URL is shareable."))
+
+;; ---- P2 sidebar / nav ---------------------------------------------------
+
+(given task-sidebar-actions-group)
+(meta task-sidebar-actions-group
+  (priority "P2")
+  (description "Group Help & install · Recent changes · Graph under a small uppercase-grey 'Actions' header with icons (❔ ↻ ◈) and a thin divider before the folder tree.")
+  (acceptance "Three top-sidebar links render with icons and visual weight > folder tree leaves; divider separates actions from folder tree."))
+
+(given task-wordmark-clickable)
+(meta task-wordmark-clickable
+  (priority "P3")
+  (description "The 'zetl' wordmark top-left should look and behave like a clickable home link in the default theme: underline-on-hover, pointer cursor, links to '/'.")
+  (acceptance "Hover renders underline + pointer on default theme; click returns to vault index."))
+
+;; ---- P2 graph pill ------------------------------------------------------
+
+(given task-graph-pill-relabel)
+(meta task-graph-pill-relabel
+  (priority "P2")
+  (description "Either rename the bottom-right 'Graph' pill on page view to 'Links' (it expands to a Linked Pages list), or render a real 1-hop mini-graph when expanded. Choose one and ship it.")
+  (acceptance "Expanded state's label matches its contents; no user could call it misleading."))
+
+;; ---- P3 editor ----------------------------------------------------------
+
+(given task-edit-delete-overflow)
+(meta task-edit-delete-overflow
+  (priority "P3")
+  (description "Move 'Delete' out of the primary action bar into an overflow (…) menu top-right. Confirmation modal on click.")
+  (acceptance "Delete no longer sits next to Save; requires confirmation; keyboard-accessible."))
+
+(given task-connected-indicator-badge)
+(meta task-connected-indicator-badge
+  (priority "P3")
+  (description "'connected' status text currently lines up with action buttons. Move to a subtle dot+label badge aligned right, or into the page footer.")
+  (acceptance "Indicator no longer reads as a fourth button; still visible while editing."))
+
+;; ---- P3 routes ----------------------------------------------------------
+
+(given task-reserved-underscore-routes)
+(meta task-reserved-underscore-routes
+  (priority "P3")
+  (description "Reserve the entire /_* URL prefix: return 404 for unknown underscore routes instead of falling through to the 'create this page' flow. Redirect /_search to focus the sidebar search.")
+  (acceptance "GET /_unknown returns 404; GET /_search 302s to / with sidebar search focused."))
+
+(given task-me-empty-state)
+(meta task-me-empty-state
+  (priority "P3")
+  (description "Unauthenticated /_me currently renders blank. Show a centred 'Sign in to see your dashboard' with a login link.")
+  (acceptance "Unauth /_me shows a call-to-action; auth /_me renders the dashboard."))
+
+;; ---- P3 smaller polish --------------------------------------------------
+
+(given task-breadcrumb-mobile-truncate)
+(meta task-breadcrumb-mobile-truncate
+  (priority "P3")
+  (description "On viewports < 420 px truncate middle breadcrumb segments: `demo-vault › … › Link Graph`.")
+  (acceptance "390-px screenshots show a single-line breadcrumb with ellipsis; tapping the ellipsis reveals the hidden segments."))
+
+(given task-backlinks-grouping)
+(meta task-backlinks-grouping
+  (priority "P3")
+  (description "Backlinks block on a page: group by source folder, collapse past the first 5 with 'Show N more'.")
+  (acceptance "Pages with > 5 backlinks show the first 5; 'Show more' expands; folder headings group entries."))
+
+(given task-print-css-audit)
+(meta task-print-css-audit
+  (priority "P3")
+  (description "Audit /_print CSS: strip sidebar, floating Graph pill, Edit button; ensure page breaks happen at H1; verify link URLs are rendered.")
+  (acceptance "Printing a page from /_print produces a clean document; no UI chrome; H1-driven breaks."))
+
+(given task-default-theme-heading-rule)
+(meta task-default-theme-heading-rule
+  (priority "P3")
+  (description "Add a subtle thin rule under the vault name on the default theme's index page to match the cue already present on thelab.")
+  (acceptance "Default theme home renders a 1px hairline rule below 'demo-vault' wordmark; other themes unchanged."))
+
+;; ----------------------------------------------------------------------------
+;; Deps: completed-design-review is always true (the review is the prereq)
+;; ----------------------------------------------------------------------------
+
+(given completed-design-review)
+
+;; ----------------------------------------------------------------------------
+;; Readiness rules — every task is ready once the review exists
+;; ----------------------------------------------------------------------------
+
+(normally r-ready-graph-controls
+  (and task-graph-controls completed-design-review) ready-graph-controls)
+(normally r-ready-graph-filter-degree
+  (and task-graph-filter-degree completed-design-review) ready-graph-filter-degree)
+(normally r-ready-graph-search-highlight
+  (and task-graph-search-highlight completed-design-review) ready-graph-search-highlight)
+(normally r-ready-graph-folder-color
+  (and task-graph-folder-color completed-design-review) ready-graph-folder-color)
+(normally r-ready-graph-empty-state
+  (and task-graph-empty-state completed-design-review) ready-graph-empty-state)
+(normally r-ready-graph-focus-mode
+  (and task-graph-focus-mode completed-design-review) ready-graph-focus-mode)
+
+(normally r-ready-home-sort-filter
+  (and task-home-sort-filter completed-design-review) ready-home-sort-filter)
+(normally r-ready-home-card-folder-path
+  (and task-home-card-folder-path completed-design-review) ready-home-card-folder-path)
+(normally r-ready-home-card-hit-target
+  (and task-home-card-hit-target completed-design-review) ready-home-card-hit-target)
+(normally r-ready-home-pagination
+  (and task-home-pagination completed-design-review) ready-home-pagination)
+
+(normally r-ready-stat-cards-reweight
+  (and task-stat-cards-reweight completed-design-review) ready-stat-cards-reweight)
+(normally r-ready-stat-cards-click-through
+  (and task-stat-cards-click-through completed-design-review) ready-stat-cards-click-through)
+
+(normally r-ready-sidebar-actions-group
+  (and task-sidebar-actions-group completed-design-review) ready-sidebar-actions-group)
+(normally r-ready-wordmark-clickable
+  (and task-wordmark-clickable completed-design-review) ready-wordmark-clickable)
+
+(normally r-ready-graph-pill-relabel
+  (and task-graph-pill-relabel completed-design-review) ready-graph-pill-relabel)
+
+(normally r-ready-edit-delete-overflow
+  (and task-edit-delete-overflow completed-design-review) ready-edit-delete-overflow)
+(normally r-ready-connected-indicator-badge
+  (and task-connected-indicator-badge completed-design-review) ready-connected-indicator-badge)
+
+(normally r-ready-reserved-underscore-routes
+  (and task-reserved-underscore-routes completed-design-review) ready-reserved-underscore-routes)
+(normally r-ready-me-empty-state
+  (and task-me-empty-state completed-design-review) ready-me-empty-state)
+
+(normally r-ready-breadcrumb-mobile-truncate
+  (and task-breadcrumb-mobile-truncate completed-design-review) ready-breadcrumb-mobile-truncate)
+(normally r-ready-backlinks-grouping
+  (and task-backlinks-grouping completed-design-review) ready-backlinks-grouping)
+(normally r-ready-print-css-audit
+  (and task-print-css-audit completed-design-review) ready-print-css-audit)
+(normally r-ready-default-theme-heading-rule
+  (and task-default-theme-heading-rule completed-design-review) ready-default-theme-heading-rule)
+
+;; ----------------------------------------------------------------------------
+;; Assignment rules — frontend/backend/designer split
+;; ----------------------------------------------------------------------------
+
+;; Graph — frontend-heavy (JS + template)
+(normally r-a-graph-controls
+  (and ready-graph-controls agent-frontend-available)
+  assign-to-graph-controls-frontend)
+(normally r-a-graph-filter-degree
+  (and ready-graph-filter-degree agent-frontend-available)
+  assign-to-graph-filter-degree-frontend)
+(normally r-a-graph-search-highlight
+  (and ready-graph-search-highlight agent-frontend-available)
+  assign-to-graph-search-highlight-frontend)
+(normally r-a-graph-folder-color
+  (and ready-graph-folder-color agent-frontend-available)
+  assign-to-graph-folder-color-frontend)
+(normally r-a-graph-empty-state
+  (and ready-graph-empty-state agent-designer-available)
+  assign-to-graph-empty-state-designer)
+(normally r-a-graph-focus-mode
+  (and ready-graph-focus-mode agent-frontend-available)
+  assign-to-graph-focus-mode-frontend)
+
+;; Home — template + small JS
+(normally r-a-home-sort-filter
+  (and ready-home-sort-filter agent-frontend-available)
+  assign-to-home-sort-filter-frontend)
+(normally r-a-home-card-folder-path
+  (and ready-home-card-folder-path agent-frontend-available)
+  assign-to-home-card-folder-path-frontend)
+(normally r-a-home-card-hit-target
+  (and ready-home-card-hit-target agent-frontend-available)
+  assign-to-home-card-hit-target-frontend)
+(normally r-a-home-pagination
+  (and ready-home-pagination agent-frontend-available)
+  assign-to-home-pagination-frontend)
+
+;; Stat cards — design + small template tweak
+(normally r-a-stat-cards-reweight
+  (and ready-stat-cards-reweight agent-designer-available)
+  assign-to-stat-cards-reweight-designer)
+(normally r-a-stat-cards-click-through
+  (and ready-stat-cards-click-through agent-frontend-available)
+  assign-to-stat-cards-click-through-frontend)
+
+;; Sidebar / nav — design-led
+(normally r-a-sidebar-actions-group
+  (and ready-sidebar-actions-group agent-designer-available)
+  assign-to-sidebar-actions-group-designer)
+(normally r-a-wordmark-clickable
+  (and ready-wordmark-clickable agent-designer-available)
+  assign-to-wordmark-clickable-designer)
+
+;; Graph pill — design decision first, then implementation
+(normally r-a-graph-pill-relabel
+  (and ready-graph-pill-relabel agent-designer-available)
+  assign-to-graph-pill-relabel-designer)
+
+;; Editor — frontend
+(normally r-a-edit-delete-overflow
+  (and ready-edit-delete-overflow agent-frontend-available)
+  assign-to-edit-delete-overflow-frontend)
+(normally r-a-connected-indicator-badge
+  (and ready-connected-indicator-badge agent-designer-available)
+  assign-to-connected-indicator-badge-designer)
+
+;; Routes — backend
+(normally r-a-reserved-underscore-routes
+  (and ready-reserved-underscore-routes agent-backend-available)
+  assign-to-reserved-underscore-routes-backend)
+(normally r-a-me-empty-state
+  (and ready-me-empty-state agent-frontend-available)
+  assign-to-me-empty-state-frontend)
+
+;; Polish
+(normally r-a-breadcrumb-mobile-truncate
+  (and ready-breadcrumb-mobile-truncate agent-designer-available)
+  assign-to-breadcrumb-mobile-truncate-designer)
+(normally r-a-backlinks-grouping
+  (and ready-backlinks-grouping agent-frontend-available)
+  assign-to-backlinks-grouping-frontend)
+(normally r-a-print-css-audit
+  (and ready-print-css-audit agent-designer-available)
+  assign-to-print-css-audit-designer)
+(normally r-a-default-theme-heading-rule
+  (and ready-default-theme-heading-rule agent-designer-available)
+  assign-to-default-theme-heading-rule-designer)
+
+;; ----------------------------------------------------------------------------
+;; Rule metadata
+;; ----------------------------------------------------------------------------
+
+(meta r-a-graph-controls
+  (description "Graph interactivity lives in a frontend JS module.")
+  (justification "Sigma/graph lib calls + keyboard handlers are frontend concerns."))
+(meta r-a-reserved-underscore-routes
+  (description "Route-reservation change lives in src/web/mod.rs.")
+  (justification "Router dispatch + 404 is a backend change."))
+(meta r-a-sidebar-actions-group
+  (description "Visual hierarchy change — designer leads, frontend ships.")
+  (justification "Group-with-icons is a design decision about weight + spacing."))
+
+(claims agent:claude
+  :at "2026-04-18T11:47:44Z"
+  (given claim-v1-stat-cards-reweight)
+  (normally r-cl-state-v1-stat-cards-reweight claim-v1-stat-cards-reweight state-claimed-v1-stat-cards-reweight)
+  (normally r-cl-chain-v1-stat-cards-reweight state-claimed-v1-stat-cards-reweight claimed-stat-cards-reweight)
+)
+
+(claims agent:claude
+  :at "2026-04-18T11:47:44Z"
+  (given claim-v1-home-sort-filter)
+  (normally r-cl-state-v1-home-sort-filter claim-v1-home-sort-filter state-claimed-v1-home-sort-filter)
+  (normally r-cl-chain-v1-home-sort-filter state-claimed-v1-home-sort-filter claimed-home-sort-filter)
+)
+
+(claims agent:claude
+  :at "2026-04-18T11:47:44Z"
+  (given claim-v1-graph-controls)
+  (normally r-cl-state-v1-graph-controls claim-v1-graph-controls state-claimed-v1-graph-controls)
+  (normally r-cl-chain-v1-graph-controls state-claimed-v1-graph-controls claimed-graph-controls)
+)

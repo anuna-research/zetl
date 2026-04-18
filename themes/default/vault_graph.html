@@ -60,6 +60,58 @@
     opacity: 0.75;
     font-style: italic;
   }
+  /* Graph controls overlay — absolute-positioned in the top-right corner of the stage.
+     Sigma owns all pointer events on the canvas itself; the controls sit above
+     (pointer-events: auto) only where the buttons exist. */
+  .vg-controls {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    background: oklch(var(--b1) / 0.85);
+    backdrop-filter: blur(4px);
+    border: 1px solid oklch(var(--b3));
+    border-radius: 0.375rem;
+    padding: 0.25rem;
+    width: 130px !important;   /* override .vg-stage > * { width: 100% } */
+    height: auto !important;
+  }
+  .vg-controls button {
+    font-size: 0.75rem;
+    line-height: 1;
+    padding: 0.375rem 0.5rem;
+    border-radius: 0.25rem;
+    background: transparent;
+    border: 0;
+    color: oklch(var(--bc));
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .vg-controls button:hover { background: oklch(var(--b2)); }
+  .vg-controls button[aria-pressed="true"] { background: oklch(var(--b2)); font-weight: 500; }
+  .vg-controls .vg-ctrl-divider {
+    height: 1px;
+    background: oklch(var(--b3));
+    margin: 0.15rem 0;
+  }
+  .vg-controls .vg-ctrl-key {
+    margin-left: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.65rem;
+    opacity: 0.5;
+  }
+  .vg-controls-hint {
+    font-size: 0.65rem;
+    opacity: 0.55;
+    padding: 0.25rem 0.5rem;
+    line-height: 1.3;
+  }
 </style>
 {% endblock %}
 
@@ -84,6 +136,22 @@
     {% block graph_widget %}
       {% include "_graph.html" ignore missing %}
     {% endblock %}
+    <div class="vg-controls" role="toolbar" aria-label="Graph controls">
+      <button type="button" data-vg-action="zoom-in" aria-label="Zoom in">
+        <span aria-hidden="true">+</span> Zoom in <span class="vg-ctrl-key">+</span>
+      </button>
+      <button type="button" data-vg-action="zoom-out" aria-label="Zoom out">
+        <span aria-hidden="true">−</span> Zoom out <span class="vg-ctrl-key">−</span>
+      </button>
+      <button type="button" data-vg-action="reset" aria-label="Fit to screen">
+        <span aria-hidden="true">⟲</span> Fit <span class="vg-ctrl-key">0</span>
+      </button>
+      <div class="vg-ctrl-divider" role="separator"></div>
+      <button type="button" data-vg-action="labels-toggle" aria-pressed="true" aria-label="Toggle labels">
+        <span aria-hidden="true">◇</span> Labels <span class="vg-ctrl-key">L</span>
+      </button>
+      <div class="vg-controls-hint">Scroll to zoom · drag to pan</div>
+    </div>
     <noscript>
       <div class="vg-empty">
         Graph view requires JavaScript. Browse pages from the
@@ -91,5 +159,73 @@
       </div>
     </noscript>
   </div>
+
+  <script>
+  (function(){
+    /* Wire controls to the Sigma renderer exposed on window.__zetlGraph.
+       Boot is async (vendor bundles lazy-load); poll until the renderer is live. */
+    var stage = document.currentScript.previousElementSibling;
+    while (stage && !stage.matches('.vg-stage')) stage = stage.previousElementSibling;
+    if (!stage) return;
+    var controls = stage.querySelector('.vg-controls');
+    if (!controls) return;
+
+    var labelsOn = true;
+
+    function getCamera(){
+      var api = window.__zetlGraph;
+      if (!api) return null;
+      var r = api.getRenderer && api.getRenderer();
+      return r && r.getCamera ? r.getCamera() : null;
+    }
+    function getRenderer(){
+      return window.__zetlGraph && window.__zetlGraph.getRenderer && window.__zetlGraph.getRenderer();
+    }
+
+    function zoomIn(){
+      var c = getCamera(); if (!c) return;
+      if (c.animatedZoom) c.animatedZoom({ factor: 1.5, duration: 200 });
+      else if (c.setState) c.setState({ ratio: (c.getState && c.getState().ratio || 1) / 1.5 });
+    }
+    function zoomOut(){
+      var c = getCamera(); if (!c) return;
+      if (c.animatedUnzoom) c.animatedUnzoom({ factor: 1.5, duration: 200 });
+      else if (c.setState) c.setState({ ratio: (c.getState && c.getState().ratio || 1) * 1.5 });
+    }
+    function reset(){
+      var c = getCamera(); if (!c) return;
+      if (c.animatedReset) c.animatedReset({ duration: 300 });
+    }
+    function toggleLabels(){
+      var r = getRenderer(); if (!r) return;
+      labelsOn = !labelsOn;
+      if (r.setSetting) r.setSetting('renderLabels', labelsOn);
+      if (r.refresh) r.refresh();
+      var btn = controls.querySelector('[data-vg-action="labels-toggle"]');
+      if (btn) btn.setAttribute('aria-pressed', labelsOn ? 'true' : 'false');
+    }
+
+    controls.addEventListener('click', function(e){
+      var btn = e.target.closest('[data-vg-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-vg-action');
+      if (action === 'zoom-in') zoomIn();
+      else if (action === 'zoom-out') zoomOut();
+      else if (action === 'reset') reset();
+      else if (action === 'labels-toggle') toggleLabels();
+    });
+
+    /* Keyboard: +, -, 0, L — only when not typing in a field */
+    document.addEventListener('keydown', function(e){
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      var tgt = e.target;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+      if (e.key === '+' || e.key === '=') { zoomIn(); e.preventDefault(); }
+      else if (e.key === '-' || e.key === '_') { zoomOut(); e.preventDefault(); }
+      else if (e.key === '0') { reset(); e.preventDefault(); }
+      else if (e.key === 'l' || e.key === 'L') { toggleLabels(); e.preventDefault(); }
+    });
+  })();
+  </script>
 </main>
 {% endblock %}
