@@ -185,6 +185,114 @@ window.__zetlBootGraph = function(){
     graph.forEachNeighbor(slug, function(n){ neighbourSet.add(n); });
   }
 
+  /* ── External filter (task-graph-search-highlight, task-graph-filter-degree)
+     The fullscreen /_graph host calls window.__zetlGraph.setFilter({search,minDegree}).
+     Nodes not matching become fully hidden from the visible graph; matching
+     nodes render at full prominence. Edges whose endpoints are hidden vanish
+     too. Both predicates AND together. */
+  var filterState = { search: '', minDegree: 0 };
+  var focusState  = { slug: '', depth: 1, reachable: null };
+  /* Memoised BFS results keyed by "slug@depth". Invalidated on graph rebuild
+     (see onGraphReload below). Keeps focus-slider input responsive on large
+     graphs where the walk is non-trivial. */
+  var focusCache = Object.create(null);
+
+  function recomputeFocus(){
+    focusState.reachable = null;
+    if (!graph || !focusState.slug || !graph.hasNode(focusState.slug)) return;
+    var depth = Math.max(0, focusState.depth | 0);
+    var key = focusState.slug + '@' + depth;
+    var cached = focusCache[key];
+    if (cached) { focusState.reachable = cached; return; }
+    var reach = new Set([focusState.slug]);
+    var frontier = [focusState.slug];
+    for (var h = 0; h < depth; h++) {
+      var next = [];
+      for (var i = 0; i < frontier.length; i++) {
+        graph.forEachNeighbor(frontier[i], function(n){
+          if (!reach.has(n)) { reach.add(n); next.push(n); }
+        });
+      }
+      frontier = next;
+      if (!frontier.length) break;
+    }
+    focusState.reachable = reach;
+    focusCache[key] = reach;
+  }
+  /* Invalidate the cache whenever the underlying graph is replaced — called
+     from the data-load path if the host ever swaps graphs at runtime. */
+  function invalidateFocusCache(){ focusCache = Object.create(null); }
+
+  function passesFilter(node, attrs){
+    if (focusState.reachable && !focusState.reachable.has(node)) return false;
+    if (filterState.minDegree > 0) {
+      var d = (attrs.outlink_count || 0) + (attrs.backlink_count || 0);
+      if (d < filterState.minDegree) return false;
+    }
+    if (filterState.search) {
+      var hay = ((attrs.label || '') + ' ' + (attrs.slug || node)).toLowerCase();
+      if (hay.indexOf(filterState.search) < 0) return false;
+    }
+    return true;
+  }
+
+  /* ── Folder colouring (task-graph-folder-color) ──────────────────────────
+     Top-level folder of a slug → deterministic HSL hue. Root-level pages and
+     dead phantoms do NOT get coloured — they keep the palette/dead defaults.
+     Widgets can opt out by setting data-folder-colour="off" on the host. */
+  var folderColoursEnabled = widget.getAttribute('data-folder-colour') !== 'off';
+  var folderColourCache = Object.create(null);
+  function topFolder(slug){
+    if (!slug) return '';
+    var i = slug.indexOf('/');
+    return i < 0 ? '' : slug.slice(0, i);
+  }
+  function hashCode(s){
+    var h = 0, i;
+    for (i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+    return Math.abs(h);
+  }
+  function hslToHex(h, s, l){
+    /* h in [0,360), s and l in [0,1] */
+    var c = (1 - Math.abs(2*l - 1)) * s;
+    var hp = h / 60;
+    var x = c * (1 - Math.abs((hp % 2) - 1));
+    var r=0,g=0,b=0;
+    if (hp < 1) { r=c; g=x; }
+    else if (hp < 2) { r=x; g=c; }
+    else if (hp < 3) { g=c; b=x; }
+    else if (hp < 4) { g=x; b=c; }
+    else if (hp < 5) { r=x; b=c; }
+    else { r=c; b=x; }
+    var m = l - c/2;
+    function hex(v){ v = Math.round((v + m) * 255); return ('0' + v.toString(16)).slice(-2); }
+    return '#' + hex(r) + hex(g) + hex(b);
+  }
+  function folderColour(folder){
+    if (!folder) return null;
+    if (folderColourCache[folder]) return folderColourCache[folder];
+    var hue = hashCode(folder) % 360;
+    /* Sigma's WebGL node program expects hex; hsl() strings render as
+       near-black on some builds. Convert at cache-write. */
+    var c = hslToHex(hue, 0.62, 0.55);
+    folderColourCache[folder] = c;
+    return c;
+  }
+  function folderLegend(){
+    if (!graph) return [];
+    var seen = Object.create(null);
+    graph.forEachNode(function(n, attrs){
+      if (attrs && attrs.is_dead) return;
+      var f = topFolder(attrs && attrs.slug || n);
+      if (!f || seen[f]) return;
+      seen[f] = true;
+    });
+    var out = Object.keys(seen).sort().map(function(f){
+      return { folder: f, colour: folderColour(f) };
+    });
+    return out;
+  }
+
   /* ── Reducers (read palette every frame) ─────────────────────────────── */
   /* REQ-112: dead-link (is_dead:true) nodes and their terminating edges
      render with the muted palette and — for edges — Sigma's "dashed" type.
@@ -197,13 +305,34 @@ window.__zetlBootGraph = function(){
     var weight = (attrs.outlink_count || 0) + (attrs.backlink_count || 0);
     out.size = Math.max(3, 3 + Math.sqrt(weight));
 
+    /* Apply external filter before other decorations: non-matching nodes
+       are hidden entirely. The edge reducer hides edges with hidden endpoints. */
+    if (!passesFilter(node, attrs)) {
+      out.hidden = true;
+      return out;
+    }
+
     var isDead = !!attrs.is_dead;
     if (isDead) {
       out.color = palette.nodeDead;
       out.size = Math.max(2, out.size * 0.75);
       out.zIndex = 0;
+    } else if (folderColoursEnabled) {
+      var folderC = folderColour(topFolder(attrs.slug || node));
+      out.color = folderC || palette.node;
     } else {
       out.color = palette.node;
+    }
+
+    /* Focus target gets the active treatment (colour + size + label) so the
+       viewer can tell at a glance which node the subgraph is centred on.
+       Suppressed while the user hovers a different node — hover owns the
+       temporary styling; the focus ring resumes when the hover ends. */
+    if (focusState.slug && node === focusState.slug && !hoveredNode) {
+      out.color = palette.nodeActive;
+      out.size = out.size * 1.6;
+      out.highlighted = true;
+      out.zIndex = 2;
     }
 
     /* Hover: highlight hovered node + its neighbours, fade everything else */
@@ -241,7 +370,15 @@ window.__zetlBootGraph = function(){
   function edgeReducer(edge, attrs){
     var out = {};
     for (var k in attrs) out[k] = attrs[k];
+    var srcAttrs = graph.getNodeAttributes(graph.source(edge));
     var targetAttrs = graph.getNodeAttributes(graph.target(edge));
+
+    /* Hide edge if either endpoint is filtered out. */
+    if (!passesFilter(graph.source(edge), srcAttrs) || !passesFilter(graph.target(edge), targetAttrs)) {
+      out.hidden = true;
+      return out;
+    }
+
     var isDead = !!attrs.is_dead || !!(targetAttrs && targetAttrs.is_dead);
     if (isDead) {
       out.color = palette.edgeDead;
@@ -485,8 +622,56 @@ window.__zetlBootGraph = function(){
           getGraph: function(){ return graph; },
           setMode: setMode,
           getMode: currentMode,
-          refreshPalette: function(){ palette = readPalette(); if (renderer && hasSize()) renderer.refresh(); }
+          refreshPalette: function(){ palette = readPalette(); if (renderer && hasSize()) renderer.refresh(); },
+          folderLegend: folderLegend,
+          folderColour: folderColour,
+          topFolder: topFolder,
+          /* External filter surface. Call with partial object to merge. */
+          setFilter: function(next){
+            if (!next) return;
+            if ('search' in next) filterState.search = String(next.search || '').toLowerCase().trim();
+            if ('minDegree' in next) filterState.minDegree = Math.max(0, +next.minDegree || 0);
+            if (renderer) renderer.refresh();
+          },
+          getFilter: function(){ return { search: filterState.search, minDegree: filterState.minDegree }; },
+          /* Focus mode: restrict the visible graph to the N-hop neighbourhood
+             of a named slug. Pass {slug: ''} to clear. */
+          setFocus: function(next){
+            if (!next) return;
+            if ('slug' in next) focusState.slug = String(next.slug || '');
+            if ('depth' in next) focusState.depth = Math.max(0, +next.depth || 0);
+            recomputeFocus();
+            if (renderer) {
+              renderer.refresh();
+              /* Pan + zoom the camera to the focus node so the viewer doesn't
+                 have to scan the canvas looking for the highlighted ring. */
+              if (focusState.slug && graph && graph.hasNode(focusState.slug)) {
+                try {
+                  var a = graph.getNodeAttributes(focusState.slug);
+                  var cam = renderer.getCamera && renderer.getCamera();
+                  if (cam && typeof a.x === 'number' && typeof a.y === 'number') {
+                    cam.animate({ x: a.x, y: a.y, ratio: 0.4 }, { duration: 400 });
+                  }
+                } catch (e) {}
+              } else if (!focusState.slug && renderer.getCamera) {
+                /* Clearing focus → fit to the whole (filtered) graph. */
+                try { renderer.getCamera().animatedReset({ duration: 300 }); } catch (e) {}
+              }
+            }
+          },
+          getFocus: function(){ return { slug: focusState.slug, depth: focusState.depth }; },
+          /* Max degree in the current graph — lets hosts size their slider. */
+          maxDegree: function(){
+            var m = 0;
+            if (!graph) return 0;
+            graph.forEachNode(function(n, a){
+              var d = (a.outlink_count || 0) + (a.backlink_count || 0);
+              if (d > m) m = d;
+            });
+            return m;
+          }
         };
+        try { window.dispatchEvent(new CustomEvent('zetl:graph:ready', { detail: { legend: folderLegend() } })); } catch (e) {}
         return true;
       }
 

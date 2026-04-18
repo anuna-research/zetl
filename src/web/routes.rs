@@ -5657,7 +5657,17 @@ pub async fn vault_graph_handler(State(state): State<WebState>) -> Response {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    // Sidebar-parity with page_handler / editor_handler — without this the
+    // "Recent changes" link is gated on vault.history.snapshot_count and
+    // silently disappears from the /_graph sidebar.
+    #[allow(unused_mut)]
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
+    #[cfg(feature = "history")]
+    {
+        if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
+    }
     match state.engine.render_vault_graph(&vault_ctx, "serve", "") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
