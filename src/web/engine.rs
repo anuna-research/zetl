@@ -216,6 +216,11 @@ pub struct TemplateEngine {
     /// is forced to `""`. Sourced from `graph_inline` in the active theme's
     /// `theme.toml` (disk override preferred, bundled manifest as fallback).
     graph_inline: bool,
+    /// When true, rebuilds (via [`env`]) also enable minijinja's strict
+    /// undefined behaviour so any template field missing from the
+    /// serialised context raises an error. Only set via
+    /// [`TemplateEngine::new_strict`]; production renders leave this false.
+    strict_undefined: bool,
 }
 
 const KNOWN_TEMPLATES: &[&str] = &[
@@ -261,7 +266,33 @@ pub(crate) fn resolve_graph_placement_for(vault_root: &Path, theme: &str) -> &'s
 
 /// Build a minijinja Environment with the three-tier template loader.
 fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
+    build_env_with_strictness(vault_root, theme, false)
+}
+
+/// Like [`build_env`] but flips on minijinja's strict undefined behaviour
+/// so any template field that isn't present in the serialised context
+/// raises an error instead of rendering empty. Used by the
+/// theme-contract tests to catch Rust ↔ template drift.
+fn build_env_with_strictness(
+    vault_root: &Path,
+    theme: &str,
+    strict_undefined: bool,
+) -> Environment<'static> {
     let mut env = Environment::new();
+    if strict_undefined {
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
+    }
+    // The rest of the builder continues below via the original fn body so
+    // every loader / filter / global stays in one place.
+    __build_env_finish(&mut env, vault_root, theme);
+    env
+}
+
+fn __build_env_finish(
+    env: &mut Environment<'static>,
+    vault_root: &Path,
+    theme: &str,
+) {
     let vr = vault_root.to_path_buf();
     let t = theme.to_string();
     env.set_loader(move |name: &str| {
@@ -290,7 +321,14 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
     );
 
     // SPEC-027 REQ-300: expose humanise_days (e.g. `3d`, `2w`, `9mo`) as a
-    // template filter for history-metadata rendering.
+    // template filter for history-metadata rendering. The real formatter
+    // lives in `crate::history::core` which is feature-gated; when the
+    // feature is off we still register a stub so templates that reference
+    // the filter (page.html, page_history.html) resolve — the branches
+    // that actually invoke it are guarded by `page.history` being
+    // non-null, which only happens under the feature. This keeps strict
+    // template rendering (see theme_contract_* tests) green across both
+    // feature flavours.
     #[cfg(feature = "history")]
     env.add_filter(
         "humanise_days",
@@ -302,6 +340,14 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
                 )
             })?;
             Ok(crate::history::core::humanise_days(n))
+        },
+    );
+    #[cfg(not(feature = "history"))]
+    env.add_filter(
+        "humanise_days",
+        |v: minijinja::Value| -> Result<String, minijinja::Error> {
+            let n = v.as_i64().unwrap_or(0);
+            Ok(format!("{n}d"))
         },
     );
 
@@ -327,8 +373,6 @@ fn build_env(vault_root: &Path, theme: &str) -> Environment<'static> {
         "spa_enabled",
         minijinja::Value::from(theme_spa_enabled(vault_root, theme)),
     );
-
-    env
 }
 
 /// Read `[spa].enabled` from the active theme's `theme.toml`.
@@ -393,6 +437,27 @@ impl TemplateEngine {
             theme: theme.to_string(),
             reload,
             graph_inline,
+            strict_undefined: false,
+        }
+    }
+
+    /// Like [`TemplateEngine::new`] but configures minijinja to raise an
+    /// error on any undefined field access instead of rendering empty.
+    /// Used by the theme-contract tests (and any pre-flight tooling) to
+    /// catch Rust ↔ template drift: if a template reads `page.foo` and
+    /// Rust no longer exposes `foo`, rendering panics instead of silently
+    /// swallowing it. Not suitable for production builds — real templates
+    /// are expected to chain through optional fields.
+    pub fn new_strict(vault_root: &Path, theme: &str) -> Self {
+        let cached_env = build_env_with_strictness(vault_root, theme, true);
+        let graph_inline = load_graph_inline(vault_root, theme);
+        Self {
+            cached_env,
+            vault_root: vault_root.to_path_buf(),
+            theme: theme.to_string(),
+            reload: false,
+            graph_inline,
+            strict_undefined: true,
         }
     }
 
@@ -418,7 +483,11 @@ impl TemplateEngine {
     /// environment each time; otherwise returns a reference to the cached one.
     fn env(&self) -> Cow<'_, Environment<'static>> {
         if self.reload {
-            Cow::Owned(build_env(&self.vault_root, &self.theme))
+            Cow::Owned(build_env_with_strictness(
+                &self.vault_root,
+                &self.theme,
+                self.strict_undefined,
+            ))
         } else {
             Cow::Borrowed(&self.cached_env)
         }
@@ -607,6 +676,8 @@ impl TemplateEngine {
             editor_json => editor_json,
             mode => "serve",
             search_index => search_index,
+            bm25_index => "",
+            history_index => "",
             theme => &self.theme,
             active_slug => page_slug,
             root_path => "/",
@@ -897,6 +968,8 @@ impl TemplateEngine {
             has_draft => has_draft,
             mode => mode,
             search_index => search_index,
+            bm25_index => "",
+            history_index => "",
             theme => &self.theme,
             active_slug => page_slug,
             root_path => root_path,
@@ -933,6 +1006,8 @@ impl TemplateEngine {
             sparkline_points => sparkline_points,
             mode => mode,
             search_index => search_index,
+            bm25_index => "",
+            history_index => "",
             theme => &self.theme,
             active_slug => "",
             root_path => root_path,
@@ -1180,6 +1255,196 @@ mod tests {
 
     fn default_engine() -> TemplateEngine {
         TemplateEngine::new(Path::new("."), "default", false, false)
+    }
+
+    // ─── Theme data-contract test ─────────────────────────────────────
+    //
+    // Renders every user-facing template under minijinja's strict-undefined
+    // mode against a fully-populated context. Any field a template reads
+    // that isn't in the serialised struct raises a template error instead
+    // of silently rendering empty — catches Rust ↔ template drift at CI
+    // time (e.g. removing a struct field, renaming one, or a theme typo).
+
+    fn rich_vault_history() -> serde_json::Value {
+        serde_json::json!({
+            "trend": [
+                { "ts": "2026-04-01T00:00:00+00:00", "page_count": 1, "link_count": 0 },
+                { "ts": "2026-04-17T00:00:00+00:00", "page_count": 3, "link_count": 4 },
+            ],
+            "snapshot_count": 2,
+            "unique_states": 2,
+            "oldest": "2026-04-01T00:00:00+00:00",
+            "newest": "2026-04-17T00:00:00+00:00",
+        })
+    }
+
+    fn rich_page_history() -> serde_json::Value {
+        serde_json::json!({
+            "created_at": "2026-04-10T00:00:00+00:00",
+            "last_changed": "2026-04-17T00:00:00+00:00",
+            "age_days": 7,
+            "stable_days": 1,
+            "link_trend": [],
+            "recent_changes": [{
+                "change_id": "abc123def456",
+                "timestamp": "2026-04-17T00:00:00+00:00",
+                "author_name": "Bob Example",
+                "author_email": "bob-222@vault",
+                "co_authors": [["Alice Example", "alice-111@vault"]],
+                "link_count": 2,
+                "backlink_count": 1,
+                "is_orphan": false,
+                "delta": null
+            }]
+        })
+    }
+
+    fn rich_vault() -> VaultContext {
+        VaultContext {
+            name: "contract-vault".to_string(),
+            pages: vec![PageEntry {
+                title: "Alpha".to_string(),
+                slug: "alpha".to_string(),
+                outlink_count: 2,
+                backlink_count: 1,
+                extension: "md".to_string(),
+            }],
+            sidebar_tree: vec![],
+            stats: StatsContext {
+                total_pages: 1,
+                total_links: 2,
+                dead_links: 0,
+                orphans: 0,
+            },
+            history: rich_vault_history(),
+            semantic_available: false,
+            site_url: "https://example.test".to_string(),
+        }
+    }
+
+    fn rich_page() -> PageContext {
+        PageContext {
+            title: "Alpha".to_string(),
+            slug: "alpha".to_string(),
+            content_html: "<h1>Alpha</h1><p>body</p>".to_string(),
+            content_raw: "# Alpha\n\nbody\n".to_string(),
+            frontmatter: serde_json::json!({"tags": ["x", "y"]}),
+            description: "first para".to_string(),
+            backlinks: vec![super::super::context::BacklinkEntry {
+                title: "Beta".to_string(),
+                slug: "beta".to_string(),
+                line: 1,
+                count: 1,
+                since: Some("2026-04-10T00:00:00+00:00".to_string()),
+            }],
+            outlinks: vec![super::super::context::OutlinkEntry {
+                title: "Gamma".to_string(),
+                slug: "gamma".to_string(),
+                is_dead: false,
+                color: "#888".to_string(),
+            }],
+            breadcrumbs: vec![super::super::context::BreadcrumbEntry {
+                title: "Root".to_string(),
+                slug: "root".to_string(),
+            }],
+            transclusion_cards: "<div class=\"transclusion-card\">...</div>".to_string(),
+            is_new: false,
+            raw_escaped: Some("# Alpha\n\nbody\n".to_string()),
+            history: rich_page_history(),
+        }
+    }
+
+    #[test]
+    fn theme_contract_all_user_facing_templates_render_cleanly() {
+        let engine = TemplateEngine::new_strict(Path::new("."), "default");
+        let vault = rich_vault();
+        let page = rich_page();
+
+        // Core content templates in both serve and build mode — the two
+        // modes differ in root_path / link suffix handling.
+        for mode in &["serve", "build"] {
+            engine
+                .render_index(&vault, mode, "", "", "")
+                .unwrap_or_else(|e| panic!("render_index ({mode}) failed under strict mode: {e}"));
+            engine
+                .render_page(&vault, &page, mode, "", "", "")
+                .unwrap_or_else(|e| panic!("render_page ({mode}) failed under strict mode: {e}"));
+            engine
+                .render_folder(
+                    &vault,
+                    &FolderContext {
+                        name: "docs".to_string(),
+                        slug: "docs".to_string(),
+                        breadcrumbs: vec![],
+                        subfolders: vec![],
+                        pages: vec![],
+                        total_pages: 0,
+                    },
+                    mode,
+                    "",
+                    "",
+                    "",
+                )
+                .unwrap_or_else(|e| panic!("render_folder ({mode}) failed under strict mode: {e}"));
+            engine
+                .render_vault_graph(&vault, mode, "")
+                .unwrap_or_else(|e| {
+                    panic!("render_vault_graph ({mode}) failed under strict mode: {e}")
+                });
+            engine
+                .render_help(&vault, mode)
+                .unwrap_or_else(|e| panic!("render_help ({mode}) failed under strict mode: {e}"));
+            engine
+                .render_tag_cloud(
+                    &vault,
+                    &super::super::context::TagCloudContext {
+                        tags: vec![],
+                        total_tags: 0,
+                        total_tagged_pages: 0,
+                    },
+                    mode,
+                )
+                .unwrap_or_else(|e| {
+                    panic!("render_tag_cloud ({mode}) failed under strict mode: {e}")
+                });
+        }
+
+        // Page-history full timeline (serve mode only — there is no static
+        // build equivalent other than via the index flow already covered).
+        // Only exercised under `--features history` because that's where
+        // the template and its bindings live.
+        #[cfg(feature = "history")]
+        {
+            engine
+                .render_page_history(
+                    &vault,
+                    "Alpha",
+                    "alpha",
+                    &[],
+                    "{}",
+                    &rich_page_history(),
+                    false,
+                    "serve",
+                )
+                .unwrap_or_else(|e| panic!("render_page_history failed under strict mode: {e}"));
+
+            // Vault-history page (/_history).
+            engine
+                .render_vault_history(&vault, &[], &[], "serve")
+                .unwrap_or_else(|e| panic!("render_vault_history failed under strict mode: {e}"));
+        }
+
+        // Editor (collab mode) — receives an arbitrary JSON string the
+        // client decodes. Template itself just embeds it.
+        engine
+            .render_editor(
+                &vault,
+                "Alpha",
+                "alpha",
+                &[],
+                r#"{"slug":"alpha","ticket":"x","content":"","user_name":"anon","csrf_token":""}"#,
+            )
+            .unwrap_or_else(|e| panic!("render_editor failed under strict mode: {e}"));
     }
 
     #[test]

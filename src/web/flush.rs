@@ -159,8 +159,13 @@ pub fn flush_pipeline(state: &WebState, slug: &str) -> Option<FlushResult> {
                 Vec::new(),
             )
         };
+    // primary_email is only consumed by the history-gated jj snapshot
+    // below; silence the unused-variable warning in builds without the
+    // feature by binding an underscore-prefixed name.
+    #[cfg_attr(not(feature = "history"), allow(unused_variables))]
     let primary_email = format!("{primary_id}@vault");
     // jj takes explicit emails, git::auto_commit takes a bare user_id.
+    #[cfg_attr(not(feature = "history"), allow(unused_variables))]
     let co_authors_with_email: Vec<(String, String)> = co_authors
         .iter()
         .map(|(name, id)| (name.clone(), format!("{id}@vault")))
