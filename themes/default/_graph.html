@@ -324,6 +324,17 @@ window.__zetlBootGraph = function(){
       out.color = palette.node;
     }
 
+    /* Focus target gets the active treatment (colour + size + label) so the
+       viewer can tell at a glance which node the subgraph is centred on.
+       Suppressed while the user hovers a different node — hover owns the
+       temporary styling; the focus ring resumes when the hover ends. */
+    if (focusState.slug && node === focusState.slug && !hoveredNode) {
+      out.color = palette.nodeActive;
+      out.size = out.size * 1.6;
+      out.highlighted = true;
+      out.zIndex = 2;
+    }
+
     /* Hover: highlight hovered node + its neighbours, fade everything else */
     if (hoveredNode && hoveredNeighbours) {
       if (node === hoveredNode) {
@@ -630,7 +641,23 @@ window.__zetlBootGraph = function(){
             if ('slug' in next) focusState.slug = String(next.slug || '');
             if ('depth' in next) focusState.depth = Math.max(0, +next.depth || 0);
             recomputeFocus();
-            if (renderer) renderer.refresh();
+            if (renderer) {
+              renderer.refresh();
+              /* Pan + zoom the camera to the focus node so the viewer doesn't
+                 have to scan the canvas looking for the highlighted ring. */
+              if (focusState.slug && graph && graph.hasNode(focusState.slug)) {
+                try {
+                  var a = graph.getNodeAttributes(focusState.slug);
+                  var cam = renderer.getCamera && renderer.getCamera();
+                  if (cam && typeof a.x === 'number' && typeof a.y === 'number') {
+                    cam.animate({ x: a.x, y: a.y, ratio: 0.4 }, { duration: 400 });
+                  }
+                } catch (e) {}
+              } else if (!focusState.slug && renderer.getCamera) {
+                /* Clearing focus → fit to the whole (filtered) graph. */
+                try { renderer.getCamera().animatedReset({ duration: 300 }); } catch (e) {}
+              }
+            }
           },
           getFocus: function(){ return { slug: focusState.slug, depth: focusState.depth }; },
           /* Max degree in the current graph — lets hosts size their slider. */

@@ -92,11 +92,13 @@
     var counter = document.querySelector('.zetl-index-count');
     var pageState = { showAll: false };
 
-    /* Append a "Show N more" button after the grid. Hidden when not needed. */
+    /* Append a "Show N more" button after the grid. Hidden-via-display
+       rather than the HTML hidden attribute because DaisyUI's .btn sets
+       display:inline-flex which wins over [hidden]. */
     var showMoreBtn = document.createElement('button');
     showMoreBtn.type = 'button';
-    showMoreBtn.hidden = true;
-    showMoreBtn.className = 'btn btn-sm btn-outline mt-4 mx-auto block zetl-index-more';
+    showMoreBtn.style.display = 'none';
+    showMoreBtn.className = 'btn btn-sm btn-outline mt-4 mx-auto zetl-index-more';
     showMoreBtn.setAttribute('aria-expanded', 'false');
     showMoreBtn.addEventListener('click', function(){
       pageState.showAll = true;
@@ -216,10 +218,10 @@
         var filtered = !!p.folder || p.filter === 'dead' || p.filter === 'orphans' || p.sort === 'orphans';
         counter.textContent = filtered ? (visible + ' / ' + cards.length) : '';
         if (pastLimit > 0) {
-          showMoreBtn.hidden = false;
+          showMoreBtn.style.display = '';
           showMoreBtn.textContent = 'Show ' + pastLimit + ' more';
         } else {
-          showMoreBtn.hidden = true;
+          showMoreBtn.style.display = 'none';
         }
       };
       if (needsDead) loadDeadSources().then(proceed);

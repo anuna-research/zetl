@@ -416,6 +416,11 @@
     .zetl-action:hover svg { opacity: 1; }
     /* Wordmark — already an <a>, but make the linkness visible. */
     .zetl-wordmark { cursor: pointer; }
+    /* Ensure the mobile drawer (and its overlay) paint over page-local
+       absolute-positioned overlays like the /_graph controls, legend, and
+       focus chip. DaisyUI leaves .drawer-side at z-index:auto, which loses
+       to any positioned sibling with an explicit z-index. */
+    .drawer-side { z-index: 50; }
     /* Mobile breadcrumb truncation (task-breadcrumb-mobile-truncate).
        Below 420 px, keep the first segment (vault name) and the last
        segment (current page); hide everything in between and insert a
@@ -476,6 +481,9 @@
       bottom: auto !important;
       box-shadow: none;
       resize: none;
+      /* Fullscreen placement sits in normal flow — drop the z-index boost so
+         the daisyUI mobile drawer (position:fixed) overlays it correctly. */
+      z-index: auto !important;
     }
     .zetl-graph-widget__canvas {
       position: absolute;
@@ -955,9 +963,12 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             <span>Help &amp; install</span>
           </a>
-          {# SPEC-027 REQ-304 / REQ-305: vault-history link, omitted when history absent. #}
+          {# SPEC-027 REQ-304 / REQ-305: vault-history link, omitted when history absent.
+             data-zetl-spa="off" forces a full page load — the /_history view isn't
+             part of the SPA shell so partial nav leaves the old content visible
+             and a hard refresh is needed to see changes. #}
           {%- if vault.history and vault.history.snapshot_count and vault.history.snapshot_count > 0 %}
-          <a href="{{ root_path }}_history{% if mode == 'build' %}.html{% endif %}" class="zetl-action">
+          <a href="{{ root_path }}_history{% if mode == 'build' %}.html{% endif %}" data-zetl-spa="off" class="zetl-action">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
             <span>Recent changes</span>
           </a>
