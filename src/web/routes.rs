@@ -409,7 +409,16 @@ pub async fn help_handler(State(state): State<WebState>) -> Response {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "vault".to_string());
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    // Sidebar-parity with page_handler — populate history so "Recent changes"
+    // renders on /help too (BUG-502 class).
+    #[allow(unused_mut)]
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
+    #[cfg(feature = "history")]
+    {
+        if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
+    }
     match state.engine.render_help(&vault_ctx, "serve") {
         Ok(html) => Html(html).into_response(),
         Err(e) => render_error_response(e),
@@ -2264,7 +2273,15 @@ async fn page_history_handler_inner(State(state): State<WebState>, page_slug: St
         Vec::new()
     };
 
-    let vault_ctx = build_vault_context(&data, &vault_name);
+    // Sidebar-parity: populate vault_ctx.history so "Recent changes" renders.
+    #[allow(unused_mut)]
+    let mut vault_ctx = build_vault_context(&data, &vault_name);
+    #[cfg(feature = "history")]
+    {
+        if let Some(hist) = crate::history::build_template_history_context(&state.vault_root) {
+            vault_ctx.history = serde_json::to_value(hist).unwrap_or(serde_json::Value::Null);
+        }
+    }
     let breadcrumbs: Vec<crate::web::context::BreadcrumbEntry> = {
         let parts: Vec<&str> = current_slug.split('/').collect();
         let mut crumbs = Vec::new();
