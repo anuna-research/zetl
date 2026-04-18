@@ -90,6 +90,20 @@
     var sortBtns = document.querySelectorAll('.zetl-index-sort');
     var folderSel = document.querySelector('.zetl-index-folder');
     var counter = document.querySelector('.zetl-index-count');
+    var pageState = { showAll: false };
+
+    /* Append a "Show N more" button after the grid. Hidden when not needed. */
+    var showMoreBtn = document.createElement('button');
+    showMoreBtn.type = 'button';
+    showMoreBtn.hidden = true;
+    showMoreBtn.className = 'btn btn-sm btn-outline mt-4 mx-auto block zetl-index-more';
+    showMoreBtn.setAttribute('aria-expanded', 'false');
+    showMoreBtn.addEventListener('click', function(){
+      pageState.showAll = true;
+      showMoreBtn.setAttribute('aria-expanded', 'true');
+      apply();
+    });
+    grid.parentNode.insertBefore(showMoreBtn, grid.nextSibling);
 
     /* Derive folder from slug, render folder-path label, collect unique top-level folders */
     var topFolders = {};
@@ -172,8 +186,13 @@
       }
 
       var needsDead = p.filter === 'dead';
+      /* Pagination threshold: vaults under PAGE_SIZE always render everything.
+         Past that, the first PAGE_SIZE visible cards render immediately and
+         the rest get a "Show N more" button at the bottom (task-home-pagination).
+         Keeps a 1000-page vault's first paint snappy without virtualising. */
+      var PAGE_SIZE = 60;
       var proceed = function(){
-        var visible = 0;
+        var visible = 0, shown = 0, pastLimit = 0;
         ordered.forEach(function(c, i){
           c.style.order = String(i);
           var show = true;
@@ -181,11 +200,27 @@
           if (p.folder && top !== p.folder) show = false;
           if ((p.sort === 'orphans' || p.filter === 'orphans') && c.dataset.orphan !== '1') show = false;
           if (needsDead && !(deadSources && deadSources[c.dataset.slug])) show = false;
-          c.style.display = show ? '' : 'none';
-          if (show) visible++;
+          if (show) {
+            visible++;
+            if (!pageState.showAll && cards.length > PAGE_SIZE && shown >= PAGE_SIZE) {
+              c.style.display = 'none';
+              pastLimit++;
+            } else {
+              c.style.display = '';
+              shown++;
+            }
+          } else {
+            c.style.display = 'none';
+          }
         });
         var filtered = !!p.folder || p.filter === 'dead' || p.filter === 'orphans' || p.sort === 'orphans';
         counter.textContent = filtered ? (visible + ' / ' + cards.length) : '';
+        if (pastLimit > 0) {
+          showMoreBtn.hidden = false;
+          showMoreBtn.textContent = 'Show ' + pastLimit + ' more';
+        } else {
+          showMoreBtn.hidden = true;
+        }
       };
       if (needsDead) loadDeadSources().then(proceed);
       else proceed();

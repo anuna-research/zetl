@@ -754,9 +754,23 @@
       .wikilink-tooltip,
       .drawer-toggle,
       [data-zetl-graph-fallback],
-      /* Edit button serves no purpose on paper (BUG-503). */
+      /* Edit button and View-in-graph link serve no purpose on paper
+         (BUG-503, task-print-css-audit). */
       a[href^="/edit/"],
-      a[href^="&#x2f;edit/"] {
+      a[href^="&#x2f;edit/"],
+      a[href^="/_graph"],
+      a[href^="&#x2f;_graph"],
+      /* Home-page interactive toolbar (sort pills + folder filter). */
+      .zetl-index-toolbar,
+      /* Fullscreen-graph overlay UI (task-print-css-audit). */
+      .vg-controls,
+      .vg-legend,
+      .vg-focus-chip,
+      /* Editor affordances — a printed editor is a printed document. */
+      .editor-toolbar,
+      .editor-overflow,
+      .editor-status-badge,
+      .presence-bar {
         display: none !important;
       }
       /* daisyUI's .breadcrumbs styling relies on utility classes that

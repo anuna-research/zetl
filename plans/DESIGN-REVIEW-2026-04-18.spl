@@ -450,3 +450,11 @@
 (claims agent:frontend
   :at "2026-04-18T12:46:06Z"
   (given completed-backlinks-grouping))
+
+(claims agent:designer
+  :at "2026-04-18T12:52:19Z"
+  (given completed-print-css-audit))
+
+(claims agent:frontend
+  :at "2026-04-18T12:52:19Z"
+  (given completed-home-pagination))
