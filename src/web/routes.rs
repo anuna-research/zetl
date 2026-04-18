@@ -935,6 +935,7 @@ pub async fn edit_handler(
                  style-src 'self' 'unsafe-inline' https://esm.sh https://cdn.jsdelivr.net; \
                  connect-src 'self' ws: wss: https://esm.sh https://cdn.jsdelivr.net; \
                  font-src 'self' https://cdn.jsdelivr.net; \
+                 img-src 'self' data:; \
                  frame-ancestors 'none'"
                     .parse()
                     .unwrap(),
