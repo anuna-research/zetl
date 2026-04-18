@@ -185,6 +185,18 @@
       padding: 1px 3px;
       margin: 0 -3px;
     }
+    /* BUG-506: suppress the browser-default magenta :visited colour on
+       wikilinks and the per-page backlink list. Inherits the surrounding
+       text colour so visited links stay on-palette; the underline
+       continues to mark the element as a link. The coloured-transclusion
+       underline (set inline by the page.html bridge script) still wins
+       where it's applied because inline styles outrank this rule. */
+    a.wikilink:visited,
+    a.wikilink:link,
+    .link.link-secondary,
+    .link.link-secondary:visited {
+      color: inherit;
+    }
 
     /* Mobile link-preview tooltip */
     .wikilink-tooltip {
