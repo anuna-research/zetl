@@ -651,6 +651,23 @@
       padding-left: 0;
     }
 
+    /* New-page notice banner — shown above the editor when a visitor
+       reaches a slug that has no on-disk file yet. Distinguishes typo
+       from intentional creation per BUG-501. */
+    .new-page-notice {
+      margin: 0 0 1rem;
+      padding: 0.75rem 1rem;
+      border-left: 3px solid oklch(var(--wa));
+      background: oklch(var(--wa) / 0.08);
+      font-size: 0.9rem;
+      border-radius: 0.25rem;
+    }
+    .new-page-notice strong { margin-right: 0.35em; }
+    .new-page-notice a {
+      color: oklch(var(--p));
+      text-decoration: underline;
+    }
+
     /* ── Print ─────────────────────────────────────────────────────────
        Drop the interactive shell (sidebar, graph widget, search palette,
        tooltips, mobile navbar) and let the article flow full-width in

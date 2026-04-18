@@ -78,6 +78,24 @@
     {# Edit mode (serve only) #}
     {% if mode == "serve" and page.raw_escaped %}
     <div id="edit-mode"{% if not page.is_new %} style="display:none"{% endif %}>
+      {# New-page notice (BUG-501): visitors who reach a slug that has no
+         backing file are dropped straight into the create-flow. Show an
+         explicit "doesn't exist yet" banner so typos don't masquerade as
+         intentional page creation. Banner is only rendered when the page
+         is new; it collapses the moment a save succeeds and the URL
+         resolves to a real file. #}
+      {%- if page.is_new %}
+      <div class="new-page-notice" role="status" aria-live="polite">
+        <strong>This page doesn't exist yet.</strong>
+        <span>Save to create it, or
+          {%- if page.breadcrumbs %}
+            <a href="{{ root_path }}{{ page.breadcrumbs[-1].slug | safe }}/{{ index_file }}">go back to {{ page.breadcrumbs[-1].title }}</a>.
+          {%- else %}
+            <a href="{{ root_path }}{{ index_file }}">go back to {{ vault.name }}</a>.
+          {%- endif %}
+        </span>
+      </div>
+      {%- endif %}
       <div class="flex gap-2 mb-4">
         <button onclick="saveEdit()" class="btn btn-sm btn-primary">Save</button>
         <button onclick="toggleEdit()" class="btn btn-sm btn-outline">Cancel</button>
