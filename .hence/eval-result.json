@@ -3,31 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 1026,
-    "deletions": 10,
+    "files_changed": 3,
+    "insertions": 925,
+    "deletions": 16,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
-      "src/hooks/mod.rs",
-      "src/hooks/pipeline.rs",
-      "src/hooks/safe_mode.rs",
-      "src/main.rs",
-      "src/web/theme.rs",
-      "tests/safe_mode_integration.rs"
+      "docs/hook-security.md",
+      "src/hooks/persistent.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-safe-mode-changes",
-      "content": "Modified 8 files (+1026, -10): .hence/context-manifest.json, src/cli.rs, src/hooks/mod.rs, src/hooks/pipeline.rs, src/hooks/safe_mode.rs and 3 more",
+      "key": "task-security-hooks-changes",
+      "content": "Modified 3 files (+925, -16): .hence/context-manifest.json, docs/hook-security.md, src/hooks/persistent.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/safe-mode-v1",
-  "evaluated_at": "2026-04-19T18:04:47Z",
+  "branch_name": "hence/security-hooks-v1",
+  "evaluated_at": "2026-04-19T18:21:33Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
