@@ -3,29 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 1007,
-    "deletions": 6,
+    "files_changed": 4,
+    "insertions": 1129,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      ".woodpecker/ci.yaml",
-      "Makefile",
-      "src/hooks/mod.rs",
-      "src/hooks/nfr_gates.rs",
-      "tests/nfr_gates_integration.rs"
+      "src/ecosystems/detection.rs",
+      "src/ecosystems/mod.rs",
+      "tests/ecosystem_runtime_detect_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-nfr-gates-032-changes",
-      "content": "Modified 6 files (+1007, -6): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, src/hooks/mod.rs, src/hooks/nfr_gates.rs and 1 more",
+      "key": "task-eco-runtime-detect-changes",
+      "content": "Modified 4 files (+1129, -5): .hence/context-manifest.json, src/ecosystems/detection.rs, src/ecosystems/mod.rs, tests/ecosystem_runtime_detect_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/nfr-gates-032-v1",
-  "evaluated_at": "2026-04-19T20:07:27Z",
+  "branch_name": "hence/eco-runtime-detect-v1",
+  "evaluated_at": "2026-04-19T20:24:48Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
