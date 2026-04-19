@@ -1,12 +1,12 @@
 {
-  "task_id": "remark-harness",
+  "task_id": "mdbook-adapter",
   "token_budget": 8000,
-  "tokens_used": 319,
+  "tokens_used": 316,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "remark adapter per REQ-3305 / CON-3305 / ADR-3304. Persistent Node subprocess; JSON-lines harness; REQ-3305 isolation = shared|fresh-context.",
-      "token_cost": 35,
+      "content": "mdBook preprocessor adapter per REQ-3304 / CON-3304 / ADR-3303. Runs at pre-parse stage; `supports html` probe before invocation.",
+      "token_cost": 32,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T22:10:41Z"
+  "constructed_at": "2026-04-19T22:25:06Z"
 }
