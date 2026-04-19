@@ -5392,6 +5392,22 @@ fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
         render_ecosystem_check_table(&report);
     }
 
+    // REQ-3315 config-time check: surface any mixed-parser
+    // configurations so authors catch them before `zetl build`.
+    // Needs the vault's page list, which `ecosystem check` doesn't
+    // otherwise load — do a cheap scan here. Run before the
+    // `configured failures` exit so mixed-parser + missing-runtime
+    // surface together.
+    let scanned = scan_vault(&vault_root, &cli.scan_options()).unwrap_or_default();
+    let mixed = detect_mixed_parser_violations(&vault_root, theme_hooks.path(), &scanned)
+        .unwrap_or_default();
+    if !mixed.is_empty() {
+        // Emit on stderr regardless of `--json` / format mode: the
+        // rendered diagnostic is human-readable by construction and
+        // leaves stdout (JSON or table) intact for tool consumers.
+        eprintln!("{}", zetl::parsers::format_mixed_parser_report(&mixed));
+    }
+
     if report.has_configured_failures() {
         // Walk in canonical order and surface the first configured
         // failure's hint on stderr so CI logs read naturally.
@@ -5404,6 +5420,7 @@ fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
         }
         std::process::exit(1);
     }
+
     Ok(())
 }
 
@@ -6300,6 +6317,147 @@ fn load_theme_manifest_for_audit(
     zetl::web::theme::load_bundled_manifest(theme).ok().flatten()
 }
 
+/// SPEC-033 REQ-3315 — walk every composed hook against every vault
+/// page and return the set of (page, hook) pairs whose resolved
+/// parser doesn't match the ecosystem the hook belongs to.
+///
+/// Pure plumbing — all the detection logic lives in
+/// [`zetl::parsers::detect_mixed_parsers`]; this function's only job
+/// is gathering the inputs (pages, parsers, compiled selectors) from
+/// on-disk state.
+fn detect_mixed_parser_violations(
+    vault_root: &std::path::Path,
+    theme_hooks_dir: Option<&std::path::Path>,
+    files: &[zetl::types::ParsedFile],
+) -> Result<zetl::parsers::MixedParserReport> {
+    use zetl::hooks::composition::compose_all_stages;
+    use zetl::hooks::manifest::{load_manifest, LoadedManifest, SelectorSpec};
+    use zetl::hooks::selector::{compile, CompiledSelector};
+    use zetl::parsers::{
+        detect_mixed_parsers, ecosystem_expected_parser, HookForDetection, ParseConfig,
+        PageForDetection,
+    };
+
+    // Compose every stage once; only hooks that declare an ecosystem
+    // whose id is a known v1 ecosystem can participate in a
+    // mixed-parser violation.
+    let pipelines = match compose_all_stages(vault_root, theme_hooks_dir) {
+        Ok(p) => p,
+        Err(e) => {
+            // Composition errors are already surfaced elsewhere in the
+            // build path; degrade to "no violations" so the mixed-parser
+            // check doesn't double-report.
+            eprintln!("warning: hook composition failed during mixed-parser check: {e}");
+            return Ok(Default::default());
+        }
+    };
+
+    let parse_config = ParseConfig::load_from_vault(vault_root)
+        .and_then(ParseConfig::compile)
+        .map_err(|e| anyhow::anyhow!("failed to load [parse] config: {e}"))?;
+
+    // Collect (hook, compiled_selector) pairs up front so the detector
+    // borrows them by reference. Selectors are compiled once per hook
+    // (REQ-3204).
+    struct HookEntry {
+        stage: zetl::hooks::pipeline::Stage,
+        hook_id: String,
+        ecosystem: String,
+        selector: CompiledSelector,
+    }
+    let mut hook_entries: Vec<HookEntry> = Vec::new();
+    for pipe in &pipelines {
+        for h in &pipe.hooks {
+            let Some(eco) = h.ecosystem.as_deref() else {
+                continue;
+            };
+            if ecosystem_expected_parser(eco).is_none() {
+                continue;
+            }
+            let selector_spec: SelectorSpec = match &h.manifest_path {
+                Some(p) => match load_manifest(p) {
+                    Ok(LoadedManifest::Present(m)) => m.select,
+                    Ok(LoadedManifest::Missing) | Err(_) => SelectorSpec::default(),
+                },
+                None => SelectorSpec::default(),
+            };
+            let selector = match compile(&selector_spec) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!(
+                        "warning: skipping mixed-parser check for hook '{}': {e}",
+                        h.extension_id
+                    );
+                    continue;
+                }
+            };
+            hook_entries.push(HookEntry {
+                stage: h.stage,
+                hook_id: h.extension_id.clone(),
+                ecosystem: eco.to_string(),
+                selector,
+            });
+        }
+    }
+
+    if hook_entries.is_empty() {
+        return Ok(Default::default());
+    }
+
+    // Per-page inputs: read file body, parse frontmatter, resolve
+    // parser. Skip unreadable files (they'll error out elsewhere).
+    struct PageEntry {
+        path: std::path::PathBuf,
+        parser: String,
+        frontmatter: serde_json::Value,
+        body: String,
+    }
+    let mut page_entries: Vec<PageEntry> = Vec::new();
+    for f in files {
+        let abs = vault_root.join(&f.path);
+        let Ok(content) = std::fs::read_to_string(&abs) else {
+            continue;
+        };
+        let fm_value = zetl::web::markdown::parse_frontmatter(&content);
+        let body = strip_leading_frontmatter(&content).to_string();
+        let parser = match &fm_value {
+            serde_json::Value::Object(m) => zetl::parsers::select_parser_name(
+                Some(m),
+                &f.path,
+                &parse_config,
+            ),
+            _ => zetl::parsers::select_parser_name(None, &f.path, &parse_config),
+        };
+        page_entries.push(PageEntry {
+            path: f.path.clone(),
+            parser,
+            frontmatter: fm_value,
+            body,
+        });
+    }
+
+    let pages: Vec<PageForDetection<'_>> = page_entries
+        .iter()
+        .map(|p| PageForDetection {
+            path: &p.path,
+            parser: p.parser.clone(),
+            frontmatter: &p.frontmatter,
+            body: &p.body,
+        })
+        .collect();
+    let hooks: Vec<HookForDetection<'_>> = hook_entries
+        .iter()
+        .map(|h| HookForDetection {
+            stage: h.stage,
+            hook_id: &h.hook_id,
+            ecosystem: &h.ecosystem,
+            selector: &h.selector,
+        })
+        .collect();
+
+    Ok(detect_mixed_parsers(&pages, &hooks))
+}
+
 fn cmd_build(
     cli: &Cli,
     out_dir: &str,
@@ -6307,6 +6465,7 @@ fn cmd_build(
     public: Option<&str>,
     site_url: Option<&str>,
     safe_mode: bool,
+    strict_parsers: bool,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -6373,6 +6532,28 @@ fn cmd_build(
             Err(e) => {
                 eprintln!("warning: safe-mode hook composition failed: {e}");
             }
+        }
+    }
+
+    // ── REQ-3315 mixed-parser diagnostic ───────────────────────────────
+    // Pair every vault page with every composed hook that carries an
+    // ecosystem id; if the hook's selector matches a page whose
+    // resolved parser differs from what the ecosystem expects, surface
+    // a five-part diagnostic. Under `--strict-parsers` the warning is
+    // fatal (CI gate for mixed-parser vaults).
+    let mixed_report = detect_mixed_parser_violations(
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        &data.files,
+    )?;
+    if !mixed_report.is_empty() {
+        eprintln!("{}", zetl::parsers::format_mixed_parser_report(&mixed_report));
+        if strict_parsers {
+            anyhow::bail!(
+                "mixed-parser configuration detected on {} page(s); \
+                 `--strict-parsers` is set — refusing to build",
+                mixed_report.violations.len()
+            );
         }
     }
 
@@ -11103,6 +11284,7 @@ fn main() -> anyhow::Result<()> {
             public,
             site_url,
             safe_mode,
+            strict_parsers,
             scan: _,
         } => cmd_build(
             &cli,
@@ -11111,6 +11293,7 @@ fn main() -> anyhow::Result<()> {
             public.as_deref(),
             site_url.as_deref(),
             *safe_mode,
+            *strict_parsers,
         ),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {

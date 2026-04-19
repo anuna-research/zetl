@@ -393,6 +393,12 @@ pub enum Command {
         /// undeclared theme hooks are skipped with a stderr line per skip.
         #[arg(long)]
         safe_mode: bool,
+        /// Make mixed-parser configurations fatal (SPEC-033 REQ-3315).
+        /// By default, pages whose resolved parser doesn't match a
+        /// matched ecosystem hook's expected parser produce a warning;
+        /// under `--strict-parsers` the warning is promoted to an error.
+        #[arg(long)]
+        strict_parsers: bool,
         #[command(flatten)]
         scan: ScanArgs,
     },
