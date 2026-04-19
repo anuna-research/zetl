@@ -3,27 +3,30 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 466,
-    "deletions": 5,
+    "files_changed": 7,
+    "insertions": 438,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
-      "src/main.rs",
-      "tests/hook_dry_run_integration.rs"
+      "docs/canonical-extensions.md",
+      "tests/extension-fixtures/admonition/README.md",
+      "tests/extension-fixtures/admonition/expected.html",
+      "tests/extension-fixtures/admonition/input.md",
+      "tests/extension-fixtures/admonition/selector-match.txt",
+      "tools/xtask/src/runners.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-hook-dry-run-changes",
-      "content": "Modified 4 files (+466, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/hook_dry_run_integration.rs",
+      "key": "task-ext-admonition-changes",
+      "content": "Modified 7 files (+438, -6): .hence/context-manifest.json, docs/canonical-extensions.md, tests/extension-fixtures/admonition/README.md, tests/extension-fixtures/admonition/expected.html, tests/extension-fixtures/admonition/input.md and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/hook-dry-run-v1",
-  "evaluated_at": "2026-04-19T18:31:55Z",
+  "branch_name": "hence/ext-admonition-v1",
+  "evaluated_at": "2026-04-19T18:41:55Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
