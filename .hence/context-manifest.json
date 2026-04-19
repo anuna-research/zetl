@@ -1,12 +1,12 @@
 {
-  "task_id": "diagnostic-design",
+  "task_id": "ast-cli",
   "token_budget": 8000,
-  "tokens_used": 334,
+  "tokens_used": 324,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Five-part diagnostic message design per CON-3225: summary / context / observed / cause / hint. Shared `HookDiagnostic` type used across manifest parse, hook failure, contract violation, schema mismatch.",
-      "token_cost": 50,
+      "content": "`zetl ast sample <page>` and `zetl ast diff <a> <b>` per REQ-3225. `sample` prints canonical zetl-ext JSON of a page; `diff` shows AST-level diff (not text diff).",
+      "token_cost": 40,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T14:49:27Z"
+  "constructed_at": "2026-04-19T14:57:29Z"
 }

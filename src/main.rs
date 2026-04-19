@@ -4640,6 +4640,146 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
     Ok(())
 }
 
+fn cmd_ast_sample(cli: &Cli, file: &str, stage: &zetl::cli::AstStage) -> Result<()> {
+    use std::path::Path;
+    use zetl::cli::AstStage;
+
+    let path = Path::new(file);
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Cannot read page file: {}", path.display()))?;
+
+    match stage {
+        AstStage::PreParse => {
+            // Raw Markdown — what a pre-parse hook receives. Frontmatter is
+            // retained: pre-parse sees the file verbatim before any zetl
+            // processing.
+            print!("{content}");
+        }
+        AstStage::Transform => {
+            // Parsed zetl-ext Document — what a transform hook receives.
+            let doc = zetl::hooks::ast::parse_markdown(&content);
+            let json = serde_json::to_value(&doc)
+                .context("Failed to serialise AST document")?;
+            // Canonical JSON output: pretty-printed for CLI readability,
+            // compact when the user forced `--json`.
+            if matches!(cli.format, OutputFormat::Json) {
+                print!("{}", serde_json::to_string(&json)?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&json)?);
+            }
+        }
+        AstStage::PostRender => {
+            // Rendered HTML fragment — what a post-render hook receives.
+            // Empty slug_map: wikilinks render with link-error class, which
+            // is the correct shape for a stage-input view (no vault context
+            // is available for link resolution here).
+            use std::collections::HashMap;
+            let html = zetl::web::markdown::render_to_html(
+                &content,
+                &HashMap::new(),
+                "",
+                "index.html",
+            );
+            print!("{html}");
+        }
+    }
+    Ok(())
+}
+
+fn cmd_ast_diff(cli: &Cli, before_path: &str, after_path: &str) -> Result<()> {
+    use zetl::hooks::ast::{diff_documents, AstDiffKind};
+
+    let before_bytes = std::fs::read(before_path)
+        .with_context(|| format!("Cannot read before file: {before_path}"))?;
+    let after_bytes = std::fs::read(after_path)
+        .with_context(|| format!("Cannot read after file: {after_path}"))?;
+    let before: serde_json::Value = serde_json::from_slice(&before_bytes)
+        .with_context(|| format!("Before file is not valid JSON: {before_path}"))?;
+    let after: serde_json::Value = serde_json::from_slice(&after_bytes)
+        .with_context(|| format!("After file is not valid JSON: {after_path}"))?;
+
+    let diff = diff_documents(&before, &after);
+
+    if matches!(cli.format, OutputFormat::Json) {
+        #[derive(Serialize)]
+        struct AttrOut {
+            field: String,
+            before: serde_json::Value,
+            after: serde_json::Value,
+        }
+        #[derive(Serialize)]
+        struct EntryOut {
+            kind: String,
+            path: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            node_type: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            start_line: Option<u32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            start_col: Option<u32>,
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            attr_changes: Vec<AttrOut>,
+        }
+        let out: Vec<EntryOut> = diff
+            .entries
+            .iter()
+            .map(|e| EntryOut {
+                kind: e.kind.as_str().to_string(),
+                path: e.path.clone(),
+                node_type: e.node_type.clone(),
+                start_line: e.start_line,
+                start_col: e.start_col,
+                attr_changes: e
+                    .attr_changes
+                    .iter()
+                    .map(|c| AttrOut {
+                        field: c.field.clone(),
+                        before: c.before.clone(),
+                        after: c.after.clone(),
+                    })
+                    .collect(),
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&out)?);
+    } else if diff.is_empty() {
+        println!("No AST differences.");
+    } else {
+        for entry in &diff.entries {
+            let pos = match (entry.start_line, entry.start_col) {
+                (Some(l), Some(c)) => format!(" ({l}:{c})"),
+                _ => String::new(),
+            };
+            let ty = entry.node_type.as_deref().unwrap_or("?");
+            let sign = match entry.kind {
+                AstDiffKind::Added => "+",
+                AstDiffKind::Removed => "-",
+                AstDiffKind::Modified => "~",
+            };
+            println!("{sign} {ty}{pos} at {}", entry.path);
+            for change in &entry.attr_changes {
+                let bv = summarise_value(&change.before);
+                let av = summarise_value(&change.after);
+                println!("    {}: {bv} → {av}", change.field);
+            }
+        }
+    }
+
+    if !diff.is_empty() {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn summarise_value(v: &serde_json::Value) -> String {
+    let s = serde_json::to_string(v).unwrap_or_else(|_| "<err>".into());
+    // Keep one-liners short; deep subtrees are noise in a diff summary.
+    if s.len() > 80 {
+        format!("{}…", &s[..80])
+    } else {
+        s
+    }
+}
+
 fn cmd_agent_run(
     cli: &Cli,
     name: &str,
@@ -9958,6 +10098,13 @@ fn main() -> anyhow::Result<()> {
             HookCommand::List { theme } => cmd_hook_list(&cli, theme),
             HookCommand::Run { name, theme, extra } => cmd_hook_run(&cli, name, theme, extra),
         },
+        Command::Ast { command } => {
+            use zetl::cli::AstCommand;
+            match command {
+                AstCommand::Sample { file, stage } => cmd_ast_sample(&cli, file, stage),
+                AstCommand::Diff { before, after } => cmd_ast_diff(&cli, before, after),
+            }
+        }
         Command::Agent { command } => match command {
             AgentCommand::Run {
                 name,
