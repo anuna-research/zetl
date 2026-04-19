@@ -1,15 +1,21 @@
 {
-  "task_id": "ast-schema",
+  "task_id": "three-stage-pipeline",
   "token_budget": 8000,
-  "tokens_used": 40,
+  "tokens_used": 74,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Author tools/zetl-ast-schema-v1.json (JSON Schema Draft 2020-12). Covers Wikilink, Embed, SPL, FrontMatter + core Markdown nodes per SPEC-032 REQ-3202 / CON-3202.",
-      "token_cost": 40,
+      "content": "Three-stage pipeline scaffolding per REQ-3201 / ADR-3205. pre-parse (raw text → raw text), transform (AST → AST), post-render (HTML fragment → HTML fragment). Sequential per stage, concurrent across pages.",
+      "token_cost": 52,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-ast-schema-changes",
+      "content": "Modified 2 files (+383, -65): .hence/context-manifest.json, tools/zetl-ast-schema-v1.json",
+      "token_cost": 22,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T12:27:00Z"
+  "constructed_at": "2026-04-19T12:30:53Z"
 }
