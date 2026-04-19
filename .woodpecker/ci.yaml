@@ -9,3 +9,7 @@ steps:
       - cargo test --verbose
       - cargo fmt --check
       - cargo clippy -- -D warnings
+      # SPEC-032 REQ-3202: docs/zetl-ast-reference.md is generated from
+      # tools/zetl-ast-schema-v1.json. A drift between the two is a CI
+      # failure — --check exits nonzero on any diff.
+      - cargo run -p zetl-ast-reference-gen -- --check
