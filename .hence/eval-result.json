@@ -3,26 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 925,
-    "deletions": 16,
+    "files_changed": 4,
+    "insertions": 466,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "docs/hook-security.md",
-      "src/hooks/persistent.rs"
+      "src/cli.rs",
+      "src/main.rs",
+      "tests/hook_dry_run_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-security-hooks-changes",
-      "content": "Modified 3 files (+925, -16): .hence/context-manifest.json, docs/hook-security.md, src/hooks/persistent.rs",
+      "key": "task-hook-dry-run-changes",
+      "content": "Modified 4 files (+466, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/hook_dry_run_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/security-hooks-v1",
-  "evaluated_at": "2026-04-19T18:21:33Z",
+  "branch_name": "hence/hook-dry-run-v1",
+  "evaluated_at": "2026-04-19T18:31:55Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
