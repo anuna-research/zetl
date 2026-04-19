@@ -4,26 +4,26 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 4,
-    "insertions": 728,
-    "deletions": 20,
+    "insertions": 1416,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/build_context.rs",
       "src/hooks/mod.rs",
-      "src/hooks/pipeline.rs"
+      "src/hooks/persistent.rs",
+      "tests/persistent_protocol_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-build-context-changes",
-      "content": "Modified 4 files (+728, -20): .hence/context-manifest.json, src/hooks/build_context.rs, src/hooks/mod.rs, src/hooks/pipeline.rs",
+      "key": "task-persistent-protocol-changes",
+      "content": "Modified 4 files (+1416, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/persistent.rs, tests/persistent_protocol_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/build-context-v1",
-  "evaluated_at": "2026-04-19T13:18:01Z",
+  "branch_name": "hence/persistent-protocol-v1",
+  "evaluated_at": "2026-04-19T13:31:25Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
