@@ -1,12 +1,12 @@
 {
-  "task_id": "build-context",
+  "task_id": "persistent-protocol",
   "token_budget": 8000,
-  "tokens_used": 139,
+  "tokens_used": 174,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Expose build context to hooks per REQ-3220. `ctx` contains vault_root, theme, page metadata, zetl version, schema version, build_data handle.",
-      "token_cost": 35,
+      "content": "Persistent-mode wire protocol per CON-3201: {type: init|run|finalise|shutdown, ...}. JSON-lines over stdio. NFR-3207 budget: <1.5ms protocol overhead per page.",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 7 files (+1570, -41): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/hooks/ast/mod.rs, src/hooks/mod.rs and 2 more",
       "token_cost": 33,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-build-context-changes",
+      "content": "Modified 4 files (+728, -20): .hence/context-manifest.json, src/hooks/build_context.rs, src/hooks/mod.rs, src/hooks/pipeline.rs",
+      "token_cost": 31,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T13:09:08Z"
+  "constructed_at": "2026-04-19T13:18:07Z"
 }
