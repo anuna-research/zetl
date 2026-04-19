@@ -1,12 +1,12 @@
 {
-  "task_id": "manifest-parser",
+  "task_id": "ast-version-exposure",
   "token_budget": 8000,
-  "tokens_used": 347,
+  "tokens_used": 321,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Parse .zetl/hooks/<stage>.d/<name>.toml per REQ-3203 / CON-3203. Fields: stage, mode (persistent|one-shot), timeout_ms, selector {path, content, frontmatter}, contract (preserves, idempotent, may_restructure, pure, expansion_bound), ordering, ast_type.",
-      "token_cost": 63,
+      "content": "Dual-version exposure per REQ-3215: both zetl binary version and AST schema version exposed to hooks (`init` payload + `ZETL_AST_SCHEMA_VERSION` env).",
+      "token_cost": 37,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T15:52:50Z"
+  "constructed_at": "2026-04-19T16:01:13Z"
 }

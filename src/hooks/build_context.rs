@@ -240,6 +240,13 @@ impl BuildContext {
     /// ("null under serve") refers to the JSON payload. Callers wanting
     /// to distinguish "unset" from "empty" should consult
     /// [`Self::out_dir`] directly.
+    ///
+    /// Per REQ-3215 the binary version and AST schema version ship as two
+    /// independent strings: `ZETL_VERSION` tracks the zetl release train
+    /// and changes every build; `ZETL_AST_SCHEMA_VERSION` tracks the AST
+    /// shape and only moves when [`AST_VERSION`] does. Hook authors pin
+    /// against the schema version to survive non-AST-breaking binary
+    /// upgrades.
     pub fn env_vars(&self) -> Vec<(String, String)> {
         let mut vars = vec![
             ("ZETL_MODE".to_string(), self.mode.as_str().to_string()),
@@ -260,6 +267,10 @@ impl BuildContext {
                 if self.verbose { "true" } else { "false" }.to_string(),
             ),
             ("ZETL_VERSION".to_string(), self.zetl_version.clone()),
+            (
+                "ZETL_AST_SCHEMA_VERSION".to_string(),
+                self.schema_version.clone(),
+            ),
         ];
         if let Some(at) = &self.at {
             vars.push(("ZETL_AT".to_string(), at.clone()));
@@ -480,6 +491,10 @@ mod tests {
             vars.get("ZETL_VERSION"),
             Some(&env!("CARGO_PKG_VERSION").to_string())
         );
+        assert_eq!(
+            vars.get("ZETL_AST_SCHEMA_VERSION"),
+            Some(&AST_VERSION.to_string())
+        );
     }
 
     #[test]
@@ -490,10 +505,44 @@ mod tests {
         // out_dir is null under serve → empty env var (can't be null).
         assert_eq!(vars.get("ZETL_OUT_DIR"), Some(&String::new()));
         assert_eq!(vars.get("ZETL_VERBOSE"), Some(&"false".to_string()));
+        // Version pair is mandatory at every invocation per REQ-3215 — it
+        // survives serve mode and doesn't care about optional fields.
+        assert_eq!(
+            vars.get("ZETL_VERSION"),
+            Some(&env!("CARGO_PKG_VERSION").to_string())
+        );
+        assert_eq!(
+            vars.get("ZETL_AST_SCHEMA_VERSION"),
+            Some(&AST_VERSION.to_string())
+        );
         // Optional keys absent.
         assert!(!vars.contains_key("ZETL_AT"));
         assert!(!vars.contains_key("ZETL_HOOK_PATH"));
         assert!(!vars.contains_key("ZETL_EXTENSION_ID"));
+    }
+
+    /// REQ-3215 dual-version exposure: the env var must track
+    /// [`BuildContext::schema_version`] exactly (not the binary version),
+    /// so hooks can pin against the AST shape independently of the zetl
+    /// release train.
+    #[test]
+    fn env_vars_decouple_binary_and_schema_versions() {
+        let mut ctx = BuildContext::new(BuildMode::Build, "/v", sample_page());
+        ctx.zetl_version = "9.9.9-dev".into();
+        ctx.schema_version = "1.2".into();
+
+        let vars: std::collections::HashMap<_, _> = ctx.env_vars().into_iter().collect();
+        assert_eq!(vars.get("ZETL_VERSION"), Some(&"9.9.9-dev".to_string()));
+        assert_eq!(
+            vars.get("ZETL_AST_SCHEMA_VERSION"),
+            Some(&"1.2".to_string())
+        );
+        // The two keys carry *different* strings — a hook pinning on the
+        // schema version must not observe the binary version leaking in.
+        assert_ne!(
+            vars.get("ZETL_VERSION"),
+            vars.get("ZETL_AST_SCHEMA_VERSION")
+        );
     }
 
     // ── Page metadata ──────────────────────────────────────────────────────
