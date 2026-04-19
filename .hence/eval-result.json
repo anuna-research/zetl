@@ -4,30 +4,30 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 8,
-    "insertions": 3838,
-    "deletions": 5,
+    "insertions": 1370,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/composition.rs",
-      "src/hooks/mod.rs",
-      "src/hooks/translators/mdast.rs",
-      "src/hooks/translators/mod.rs",
-      "src/hooks/translators/pandoc.rs",
-      "src/hooks/translators/zetl_ext.rs",
-      "tests/typed_ast_protocol_integration.rs"
+      ".woodpecker/ci.yaml",
+      "Cargo.lock",
+      "Cargo.toml",
+      "Makefile",
+      "docs/zetl-ast-reference.md",
+      "tools/zetl-ast-reference-gen/Cargo.toml",
+      "tools/zetl-ast-reference-gen/src/main.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-typed-ast-protocol-changes",
-      "content": "Modified 8 files (+3838, -5): .hence/context-manifest.json, src/hooks/composition.rs, src/hooks/mod.rs, src/hooks/translators/mdast.rs, src/hooks/translators/mod.rs and 3 more",
+      "key": "task-ast-reference-gen-changes",
+      "content": "Modified 8 files (+1370, -6): .hence/context-manifest.json, .woodpecker/ci.yaml, Cargo.lock, Cargo.toml, Makefile and 3 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/typed-ast-protocol-v1",
-  "evaluated_at": "2026-04-19T14:23:43Z",
+  "branch_name": "hence/ast-reference-gen-v1",
+  "evaluated_at": "2026-04-19T14:31:50Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
