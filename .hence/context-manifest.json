@@ -1,12 +1,12 @@
 {
-  "task_id": "failure-scoping",
+  "task_id": "node-dispatch",
   "token_budget": 8000,
-  "tokens_used": 332,
+  "tokens_used": 325,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Failure scoping and pipeline continuation per REQ-3207 / CON-3207. Hook failure → page fragment revert; structured diagnostic; build continues to next page; non-zero exit if any page failed.",
-      "token_cost": 48,
+      "content": "Declarative node-type dispatch in helper libraries per REQ-3218. `@on_node(\"Wikilink\")` decorator (py) / `onNode(\"Wikilink\", fn)` (js) routes without if/else chains.",
+      "token_cost": 41,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T15:22:54Z"
+  "constructed_at": "2026-04-19T15:34:08Z"
 }
