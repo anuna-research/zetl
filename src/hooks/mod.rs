@@ -12,6 +12,7 @@
 pub mod ast;
 pub mod build_context;
 pub mod build_data;
+pub mod composition;
 pub mod context;
 pub mod persistent;
 pub mod pipeline;
