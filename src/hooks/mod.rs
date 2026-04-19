@@ -22,6 +22,8 @@ pub mod manifest;
 pub mod observability;
 pub mod persistent;
 pub mod pipeline;
+pub mod predicate;
+pub mod selector;
 pub mod template_vars;
 pub mod translators;
 
