@@ -1,12 +1,12 @@
 {
-  "task_id": "observability-hooks",
+  "task_id": "manifest-parser",
   "token_budget": 8000,
-  "tokens_used": 329,
+  "tokens_used": 347,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "SPEC-032 §9 observability. `[zetl] hook: stage=transform id=callouts page=X duration_ms=N` log lines; stats block: per-stage time, per-hook time, pages matched, diagnostics emitted.",
-      "token_cost": 45,
+      "content": "Parse .zetl/hooks/<stage>.d/<name>.toml per REQ-3203 / CON-3203. Fields: stage, mode (persistent|one-shot), timeout_ms, selector {path, content, frontmatter}, contract (preserves, idempotent, may_restructure, pure, expansion_bound), ordering, ast_type.",
+      "token_cost": 63,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T15:43:21Z"
+  "constructed_at": "2026-04-19T15:52:50Z"
 }
