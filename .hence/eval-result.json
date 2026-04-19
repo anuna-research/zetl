@@ -3,25 +3,31 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 241,
-    "deletions": 13,
+    "files_changed": 8,
+    "insertions": 3838,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/composition.rs"
+      "src/hooks/composition.rs",
+      "src/hooks/mod.rs",
+      "src/hooks/translators/mdast.rs",
+      "src/hooks/translators/mod.rs",
+      "src/hooks/translators/pandoc.rs",
+      "src/hooks/translators/zetl_ext.rs",
+      "tests/typed_ast_protocol_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-ordering-hooks-changes",
-      "content": "Modified 2 files (+241, -13): .hence/context-manifest.json, src/hooks/composition.rs",
+      "key": "task-typed-ast-protocol-changes",
+      "content": "Modified 8 files (+3838, -5): .hence/context-manifest.json, src/hooks/composition.rs, src/hooks/mod.rs, src/hooks/translators/mdast.rs, src/hooks/translators/mod.rs and 3 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/ordering-hooks-v1",
-  "evaluated_at": "2026-04-19T13:57:02Z",
+  "branch_name": "hence/typed-ast-protocol-v1",
+  "evaluated_at": "2026-04-19T14:23:43Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
