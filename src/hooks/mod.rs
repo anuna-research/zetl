@@ -15,6 +15,7 @@ pub mod build_context;
 pub mod build_data;
 pub mod composition;
 pub mod context;
+pub mod contract;
 pub mod diagnostic;
 pub mod failure_scoping;
 pub mod manifest;

@@ -3,29 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 1543,
+    "files_changed": 4,
+    "insertions": 1836,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
-      "src/hooks/authoring.rs",
+      "src/hooks/contract.rs",
       "src/hooks/mod.rs",
-      "src/main.rs",
-      "tests/hook_authoring_integration.rs"
+      "tests/behavioural_contracts_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-hook-authoring-cli-changes",
-      "content": "Modified 6 files (+1543, -5): .hence/context-manifest.json, src/cli.rs, src/hooks/authoring.rs, src/hooks/mod.rs, src/main.rs and 1 more",
+      "key": "task-behavioural-contracts-changes",
+      "content": "Modified 4 files (+1836, -5): .hence/context-manifest.json, src/hooks/contract.rs, src/hooks/mod.rs, tests/behavioural_contracts_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/hook-authoring-cli-v1",
-  "evaluated_at": "2026-04-19T16:21:09Z",
+  "branch_name": "hence/behavioural-contracts-v1",
+  "evaluated_at": "2026-04-19T16:33:20Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
