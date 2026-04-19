@@ -38,6 +38,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer};
 
+use crate::ecosystems::manifest::{
+    self as eco_manifest, EcosystemManifestError, EcosystemSpecific, BASE_MANIFEST_KEYS,
+};
 use crate::hooks::diagnostic::{DiagnosticClass, HookDiagnostic};
 use crate::hooks::pipeline::Stage;
 use crate::hooks::translators::AstType;
@@ -200,6 +203,11 @@ pub struct Manifest {
     pub after: Vec<String>,
     pub select: SelectorSpec,
     pub contract: ContractDecl,
+    /// Per-ecosystem manifest block (SPEC-033 REQ-3312 / CON-3312).
+    /// `None` when the manifest does not declare an `ecosystem = "..."`
+    /// field — those hooks are strict SPEC-032 zetl-native hooks and
+    /// carry no adapter-specific fields.
+    pub extra: Option<EcosystemSpecific>,
 }
 
 impl Default for Manifest {
@@ -217,6 +225,7 @@ impl Default for Manifest {
             after: Vec::new(),
             select: SelectorSpec::default(),
             contract: ContractDecl::default(),
+            extra: None,
         }
     }
 }
@@ -298,7 +307,7 @@ impl ManifestError {
                 d = d.with_hint(
                     "valid top-level fields: stage, mode, timeout_ms, memory_mib,\n\
                      ast_type, ast_version, extension_id, optional, before, after,\n\
-                     ordering, select, contract. See:\n  \
+                     ordering, select, contract, ecosystem. See:\n  \
                      https://zetl.codeberg.page/docs/hook-authoring/manifest-fields",
                 );
                 d
@@ -350,12 +359,83 @@ impl From<ManifestError> for HookDiagnostic {
 /// `path_hint`, when supplied, is attached to any resulting error so
 /// diagnostics can name the offending file. Passing `None` is fine for
 /// in-memory parsing (e.g. tests, `zetl hook new`'s dry-run preview).
+///
+/// When the manifest declares `ecosystem = "..."`, every top-level key
+/// outside [`crate::ecosystems::manifest::BASE_MANIFEST_KEYS`] is
+/// extracted into a sub-table and handed to
+/// [`crate::ecosystems::manifest::parse`] for deserialisation as the
+/// matching [`EcosystemSpecific`] variant. That way a remark-only
+/// field on a pandoc manifest surfaces as an unknown-field parse error
+/// pointing at the ecosystem block, not at the SPEC-032 base parser
+/// (SPEC-033 REQ-3312 / TEST-3312).
 pub fn parse_manifest(text: &str, path_hint: Option<&Path>) -> Result<Manifest, ManifestError> {
-    let wire: ManifestWire = toml::from_str(text).map_err(|e| ManifestError::Parse {
-        path: path_hint.map(Path::to_path_buf),
-        message: e.to_string(),
-    })?;
-    Ok(wire.into_manifest())
+    let table: toml::value::Table =
+        toml::from_str(text).map_err(|e| ManifestError::Parse {
+            path: path_hint.map(Path::to_path_buf),
+            message: e.to_string(),
+        })?;
+
+    let (base_table, eco_table) = split_base_and_ecosystem(table);
+
+    let extra = match eco_table {
+        Some(t) => Some(eco_manifest::parse(t).map_err(|e| {
+            ManifestError::Parse {
+                path: path_hint.map(Path::to_path_buf),
+                message: format_ecosystem_error(&e),
+            }
+        })?),
+        None => None,
+    };
+
+    let wire: ManifestWire = toml::Value::Table(base_table)
+        .try_into()
+        .map_err(|e: toml::de::Error| ManifestError::Parse {
+            path: path_hint.map(Path::to_path_buf),
+            message: e.to_string(),
+        })?;
+
+    let mut manifest = wire.into_manifest();
+    manifest.extra = extra;
+    Ok(manifest)
+}
+
+/// Split a raw manifest table into the SPEC-032 base half and the
+/// SPEC-033 ecosystem half (REQ-3312).
+///
+/// The split is keyed on the presence of an `ecosystem = "..."` entry:
+/// - absent → every key stays in the base table, returned `(base, None)`.
+/// - present → `ecosystem` plus every non-base top-level key moves into
+///   the ecosystem table, returned `(base, Some(eco))`.
+///
+/// Non-base keys that slipped past the SPEC-032 parser's
+/// `deny_unknown_fields` (because we extracted them) still fail at the
+/// ecosystem layer: each variant struct has its own `deny_unknown_fields`,
+/// so typos and cross-ecosystem fields surface as parse errors there.
+fn split_base_and_ecosystem(
+    mut table: toml::value::Table,
+) -> (toml::value::Table, Option<toml::value::Table>) {
+    if !table.contains_key("ecosystem") {
+        return (table, None);
+    }
+
+    let mut eco = toml::value::Table::new();
+    let keys: Vec<String> = table.keys().cloned().collect();
+    for key in keys {
+        if !BASE_MANIFEST_KEYS.contains(&key.as_str()) {
+            if let Some(v) = table.remove(&key) {
+                eco.insert(key, v);
+            }
+        }
+    }
+
+    (table, Some(eco))
+}
+
+fn format_ecosystem_error(err: &EcosystemManifestError) -> String {
+    match err {
+        EcosystemManifestError::Parse(msg) => msg.clone(),
+        other => other.to_string(),
+    }
 }
 
 /// Load and parse the manifest at `path`, treating "file not found" as
@@ -514,6 +594,9 @@ impl ManifestWire {
             after,
             select,
             contract,
+            // `extra` is populated by parse_manifest after the base
+            // wire pass, not derived from ManifestWire.
+            extra: None,
         }
     }
 }
@@ -921,6 +1004,246 @@ may_restructure = false
         // Tier-2 fields absent → default false / None.
         assert!(!m.contract.pure);
         assert!(m.contract.expansion_bound.is_none());
+    }
+
+    // ── SPEC-033 REQ-3312 / TEST-3312: ecosystem manifest block ──────────
+
+    #[test]
+    fn empty_manifest_has_no_extra_block() {
+        let m = parse_manifest("", None).unwrap();
+        assert!(m.extra.is_none());
+    }
+
+    #[test]
+    fn base_only_manifest_has_no_extra_block() {
+        // No `ecosystem` key ⇒ every top-level field belongs to SPEC-032.
+        let m = parse_manifest(r#"stage = "transform""#, None).unwrap();
+        assert!(m.extra.is_none());
+    }
+
+    #[test]
+    fn pandoc_manifest_parses_with_base_and_ecosystem_fields() {
+        let text = r#"
+stage = "transform"
+timeout_ms = 250
+ecosystem = "pandoc"
+exec = "pandoc-crossref"
+args = ["--csl", "apa.csl"]
+
+[select]
+include = ["**/*.md"]
+"#;
+        let m = parse_manifest(text, None).unwrap();
+        // Base fields still parsed.
+        assert_eq!(m.stage, Some(Stage::Transform));
+        assert_eq!(m.timeout_ms, 250);
+        assert_eq!(m.select.include, vec!["**/*.md".to_string()]);
+        // Ecosystem block populated.
+        match m.extra.expect("ecosystem block should be present") {
+            crate::ecosystems::manifest::EcosystemSpecific::Pandoc(p) => {
+                assert_eq!(p.exec.as_deref(), Some("pandoc-crossref"));
+                assert_eq!(p.args, vec!["--csl".to_string(), "apa.csl".to_string()]);
+                assert!(p.lua_filter.is_none());
+            }
+            other => panic!("expected Pandoc variant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mdbook_manifest_parses_with_default_scope() {
+        let text = r#"
+stage = "pre-parse"
+ecosystem = "mdbook"
+exec = "mdbook-mermaid"
+"#;
+        let m = parse_manifest(text, None).unwrap();
+        assert_eq!(m.stage, Some(Stage::PreParse));
+        match m.extra.expect("ecosystem block should be present") {
+            crate::ecosystems::manifest::EcosystemSpecific::Mdbook(b) => {
+                assert_eq!(b.exec, "mdbook-mermaid");
+                assert_eq!(
+                    b.scope,
+                    crate::ecosystems::manifest::MdbookScope::Page
+                );
+            }
+            other => panic!("expected Mdbook variant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn remark_manifest_parses_with_options() {
+        let text = r#"
+ecosystem = "remark"
+package = "remark-gfm"
+version = ">=3.0 <4"
+
+[options]
+singleTilde = false
+"#;
+        let m = parse_manifest(text, None).unwrap();
+        match m.extra.expect("ecosystem block should be present") {
+            crate::ecosystems::manifest::EcosystemSpecific::Remark(r) => {
+                assert_eq!(r.package, "remark-gfm");
+                assert_eq!(r.version.as_deref(), Some(">=3.0 <4"));
+                assert_eq!(
+                    r.options.get("singleTilde").and_then(|v| v.as_bool()),
+                    Some(false)
+                );
+            }
+            other => panic!("expected Remark variant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn package_on_pandoc_manifest_rejected() {
+        // TEST-3312 main assertion: remark-only field on pandoc manifest.
+        let text = r#"
+ecosystem = "pandoc"
+exec = "pandoc-crossref"
+package = "remark-gfm"
+"#;
+        let err = parse_manifest(text, None).unwrap_err();
+        match err {
+            ManifestError::Parse { message, .. } => {
+                assert!(
+                    message.contains("unknown field") || message.contains("package"),
+                    "expected unknown-field error mentioning `package`, got: {message}"
+                );
+            }
+            other => panic!("expected Parse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pandoc_missing_exec_and_lua_filter_rejected() {
+        let text = r#"
+ecosystem = "pandoc"
+args = ["--csl", "apa.csl"]
+"#;
+        let err = parse_manifest(text, None).unwrap_err();
+        match err {
+            ManifestError::Parse { message, .. } => {
+                assert!(
+                    message.contains("exec") || message.contains("lua_filter"),
+                    "expected missing-exec error, got: {message}"
+                );
+            }
+            other => panic!("expected Parse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pandoc_exec_and_lua_filter_together_rejected() {
+        let text = r#"
+ecosystem = "pandoc"
+exec = "pandoc-crossref"
+lua_filter = "filters/counter.lua"
+"#;
+        let err = parse_manifest(text, None).unwrap_err();
+        match err {
+            ManifestError::Parse { message, .. } => {
+                assert!(
+                    message.contains("exec") && message.contains("lua_filter"),
+                    "expected exec-xor-lua_filter error, got: {message}"
+                );
+            }
+            other => panic!("expected Parse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_ecosystem_value_rejected() {
+        let err = parse_manifest(r#"ecosystem = "djot""#, None).unwrap_err();
+        match err {
+            ManifestError::Parse { message, .. } => {
+                assert!(
+                    message.contains("djot")
+                        || message.contains("unknown variant")
+                        || message.contains("ecosystem"),
+                    "expected unknown-variant error, got: {message}"
+                );
+            }
+            other => panic!("expected Parse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn scope_on_pandoc_manifest_rejected() {
+        // `scope` is mdBook-only.
+        let text = r#"
+ecosystem = "pandoc"
+exec = "pandoc-crossref"
+scope = "page"
+"#;
+        let err = parse_manifest(text, None).unwrap_err();
+        match err {
+            ManifestError::Parse { message, .. } => {
+                assert!(message.contains("unknown field") || message.contains("scope"));
+            }
+            other => panic!("expected Parse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn exec_on_remark_manifest_rejected() {
+        let text = r#"
+ecosystem = "remark"
+package = "remark-gfm"
+exec = "pandoc-crossref"
+"#;
+        let err = parse_manifest(text, None).unwrap_err();
+        match err {
+            ManifestError::Parse { message, .. } => {
+                assert!(message.contains("unknown field") || message.contains("exec"));
+            }
+            other => panic!("expected Parse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn zetl_native_ecosystem_allowed_with_base_fields() {
+        // Declaring `ecosystem = "zetl-native"` explicitly must compose
+        // with the base SPEC-032 fields — the extraction must not
+        // swallow base keys or reject the manifest.
+        let text = r#"
+ecosystem = "zetl-native"
+stage = "transform"
+timeout_ms = 150
+"#;
+        let m = parse_manifest(text, None).unwrap();
+        assert_eq!(m.stage, Some(Stage::Transform));
+        assert_eq!(m.timeout_ms, 150);
+        assert!(matches!(
+            m.extra,
+            Some(crate::ecosystems::manifest::EcosystemSpecific::ZetlNative(_))
+        ));
+    }
+
+    #[test]
+    fn ecosystem_block_survives_alongside_select_and_contract() {
+        // Select and contract keys are in BASE_MANIFEST_KEYS and must
+        // stay with the base parser even when `ecosystem = "..."` is
+        // present. Exercises the key-split on a fully-populated manifest.
+        let text = r#"
+stage = "transform"
+ecosystem = "pandoc"
+exec = "pandoc-crossref"
+
+[select]
+include = ["posts/**/*.md"]
+
+[contract]
+preserves = ["Wikilink"]
+idempotent = true
+"#;
+        let m = parse_manifest(text, None).unwrap();
+        assert_eq!(m.select.include, vec!["posts/**/*.md".to_string()]);
+        assert_eq!(m.contract.preserves, vec!["Wikilink".to_string()]);
+        assert!(m.contract.idempotent);
+        assert!(matches!(
+            m.extra,
+            Some(crate::ecosystems::manifest::EcosystemSpecific::Pandoc(_))
+        ));
     }
 
     #[test]

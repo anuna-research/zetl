@@ -18,6 +18,7 @@
 pub mod adapter;
 pub mod check;
 pub mod detection;
+pub mod manifest;
 pub mod registry;
 
 pub use adapter::{
@@ -32,5 +33,10 @@ pub use check::{
 pub use detection::{
     detect_all_ecosystems, diagnostic_for, enforce_required, format_log_line, install_hint_for,
     parse_version, probe_runtime_dep, upgrade_hint_for, EcosystemDetectionReport, PROBE_TIMEOUT,
+};
+pub use manifest::{
+    parse as parse_ecosystem_specific, validate as validate_ecosystem_specific,
+    EcosystemManifestError, EcosystemSpecific, MdbookManifestFields, MdbookScope,
+    PandocManifestFields, RemarkManifestFields, ZetlNativeManifestFields, BASE_MANIFEST_KEYS,
 };
 pub use registry::{all, by_id, Ecosystem, EcosystemEntry, RuntimeDep};

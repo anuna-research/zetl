@@ -1,12 +1,12 @@
 {
-  "task_id": "eco-check",
+  "task_id": "eco-manifest",
   "token_budget": 8000,
-  "tokens_used": 318,
+  "tokens_used": 323,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl ecosystem check` subcommand per REQ-3310 / CON-3310. Reports per-ecosystem: detected? version? plugins configured? plugins reachable?",
-      "token_cost": 34,
+      "content": "Per-ecosystem manifest fields per REQ-3312 / CON-3312. Pandoc: mode (filter|native) + filter path. mdBook: supports-html probe. remark: plugin name + options.",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T20:55:46Z"
+  "constructed_at": "2026-04-19T21:22:06Z"
 }
