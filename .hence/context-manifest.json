@@ -1,12 +1,12 @@
 {
-  "task_id": "eco-manifest",
+  "task_id": "retire-hooks-v2",
   "token_budget": 8000,
-  "tokens_used": 323,
+  "tokens_used": 319,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Per-ecosystem manifest fields per REQ-3312 / CON-3312. Pandoc: mode (filter|native) + filter path. mdBook: supports-html probe. remark: plugin name + options.",
-      "token_cost": 39,
+      "content": "Retire `--features hooks-v2` umbrella flag per SPEC-032 §12 Phase D. Requires two consecutive clean releases of canonical extensions in CI.",
+      "token_cost": 35,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T21:22:06Z"
+  "constructed_at": "2026-04-19T21:40:13Z"
 }

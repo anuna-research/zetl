@@ -2130,7 +2130,7 @@ Trace: REQ-3214.
 | A     | Plumbing                             | 0.6.0          | —                |
 | B     | Helper libraries                     | 0.6.0 or 0.7.0 | A                |
 | C     | Theme-stub extensions (CSS only)     | 0.7.0          | A; SPEC-033 B    |
-| D     | Feature-flag retirement              | 0.8.0          | C stable 2 rel.  |
+| D     | Feature-flag retirement (paper-only) | 0.8.0          | C stable 2 rel.  |
 | E     | SPEC-031 supersession                | 0.6.0          | A landed         |
 
 SPEC-033 Phase A can co-ship with SPEC-032 Phase A (shared protocol
@@ -2139,13 +2139,13 @@ SPEC-032 Phase C (theme-stub extensions need an ecosystem plugin to
 provide the transform — Callouts/Admonition via `mdbook-admonish` or
 Pandoc div syntax, Tasks deferred per §13 Q4).
 
-**Phase A — Plumbing:** AST schema, JSON Schema published, selector evaluator, manifest parser, one-shot + persistent protocol, coverage + dry-run subcommands. No canonical extensions yet. Ships behind `--features hooks-v2` flag for the first release to give early adopters a preview while we converge the schema.
+**Phase A — Plumbing:** AST schema, JSON Schema published, selector evaluator, manifest parser, one-shot + persistent protocol, coverage + dry-run subcommands. No canonical extensions yet. Originally planned to ship behind a `--features hooks-v2` cargo flag for one preview release; in practice the plumbing landed unconditionally (no compile-time gate ever wired) because the schema converged faster than expected and the gate would have shipped as a no-op. Phase D below is therefore a documentation-only step rather than a code change.
 
 **Phase B — Helper libraries:** `zetl-ast-py` and `zetl-ast-js` published to PyPI and npm. Version pinned to AST schema v1.0.
 
 **Phase C — Canonical extensions:** `callouts` first (smallest and highest ROI). Golden-HTML tests. `tasks` and `admonition` follow.
 
-**Phase D — Feature flag retirement:** once canonical extensions are green in CI for two consecutive releases and no major schema changes are in flight, `--features hooks-v2` becomes default; opt-out via `--no-hooks-v2`.
+**Phase D — Feature-flag retirement (completed 0.8.0):** the `--features hooks-v2` umbrella was never wired as a real cargo feature (see Phase A note), so retirement is a paper exercise: the flag is acknowledged as default-on from first release, no `--no-hooks-v2` opt-out is added (there is nothing to opt out of), and the changelog records the umbrella as retired. The original two-clean-releases gate on canonical extensions still applies as a stability check before the spec is allowed to drop the umbrella mention entirely.
 
 **Phase E — SPEC-031 supersession:** SPEC-031 marked `superseded` with `superseded-by: SPEC-032`. Top-50 scan findings retained. No code changes required (SPEC-031 never shipped).
 
