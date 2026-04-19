@@ -95,4 +95,85 @@ plugins = []
 [ecosystem.remark]
 # remark plugins — SPEC-033 REQ-3305. Matrix rows seeded by
 # task-remark-matrix-seed (remark-gfm, remark-math, remark-directive).
-plugins = []
+#
+# All three rows land at tier = "experimental" per the REQ-3311 tier-
+# promotion checklist: each has `version_range`, maintainer contact,
+# upstream repo URL, a named fixture under tests/ecosystem-fixtures/,
+# and a `notes` field enumerating known limitations. Promotion to
+# `partial` requires wiring the fixtures into a green golden-HTML
+# runner driven by the task-remark-harness persistent Node subprocess
+# (CON-3305); promotion to `supported` additionally requires a
+# `[plugin.contract]` sub-table (preserves + idempotent) and CI
+# double-run evidence per TEST-3224-idempotent.
+
+[[ecosystem.remark.plugins]]
+name = "remark-gfm"
+version_range = ">=4.0 <5"
+tier = "experimental"
+fixture = "tests/ecosystem-fixtures/remark/remark-gfm/"
+repo = "https://github.com/remarkjs/remark-gfm"
+maintainer = "Titus Wormer <tituswormer@gmail.com>"
+notes = """
+Enables GitHub Flavored Markdown extensions at the remark-parse \
+layer: pipe tables, task lists, strikethrough, autolink literals, \
+footnotes. Known limitations at experimental tier: \
+(a) Frontmatter stripping is the caller's responsibility — remark-gfm \
+does not ship a frontmatter parser; zetl hands the body over after \
+its own frontmatter split, and a user who feeds raw source in will \
+see the YAML block echoed as a paragraph. \
+(b) Task-list DOM shape drifted between remark-gfm v3 (`<li>` only) \
+and v4 (`.contains-task-list` on the `<ul>` and `.task-list-item` on \
+each `<li>`); the fixture targets v4. \
+(c) Footnotes ordering is stable but the generated `id` attributes \
+embed the heading of the page — round-tripping a Zetl Wikilink that \
+targets a footnoted page is best-effort and not yet gated."""
+
+[[ecosystem.remark.plugins]]
+name = "remark-math"
+version_range = ">=6.0 <7"
+tier = "experimental"
+fixture = "tests/ecosystem-fixtures/remark/remark-math/"
+repo = "https://github.com/remarkjs/remark-math"
+maintainer = "Junyoung Choi <fluke8259@gmail.com>"
+notes = """
+Parses `$...$` inline math and `$$...$$` display math into dedicated \
+mdast `inlineMath`/`math` nodes which remark-rehype then serialises \
+as `<code class=\"language-math math-inline\">` / `<pre><code \
+class=\"language-math math-display\">…</code></pre>`. Known \
+limitations at experimental tier: \
+(a) Actual glyph rendering requires a companion `rehype-katex` or \
+`rehype-mathjax` stage — remark-math itself is purely a parser. \
+Users pairing zetl with KaTeX also need to serve the KaTeX CSS from \
+the theme. \
+(b) Upstream was last released 2023-09-19 and the scan classifies it \
+as \"abandoned\"; it still works under unified v11 but promotion \
+above `experimental` is blocked on either a fresh upstream release \
+or a zetl-side fork decision. \
+(c) Dollar-sign escape handling (`\\$`) is inherited from the \
+underlying micromark-extension-math and has edge cases around adjacent \
+punctuation; the canary fixture deliberately avoids these."""
+
+[[ecosystem.remark.plugins]]
+name = "remark-directive"
+version_range = ">=3.0 <4"
+tier = "experimental"
+fixture = "tests/ecosystem-fixtures/remark/remark-directive/"
+repo = "https://github.com/remarkjs/remark-directive"
+maintainer = "Titus Wormer <tituswormer@gmail.com>"
+notes = """
+Adds generic directive syntax (`:::name{attrs}` container form, \
+`::name[label]{attrs}` leaf form, `:name[label]{attrs}` inline form) \
+at the remark-parse layer. Known limitations at experimental tier: \
+(a) remark-directive on its own emits `containerDirective` / \
+`leafDirective` / `textDirective` mdast nodes that remark-rehype \
+renders as empty `<div>`/`<span>` placeholders — a caller-defined \
+map-to-hast transform is required for meaningful HTML. The canary \
+fixture encodes the canonical `div.directive.directive-<name>` + \
+inline-name-as-tag mapping the upstream docs recommend. \
+(b) Authors targeting MDX/Astro sites that already consume \
+directives should pair this plugin with the same hast-mapping \
+transform their existing pipeline uses, not the canary's, to avoid \
+class-name drift between zetl-built and MDX-built pages. \
+(c) No preservation gate on user-defined directive names; if a \
+directive name collides with an HTML element (`:::table`), behaviour \
+depends entirely on the caller's map-to-hast transform."""
