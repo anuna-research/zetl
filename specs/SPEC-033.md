@@ -53,6 +53,22 @@ exec = "pandoc-crossref"
 
 Zetl translates zetl-ext ↔ the ecosystem's AST at the adapter boundary, emulates the ecosystem's invocation conventions (env vars, argv, protocol shape), dispatches the plugin, and converts the response back. Mixed-ecosystem pipelines (a pandoc filter, followed by an mdBook preprocessor, followed by a remark plugin) compose because zetl owns every translation.
 
+### 1.0 Relationship to SPEC-032
+
+SPEC-032 owns the **protocol surface** — manifest schema, hook stages,
+selector evaluation, `ast_type` contract, round-trip invariants, marker
+conventions, translator trait obligations (REQ-3221, CON-3221, ADR-3206).
+
+SPEC-033 owns the **concrete ecosystem adapters** — which ecosystems
+(Pandoc, mdBook, remark), how each one's runtime is probed, the
+marker-table instances for each ast_type (REQ-3307, REQ-3308), and the
+per-ecosystem matrix of tested plugins.
+
+Where this spec would restate SPEC-032 protocol obligations, it
+cross-references them instead. Adding a future ecosystem (djot, Quarto,
+etc.) is an addition to SPEC-033 and a registry entry — SPEC-032's
+protocol surface does not change.
+
 ### 1.1 Motivation
 
 - **Leverage beats originality.** A ten-year-old Pandoc filter like `pandoc-crossref` has had more eyeballs, edge-case fixes, and production deployments than anything zetl could ship as a v1 canonical extension. The right strategy is to make `pandoc-crossref` work under `zetl build`, not to reimplement crossref logic.
@@ -316,9 +332,15 @@ Trace:
 - CON-3306
 - ADR-3301
 
-### REQ-3307: zetl-ext ↔ pandoc-types Translation
+### REQ-3307: zetl-ext ↔ pandoc-types Translation — Marker Conventions
 
-The system SHALL provide a bidirectional translator between zetl-ext and pandoc-types with documented marker conventions for non-native zetl concepts:
+The general translation protocol (round-trip invariant, marker-strip
+detection, version-range semantics, mixed-pipeline composition) is defined
+by **SPEC-032 REQ-3221 + CON-3221** — this requirement is SPEC-033's
+instance-specific marker table for the `pandoc-ext` ast_type.
+
+Marker conventions for zetl concepts without native pandoc-types
+equivalents:
 
 - **Wikilinks** (zetl's `Wikilink` node) ↔ Pandoc `Span` with class `"zetl-wikilink"` and attrs `{target, alias, heading, block_id}`.
 - **Embeds** (zetl's `Embed` node) ↔ Pandoc `Span` with class `"zetl-embed"` and attrs `{target, heading, block_id}`.
@@ -326,17 +348,22 @@ The system SHALL provide a bidirectional translator between zetl-ext and pandoc-
 - **Frontmatter** — zetl's `FrontMatter` node ↔ Pandoc's `Meta` map at the document root.
 - **Source positions** — preserved in a `sourcepos` attribute on enclosing Pandoc nodes (Pandoc has no native position concept).
 
-**Round-trip property** (verified via TEST-3307): for any zetl-ext AST `A` and a pandoc-identity filter, `translate_from(invoke_filter(translate_to(A))) == A`.
-
-**Marker-strip detection**: after each Pandoc plugin invocation, the adapter SHALL count wikilink / embed / SPL markers in the input and output; a decrease SHALL be logged as a warning (`"<plugin> dropped <N> zetl markers on <page>"`), but the pipeline continues.
+The round-trip property (SPEC-032 CON-3221 invariant 1) and marker-strip
+detection (SPEC-032 CON-3221 invariant 3) apply unchanged; this section
+only lists the *content* of the marker table for pandoc-ext. The
+auto-generated full node-type mapping lives at
+`docs/ecosystems/pandoc-translation.md` (SPEC-032 CON-3207 contract
+wording; CON-3307 here records the path).
 
 Trace:
 - TEST-3307
 - CON-3307
+- SPEC-032 REQ-3221, CON-3221
 
-### REQ-3308: zetl-ext ↔ mdast Translation
+### REQ-3308: zetl-ext ↔ mdast Translation — Marker Conventions
 
-The system SHALL provide a bidirectional translator between zetl-ext and mdast:
+General translation protocol as for REQ-3307 (SPEC-032 REQ-3221 + CON-3221).
+Instance-specific marker table for the `mdast-ext` ast_type:
 
 - **Wikilinks** ↔ mdast custom node `{type: "wikilink", target, alias, heading, block_id}` (the widely-adopted mdast convention from `remark-wiki-link`).
 - **Embeds** ↔ mdast custom node `{type: "embed", ...}`.
@@ -344,11 +371,17 @@ The system SHALL provide a bidirectional translator between zetl-ext and mdast:
 - **Frontmatter** — mdast `yaml` node (the `remark-frontmatter` convention).
 - **Position** — mdast has native `position` objects; direct mapping.
 
-Given mdast is CommonMark-aligned, translation loss is lower than with pandoc-types. mdast node types zetl doesn't natively represent (e.g., `definition`, `linkReference`) are preserved as opaque pass-through nodes via zetl-ext's forward-compat mechanism (the AST schema accepts unknown node types with a warning).
+Because mdast is CommonMark-aligned, translation loss is lower than with
+pandoc-types. mdast node types zetl doesn't natively represent (e.g.,
+`definition`, `linkReference`) are preserved as opaque pass-through nodes
+via zetl-ext's forward-compat mechanism (the AST schema accepts unknown
+node types with a warning). Full mapping at
+`docs/ecosystems/mdast-translation.md`.
 
 Trace:
 - TEST-3308
 - CON-3308
+- SPEC-032 REQ-3221, CON-3221
 
 ### REQ-3309: mdBook Book Envelope
 
@@ -750,6 +783,11 @@ Status: Proposed.
 
 **Trade-offs:** some mdBook preprocessors that do post-parse work (via returning an `IntermediateBook` type that mdBook itself further processes) don't fit as cleanly. These are flagged `partial` in the matrix. The majority of popular preprocessors are text-substitution patterns.
 
+**Cross-reference:** mdBook preprocessors authored under mdBook's own
+contract commonly regex-rewrite raw Markdown. SPEC-032 REQ-3201's
+"pre-parse caveat" documents the same risk surface for zetl-native
+pre-parse hooks and links back here explicitly.
+
 Status: Proposed.
 
 ### ADR-3304: remark Harness via Persistent Node Subprocess
@@ -1028,6 +1066,22 @@ Log: `[zetl] ecosystem pandoc: pandoc-crossref dropped 4 zetl-wikilink markers o
 ---
 
 ## 12. Rollout Plan
+
+**Release target mapping (working estimate — revise per actual landings):**
+
+| Phase | Description (below)                  | Target release | Depends on                 |
+| ----- | ------------------------------------ | -------------- | -------------------------- |
+| A     | Core machinery (registry, trait)     | 0.6.0          | SPEC-032 Phase A           |
+| B     | Pandoc adapter                       | 0.7.0          | A                          |
+| C     | mdBook adapter                       | 0.7.0 or 0.8.0 | A                          |
+| D     | remark adapter                       | 0.8.0          | A (Node harness is larger) |
+| E     | SPEC-031 supersession                | 0.6.0          | A                          |
+| F     | Feature-flag retirement              | 0.9.0          | B, C, D stable 2 rel.      |
+
+SPEC-033 Phase A co-ships with SPEC-032 Phase A — the shared protocol
+surface (REQ-3221 + CON-3221) lives in SPEC-032 and lands once.
+SPEC-033 Phase B (Pandoc adapter) is the precondition for SPEC-032's
+theme-stub canonical extensions (SPEC-032 REQ-3212, Phase C).
 
 **Phase A — Core machinery (no user-visible ecosystems):**
 

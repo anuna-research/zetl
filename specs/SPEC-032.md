@@ -234,9 +234,21 @@ Stage ordering within a single page render is fixed: `pre-parse` → parse → `
 
 When in doubt, authors should prefer `transform` stage — it operates on the parsed AST where context (inside-code-block, inside-link, etc.) is explicit.
 
+**Note on mdBook preprocessors:** SPEC-033 places mdBook preprocessors
+(ecosystem = `mdbook`) at the `pre-parse` stage (SPEC-033 REQ-3304,
+ADR-3303) because mdBook's contract operates on raw chapter text. Those
+preprocessors are authored under mdBook's own semantics and often use
+regex-level substitution (e.g. `mdbook-mermaid` replaces `` ```mermaid ``
+fences with inline SVG). Zetl inherits mdBook's safety posture at that
+stage — the caveat above is a property of Markdown-as-string processing,
+not a defect in either ecosystem. Authors targeting mdBook ecosystem see
+it through mdBook's docs; authors writing native zetl pre-parse hooks
+see it above. Same risk surface, two documentation paths.
+
 Trace:
 - TEST-3201
 - CON-3201
+- SPEC-033 ADR-3303 (mdBook stage placement)
 
 ### REQ-3202: zetl-AST JSON Schema
 
@@ -607,38 +619,75 @@ Trace:
 
 ### REQ-3221: Typed AST-Protocol (ast_type) for Transform-Stage Hooks
 
-The system SHALL support multiple AST formats at the `transform` stage via a declared `ast_type` on the hook manifest. The `ast_type` field identifies which ecosystem's AST shape and invocation conventions the hook expects; zetl translates between its internal representation and the declared type at the protocol boundary.
+The system SHALL support multiple AST formats at the `transform` stage via
+a declared `ast_type` on the hook manifest. The `ast_type` field identifies
+which ecosystem's AST shape and invocation conventions the hook expects;
+zetl translates between its internal representation and the declared type
+at the protocol boundary.
 
-**Supported types (v1):**
+This REQ defines the **protocol surface**: the obligations any ast_type
+value must satisfy. The concrete set of supported ast_type values for v1
+(`zetl-ext`, `pandoc-ext`, `mdast-ext`) and their instance-specific marker
+tables are defined in **SPEC-033** — adding a new ecosystem is an
+SPEC-033 amendment, not a SPEC-032 one.
 
-- **`zetl-ext`** (default) — zetl's native AST JSON (REQ-3202 / CON-3202). CommonMark subset + wikilink, embed, SPL-block, and frontmatter extensions. Required for v1 conformance.
-- **`pandoc-ext`** — reserved for v1.1; accepted in manifests in v1 with a "not yet implemented" parse error. When implemented, zetl SHALL serialise in `pandoc-types` JSON shape, set the `PANDOC_VERSION`, `PANDOC_API_VERSION`, `PANDOC_READER_OPTIONS`, `PANDOC_WRITER_OPTIONS`, and `PANDOC_SCRIPT_FILE` env vars, and pass the output format as argv[1] per Pandoc filter conventions ([filters.html](https://pandoc.org/filters.html)).
-- **`mdast-ext`** — reserved for v2.x; accepted-with-error in v1 and v1.1. Would require an in-process JS harness and a Node subprocess runner.
+**Built-in default:**
 
-**Translation contract (zetl-ext ↔ pandoc-ext, to ship in v1.1):**
+- **`zetl-ext`** (default) — zetl's native AST JSON (REQ-3202 / CON-3202).
+  CommonMark subset + wikilink, embed, SPL-block, and frontmatter
+  extensions. Required for v1 conformance and provided by this spec.
 
-Zetl owns the bidirectional mapping. Every zetl-ext concept that does not have a native pandoc-types equivalent is represented via Pandoc's escape hatches with a stable marker convention:
+**Extension types** (concrete values defined by SPEC-033):
 
-- **Wikilinks** (`Wikilink`) ↔ `Span` with class `zetl-wikilink` and attrs for `target`, `alias`, `heading`, `block_id`.
-- **Embeds** (`Embed`) ↔ `Span` with class `zetl-embed` and attrs for `target`, `heading`, `block_id`.
-- **SPL blocks** — `CodeBlock` with language `spl` in both directions.
-- **Frontmatter** — zetl's `FrontMatter` node ↔ Pandoc's `Meta` map (on the root `Pandoc` document).
-- **Position info** — `start_line`/`start_col`/`end_line`/`end_col` ↔ Pandoc has no native position concept; preserved in an `sourcepos` attribute on `Span` / `Div` wrappers and restored on the reverse translation.
+A hook manifest SHALL accept any ast_type registered in the binary's
+ecosystem registry (SPEC-033 REQ-3301). Unknown values are a manifest
+parse error. v1 binaries registering only `zetl-ext` SHALL reject
+`pandoc-ext` / `mdast-ext` manifests with a typed "ecosystem-not-compiled"
+error and an actionable hint (SPEC-033 REQ-3313).
 
-A pandoc-ext hook that unknowingly strips `class="zetl-wikilink"` or its attrs from a `Span` SHALL cause wikilinks in its output to be corrupted; zetl logs this as a warning (detected by comparing the round-trip input and output for loss of markers). This is the fundamental trade-off: pandoc-ext filters that respect foreign-marker convention work losslessly; those that don't will erode zetl-specific structure.
+**Translation contract (generic):**
 
-**Round-trip round-trip property:** For any zetl-ext AST *A* and a zetl-authored identity pandoc-ext filter *I*, `zetl_to_pandoc(I(pandoc_to_zetl(A)))` SHALL equal *A* byte-for-byte. This is the strictest test of translator fidelity and is gated by TEST-3221.
+For any registered non-default ast_type, the binary SHALL ship a
+bidirectional translator with:
 
-**Protocol-convention emulation:** When zetl invokes a `pandoc-ext` hook, the hook sees Pandoc's invocation contract (env vars, argv), not zetl's. When it invokes a `zetl-ext` hook, it sees zetl's contract (REQ-3220's `ZETL_*` env vars). The `ast_type` field drives both payload serialisation and invocation-convention selection.
+- A **marker-convention table** mapping zetl-ext concepts (Wikilink,
+  Embed, SPL block, FrontMatter, position info) to the foreign AST's
+  extension-point shape. Full tables live in SPEC-033 per ast_type and
+  in `docs/ecosystems/<type>-translation.md` auto-generated from
+  translator source.
+- A **round-trip invariant**: for any zetl-ext AST *A* and any identity
+  foreign-ext filter *I*, `foreign_to_zetl(I(zetl_to_foreign(A)))`
+  equals *A* under the canonical-form equivalence relation defined in
+  SPEC-033 NFR-3305.
+- **Marker-strip detection**: after each foreign-ext hook invocation,
+  zetl SHALL count markers (wikilink / embed / SPL spans / Divs) in
+  input vs output; a net decrease SHALL be logged as a warning
+  (`"<plugin> dropped <N> zetl markers on <page>"`), pipeline continues.
 
-**Version compatibility per type:** `ast_version` in the manifest is a semver range interpreted against the declared `ast_type`'s version scheme — `>=1.22 <2` for pandoc-ext means pandoc-types v1.22+ below v2, not zetl-AST v1.22+. Zetl maintains a compat matrix (`tools/zetl-ast-compat.toml`) mapping each ast_type and version to the ones the current binary supports.
+**Protocol-convention emulation:** When zetl invokes a non-default-ast_type
+hook, the hook sees the ecosystem's native invocation contract
+(env vars, argv, handshake shape) as specified in SPEC-033's per-ecosystem
+CONs (e.g. CON-3303 for pandoc). When it invokes a `zetl-ext` hook, it
+sees zetl's contract (REQ-3220's `ZETL_*` env vars).
 
-**Mixed pipelines:** Two hooks in the same stage may declare different `ast_type`s. Zetl translates the prior hook's output back to its internal representation (if different from zetl-ext), then serialises anew for the next hook's declared type. No hook sees another hook's AST in a format it didn't request.
+**Version compatibility per type:** `ast_version` in the manifest is a
+semver range interpreted against the declared `ast_type`'s version scheme
+— `>=1.22 <2` for `pandoc-ext` means pandoc-types v1.22+ below v2, not
+zetl-ext v1.22+. Zetl maintains a compat matrix
+(`tools/zetl-ecosystem-matrix.toml`, SPEC-033 REQ-3311) mapping each
+ast_type and version to the ones the current binary supports.
+
+**Mixed pipelines:** Two hooks in the same stage may declare different
+`ast_type`s. Zetl translates the prior hook's output back to its internal
+representation (zetl-ext), then serialises anew for the next hook's
+declared type. No hook sees another hook's AST in a format it didn't
+request.
 
 Trace:
 - TEST-3221
 - CON-3221
 - ADR-3206
+- SPEC-033 REQ-3301, REQ-3307, REQ-3308
 
 ---
 
@@ -1444,6 +1493,22 @@ Trace: REQ-3214.
 ---
 
 ## 12. Rollout Plan
+
+**Release target mapping (working estimate — revise per actual landings):**
+
+| Phase | Description (below)                  | Target release | Depends on       |
+| ----- | ------------------------------------ | -------------- | ---------------- |
+| A     | Plumbing                             | 0.6.0          | —                |
+| B     | Helper libraries                     | 0.6.0 or 0.7.0 | A                |
+| C     | Theme-stub extensions (CSS only)     | 0.7.0          | A; SPEC-033 B    |
+| D     | Feature-flag retirement              | 0.8.0          | C stable 2 rel.  |
+| E     | SPEC-031 supersession                | 0.6.0          | A landed         |
+
+SPEC-033 Phase A can co-ship with SPEC-032 Phase A (shared protocol
+surface); SPEC-033 Phase B (Pandoc adapter) is a precondition for
+SPEC-032 Phase C (theme-stub extensions need an ecosystem plugin to
+provide the transform — Callouts/Admonition via `mdbook-admonish` or
+Pandoc div syntax, Tasks deferred per §13 Q4).
 
 **Phase A — Plumbing:** AST schema, JSON Schema published, selector evaluator, manifest parser, one-shot + persistent protocol, coverage + dry-run subcommands. No canonical extensions yet. Ships behind `--features hooks-v2` flag for the first release to give early adopters a preview while we converge the schema.
 
