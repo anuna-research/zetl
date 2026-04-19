@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check helper-js-install helper-js-build helper-js-test help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check helper-js-install helper-js-build helper-js-test helper-contracts help
 
 all: build
 
@@ -81,6 +81,13 @@ helper-js-build:
 helper-js-test:
 	cd tools/zetl-ast-js && node --experimental-strip-types --test test/*.test.ts
 
+# SPEC-032 REQ-3210 / CON-3210 cross-implementation contract gate.
+# Runs the fixture corpus under tests/fixtures/helper-contracts/ against
+# the Rust, Python, and JavaScript helper identity transforms. Requires
+# `python3` + `node` on PATH and a fresh helper-js dist.
+helper-contracts: helper-js-build
+	cargo test --test helper_contracts_integration -- --nocapture
+
 install: build
 	install -d $(PREFIX)/bin $(MANDIR) $(BASHCOMPDIR) $(ZSHCOMPDIR) $(FISHCOMPDIR)
 	install -m 755 target/release/zetl $(PREFIX)/bin/zetl
@@ -136,6 +143,7 @@ help:
 	@echo "  make helper-js-install   - npm install for tools/zetl-ast-js"
 	@echo "  make helper-js-build     - Build ESM/CJS/types for zetl-ast-js"
 	@echo "  make helper-js-test      - Run zetl-ast-js unit tests"
+	@echo "  make helper-contracts    - Run cross-impl (py+js+rust) fixture corpus"
 	@echo "  make ast-reference       - Regenerate docs/zetl-ast-reference.md"
 	@echo "  make ast-reference-check - CI gate: fail if the reference is stale"
 	@echo "  make install      - Install binary, man page, and shell completions"

@@ -1,0 +1,34 @@
+{
+  "ast_version": "1.0",
+  "type": "Document",
+  "position": { "start_line": 1, "start_col": 1, "end_line": 3, "end_col": 10 },
+  "children": [
+    {
+      "type": "BlockQuote",
+      "position": { "start_line": 1, "start_col": 1, "end_line": 3, "end_col": 10 },
+      "children": [
+        {
+          "type": "BlockQuote",
+          "position": { "start_line": 2, "start_col": 3, "end_line": 3, "end_col": 10 },
+          "children": [
+            {
+              "type": "Paragraph",
+              "position": { "start_line": 2, "start_col": 5, "end_line": 3, "end_col": 10 },
+              "children": [
+                {
+                  "type": "Strong",
+                  "position": { "start_line": 2, "start_col": 5, "end_line": 2, "end_col": 14 },
+                  "children": [
+                    { "type": "Text", "position": { "start_line": 2, "start_col": 7, "end_line": 2, "end_col": 12 }, "text": "nested" }
+                  ]
+                },
+                { "type": "SoftBreak", "position": { "start_line": 2, "start_col": 15, "end_line": 2, "end_col": 15 } },
+                { "type": "Text", "position": { "start_line": 3, "start_col": 5, "end_line": 3, "end_col": 10 }, "text": "text." }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

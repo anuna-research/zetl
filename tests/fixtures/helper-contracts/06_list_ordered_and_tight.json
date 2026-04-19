@@ -1,0 +1,64 @@
+{
+  "ast_version": "1.0",
+  "type": "Document",
+  "position": { "start_line": 1, "start_col": 1, "end_line": 4, "end_col": 7 },
+  "children": [
+    {
+      "type": "List",
+      "position": { "start_line": 1, "start_col": 1, "end_line": 2, "end_col": 7 },
+      "ordered": true,
+      "tight": true,
+      "start": 3,
+      "children": [
+        {
+          "type": "ListItem",
+          "position": { "start_line": 1, "start_col": 1, "end_line": 1, "end_col": 7 },
+          "children": [
+            {
+              "type": "Paragraph",
+              "position": { "start_line": 1, "start_col": 4, "end_line": 1, "end_col": 7 },
+              "children": [
+                { "type": "Text", "position": { "start_line": 1, "start_col": 4, "end_line": 1, "end_col": 7 }, "text": "one" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "ListItem",
+          "position": { "start_line": 2, "start_col": 1, "end_line": 2, "end_col": 7 },
+          "children": [
+            {
+              "type": "Paragraph",
+              "position": { "start_line": 2, "start_col": 4, "end_line": 2, "end_col": 7 },
+              "children": [
+                { "type": "Text", "position": { "start_line": 2, "start_col": 4, "end_line": 2, "end_col": 7 }, "text": "two" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "List",
+      "position": { "start_line": 4, "start_col": 1, "end_line": 4, "end_col": 7 },
+      "ordered": false,
+      "tight": false,
+      "start": null,
+      "children": [
+        {
+          "type": "ListItem",
+          "position": { "start_line": 4, "start_col": 1, "end_line": 4, "end_col": 7 },
+          "children": [
+            {
+              "type": "Paragraph",
+              "position": { "start_line": 4, "start_col": 3, "end_line": 4, "end_col": 7 },
+              "children": [
+                { "type": "Text", "position": { "start_line": 4, "start_col": 3, "end_line": 4, "end_col": 7 }, "text": "bullet" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

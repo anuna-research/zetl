@@ -1,0 +1,27 @@
+{
+  "ast_version": "1.0",
+  "type": "Document",
+  "position": { "start_line": 1, "start_col": 1, "end_line": 6, "end_col": 4 },
+  "children": [
+    {
+      "type": "Embed",
+      "position": { "start_line": 1, "start_col": 1, "end_line": 1, "end_col": 26 },
+      "target": "Other page",
+      "heading": "Subsection",
+      "block_id": null
+    },
+    {
+      "type": "Embed",
+      "position": { "start_line": 2, "start_col": 1, "end_line": 2, "end_col": 20 },
+      "target": "Plain",
+      "heading": null,
+      "block_id": "marker"
+    },
+    {
+      "type": "SplBlock",
+      "position": { "start_line": 4, "start_col": 1, "end_line": 6, "end_col": 4 },
+      "info": "spl reason",
+      "text": "(fact :hello 1)\n"
+    }
+  ]
+}
