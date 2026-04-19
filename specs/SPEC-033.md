@@ -1127,7 +1127,14 @@ Ships as preview behind `--features ecosystems-v1` umbrella flag.
 
 ## 13. Open Questions
 
-1. **SPEC-032 scope narrowing.** SPEC-032 currently ships canonical Callouts/Tasks/Admonition extensions in the default theme (REQ-3212, ADR-3204). Under SPEC-033's "leverage ecosystems, don't build our own" direction, these become either (a) deleted entirely, (b) repointed to canonical Pandoc/mdBook plugins ("install pandoc-admonish"), or (c) shipped as thin ecosystem-wrapper templates rather than Python implementations. *Proposed:* (a) — delete; users get Callouts via `mdbook-admonish` under mdBook ecosystem or via Pandoc's native div syntax.
+1. **SPEC-032 scope narrowing.** ~~SPEC-032 currently ships canonical
+   Callouts/Tasks/Admonition extensions in the default theme…~~ **Resolved
+   2026-04-19: option (b) — thin stubs.** SPEC-032 REQ-3212 and ADR-3204
+   have been amended: the default theme ships CSS + template partials
+   only; the transformation is delegated to an ecosystem plugin
+   configured in `.zetl/hooks/`. This removes Python/Node as a
+   default-theme runtime dependency, keeps theme-layer design ownership
+   in zetl, and delegates transformation ownership to the ecosystem.
 2. **Pandoc parser bundling vs subprocess.** ADR-3302 picks subprocess. If users complain about per-page Pandoc invocation cost, should zetl ship pandoc.wasm as an opt-in feature? *Proposed:* defer; measure real-world cost first.
 3. **remark in-process via embedded Deno.** Deno has a Rust integration story (`deno_core`). Would avoid a Node subprocess. *Proposed:* defer; Deno integration is a big commit for marginal gain over persistent Node subprocess.
 4. **Plugin-install orchestration.** Should `zetl ecosystem install pandoc-crossref` be a thing? *Proposed:* no; zetl defers to each ecosystem's native install mechanism and only provides hints.

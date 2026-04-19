@@ -424,19 +424,49 @@ Trace:
 - TEST-3211
 - CON-3211
 
-### REQ-3212: Canonical Extensions — First Party
+### REQ-3212: Canonical Extensions — Theme Stubs, Ecosystem-Backed
 
-The default theme SHALL ship three canonical `transform`-stage extensions:
+**Resolution of open question SPEC-033 §13 Q1: option (b) — thin stubs.**
 
-- **`callouts`** — recognises `> [!TYPE] Title` blockquotes and rewrites them to `<div class="zetl-callout zetl-callout--<type>">` structures. Selector: path `**/*.md`, content probe `^>\s*\[!`, frontmatter opt-out honoured.
-- **`tasks`** — recognises `tasks` fenced code blocks, interprets the query syntax (subset: `not done`, `due before <date>`, `path includes "..."`), walks the vault index to collect matching task lines, emits an interactive (checkbox) HTML list. Selector: content probe `^```tasks\s*$`, frontmatter opt-out honoured.
-- **`admonition`** — recognises `ad-*` fenced code blocks (Obsidian's legacy syntax) and rewrites them to callout structures equivalent to the `callouts` extension. Selector: content probe `^```ad-`, frontmatter opt-out honoured. Runs *after* `callouts` so both syntaxes coexist.
+The default theme SHALL ship **theme-layer CSS + template partials** for
+three canonical patterns (Callouts, Tasks, Admonition) without shipping
+their transformation code. The transform is delegated to an ecosystem
+plugin (SPEC-033) declared in the default theme's `.zetl/hooks/` manifests:
 
-Each extension SHALL have a published selector, a golden-HTML fixture, and a matrix entry at tier `supported`.
+- **`callouts`** — recognises `> [!TYPE] Title` blockquotes. Default theme
+  ships `themes/default/static/callouts.css` (colour palette, icon
+  mapping, light/dark tokens) and a `callouts.toml` manifest referencing
+  a Pandoc or mdBook ecosystem plugin (e.g., `pandoc-admonition`,
+  `mdbook-admonish`) that actually performs the block-quote → callout
+  div rewrite. Users without the ecosystem plugin installed still get
+  correctly-styled output if the plugin is present; otherwise the
+  blockquote renders as a standard `<blockquote>` with no fatal error.
+- **`tasks`** — default theme ships styling only; the query-evaluation
+  extension is deferred to a named subset documented in SPEC-033 §13 Q4
+  (Obsidian Tasks subset). Until that subset is picked, `tasks` blocks
+  render as plain fenced code with a class hint; the matrix tier is
+  `experimental`.
+- **`admonition`** — same model as callouts; the `ad-*` legacy-syntax
+  rewrite is backed by an ecosystem plugin; CSS ships in the theme.
+
+**Why stubs, not implementations:** SPEC-033 empirically established
+that ecosystem plugins cover these patterns with stronger maintenance
+signals and wider reach than any code zetl could ship. The theme owns
+*design*; the ecosystem owns *transformation*. This resolves
+SPEC-033 §13 Q1 and removes the Python/Node runtime dependency the
+prior text imposed on every `zetl build` (see ADR-3204 for the
+decision trail).
+
+Each stub SHALL have a matrix entry recording (a) its CSS/template
+path, (b) the recommended ecosystem plugin backing it, (c) a golden-HTML
+fixture asserting correct styling when the ecosystem plugin is active,
+and (d) a fallback-render fixture asserting the no-ecosystem-plugin
+degraded state is acceptable.
 
 Trace:
 - TEST-3212a, TEST-3212b, TEST-3212c
 - CON-3212
+- SPEC-033 §13 Q1 (resolved → option b)
 
 ### REQ-3213: Canonical Extension Matrix
 
@@ -1125,27 +1155,57 @@ Supersedes: SPEC-031 ADR-3101 (QuickJS choice).
 
 Status: Proposed.
 
-### ADR-3204: Canonical Extensions Ship as Hooks, Not Native Rust
+### ADR-3204: Canonical Extensions Ship as Theme-Layer CSS, Not First-Party Code
 
-**Context:** Callouts, Tasks, Admonition could ship as (a) native Rust modules behind a `--features markdown-extensions` flag, (b) canonical hooks in the default theme's `hooks/transform.d/`, (c) both.
+**Context:** Callouts, Tasks, Admonition could ship as (a) native Rust
+modules, (b) first-party Python/JS canonical hooks in the default theme,
+(c) both, or (d) CSS-only theme stubs with transformation delegated to an
+ecosystem plugin (SPEC-033). An earlier draft of this ADR picked (b);
+it was reconsidered alongside SPEC-033 §13 Q1.
 
-**Decision:** (b) — ship as hooks in the default theme.
+**Decision:** (d) — thin CSS + template stubs in the default theme,
+transformation delegated to an ecosystem plugin configured in the
+default theme's hook manifests.
 
 **Rationale:**
-- **Consistency of the extension surface.** If zetl's own extensions ship as Rust modules, users learning the hook contract face a mismatch: "why don't callouts look like the hooks I'm writing?" One mechanism, one mental model.
-- **Authoring template.** The canonical extensions become working reference implementations. User adds their own extension by copying `callouts.py` and modifying it.
-- **Theme-override capability preserved.** Theme authors can restyle Callouts by editing a file; native modules require template-level overrides, which is a different mental model.
-- **Cheaper to ship and iterate.** Adding a canonical extension is adding a file, not a feature flag and a Rust module.
+- **Leverage over originality.** SPEC-033's ecosystem scan found that
+  mature ecosystem plugins (`mdbook-admonish`, Pandoc's div syntax,
+  remark-directive) cover these three patterns with years of edge-case
+  fixes. Zetl shipping its own Python/JS implementations duplicates
+  that work and takes on the maintenance burden.
+- **No runtime dependency for the default theme.** Earlier draft
+  imposed Python 3.9+ as a default-theme dependency. Thin stubs
+  require only CSS; the ecosystem plugin is only active when the
+  user has installed its runtime (Pandoc / Node / etc.) via SPEC-033.
+  `zetl build` in Alpine CI with plain-Markdown content produces a
+  usable output without installing any extra runtime.
+- **Theme owns design, ecosystem owns transformation.** This is the
+  cleanest separation — theme authors restyle by editing CSS;
+  transformation-layer behaviour is the ecosystem plugin's concern.
+- **Consistent extension surface.** User-written hooks still follow
+  the SPEC-032 contract; the default theme simply doesn't _ship_ any
+  first-party hook implementations — it configures which ecosystem
+  plugin to run.
 
 **Trade-offs accepted:**
-- Per-page cost is higher than a native Rust implementation (persistent-mode Python vs. Rust function call). Measured at ~5–20 ms per extension per matched page; acceptable within NFR-3202.
-- Python dependency for default theme. Mitigated: documentation requires Python 3.9+ for default theme extensions; pure-JS alternatives (Node 18+) are available for any theme that prefers JS. Users running `zetl build` in minimal environments (e.g., Alpine CI) need to install one runtime.
+- Migrant user without any ecosystem plugin installed sees a
+  degraded render (plain blockquotes for Callouts). Mitigation: the
+  default theme manifest lists the recommended plugin with a clear
+  install hint surfaced by `zetl ecosystem check`.
+- Some patterns (e.g., Tasks' query evaluation) don't have a
+  ready ecosystem match and are deferred to a separate specification
+  rather than shipped here.
 
 **Alternatives considered:**
-- Native Rust (a) — rejected on consistency grounds; becomes a second extension surface competing with the hook surface.
-- Both (c) — rejected as over-engineered. Reconsider only if profiling shows canonical extensions dominate build time.
+- **(a) Native Rust** — rejected on consistency grounds; becomes a
+  second extension surface competing with the hook surface.
+- **(b) First-party Python/JS hooks** — rejected because it imposed a
+  runtime dependency on every `zetl build` and replicated what the
+  ecosystem already does better (SPEC-033 §1.1).
+- **(c) Both** — rejected as over-engineered.
 
-Status: Proposed.
+Status: Proposed. Supersedes (within this spec's draft history) an
+earlier variant that picked (b).
 
 ### ADR-3206: Typed AST Protocol (Multiple `ast_type`s) Over Single-Format
 
