@@ -3,34 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 11,
-    "insertions": 343,
-    "deletions": 6,
+    "files_changed": 2,
+    "insertions": 572,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "tests/ecosystem-fixtures/remark/remark-directive/README.md",
-      "tests/ecosystem-fixtures/remark/remark-directive/expected.html",
-      "tests/ecosystem-fixtures/remark/remark-directive/input.md",
-      "tests/ecosystem-fixtures/remark/remark-gfm/README.md",
-      "tests/ecosystem-fixtures/remark/remark-gfm/expected.html",
-      "tests/ecosystem-fixtures/remark/remark-gfm/input.md",
-      "tests/ecosystem-fixtures/remark/remark-math/README.md",
-      "tests/ecosystem-fixtures/remark/remark-math/expected.html",
-      "tests/ecosystem-fixtures/remark/remark-math/input.md",
-      "tools/zetl-ecosystem-matrix.toml"
+      "docs/ecosystems/remark.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-remark-matrix-seed-changes",
-      "content": "Modified 11 files (+343, -6): .hence/context-manifest.json, tests/ecosystem-fixtures/remark/remark-directive/README.md, tests/ecosystem-fixtures/remark/remark-directive/expected.html, tests/ecosystem-fixtures/remark/remark-directive/input.md, tests/ecosystem-fixtures/remark/remark-gfm/README.md and 6 more",
+      "key": "task-remark-docs-changes",
+      "content": "Modified 2 files (+572, -5): .hence/context-manifest.json, docs/ecosystems/remark.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/remark-matrix-seed-v1",
-  "evaluated_at": "2026-04-19T23:21:12Z",
+  "branch_name": "hence/remark-docs-v1",
+  "evaluated_at": "2026-04-19T23:26:36Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
