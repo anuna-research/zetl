@@ -3,28 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 1332,
-    "deletions": 11,
+    "files_changed": 3,
+    "insertions": 19,
+    "deletions": 8,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/ecosystems/manifest.rs",
-      "src/ecosystems/mod.rs",
-      "src/hooks/manifest.rs",
-      "tests/eco_manifest_integration.rs"
+      "CHANGELOG.md",
+      "specs/SPEC-032.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-eco-manifest-changes",
-      "content": "Modified 5 files (+1332, -11): .hence/context-manifest.json, src/ecosystems/manifest.rs, src/ecosystems/mod.rs, src/hooks/manifest.rs, tests/eco_manifest_integration.rs",
+      "key": "task-retire-hooks-v2-changes",
+      "content": "Modified 3 files (+19, -8): .hence/context-manifest.json, CHANGELOG.md, specs/SPEC-032.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/eco-manifest-v1",
-  "evaluated_at": "2026-04-19T21:40:07Z",
+  "branch_name": "hence/retire-hooks-v2-v1",
+  "evaluated_at": "2026-04-19T21:43:46Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
