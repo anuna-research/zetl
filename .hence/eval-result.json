@@ -3,29 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 901,
+    "files_changed": 2,
+    "insertions": 544,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
-      "src/main.rs",
-      "src/parsers/mixed_eco.rs",
-      "src/parsers/mod.rs",
-      "tests/mixed_eco_diagnostic_integration.rs"
+      "docs/ecosystems/pandoc.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-mixed-eco-diagnostic-changes",
-      "content": "Modified 6 files (+901, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/parsers/mixed_eco.rs, src/parsers/mod.rs and 1 more",
+      "key": "task-pandoc-docs-changes",
+      "content": "Modified 2 files (+544, -5): .hence/context-manifest.json, docs/ecosystems/pandoc.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/mixed-eco-diagnostic-v1",
-  "evaluated_at": "2026-04-19T22:58:41Z",
+  "branch_name": "hence/pandoc-docs-v1",
+  "evaluated_at": "2026-04-19T23:02:26Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
