@@ -27,6 +27,7 @@
 use std::time::{Duration, Instant};
 
 use crate::hooks::build_context::BuildContext;
+use crate::hooks::failure_scoping::FailureRecord;
 
 /// The three hook stages per REQ-3201.
 ///
@@ -259,6 +260,15 @@ impl PipelineStats {
 /// mdast, …) and HTML renderer. This also keeps the scaffolding pure: no
 /// concrete dependency on the render pipeline in `src/web/`.
 ///
+/// **Failure scoping (REQ-3207 / CON-3207).** Hook errors never short-
+/// circuit the pipeline. When a hook `H_k` returns `Err`, its output is
+/// discarded, a [`FailureRecord`] is appended to the returned `Vec`, and
+/// `H_{k+1}` receives the same input `H_k` did (i.e. `H_{k-1}`'s output,
+/// or the stage input when `k == 0`). Rendering always completes; the
+/// per-build `--hook-fail-on` policy (see
+/// [`crate::hooks::failure_scoping::HookFailOn`]) decides whether
+/// non-empty failure records translate into a non-zero exit code.
+///
 /// Concurrency: the function is pure with respect to the pipeline (takes
 /// `&HookPipeline`) and the trait-object bounds are `Send + Sync`, so
 /// callers may invoke `run_page` from multiple threads concurrently for
@@ -269,19 +279,35 @@ pub fn run_page<ParseFn, RenderFn>(
     ctx: &BuildContext,
     parse: ParseFn,
     render: RenderFn,
-) -> Result<(String, PipelineStats), HookError>
+) -> (String, PipelineStats, Vec<FailureRecord>)
 where
     ParseFn: FnOnce(&str) -> AstDocument,
     RenderFn: FnOnce(&AstDocument) -> String,
 {
     let mut stats = PipelineStats::default();
+    let mut failures: Vec<FailureRecord> = Vec::new();
+    let page_slug = ctx.page.slug.clone();
 
     // Stage 1: pre-parse (raw text → raw text).
     let mut text = raw_markdown;
     if !pipeline.pre_parse.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.pre_parse {
-            text = hook.run(text, ctx)?;
+            let hook_start = Instant::now();
+            // Clone the input so the prior value is preserved if the hook
+            // fails — CON-3207's "revert the page fragment" obligation.
+            let prev = text.clone();
+            match hook.run(text, ctx) {
+                Ok(next) => text = next,
+                Err(err) => {
+                    failures.push(FailureRecord::from_hook_error(
+                        &err,
+                        &page_slug,
+                        hook_start.elapsed(),
+                    ));
+                    text = prev;
+                }
+            }
         }
         stats.pre_parse = t0.elapsed();
     }
@@ -295,7 +321,19 @@ where
     if !pipeline.transform.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.transform {
-            ast = hook.run(ast, ctx)?;
+            let hook_start = Instant::now();
+            let prev = ast.clone();
+            match hook.run(ast, ctx) {
+                Ok(next) => ast = next,
+                Err(err) => {
+                    failures.push(FailureRecord::from_hook_error(
+                        &err,
+                        &page_slug,
+                        hook_start.elapsed(),
+                    ));
+                    ast = prev;
+                }
+            }
         }
         stats.transform = t0.elapsed();
     }
@@ -309,12 +347,24 @@ where
     if !pipeline.post_render.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.post_render {
-            html = hook.run(html, ctx)?;
+            let hook_start = Instant::now();
+            let prev = html.clone();
+            match hook.run(html, ctx) {
+                Ok(next) => html = next,
+                Err(err) => {
+                    failures.push(FailureRecord::from_hook_error(
+                        &err,
+                        &page_slug,
+                        hook_start.elapsed(),
+                    ));
+                    html = prev;
+                }
+            }
         }
         stats.post_render = t0.elapsed();
     }
 
-    Ok((html, stats))
+    (html, stats, failures)
 }
 
 #[cfg(test)]
@@ -488,8 +538,9 @@ mod tests {
         let pipe = HookPipeline::new();
         assert!(pipe.is_empty());
         let ctx = test_ctx();
-        let (html, stats) = run_page(&pipe, "hello".into(), &ctx, parse, render).unwrap();
+        let (html, stats, failures) = run_page(&pipe, "hello".into(), &ctx, parse, render);
         assert_eq!(html, "<p>hello |marks=</p>");
+        assert!(failures.is_empty());
         // Parse and render still ran; hook stages did not.
         assert_eq!(stats.pre_parse, Duration::ZERO);
         assert_eq!(stats.transform, Duration::ZERO);
@@ -540,7 +591,8 @@ mod tests {
         assert_eq!(pipe.post_render_len(), 1);
 
         let ctx = test_ctx();
-        let (html, stats) = run_page(&pipe, "hello".into(), &ctx, parse, render).unwrap();
+        let (html, stats, failures) = run_page(&pipe, "hello".into(), &ctx, parse, render);
+        assert!(failures.is_empty());
 
         // Each hook ran exactly once.
         assert_eq!(calls_pre.load(Ordering::SeqCst), 1);
@@ -605,19 +657,22 @@ mod tests {
         });
 
         let ctx = test_ctx();
-        let (html, _) = run_page(&pipe, "x".into(), &ctx, parse, render).unwrap();
+        let (html, _, failures) = run_page(&pipe, "x".into(), &ctx, parse, render);
         assert_eq!(html, "<p>x A B |marks=T1,T2</p>");
+        assert!(failures.is_empty());
         assert_eq!(
             *trace.lock().unwrap(),
             vec!["pre:a", "pre:b", "tf:t1", "tf:t2"]
         );
     }
 
-    /// A hook error short-circuits the pipeline; later hooks do not run.
-    /// Failure-recovery policy (revert vs. abort) is the concern of
-    /// task-failure-scoping — this scaffolding just propagates the error.
+    /// REQ-3207 / CON-3207 — a hook error does NOT short-circuit the
+    /// pipeline. The failing hook's output is discarded, a FailureRecord
+    /// is emitted, and the next hook in the stage (and downstream stages)
+    /// receive the input the failing hook saw. Build continues; exit
+    /// policy is the caller's concern.
     #[test]
-    fn hook_error_short_circuits() {
+    fn hook_error_is_scoped_per_hook() {
         struct FailingTransform;
         impl TransformHook for FailingTransform {
             fn id(&self) -> &str {
@@ -644,11 +699,19 @@ mod tests {
             });
 
         let ctx = test_ctx();
-        let err = run_page(&pipe, "x".into(), &ctx, parse, render).unwrap_err();
-        assert_eq!(err.stage, Stage::Transform);
-        assert_eq!(err.hook_id, "boom");
-        // Downstream hook was never reached.
-        assert_eq!(post_calls.load(Ordering::SeqCst), 0);
+        let (html, _, failures) = run_page(&pipe, "x".into(), &ctx, parse, render);
+
+        // Transform reverted → render still emitted the plain paragraph.
+        // Downstream post-render hook DID run (the failure is scoped).
+        assert_eq!(html, "<p>x |marks=</p><!--AFTER-->");
+        assert_eq!(post_calls.load(Ordering::SeqCst), 1);
+
+        // One failure record was emitted, carrying hook / stage / page slug.
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].hook, "boom");
+        assert_eq!(failures[0].stage, "transform");
+        assert_eq!(failures[0].page_slug, "page");
+        assert_eq!(failures[0].detail, "rigged");
     }
 
     /// Parse and render closures run exactly once per page and only if every
@@ -672,7 +735,7 @@ mod tests {
 
         let pipe = HookPipeline::new();
         let ctx = test_ctx();
-        let _ = run_page(&pipe, "y".into(), &ctx, parse_fn, render_fn).unwrap();
+        let _ = run_page(&pipe, "y".into(), &ctx, parse_fn, render_fn);
         assert_eq!(parse_count.load(Ordering::SeqCst), 1);
         assert_eq!(render_count.load(Ordering::SeqCst), 1);
     }
@@ -698,9 +761,7 @@ mod tests {
             let p = pipe.clone();
             handles.push(std::thread::spawn(move || {
                 let ctx = test_ctx();
-                run_page(&p, format!("page{i}"), &ctx, parse, render)
-                    .unwrap()
-                    .0
+                run_page(&p, format!("page{i}"), &ctx, parse, render).0
             }));
         }
         let outputs: Vec<String> = handles.into_iter().map(|h| h.join().unwrap()).collect();
@@ -783,10 +844,10 @@ mod tests {
         )
         .with_theme("default");
 
-        let (html_fountain, _) =
-            run_page(&pipe, "hi".into(), &fountain_ctx, parse, render).unwrap();
-        let (html_default, _) =
-            run_page(&pipe, "hi".into(), &default_ctx, parse, render).unwrap();
+        let (html_fountain, _, _) =
+            run_page(&pipe, "hi".into(), &fountain_ctx, parse, render);
+        let (html_default, _, _) =
+            run_page(&pipe, "hi".into(), &default_ctx, parse, render);
 
         assert_eq!(
             html_fountain,
@@ -874,7 +935,7 @@ mod tests {
         )
         .with_theme("obsidian");
 
-        run_page(&pipe, "hi".into(), &ctx, parse, render).unwrap();
+        run_page(&pipe, "hi".into(), &ctx, parse, render);
 
         let seen = observed.lock().unwrap().clone();
         assert_eq!(seen.len(), 3);

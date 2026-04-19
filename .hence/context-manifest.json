@@ -1,12 +1,12 @@
 {
-  "task_id": "eco-registry",
+  "task_id": "failure-scoping",
   "token_budget": 8000,
-  "tokens_used": 313,
+  "tokens_used": 332,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Ecosystem registry per REQ-3301 / CON-3301. Enum + static table of {id, name, runtime, default_stage, feature_flag}.",
-      "token_cost": 29,
+      "content": "Failure scoping and pipeline continuation per REQ-3207 / CON-3207. Hook failure → page fragment revert; structured diagnostic; build continues to next page; non-zero exit if any page failed.",
+      "token_cost": 48,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T15:15:34Z"
+  "constructed_at": "2026-04-19T15:22:54Z"
 }
