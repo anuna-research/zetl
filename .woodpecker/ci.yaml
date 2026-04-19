@@ -44,6 +44,14 @@ steps:
       # build. The strict P95 arms are `#[ignore]`-gated and run via
       # `make nfr-gates-strict` in the nightly / release pipeline.
       - make nfr-gates
+      # SPEC-033 NFR-3301..NFR-3308 ecosystem performance + lifecycle gates.
+      # Pins the cold-start, per-page round-trip (pipe + Node-harness),
+      # binary-size, round-trip-fidelity, determinism scope, process-
+      # memory ceiling, and combined-ecosystem 3× multiplier constants
+      # against the spec, and asserts the lifecycle table stays in sync
+      # with the ecosystem registry. Strict arms (live cold-start probe,
+      # release-binary size) run via `make nfr-gates-033-strict`.
+      - make nfr-gates-033
       # SPEC-033 NFR-3305 / TEST-3305-fidelity translator round-trip gate.
       # Drives proptest-generated zetl-ext documents through each translator
       # and asserts canonical-form equivalence (zetl→foreign→zetl). `cargo

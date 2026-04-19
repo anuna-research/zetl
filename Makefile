@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check translator-roundtrip help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check translator-roundtrip help
 
 all: build
 
@@ -129,6 +129,18 @@ nfr-gates:
 nfr-gates-strict:
 	cargo test --release --test nfr_gates_integration -- --ignored --nocapture
 
+# SPEC-033 NFR-3301..NFR-3308 ecosystem performance + lifecycle gates.
+# Default-on arms (constants pinned to spec, lifecycle table parity with
+# the registry, canonicalise idempotence, in-process translation
+# headroom) run in CI; strict arms (cold-start probe of every runtime,
+# release-binary size sanity ceiling) are `#[ignore]`-gated and unlock
+# via `make nfr-gates-033-strict`.
+nfr-gates-033:
+	cargo test --test nfr_gates_033_integration -- --nocapture
+
+nfr-gates-033-strict:
+	cargo test --release --test nfr_gates_033_integration -- --ignored --nocapture
+
 # SPEC-033 NFR-3305 / TEST-3305-fidelity translator round-trip property.
 # Drives `arb_document()` through each registered translator and asserts
 # canonical-form equivalence after a zetl→foreign→zetl round trip.
@@ -201,6 +213,8 @@ help:
 	@echo "  make translator-roundtrip - NFR-3305 property-test gate: zetl→foreign→zetl canonical equivalence"
 	@echo "  make nfr-gates           - SPEC-032 NFR-3201..NFR-3208 performance + determinism gates"
 	@echo "  make nfr-gates-strict    - Run the #[ignore]-gated strict-budget arms (release mode)"
+	@echo "  make nfr-gates-033       - SPEC-033 NFR-3301..NFR-3308 ecosystem performance + lifecycle gates"
+	@echo "  make nfr-gates-033-strict- Run the #[ignore]-gated SPEC-033 strict arms (release mode)"
 	@echo "  make install      - Install binary, man page, and shell completions"
 	@echo "  make uninstall    - Remove binary, man page, and completions"
 	@echo "  make clean        - Remove build artifacts"
