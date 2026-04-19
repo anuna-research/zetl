@@ -1,12 +1,12 @@
 {
-  "task_id": "safe-mode",
+  "task_id": "security-hooks",
   "token_budget": 8000,
-  "tokens_used": 330,
+  "tokens_used": 326,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Safe-mode execution per REQ-3223. `zetl build --safe-mode` disables untrusted hooks (all except explicitly allow-listed theme hooks). Theme hooks must be declared in theme.toml `[hooks]`.",
-      "token_cost": 46,
+      "content": "SPEC-032 §10 security: untrusted-script considerations, process isolation, timeout enforcement, stdout/stderr streaming (no in-memory buffering), redact-env-by-default.",
+      "token_cost": 42,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T17:45:24Z"
+  "constructed_at": "2026-04-19T18:04:54Z"
 }

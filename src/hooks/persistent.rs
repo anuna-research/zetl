@@ -55,6 +55,7 @@
 //! to minimise syscalls. Verified by `protocol_overhead_per_run_is_fast`
 //! in the integration suite.
 
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
@@ -83,6 +84,117 @@ pub const DEFAULT_SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
 /// Fallback per-call deadline used when the caller doesn't override via
 /// the `deadline_ms` field in a [`HostMessage::Run`].
 pub const DEFAULT_DEADLINE_MS: u64 = 100;
+
+/// Per-message wire-size cap (SPEC-032 §10): protects against memory
+/// pressure from a runaway hook emitting an unbounded JSON line and
+/// against deeply-nested untrusted JSON deserialisation. Applies to
+/// host → hook writes *and* hook → host reads.
+pub const DEFAULT_MAX_MESSAGE_BYTES: usize = 10 * 1024 * 1024;
+
+/// Captured-stderr cap. Older bytes are kept (handshake errors are at
+/// the start of stderr); once the cap is hit a `[stderr truncated]`
+/// marker is appended once and further bytes are dropped on the floor
+/// rather than allocating without bound (SPEC-032 §10 streaming guidance).
+pub const DEFAULT_MAX_STDERR_BYTES: usize = 1024 * 1024;
+
+/// Marker appended to captured stderr when the [`DEFAULT_MAX_STDERR_BYTES`]
+/// cap has been reached and further data was discarded.
+pub const STDERR_TRUNCATED_MARKER: &[u8] = b"\n[stderr truncated]\n";
+
+/// Default allow-list of parent-process environment variables forwarded
+/// to a hook child after the parent's full environment is cleared
+/// (SPEC-032 §10 redact-env-by-default). Anything outside this list
+/// (and outside the explicit `cmd.env(...)` calls the spawning code
+/// makes for `ZETL_*`) is invisible to the hook.
+///
+/// The list is deliberately conservative: enough for an interpreter
+/// shebang to find `python3` / `node` (`PATH`), for Python's user
+/// site-packages discovery to work (`HOME`), and for text encoding to
+/// be predictable (`LANG`, `LC_*`). It does *not* include shell
+/// secret-bearing variables (`AWS_*`, `*_TOKEN`, `OPENAI_API_KEY`,
+/// `GITHUB_TOKEN`, etc.) — those leak only when a vault author
+/// explicitly opts in via [`SecurityPolicy::env_allowlist`].
+pub const DEFAULT_ENV_ALLOWLIST: &[&str] = &[
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LC_MESSAGES",
+    "TZ",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "TERM",
+    "SHELL",
+];
+
+/// Security policy applied to a [`PersistentHook`] child at spawn time
+/// (SPEC-032 §10).
+///
+/// The defaults implement the spec's "untrusted code" baseline:
+/// - parent environment is redacted; only [`DEFAULT_ENV_ALLOWLIST`]
+///   variables (plus anything the spawn caller set explicitly via
+///   `cmd.env(...)`) reach the child;
+/// - stderr is captured into a [`DEFAULT_MAX_STDERR_BYTES`]-bounded
+///   ring, so a chatty hook can't OOM the host;
+/// - per-message I/O is capped at [`DEFAULT_MAX_MESSAGE_BYTES`] both
+///   directions, so a malicious or buggy hook can't blow up host
+///   memory by emitting a single unbounded line.
+///
+/// Customise via [`Self::with_env_allowlist`] / [`Self::with_extra_env`]
+/// when a hook genuinely needs an additional variable (e.g. a Python
+/// hook that reads `VIRTUAL_ENV`).
+#[derive(Debug, Clone)]
+pub struct SecurityPolicy {
+    /// Names of parent-process env vars to forward to the child.
+    /// Variables not present in the parent environment are silently
+    /// skipped — a missing `PATH` is not an error.
+    pub env_allowlist: Vec<String>,
+    /// Maximum captured stderr bytes — see [`DEFAULT_MAX_STDERR_BYTES`].
+    pub max_stderr_bytes: usize,
+    /// Maximum bytes per line read from / written to the hook. A line
+    /// longer than this returns [`ProtocolError::MessageTooLarge`] and
+    /// kills the hook.
+    pub max_message_bytes: usize,
+}
+
+impl Default for SecurityPolicy {
+    fn default() -> Self {
+        Self {
+            env_allowlist: DEFAULT_ENV_ALLOWLIST.iter().map(|s| (*s).to_string()).collect(),
+            max_stderr_bytes: DEFAULT_MAX_STDERR_BYTES,
+            max_message_bytes: DEFAULT_MAX_MESSAGE_BYTES,
+        }
+    }
+}
+
+impl SecurityPolicy {
+    /// Replace the env allowlist wholesale. Use this when the hook needs
+    /// an entirely different set of variables (e.g. a CI runner where
+    /// `HOME` should be hidden but `BUILDKITE_*` is required).
+    pub fn with_env_allowlist<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.env_allowlist = names.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Append to the existing env allowlist — convenient for the common
+    /// case of the default plus one or two extras.
+    pub fn with_extra_env<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.env_allowlist.extend(names.into_iter().map(Into::into));
+        self
+    }
+}
 
 /// First line written by the hook on process start (CON-3201).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,6 +318,16 @@ pub enum ProtocolError {
     Handshake(String),
     /// Hook returned a typed `{"type":"error"}` message.
     HookError { reason: String, detail: String },
+    /// A single host-or-hook message exceeded
+    /// [`SecurityPolicy::max_message_bytes`]. Direction is `"send"` for
+    /// host → hook writes (caller serialised something too large) and
+    /// `"recv"` for hook → host reads (the hook is misbehaving and is
+    /// killed). SPEC-032 §10 untrusted-JSON guard.
+    MessageTooLarge {
+        direction: &'static str,
+        size: usize,
+        limit: usize,
+    },
 }
 
 impl From<std::io::Error> for ProtocolError {
@@ -237,6 +359,14 @@ impl std::fmt::Display for ProtocolError {
                     write!(f, "hook reported error: {reason} ({detail})")
                 }
             }
+            ProtocolError::MessageTooLarge {
+                direction,
+                size,
+                limit,
+            } => write!(
+                f,
+                "persistent hook {direction} message size {size} exceeded limit {limit}"
+            ),
         }
     }
 }
@@ -260,6 +390,10 @@ pub struct PersistentHook {
     hook_id: String,
     stage: Stage,
     shutdown_grace: Duration,
+    /// Per-message wire-size cap copied from the [`SecurityPolicy`] at
+    /// spawn time. Enforced on every host → hook write so a host-side
+    /// bug can't smuggle an oversized payload past the receive-side cap.
+    max_message_bytes: usize,
     /// `true` after the first fatal protocol error. All subsequent
     /// operations short-circuit with [`ProtocolError::UnexpectedEof`].
     dead: bool,
@@ -287,15 +421,70 @@ impl PersistentHook {
 
     /// Spawn with explicit handshake / shutdown timeouts — primarily
     /// exposed for tests that need to exercise the timeout paths in
-    /// fractions of a second.
+    /// fractions of a second. Uses the default [`SecurityPolicy`].
     pub fn spawn_with_config(
-        mut command: Command,
+        command: Command,
         hook_id: impl Into<String>,
         stage: Stage,
         handshake_timeout: Duration,
         shutdown_grace: Duration,
     ) -> Result<Self, ProtocolError> {
+        Self::spawn_with_policy(
+            command,
+            hook_id,
+            stage,
+            handshake_timeout,
+            shutdown_grace,
+            SecurityPolicy::default(),
+        )
+    }
+
+    /// Spawn with a fully customised [`SecurityPolicy`]. Use this when
+    /// the default env allowlist or message caps don't fit.
+    ///
+    /// SPEC-032 §10 defines the parent → child env-leak posture: the
+    /// policy's `env_allowlist` is forwarded from `std::env`; the
+    /// command's explicitly-set environment (added via `cmd.env(...)`
+    /// before spawn) is preserved on top, so callers can pass in
+    /// `ZETL_*` vars that aren't in the parent's environment.
+    pub fn spawn_with_policy(
+        mut command: Command,
+        hook_id: impl Into<String>,
+        stage: Stage,
+        handshake_timeout: Duration,
+        shutdown_grace: Duration,
+        policy: SecurityPolicy,
+    ) -> Result<Self, ProtocolError> {
         let hook_id = hook_id.into();
+
+        // Snapshot the caller's explicit `env(...)` / `env_remove(...)` calls
+        // *before* env_clear wipes the inheritance set, so we can re-apply
+        // them after installing the allowlist (the caller's intent always
+        // wins over the parent-env passthrough).
+        let explicit_envs: Vec<(OsString, Option<OsString>)> = command
+            .get_envs()
+            .map(|(k, v)| (k.to_owned(), v.map(|v| v.to_owned())))
+            .collect();
+
+        // SPEC-032 §10: redact-env-by-default. After env_clear the only
+        // variables visible to the child are the allowlisted ones we
+        // re-add below plus the caller's explicit overrides.
+        command.env_clear();
+        for var in &policy.env_allowlist {
+            if let Ok(val) = std::env::var(var) {
+                command.env(var, val);
+            }
+        }
+        for (k, v) in explicit_envs {
+            match v {
+                Some(val) => {
+                    command.env(&k, val);
+                }
+                None => {
+                    command.env_remove(&k);
+                }
+            }
+        }
 
         let mut child = command
             .stdin(Stdio::piped())
@@ -308,16 +497,18 @@ impl PersistentHook {
         let stderr = child.stderr.take().expect("piped stderr");
 
         let (tx, stdout_rx) = mpsc::sync_channel::<std::io::Result<String>>(32);
+        let max_message_bytes = policy.max_message_bytes;
         let reader_handle = thread::Builder::new()
             .name(format!("zetl-hook-{hook_id}-stdout"))
-            .spawn(move || pump_stdout(stdout, tx))
+            .spawn(move || pump_stdout(stdout, tx, max_message_bytes))
             .expect("spawn stdout pump");
 
         let stderr_buf: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
         let stderr_buf2 = Arc::clone(&stderr_buf);
+        let max_stderr_bytes = policy.max_stderr_bytes;
         let stderr_handle = thread::Builder::new()
             .name(format!("zetl-hook-{hook_id}-stderr"))
-            .spawn(move || pump_stderr(stderr, stderr_buf2))
+            .spawn(move || pump_stderr(stderr, stderr_buf2, max_stderr_bytes))
             .expect("spawn stderr pump");
 
         let handshake = match stdout_rx.recv_timeout(handshake_timeout) {
@@ -377,6 +568,7 @@ impl PersistentHook {
             hook_id,
             stage,
             shutdown_grace,
+            max_message_bytes,
             dead: false,
         })
     }
@@ -553,6 +745,16 @@ impl PersistentHook {
             .as_mut()
             .ok_or(ProtocolError::UnexpectedEof)?;
         let line = serde_json::to_string(msg)?;
+        // SPEC-032 §10: enforce the wire-size cap on the host side too,
+        // so a host-bug-induced runaway payload trips the same diagnostic
+        // as a hook-side one.
+        if line.len() > self.max_message_bytes {
+            return Err(ProtocolError::MessageTooLarge {
+                direction: "send",
+                size: line.len(),
+                limit: self.max_message_bytes,
+            });
+        }
         stdin.write_all(line.as_bytes())?;
         stdin.write_all(b"\n")?;
         stdin.flush()?;
@@ -562,7 +764,29 @@ impl PersistentHook {
     fn recv_response(&self, deadline: Duration) -> Result<HookMessage, ProtocolError> {
         match self.stdout_rx.recv_timeout(deadline) {
             Ok(Ok(line)) => Ok(serde_json::from_str(&line)?),
-            Ok(Err(e)) => Err(ProtocolError::Io(e)),
+            Ok(Err(e)) => {
+                // The stdout pump tags an oversized line by wrapping the
+                // size in an InvalidData error with a `zetl:msg-too-large:`
+                // prefix; promote it to the typed protocol variant so
+                // callers can branch on policy violation vs. plain I/O.
+                if e.kind() == std::io::ErrorKind::InvalidData {
+                    let msg = e.to_string();
+                    if let Some(rest) = msg.strip_prefix("zetl:msg-too-large:") {
+                        if let Some((size, limit)) = rest.split_once(':') {
+                            if let (Ok(size), Ok(limit)) =
+                                (size.parse::<usize>(), limit.parse::<usize>())
+                            {
+                                return Err(ProtocolError::MessageTooLarge {
+                                    direction: "recv",
+                                    size,
+                                    limit,
+                                });
+                            }
+                        }
+                    }
+                }
+                Err(ProtocolError::Io(e))
+            }
             Err(RecvTimeoutError::Timeout) => Err(ProtocolError::Timeout { deadline }),
             Err(RecvTimeoutError::Disconnected) => Err(ProtocolError::UnexpectedEof),
         }
@@ -600,21 +824,125 @@ impl Drop for PersistentHook {
     }
 }
 
-fn pump_stdout(stdout: ChildStdout, tx: mpsc::SyncSender<std::io::Result<String>>) {
-    let reader = BufReader::new(stdout);
-    for line in reader.lines() {
-        if tx.send(line).is_err() {
-            break;
+fn pump_stdout(
+    stdout: ChildStdout,
+    tx: mpsc::SyncSender<std::io::Result<String>>,
+    max_message_bytes: usize,
+) {
+    let mut reader = BufReader::new(stdout);
+    let mut buf: Vec<u8> = Vec::with_capacity(4096);
+    loop {
+        buf.clear();
+        match read_line_capped(&mut reader, &mut buf, max_message_bytes) {
+            Ok(0) => break,
+            Ok(_) => {
+                if buf.last() == Some(&b'\n') {
+                    buf.pop();
+                }
+                if buf.last() == Some(&b'\r') {
+                    buf.pop();
+                }
+                let line = match std::str::from_utf8(&buf) {
+                    Ok(s) => s.to_string(),
+                    Err(e) => {
+                        let _ = tx.send(Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            e,
+                        )));
+                        break;
+                    }
+                };
+                if tx.send(Ok(line)).is_err() {
+                    break;
+                }
+            }
+            Err(e) => {
+                let _ = tx.send(Err(e));
+                break;
+            }
         }
     }
 }
 
-fn pump_stderr(mut stderr: std::process::ChildStderr, buf: Arc<Mutex<Vec<u8>>>) {
+/// Read up to and including the next `\n`, capping the total bytes
+/// consumed at `limit`. Returns `Ok(0)` on clean EOF, `Ok(n)` with the
+/// line in `buf` (newline retained) on success, or `Err(InvalidData)`
+/// tagged with a `zetl:msg-too-large:<size>:<limit>` payload when the
+/// line exceeds `limit`. Unlike [`BufRead::read_until`] this never
+/// allocates more than `limit + buffer-fill` bytes, so an unbounded
+/// hook output can't OOM the host.
+fn read_line_capped<R: BufRead>(
+    reader: &mut R,
+    buf: &mut Vec<u8>,
+    limit: usize,
+) -> std::io::Result<usize> {
+    let mut total = 0usize;
+    loop {
+        let chunk = match reader.fill_buf() {
+            Ok(c) => c,
+            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if chunk.is_empty() {
+            return Ok(total);
+        }
+        if let Some(nl) = chunk.iter().position(|&b| b == b'\n') {
+            let take = nl + 1;
+            let new_total = total + take;
+            if new_total > limit {
+                let consumed = chunk.len();
+                reader.consume(consumed);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("zetl:msg-too-large:{new_total}:{limit}"),
+                ));
+            }
+            buf.extend_from_slice(&chunk[..take]);
+            reader.consume(take);
+            return Ok(new_total);
+        }
+        let len = chunk.len();
+        let new_total = total + len;
+        if new_total > limit {
+            reader.consume(len);
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("zetl:msg-too-large:{new_total}:{limit}"),
+            ));
+        }
+        buf.extend_from_slice(chunk);
+        reader.consume(len);
+        total = new_total;
+    }
+}
+
+fn pump_stderr(
+    mut stderr: std::process::ChildStderr,
+    buf: Arc<Mutex<Vec<u8>>>,
+    max_bytes: usize,
+) {
     let mut chunk = [0u8; 4096];
+    let mut truncated = false;
     loop {
         match stderr.read(&mut chunk) {
             Ok(0) => break,
-            Ok(n) => buf.lock().unwrap().extend_from_slice(&chunk[..n]),
+            Ok(n) => {
+                if truncated {
+                    // Cap reached on a previous read; drop further bytes
+                    // on the floor so a chatty hook can't OOM the host.
+                    continue;
+                }
+                let mut g = buf.lock().unwrap();
+                let remaining = max_bytes.saturating_sub(g.len());
+                let take = remaining.min(n);
+                if take > 0 {
+                    g.extend_from_slice(&chunk[..take]);
+                }
+                if take < n {
+                    g.extend_from_slice(STDERR_TRUNCATED_MARKER);
+                    truncated = true;
+                }
+            }
             Err(_) => break,
         }
     }
@@ -1074,6 +1402,375 @@ while True:
                 assert_eq!(detail, "d");
             }
             _ => panic!("wrong variant"),
+        }
+    }
+
+    // ── SPEC-032 §10 security ──────────────────────────────────────────────
+
+    /// SPEC-032 §10 redact-env-by-default: a parent-set environment
+    /// variable that isn't in [`DEFAULT_ENV_ALLOWLIST`] must be invisible
+    /// to a freshly-spawned hook. Acceptance criterion for task
+    /// security-hooks: `echo $SECRET` from a hook reveals nothing.
+    ///
+    /// The hook here echoes back `os.environ.get("ZETL_TEST_SECRET", "<unset>")`
+    /// in the run-response payload so we can assert against it without
+    /// touching the parent process's actual environment from the test
+    /// matrix runner's POV.
+    #[test]
+    fn env_redacted_by_default() {
+        require_python!();
+        let tmp = TempDir::new().unwrap();
+        let hook = write_python_hook(
+            tmp.path(),
+            "envprobe.py",
+            r#"
+import json, os, sys
+sys.stdout.write('{"zetl_ast":1,"hook":"envprobe","version":"0","ready":true}\n')
+sys.stdout.flush()
+for line in sys.stdin:
+    msg = json.loads(line)
+    t = msg.get("type")
+    if t == "shutdown":
+        break
+    secret = os.environ.get("ZETL_TEST_SECRET", "<unset>")
+    resp = {"type":"result","payload":{"secret": secret}}
+    sys.stdout.write(json.dumps(resp) + "\n")
+    sys.stdout.flush()
+"#,
+        );
+
+        // Set the secret in the parent so the leak path *would* be live
+        // were it not for env_clear. Using std::env::set_var is the
+        // standard way to surface this to Command::spawn's inheritance.
+        std::env::set_var("ZETL_TEST_SECRET", "leaked-via-inherit");
+
+        let mut h = PersistentHook::spawn(
+            Command::new(&hook),
+            "envprobe",
+            Stage::Transform,
+        )
+        .unwrap();
+        let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
+        std::env::remove_var("ZETL_TEST_SECRET");
+
+        match resp {
+            HookMessage::Result { payload, .. } => {
+                assert_eq!(
+                    payload["secret"], "<unset>",
+                    "env leak: hook saw ZETL_TEST_SECRET despite redact-env-by-default"
+                );
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Allow-listed essentials (PATH at minimum) must still reach the
+    /// child — without PATH, a `#!/usr/bin/env python3` shebang can't
+    /// resolve `python3` in the first place. Verify a default-policy
+    /// spawn round-trips a hook that depends on PATH for execution.
+    #[test]
+    fn env_allowlist_passes_path() {
+        require_python!();
+        let tmp = TempDir::new().unwrap();
+        // Hook executes via `#!/usr/bin/env python3` — needs PATH visible.
+        let hook = write_python_hook(tmp.path(), "echo.py", ECHO_BODY);
+        let mut h = PersistentHook::spawn(
+            Command::new(&hook),
+            "echo",
+            Stage::Transform,
+        )
+        .unwrap();
+        let resp = h.run("p", json!({}), json!({"k": "v"}), 1000).unwrap();
+        match resp {
+            HookMessage::Result { payload, .. } => {
+                assert_eq!(payload, json!({"k": "v"}));
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Caller-supplied `cmd.env(...)` overrides survive `env_clear`. The
+    /// security policy redacts the *inherited* environment but must not
+    /// trample explicit ZETL_* vars that the spawn site set up before
+    /// handing over the [`Command`].
+    #[test]
+    fn explicit_command_env_survives_redaction() {
+        require_python!();
+        let tmp = TempDir::new().unwrap();
+        let hook = write_python_hook(
+            tmp.path(),
+            "explicit.py",
+            r#"
+import json, os, sys
+sys.stdout.write('{"zetl_ast":1,"hook":"explicit","version":"0","ready":true}\n')
+sys.stdout.flush()
+for line in sys.stdin:
+    msg = json.loads(line)
+    if msg.get("type") == "shutdown":
+        break
+    resp = {"type":"result","payload":{
+        "zetl_extension_id": os.environ.get("ZETL_EXTENSION_ID", "<unset>"),
+        "zetl_random": os.environ.get("ZETL_TEST_OVERRIDE", "<unset>"),
+    }}
+    sys.stdout.write(json.dumps(resp) + "\n")
+    sys.stdout.flush()
+"#,
+        );
+
+        let mut cmd = Command::new(&hook);
+        cmd.env("ZETL_EXTENSION_ID", "explicit-id")
+            .env("ZETL_TEST_OVERRIDE", "explicit-value");
+
+        let mut h =
+            PersistentHook::spawn(cmd, "explicit", Stage::Transform).unwrap();
+        let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
+        match resp {
+            HookMessage::Result { payload, .. } => {
+                assert_eq!(payload["zetl_extension_id"], "explicit-id");
+                assert_eq!(payload["zetl_random"], "explicit-value");
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// `SecurityPolicy::with_extra_env` lets a vault opt a single
+    /// variable back in (the documented escape hatch for hooks that
+    /// genuinely need e.g. `VIRTUAL_ENV`). Verify the extra var lands
+    /// while a non-allowlisted sibling stays redacted.
+    #[test]
+    fn extra_env_allowlist_opts_specific_vars_back_in() {
+        require_python!();
+        let tmp = TempDir::new().unwrap();
+        let hook = write_python_hook(
+            tmp.path(),
+            "extra.py",
+            r#"
+import json, os, sys
+sys.stdout.write('{"zetl_ast":1,"hook":"extra","version":"0","ready":true}\n')
+sys.stdout.flush()
+for line in sys.stdin:
+    msg = json.loads(line)
+    if msg.get("type") == "shutdown":
+        break
+    resp = {"type":"result","payload":{
+        "opted_in": os.environ.get("ZETL_TEST_OPT_IN", "<unset>"),
+        "still_redacted": os.environ.get("ZETL_TEST_STILL_HIDDEN", "<unset>"),
+    }}
+    sys.stdout.write(json.dumps(resp) + "\n")
+    sys.stdout.flush()
+"#,
+        );
+
+        std::env::set_var("ZETL_TEST_OPT_IN", "visible");
+        std::env::set_var("ZETL_TEST_STILL_HIDDEN", "must-not-leak");
+
+        let policy = SecurityPolicy::default().with_extra_env(["ZETL_TEST_OPT_IN"]);
+        let mut h = PersistentHook::spawn_with_policy(
+            Command::new(&hook),
+            "extra",
+            Stage::Transform,
+            DEFAULT_HANDSHAKE_TIMEOUT,
+            DEFAULT_SHUTDOWN_GRACE,
+            policy,
+        )
+        .unwrap();
+        let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
+        std::env::remove_var("ZETL_TEST_OPT_IN");
+        std::env::remove_var("ZETL_TEST_STILL_HIDDEN");
+
+        match resp {
+            HookMessage::Result { payload, .. } => {
+                assert_eq!(payload["opted_in"], "visible");
+                assert_eq!(payload["still_redacted"], "<unset>");
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// SPEC-032 §10 stderr buffering: a chatty hook's stderr is bounded
+    /// by [`SecurityPolicy::max_stderr_bytes`]. Once the cap is hit,
+    /// further bytes are dropped on the floor and a single
+    /// [`STDERR_TRUNCATED_MARKER`] is appended so the operator knows the
+    /// captured tail is not the whole story.
+    #[test]
+    fn stderr_capped_with_truncation_marker() {
+        require_python!();
+        let tmp = TempDir::new().unwrap();
+        let hook = write_python_hook(
+            tmp.path(),
+            "loud.py",
+            r#"
+import json, sys
+sys.stdout.write('{"zetl_ast":1,"hook":"loud","version":"0","ready":true}\n')
+sys.stdout.flush()
+# Spam well past the cap (4 KiB cap × ~16 chunks).
+chunk = "X" * 4096
+for _ in range(64):
+    sys.stderr.write(chunk)
+sys.stderr.flush()
+for line in sys.stdin:
+    msg = json.loads(line)
+    if msg.get("type") == "shutdown":
+        break
+    sys.stdout.write(json.dumps({"type":"result","payload":{}}) + "\n")
+    sys.stdout.flush()
+"#,
+        );
+
+        // Tiny cap so the test runs fast and asserts hard.
+        let policy = SecurityPolicy {
+            max_stderr_bytes: 4096,
+            ..SecurityPolicy::default()
+        };
+        let mut h = PersistentHook::spawn_with_policy(
+            Command::new(&hook),
+            "loud",
+            Stage::Transform,
+            DEFAULT_HANDSHAKE_TIMEOUT,
+            DEFAULT_SHUTDOWN_GRACE,
+            policy,
+        )
+        .unwrap();
+        let _ = h.run("p", json!({}), json!({}), 1000).unwrap();
+        thread::sleep(Duration::from_millis(100));
+        let captured = h.drain_stderr();
+        let marker = std::str::from_utf8(STDERR_TRUNCATED_MARKER).unwrap();
+        assert!(
+            captured.contains(marker),
+            "expected truncation marker, got {} bytes",
+            captured.len()
+        );
+        // Cap + marker length is the upper bound; allow some slack for
+        // the marker's leading newline that may land mid-chunk.
+        assert!(
+            captured.len() <= 4096 + STDERR_TRUNCATED_MARKER.len() + 4096,
+            "captured {} bytes blew past cap",
+            captured.len()
+        );
+    }
+
+    /// Receive-side message cap: a hook emitting a single line larger
+    /// than [`SecurityPolicy::max_message_bytes`] returns the typed
+    /// [`ProtocolError::MessageTooLarge`] (not a generic IO error) and
+    /// the instance is killed. Critical untrusted-JSON guard.
+    #[test]
+    fn oversized_response_line_returns_typed_error() {
+        require_python!();
+        let tmp = TempDir::new().unwrap();
+        let hook = write_python_hook(
+            tmp.path(),
+            "huge.py",
+            r#"
+import json, sys
+sys.stdout.write('{"zetl_ast":1,"hook":"huge","version":"0","ready":true}\n')
+sys.stdout.flush()
+for line in sys.stdin:
+    msg = json.loads(line)
+    if msg.get("type") == "shutdown":
+        break
+    # Emit a line well above the configured cap (4 KiB in the test).
+    blob = "x" * (16 * 1024)
+    sys.stdout.write('{"type":"result","payload":{"blob":"' + blob + '"}}\n')
+    sys.stdout.flush()
+"#,
+        );
+
+        let policy = SecurityPolicy {
+            max_message_bytes: 4096,
+            ..SecurityPolicy::default()
+        };
+        let mut h = PersistentHook::spawn_with_policy(
+            Command::new(&hook),
+            "huge",
+            Stage::Transform,
+            DEFAULT_HANDSHAKE_TIMEOUT,
+            DEFAULT_SHUTDOWN_GRACE,
+            policy,
+        )
+        .unwrap();
+        let err = h.run("p", json!({}), json!({}), 1000).unwrap_err();
+        match err {
+            ProtocolError::MessageTooLarge {
+                direction,
+                size,
+                limit,
+            } => {
+                assert_eq!(direction, "recv");
+                assert_eq!(limit, 4096);
+                assert!(size > limit, "size {size} should exceed limit {limit}");
+            }
+            other => panic!("expected MessageTooLarge(recv), got {other:?}"),
+        }
+        // Caller's REQ-3207 path now sees a dead instance.
+        assert!(h.is_dead());
+    }
+
+    /// Send-side message cap: a host that tries to push a payload above
+    /// the cap fails fast with a typed `MessageTooLarge` *before* the
+    /// bytes hit the wire. Mirrors the recv-side guard so a host bug
+    /// can't force the hook to handle (or get killed by) an oversized
+    /// message it didn't ask for.
+    #[test]
+    fn oversized_send_payload_returns_typed_error() {
+        require_python!();
+        let tmp = TempDir::new().unwrap();
+        let hook = write_python_hook(tmp.path(), "echo.py", ECHO_BODY);
+
+        let policy = SecurityPolicy {
+            max_message_bytes: 1024,
+            ..SecurityPolicy::default()
+        };
+        let mut h = PersistentHook::spawn_with_policy(
+            Command::new(&hook),
+            "echo",
+            Stage::Transform,
+            DEFAULT_HANDSHAKE_TIMEOUT,
+            DEFAULT_SHUTDOWN_GRACE,
+            policy,
+        )
+        .unwrap();
+        let big = "x".repeat(8 * 1024);
+        let err = h
+            .run("p", json!({}), json!({ "blob": big }), 1000)
+            .unwrap_err();
+        match err {
+            ProtocolError::MessageTooLarge {
+                direction,
+                size,
+                limit,
+            } => {
+                assert_eq!(direction, "send");
+                assert_eq!(limit, 1024);
+                assert!(size > limit, "size {size} should exceed limit {limit}");
+            }
+            other => panic!("expected MessageTooLarge(send), got {other:?}"),
+        }
+        // Send-side cap kills the instance (host-side bug equally fatal).
+        assert!(h.is_dead());
+    }
+
+    /// Default policy values track the SPEC-032 §10 caps. Guard against
+    /// silent regressions in [`DEFAULT_MAX_MESSAGE_BYTES`] /
+    /// [`DEFAULT_MAX_STDERR_BYTES`] that would weaken untrusted-input
+    /// containment.
+    #[test]
+    fn default_policy_carries_spec_32_caps() {
+        let p = SecurityPolicy::default();
+        assert_eq!(p.max_message_bytes, 10 * 1024 * 1024);
+        assert_eq!(p.max_stderr_bytes, 1024 * 1024);
+        // PATH must always be allowlisted — without it, no shebang resolves.
+        assert!(p.env_allowlist.iter().any(|n| n == "PATH"));
+        // Common secret-bearing names must NOT be present by default.
+        for forbidden in [
+            "AWS_SECRET_ACCESS_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GITHUB_TOKEN",
+        ] {
+            assert!(
+                !p.env_allowlist.iter().any(|n| n == forbidden),
+                "{forbidden} must not be in default allowlist"
+            );
         }
     }
 }
