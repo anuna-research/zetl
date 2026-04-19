@@ -13,12 +13,26 @@
 //! hook — the theme hook is *not* invoked — and is itself marked disabled.
 //!
 //! **Ordering (REQ-3217).** An optional sibling manifest file
-//! `<executable>.toml` MAY declare `before = [...]` / `after = [...]` /
-//! `optional = true` / `extension_id = "..."`. The resulting pipeline is
-//! a topological sort over the enabled hook set with filename
-//! lex-sort as the tiebreaker between otherwise-unordered hooks. Cycles
-//! are reported as a [`CompositionError::Cycle`] with the offending path
-//! named by extension_id.
+//! `<executable>.toml` MAY declare ordering constraints either under an
+//! `[ordering]` table (the canonical REQ-3217 form) or at the top level
+//! (accepted as a convenience alias):
+//!
+//! ```toml
+//! # Canonical form
+//! [ordering]
+//! before = ["admonition"]
+//! after  = ["callouts"]
+//!
+//! # Top-level alias — equivalent
+//! before = ["admonition"]
+//! after  = ["callouts"]
+//! ```
+//!
+//! Plus `optional = true` / `extension_id = "..."` (always top-level). The
+//! resulting pipeline is a topological sort over the enabled hook set with
+//! filename lex-sort as the tiebreaker between otherwise-unordered hooks.
+//! Cycles are reported as a [`CompositionError::Cycle`] with the offending
+//! path named by extension_id.
 //!
 //! `extension_id` defaults to the filename minus its extension AND its
 //! leading ordering prefix (one or more digits followed by `-`): e.g.
@@ -301,6 +315,11 @@ pub fn default_extension_id(filename: &str) -> String {
 /// fields. Unknown top-level keys are *ignored* here (not rejected) so
 /// composition stays forward-compatible with richer manifests written for
 /// the manifest-parser task.
+///
+/// REQ-3217 canonicalises ordering constraints under a `[ordering]` table.
+/// Top-level `before` / `after` keys remain accepted as a convenience alias
+/// so existing hook manifests keep working; when both are supplied the two
+/// lists are concatenated.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 struct CompositionManifest {
@@ -308,6 +327,44 @@ struct CompositionManifest {
     before: Option<Vec<String>>,
     after: Option<Vec<String>>,
     optional: Option<bool>,
+    ordering: Option<OrderingTable>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct OrderingTable {
+    before: Option<Vec<String>>,
+    after: Option<Vec<String>>,
+}
+
+impl CompositionManifest {
+    /// Merge `[ordering].before` with top-level `before` (canonical form
+    /// first, alias second; duplicates preserved).
+    fn resolved_before(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(t) = &self.ordering {
+            if let Some(b) = &t.before {
+                out.extend(b.iter().cloned());
+            }
+        }
+        if let Some(b) = &self.before {
+            out.extend(b.iter().cloned());
+        }
+        out
+    }
+
+    fn resolved_after(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(t) = &self.ordering {
+            if let Some(a) = &t.after {
+                out.extend(a.iter().cloned());
+            }
+        }
+        if let Some(a) = &self.after {
+            out.extend(a.iter().cloned());
+        }
+        out
+    }
 }
 
 fn read_manifest(path: &Path) -> Result<CompositionManifest, CompositionError> {
@@ -415,11 +472,11 @@ fn build_hook_with_name(
         None => CompositionManifest::default(),
     };
 
+    let before = manifest.resolved_before();
+    let after = manifest.resolved_after();
     let extension_id = manifest
         .extension_id
         .unwrap_or_else(|| default_extension_id(&filename));
-    let before = manifest.before.unwrap_or_default();
-    let after = manifest.after.unwrap_or_default();
     let optional = manifest.optional.unwrap_or(false);
 
     Ok(ComposedHook {
@@ -1193,5 +1250,170 @@ include = ["**/*.md"]
         let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
         let ids: Vec<&str> = pipe.hooks.iter().map(|h| h.extension_id.as_str()).collect();
         assert_eq!(ids, vec!["admon", "tasks"]);
+    }
+
+    // ── REQ-3217: `[ordering]` table manifest form ────────────────────────
+
+    #[test]
+    fn ordering_table_before_and_after_are_accepted() {
+        // Canonical REQ-3217 form: constraints live under `[ordering]`.
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "10-tasks.py", "#!/bin/sh\ntrue\n");
+        write_manifest(
+            &vault_tx,
+            "10-tasks.py.toml",
+            r#"[ordering]
+after = ["callouts"]
+"#,
+        );
+        write_exe(&vault_tx, "20-admon.py", "#!/bin/sh\ntrue\n");
+        write_manifest(
+            &vault_tx,
+            "20-admon.py.toml",
+            r#"[ordering]
+before = ["tasks"]
+"#,
+        );
+        write_exe(&vault_tx, "30-callouts.py", "#!/bin/sh\ntrue\n");
+
+        let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
+        let ids: Vec<&str> = pipe.hooks.iter().map(|h| h.extension_id.as_str()).collect();
+        // callouts has no constraints, lex-last filename, but tasks.after
+        // forces callouts before tasks; admon.before forces admon before
+        // tasks. No constraint between callouts and admon → filename order:
+        // `20-admon.py` < `30-callouts.py`, so admon precedes callouts.
+        assert_eq!(ids, vec!["admon", "callouts", "tasks"]);
+    }
+
+    #[test]
+    fn ordering_table_and_top_level_merge() {
+        // When both forms are present, we accept their union so authors
+        // migrating from one form to the other don't lose constraints.
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "10-a.py", "#!/bin/sh\ntrue\n");
+        write_exe(&vault_tx, "20-b.py", "#!/bin/sh\ntrue\n");
+        write_exe(&vault_tx, "30-c.py", "#!/bin/sh\ntrue\n");
+        write_manifest(
+            &vault_tx,
+            "30-c.py.toml",
+            r#"after = ["a"]
+
+[ordering]
+after = ["b"]
+"#,
+        );
+
+        let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
+        let ids: Vec<&str> = pipe.hooks.iter().map(|h| h.extension_id.as_str()).collect();
+        // Both constraints must hold: a < c and b < c.
+        assert_eq!(ids, vec!["a", "b", "c"]);
+    }
+
+    /// TEST-3217: CON-3217 worked example reproduced using the canonical
+    /// `[ordering]` table form. Same expected order as the top-level form
+    /// test, proving the two manifest shapes are semantically equivalent.
+    #[test]
+    fn test_3217_con_worked_example_ordering_table() {
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "05-prelude.py", "#!/bin/sh\ntrue\n");
+        write_exe(&vault_tx, "10-callouts.py", "#!/bin/sh\ntrue\n");
+        write_exe(&vault_tx, "10-tasks.py", "#!/bin/sh\ntrue\n");
+        write_manifest(
+            &vault_tx,
+            "10-tasks.py.toml",
+            r#"[ordering]
+after = ["callouts"]
+"#,
+        );
+        write_exe(&vault_tx, "20-admon.py", "#!/bin/sh\ntrue\n");
+        write_manifest(
+            &vault_tx,
+            "20-admon.py.toml",
+            r#"[ordering]
+before = ["tasks"]
+"#,
+        );
+        write_exe(&vault_tx, "30-fini.py", "#!/bin/sh\ntrue\n");
+
+        let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
+        let ids: Vec<&str> = pipe.hooks.iter().map(|h| h.extension_id.as_str()).collect();
+        assert_eq!(ids, vec!["prelude", "callouts", "admon", "tasks", "fini"]);
+    }
+
+    #[test]
+    fn ordering_table_cycle_detected_at_load_time() {
+        // Two hooks referencing each other via [ordering] → cycle.
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "10-callouts.py", "#!/bin/sh\ntrue\n");
+        write_manifest(
+            &vault_tx,
+            "10-callouts.py.toml",
+            r#"[ordering]
+after = ["tasks"]
+"#,
+        );
+        write_exe(&vault_tx, "20-tasks.py", "#!/bin/sh\ntrue\n");
+        write_manifest(
+            &vault_tx,
+            "20-tasks.py.toml",
+            r#"[ordering]
+after = ["callouts"]
+"#,
+        );
+
+        let err = compose_stage(&vault_root, None, Stage::Transform).unwrap_err();
+        match err {
+            CompositionError::Cycle { path, files, .. } => {
+                assert!(path.len() >= 2);
+                assert_eq!(path.first(), path.last());
+                assert!(!files.is_empty());
+                // Diagnostic includes both hook ids.
+                let set: HashSet<&str> = path.iter().map(|s| s.as_str()).collect();
+                assert!(set.contains("callouts"));
+                assert!(set.contains("tasks"));
+            }
+            other => panic!("expected Cycle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ordering_table_optional_ref_drops_constraint_silently_to_caller() {
+        // REQ-3217: `optional = true` + missing ref → warning + drop (not
+        // error). The pipeline still composes so downstream selector-miss
+        // behaviour (task-selector-eval) can skip silently at runtime.
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "10-foo.py", "#!/bin/sh\ntrue\n");
+        write_manifest(
+            &vault_tx,
+            "10-foo.py.toml",
+            r#"optional = true
+
+[ordering]
+after = ["ghost"]
+"#,
+        );
+
+        let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
+        // Hook is still in the pipeline; the dangling ref was dropped.
+        assert_eq!(pipe.hooks.len(), 1);
+        assert_eq!(pipe.hooks[0].extension_id, "foo");
+        assert!(pipe.hooks[0].optional);
+        // Warning surfaces the dropped constraint for diagnostics.
+        assert!(pipe.warnings.iter().any(|w| w.contains("ghost")));
     }
 }
