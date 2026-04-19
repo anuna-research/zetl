@@ -3,39 +3,31 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 16,
-    "insertions": 1138,
-    "deletions": 12,
+    "files_changed": 8,
+    "insertions": 1026,
+    "deletions": 10,
     "file_list": [
-      ".cargo/config.toml",
       ".hence/context-manifest.json",
-      ".woodpecker/ci.yaml",
-      "Cargo.lock",
-      "Cargo.toml",
-      "Makefile",
-      "src/extensions/golden.rs",
-      "src/extensions/mod.rs",
-      "src/lib.rs",
-      "tests/ext_golden_html_integration.rs",
-      "tests/extension-fixtures/baseline-markdown/README.md",
-      "tests/extension-fixtures/baseline-markdown/expected.html",
-      "tests/extension-fixtures/baseline-markdown/input.md",
-      "tools/xtask/Cargo.toml",
-      "tools/xtask/src/main.rs",
-      "tools/xtask/src/runners.rs"
+      "src/cli.rs",
+      "src/hooks/mod.rs",
+      "src/hooks/pipeline.rs",
+      "src/hooks/safe_mode.rs",
+      "src/main.rs",
+      "src/web/theme.rs",
+      "tests/safe_mode_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-ext-golden-html-changes",
-      "content": "Modified 16 files (+1138, -12): .cargo/config.toml, .hence/context-manifest.json, .woodpecker/ci.yaml, Cargo.lock, Cargo.toml and 11 more",
+      "key": "task-safe-mode-changes",
+      "content": "Modified 8 files (+1026, -10): .hence/context-manifest.json, src/cli.rs, src/hooks/mod.rs, src/hooks/pipeline.rs, src/hooks/safe_mode.rs and 3 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/ext-golden-html-v1",
-  "evaluated_at": "2026-04-19T17:45:17Z",
+  "branch_name": "hence/safe-mode-v1",
+  "evaluated_at": "2026-04-19T18:04:47Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

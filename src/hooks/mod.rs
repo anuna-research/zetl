@@ -24,6 +24,7 @@ pub mod observability;
 pub mod persistent;
 pub mod pipeline;
 pub mod predicate;
+pub mod safe_mode;
 pub mod selector;
 pub mod template_vars;
 pub mod translators;

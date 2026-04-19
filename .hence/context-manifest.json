@@ -1,12 +1,12 @@
 {
-  "task_id": "ext-golden-html",
+  "task_id": "safe-mode",
   "token_budget": 8000,
-  "tokens_used": 320,
+  "tokens_used": 330,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Shared golden-HTML harness per CON-3212. Per-extension fixture format; update via `cargo xtask update-golden`; review gate on human-readable diffs.",
-      "token_cost": 36,
+      "content": "Safe-mode execution per REQ-3223. `zetl build --safe-mode` disables untrusted hooks (all except explicitly allow-listed theme hooks). Theme hooks must be declared in theme.toml `[hooks]`.",
+      "token_cost": 46,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T17:30:14Z"
+  "constructed_at": "2026-04-19T17:45:24Z"
 }
