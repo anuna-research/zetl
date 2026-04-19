@@ -1,12 +1,12 @@
 {
-  "task_id": "mdbook-docs",
+  "task_id": "eco-matrix",
   "token_budget": 8000,
-  "tokens_used": 302,
+  "tokens_used": 319,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "docs/ecosystems/mdbook.md. Install, config, known-working preprocessors.",
-      "token_cost": 18,
+      "content": "Build the full SPEC-033 §REQ-3311 matrix: ecosystem × plugin × tier × fixture × contract. Tier-promotion checklist per amended REQ-3311.",
+      "token_cost": 35,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T23:43:32Z"
+  "constructed_at": "2026-04-19T23:48:13Z"
 }

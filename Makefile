@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check translator-roundtrip help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip help
 
 all: build
 
@@ -114,6 +114,15 @@ eco-features-check:
 	cargo check --no-default-features --features ecosystem-remark
 	cargo check --no-default-features --features ecosystems-v1
 
+# SPEC-033 REQ-3311 / TEST-3311 ecosystem-matrix structural gate. Walks
+# every row in tools/zetl-ecosystem-matrix.toml, asserts required
+# columns, semver-range shape, fixture-path existence, tier→contract
+# coupling, and runs the tier-downgrade-without-rationale simulation.
+# Runs as a CI gate via `.woodpecker/ci.yaml`; local contributors can
+# invoke it directly when editing the matrix.
+eco-matrix-check:
+	cargo test --test ecosystem_matrix_integration -- --nocapture
+
 # SPEC-032 NFR-3201..NFR-3208 performance + determinism gates. The
 # default-on tests (selector P95, exit-code policy, AST schema pin,
 # memory-default, etc.) are coarse and host-stable — they run in CI
@@ -210,6 +219,7 @@ help:
 	@echo "  make ext-golden          - Run CON-3212 canonical-extension golden-HTML gate"
 	@echo "  make ext-golden-update   - Regenerate expected.html for every extension fixture"
 	@echo "  make eco-features-check  - Compile-in-isolation gate for every ecosystem feature flag"
+	@echo "  make eco-matrix-check    - SPEC-033 REQ-3311 / TEST-3311 ecosystem-matrix structural gate"
 	@echo "  make translator-roundtrip - NFR-3305 property-test gate: zetl→foreign→zetl canonical equivalence"
 	@echo "  make nfr-gates           - SPEC-032 NFR-3201..NFR-3208 performance + determinism gates"
 	@echo "  make nfr-gates-strict    - Run the #[ignore]-gated strict-budget arms (release mode)"
