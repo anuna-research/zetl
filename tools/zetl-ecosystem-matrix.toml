@@ -20,7 +20,71 @@
 [ecosystem.pandoc]
 # Pandoc filters — SPEC-033 REQ-3303. Matrix rows seeded by
 # task-pandoc-matrix-seed (pandoc-crossref, pandoc-citeproc, pantable).
-plugins = []
+#
+# All three rows land at tier = "experimental" per the REQ-3311 tier-
+# promotion checklist: each has `version_range`, maintainer contact,
+# upstream repo URL, a named fixture under tests/ecosystem-fixtures/,
+# and a `notes` field enumerating known limitations. Promotion to
+# `partial` requires wiring the fixtures into a green golden-HTML
+# runner; promotion to `supported` additionally requires declaring a
+# `[plugin.contract]` sub-table (preserves + idempotent) and CI
+# double-run evidence per TEST-3224-idempotent.
+
+[[ecosystem.pandoc.plugins]]
+name = "pandoc-crossref"
+version_range = ">=0.3.14 <0.4"
+tier = "experimental"
+fixture = "tests/ecosystem-fixtures/pandoc/pandoc-crossref/"
+repo = "https://github.com/lierdakil/pandoc-crossref"
+maintainer = "Nikolay Yakimov <root@livid.pp.ru>"
+notes = """
+Adds numbered cross-references for figures, equations, and tables. \
+Known limitations at experimental tier: \
+(a) pandoc-types major version must match the user's pandoc binary \
+(crossref 0.3.14+ tracks pandoc 3.x / pandoc-types 1.23.x); mismatches \
+surface via REQ-3314 version-drift detection. \
+(b) Round-trip preservation of zetl Wikilink/Embed/SPL markers is \
+inferred from CON-3221 defaults but not yet verified by a live \
+golden-HTML run — promotion to `partial` blocks on that. \
+(c) Expansion ratio is not bounded in v1; crossref may inject caption \
+spans that inflate node counts beyond the default REQ-3224 advisory."""
+
+[[ecosystem.pandoc.plugins]]
+name = "pandoc-citeproc"
+version_range = ">=0.17 <0.18"
+tier = "experimental"
+fixture = "tests/ecosystem-fixtures/pandoc/pandoc-citeproc/"
+repo = "https://github.com/jgm/pandoc-citeproc"
+maintainer = "John MacFarlane <jgm@berkeley.edu>"
+notes = """
+Legacy external filter for citation processing. Upstream was archived \
+in 2022 in favour of pandoc's built-in `--citeproc` flag, which zetl \
+exposes via the adapter's native-mode resolution path (SPEC-033 \
+ADR-3302 / task-pandoc-adapter). This entry is retained for users on \
+pandoc <2.11 or with a legacy Makefile pipeline; new deployments \
+SHOULD declare `citeproc = true` in their pandoc manifest rather than \
+running this filter. Tier is capped at `experimental` for the \
+lifetime of v1 — promotion is not planned."""
+
+[[ecosystem.pandoc.plugins]]
+name = "pantable"
+version_range = ">=0.16 <0.17"
+tier = "experimental"
+fixture = "tests/ecosystem-fixtures/pandoc/pantable/"
+repo = "https://github.com/ickc/pantable"
+maintainer = "Kolen Cheung <christian.kolen@gmail.com>"
+notes = """
+CSV / dataframe → pandoc Table filter. Known limitations at \
+experimental tier: \
+(a) Shipped as a Python filter; the adapter invokes it via `python3 \
+-m pantable` — runtime probe at REQ-3313 checks for the Python \
+module, not a standalone binary. \
+(b) Tables produced may carry `colspecs` with non-default alignment \
+that round-trip through zetl-ext as plain Table nodes; alignment \
+fidelity is best-effort and not gated. \
+(c) Promotion to `partial` blocks on a golden-HTML fixture that \
+confirms CSV-cell content survives the translate → filter → \
+translate-back cycle without markup corruption."""
 
 [ecosystem.mdbook]
 # mdBook preprocessors — SPEC-033 REQ-3304. Matrix rows seeded by

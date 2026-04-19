@@ -1,12 +1,12 @@
 {
-  "task_id": "mdbook-adapter",
+  "task_id": "pandoc-matrix-seed",
   "token_budget": 8000,
-  "tokens_used": 316,
+  "tokens_used": 312,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "mdBook preprocessor adapter per REQ-3304 / CON-3304 / ADR-3303. Runs at pre-parse stage; `supports html` probe before invocation.",
-      "token_cost": 32,
+      "content": "Seed SPEC-033 §REQ-3311 matrix with pandoc-crossref, pandoc-citeproc, pantable. Tier per tier-promotion checklist.",
+      "token_cost": 28,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T22:25:06Z"
+  "constructed_at": "2026-04-19T22:36:38Z"
 }
