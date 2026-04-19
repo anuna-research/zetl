@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`--features hooks-v2` umbrella retired.** SPEC-032's three-stage hook
+  pipeline (pre-parse / transform / post-render), AST schema v1.0,
+  selector evaluator, and persistent-mode protocol are default-on. The
+  umbrella was originally planned as a Phase-A preview gate; in practice
+  it shipped unconditionally because the schema converged faster than
+  expected, so no `--no-hooks-v2` opt-out is provided (there is nothing
+  to opt out of). To skip every hook, use the existing
+  `zetl build --no-hooks` flag. (SPEC-032 §12 Phase D)
+
 ## [0.3.0] - 2026-04-17
 
 ### Added
