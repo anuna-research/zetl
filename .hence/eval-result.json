@@ -3,28 +3,35 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 1741,
-    "deletions": 5,
+    "files_changed": 12,
+    "insertions": 267,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.toml",
-      "src/ecosystems/mdbook.rs",
-      "src/ecosystems/mod.rs",
-      "tests/mdbook_adapter_integration.rs"
+      "tests/ecosystem-fixtures/pandoc/pandoc-citeproc/README.md",
+      "tests/ecosystem-fixtures/pandoc/pandoc-citeproc/expected.html",
+      "tests/ecosystem-fixtures/pandoc/pandoc-citeproc/input.md",
+      "tests/ecosystem-fixtures/pandoc/pandoc-citeproc/references.bib",
+      "tests/ecosystem-fixtures/pandoc/pandoc-crossref/README.md",
+      "tests/ecosystem-fixtures/pandoc/pandoc-crossref/expected.html",
+      "tests/ecosystem-fixtures/pandoc/pandoc-crossref/input.md",
+      "tests/ecosystem-fixtures/pandoc/pantable/README.md",
+      "tests/ecosystem-fixtures/pandoc/pantable/expected.html",
+      "tests/ecosystem-fixtures/pandoc/pantable/input.md",
+      "tools/zetl-ecosystem-matrix.toml"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-mdbook-adapter-changes",
-      "content": "Modified 5 files (+1741, -5): .hence/context-manifest.json, Cargo.toml, src/ecosystems/mdbook.rs, src/ecosystems/mod.rs, tests/mdbook_adapter_integration.rs",
+      "key": "task-pandoc-matrix-seed-changes",
+      "content": "Modified 12 files (+267, -6): .hence/context-manifest.json, tests/ecosystem-fixtures/pandoc/pandoc-citeproc/README.md, tests/ecosystem-fixtures/pandoc/pandoc-citeproc/expected.html, tests/ecosystem-fixtures/pandoc/pandoc-citeproc/input.md, tests/ecosystem-fixtures/pandoc/pandoc-citeproc/references.bib and 7 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/mdbook-adapter-v1",
-  "evaluated_at": "2026-04-19T22:36:31Z",
+  "branch_name": "hence/pandoc-matrix-seed-v1",
+  "evaluated_at": "2026-04-19T22:43:11Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
