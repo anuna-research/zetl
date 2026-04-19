@@ -1,0 +1,2045 @@
+{
+  "generated_at": "2026-04-19",
+  "methodology": {
+    "npm": "registry.npmjs.org/-/v1/search; prefix-filtered after fetching up to 1000 results ranked by popularity",
+    "crates": "crates.io/api/v1/crates?q=mdbook-&per_page=100; all 7 pages, prefix-filtered",
+    "github_topics": "api.github.com/search/repositories?q=topic:<name>; paginated up to 4 pages",
+    "pandoc_wiki": "scraped jgm/pandoc wiki for pandoc-* repo mentions",
+    "pypi_mkdocs": "simple-index JSON gave 708 count; top-30 is hand-curated widely-known plugins, last-upload from pypi/json",
+    "pypi_mdit_py": "simple-index JSON (mdit-py- prefix) gives only 8 packages",
+    "quarto_listing": "listing page dynamically-rendered; fell back to quarto-extension GitHub topic (379 repos)",
+    "maintenance_thresholds": "active<=365 days, stale<=730 days, abandoned>730 days relative to 2026-04-19",
+    "pkm_categories": "regex-match on name+description across 14 PKM-relevant category patterns"
+  },
+  "ecosystems": {
+    "pandoc-filter": {
+      "total_plugins": 200,
+      "maintenance_of_top30": {
+        "active": 15,
+        "stale": 7,
+        "abandoned": 8,
+        "unknown": 0
+      },
+      "pkm_hits_of_top30": 19,
+      "category_counts_of_top30": {
+        "citations": 3,
+        "crossrefs": 2,
+        "math": 2,
+        "diagrams": 2,
+        "tables": 3,
+        "callouts": 0,
+        "tasklists": 0,
+        "footnotes": 1,
+        "toc": 0,
+        "transclusion": 5,
+        "codeblocks": 2,
+        "deflist": 0,
+        "graphlink": 1,
+        "frontmatter": 1
+      },
+      "top30": [
+        {
+          "name": "arnehilmann/markdeck",
+          "desc": "presentations as code - author cool slide decks, text-only, offline-ready, collaborative",
+          "date": "2023-02-04T02:14:29Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1266
+        },
+        {
+          "name": "lierdakil/pandoc-crossref",
+          "desc": "Pandoc filter for cross-references",
+          "date": "2026-02-08T04:12:54Z",
+          "class": "active",
+          "categories": [
+            "crossrefs"
+          ],
+          "metric": 1053
+        },
+        {
+          "name": "raghur/mermaid-filter",
+          "desc": "Pandoc filter for creating diagrams in mermaid syntax blocks in markdown docs ",
+          "date": "2026-04-16T21:54:50Z",
+          "class": "active",
+          "categories": [
+            "diagrams",
+            "codeblocks"
+          ],
+          "metric": 534
+        },
+        {
+          "name": "gpoore/codebraid",
+          "desc": "Live code in Pandoc Markdown",
+          "date": "2023-10-18T03:57:30Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 397
+        },
+        {
+          "name": "LaurentRDC/pandoc-plot",
+          "desc": "Render and include figures in Pandoc documents using your plotting toolkit of choice",
+          "date": "2025-07-17T15:24:34Z",
+          "class": "active",
+          "categories": [
+            "transclusion"
+          ],
+          "metric": 260
+        },
+        {
+          "name": "pandoc-ext/diagram",
+          "desc": "Generate diagrams from embedded code; supports Mermaid, Dot/GraphViz, PlantUML, Asymptote, D2, CeTZ, and TikZ.",
+          "date": "2025-10-27T11:39:32Z",
+          "class": "active",
+          "categories": [
+            "diagrams",
+            "transclusion"
+          ],
+          "metric": 196
+        },
+        {
+          "name": "jez/pandoc-sidenote",
+          "desc": "Convert Pandoc Markdown-style footnotes into sidenotes",
+          "date": "2026-01-05T05:45:32Z",
+          "class": "active",
+          "categories": [
+            "footnotes"
+          ],
+          "metric": 153
+        },
+        {
+          "name": "zcysxy/obsidian-pandoc-filters",
+          "desc": "Pandoc filters and an academic workflow for obsidian",
+          "date": "2026-03-29T04:02:09Z",
+          "class": "active",
+          "categories": [
+            "graphlink"
+          ],
+          "metric": 108
+        },
+        {
+          "name": "baig/pandoc-csv2table",
+          "desc": "A Pandoc filter that renders CSV as Pandoc Markdown Tables.",
+          "date": "2023-07-31T23:50:00Z",
+          "class": "abandoned",
+          "categories": [
+            "tables"
+          ],
+          "metric": 104
+        },
+        {
+          "name": "cagix/pandoc-lecture",
+          "desc": "Pandoc Markdown Lecture Template: This project defines a skeleton repo for creating lecture slides and handouts including lecture notes out of Pandoc Markdown (https://pandoc.org/MANUAL.html) using a single source approach.",
+          "date": "2025-11-21T14:46:17Z",
+          "class": "active",
+          "categories": [],
+          "metric": 103
+        },
+        {
+          "name": "iandol/dotpandoc",
+          "desc": "Pandoc Data directory, including customised filters and templates for producing multiple outputs for academic content.",
+          "date": "2026-04-16T02:27:13Z",
+          "class": "active",
+          "categories": [],
+          "metric": 93
+        },
+        {
+          "name": "ickc/pantable",
+          "desc": "CSV Tables in Markdown: Pandoc Filter for CSV Tables",
+          "date": "2022-01-26T20:43:47Z",
+          "class": "abandoned",
+          "categories": [
+            "tables"
+          ],
+          "metric": 92
+        },
+        {
+          "name": "DCsunset/pandoc-include",
+          "desc": "A pandoc filter to allow file and header inclusion",
+          "date": "2025-03-03T16:32:05Z",
+          "class": "stale",
+          "categories": [
+            "transclusion"
+          ],
+          "metric": 81
+        },
+        {
+          "name": "zotero/citeproc-rs",
+          "desc": "CSL processor in Rust.",
+          "date": "2024-08-06T01:16:32Z",
+          "class": "stale",
+          "categories": [
+            "citations"
+          ],
+          "metric": 81
+        },
+        {
+          "name": "fncokg/pandoc-tex-numbering",
+          "desc": "All-in-one pandoc filter for LaTeX-to-everything conversion with highly flexible numbering and cross referencing features.",
+          "date": "2026-01-20T08:13:51Z",
+          "class": "active",
+          "categories": [
+            "crossrefs",
+            "math"
+          ],
+          "metric": 72
+        },
+        {
+          "name": "pandoc-ext/abstract-section",
+          "desc": "Write an article abstract in a normal section, not the YAML metadata.",
+          "date": "2025-01-26T14:52:14Z",
+          "class": "stale",
+          "categories": [
+            "frontmatter"
+          ],
+          "metric": 70
+        },
+        {
+          "name": "steindani/pandoc-include",
+          "desc": "An include filter for Pandoc",
+          "date": "2020-12-06T18:51:42Z",
+          "class": "abandoned",
+          "categories": [
+            "transclusion"
+          ],
+          "metric": 63
+        },
+        {
+          "name": "dialoa/columns",
+          "desc": "Multicolumn support for pandoc's markdown",
+          "date": "2024-11-26T18:46:46Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 62
+        },
+        {
+          "name": "ickc/pancritic",
+          "desc": "using criticmarkup in the pandoc markdown source",
+          "date": "2021-04-15T21:13:55Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 61
+        },
+        {
+          "name": "pandoc-ext/section-bibliographies",
+          "desc": "Filter to create a separate bibliography for each section or chapter",
+          "date": "2025-01-26T14:51:55Z",
+          "class": "stale",
+          "categories": [
+            "citations"
+          ],
+          "metric": 59
+        },
+        {
+          "name": "shafayetShafee/line-highlight",
+          "desc": "Quarto Extension to implement code line highlighting for HTML documents",
+          "date": "2025-06-23T10:50:51Z",
+          "class": "active",
+          "categories": [
+            "codeblocks"
+          ],
+          "metric": 57
+        },
+        {
+          "name": "CDSoft/panda",
+          "desc": "Moved to Codeberg, this repo is just a (temporary) mirror -- Panda is a Pandoc Lua filter that works on internal Pandoc's AST. Panda is heavily inspired by [abp](http:/cdelord.fr/abp) reimplemented as a Pandoc Lua filter.",
+          "date": "2026-04-15T21:54:53Z",
+          "class": "active",
+          "categories": [],
+          "metric": 54
+        },
+        {
+          "name": "odkr/pandoc-zotxt.lua",
+          "desc": "Pandoc filter that looks up bibliographic data for citations in Zotero.",
+          "date": "2022-04-04T19:46:59Z",
+          "class": "abandoned",
+          "categories": [
+            "citations"
+          ],
+          "metric": 54
+        },
+        {
+          "name": "pandoc-ext/pagebreak",
+          "desc": "Manual page breaks",
+          "date": "2025-05-20T09:00:56Z",
+          "class": "active",
+          "categories": [],
+          "metric": 51
+        },
+        {
+          "name": "pandoc-ext/logging",
+          "desc": "Pandoc lua filter logging support",
+          "date": "2024-12-04T15:33:31Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 49
+        },
+        {
+          "name": "cysouw/pandoc-ling",
+          "desc": "Pandoc Lua filter for linguistic examples",
+          "date": "2025-09-03T14:29:04Z",
+          "class": "active",
+          "categories": [],
+          "metric": 45
+        },
+        {
+          "name": "pandoc-ext/list-table",
+          "desc": "Write tables as list of cells and rows.",
+          "date": "2024-11-28T15:59:00Z",
+          "class": "stale",
+          "categories": [
+            "tables"
+          ],
+          "metric": 43
+        },
+        {
+          "name": "htdebeer/paru",
+          "desc": "Control pandoc with Ruby and write pandoc filters in Ruby",
+          "date": "2025-11-07T20:11:47Z",
+          "class": "active",
+          "categories": [],
+          "metric": 41
+        },
+        {
+          "name": "mb21/pandoc-placetable",
+          "desc": "Pandoc filter to include CSV data (from file or URL)",
+          "date": "2020-08-05T13:58:49Z",
+          "class": "abandoned",
+          "categories": [
+            "transclusion"
+          ],
+          "metric": 41
+        },
+        {
+          "name": "chdemko/pandoc-latex-environment",
+          "desc": "Pandoc filter for adding LaTeX environement on specific div",
+          "date": "2025-05-30T18:19:51Z",
+          "class": "active",
+          "categories": [
+            "math"
+          ],
+          "metric": 40
+        }
+      ],
+      "note": ""
+    },
+    "remark": {
+      "total_plugins": 539,
+      "maintenance_of_top30": {
+        "active": 4,
+        "stale": 12,
+        "abandoned": 14,
+        "unknown": 0
+      },
+      "pkm_hits_of_top30": 13,
+      "category_counts_of_top30": {
+        "citations": 0,
+        "crossrefs": 0,
+        "math": 1,
+        "diagrams": 0,
+        "tables": 2,
+        "callouts": 1,
+        "tasklists": 1,
+        "footnotes": 1,
+        "toc": 1,
+        "transclusion": 0,
+        "codeblocks": 4,
+        "deflist": 3,
+        "graphlink": 0,
+        "frontmatter": 2
+      },
+      "top30": [
+        {
+          "name": "remark-stringify",
+          "desc": "remark plugin to add support for serializing markdown",
+          "date": "2023-09-18T09:43:14.397Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-parse",
+          "desc": "remark plugin to add support for parsing markdown input",
+          "date": "2023-09-18T09:42:28.170Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-rehype",
+          "desc": "remark plugin that turns markdown into HTML to support rehype",
+          "date": "2025-04-02T13:46:59.156Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-mdx",
+          "desc": "remark plugin to support MDX syntax",
+          "date": "2025-08-29T18:02:52.324Z",
+          "class": "active",
+          "categories": [
+            "codeblocks"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-smartypants",
+          "desc": "remark plugin to implement SmartyPants",
+          "date": "2024-07-08T19:44:01.411Z",
+          "class": "stale",
+          "categories": [
+            "deflist"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-gfm",
+          "desc": "remark plugin to support GFM (autolink literals, footnotes, strikethrough, tables, tasklists)",
+          "date": "2025-02-10T12:43:10.735Z",
+          "class": "stale",
+          "categories": [
+            "tables",
+            "tasklists",
+            "footnotes"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-directive",
+          "desc": "remark plugin to support directives",
+          "date": "2025-02-27T15:15:20.630Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-math",
+          "desc": "remark plugin to parse and stringify math",
+          "date": "2023-09-19T11:38:59.221Z",
+          "class": "abandoned",
+          "categories": [
+            "math"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-emoji",
+          "desc": "Emoji transformer plugin for Remark",
+          "date": "2025-08-31T11:52:13.646Z",
+          "class": "active",
+          "categories": [
+            "deflist"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-frontmatter",
+          "desc": "remark plugin to support frontmatter (yaml, toml, and more)",
+          "date": "2023-09-18T11:12:38.246Z",
+          "class": "abandoned",
+          "categories": [
+            "frontmatter"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-squeeze-paragraphs",
+          "desc": "remark plugin to remove empty paragraphs",
+          "date": "2023-09-20T11:29:55.891Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-message-control",
+          "desc": "remark plugin to enable, disable, and ignore messages with remark",
+          "date": "2023-09-22T14:50:59.655Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-breaks",
+          "desc": "remark plugin to add break support, without needing spaces",
+          "date": "2023-09-22T16:45:41.061Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-html",
+          "desc": "remark plugin to compile Markdown to HTML",
+          "date": "2023-09-24T18:33:09.215Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-cli",
+          "desc": "CLI to process markdown with remark",
+          "date": "2024-04-30T12:31:19.950Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-retext",
+          "desc": "remark plugin to support retext",
+          "date": "2025-04-02T12:38:36.111Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-lint",
+          "desc": "remark plugin to lint Markdown code style",
+          "date": "2025-01-27T12:29:52.561Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-preset-lint-consistent",
+          "desc": "remark preset to configure remark-lint with rules that enforce consistency",
+          "date": "2025-01-27T12:36:20.730Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-toc",
+          "desc": "remark plugin to generate a table of contents (TOC)",
+          "date": "2023-09-20T10:52:16.021Z",
+          "class": "abandoned",
+          "categories": [
+            "tables",
+            "toc"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-mdc",
+          "desc": "Remark plugin to support MDC syntax",
+          "date": "2025-12-24T09:41:27.091Z",
+          "class": "active",
+          "categories": [
+            "codeblocks"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-mdx-frontmatter",
+          "desc": "A remark plugin for converting frontmatter metadata into MDX exports",
+          "date": "2025-06-04T17:34:21.169Z",
+          "class": "active",
+          "categories": [
+            "frontmatter"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-preset-lint-recommended",
+          "desc": "remark preset to configure remark-lint with rules that prevent mistakes or stuff that fails across vendors.",
+          "date": "2025-01-27T12:36:29.934Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-github",
+          "desc": "remark plugin to autolink references like in GitHub issues, PRs, and comments",
+          "date": "2023-09-23T10:57:15.972Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-preset-lint-markdown-style-guide",
+          "desc": "remark preset to configure remark-lint with rules that enforce the markdown style guide",
+          "date": "2025-01-27T12:36:25.660Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-admonitions",
+          "desc": "Add admonitions support to remark",
+          "date": "2020-03-25T18:40:02.540Z",
+          "class": "abandoned",
+          "categories": [
+            "callouts"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-slate-transformer",
+          "desc": "remark plugin to transform remark syntax tree (mdast) to Slate document tree, and vice versa. Made for WYSIWYG markdown editor.",
+          "date": "2023-12-07T14:54:39.766Z",
+          "class": "abandoned",
+          "categories": [
+            "codeblocks"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-disable-tokenizers",
+          "desc": "This [remark][remark] plugin can disable any or all remark `blockTokenizers` and `inlineTokenizers`. It can not only disable the ones provided by remark core, but also any other tokenizer that has been added to the remark parser whether through plugins or",
+          "date": "2024-04-27T15:49:11.327Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-supersub",
+          "desc": "Remark plugin for adding subscript/superscript syntax.",
+          "date": "2021-08-20T17:06:52.540Z",
+          "class": "abandoned",
+          "categories": [
+            "codeblocks"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "remark-lint-no-duplicate-definitions",
+          "desc": "remark-lint rule to warn on duplicate definitions",
+          "date": "2025-01-27T12:33:17.550Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "remark-gemoji",
+          "desc": "remark plugin to turn gemoji shortcodes (`:+1:`) into emoji (`\ud83d\udc4d`)",
+          "date": "2023-09-21T09:05:11.589Z",
+          "class": "abandoned",
+          "categories": [
+            "deflist"
+          ],
+          "metric": 1
+        }
+      ],
+      "note": ""
+    },
+    "markdown-it": {
+      "total_plugins": 507,
+      "maintenance_of_top30": {
+        "active": 3,
+        "stale": 2,
+        "abandoned": 25,
+        "unknown": 0
+      },
+      "pkm_hits_of_top30": 12,
+      "category_counts_of_top30": {
+        "citations": 0,
+        "crossrefs": 0,
+        "math": 3,
+        "diagrams": 0,
+        "tables": 2,
+        "callouts": 0,
+        "tasklists": 1,
+        "footnotes": 1,
+        "toc": 1,
+        "transclusion": 0,
+        "codeblocks": 4,
+        "deflist": 1,
+        "graphlink": 0,
+        "frontmatter": 1
+      },
+      "top30": [
+        {
+          "name": "markdown-it-anchor",
+          "desc": "Header anchors for markdown-it.",
+          "date": "2024-09-07T17:28:48.976Z",
+          "class": "stale",
+          "categories": [
+            "toc"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-emoji",
+          "desc": "Emoji plugin for markdown-it markdown parser.",
+          "date": "2023-12-07T13:34:01.414Z",
+          "class": "abandoned",
+          "categories": [
+            "deflist"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-footnote",
+          "desc": "Footnotes for markdown-it markdown parser.",
+          "date": "2023-12-06T11:36:37.378Z",
+          "class": "abandoned",
+          "categories": [
+            "footnotes"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-sup",
+          "desc": "<sup> tag for markdown-it markdown parser.",
+          "date": "2023-12-05T13:47:51.751Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-sub",
+          "desc": "<sub> tag for markdown-it markdown parser.",
+          "date": "2023-12-05T13:28:27.372Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-mark",
+          "desc": "<mark> tag for markdown-it markdown parser.",
+          "date": "2023-12-05T13:09:59.672Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-ins",
+          "desc": "<ins> tag for markdown-it markdown parser.",
+          "date": "2023-12-05T12:21:09.642Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-deflist",
+          "desc": "<dl> tag for markdown-it markdown parser.",
+          "date": "2023-12-05T11:54:56.821Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-abbr",
+          "desc": "<abbr> tag for markdown-it markdown parser.",
+          "date": "2023-12-06T05:23:05.969Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-task-lists",
+          "desc": "A markdown-it plugin to create GitHub-style task lists",
+          "date": "2018-03-06T21:18:47.530Z",
+          "class": "abandoned",
+          "categories": [
+            "tasklists"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-container",
+          "desc": "Plugin to create block-level custom containers for markdown-it markdown parser",
+          "date": "2023-12-05T14:33:18.981Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-theme",
+          "desc": "A markdown-it plugin for theme customization.",
+          "date": "2019-12-27T14:37:33.478Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-sanitizer",
+          "desc": "sanitizer for markdown-it.",
+          "date": "2016-09-28T23:33:14.476Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-for-inline",
+          "desc": "Inline tokens iterator for markdown-it markdown parser.",
+          "date": "2023-12-05T07:21:47.534Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-terminal",
+          "desc": "Plugin for markdown-it to parse and output markdown formatted for the terminal",
+          "date": "2022-12-14T07:48:13.138Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-github",
+          "desc": "A markdown-it plugin to generate github style markdown.",
+          "date": "2020-01-05T14:01:09.801Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-highlightjs",
+          "desc": "Preset to use highlight.js with markdown-it.",
+          "date": "2026-02-06T22:46:44.610Z",
+          "class": "active",
+          "categories": [
+            "codeblocks"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-link-attributes",
+          "desc": "A markdown-it plugin to configure the attributes for links",
+          "date": "2022-08-12T21:50:17.942Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-async",
+          "desc": "Enhance markdown-it to support async highlight function.",
+          "date": "2025-03-07T15:20:11.611Z",
+          "class": "stale",
+          "categories": [
+            "codeblocks"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-katex",
+          "desc": "Fast math support for markdown-it with KaTeX",
+          "date": "2016-10-10T12:58:39.449Z",
+          "class": "abandoned",
+          "categories": [
+            "math"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-front-matter",
+          "desc": "Plugin to process front matter container for markdown-it markdown parser",
+          "date": "2024-04-04T04:27:52.788Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-imsize",
+          "desc": "Markdown-it plugin to specify image size",
+          "date": "2015-07-05T09:34:20.038Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-mdc",
+          "desc": "Markdown Components (MDC) support for markdown-it",
+          "date": "2026-02-17T19:57:11.314Z",
+          "class": "active",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-table",
+          "desc": "Plugin for markdown-it markdown parser, adding table with nested block syntax support.",
+          "date": "2023-08-17T12:10:04.250Z",
+          "class": "abandoned",
+          "categories": [
+            "tables",
+            "codeblocks"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-chain",
+          "desc": "A chaining API like webpack-chain but for markdown-it.",
+          "date": "2018-11-29T16:00:11.667Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-texmath",
+          "desc": "markdown-it extension for rendering TeX Math",
+          "date": "2022-05-28T07:08:30.472Z",
+          "class": "abandoned",
+          "categories": [
+            "math"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-lazy-headers",
+          "desc": "Lazy ATX headers plugin for markdown-it",
+          "date": "2015-09-05T14:55:07.447Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-mathjax3",
+          "desc": "Fast math support for markdown-it with MathJax",
+          "date": "2025-09-29T15:45:30.595Z",
+          "class": "active",
+          "categories": [
+            "math"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-multimd-table",
+          "desc": "Multimarkdown table syntax plugin for markdown-it markdown parser",
+          "date": "2023-08-12T14:24:41.913Z",
+          "class": "abandoned",
+          "categories": [
+            "tables",
+            "codeblocks"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "markdown-it-meta",
+          "desc": "Markdown-it Metadata as yaml for markdown documents",
+          "date": "2017-02-28T17:07:53.331Z",
+          "class": "abandoned",
+          "categories": [
+            "frontmatter"
+          ],
+          "metric": 1
+        }
+      ],
+      "note": ""
+    },
+    "mdbook": {
+      "total_plugins": 266,
+      "maintenance_of_top30": {
+        "active": 27,
+        "stale": 0,
+        "abandoned": 3,
+        "unknown": 0
+      },
+      "pkm_hits_of_top30": 10,
+      "category_counts_of_top30": {
+        "citations": 0,
+        "crossrefs": 0,
+        "math": 1,
+        "diagrams": 4,
+        "tables": 2,
+        "callouts": 2,
+        "tasklists": 0,
+        "footnotes": 0,
+        "toc": 2,
+        "transclusion": 0,
+        "codeblocks": 2,
+        "deflist": 0,
+        "graphlink": 0,
+        "frontmatter": 1
+      },
+      "top30": [
+        {
+          "name": "mdbook-i18n-helpers",
+          "desc": "Plugins for a mdbook translation workflow based on Gettext.",
+          "date": "2025-11-27T15:42:16.886815Z",
+          "class": "active",
+          "categories": [],
+          "metric": 797105
+        },
+        {
+          "name": "mdbook-mermaid",
+          "desc": "mdbook preprocessor to add mermaid support",
+          "date": "2025-11-18T09:41:50.841691Z",
+          "class": "active",
+          "categories": [
+            "diagrams"
+          ],
+          "metric": 450207
+        },
+        {
+          "name": "mdbook-linkcheck",
+          "desc": "A backend for `mdbook` which will check your links for you.",
+          "date": "2022-10-03T12:51:13.412640Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 447603
+        },
+        {
+          "name": "mdbook-core",
+          "desc": "The base support library for mdbook, intended for internal use only",
+          "date": "2025-12-11T23:31:59.382147Z",
+          "class": "active",
+          "categories": [],
+          "metric": 439629
+        },
+        {
+          "name": "mdbook-preprocessor",
+          "desc": "Library to assist implementing an mdBook preprocessor",
+          "date": "2025-12-11T23:32:03.899999Z",
+          "class": "active",
+          "categories": [],
+          "metric": 439419
+        },
+        {
+          "name": "mdbook-markdown",
+          "desc": "Markdown processing used in mdBook",
+          "date": "2025-12-11T23:31:59.841316Z",
+          "class": "active",
+          "categories": [],
+          "metric": 338529
+        },
+        {
+          "name": "mdbook-renderer",
+          "desc": "Library to assist implementing an mdBook renderer",
+          "date": "2025-12-11T23:32:04.164538Z",
+          "class": "active",
+          "categories": [],
+          "metric": 336222
+        },
+        {
+          "name": "mdbook-summary",
+          "desc": "Summary parser for mdBook",
+          "date": "2025-12-11T23:32:04.371398Z",
+          "class": "active",
+          "categories": [],
+          "metric": 333983
+        },
+        {
+          "name": "mdbook-html",
+          "desc": "mdBook HTML renderer",
+          "date": "2025-12-11T23:32:07.550052Z",
+          "class": "active",
+          "categories": [],
+          "metric": 333224
+        },
+        {
+          "name": "mdbook-driver",
+          "desc": "High-level library for running mdBook",
+          "date": "2025-12-11T23:32:21.939249Z",
+          "class": "active",
+          "categories": [],
+          "metric": 332603
+        },
+        {
+          "name": "mdbook-toc",
+          "desc": "mdbook preprocessor to add Table of Contents",
+          "date": "2026-01-14T11:28:47.789091Z",
+          "class": "active",
+          "categories": [
+            "tables",
+            "toc"
+          ],
+          "metric": 239575
+        },
+        {
+          "name": "mdbook-preprocessor-boilerplate",
+          "desc": "Boilerplate code for mdbook preprocessors",
+          "date": "2026-01-15T20:26:43.441341Z",
+          "class": "active",
+          "categories": [],
+          "metric": 223381
+        },
+        {
+          "name": "mdbook-svgbob",
+          "desc": "SvgBob mdbook preprocessor which swaps code-blocks with neat SVG.",
+          "date": "2025-05-22T21:03:16.594170Z",
+          "class": "active",
+          "categories": [
+            "diagrams",
+            "codeblocks"
+          ],
+          "metric": 201345
+        },
+        {
+          "name": "mdbook-katex",
+          "desc": "mdBook preprocessor rendering LaTeX equations to HTML.",
+          "date": "2025-11-28T00:39:54.116547Z",
+          "class": "active",
+          "categories": [
+            "math"
+          ],
+          "metric": 182618
+        },
+        {
+          "name": "mdbook-admonish",
+          "desc": "A preprocessor for mdbook to add Material Design admonishments.",
+          "date": "2025-06-06T14:00:17.780046Z",
+          "class": "active",
+          "categories": [
+            "callouts"
+          ],
+          "metric": 174241
+        },
+        {
+          "name": "mdbook-pandoc",
+          "desc": "A pandoc-powered mdbook backend",
+          "date": "2025-11-22T20:46:55.395656Z",
+          "class": "active",
+          "categories": [],
+          "metric": 135342
+        },
+        {
+          "name": "mdbook-graphviz",
+          "desc": "mdbook preprocessor to add graphviz support",
+          "date": "2025-12-19T01:45:23.784811Z",
+          "class": "active",
+          "categories": [
+            "diagrams"
+          ],
+          "metric": 106847
+        },
+        {
+          "name": "mdbook-plantuml",
+          "desc": "A preprocessor for mdbook which will convert plantuml code blocks into inline SVG diagrams",
+          "date": "2025-12-12T15:26:35.358718Z",
+          "class": "active",
+          "categories": [
+            "diagrams",
+            "codeblocks"
+          ],
+          "metric": 72286
+        },
+        {
+          "name": "mdbook-alerts",
+          "desc": "mdBook preprocessor to add GitHub Flavored Markdown's Alerts to your book",
+          "date": "2025-06-29T02:33:30.841793Z",
+          "class": "active",
+          "categories": [
+            "callouts"
+          ],
+          "metric": 70746
+        },
+        {
+          "name": "mdbook-template",
+          "desc": "A mdbook preprocessor that allows the re-usability of template files with dynamic arguments",
+          "date": "2024-04-08T20:47:32.329726Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 54389
+        },
+        {
+          "name": "mdbook-quiz",
+          "desc": "Interactive quizzes for your mdBook",
+          "date": "2025-05-30T23:26:22.198405Z",
+          "class": "active",
+          "categories": [],
+          "metric": 50289
+        },
+        {
+          "name": "mdbook-pagetoc",
+          "desc": "A mdbook plugin that provides a table of contents for each page.",
+          "date": "2025-11-27T14:19:07.745282Z",
+          "class": "active",
+          "categories": [
+            "tables",
+            "toc"
+          ],
+          "metric": 46411
+        },
+        {
+          "name": "mdbook-veryl",
+          "desc": "A modern hardware description language",
+          "date": "2026-04-01T01:51:39.224569Z",
+          "class": "active",
+          "categories": [],
+          "metric": 45614
+        },
+        {
+          "name": "mdbook-morsels",
+          "desc": "Morsels plugin for Mdbook.",
+          "date": "2022-10-24T05:13:13.525761Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 45454
+        },
+        {
+          "name": "mdbook-linkcheck2",
+          "desc": "A backend for `mdbook` which will check your links for you.",
+          "date": "2026-02-28T17:52:55.454470Z",
+          "class": "active",
+          "categories": [],
+          "metric": 44334
+        },
+        {
+          "name": "mdbook-open-on-gh",
+          "desc": "mdbook preprocessor to add a open-on-github link on every page",
+          "date": "2025-11-18T16:43:14.428403Z",
+          "class": "active",
+          "categories": [],
+          "metric": 43747
+        },
+        {
+          "name": "mdbook-tailor",
+          "desc": "mdbook preprocessor for image-tailor",
+          "date": "2025-09-26T05:28:44.211497Z",
+          "class": "active",
+          "categories": [],
+          "metric": 36314
+        },
+        {
+          "name": "mdbook-tabs",
+          "desc": "mdBook plugin for rendering content in tabs.",
+          "date": "2025-11-24T09:34:16.628213Z",
+          "class": "active",
+          "categories": [],
+          "metric": 34663
+        },
+        {
+          "name": "mdbook-variables",
+          "desc": "mdBook proprocessor for risolve variables configured from book.toml",
+          "date": "2026-01-21T14:34:59.841065Z",
+          "class": "active",
+          "categories": [
+            "frontmatter"
+          ],
+          "metric": 34071
+        },
+        {
+          "name": "mdbook-epub",
+          "desc": "An EPUB renderer for mdbook.",
+          "date": "2025-12-17T20:21:05.054543Z",
+          "class": "active",
+          "categories": [],
+          "metric": 33158
+        }
+      ],
+      "note": ""
+    },
+    "mkdocs": {
+      "total_plugins": 708,
+      "maintenance_of_top30": {
+        "active": 22,
+        "stale": 3,
+        "abandoned": 5,
+        "unknown": 0
+      },
+      "pkm_hits_of_top30": 7,
+      "category_counts_of_top30": {
+        "citations": 1,
+        "crossrefs": 0,
+        "math": 0,
+        "diagrams": 3,
+        "tables": 1,
+        "callouts": 0,
+        "tasklists": 0,
+        "footnotes": 0,
+        "toc": 1,
+        "transclusion": 2,
+        "codeblocks": 0,
+        "deflist": 0,
+        "graphlink": 0,
+        "frontmatter": 1
+      },
+      "top30": [
+        {
+          "name": "mkdocs-autorefs",
+          "desc": "Automatically link across pages in MkDocs.",
+          "date": "2026-02-10",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-awesome-pages-plugin",
+          "desc": "An MkDocs plugin that simplifies configuring page titles and their order",
+          "date": "2024-12-22",
+          "class": "stale",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-bibtex",
+          "desc": "An MkDocs plugin that enables managing citations with BibTex",
+          "date": "2025-07-01",
+          "class": "active",
+          "categories": [
+            "citations"
+          ]
+        },
+        {
+          "name": "mkdocs-blogging-plugin",
+          "desc": "Mkdocs plugin that generates a blog index page sorted by creation date.",
+          "date": "2023-07-21",
+          "class": "abandoned",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-charts-plugin",
+          "desc": "MkDocs plugin to add charts from data",
+          "date": "2025-09-02",
+          "class": "active",
+          "categories": [
+            "diagrams"
+          ]
+        },
+        {
+          "name": "mkdocs-click",
+          "desc": "An MkDocs extension to generate documentation for Click command line applications",
+          "date": "2025-04-07",
+          "class": "stale",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-drawio",
+          "desc": "MkDocs plugin for embedding Drawio files",
+          "date": "2026-03-14",
+          "class": "active",
+          "categories": [
+            "diagrams",
+            "transclusion"
+          ]
+        },
+        {
+          "name": "mkdocs-exclude",
+          "desc": "A mkdocs plugin that lets you exclude files or trees.",
+          "date": "2019-02-20",
+          "class": "abandoned",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-gen-files",
+          "desc": "MkDocs plugin to programmatically generate documentation pages during the build",
+          "date": "2026-03-16",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-git-authors-plugin",
+          "desc": "Mkdocs plugin to display git authors of a page",
+          "date": "2025-06-10",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-git-revision-date-localized-plugin",
+          "desc": "Mkdocs plugin that enables displaying the localized date of the last git modification of a markdown file.",
+          "date": "2026-01-26",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-glightbox",
+          "desc": "MkDocs plugin supports image lightbox with GLightbox.",
+          "date": "2025-10-23",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-include-markdown-plugin",
+          "desc": "Mkdocs Markdown includer plugin.",
+          "date": "2026-03-29",
+          "class": "active",
+          "categories": [
+            "transclusion"
+          ]
+        },
+        {
+          "name": "mkdocs-jupyter",
+          "desc": "Use Jupyter in mkdocs websites",
+          "date": "2026-04-17",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-literate-nav",
+          "desc": "MkDocs plugin to specify the navigation in Markdown instead of YAML",
+          "date": "2026-03-16",
+          "class": "active",
+          "categories": [
+            "toc",
+            "frontmatter"
+          ]
+        },
+        {
+          "name": "mkdocs-macros-plugin",
+          "desc": "Unleash the power of MkDocs with macros and variables",
+          "date": "2025-11-13",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-material",
+          "desc": "Documentation that simply works",
+          "date": "2026-03-19",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-mermaid2-plugin",
+          "desc": "A MkDocs plugin for including mermaid graphs in markdown sources",
+          "date": "2025-10-17",
+          "class": "active",
+          "categories": [
+            "diagrams"
+          ]
+        },
+        {
+          "name": "mkdocs-minify-plugin",
+          "desc": "An MkDocs plugin to minify HTML, JS or CSS files prior to being written to disk",
+          "date": "2024-01-29",
+          "class": "abandoned",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-monorepo-plugin",
+          "desc": "Plugin for adding monorepository support in Mkdocs.",
+          "date": "2025-06-05",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-print-site-plugin",
+          "desc": "MkDocs plugin that combines all pages into one, allowing for easy export to PDF and standalone HTML.",
+          "date": "2025-08-03",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-redirects",
+          "desc": "A MkDocs plugin for dynamic page redirects to prevent broken links",
+          "date": "2026-03-28",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-rss-plugin",
+          "desc": "MkDocs plugin to generate RSS and JSON feeds using Mkdocs site configuration, git log and Mkdocs pages'meta.",
+          "date": "2026-04-17",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-same-dir",
+          "desc": "ProperDocs plugin to allow placing properdocs.yml in the same directory as documentation",
+          "date": "2026-04-17",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-section-index",
+          "desc": "MkDocs plugin to allow clickable sections that lead to an index page",
+          "date": "2026-04-16",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-spellcheck",
+          "desc": "A spell checker plugin for MkDocs.",
+          "date": "2026-02-11",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-static-i18n",
+          "desc": "MkDocs i18n plugin using static translation markdown files",
+          "date": "2026-02-20",
+          "class": "active",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-table-reader-plugin",
+          "desc": "MkDocs plugin to directly insert tables from files into markdown.",
+          "date": "2024-08-29",
+          "class": "stale",
+          "categories": [
+            "tables"
+          ]
+        },
+        {
+          "name": "mkdocs-video",
+          "desc": "",
+          "date": "2023-03-17",
+          "class": "abandoned",
+          "categories": []
+        },
+        {
+          "name": "mkdocs-with-pdf",
+          "desc": "Generate a single PDF file from MkDocs repository",
+          "date": "2021-07-03",
+          "class": "abandoned",
+          "categories": []
+        }
+      ],
+      "note": "top-30 hand-curated from widely-known popular plugins (PyPI search was JS-gated); last-upload from PyPI JSON API"
+    },
+    "rehype": {
+      "total_plugins": 352,
+      "maintenance_of_top30": {
+        "active": 4,
+        "stale": 20,
+        "abandoned": 6,
+        "unknown": 0
+      },
+      "pkm_hits_of_top30": 9,
+      "category_counts_of_top30": {
+        "citations": 0,
+        "crossrefs": 0,
+        "math": 2,
+        "diagrams": 1,
+        "tables": 0,
+        "callouts": 2,
+        "tasklists": 0,
+        "footnotes": 0,
+        "toc": 2,
+        "transclusion": 0,
+        "codeblocks": 2,
+        "deflist": 0,
+        "graphlink": 0,
+        "frontmatter": 0
+      },
+      "top30": [
+        {
+          "name": "rehype-stringify",
+          "desc": "rehype plugin to serialize HTML",
+          "date": "2024-09-27T15:08:52.733Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-parse",
+          "desc": "rehype plugin to parse HTML",
+          "date": "2024-09-27T15:08:49.297Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-sanitize",
+          "desc": "rehype plugin to sanitize HTML",
+          "date": "2023-08-26T11:11:05.469Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-raw",
+          "desc": "rehype plugin to reparse the tree (and raw nodes)",
+          "date": "2023-08-26T10:03:47.145Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-format",
+          "desc": "rehype plugin to format HTML",
+          "date": "2024-09-19T11:22:48.732Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-slug",
+          "desc": "rehype plugin to add `id` attributes to headings",
+          "date": "2023-08-31T14:06:03.675Z",
+          "class": "abandoned",
+          "categories": [
+            "toc"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "rehype-minify-whitespace",
+          "desc": "rehype plugin to collapse whitespace",
+          "date": "2024-09-27T11:50:25.659Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-remark",
+          "desc": "rehype plugin to transform to remark",
+          "date": "2025-04-02T12:19:55.705Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-autolink-headings",
+          "desc": "rehype plugin to add links to headings",
+          "date": "2023-11-08T11:57:46.222Z",
+          "class": "abandoned",
+          "categories": [
+            "toc"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "rehype-katex",
+          "desc": "rehype plugin to transform inline and block math with KaTeX",
+          "date": "2024-08-19T12:09:21.818Z",
+          "class": "stale",
+          "categories": [
+            "math"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "rehype-react",
+          "desc": "rehype plugin to transform to React",
+          "date": "2023-09-01T10:47:00.685Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-highlight",
+          "desc": "rehype plugin to highlight code blocks with lowlight (highlight.js)",
+          "date": "2025-02-03T14:14:24.606Z",
+          "class": "stale",
+          "categories": [
+            "codeblocks"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "rehype-rewrite",
+          "desc": "Rewrite element with rehype.",
+          "date": "2025-12-12T13:49:34.525Z",
+          "class": "active",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-harden",
+          "desc": "A security-focused rehype plugin that filters URLs based on allowed prefixes",
+          "date": "2026-02-19T03:05:39.698Z",
+          "class": "active",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-external-links",
+          "desc": "rehype plugin to automatically add `target` and `rel` attributes to external links",
+          "date": "2023-09-03T15:00:48.705Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-sort-attribute-values",
+          "desc": "rehype plugin to sort attribute values",
+          "date": "2024-09-27T11:51:05.726Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-dom-stringify",
+          "desc": "rehype plugin to use browser APIs to stringify HTML",
+          "date": "2024-12-09T11:14:09.421Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-mermaid",
+          "desc": "A rehype plugin to render mermaid diagrams",
+          "date": "2024-10-08T18:54:56.311Z",
+          "class": "stale",
+          "categories": [
+            "diagrams"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "rehype-mathjax",
+          "desc": "rehype plugin to transform inline and block math with MathJax",
+          "date": "2025-02-20T11:40:12.394Z",
+          "class": "stale",
+          "categories": [
+            "math"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "rehype-dom-parse",
+          "desc": "rehype plugin to use browser APIs to parse HTML",
+          "date": "2024-09-27T14:01:58.379Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-retext",
+          "desc": "rehype plugin to transform to retext",
+          "date": "2025-04-02T14:00:59.785Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-sort-attributes",
+          "desc": "rehype plugin to reorder attributes based on how often they occur",
+          "date": "2024-09-27T11:51:09.401Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-minify-style-attribute",
+          "desc": "rehype plugin to minify style attributes",
+          "date": "2024-09-27T11:50:18.459Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-github-alerts",
+          "desc": "rehype plugin to create alerts (admonitions/callouts)",
+          "date": "2025-11-23T09:46:58.174Z",
+          "class": "active",
+          "categories": [
+            "callouts"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "rehype-github-alert",
+          "desc": "rehype plugin to enhance alerts",
+          "date": "2024-11-27T17:35:44.083Z",
+          "class": "stale",
+          "categories": [
+            "callouts"
+          ],
+          "metric": 1
+        },
+        {
+          "name": "rehype-remove-comments",
+          "desc": "rehype plugin to remove comments (except conditional comments)",
+          "date": "2024-09-27T11:50:40.033Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-minify-css-style",
+          "desc": "rehype plugin to minify `style` elements",
+          "date": "2024-09-27T11:49:41.971Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-remove-empty-attribute",
+          "desc": "rehype plugin to remove empty attributes",
+          "date": "2024-09-27T11:50:47.383Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-minify-media-attribute",
+          "desc": "rehype plugin to minify media attributes",
+          "date": "2024-09-27T11:50:07.651Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 1
+        },
+        {
+          "name": "rehype-prism-plus",
+          "desc": "rehype plugin to highlight code blocks in HTML with Prism (via refractor) with line highlighting and line numbers",
+          "date": "2026-02-08T09:52:55.623Z",
+          "class": "active",
+          "categories": [
+            "codeblocks"
+          ],
+          "metric": 1
+        }
+      ],
+      "note": ""
+    },
+    "quarto-extension": {
+      "total_plugins": 379,
+      "maintenance_of_top30": {
+        "active": 19,
+        "stale": 8,
+        "abandoned": 3,
+        "unknown": 0
+      },
+      "pkm_hits_of_top30": 6,
+      "category_counts_of_top30": {
+        "citations": 0,
+        "crossrefs": 0,
+        "math": 1,
+        "diagrams": 0,
+        "tables": 0,
+        "callouts": 0,
+        "tasklists": 0,
+        "footnotes": 0,
+        "toc": 0,
+        "transclusion": 4,
+        "codeblocks": 0,
+        "deflist": 0,
+        "graphlink": 0,
+        "frontmatter": 1
+      },
+      "top30": [
+        {
+          "name": "mcanouil/awesome-quarto",
+          "desc": "A curated list of Quarto talks, tools, examples & articles! Contributions welcome!",
+          "date": "2026-03-22T17:19:55Z",
+          "class": "active",
+          "categories": [],
+          "metric": 2094
+        },
+        {
+          "name": "coatless/quarto-webr",
+          "desc": "Community developed Quarto Extension to Embed webR for HTML Documents, RevealJS, Websites, Blogs, and Books.",
+          "date": "2025-11-19T20:01:19Z",
+          "class": "active",
+          "categories": [
+            "transclusion"
+          ],
+          "metric": 441
+        },
+        {
+          "name": "andrewheiss/hikmah-academic-quarto",
+          "desc": "A set of nice Quarto templates",
+          "date": "2025-04-27T02:14:00Z",
+          "class": "active",
+          "categories": [],
+          "metric": 276
+        },
+        {
+          "name": "wjschne/apaquarto",
+          "desc": "A quarto extension for creating APA7 documents in .docx, .html, and .pdf formats",
+          "date": "2026-04-02T12:40:11Z",
+          "class": "active",
+          "categories": [],
+          "metric": 243
+        },
+        {
+          "name": "qmd-lab/closeread",
+          "desc": "Easy scrollytelling in Quarto",
+          "date": "2026-01-20T16:41:00Z",
+          "class": "active",
+          "categories": [],
+          "metric": 229
+        },
+        {
+          "name": "marimo-team/quarto-marimo",
+          "desc": "marimo extension for Quarto \u26a1 run reactive code inside Quarto",
+          "date": "2026-04-17T19:00:53Z",
+          "class": "active",
+          "categories": [],
+          "metric": 167
+        },
+        {
+          "name": "gadenbuie/countdown",
+          "desc": "\u23f2 countdown timer for slides and HTML docs in Quarto, R Markdown, and Shiny",
+          "date": "2026-02-14T10:07:55Z",
+          "class": "active",
+          "categories": [],
+          "metric": 156
+        },
+        {
+          "name": "schochastics/quarto-cv",
+          "desc": "Templates to create CVs/Resumes with Quarto",
+          "date": "2023-07-17T08:43:36Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 155
+        },
+        {
+          "name": "mcanouil/quarto-iconify",
+          "desc": "Use Iconify icons in HTML-based Quarto documents (over 200,000 open source vector icons).",
+          "date": "2026-04-15T20:41:28Z",
+          "class": "active",
+          "categories": [],
+          "metric": 151
+        },
+        {
+          "name": "EmilHvitfeldt/quarto-revealjs-editable",
+          "desc": "Repositioning and resizing of images and text directly in quarto revealjs slides ",
+          "date": "2026-03-25T16:04:33Z",
+          "class": "active",
+          "categories": [],
+          "metric": 149
+        },
+        {
+          "name": "andrewheiss/quarto-wordcount",
+          "desc": "Quarto extension for calculating accurate word counts",
+          "date": "2026-01-07T06:13:14Z",
+          "class": "active",
+          "categories": [],
+          "metric": 144
+        },
+        {
+          "name": "nrennie/PrettyPDF",
+          "desc": "Quarto extension to generate a PDF with (pretty) LaTeX styling.",
+          "date": "2024-07-02T11:10:00Z",
+          "class": "stale",
+          "categories": [
+            "math"
+          ],
+          "metric": 141
+        },
+        {
+          "name": "mikemahoney218/quarto-arxiv",
+          "desc": " Quarto template for arXiv preprints",
+          "date": "2025-04-12T16:56:19Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 112
+        },
+        {
+          "name": "coatless-quarto/pyodide",
+          "desc": "Community developed Quarto extension to enable interactive Python code cells in HTML documents using Pyodide",
+          "date": "2025-01-31T19:45:29Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 107
+        },
+        {
+          "name": "kazuyanagimoto/quarto-academic-typst",
+          "desc": "A Quarto + Typst Template for Academic Manuscripts",
+          "date": "2026-01-25T03:23:43Z",
+          "class": "active",
+          "categories": [],
+          "metric": 97
+        },
+        {
+          "name": "mvuorre/quarto-preprint",
+          "desc": "A Quarto extension for creating PDF documents with Typst",
+          "date": "2026-03-27T12:29:28Z",
+          "class": "active",
+          "categories": [],
+          "metric": 94
+        },
+        {
+          "name": "jimjam-slam/quarto-svelte",
+          "desc": "Formerly Sverto. Add Svelte components to your Quarto documents",
+          "date": "2026-03-10T06:25:51Z",
+          "class": "active",
+          "categories": [],
+          "metric": 94
+        },
+        {
+          "name": "EmilHvitfeldt/quarto-roughnotation",
+          "desc": "An extension that uses the roughnotation javascript library to add animated annotations to revealjs documents.",
+          "date": "2026-02-26T17:40:45Z",
+          "class": "active",
+          "categories": [],
+          "metric": 91
+        },
+        {
+          "name": "schochastics/academicons",
+          "desc": "quarto extension to use academicons in HTML documents",
+          "date": "2024-11-22T17:38:56Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 91
+        },
+        {
+          "name": "quarto-journals/article-format-template",
+          "desc": "Template for creating a new journal article format for Quarto ",
+          "date": "2025-04-17T08:29:54Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 89
+        },
+        {
+          "name": "quarto-journals/elsevier",
+          "desc": "Quarto template for Elsevier Journals",
+          "date": "2025-11-05T18:32:48Z",
+          "class": "active",
+          "categories": [],
+          "metric": 89
+        },
+        {
+          "name": "hrbrmstr/quarto-organization-template",
+          "desc": "A Quarto RevealJS Organization Boilerplate Template You Can Clone And Modify Quickly",
+          "date": "2022-09-14T19:14:51Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 82
+        },
+        {
+          "name": "mcanouil/quarto-letter",
+          "desc": "Letter template for Quarto.",
+          "date": "2026-04-01T20:59:18Z",
+          "class": "active",
+          "categories": [],
+          "metric": 79
+        },
+        {
+          "name": "coatless-quarto/embedio",
+          "desc": "Quarto extension for Embedding HTML Documents and Presentations",
+          "date": "2026-04-03T04:38:09Z",
+          "class": "active",
+          "categories": [
+            "transclusion"
+          ],
+          "metric": 78
+        },
+        {
+          "name": "schochastics/quarto-nutshell",
+          "desc": "Include expandable explanations in quarto documents ",
+          "date": "2025-02-02T19:50:50Z",
+          "class": "stale",
+          "categories": [
+            "transclusion"
+          ],
+          "metric": 78
+        },
+        {
+          "name": "sellorm/quarto-social-embeds",
+          "desc": "A Quarto extension to embed social media content",
+          "date": "2025-11-05T11:02:42Z",
+          "class": "active",
+          "categories": [
+            "transclusion"
+          ],
+          "metric": 76
+        },
+        {
+          "name": "nmfs-opensci/quarto-thesis",
+          "desc": "Quarto extension for a masters or PhD thesis",
+          "date": "2024-03-31T17:12:22Z",
+          "class": "abandoned",
+          "categories": [],
+          "metric": 73
+        },
+        {
+          "name": "pandoc-ext/abstract-section",
+          "desc": "Write an article abstract in a normal section, not the YAML metadata.",
+          "date": "2025-01-26T14:52:14Z",
+          "class": "stale",
+          "categories": [
+            "frontmatter"
+          ],
+          "metric": 70
+        },
+        {
+          "name": "mcanouil/quarto-revealjs-coeos",
+          "desc": "Quarto reveal.js template extension.",
+          "date": "2026-04-01T20:59:46Z",
+          "class": "active",
+          "categories": [],
+          "metric": 68
+        },
+        {
+          "name": "shafayetShafee/reveal-header",
+          "desc": "A Quarto filter extension that helps to add header text and header logo in all pages of RevealJs slide ",
+          "date": "2024-05-10T10:24:16Z",
+          "class": "stale",
+          "categories": [],
+          "metric": 67
+        }
+      ],
+      "note": ""
+    },
+    "mdit-py": {
+      "total_plugins": 8,
+      "maintenance_of_top30": {
+        "note": "no download data retrieved"
+      },
+      "pkm_hits_of_top30": null,
+      "category_counts_of_top30": {},
+      "top30": [],
+      "note": "Very small total; ecosystem effectively just mdit-py-plugins"
+    }
+  }
+}
