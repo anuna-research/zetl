@@ -27,7 +27,10 @@
 use std::time::{Duration, Instant};
 
 use crate::hooks::build_context::BuildContext;
-use crate::hooks::failure_scoping::FailureRecord;
+use crate::hooks::failure_scoping::{FailureReason, FailureRecord};
+use crate::hooks::observability::{
+    HookInvocationEvent, HookInvocationStatus, HookObserver, NoopObserver,
+};
 
 /// The three hook stages per REQ-3201.
 ///
@@ -284,6 +287,32 @@ where
     ParseFn: FnOnce(&str) -> AstDocument,
     RenderFn: FnOnce(&AstDocument) -> String,
 {
+    run_page_with_observer(pipeline, raw_markdown, ctx, parse, render, &NoopObserver)
+}
+
+/// Like [`run_page`], but with an observer hook for SPEC-032 §9 emission.
+///
+/// Every hook invocation — success or failure — produces a
+/// [`HookInvocationEvent`] sent to `observer` before the pipeline moves
+/// on. Failure classification uses the same
+/// [`crate::hooks::failure_scoping::FailureReason`] heuristic the
+/// failure-scoping layer applies, so the observer sees the same reason
+/// tag that lands in the on-disk diagnostic.
+///
+/// Observers are called synchronously on the pipeline thread; expensive
+/// work (e.g. metric publication) should be done off the hot path.
+pub fn run_page_with_observer<ParseFn, RenderFn>(
+    pipeline: &HookPipeline,
+    raw_markdown: String,
+    ctx: &BuildContext,
+    parse: ParseFn,
+    render: RenderFn,
+    observer: &dyn HookObserver,
+) -> (String, PipelineStats, Vec<FailureRecord>)
+where
+    ParseFn: FnOnce(&str) -> AstDocument,
+    RenderFn: FnOnce(&AstDocument) -> String,
+{
     let mut stats = PipelineStats::default();
     let mut failures: Vec<FailureRecord> = Vec::new();
     let page_slug = ctx.page.slug.clone();
@@ -294,16 +323,30 @@ where
         let t0 = Instant::now();
         for hook in &pipeline.pre_parse {
             let hook_start = Instant::now();
+            let hook_id = hook.id().to_string();
             // Clone the input so the prior value is preserved if the hook
             // fails — CON-3207's "revert the page fragment" obligation.
             let prev = text.clone();
-            match hook.run(text, ctx) {
+            let result = hook.run(text, ctx);
+            let duration = hook_start.elapsed();
+            let status = match &result {
+                Ok(_) => HookInvocationStatus::Ok,
+                Err(err) => HookInvocationStatus::Failed {
+                    reason: FailureReason::classify(&err.reason).as_str().to_string(),
+                },
+            };
+            observer.on_hook_invocation(&HookInvocationEvent {
+                stage: Stage::PreParse,
+                hook_id,
+                page_slug: page_slug.clone(),
+                duration,
+                status,
+            });
+            match result {
                 Ok(next) => text = next,
                 Err(err) => {
                     failures.push(FailureRecord::from_hook_error(
-                        &err,
-                        &page_slug,
-                        hook_start.elapsed(),
+                        &err, &page_slug, duration,
                     ));
                     text = prev;
                 }
@@ -322,14 +365,28 @@ where
         let t0 = Instant::now();
         for hook in &pipeline.transform {
             let hook_start = Instant::now();
+            let hook_id = hook.id().to_string();
             let prev = ast.clone();
-            match hook.run(ast, ctx) {
+            let result = hook.run(ast, ctx);
+            let duration = hook_start.elapsed();
+            let status = match &result {
+                Ok(_) => HookInvocationStatus::Ok,
+                Err(err) => HookInvocationStatus::Failed {
+                    reason: FailureReason::classify(&err.reason).as_str().to_string(),
+                },
+            };
+            observer.on_hook_invocation(&HookInvocationEvent {
+                stage: Stage::Transform,
+                hook_id,
+                page_slug: page_slug.clone(),
+                duration,
+                status,
+            });
+            match result {
                 Ok(next) => ast = next,
                 Err(err) => {
                     failures.push(FailureRecord::from_hook_error(
-                        &err,
-                        &page_slug,
-                        hook_start.elapsed(),
+                        &err, &page_slug, duration,
                     ));
                     ast = prev;
                 }
@@ -348,14 +405,28 @@ where
         let t0 = Instant::now();
         for hook in &pipeline.post_render {
             let hook_start = Instant::now();
+            let hook_id = hook.id().to_string();
             let prev = html.clone();
-            match hook.run(html, ctx) {
+            let result = hook.run(html, ctx);
+            let duration = hook_start.elapsed();
+            let status = match &result {
+                Ok(_) => HookInvocationStatus::Ok,
+                Err(err) => HookInvocationStatus::Failed {
+                    reason: FailureReason::classify(&err.reason).as_str().to_string(),
+                },
+            };
+            observer.on_hook_invocation(&HookInvocationEvent {
+                stage: Stage::PostRender,
+                hook_id,
+                page_slug: page_slug.clone(),
+                duration,
+                status,
+            });
+            match result {
                 Ok(next) => html = next,
                 Err(err) => {
                     failures.push(FailureRecord::from_hook_error(
-                        &err,
-                        &page_slug,
-                        hook_start.elapsed(),
+                        &err, &page_slug, duration,
                     ));
                     html = prev;
                 }

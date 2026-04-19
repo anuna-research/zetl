@@ -1,12 +1,12 @@
 {
-  "task_id": "node-dispatch",
+  "task_id": "observability-hooks",
   "token_budget": 8000,
-  "tokens_used": 325,
+  "tokens_used": 329,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Declarative node-type dispatch in helper libraries per REQ-3218. `@on_node(\"Wikilink\")` decorator (py) / `onNode(\"Wikilink\", fn)` (js) routes without if/else chains.",
-      "token_cost": 41,
+      "content": "SPEC-032 §9 observability. `[zetl] hook: stage=transform id=callouts page=X duration_ms=N` log lines; stats block: per-stage time, per-hook time, pages matched, diagnostics emitted.",
+      "token_cost": 45,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T15:34:08Z"
+  "constructed_at": "2026-04-19T15:43:21Z"
 }

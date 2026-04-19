@@ -16,6 +16,7 @@ pub mod composition;
 pub mod context;
 pub mod diagnostic;
 pub mod failure_scoping;
+pub mod observability;
 pub mod persistent;
 pub mod pipeline;
 pub mod template_vars;
