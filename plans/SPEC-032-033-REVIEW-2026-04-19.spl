@@ -1,0 +1,254 @@
+;; Plan — address review findings on SPEC-032 + SPEC-033 (2026-04-19)
+;; Branch: specs/032-033-review
+;; Source: code-reviewer notes produced 2026-04-19 against SPEC-032 v0.1.0
+;;         draft and SPEC-033 v0.1.0 draft.
+
+(meta plan
+  (id "SPEC-032-033-REVIEW-2026-04-19")
+  (title "SPEC-032 + SPEC-033 review amendments")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-04-19")
+  (author "agent:claude")
+  (description
+   "Address 19 findings from the 2026-04-19 review of SPEC-032 (three-stage hooks) and SPEC-033 (ecosystem bridges). Four cross-cutting decisions block a shared release roadmap; remaining tasks are per-spec clarifications, honesty-corrections on NFR claims, and a shared security REQ for the untrusted-theme-hooks posture."))
+
+;; ----------------------------------------------------------------------------
+;; Agents — single-agent plan (the human author + me); declared for form.
+;; ----------------------------------------------------------------------------
+
+(given agent-spec-author-available)
+
+;; ----------------------------------------------------------------------------
+;; Tasks — grouped by cluster. P0 = blocks release; P1 = should land before
+;; either spec leaves draft; P2 = tidy-up.
+;; ----------------------------------------------------------------------------
+
+;; ==== Cluster A: Cross-cutting reconciliation ============================
+
+(given task-spec-scope-sequencing)
+(meta task-spec-scope-sequencing
+  (priority "P0")
+  (cluster "cross-cutting")
+  (description "Decide SPEC-033 §13 Q1 (delete, retarget, or stub SPEC-032's canonical Callouts/Tasks/Admonition extensions) and amend BOTH specs to agree. Until resolved, SPEC-032 Phase C and SPEC-033 Phase E are in direct conflict.")
+  (acceptance "One of (a) SPEC-032 REQ-3212 + ADR-3204 + Phase C deleted; or (b) repointed to thin CSS+template stubs filled by ecosystem hooks; or (c) explicitly preserved with SPEC-033 §13 Q1 marked 'rejected — retain'. Whichever path, both specs cross-reference the decision in their §13 open-questions tables."))
+
+(given task-ast-type-ownership)
+(meta task-ast-type-ownership
+  (priority "P0")
+  (cluster "cross-cutting")
+  (description "Consolidate ast_type machinery. Today SPEC-032 REQ-3221/ADR-3206/CON-3221 and SPEC-033 REQ-3307/REQ-3308/CON-3307/CON-3308 define overlapping protocol surface. Pick one home.")
+  (acceptance "SPEC-032 owns the protocol surface (ast_type field on manifest, EcosystemAdapter trait shape, marker-convention doctrine, translation round-trip invariant). SPEC-033 cites those and adds only per-ecosystem concrete adapter instances + their matrix entries. ~200 lines of duplication collapsed."))
+
+(given task-release-roadmap)
+(meta task-release-roadmap
+  (priority "P1")
+  (cluster "cross-cutting")
+  (description "Add explicit release-version targets to the Rollout Plan in both specs. Currently Phases A–E (SPEC-032) and A–F (SPEC-033) have no mapping to zetl release numbers.")
+  (acceptance "Table added at the top of each Rollout Plan mapping Phase → target release (0.6.x / 0.7.0 / etc) and dependency-on relationships (SPEC-033 Phase A blocks on SPEC-032 Phase A+B; SPEC-033 Phase B can land in the same release as SPEC-032 Phase C, etc.)."))
+
+(given task-mdbook-preparse-caveat)
+(meta task-mdbook-preparse-caveat
+  (priority "P1")
+  (cluster "cross-cutting")
+  (description "Reconcile SPEC-032 REQ-3201's pre-parse warning paragraph with SPEC-033 ADR-3303's placement of mdBook preprocessors at pre-parse. The stage warns against regex-over-Markdown; the foreign ecosystem that lands there does exactly that.")
+  (acceptance "SPEC-032 REQ-3201 gets an addendum: pre-parse is the zetl stage hosting mdBook preprocessors (REQ-3304, SPEC-033); those preprocessors are authored under mdBook's own contract and may regex-rewrite Markdown; zetl inherits mdBook's safety posture at that stage, explicitly. SPEC-033 ADR-3303 cross-links."))
+
+;; ==== Cluster B: SPEC-032 specific ========================================
+
+(given task-composition-ordering-example)
+(meta task-composition-ordering-example
+  (priority "P1")
+  (cluster "spec-032")
+  (description "CON-3217 needs a worked example showing how REQ-3206 filename-sort interacts with REQ-3217 before/after topological sort — which wins on conflict, and how cycles surface.")
+  (acceptance "CON-3217 gains a worked example with 5 hooks (`05-x.py`, `10-callouts.py`, `10-tasks.py with after=['callouts']`, `20-admon.py with before=['tasks']`, `30-fini.py`); the final order is spelled out step by step."))
+
+(given task-build-data-cross-page)
+(meta task-build-data-cross-page
+  (priority "P1")
+  (cluster "spec-032")
+  (description "REQ-3219 + CON-3219 are silent on cross-page build_data concurrency. If zetl renders pages in parallel, multiple hooks see stale snapshots and their writes race.")
+  (acceptance "CON-3219 specifies: build_data is page-serial (hooks within a page run in sequence; pages may render in parallel but each page sees only the snapshot as of its render-start). Cross-page aggregation is documented as explicit-finalise in §13 Q9's 'vault.ext' territory, not build_data."))
+
+(given task-empty-file-rule)
+(meta task-empty-file-rule
+  (priority "P2")
+  (cluster "spec-032")
+  (description "REQ-3206's 'empty-file disables' heuristic ('0 bytes OR shebang-only') is fooled by `#!/usr/bin/env true`. Tighten to a probe-based check.")
+  (acceptance "REQ-3206 amended: a hook is treated as disabled if (a) the file is 0 bytes, OR (b) its probe (REQ-3216) returns `{ready: false}` or exits non-zero, OR (c) the file has the executable bit unset and also no shebang. Test matrix for TEST-3206 covers the four cases."))
+
+(given task-ast-version-format-consistency)
+(meta task-ast-version-format-consistency
+  (priority "P2")
+  (cluster "spec-032")
+  (description "REQ-3202 example shows `ast_version: '1.0'`; REQ-3215 shows `ast_version = '>=1.0 <2'`. Readers can't tell if the canonical form is major.minor or a semver range.")
+  (acceptance "REQ-3202 explicitly: the schema root's `ast_version` is an exact major.minor string emitted by zetl. REQ-3215 explicitly: the manifest's `ast_version` is an npm-style semver range interpreted against the schema's major.minor. One inline note cross-links them."))
+
+(given task-coverage-json-persistence)
+(meta task-coverage-json-persistence
+  (priority "P2")
+  (cluster "spec-032")
+  (description "REQ-3208 'Data persists between runs' is ambiguous — replace vs merge. Matters for CI.")
+  (acceptance "REQ-3208 specifies: `hook-coverage.json` is replaced (not merged) on each `zetl build` invocation. CI builds see only the current run. A separate `--coverage-append` flag is deferred to §13 Open Questions."))
+
+(given task-python-dep-tradeoff)
+(meta task-python-dep-tradeoff
+  (priority "P2")
+  (cluster "spec-032")
+  (description "ADR-3204 introduces Python as a default-theme dependency without flagging that `zetl build` in Alpine/minimal Docker now needs `python3` installed. Either flag loudly or route through SPEC-033's ecosystem story.")
+  (acceptance "If task-spec-scope-sequencing resolves to (a) delete canonical extensions, this task collapses. Otherwise ADR-3204's trade-offs section gains an explicit 'Zetl now depends on Python 3.9+ being installed for the default theme to produce expected HTML' bullet and a --no-hooks workaround reference."))
+
+(given task-preparse-safe-mode)
+(meta task-preparse-safe-mode
+  (priority "P2")
+  (cluster "spec-032")
+  (description "REQ-3201 warns about pre-parse regex edits but has no enforcement. A 'post-hook parse-structure compare' would detect most accidental breakages.")
+  (acceptance "New optional REQ-3222 'pre-parse structural safety check' — when manifest declares `may_restructure = false` (default), zetl compares pre-hook and post-hook block-tree shapes and warns on divergence. Deferred-until-v1.1 marker so it doesn't block v1."))
+
+(given task-dispatch-key-naming)
+(meta task-dispatch-key-naming
+  (priority "P3")
+  (cluster "spec-032")
+  (description "REQ-3218's `*` fallback key is easy to typo as empty string and hard to grep. Prefer `_fallback` or `default`.")
+  (acceptance "REQ-3218 renames `*` to `_fallback`; `Block`/`Inline` keys unchanged; migration note in release doc."))
+
+(given task-metric-emission-story)
+(meta task-metric-emission-story
+  (priority "P1")
+  (cluster "spec-032")
+  (description "14+ metric families across the two specs with Prometheus-style names but no declared emission surface. Pick a story.")
+  (acceptance "§9 of SPEC-032 (shared with SPEC-033) gains a 'Metric emission surface' sub-section: (a) `zetl hook coverage [--json]` is the primary user-facing surface, (b) `--verbose` emits structured log lines on stderr, (c) an optional `/metrics` Prometheus endpoint is deferred to a separate spec since it requires the serve process to expose HTTP metrics infrastructure not in scope here."))
+
+;; ==== Cluster C: SPEC-033 specific ========================================
+
+(given task-roundtrip-fidelity-claim)
+(meta task-roundtrip-fidelity-claim
+  (priority "P0")
+  (cluster "spec-033")
+  (description "NFR-3305 claims '0 byte-level differences across 10,000 diverse ASTs per release' for zetl-ext ↔ pandoc-types round-trip. Pandoc has semantically-equivalent representations (Span wrapping, inline sequences); strict byte-identity across a pure round-trip is unachievable.")
+  (acceptance "NFR-3305 weakens to one of: (a) 'canonical-form equivalence' — define a canonicalise() function and require A == canonicalise(translate_from(translate_to(A))); or (b) 'semantic equivalence' — render both to HTML and require byte-identical HTML. Whichever, explicitly spell out which representation-level invariants hold and which don't."))
+
+(given task-plugin-version-verification)
+(meta task-plugin-version-verification
+  (priority "P1")
+  (cluster "spec-033")
+  (description "REQ-3311's matrix pins tested plugin versions but nothing at invocation-time verifies the user's installed version matches. A breaking upgrade in pandoc-crossref silently fails downstream.")
+  (acceptance "New REQ-3314 'plugin-version-drift detection' — zetl records each plugin's --version output at probe time; compares against matrix; emits one of (exact-match silent / minor-drift warn / incompatible disabled) per CON-3201-style policy. Matrix gains a `version_range` column."))
+
+(given task-mixed-ecosystem-determinism)
+(meta task-mixed-ecosystem-determinism
+  (priority "P1")
+  (cluster "spec-033")
+  (description "NFR-3306's 'byte-identical HTML across runs and platforms' under mixed ecosystems commits zetl to guarantee what third-party plugins control. Each ecosystem has its own non-determinism sources (citation ordering, Set iteration, mermaid SVG IDs).")
+  (acceptance "NFR-3306 relaxes to: 'zetl's adapter and translation layers introduce no non-determinism. Plugin-internal non-determinism (list of known sources: …) is outside zetl's scope; users needing strict determinism SHOULD pin plugin versions in the matrix and audit each for determinism properties.'"))
+
+(given task-ecosystem-check-zero-state)
+(meta task-ecosystem-check-zero-state
+  (priority "P2")
+  (cluster "spec-033")
+  (description "CON-3310 shows a table with 'PLUGINS CONFIGURED' column but doesn't specify behaviour when no ecosystem hooks exist in the vault.")
+  (acceptance "CON-3310 extended: with zero configured, the command lists all detected ecosystems with 'configured: 0, available: N' and an informational hint on how to configure. Exit 0 regardless."))
+
+(given task-mdbook-vault-scope-semantics)
+(meta task-mdbook-vault-scope-semantics
+  (priority "P1")
+  (cluster "spec-033")
+  (description "REQ-3304's scope='vault' option implies one preprocessor run per build with a synthetic multi-chapter Book. But SPEC-032's hook contract passes page-level context; no build-level context exists. The `partial` matrix tier papers over a real hole.")
+  (acceptance "CON-3309 gains: 'Vault-scope invocations see a synthetic Book with one Chapter per vault page (ordered by slug). The adapter exposes only vault-root metadata — per-page context (frontmatter, slug) is not passed to vault-scope hooks, which conflicts with SPEC-032's per-page HookContext model. Users needing per-page state must use page-scope invocations.' Explicitly flag this as a v1 limitation."))
+
+(given task-pandoc-parser-footgun)
+(meta task-pandoc-parser-footgun
+  (priority "P1")
+  (cluster "spec-033")
+  (description "REQ-3306 lets one page be CommonMark and another Pandoc-dialect. Two pages with the same-looking syntax (`{.class}` attributes, extended tables) render differently silently — a footgun.")
+  (acceptance "New REQ-3315 'mixed-parser diagnostic': on build, zetl scans all pages for syntax that is valid under one parser and differently-meaningful under the other (attribute syntax, fenced-div, table dialects). Emits a warning listing affected pages. Under `--strict-parsers`, becomes an error."))
+
+(given task-remark-harness-isolation)
+(meta task-remark-harness-isolation
+  (priority "P2")
+  (cluster "spec-033")
+  (description "remark harness is long-lived with dynamic import() of third-party packages. First-loaded plugins can monkey-patch globals / poison require() cache for subsequent plugins.")
+  (acceptance "§10 Security adds: 'remark harness module-cache poisoning risk'. REQ-3305 gains optional manifest field `isolation = 'shared' | 'fresh-context'` (default shared); fresh-context spawns a new Node subprocess per invocation (slower; enables paranoid users to isolate)."))
+
+(given task-cumulative-ecosystem-cost)
+(meta task-cumulative-ecosystem-cost
+  (priority "P2")
+  (cluster "spec-033")
+  (description "NFRs 3301–3303 specify per-ecosystem costs but nothing caps cumulative cost when all three are enabled on a 2k-page vault.")
+  (acceptance "New NFR-3308 'combined-ecosystem budget': with all three v1 ecosystems enabled on a 2k-page vault, total build time SHALL increase by ≤ 3× relative to a --no-ecosystems baseline. Honest ceiling, not aspirational."))
+
+(given task-pandoc-citeproc-resolution)
+(meta task-pandoc-citeproc-resolution
+  (priority "P1")
+  (cluster "spec-033")
+  (description "REQ-3303 and TEST-3303 punt `pandoc-citeproc (or its successor)` — pandoc-citeproc is deprecated; the successor is Pandoc's built-in --citeproc flag, which is an invocation mode, not a filter. Need to choose: first-class Pandoc-mode support, or document the gap.")
+  (acceptance "REQ-3303 amended to distinguish 'external filter plugins' (pandoc-crossref, pantable, pandoc-include-code) from 'Pandoc-native modes' (--citeproc, --lua-filter). Adapter supports a `mode = 'filter' | 'native'` manifest field; native mode invokes pandoc directly with the user's manifest-specified flags rather than piping JSON. Matrix separates the two."))
+
+;; ==== Cluster D: Shared security gap ======================================
+
+(given task-untrusted-theme-safe-mode)
+(meta task-untrusted-theme-safe-mode
+  (priority "P1")
+  (cluster "security")
+  (description "SPEC-032 §10 and SPEC-033 §10 both say 'user consent to the theme is consent to its hooks' — legally accurate but a footgun as product surface. Themes today don't execute code; post-SPEC-032/033 they do.")
+  (acceptance "Shared new REQ-3223 in SPEC-032 'safe-mode build' — `zetl build --no-hooks` (already in SPEC-032) promoted from flag-mention to REQ with explicit semantics: disables ALL hooks including theme-bundled, emits warning on stderr listing which hooks were suppressed, completes successfully with plain output. Plus a REQ 'theme hook declaration' — themes with `hooks/` directory MUST list their hooks in `theme.toml` [[theme.hooks]] entries; zetl warns on first use of a theme with undeclared hooks."))
+
+;; ----------------------------------------------------------------------------
+;; Readiness rules — all tasks ready once the review exists
+;; ----------------------------------------------------------------------------
+
+(given completed-review)
+
+;; One ready-rule per task (generated rather than read — the board view
+;; in hence plan board will show the cluster grouping via the (meta)).
+
+(normally r-ready-spec-scope-sequencing
+  (and task-spec-scope-sequencing completed-review) ready-spec-scope-sequencing)
+(normally r-ready-ast-type-ownership
+  (and task-ast-type-ownership completed-review) ready-ast-type-ownership)
+(normally r-ready-release-roadmap
+  (and task-release-roadmap completed-review) ready-release-roadmap)
+(normally r-ready-mdbook-preparse-caveat
+  (and task-mdbook-preparse-caveat completed-review) ready-mdbook-preparse-caveat)
+(normally r-ready-composition-ordering-example
+  (and task-composition-ordering-example completed-review) ready-composition-ordering-example)
+(normally r-ready-build-data-cross-page
+  (and task-build-data-cross-page completed-review) ready-build-data-cross-page)
+(normally r-ready-empty-file-rule
+  (and task-empty-file-rule completed-review) ready-empty-file-rule)
+(normally r-ready-ast-version-format-consistency
+  (and task-ast-version-format-consistency completed-review) ready-ast-version-format-consistency)
+(normally r-ready-coverage-json-persistence
+  (and task-coverage-json-persistence completed-review) ready-coverage-json-persistence)
+(normally r-ready-python-dep-tradeoff
+  (and task-python-dep-tradeoff completed-review) ready-python-dep-tradeoff)
+(normally r-ready-preparse-safe-mode
+  (and task-preparse-safe-mode completed-review) ready-preparse-safe-mode)
+(normally r-ready-dispatch-key-naming
+  (and task-dispatch-key-naming completed-review) ready-dispatch-key-naming)
+(normally r-ready-metric-emission-story
+  (and task-metric-emission-story completed-review) ready-metric-emission-story)
+(normally r-ready-roundtrip-fidelity-claim
+  (and task-roundtrip-fidelity-claim completed-review) ready-roundtrip-fidelity-claim)
+(normally r-ready-plugin-version-verification
+  (and task-plugin-version-verification completed-review) ready-plugin-version-verification)
+(normally r-ready-mixed-ecosystem-determinism
+  (and task-mixed-ecosystem-determinism completed-review) ready-mixed-ecosystem-determinism)
+(normally r-ready-ecosystem-check-zero-state
+  (and task-ecosystem-check-zero-state completed-review) ready-ecosystem-check-zero-state)
+(normally r-ready-mdbook-vault-scope-semantics
+  (and task-mdbook-vault-scope-semantics completed-review) ready-mdbook-vault-scope-semantics)
+(normally r-ready-pandoc-parser-footgun
+  (and task-pandoc-parser-footgun completed-review) ready-pandoc-parser-footgun)
+(normally r-ready-remark-harness-isolation
+  (and task-remark-harness-isolation completed-review) ready-remark-harness-isolation)
+(normally r-ready-cumulative-ecosystem-cost
+  (and task-cumulative-ecosystem-cost completed-review) ready-cumulative-ecosystem-cost)
+(normally r-ready-pandoc-citeproc-resolution
+  (and task-pandoc-citeproc-resolution completed-review) ready-pandoc-citeproc-resolution)
+(normally r-ready-untrusted-theme-safe-mode
+  (and task-untrusted-theme-safe-mode completed-review) ready-untrusted-theme-safe-mode)
+
+;; All assigned to the spec-author agent.
+(normally r-assign-all
+  (and completed-review agent-spec-author-available) assign-all-spec-author)
