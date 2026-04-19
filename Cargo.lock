@@ -6898,6 +6898,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "zetl-ast-reference-gen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+]
+
+[[package]]
 name = "zlib-rs"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

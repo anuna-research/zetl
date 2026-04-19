@@ -1,12 +1,12 @@
 {
-  "task_id": "typed-ast-protocol",
+  "task_id": "ast-reference-gen",
   "token_budget": 8000,
-  "tokens_used": 288,
+  "tokens_used": 337,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Typed AST-protocol (ast_type) dispatch surface per REQ-3221 / CON-3221. Hooks declare ast_type = zetl-ext|mdast|pandoc-types; shared translator layer converts to/from zetl-ext canonical form.",
-      "token_cost": 47,
+      "content": "tools/zetl-ast-reference-gen/ (Rust) producing docs/zetl-ast-reference.md from the JSON Schema. One section per node type: shape, attrs, canonical example, HTML rendering expectation. Wired into CI as a diff gate.",
+      "token_cost": 53,
       "priority": "PlanMeta"
     },
     {
@@ -62,8 +62,14 @@
       "content": "Modified 2 files (+241, -13): .hence/context-manifest.json, src/hooks/composition.rs",
       "token_cost": 21,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-typed-ast-protocol-changes",
+      "content": "Modified 8 files (+3838, -5): .hence/context-manifest.json, src/hooks/composition.rs, src/hooks/mod.rs, src/hooks/translators/mdast.rs, src/hooks/translators/mod.rs and 3 more",
+      "token_cost": 43,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T13:57:08Z"
+  "constructed_at": "2026-04-19T14:23:49Z"
 }

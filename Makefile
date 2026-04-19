@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check help
 
 all: build
 
@@ -59,6 +59,15 @@ fmt-fix:
 # into tools/theme-build/default/node_modules and subsequent runs are fast.
 theme-css:
 	cd tools/theme-build/default && npm install --silent && npm run build
+
+# Regenerate docs/zetl-ast-reference.md from tools/zetl-ast-schema-v1.json
+# (SPEC-032 REQ-3202). `ast-reference-check` is the CI diff gate — it exits
+# nonzero if the on-disk file is stale.
+ast-reference:
+	cargo run -p zetl-ast-reference-gen
+
+ast-reference-check:
+	cargo run -p zetl-ast-reference-gen -- --check
 
 install: build
 	install -d $(PREFIX)/bin $(MANDIR) $(BASHCOMPDIR) $(ZSHCOMPDIR) $(FISHCOMPDIR)
@@ -112,6 +121,8 @@ help:
 	@echo "  make clippy       - Run clippy lints"
 	@echo "  make fmt          - Check formatting"
 	@echo "  make fmt-fix      - Auto-fix formatting"
+	@echo "  make ast-reference       - Regenerate docs/zetl-ast-reference.md"
+	@echo "  make ast-reference-check - CI gate: fail if the reference is stale"
 	@echo "  make install      - Install binary, man page, and shell completions"
 	@echo "  make uninstall    - Remove binary, man page, and completions"
 	@echo "  make clean        - Remove build artifacts"
