@@ -99,6 +99,10 @@ ab_glyph = "0.2"
 # so adding this doesn't bloat binaries for non-serve commands — they
 # link the code but never execute it.
 tower-http = { version = "0.6", features = ["compression-gzip", "compression-br", "set-header"] }
+# Brotli encoder for `zetl build` to emit .br precompressed files alongside
+# html/css/js/json. Static hosts (Netlify/Cloudflare/nginx) serve the .br
+# variant when the client advertises `Accept-Encoding: br`.
+brotli = "7"
 
 
 [dev-dependencies]

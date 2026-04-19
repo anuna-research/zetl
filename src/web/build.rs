@@ -896,11 +896,106 @@ pub fn build_static(
     eprintln!(
         "zetl build  →  {count} pages + {folder_count} folder indexes written to {out_dir}/{suffix}",
     );
+
+    // Brotli pre-compression (task-brotli-precompress-build). Walk the output
+    // and emit `{file}.br` alongside each `.html`, `.css`, `.js`, `.json` so
+    // static hosts (Netlify, Cloudflare, nginx with brotli_static on) can
+    // serve the precompressed byte-for-byte. Opt-out via ZETL_NO_BROTLI=1.
+    if std::env::var("ZETL_NO_BROTLI").ok().as_deref() != Some("1") {
+        let (files, bytes_in, bytes_out) = precompress_brotli(out, verbose)?;
+        if verbose {
+            eprintln!("[zetl] brotli: {files} files precompressed, {bytes_in} → {bytes_out} bytes");
+        } else if files > 0 {
+            eprintln!("  brotli: {files} files precompressed");
+        }
+    }
+
     Ok(BuildResult {
         pages: count,
         folder_indexes: folder_count,
         out_dir: out_dir.to_string(),
     })
+}
+
+/// Walk `out` and write a `.br` sibling for every HTML/CSS/JS/JSON file whose
+/// brotli-compressed form is at least 10% smaller. Returns (count, bytes_in,
+/// bytes_out) for reporting. Errors on individual files are logged but don't
+/// abort the build — a partial precompress set is still useful to deploy.
+fn precompress_brotli(out: &Path, verbose: bool) -> Result<(usize, u64, u64)> {
+    use std::io::Write;
+    fn should_compress(p: &Path) -> bool {
+        matches!(
+            p.extension().and_then(|e| e.to_str()),
+            Some("html" | "htm" | "css" | "js" | "mjs" | "json" | "svg" | "txt")
+        )
+    }
+    fn visit(
+        dir: &Path,
+        files: &mut usize,
+        bytes_in: &mut u64,
+        bytes_out: &mut u64,
+        verbose: bool,
+    ) -> Result<()> {
+        for entry in std::fs::read_dir(dir)?.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit(&path, files, bytes_in, bytes_out, verbose)?;
+                continue;
+            }
+            if !path.is_file() || !should_compress(&path) {
+                continue;
+            }
+            let raw = match std::fs::read(&path) {
+                Ok(b) => b,
+                Err(e) => {
+                    if verbose {
+                        eprintln!("[zetl] brotli: skip {} ({e})", path.display());
+                    }
+                    continue;
+                }
+            };
+            // Quality 5 is a good server-side-precompress trade-off: ~15 ms
+            // per 100 KB on a laptop, output size within 2% of max (quality 11).
+            let mut encoded = Vec::new();
+            {
+                let mut w = brotli::CompressorWriter::new(&mut encoded, 4096, 5, 22);
+                if let Err(e) = w.write_all(&raw) {
+                    if verbose {
+                        eprintln!("[zetl] brotli: encode failed for {} ({e})", path.display());
+                    }
+                    continue;
+                }
+            }
+            // Skip if compression gave less than 10% — below that the extra
+            // .br file isn't worth the deploy-time bytes.
+            if encoded.len() as f64 > raw.len() as f64 * 0.9 {
+                continue;
+            }
+            let br_path = {
+                let mut p = path.clone().into_os_string();
+                p.push(".br");
+                std::path::PathBuf::from(p)
+            };
+            if let Err(e) = std::fs::write(&br_path, &encoded) {
+                if verbose {
+                    eprintln!(
+                        "[zetl] brotli: write failed for {} ({e})",
+                        br_path.display()
+                    );
+                }
+                continue;
+            }
+            *files += 1;
+            *bytes_in += raw.len() as u64;
+            *bytes_out += encoded.len() as u64;
+        }
+        Ok(())
+    }
+    let mut files = 0usize;
+    let mut bytes_in = 0u64;
+    let mut bytes_out = 0u64;
+    visit(out, &mut files, &mut bytes_in, &mut bytes_out, verbose)?;
+    Ok((files, bytes_in, bytes_out))
 }
 
 /// NFR-104: graph-index.json uncompressed size budget (1 MB).

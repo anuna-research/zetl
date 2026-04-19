@@ -59,8 +59,12 @@
        ~420px where even scrolling leaves the last tile clipped off-viewport. */
     .stats { overflow-x: auto; }
     @media (max-width: 419px) {
+      /* DaisyUI gives .stats-horizontal `grid-auto-flow: column` which
+         overrides any column-template we set. Flip flow back to row so
+         the 4 stats wrap to 2×2 instead of scrolling horizontally. */
       .stats-horizontal {
         display: grid;
+        grid-auto-flow: row;
         grid-template-columns: 1fr 1fr;
         overflow-x: visible;
       }
