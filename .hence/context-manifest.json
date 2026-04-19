@@ -1,12 +1,12 @@
 {
-  "task_id": "security-hooks",
+  "task_id": "hook-dry-run",
   "token_budget": 8000,
-  "tokens_used": 326,
+  "tokens_used": 315,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "SPEC-032 §10 security: untrusted-script considerations, process isolation, timeout enforcement, stdout/stderr streaming (no in-memory buffering), redact-env-by-default.",
-      "token_cost": 42,
+      "content": "`zetl hook dry-run <page>` per REQ-3209. Runs all matching hooks against a single page; prints before/after diff; no writes.",
+      "token_cost": 31,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T18:04:54Z"
+  "constructed_at": "2026-04-19T18:21:40Z"
 }

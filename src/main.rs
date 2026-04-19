@@ -4712,6 +4712,158 @@ fn cmd_hook_fixture(cli: &Cli, page: &str, hook: &str) -> Result<()> {
     Ok(())
 }
 
+/// Evaluate a hook's selector against the vault and print the matched
+/// pages. SPEC-032 REQ-3209 / TEST-3209.
+///
+/// The hook itself is NOT invoked — this is a selector-reachability check
+/// for CI and hook authoring. Exit code mirrors "did the selector hit":
+/// 0 if at least one page matched, 1 if zero matched.
+fn cmd_hook_dry_run(cli: &Cli, spec: &str, theme: &str, limit: usize) -> Result<()> {
+    use zetl::hooks::composition::{compose_stage, default_extension_id, ComposedHook};
+    use zetl::hooks::manifest::{load_manifest, LoadedManifest};
+    use zetl::hooks::pipeline::Stage;
+    use zetl::hooks::selector::{compile, SelectorInput};
+    use zetl::web::markdown::parse_frontmatter;
+
+    // Parse `<stage>/<name>`.
+    let (stage_str, name) = spec.split_once('/').ok_or_else(|| {
+        anyhow::anyhow!(
+            "hook spec must be `<stage>/<name>` (e.g. `transform/callouts`); got {spec:?}"
+        )
+    })?;
+    let stage = match stage_str {
+        "pre-parse" => Stage::PreParse,
+        "transform" => Stage::Transform,
+        "post-render" => Stage::PostRender,
+        other => anyhow::bail!(
+            "unknown stage {other:?}; expected one of `pre-parse`, `transform`, `post-render`"
+        ),
+    };
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // Compose the requested stage so we see the hook exactly as the build
+    // pipeline would (vault shadowing, ordering, disabled entries).
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+    let pipeline = compose_stage(&vault_root, theme_hooks.path(), stage)
+        .with_context(|| format!("failed to compose {stage} hooks"))?;
+
+    // Lookup resolves against the canonical extension_id; a sidecar manifest
+    // can override the default filename-derived id, so check the composed
+    // value first and fall back to the filename-derived default. That keeps
+    // `hook dry-run transform/callouts` working whether the on-disk file is
+    // `callouts.py`, `20-callouts.py`, or a renamed exe with
+    // `extension_id = "callouts"` in its sidecar.
+    let hook: &ComposedHook = pipeline
+        .hooks
+        .iter()
+        .find(|h| h.extension_id == name)
+        .or_else(|| {
+            pipeline
+                .hooks
+                .iter()
+                .find(|h| default_extension_id(&h.filename) == name)
+        })
+        .ok_or_else(|| {
+            let available: Vec<String> =
+                pipeline.hooks.iter().map(|h| h.extension_id.clone()).collect();
+            if available.is_empty() {
+                anyhow::anyhow!("no hook '{name}' found in stage '{stage}' (stage has no hooks)")
+            } else {
+                anyhow::anyhow!(
+                    "no hook '{name}' found in stage '{stage}'; available: {}",
+                    available.join(", ")
+                )
+            }
+        })?;
+
+    // Load the sidecar manifest for the selector spec — a missing manifest
+    // means "default selector" per REQ-3203.
+    let selector_spec = match &hook.manifest_path {
+        Some(path) => match load_manifest(path)
+            .with_context(|| format!("failed to load manifest {}", path.display()))?
+        {
+            LoadedManifest::Present(m) => m.select,
+            LoadedManifest::Missing => Default::default(),
+        },
+        None => Default::default(),
+    };
+
+    let selector = compile(&selector_spec)
+        .map_err(|e| anyhow::anyhow!("failed to compile selector for hook '{}': {e}", hook.extension_id))?;
+
+    // Enumerate vault pages. `scan_vault` already returns vault-relative
+    // paths, which is exactly what the selector's path globs are written
+    // against.
+    let scanned = scan_vault(&vault_root, &cli.scan_options())
+        .with_context(|| format!("failed to scan vault {}", vault_root.display()))?;
+
+    let mut matched: Vec<PathBuf> = Vec::new();
+    for file in &scanned {
+        let abs = vault_root.join(&file.path);
+        let content = match std::fs::read_to_string(&abs) {
+            Ok(c) => c,
+            Err(_) => continue, // unreadable file → skip, not a dry-run error
+        };
+        let frontmatter = parse_frontmatter(&content);
+        let body = strip_leading_frontmatter(&content);
+        let input = SelectorInput {
+            path: &file.path,
+            frontmatter: &frontmatter,
+            text: body,
+        };
+        if selector.evaluate(&input) {
+            matched.push(file.path.clone());
+        }
+    }
+
+    // Deterministic output order — byte-stable for TEST-3209 goldens.
+    matched.sort();
+
+    let total = matched.len();
+    let truncated = total > limit;
+    let shown: Vec<PathBuf> = matched.into_iter().take(limit).collect();
+
+    // SPEC-032 REQ-3209 / TEST-3209: matched page list, one path per line,
+    // byte-stable across TTY vs pipe. Auto-format JSON would defeat the
+    // "byte-identical to a golden" requirement, so we ignore `cli.format`
+    // here and always emit the canonical plain text form.
+    for p in &shown {
+        // Force POSIX separators for cross-platform byte-stability.
+        println!("{}", p.to_string_lossy().replace('\\', "/"));
+    }
+    if truncated {
+        eprintln!("(matched {total}, showing first {limit}; raise with --limit)");
+    }
+
+    if total == 0 {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Strip a leading YAML frontmatter block (between `---` fences) from a
+/// markdown document, returning the body. No frontmatter → the full input.
+///
+/// Mirrors `web::markdown::strip_frontmatter` (kept private there); the
+/// dry-run path needs the body to feed the selector's content-probe layer,
+/// which CON-3204 defines as "raw Markdown body, post-frontmatter".
+fn strip_leading_frontmatter(content: &str) -> &str {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return content;
+    }
+    let after_first = &trimmed[3..];
+    if let Some(end_pos) = after_first.find("\n---") {
+        let skip = 3 + end_pos + 4;
+        let rest = &trimmed[skip..];
+        rest.strip_prefix('\n').unwrap_or(rest)
+    } else {
+        content
+    }
+}
+
 fn cmd_hook_watch(cli: &Cli, name: &str) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
@@ -10289,6 +10441,9 @@ fn main() -> anyhow::Result<()> {
             HookCommand::Test { name, update } => cmd_hook_test(&cli, name, *update),
             HookCommand::Fixture { from, hook } => cmd_hook_fixture(&cli, from, hook),
             HookCommand::Watch { name } => cmd_hook_watch(&cli, name),
+            HookCommand::DryRun { spec, theme, limit } => {
+                cmd_hook_dry_run(&cli, spec, theme, *limit)
+            }
         },
         Command::Ast { command } => {
             use zetl::cli::AstCommand;

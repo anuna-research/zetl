@@ -657,6 +657,26 @@ pub enum HookCommand {
         /// Hook extension id to watch.
         name: String,
     },
+    /// Evaluate a hook's selector against the vault and print the matched
+    /// pages. The hook is NOT invoked. Exits 0 if any pages match; 1 if
+    /// zero match. SPEC-032 REQ-3209.
+    #[command(
+        name = "dry-run",
+        after_help = "Examples:\n  zetl hook dry-run transform/callouts\n  zetl hook dry-run pre-parse/prelude --limit 100\n  zetl -d demo-vault hook dry-run transform/callouts"
+    )]
+    DryRun {
+        /// Hook selector in the form `<stage>/<name>`. `<stage>` is one of
+        /// `pre-parse`, `transform`, or `post-render`; `<name>` matches the
+        /// hook's extension_id (filename stem minus any leading `\d+-`
+        /// ordering prefix).
+        spec: String,
+        /// Theme name (looks in .zetl/themes/<name>/hooks/).
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Maximum number of matched pages to print.
+        #[arg(long, default_value = "50")]
+        limit: usize,
+    },
 }
 
 /// Stage for `zetl hook new`. Matches the three on-disk `<stage>.d/`
