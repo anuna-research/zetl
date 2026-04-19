@@ -57,9 +57,16 @@
 //! by [`AstType::default_preserves`] when the manifest doesn't declare
 //! its own.
 
+pub mod canonicalise;
 pub mod mdast;
 pub mod pandoc;
 pub mod zetl_ext;
+
+#[cfg(test)]
+mod proptest_strategies;
+
+#[cfg(test)]
+mod roundtrip;
 
 use std::collections::{BTreeMap, HashMap};
 

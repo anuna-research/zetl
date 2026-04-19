@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check translator-roundtrip help
 
 all: build
 
@@ -114,6 +114,14 @@ eco-features-check:
 	cargo check --no-default-features --features ecosystem-remark
 	cargo check --no-default-features --features ecosystems-v1
 
+# SPEC-033 NFR-3305 / TEST-3305-fidelity translator round-trip property.
+# Drives `arb_document()` through each registered translator and asserts
+# canonical-form equivalence after a zetl→foreign→zetl round trip.
+# Bump PROPTEST_CASES for the nightly / release sweep (NFR-3305 cites
+# 10,000 as the release-gate corpus).
+translator-roundtrip:
+	PROPTEST_CASES=$${PROPTEST_CASES:-256} cargo test --lib -p zetl translators::roundtrip -- --nocapture
+
 install: build
 	install -d $(PREFIX)/bin $(MANDIR) $(BASHCOMPDIR) $(ZSHCOMPDIR) $(FISHCOMPDIR)
 	install -m 755 target/release/zetl $(PREFIX)/bin/zetl
@@ -175,6 +183,7 @@ help:
 	@echo "  make ext-golden          - Run CON-3212 canonical-extension golden-HTML gate"
 	@echo "  make ext-golden-update   - Regenerate expected.html for every extension fixture"
 	@echo "  make eco-features-check  - Compile-in-isolation gate for every ecosystem feature flag"
+	@echo "  make translator-roundtrip - NFR-3305 property-test gate: zetl→foreign→zetl canonical equivalence"
 	@echo "  make install      - Install binary, man page, and shell completions"
 	@echo "  make uninstall    - Remove binary, man page, and completions"
 	@echo "  make clean        - Remove build artifacts"
