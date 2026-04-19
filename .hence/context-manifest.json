@@ -1,12 +1,12 @@
 {
-  "task_id": "selector-eval",
+  "task_id": "helper-py",
   "token_budget": 8000,
-  "tokens_used": 330,
+  "tokens_used": 323,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Selector evaluator with short-circuit order path → content → frontmatter (REQ-3204 / CON-3204). Compile regexes once per build. Frontmatter predicate grammar per REQ-3205 / CON-3205.",
-      "token_cost": 46,
+      "content": "`zetl-ast-py` package on PyPI per REQ-3210. Version pinned to AST schema v1.0. Provides AST types, @on_node dispatch, manifest helpers, stdio protocol client.",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T16:33:27Z"
+  "constructed_at": "2026-04-19T16:54:07Z"
 }
