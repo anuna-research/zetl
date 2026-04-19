@@ -2,7 +2,11 @@
     a.link-error { color: oklch(var(--er)); text-decoration: underline wavy; }
     /* line anchors for backlink scroll targets */
     .line-anchor { scroll-margin-top: 2rem; }
-    :has(> .line-anchor:target) {
+    :has(> .line-anchor:target),
+    /* Fallback applied by spa.js — :target doesn't always refresh on
+       history.pushState, so SPA nav adds .line-anchor-flash on the
+       parent of the targeted .line-anchor to replay the highlight. */
+    .line-anchor-flash {
       animation: line-highlight 2s ease-out;
       border-radius: 4px;
     }

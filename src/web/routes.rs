@@ -5657,6 +5657,33 @@ pub async fn api_graph_handler(
     .into_response()
 }
 
+// ── GET /pages.json — lightweight search-index served at a fixed URL ────
+//
+// Mirrors the build-mode `<out-dir>/pages.json` asset. Returns the same
+// `[{"n": title, "s": slug}, ...]` short-key JSON the sidebar search JS
+// already knows how to parse, so the same client-side code handles serve
+// + build without conditionals. Cached for one hour (shared + browser);
+// small enough and cheap enough to regenerate if the vault changes.
+pub async fn pages_json_handler(State(state): State<WebState>) -> Response {
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+    let vault_ctx = crate::web::context::build_vault_context(&data, &vault_name);
+    let body = crate::web::engine::build_search_index(&vault_ctx);
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        body,
+    )
+        .into_response()
+}
+
 // ── GET /graph-index.json — graphology CON-101 export (REQ-103) ──────────
 //
 // Mirrors the build-mode `<out-dir>/graph-index.json` asset so themes can

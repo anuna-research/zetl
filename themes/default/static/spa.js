@@ -62,6 +62,34 @@
     oldRoot.replaceWith(newRoot);
     runScripts(newRoot);
     if (push) history.pushState({ zetl: true, url: url }, '', url);
+    /* Forward nav matches browser default: scroll to top, or to #hash if
+       one is present. popstate (back/forward) skips this so the browser's
+       built-in scroll restoration can place the reader where they were.
+       Hash targets (e.g. backlink #line-42) also get a flash highlight
+       applied via JS — the shell CSS uses :has(> .line-anchor:target)
+       but :target doesn't reliably fire on pushState, so we stand in. */
+    if (push) {
+      var hash = '';
+      try { hash = new URL(url, location.href).hash; } catch (e) {}
+      if (hash && hash.length > 1) {
+        var tgt = document.getElementById(hash.slice(1));
+        if (tgt && tgt.scrollIntoView) {
+          tgt.scrollIntoView();
+          var parent = tgt.parentElement;
+          if (parent) {
+            parent.classList.remove('line-anchor-flash');
+            /* force reflow so the re-added class restarts the animation */
+            void parent.offsetWidth;
+            parent.classList.add('line-anchor-flash');
+            setTimeout(function(){ parent.classList.remove('line-anchor-flash'); }, 2100);
+          }
+        } else {
+          window.scrollTo(0, 0);
+        }
+      } else {
+        window.scrollTo(0, 0);
+      }
+    }
     window.dispatchEvent(new CustomEvent('zetl:after-navigate', {
       detail: { slug: toSlug, contentRoot: newRoot }
     }));
