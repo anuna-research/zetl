@@ -3,11 +3,14 @@ window.__zetlBootGraph = function(){
   window.__zetlGraphBooted = true;
 
   /* Config is emitted inline from _graph.html into window.__zetlGraphConfig
-     so this file itself is template-free and cacheable. */
+     so this file itself is template-free and cacheable. Note: indexFile
+     is legitimately the empty string in serve mode (URLs end in "/"), so
+     we can't use `||` — that would coerce "" to the build-mode default
+     and break node-click navigation in serve mode. */
   var CFG = (typeof window !== 'undefined' && window.__zetlGraphConfig) || {};
-  var ROOT = CFG.root || "";
-  var INDEX_FILE = CFG.indexFile || "index.html";
-  var GRAPH_URL = CFG.graphUrl || "";
+  var ROOT = 'root' in CFG ? CFG.root : "";
+  var INDEX_FILE = 'indexFile' in CFG ? CFG.indexFile : "index.html";
+  var GRAPH_URL = 'graphUrl' in CFG ? CFG.graphUrl : "";
   var MODE_KEY = "zetl:graph:mode";
   var MODE_FALLBACK = "local";
 
