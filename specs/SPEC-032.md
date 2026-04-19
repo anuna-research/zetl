@@ -1794,6 +1794,22 @@ Pandoc div syntax, Tasks deferred per §13 Q4).
 11. **Template-var publishing from `pre-parse` hooks.** `pre-parse` runs before parsing, so extensions there have only the raw Markdown text — less rich than AST-stage extensions. Is it worth supporting emission at that stage, or restrict template-vars to `transform` and `post-render`? *Proposed:* allow at all three stages; the preprocessing stage has legitimate use (e.g., a word-counter that emits `page.ext.word_count.value` without parsing cost).
 12. **Executable-bit fallback vs. interpreter map.** Pandoc's filter loader guesses an interpreter from extension when the executable bit is absent (`.py→python`, `.js→node`, `.hs→runhaskell`, etc.; see [filters.html](https://pandoc.org/filters.html)). Should zetl replicate this for authoring ergonomics, or require the executable bit (unambiguous, prevents "why isn't my hook running")? *Proposed:* require the executable bit in v1 — clear error, good diagnostic. Add an extension-to-interpreter map in v1.1 if feedback requests it.
 13. **Symbol-scanner analogue for canonical extensions.** SPEC-031 had a symbol-scanner subcommand to prioritise shim work against the Obsidian plugin ecosystem. For SPEC-032's canonical extensions, the analogous question is "which patterns in the wild would benefit from a canonical extension we ship?" — answerable by scanning a sample of published vaults for `> [!`, `ad-*`, `tasks`, inline queries, etc. *Proposed:* defer to a tools-level follow-up, not a spec requirement.
+14. **Global (user-level) hook discovery.** Should REQ-3206 extend the
+    discovery path set to include a user-level location
+    (`$XDG_CONFIG_HOME/zetl/hooks/<stage>.d/*`), matching the
+    install-once-use-everywhere ergonomic of `cargo install` /
+    `npm -g`? The trade-off is determinism and audit: NFR-3203 /
+    SPEC-033 NFR-3306 promise byte-identical HTML across runs and
+    machines; a global-hook layer breaks that unless
+    carefully scoped. REQ-3223's `[[theme.hooks]]` declaration also
+    doesn't cover global-installed hooks — they'd be invisible to
+    a vault auditor. *Resolved 2026-04-19: defer entirely for v1 —
+    keep discovery vault+theme only.* Ecosystem plugins (SPEC-033)
+    already cover the shared-toolkit ergonomic at the PATH layer;
+    zetl-native hooks distribute via git-clone-into-`.zetl/hooks/`
+    without zetl-side orchestration. Reconsider in v1.1 with an
+    explicit-allow-list shape (vault config names each global
+    hook) if user feedback shows the friction is real.
 
 ---
 
