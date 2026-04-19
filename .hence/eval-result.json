@@ -3,28 +3,31 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 107,
+    "files_changed": 8,
+    "insertions": 911,
     "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
       ".woodpecker/ci.yaml",
-      "Cargo.toml",
       "Makefile",
-      "tests/ecosystems_registry_integration.rs"
+      "proptest-regressions/hooks/translators/roundtrip.txt",
+      "src/hooks/translators/canonicalise.rs",
+      "src/hooks/translators/mod.rs",
+      "src/hooks/translators/proptest_strategies.rs",
+      "src/hooks/translators/roundtrip.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-eco-feature-flags-changes",
-      "content": "Modified 5 files (+107, -6): .hence/context-manifest.json, .woodpecker/ci.yaml, Cargo.toml, Makefile, tests/ecosystems_registry_integration.rs",
+      "key": "task-eco-translators-scaffold-changes",
+      "content": "Modified 8 files (+911, -6): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, proptest-regressions/hooks/translators/roundtrip.txt, src/hooks/translators/canonicalise.rs and 3 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/eco-feature-flags-v1",
-  "evaluated_at": "2026-04-19T19:32:40Z",
+  "branch_name": "hence/eco-translators-scaffold-v1",
+  "evaluated_at": "2026-04-19T19:50:29Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
