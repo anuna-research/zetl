@@ -1,0 +1,34 @@
+# zetl ecosystem compatibility matrix (SPEC-033 REQ-3311).
+#
+# Each [ecosystem.<id>] section corresponds to a registered ecosystem in
+# src/ecosystems/registry.rs. Plugin rows under each section (tiered
+# `supported` / `partial` / `experimental`) are seeded by the per-
+# ecosystem matrix-seed tasks (task-pandoc-matrix-seed,
+# task-mdbook-matrix-seed, task-remark-matrix-seed) and the full
+# ecosystem × plugin × tier × fixture × contract matrix lands with
+# task-eco-matrix.
+#
+# Contract for this file:
+# - Every ecosystem id registered in src/ecosystems/registry.rs SHALL
+#   appear exactly once as an [ecosystem.<id>] section here. The
+#   matrix-lint gate in tests/ecosystems_registry_integration.rs
+#   enforces both directions: registry-without-matrix-entry and
+#   matrix-entry-without-registry both fail the build.
+# - Additions to either side without a paired update in the other side
+#   are rejected by the same gate.
+
+[ecosystem.pandoc]
+# Pandoc filters — SPEC-033 REQ-3303. Matrix rows seeded by
+# task-pandoc-matrix-seed (pandoc-crossref, pandoc-citeproc, pantable).
+plugins = []
+
+[ecosystem.mdbook]
+# mdBook preprocessors — SPEC-033 REQ-3304. Matrix rows seeded by
+# task-mdbook-matrix-seed (mdbook-mermaid, mdbook-toc, mdbook-katex,
+# mdbook-admonish).
+plugins = []
+
+[ecosystem.remark]
+# remark plugins — SPEC-033 REQ-3305. Matrix rows seeded by
+# task-remark-matrix-seed (remark-gfm, remark-math, remark-directive).
+plugins = []

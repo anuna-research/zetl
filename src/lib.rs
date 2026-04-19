@@ -4,6 +4,7 @@ pub mod cache;
 pub mod cli;
 pub mod crdt;
 pub mod drift;
+pub mod ecosystems;
 pub mod graph;
 #[cfg(feature = "history")]
 pub mod history;
