@@ -1,12 +1,12 @@
 {
-  "task_id": "persistent-protocol",
+  "task_id": "template-vars",
   "token_budget": 8000,
-  "tokens_used": 174,
+  "tokens_used": 212,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Persistent-mode wire protocol per CON-3201: {type: init|run|finalise|shutdown, ...}. JSON-lines over stdio. NFR-3207 budget: <1.5ms protocol overhead per page.",
-      "token_cost": 39,
+      "content": "Template variable publishing per REQ-3214 / CON-3214. Hooks emit `page.ext.<hook_id>.*` + `vault.ext.<hook_id>.*`. All three stages may publish. §13 Q11 proposed answer.",
+      "token_cost": 42,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 4 files (+728, -20): .hence/context-manifest.json, src/hooks/build_context.rs, src/hooks/mod.rs, src/hooks/pipeline.rs",
       "token_cost": 31,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-persistent-protocol-changes",
+      "content": "Modified 4 files (+1416, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/persistent.rs, tests/persistent_protocol_integration.rs",
+      "token_cost": 35,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T13:18:07Z"
+  "constructed_at": "2026-04-19T13:31:32Z"
 }
