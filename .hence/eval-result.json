@@ -3,28 +3,37 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 822,
-    "deletions": 7,
+    "files_changed": 14,
+    "insertions": 510,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "docs/ecosystems/mdbook.md",
-      "src/ecosystems/mdbook.rs",
-      "tests/mdbook_adapter_integration.rs",
-      "tools/zetl-mdbook-envelope-schema-v1.json"
+      "tests/ecosystem-fixtures/mdbook/mdbook-admonish/README.md",
+      "tests/ecosystem-fixtures/mdbook/mdbook-admonish/expected.html",
+      "tests/ecosystem-fixtures/mdbook/mdbook-admonish/input.md",
+      "tests/ecosystem-fixtures/mdbook/mdbook-katex/README.md",
+      "tests/ecosystem-fixtures/mdbook/mdbook-katex/expected.html",
+      "tests/ecosystem-fixtures/mdbook/mdbook-katex/input.md",
+      "tests/ecosystem-fixtures/mdbook/mdbook-mermaid/README.md",
+      "tests/ecosystem-fixtures/mdbook/mdbook-mermaid/expected.html",
+      "tests/ecosystem-fixtures/mdbook/mdbook-mermaid/input.md",
+      "tests/ecosystem-fixtures/mdbook/mdbook-toc/README.md",
+      "tests/ecosystem-fixtures/mdbook/mdbook-toc/expected.html",
+      "tests/ecosystem-fixtures/mdbook/mdbook-toc/input.md",
+      "tools/zetl-ecosystem-matrix.toml"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-mdbook-envelope-changes",
-      "content": "Modified 5 files (+822, -7): .hence/context-manifest.json, docs/ecosystems/mdbook.md, src/ecosystems/mdbook.rs, tests/mdbook_adapter_integration.rs, tools/zetl-mdbook-envelope-schema-v1.json",
+      "key": "task-mdbook-matrix-seed-changes",
+      "content": "Modified 14 files (+510, -6): .hence/context-manifest.json, tests/ecosystem-fixtures/mdbook/mdbook-admonish/README.md, tests/ecosystem-fixtures/mdbook/mdbook-admonish/expected.html, tests/ecosystem-fixtures/mdbook/mdbook-admonish/input.md, tests/ecosystem-fixtures/mdbook/mdbook-katex/README.md and 9 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/mdbook-envelope-v1",
-  "evaluated_at": "2026-04-19T23:36:01Z",
+  "branch_name": "hence/mdbook-matrix-seed-v1",
+  "evaluated_at": "2026-04-19T23:43:25Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
