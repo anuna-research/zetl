@@ -1,12 +1,12 @@
 {
-  "task_id": "helper-contracts",
+  "task_id": "ext-golden-html",
   "token_budget": 8000,
-  "tokens_used": 328,
+  "tokens_used": 320,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Cross-implementation contract tests per REQ-3210 / CON-3210. Same fixture corpus runs against py + js + native Rust harness; all three must agree bit-for-bit on AST transforms.",
-      "token_cost": 44,
+      "content": "Shared golden-HTML harness per CON-3212. Per-extension fixture format; update via `cargo xtask update-golden`; review gate on human-readable diffs.",
+      "token_cost": 36,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T17:16:42Z"
+  "constructed_at": "2026-04-19T17:30:14Z"
 }

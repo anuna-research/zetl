@@ -27,3 +27,8 @@ steps:
       # tools/zetl-ast-schema-v1.json. A drift between the two is a CI
       # failure — --check exits nonzero on any diff.
       - cargo run -p zetl-ast-reference-gen -- --check
+      # SPEC-032 CON-3212 canonical-extension golden-HTML gate. Walks
+      # tests/extension-fixtures/ and fails on any fixture whose
+      # rendered output drifts from expected.html after whitespace +
+      # attribute-order normalisation.
+      - make ext-golden
