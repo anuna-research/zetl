@@ -1,12 +1,12 @@
 {
-  "task_id": "build-data-channel",
+  "task_id": "ast-types-rust",
   "token_budget": 8000,
-  "tokens_used": 89,
+  "tokens_used": 106,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Shared build-scoped data channel per REQ-3219 / CON-3219. `build_data` mutable dict threaded across pages with concurrency-safe semantics (sharding + finalise-stage merge).",
-      "token_cost": 43,
+      "content": "Rust representation of zetl-ext AST with serde round-trip to schema. Internal representation used by pre-parse/transform/post-render pipeline.",
+      "token_cost": 35,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 3 files (+698, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/pipeline.rs",
       "token_cost": 24,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-build-data-channel-changes",
+      "content": "Modified 3 files (+871, -5): .hence/context-manifest.json, src/hooks/build_data.rs, src/hooks/mod.rs",
+      "token_cost": 25,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T12:39:15Z"
+  "constructed_at": "2026-04-19T12:49:13Z"
 }

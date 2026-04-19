@@ -19,9 +19,10 @@
 //! failure scoping (REQ-3207), template-variable publishing (REQ-3214),
 //! and observability (SPEC-032 §9).
 //!
-//! The `AstDocument` type used by the `transform` stage is a
-//! `serde_json::Value` placeholder until `task-ast-types-rust` lands the
-//! Rust representation of the zetl-ext schema (tools/zetl-ast-schema-v1.json).
+//! The `AstDocument` type at the `transform` stage is the typed Rust
+//! mirror of the zetl-ext schema ([`crate::hooks::ast::Document`]), landed
+//! in `task-ast-types-rust`. See `tools/zetl-ast-schema-v1.json` for the
+//! on-disk contract.
 
 use std::time::{Duration, Instant};
 
@@ -61,12 +62,14 @@ impl std::fmt::Display for Stage {
     }
 }
 
-/// Placeholder AST type for the `transform` stage.
+/// AST type exchanged at the `transform` stage boundary.
 ///
-/// Swapped to the typed AST representation produced by `task-ast-types-rust`
-/// once that scaffolding lands. Keeping the boundary as `serde_json::Value`
-/// lets this task compile independently of the AST-types branch.
-pub type AstDocument = serde_json::Value;
+/// Aliases [`crate::hooks::ast::Document`] — the Rust representation of the
+/// zetl-ext schema (SPEC-032 REQ-3202). Transform hooks receive and return
+/// a fully-typed `Document`, not raw JSON; serialisation/deserialisation
+/// across the persistent-mode protocol happens via `serde_json` at the
+/// process boundary, but the pipeline itself operates on the typed value.
+pub type AstDocument = crate::hooks::ast::Document;
 
 /// Error raised by a single hook invocation.
 ///
@@ -329,7 +332,9 @@ mod tests {
         }
     }
 
-    /// transform hook: pushes a marker into the AST's `marks` array.
+    /// transform hook: pushes a marker Text node into the AST's first
+    /// paragraph so downstream render assertions can prove execution order
+    /// against a typed [`AstDocument`].
     struct TagTransform {
         id: String,
         marker: &'static str,
@@ -342,13 +347,21 @@ mod tests {
             &self.id
         }
         fn run(&self, mut input: AstDocument) -> Result<AstDocument, HookError> {
+            use crate::hooks::ast::{Block, Inline, Position, Text};
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.trace.lock().unwrap().push(format!("tf:{}", self.id));
-            let marks = input
-                .get_mut("marks")
-                .and_then(|m| m.as_array_mut())
-                .expect("fixture AST must carry a `marks` array");
-            marks.push(serde_json::Value::String(self.marker.to_string()));
+            let para = input
+                .children
+                .iter_mut()
+                .find_map(|b| match b {
+                    Block::Paragraph(p) => Some(p),
+                    _ => None,
+                })
+                .expect("fixture AST must carry a Paragraph");
+            para.children.push(Inline::Text(Text {
+                position: Position::origin(),
+                text: format!("|{}", self.marker),
+            }));
             Ok(input)
         }
     }
@@ -372,32 +385,58 @@ mod tests {
         }
     }
 
-    /// Fixture parse: wraps the incoming text as the AST's `raw` field plus
-    /// an empty `marks` array that transform hooks append to.
+    /// Fixture parse: wraps the incoming text in a typed single-paragraph
+    /// [`AstDocument`]. Transform hooks append Text children to the
+    /// paragraph; render flattens them back out so assertions can prove the
+    /// full `pre-parse → parse → transform → render` data flow against the
+    /// real AST types rather than a JSON stand-in.
     fn parse(text: &str) -> AstDocument {
-        serde_json::json!({
-            "ast_version": "1.0",
-            "type": "Document",
-            "raw": text,
-            "marks": [],
-        })
+        use crate::hooks::ast::{
+            Block, Document, DocumentKind, Inline, Paragraph, Position, Text, AST_VERSION,
+        };
+        Document {
+            ast_version: AST_VERSION.to_string(),
+            kind: DocumentKind::Document,
+            position: Position::origin(),
+            frontmatter: None,
+            children: vec![Block::Paragraph(Paragraph {
+                position: Position::origin(),
+                children: vec![Inline::Text(Text {
+                    position: Position::origin(),
+                    text: text.to_string(),
+                })],
+            })],
+        }
     }
 
-    /// Fixture render: serialises the AST's raw text + marks into a string
-    /// so downstream assertions can prove transform hooks ran before render.
+    /// Fixture render: concatenates the text runs of the first paragraph.
+    /// Output shape is `<p>{raw text} |marks={marker1,marker2,...}</p>`
+    /// matching the original JSON-based fixture's wire format so existing
+    /// assertions continue to hold.
     fn render(ast: &AstDocument) -> String {
-        let raw = ast.get("raw").and_then(|v| v.as_str()).unwrap_or("");
-        let marks = ast
-            .get("marks")
-            .and_then(|m| m.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-                    .join(",")
-            })
-            .unwrap_or_default();
-        format!("<p>{raw} |marks={marks}</p>")
+        use crate::hooks::ast::{Block, Inline};
+        let para = ast.children.iter().find_map(|b| match b {
+            Block::Paragraph(p) => Some(p),
+            _ => None,
+        });
+        let (raw_parts, marker_parts): (Vec<&str>, Vec<&str>) = match para {
+            Some(p) => {
+                let mut raw = Vec::new();
+                let mut marks = Vec::new();
+                for child in &p.children {
+                    if let Inline::Text(t) = child {
+                        if let Some(rest) = t.text.strip_prefix('|') {
+                            marks.push(rest);
+                        } else {
+                            raw.push(t.text.as_str());
+                        }
+                    }
+                }
+                (raw, marks)
+            }
+            None => (Vec::new(), Vec::new()),
+        };
+        format!("<p>{} |marks={}</p>", raw_parts.join(""), marker_parts.join(","))
     }
 
     // ── Tests ───────────────────────────────────────────────────────────────

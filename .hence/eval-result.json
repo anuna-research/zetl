@@ -3,26 +3,30 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 871,
-    "deletions": 5,
+    "files_changed": 7,
+    "insertions": 1570,
+    "deletions": 41,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/build_data.rs",
-      "src/hooks/mod.rs"
+      "Cargo.lock",
+      "Cargo.toml",
+      "src/hooks/ast/mod.rs",
+      "src/hooks/mod.rs",
+      "src/hooks/pipeline.rs",
+      "tests/ast_schema_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-build-data-channel-changes",
-      "content": "Modified 3 files (+871, -5): .hence/context-manifest.json, src/hooks/build_data.rs, src/hooks/mod.rs",
+      "key": "task-ast-types-rust-changes",
+      "content": "Modified 7 files (+1570, -41): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/hooks/ast/mod.rs, src/hooks/mod.rs and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/build-data-channel-v1",
-  "evaluated_at": "2026-04-19T12:49:07Z",
+  "branch_name": "hence/ast-types-rust-v1",
+  "evaluated_at": "2026-04-19T13:09:02Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
