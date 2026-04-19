@@ -1,0 +1,206 @@
+;; Plan — web UI performance pass (2026-04-19)
+;; Branch: perf/web-audit-2026-04-19
+;; Source: research/perf-audit-2026-04-19.md
+
+(meta plan
+  (id "PERF-AUDIT-2026-04-19")
+  (title "Web UI performance pass")
+  (version "1.0.0")
+  (status "active")
+  (created "2026-04-19")
+  (author "agent:claude")
+  (spec "research/perf-audit-2026-04-19.md")
+  (description
+   "Address findings from the 2026-04-19 perf audit: compression, static caching, inline-style/script extraction, preload hints, font optimisation, graph bundle deferral."))
+
+;; ----------------------------------------------------------------------------
+;; Agents
+;; ----------------------------------------------------------------------------
+
+(given agent-backend-available)
+(given agent-frontend-available)
+(given agent-designer-available)
+
+(given completed-perf-audit)
+
+;; ----------------------------------------------------------------------------
+;; Tasks
+;; ----------------------------------------------------------------------------
+
+;; ---- P0: compression + cache ---------------------------------------------
+
+(given task-compression-layer)
+(meta task-compression-layer
+  (priority "P0")
+  (description "Wire tower-http CompressionLayer into the axum stack so text/html, text/css, application/javascript, application/json responses serve gzip + brotli when the client supports it.")
+  (acceptance "curl -H 'Accept-Encoding: gzip,br' / returns Content-Encoding; bytes over the wire drop ≥70% on /, /_graph, /_static/theme.css."))
+
+(given task-static-cache-headers)
+(meta task-static-cache-headers
+  (priority "P0")
+  (description "static_handler emits Cache-Control: public, max-age=31536000, immutable for files under vendor/ and fonts, and a shorter (e.g. 1h) TTL for theme.css / *.js in the theme's static/ root. Serve-mode Cache-Control parity with build-mode _headers.")
+  (acceptance "curl -D - /_static/vendor/sigma/sigma.min.js shows immutable Cache-Control; theme.css shows public, max-age=3600 (or equivalent)."))
+
+;; ---- P0: shell CSS + script extraction ------------------------------------
+
+(given task-extract-shell-css)
+(meta task-extract-shell-css
+  (priority "P0")
+  (description "Move the 25 KB inline <style> block from themes/default/base.html into themes/default/static/shell.css. Reference via <link rel='preload' as='style'> then <link rel='stylesheet'>. Budget: shaves ~25 KB per HTML page in build mode.")
+  (acceptance "base.html inline style block is ≤ 2 KB (just wordmark + drawer tweaks); shell.css exists and is served; home page HTML ≤ 85 KB uncompressed."))
+
+(given task-extract-transclusion-script)
+(meta task-extract-transclusion-script
+  (priority "P0")
+  (description "Move the inline <script> from page.html (~55 KB — transclusion bridge SVG + wikilink colouring + edit toggle) into themes/default/static/page.js. Load with defer.")
+  (acceptance "page.html inline script is ≤ 5 KB; page.js fetched once and cached; page rendering unchanged visually."))
+
+(given task-extract-graph-boot-script)
+(meta task-extract-graph-boot-script
+  (priority "P1")
+  (description "Move the ~55 KB inline <script> in _graph.html (window.__zetlBootGraph) into themes/default/static/graph-boot.js. The file is included via {% include %} so it's duplicated into multiple pages — externalising it means the browser fetches once and caches.")
+  (acceptance "_graph.html renders with a <script src='.../graph-boot.js' defer>; window.__zetlBootGraph still available; /_graph functionality unchanged."))
+
+;; ---- P1: asset hints + search index ---------------------------------------
+
+(given task-preload-hints)
+(meta task-preload-hints
+  (priority "P1")
+  (description "Add <link rel='preload' as='style' href='{static}/theme.css'> and <link rel='modulepreload' href='{static}/spa.js'> to base.html <head>, above the blocking link/script tags. Also rel=preconnect for fonts.googleapis.com if still in use.")
+  (acceptance "Chrome preload scanner starts fetching theme.css + spa.js before body parse; Lighthouse no longer flags 'render-blocking resources' for theme.css."))
+
+(given task-search-index-external)
+(meta task-search-index-external
+  (priority "P2")
+  (description "Drop the inlined <script type='application/json' id='zetl-search-index'> from base.html; fetch it via /search-index.json with Cache-Control. Build mode already emits that file.")
+  (acceptance "Inline search index removed from every page; /search-index.json reachable in serve mode with 1h cache; search UI still works offline after first fetch."))
+
+;; ---- P1: font optimisation -----------------------------------------------
+
+(given task-font-woff2)
+(meta task-font-woff2
+  (priority "P1")
+  (description "Convert Inter-Regular.ttf and Inter-Bold.ttf to .woff2 (400→140 KB, 420→150 KB each). Update theme.css @font-face. Ship ttf as fallback if older Safari support matters.")
+  (acceptance "Font transfer drops from 832 KB to ~300 KB; no visual regression in Chrome/Safari/Firefox; verify via Network tab."))
+
+(given task-font-display-swap)
+(meta task-font-display-swap
+  (priority "P2")
+  (description "Add font-display: swap to @font-face in theme.css so the UI renders in a system fallback while Inter loads.")
+  (acceptance "First paint shows text in system font; Inter swaps in on load without blocking paint."))
+
+;; ---- P1: graph deferral ---------------------------------------------------
+
+(given task-graph-vendor-defer)
+(meta task-graph-vendor-defer
+  (priority "P1")
+  (description "Audit window.__zetlEnsureGraph — verify the ~190 KB Sigma+graphology bundle is NOT fetched on non-/_graph pages until the user hovers/expands the docked widget. If it's eager, make it lazy.")
+  (acceptance "Chrome Network tab on / shows 0 bytes fetched for /_static/vendor/sigma/*.js until the graph widget is interacted with; /_graph still eager-loads as before."))
+
+;; ---- P2: CSS purge --------------------------------------------------------
+
+(given task-css-purge)
+(meta task-css-purge
+  (priority "P2")
+  (description "Run Tailwind's purge step against themes/default/**/*.html to eliminate the 180+ KiB of unused CSS rules in theme.css. Document the build command (Makefile target) so future theme edits regenerate the file.")
+  (acceptance "theme.css drops from 179 KB to ≤40 KB without visual regression; Makefile gains a 'make theme-css' target; CI optional."))
+
+;; ---- P2: HTML response hints ----------------------------------------------
+
+(given task-html-etag)
+(meta task-html-etag
+  (priority "P2")
+  (description "Emit weak ETags on dynamic page responses (hash of content). Browsers that reload will get 304 Not Modified on unchanged pages.")
+  (acceptance "curl -H 'If-None-Match: <etag>' /<page> returns 304 when content unchanged; response-body bytes are 0 on match."))
+
+(given task-brotli-precompress-build)
+(meta task-brotli-precompress-build
+  (priority "P3")
+  (description "In zetl build, pre-compress .html, .css, .js, .json to .br files alongside the originals. Most static hosts (Netlify/Cloudflare/nginx) serve the .br variant automatically when supported.")
+  (acceptance "dist/*.{html,css,js,json} each has a sibling .br file roughly 1/4 the size; _headers entries unchanged."))
+
+;; ---- P3: server-side render sidebar --------------------------------------
+
+(given task-sidebar-render-cache)
+(meta task-sidebar-render-cache
+  (priority "P3")
+  (description "The sidebar folder-tree is identical for every page in a build. Cache the rendered HTML string once per build/request and splice it into every page template to cut template-engine CPU.")
+  (acceptance "Microbenchmark shows per-page render time drops ≥10% on a 500-page vault; rendered HTML byte-for-byte identical to pre-change."))
+
+;; ---- P3: 103 early hints -------------------------------------------------
+
+(given task-103-early-hints)
+(meta task-103-early-hints
+  (priority "P3")
+  (description "Emit HTTP 103 Early Hints with Link: preload headers for theme.css + spa.js before the 200 response finishes rendering. Supported by hyper/axum.")
+  (acceptance "curl -v / shows a 103 interim response with Link headers before the 200; Chrome uses the hint (visible in DevTools Network timing)."))
+
+;; ----------------------------------------------------------------------------
+;; Readiness rules — every task ready once the audit exists
+;; ----------------------------------------------------------------------------
+
+(normally r-ready-compression-layer
+  (and task-compression-layer completed-perf-audit) ready-compression-layer)
+(normally r-ready-static-cache-headers
+  (and task-static-cache-headers completed-perf-audit) ready-static-cache-headers)
+(normally r-ready-extract-shell-css
+  (and task-extract-shell-css completed-perf-audit) ready-extract-shell-css)
+(normally r-ready-extract-transclusion-script
+  (and task-extract-transclusion-script completed-perf-audit) ready-extract-transclusion-script)
+(normally r-ready-extract-graph-boot-script
+  (and task-extract-graph-boot-script completed-perf-audit) ready-extract-graph-boot-script)
+(normally r-ready-preload-hints
+  (and task-preload-hints completed-perf-audit) ready-preload-hints)
+(normally r-ready-search-index-external
+  (and task-search-index-external completed-perf-audit) ready-search-index-external)
+(normally r-ready-font-woff2
+  (and task-font-woff2 completed-perf-audit) ready-font-woff2)
+(normally r-ready-font-display-swap
+  (and task-font-display-swap completed-perf-audit) ready-font-display-swap)
+(normally r-ready-graph-vendor-defer
+  (and task-graph-vendor-defer completed-perf-audit) ready-graph-vendor-defer)
+(normally r-ready-css-purge
+  (and task-css-purge completed-perf-audit) ready-css-purge)
+(normally r-ready-html-etag
+  (and task-html-etag completed-perf-audit) ready-html-etag)
+(normally r-ready-brotli-precompress-build
+  (and task-brotli-precompress-build completed-perf-audit) ready-brotli-precompress-build)
+(normally r-ready-sidebar-render-cache
+  (and task-sidebar-render-cache completed-perf-audit) ready-sidebar-render-cache)
+(normally r-ready-103-early-hints
+  (and task-103-early-hints completed-perf-audit) ready-103-early-hints)
+
+;; ----------------------------------------------------------------------------
+;; Assignment rules
+;; ----------------------------------------------------------------------------
+
+(normally r-a-compression-layer
+  (and ready-compression-layer agent-backend-available) assign-to-compression-layer-backend)
+(normally r-a-static-cache-headers
+  (and ready-static-cache-headers agent-backend-available) assign-to-static-cache-headers-backend)
+(normally r-a-extract-shell-css
+  (and ready-extract-shell-css agent-frontend-available) assign-to-extract-shell-css-frontend)
+(normally r-a-extract-transclusion-script
+  (and ready-extract-transclusion-script agent-frontend-available) assign-to-extract-transclusion-script-frontend)
+(normally r-a-extract-graph-boot-script
+  (and ready-extract-graph-boot-script agent-frontend-available) assign-to-extract-graph-boot-script-frontend)
+(normally r-a-preload-hints
+  (and ready-preload-hints agent-frontend-available) assign-to-preload-hints-frontend)
+(normally r-a-search-index-external
+  (and ready-search-index-external agent-frontend-available) assign-to-search-index-external-frontend)
+(normally r-a-font-woff2
+  (and ready-font-woff2 agent-designer-available) assign-to-font-woff2-designer)
+(normally r-a-font-display-swap
+  (and ready-font-display-swap agent-designer-available) assign-to-font-display-swap-designer)
+(normally r-a-graph-vendor-defer
+  (and ready-graph-vendor-defer agent-frontend-available) assign-to-graph-vendor-defer-frontend)
+(normally r-a-css-purge
+  (and ready-css-purge agent-designer-available) assign-to-css-purge-designer)
+(normally r-a-html-etag
+  (and ready-html-etag agent-backend-available) assign-to-html-etag-backend)
+(normally r-a-brotli-precompress-build
+  (and ready-brotli-precompress-build agent-backend-available) assign-to-brotli-precompress-build-backend)
+(normally r-a-sidebar-render-cache
+  (and ready-sidebar-render-cache agent-backend-available) assign-to-sidebar-render-cache-backend)
+(normally r-a-103-early-hints
+  (and ready-103-early-hints agent-backend-available) assign-to-103-early-hints-backend)

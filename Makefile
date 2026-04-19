@@ -52,6 +52,14 @@ fmt:
 fmt-fix:
 	cargo fmt
 
+# Rebuild themes/default/static/theme.css from the Tailwind + DaisyUI pipeline
+# under tools/theme-build/default/. Runs Tailwind's content scan so unused
+# classes get purged based on the current templates + JS under themes/default/.
+# npm install is idempotent — the first run pulls ~120 MB of tailwind + plugins
+# into tools/theme-build/default/node_modules and subsequent runs are fast.
+theme-css:
+	cd tools/theme-build/default && npm install --silent && npm run build
+
 install: build
 	install -d $(PREFIX)/bin $(MANDIR) $(BASHCOMPDIR) $(ZSHCOMPDIR) $(FISHCOMPDIR)
 	install -m 755 target/release/zetl $(PREFIX)/bin/zetl

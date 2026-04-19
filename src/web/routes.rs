@@ -2010,7 +2010,12 @@ pub async fn static_handler(
         };
 
         let mime = mime_from_ext(&req_path);
-        return ([(header::CONTENT_TYPE, mime)], body).into_response();
+        let cache = static_cache_control(&req_path);
+        return (
+            [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, cache)],
+            body,
+        )
+            .into_response();
     }
 
     // 3. Fall back to the compile-time-bundled theme's `static/` dir. This
@@ -2021,12 +2026,38 @@ pub async fn static_handler(
         for (rel, bytes) in bundled_theme_files(&state.theme) {
             if rel == bundled_rel {
                 let mime = mime_from_ext(&req_path);
-                return ([(header::CONTENT_TYPE, mime)], bytes).into_response();
+                let cache = static_cache_control(&req_path);
+                return (
+                    [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, cache)],
+                    bytes,
+                )
+                    .into_response();
             }
         }
     }
 
     StatusCode::NOT_FOUND.into_response()
+}
+
+/// Pick a Cache-Control header for a /_static/<path> request.
+///
+/// Vendor bundles and font files are treated as immutable content for a
+/// year — these don't change between theme versions without a rename, so
+/// aggressive caching is safe. Everything else in /_static/ gets a
+/// one-hour public cache so theme tweaks propagate within a working
+/// session without forcing a refetch on every click.
+fn static_cache_control(req_path: &str) -> &'static str {
+    let lower = req_path.to_ascii_lowercase();
+    let is_vendor = lower.starts_with("vendor/") || lower.contains("/vendor/");
+    let is_font = matches!(
+        lower.rsplit('.').next().unwrap_or(""),
+        "woff" | "woff2" | "ttf" | "otf" | "eot"
+    );
+    if is_vendor || is_font {
+        "public, max-age=31536000, immutable"
+    } else {
+        "public, max-age=3600"
+    }
 }
 
 /// Infer a MIME type from a file path's extension.
@@ -5624,6 +5655,33 @@ pub async fn api_graph_handler(
         stats,
     })
     .into_response()
+}
+
+// ── GET /pages.json — lightweight search-index served at a fixed URL ────
+//
+// Mirrors the build-mode `<out-dir>/pages.json` asset. Returns the same
+// `[{"n": title, "s": slug}, ...]` short-key JSON the sidebar search JS
+// already knows how to parse, so the same client-side code handles serve
+// + build without conditionals. Cached for one hour (shared + browser);
+// small enough and cheap enough to regenerate if the vault changes.
+pub async fn pages_json_handler(State(state): State<WebState>) -> Response {
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+    let vault_ctx = crate::web::context::build_vault_context(&data, &vault_name);
+    let body = crate::web::engine::build_search_index(&vault_ctx);
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        body,
+    )
+        .into_response()
 }
 
 // ── GET /graph-index.json — graphology CON-101 export (REQ-103) ──────────
