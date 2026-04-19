@@ -1,12 +1,12 @@
 {
-  "task_id": "eco-feature-flags",
+  "task_id": "eco-translators-scaffold",
   "token_budget": 8000,
-  "tokens_used": 321,
+  "tokens_used": 334,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Per-ecosystem Cargo features: `ecosystem-pandoc`, `ecosystem-mdbook`, `ecosystem-remark`, umbrella `ecosystems-v1`. Binary size impact per NFR-3304.",
-      "token_cost": 37,
+      "content": "Translator module scaffolding with property-test harness per NFR-3305. Round-trip fidelity: zetl-ext → native → zetl-ext produces canonical-equivalent form (relaxed from byte-identity per NFR-3305).",
+      "token_cost": 50,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T19:24:15Z"
+  "constructed_at": "2026-04-19T19:32:46Z"
 }
