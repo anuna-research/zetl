@@ -3,29 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 648,
-    "deletions": 5,
+    "files_changed": 5,
+    "insertions": 989,
+    "deletions": 31,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/ecosystems/mod.rs",
-      "src/ecosystems/registry.rs",
-      "src/lib.rs",
-      "tests/ecosystems_registry_integration.rs",
-      "tools/zetl-ecosystem-matrix.toml"
+      "src/hooks/failure_scoping.rs",
+      "src/hooks/mod.rs",
+      "src/hooks/pipeline.rs",
+      "tests/failure_scoping_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-eco-registry-changes",
-      "content": "Modified 6 files (+648, -5): .hence/context-manifest.json, src/ecosystems/mod.rs, src/ecosystems/registry.rs, src/lib.rs, tests/ecosystems_registry_integration.rs and 1 more",
+      "key": "task-failure-scoping-changes",
+      "content": "Modified 5 files (+989, -31): .hence/context-manifest.json, src/hooks/failure_scoping.rs, src/hooks/mod.rs, src/hooks/pipeline.rs, tests/failure_scoping_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/eco-registry-v1",
-  "evaluated_at": "2026-04-19T15:22:48Z",
+  "branch_name": "hence/failure-scoping-v1",
+  "evaluated_at": "2026-04-19T15:34:02Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
