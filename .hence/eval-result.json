@@ -3,27 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 1378,
-    "deletions": 14,
+    "files_changed": 5,
+    "insertions": 107,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/ecosystems/adapter.rs",
-      "src/ecosystems/mod.rs",
-      "tests/adapter_trait_integration.rs"
+      ".woodpecker/ci.yaml",
+      "Cargo.toml",
+      "Makefile",
+      "tests/ecosystems_registry_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-adapter-trait-changes",
-      "content": "Modified 4 files (+1378, -14): .hence/context-manifest.json, src/ecosystems/adapter.rs, src/ecosystems/mod.rs, tests/adapter_trait_integration.rs",
+      "key": "task-eco-feature-flags-changes",
+      "content": "Modified 5 files (+107, -6): .hence/context-manifest.json, .woodpecker/ci.yaml, Cargo.toml, Makefile, tests/ecosystems_registry_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/adapter-trait-v1",
-  "evaluated_at": "2026-04-19T19:24:09Z",
+  "branch_name": "hence/eco-feature-flags-v1",
+  "evaluated_at": "2026-04-19T19:32:40Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
