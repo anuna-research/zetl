@@ -3,35 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 12,
-    "insertions": 267,
-    "deletions": 6,
+    "files_changed": 6,
+    "insertions": 901,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "tests/ecosystem-fixtures/pandoc/pandoc-citeproc/README.md",
-      "tests/ecosystem-fixtures/pandoc/pandoc-citeproc/expected.html",
-      "tests/ecosystem-fixtures/pandoc/pandoc-citeproc/input.md",
-      "tests/ecosystem-fixtures/pandoc/pandoc-citeproc/references.bib",
-      "tests/ecosystem-fixtures/pandoc/pandoc-crossref/README.md",
-      "tests/ecosystem-fixtures/pandoc/pandoc-crossref/expected.html",
-      "tests/ecosystem-fixtures/pandoc/pandoc-crossref/input.md",
-      "tests/ecosystem-fixtures/pandoc/pantable/README.md",
-      "tests/ecosystem-fixtures/pandoc/pantable/expected.html",
-      "tests/ecosystem-fixtures/pandoc/pantable/input.md",
-      "tools/zetl-ecosystem-matrix.toml"
+      "src/cli.rs",
+      "src/main.rs",
+      "src/parsers/mixed_eco.rs",
+      "src/parsers/mod.rs",
+      "tests/mixed_eco_diagnostic_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-pandoc-matrix-seed-changes",
-      "content": "Modified 12 files (+267, -6): .hence/context-manifest.json, tests/ecosystem-fixtures/pandoc/pandoc-citeproc/README.md, tests/ecosystem-fixtures/pandoc/pandoc-citeproc/expected.html, tests/ecosystem-fixtures/pandoc/pandoc-citeproc/input.md, tests/ecosystem-fixtures/pandoc/pandoc-citeproc/references.bib and 7 more",
+      "key": "task-mixed-eco-diagnostic-changes",
+      "content": "Modified 6 files (+901, -5): .hence/context-manifest.json, src/cli.rs, src/main.rs, src/parsers/mixed_eco.rs, src/parsers/mod.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/pandoc-matrix-seed-v1",
-  "evaluated_at": "2026-04-19T22:43:11Z",
+  "branch_name": "hence/mixed-eco-diagnostic-v1",
+  "evaluated_at": "2026-04-19T22:58:41Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
