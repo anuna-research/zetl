@@ -1,12 +1,12 @@
 {
-  "task_id": "remark-matrix-seed",
+  "task_id": "remark-docs",
   "token_budget": 8000,
-  "tokens_used": 303,
+  "tokens_used": 308,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Seed matrix with remark-gfm, remark-math, remark-directive. Tier per checklist.",
-      "token_cost": 19,
+      "content": "docs/ecosystems/remark.md. Install (Node + harness bundled vs BYO), config, known-working plugins.",
+      "token_cost": 24,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T23:15:45Z"
+  "constructed_at": "2026-04-19T23:21:18Z"
 }
