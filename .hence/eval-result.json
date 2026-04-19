@@ -3,29 +3,34 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 861,
+    "files_changed": 11,
+    "insertions": 343,
     "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      ".woodpecker/ci.yaml",
-      "Makefile",
-      "src/ecosystems/mod.rs",
-      "src/ecosystems/nfr_gates.rs",
-      "tests/nfr_gates_033_integration.rs"
+      "tests/ecosystem-fixtures/remark/remark-directive/README.md",
+      "tests/ecosystem-fixtures/remark/remark-directive/expected.html",
+      "tests/ecosystem-fixtures/remark/remark-directive/input.md",
+      "tests/ecosystem-fixtures/remark/remark-gfm/README.md",
+      "tests/ecosystem-fixtures/remark/remark-gfm/expected.html",
+      "tests/ecosystem-fixtures/remark/remark-gfm/input.md",
+      "tests/ecosystem-fixtures/remark/remark-math/README.md",
+      "tests/ecosystem-fixtures/remark/remark-math/expected.html",
+      "tests/ecosystem-fixtures/remark/remark-math/input.md",
+      "tools/zetl-ecosystem-matrix.toml"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-nfr-gates-033-changes",
-      "content": "Modified 6 files (+861, -6): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, src/ecosystems/mod.rs, src/ecosystems/nfr_gates.rs and 1 more",
+      "key": "task-remark-matrix-seed-changes",
+      "content": "Modified 11 files (+343, -6): .hence/context-manifest.json, tests/ecosystem-fixtures/remark/remark-directive/README.md, tests/ecosystem-fixtures/remark/remark-directive/expected.html, tests/ecosystem-fixtures/remark/remark-directive/input.md, tests/ecosystem-fixtures/remark/remark-gfm/README.md and 6 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/nfr-gates-033-v1",
-  "evaluated_at": "2026-04-19T23:15:38Z",
+  "branch_name": "hence/remark-matrix-seed-v1",
+  "evaluated_at": "2026-04-19T23:21:12Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

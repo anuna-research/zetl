@@ -1,12 +1,12 @@
 {
-  "task_id": "nfr-gates-033",
+  "task_id": "remark-matrix-seed",
   "token_budget": 8000,
-  "tokens_used": 336,
+  "tokens_used": 303,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "SPEC-033 NFR gates: NFR-3301 cold-start, NFR-3302/3303 per-page latency, NFR-3304 binary size, NFR-3305 round-trip, NFR-3306 determinism, NFR-3307 process lifecycle, NFR-3308 combined-ecosystem budget (≤3×).",
-      "token_cost": 52,
+      "content": "Seed matrix with remark-gfm, remark-math, remark-directive. Tier per checklist.",
+      "token_cost": 19,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T23:02:32Z"
+  "constructed_at": "2026-04-19T23:15:45Z"
 }
