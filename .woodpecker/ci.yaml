@@ -32,3 +32,8 @@ steps:
       # rendered output drifts from expected.html after whitespace +
       # attribute-order normalisation.
       - make ext-golden
+      # SPEC-033 NFR-3304 / task-eco-feature-flags: each per-ecosystem
+      # cargo feature and the `ecosystems-v1` umbrella must compile in
+      # isolation, and a no-feature build must also compile. A regression
+      # here breaks the "minimal zetl binary" promise in REQ-3302.
+      - make eco-features-check
