@@ -1,11 +1,11 @@
 {
-  "task_id": "hook-dry-run",
+  "task_id": "ext-admonition",
   "token_budget": 8000,
   "tokens_used": 315,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl hook dry-run <page>` per REQ-3209. Runs all matching hooks against a single page; prints before/after diff; no writes.",
+      "content": "Admonition canonical-extension as thin stub. `ad-*` blocks (Obsidian) + `!!! note` (Python-Markdown MkDocs variant) recognised.",
       "token_cost": 31,
       "priority": "PlanMeta"
     },
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T18:21:40Z"
+  "constructed_at": "2026-04-19T18:32:01Z"
 }
