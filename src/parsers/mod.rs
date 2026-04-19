@@ -38,6 +38,13 @@
 //! [`ParseError::RuntimeUnavailable`] with an actionable hint until
 //! `task-pandoc-adapter` wires real Pandoc invocation.
 
+pub mod mixed_eco;
+
+pub use mixed_eco::{
+    detect_mixed_parsers, ecosystem_expected_parser, format_report as format_mixed_parser_report,
+    HookForDetection, MixedParserReport, MixedParserViolation, PageForDetection,
+};
+
 use std::collections::BTreeMap;
 use std::path::Path;
 
