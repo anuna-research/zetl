@@ -596,6 +596,118 @@ pub enum HookCommand {
         #[arg(last = true)]
         extra: Vec<String>,
     },
+    /// Scaffold a new render-pipeline hook (skeleton + manifest + fixture).
+    /// SPEC-032 REQ-3225.
+    #[command(
+        after_help = "Examples:\n  zetl hook new transform callouts\n  zetl hook new pre-parse prelude --lang sh\n  zetl hook new post-render banner --lang js"
+    )]
+    New {
+        /// Hook pipeline stage (pre-parse, transform, or post-render).
+        stage: AuthoringStage,
+        /// Extension id (also used as filename stem and template-var namespace).
+        name: String,
+        /// Implementation language for the scaffolded skeleton.
+        #[arg(long, value_enum, default_value_t = HookLang::Py)]
+        lang: HookLang,
+        /// Scaffold against an ecosystem plugin adapter (SPEC-033 stubs).
+        #[arg(long, value_enum)]
+        ecosystem: Option<HookEcosystem>,
+        /// Overwrite existing scaffold files.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Run a render-pipeline hook against its test fixture and diff the
+    /// output against the stored golden. Non-zero exit on mismatch.
+    /// SPEC-032 REQ-3225 / TEST-3225.
+    Test {
+        /// Hook extension id to test. Looks for the hook under
+        /// `.zetl/hooks/<stage>.d/<name>.*` and its fixture at
+        /// `tests/hook-fixtures/<name>/`.
+        name: String,
+        /// Regenerate the golden from the hook's current output instead
+        /// of diffing (equivalent to `cargo insta accept`).
+        #[arg(long)]
+        update: bool,
+    },
+    /// Capture a vault page's pre- and post-hook forms into the hook's
+    /// fixture directory. SPEC-032 REQ-3225.
+    Fixture {
+        /// Vault-relative page path (e.g. `projects/q2.md`; the `.md`
+        /// suffix is optional).
+        #[arg(long, value_name = "PAGE")]
+        from: String,
+        /// Hook extension id whose fixture is populated.
+        #[arg(long, value_name = "NAME")]
+        hook: String,
+    },
+    /// Watch a hook's source file and stream its stderr; restarts the
+    /// persistent-mode subprocess when the source changes.
+    /// SPEC-032 REQ-3225.
+    Watch {
+        /// Hook extension id to watch.
+        name: String,
+    },
+}
+
+/// Stage for `zetl hook new`. Matches the three on-disk `<stage>.d/`
+/// directory names from SPEC-032 REQ-3201.
+#[derive(Clone, ValueEnum, PartialEq, Eq, Debug)]
+pub enum AuthoringStage {
+    #[value(name = "pre-parse")]
+    PreParse,
+    Transform,
+    #[value(name = "post-render")]
+    PostRender,
+}
+
+impl AuthoringStage {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AuthoringStage::PreParse => "pre-parse",
+            AuthoringStage::Transform => "transform",
+            AuthoringStage::PostRender => "post-render",
+        }
+    }
+}
+
+/// Language selection for `zetl hook new`. The scaffolder writes a
+/// persistent-mode skeleton in the chosen language with a shebang so
+/// `chmod +x` suffices to make it runnable.
+#[derive(Clone, ValueEnum, PartialEq, Eq, Debug)]
+pub enum HookLang {
+    Py,
+    Js,
+    Sh,
+}
+
+impl HookLang {
+    pub fn ext(&self) -> &'static str {
+        match self {
+            HookLang::Py => "py",
+            HookLang::Js => "js",
+            HookLang::Sh => "sh",
+        }
+    }
+}
+
+/// Ecosystem adapter to target when scaffolding. `--ecosystem pandoc`
+/// produces a Lua filter stub alongside the Python wrapper, etc.
+/// SPEC-033 REQ-3303/3304/3305.
+#[derive(Clone, ValueEnum, PartialEq, Eq, Debug)]
+pub enum HookEcosystem {
+    Pandoc,
+    Mdbook,
+    Remark,
+}
+
+impl HookEcosystem {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HookEcosystem::Pandoc => "pandoc",
+            HookEcosystem::Mdbook => "mdbook",
+            HookEcosystem::Remark => "remark",
+        }
+    }
 }
 
 /// Pipeline stage at whose *input* boundary `zetl ast sample` emits a view
