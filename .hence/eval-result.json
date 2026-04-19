@@ -3,26 +3,30 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 515,
+    "files_changed": 7,
+    "insertions": 1727,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/diagnostic.rs",
-      "src/hooks/mod.rs"
+      "src/cli.rs",
+      "src/hooks/ast/diff.rs",
+      "src/hooks/ast/mod.rs",
+      "src/hooks/ast/parse.rs",
+      "src/main.rs",
+      "tests/ast_cli_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-diagnostic-design-changes",
-      "content": "Modified 3 files (+515, -5): .hence/context-manifest.json, src/hooks/diagnostic.rs, src/hooks/mod.rs",
+      "key": "task-ast-cli-changes",
+      "content": "Modified 7 files (+1727, -5): .hence/context-manifest.json, src/cli.rs, src/hooks/ast/diff.rs, src/hooks/ast/mod.rs, src/hooks/ast/parse.rs and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/diagnostic-design-v1",
-  "evaluated_at": "2026-04-19T14:57:24Z",
+  "branch_name": "hence/ast-cli-v1",
+  "evaluated_at": "2026-04-19T15:15:28Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
