@@ -93,6 +93,12 @@ urlencoding = "2.1.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
 imageproc = { version = "0.25", default-features = false }
 ab_glyph = "0.2"
+# Response compression for zetl serve (gzip + brotli).
+# Activated unconditionally on the axum stack; compression only kicks in
+# when the client sends Accept-Encoding matching a supported algorithm,
+# so adding this doesn't bloat binaries for non-serve commands — they
+# link the code but never execute it.
+tower-http = { version = "0.6", features = ["compression-gzip", "compression-br", "set-header"] }
 
 
 [dev-dependencies]

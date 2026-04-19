@@ -483,7 +483,12 @@ pub async fn run(
                     .unwrap(),
             );
             resp
-        }));
+        }))
+        // Response compression (PERF-AUDIT-2026-04-19 / task-compression-layer).
+        // Negotiates gzip or brotli based on Accept-Encoding; text responses
+        // typically shrink 5–8× with gzip and 7–10× with brotli. Applied
+        // *after* the CSP layer so the header still lands on every response.
+        .layer(tower_http::compression::CompressionLayer::new().gzip(true).br(true));
 
     let addr = format!("{bind_addr}:{port}");
     eprintln!("zetl serve  →  http://localhost:{port}");
