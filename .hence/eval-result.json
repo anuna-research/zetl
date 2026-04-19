@@ -3,27 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 1836,
+    "files_changed": 5,
+    "insertions": 2367,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/contract.rs",
       "src/hooks/mod.rs",
-      "tests/behavioural_contracts_integration.rs"
+      "src/hooks/predicate.rs",
+      "src/hooks/selector.rs",
+      "tests/selector_eval_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-behavioural-contracts-changes",
-      "content": "Modified 4 files (+1836, -5): .hence/context-manifest.json, src/hooks/contract.rs, src/hooks/mod.rs, tests/behavioural_contracts_integration.rs",
+      "key": "task-selector-eval-changes",
+      "content": "Modified 5 files (+2367, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/predicate.rs, src/hooks/selector.rs, tests/selector_eval_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/behavioural-contracts-v1",
-  "evaluated_at": "2026-04-19T16:33:20Z",
+  "branch_name": "hence/selector-eval-v1",
+  "evaluated_at": "2026-04-19T16:54:00Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

@@ -1,12 +1,12 @@
 {
-  "task_id": "behavioural-contracts",
+  "task_id": "selector-eval",
   "token_budget": 8000,
-  "tokens_used": 334,
+  "tokens_used": 330,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Behavioural contract declarations + enforcement per REQ-3224 / CON-3224. Fields: preserves, idempotent, may_restructure, pure, expansion_bound. Property-test harness validates claims against fixtures.",
-      "token_cost": 50,
+      "content": "Selector evaluator with short-circuit order path → content → frontmatter (REQ-3204 / CON-3204). Compile regexes once per build. Frontmatter predicate grammar per REQ-3205 / CON-3205.",
+      "token_cost": 46,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T16:21:16Z"
+  "constructed_at": "2026-04-19T16:33:27Z"
 }
