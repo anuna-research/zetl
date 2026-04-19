@@ -10,6 +10,7 @@
 //!   written to hook stdin.
 
 pub mod context;
+pub mod pipeline;
 
 use std::io::{Read, Write};
 #[cfg(unix)]
