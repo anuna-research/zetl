@@ -478,19 +478,21 @@ window.__zetlBootGraph = function(){
           if (hasSize()) renderer.refresh();
         });
 
-        /* Click/double-click disambiguation (fullscreen /_graph only):
-             single-click → focus the clicked node at depth 1 (show neighbours)
-             double-click → open the node's page
-           Rationale: once the user is exploring the graph, single-click is
-           the natural "tell me more about this node" gesture; requiring
-           two clicks to leave the graph keeps them in flow.
+        /* Click-to-focus UX on the fullscreen /_graph view:
+             click node (not yet focused) → focus at depth 1 (pan + highlight)
+             click node (already focused)  → navigate to its page
+             double-click (desktop fast path) → navigate
+             modifier+click → open in new tab
+           No timer / debounce — avoids the 300 ms mobile tap delay and
+           feels instant on touch. The "is it already focused?" check is
+           the only disambiguation, which is also intuitive: tap to learn
+           more, tap again to go.
 
            The docked mini-widget on ordinary pages keeps the legacy
            single-click-to-navigate because there's no focus UX available
-           in that small canvas — discovery comes from clicking through. */
+           in that small canvas — discovery there comes from clicking
+           through. */
         var isFullscreen = widget.getAttribute('data-placement') === 'fullscreen';
-        var CLICK_DELAY = 240;     /* ms */
-        var pendingClick = null;   /* { slug, timer } */
 
         function navigateToSlug(slug, original) {
           var href = ROOT + slug + '/' + INDEX_FILE;
@@ -551,33 +553,24 @@ window.__zetlBootGraph = function(){
             navigateToSlug(slug, orig);
             return;
           }
-          /* Fullscreen: single-click pends, second click within CLICK_DELAY
-             escalates to a double-click → navigate. */
-          if (pendingClick && pendingClick.slug === slug) {
-            clearTimeout(pendingClick.timer);
-            pendingClick = null;
+          /* Fullscreen: clicking the already-focused node navigates; clicking
+             any other node changes focus. */
+          if (focusState.slug === slug) {
             navigateToSlug(slug, orig);
-            return;
+          } else {
+            focusOnNodeFromClick(slug);
           }
-          if (pendingClick) clearTimeout(pendingClick.timer);
-          pendingClick = {
-            slug: slug,
-            timer: setTimeout(function(){
-              pendingClick = null;
-              focusOnNodeFromClick(slug);
-            }, CLICK_DELAY)
-          };
         });
 
-        /* If sigma emits its own doubleClickNode (v2+), use it to short-circuit
-           the pending single-click timer — faster than waiting the full 240 ms. */
+        /* Desktop fast-path: sigma emits doubleClickNode on mouse double-click
+           (touch doesn't reliably emit it). Navigate immediately without
+           requiring the click-focus-click dance. */
         renderer.on('doubleClickNode', function(evt){
           var slug = evt.node;
           if (!slug) return;
-          if (pendingClick) { clearTimeout(pendingClick.timer); pendingClick = null; }
           var orig = evt.event && evt.event.original;
           navigateToSlug(slug, orig);
-          /* Suppress the zoom-on-doubleclick that sigma defaults to. */
+          /* Suppress sigma's built-in doubleclick-to-zoom. */
           if (evt.preventSigmaDefault) evt.preventSigmaDefault();
         });
 
