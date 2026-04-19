@@ -34,6 +34,12 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod diff;
+pub mod parse;
+
+pub use diff::{diff_documents, AstDiff, AstDiffEntry, AstDiffKind};
+pub use parse::parse_markdown;
+
 /// The exact two-component schema version this crate emits at the root of
 /// every `Document`. Bumped additively per NFR-3206; a new major here is a
 /// breaking change to every hook that declares `ast_version = "1.x"`.

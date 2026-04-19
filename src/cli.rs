@@ -411,6 +411,15 @@ pub enum Command {
         command: HookCommand,
     },
 
+    /// Inspect the zetl-ext AST for a page or diff two AST documents
+    #[command(
+        after_help = "Examples:\n  zetl ast sample notes/page.md                  Print canonical AST JSON\n  zetl ast sample notes/page.md --stage pre-parse  Print raw markdown input\n  zetl ast diff before.json after.json           Tree diff of two AST files"
+    )]
+    Ast {
+        #[command(subcommand)]
+        command: AstCommand,
+    },
+
     /// Agent lifecycle integration
     Agent {
         #[command(subcommand)]
@@ -586,6 +595,44 @@ pub enum HookCommand {
         /// Extra JSON fields merged into the context (after --)
         #[arg(last = true)]
         extra: Vec<String>,
+    },
+}
+
+/// Pipeline stage at whose *input* boundary `zetl ast sample` emits a view
+/// of the page. `pre-parse` prints the raw markdown text (frontmatter
+/// stripped); `transform` prints the zetl-ext AST JSON; `post-render` prints
+/// the rendered HTML fragment.
+#[derive(Clone, ValueEnum, PartialEq, Eq, Debug, Default)]
+pub enum AstStage {
+    #[value(name = "pre-parse")]
+    PreParse,
+    #[default]
+    Transform,
+    #[value(name = "post-render")]
+    PostRender,
+}
+
+#[derive(Subcommand)]
+pub enum AstCommand {
+    /// Print the canonical zetl-ext AST (or pre-parse text / post-render
+    /// HTML) for a page file.
+    Sample {
+        /// Path to a Markdown file. Relative paths resolve against the
+        /// current working directory (not the vault root) so the command is
+        /// usable outside an indexed vault.
+        file: String,
+        /// Which pipeline stage's input to emit. Defaults to `transform`,
+        /// which prints the AST JSON a transform hook would receive.
+        #[arg(long, value_enum, default_value_t = AstStage::default())]
+        stage: AstStage,
+    },
+    /// Tree-aware structural diff of two zetl-ext AST JSON documents.
+    /// Exits non-zero when the diff is non-empty.
+    Diff {
+        /// Path to the *before* AST JSON file.
+        before: String,
+        /// Path to the *after* AST JSON file.
+        after: String,
     },
 }
 
