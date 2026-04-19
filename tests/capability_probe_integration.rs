@@ -68,6 +68,7 @@ fn mk_composed(exe_path: &Path, extension_id: &str, stage: Stage) -> ComposedHoo
         ast_type: AstType::ZetlExt,
         ast_version: None,
         preserves: Vec::new(),
+        ecosystem: None,
         disabled: None,
     }
 }
