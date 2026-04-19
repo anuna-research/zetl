@@ -2010,7 +2010,12 @@ pub async fn static_handler(
         };
 
         let mime = mime_from_ext(&req_path);
-        return ([(header::CONTENT_TYPE, mime)], body).into_response();
+        let cache = static_cache_control(&req_path);
+        return (
+            [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, cache)],
+            body,
+        )
+            .into_response();
     }
 
     // 3. Fall back to the compile-time-bundled theme's `static/` dir. This
@@ -2021,12 +2026,38 @@ pub async fn static_handler(
         for (rel, bytes) in bundled_theme_files(&state.theme) {
             if rel == bundled_rel {
                 let mime = mime_from_ext(&req_path);
-                return ([(header::CONTENT_TYPE, mime)], bytes).into_response();
+                let cache = static_cache_control(&req_path);
+                return (
+                    [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, cache)],
+                    bytes,
+                )
+                    .into_response();
             }
         }
     }
 
     StatusCode::NOT_FOUND.into_response()
+}
+
+/// Pick a Cache-Control header for a /_static/<path> request.
+///
+/// Vendor bundles and font files are treated as immutable content for a
+/// year — these don't change between theme versions without a rename, so
+/// aggressive caching is safe. Everything else in /_static/ gets a
+/// one-hour public cache so theme tweaks propagate within a working
+/// session without forcing a refetch on every click.
+fn static_cache_control(req_path: &str) -> &'static str {
+    let lower = req_path.to_ascii_lowercase();
+    let is_vendor = lower.starts_with("vendor/") || lower.contains("/vendor/");
+    let is_font = matches!(
+        lower.rsplit('.').next().unwrap_or(""),
+        "woff" | "woff2" | "ttf" | "otf" | "eot"
+    );
+    if is_vendor || is_font {
+        "public, max-age=31536000, immutable"
+    } else {
+        "public, max-age=3600"
+    }
 }
 
 /// Infer a MIME type from a file path's extension.
