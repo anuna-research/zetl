@@ -3,28 +3,35 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 2367,
-    "deletions": 5,
+    "files_changed": 12,
+    "insertions": 1915,
+    "deletions": 39,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/mod.rs",
-      "src/hooks/predicate.rs",
-      "src/hooks/selector.rs",
-      "tests/selector_eval_integration.rs"
+      "tools/zetl-ast-py/README.md",
+      "tools/zetl-ast-py/src/zetl_ast/__init__.py",
+      "tools/zetl-ast-py/src/zetl_ast/context.py",
+      "tools/zetl-ast-py/src/zetl_ast/manifest.py",
+      "tools/zetl-ast-py/src/zetl_ast/protocol.py",
+      "tools/zetl-ast-py/src/zetl_ast/run.py",
+      "tools/zetl-ast-py/tests/test_context.py",
+      "tools/zetl-ast-py/tests/test_manifest.py",
+      "tools/zetl-ast-py/tests/test_protocol.py",
+      "tools/zetl-ast-py/tests/test_run.py",
+      "tools/zetl-ast-py/tests/test_run_integration.py"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-selector-eval-changes",
-      "content": "Modified 5 files (+2367, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/predicate.rs, src/hooks/selector.rs, tests/selector_eval_integration.rs",
+      "key": "task-helper-py-changes",
+      "content": "Modified 12 files (+1915, -39): .hence/context-manifest.json, tools/zetl-ast-py/README.md, tools/zetl-ast-py/src/zetl_ast/__init__.py, tools/zetl-ast-py/src/zetl_ast/context.py, tools/zetl-ast-py/src/zetl_ast/manifest.py and 7 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/selector-eval-v1",
-  "evaluated_at": "2026-04-19T16:54:00Z",
+  "branch_name": "hence/helper-py-v1",
+  "evaluated_at": "2026-04-19T17:04:08Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
