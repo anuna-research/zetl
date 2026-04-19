@@ -3,31 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 911,
+    "files_changed": 6,
+    "insertions": 1007,
     "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
       ".woodpecker/ci.yaml",
       "Makefile",
-      "proptest-regressions/hooks/translators/roundtrip.txt",
-      "src/hooks/translators/canonicalise.rs",
-      "src/hooks/translators/mod.rs",
-      "src/hooks/translators/proptest_strategies.rs",
-      "src/hooks/translators/roundtrip.rs"
+      "src/hooks/mod.rs",
+      "src/hooks/nfr_gates.rs",
+      "tests/nfr_gates_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-eco-translators-scaffold-changes",
-      "content": "Modified 8 files (+911, -6): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, proptest-regressions/hooks/translators/roundtrip.txt, src/hooks/translators/canonicalise.rs and 3 more",
+      "key": "task-nfr-gates-032-changes",
+      "content": "Modified 6 files (+1007, -6): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, src/hooks/mod.rs, src/hooks/nfr_gates.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/eco-translators-scaffold-v1",
-  "evaluated_at": "2026-04-19T19:50:29Z",
+  "branch_name": "hence/nfr-gates-032-v1",
+  "evaluated_at": "2026-04-19T20:07:27Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
