@@ -478,12 +478,23 @@ window.__zetlBootGraph = function(){
           if (hasSize()) renderer.refresh();
         });
 
-        renderer.on('clickNode', function(evt){
-          var slug = evt.node;
-          if (!slug) return;
+        /* Click/double-click disambiguation (fullscreen /_graph only):
+             single-click → focus the clicked node at depth 1 (show neighbours)
+             double-click → open the node's page
+           Rationale: once the user is exploring the graph, single-click is
+           the natural "tell me more about this node" gesture; requiring
+           two clicks to leave the graph keeps them in flow.
+
+           The docked mini-widget on ordinary pages keeps the legacy
+           single-click-to-navigate because there's no focus UX available
+           in that small canvas — discovery comes from clicking through. */
+        var isFullscreen = widget.getAttribute('data-placement') === 'fullscreen';
+        var CLICK_DELAY = 240;     /* ms */
+        var pendingClick = null;   /* { slug, timer } */
+
+        function navigateToSlug(slug, original) {
           var href = ROOT + slug + '/' + INDEX_FILE;
-          var orig = evt.event && evt.event.original;
-          if (orig && (orig.metaKey || orig.ctrlKey || orig.shiftKey)) {
+          if (original && (original.metaKey || original.ctrlKey || original.shiftKey)) {
             window.open(href, '_blank', 'noopener');
             return;
           }
@@ -497,6 +508,77 @@ window.__zetlBootGraph = function(){
             return;
           }
           location.href = href;
+        }
+
+        function focusOnNodeFromClick(slug) {
+          focusState.slug = slug;
+          focusState.depth = 1;
+          recomputeFocus();
+          /* Pan camera to the focus node so it's obvious we moved. */
+          try {
+            var a = graph.getNodeAttributes(slug);
+            var cam = renderer.getCamera && renderer.getCamera();
+            if (cam && typeof a.x === 'number' && typeof a.y === 'number') {
+              cam.animate({ x: a.x, y: a.y, ratio: 0.4 }, { duration: 350 });
+            }
+          } catch (e) {}
+          renderer.refresh();
+          /* Reflect the new focus in the URL so refresh preserves it and the
+             focus chip in vault_graph.html picks it up via applyFocusFromUrl.
+             We also dispatch a synthetic event the chip listens to. */
+          try {
+            var url = new URL(location.href);
+            url.searchParams.set('focus', slug);
+            url.searchParams.set('depth', '1');
+            history.replaceState(null, '', url.toString());
+            window.dispatchEvent(new CustomEvent('zetl:graph:focus-changed', {
+              detail: { slug: slug, depth: 1 }
+            }));
+          } catch (e) {}
+        }
+
+        renderer.on('clickNode', function(evt){
+          var slug = evt.node;
+          if (!slug) return;
+          var orig = evt.event && evt.event.original;
+          /* Modifier keys always open the page, never focus — matches the
+             native <a>-click muscle memory for new-tab. */
+          if (orig && (orig.metaKey || orig.ctrlKey || orig.shiftKey)) {
+            navigateToSlug(slug, orig);
+            return;
+          }
+          if (!isFullscreen) {
+            navigateToSlug(slug, orig);
+            return;
+          }
+          /* Fullscreen: single-click pends, second click within CLICK_DELAY
+             escalates to a double-click → navigate. */
+          if (pendingClick && pendingClick.slug === slug) {
+            clearTimeout(pendingClick.timer);
+            pendingClick = null;
+            navigateToSlug(slug, orig);
+            return;
+          }
+          if (pendingClick) clearTimeout(pendingClick.timer);
+          pendingClick = {
+            slug: slug,
+            timer: setTimeout(function(){
+              pendingClick = null;
+              focusOnNodeFromClick(slug);
+            }, CLICK_DELAY)
+          };
+        });
+
+        /* If sigma emits its own doubleClickNode (v2+), use it to short-circuit
+           the pending single-click timer — faster than waiting the full 240 ms. */
+        renderer.on('doubleClickNode', function(evt){
+          var slug = evt.node;
+          if (!slug) return;
+          if (pendingClick) { clearTimeout(pendingClick.timer); pendingClick = null; }
+          var orig = evt.event && evt.event.original;
+          navigateToSlug(slug, orig);
+          /* Suppress the zoom-on-doubleclick that sigma defaults to. */
+          if (evt.preventSigmaDefault) evt.preventSigmaDefault();
         });
 
         computeNeighbours(activeSlug);

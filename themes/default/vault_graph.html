@@ -243,7 +243,7 @@
 
   <header class="vg-header">
     <h1>Graph</h1>
-    <span class="vg-meta">Interactive vault map — click a node to open a page.</span>
+    <span class="vg-meta">Click a node to focus · double-click to open.</span>
     <div class="vg-focus-chip" hidden data-vg-focus-chip aria-live="polite">
       <span class="vg-focus-label">Focus:</span>
       <span class="vg-focus-target" data-vg-focus-slug></span>
@@ -421,6 +421,9 @@
     window.addEventListener('zetl:graph:layoutstop', applyFocusFromUrl);
     /* Re-apply on SPA navigation (depth can change within session). */
     window.addEventListener('zetl:after-navigate', applyFocusFromUrl);
+    /* Single-click-to-focus emits this — refresh the chip without a full
+       re-filter (graph-boot.js has already applied the filter + pan). */
+    window.addEventListener('zetl:graph:focus-changed', applyFocusFromUrl);
 
     /* Folder-colour legend — populate from window.__zetlGraph.folderLegend().
        The zetl:graph:ready event fires after Sigma mounts + nodes are coloured. */
