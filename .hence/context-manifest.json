@@ -1,12 +1,12 @@
 {
-  "task_id": "pandoc-docs",
+  "task_id": "nfr-gates-033",
   "token_budget": 8000,
-  "tokens_used": 314,
+  "tokens_used": 336,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "docs/ecosystems/pandoc.md per SPEC-033 §11. Covers install, config, known-working filters, Quarto subsection (§13 Q6).",
-      "token_cost": 30,
+      "content": "SPEC-033 NFR gates: NFR-3301 cold-start, NFR-3302/3303 per-page latency, NFR-3304 binary size, NFR-3305 round-trip, NFR-3306 determinism, NFR-3307 process lifecycle, NFR-3308 combined-ecosystem budget (≤3×).",
+      "token_cost": 52,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T22:58:48Z"
+  "constructed_at": "2026-04-19T23:02:32Z"
 }

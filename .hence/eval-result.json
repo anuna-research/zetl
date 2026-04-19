@@ -3,25 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 544,
-    "deletions": 5,
+    "files_changed": 6,
+    "insertions": 861,
+    "deletions": 6,
     "file_list": [
       ".hence/context-manifest.json",
-      "docs/ecosystems/pandoc.md"
+      ".woodpecker/ci.yaml",
+      "Makefile",
+      "src/ecosystems/mod.rs",
+      "src/ecosystems/nfr_gates.rs",
+      "tests/nfr_gates_033_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-pandoc-docs-changes",
-      "content": "Modified 2 files (+544, -5): .hence/context-manifest.json, docs/ecosystems/pandoc.md",
+      "key": "task-nfr-gates-033-changes",
+      "content": "Modified 6 files (+861, -6): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, src/ecosystems/mod.rs, src/ecosystems/nfr_gates.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/pandoc-docs-v1",
-  "evaluated_at": "2026-04-19T23:02:26Z",
+  "branch_name": "hence/nfr-gates-033-v1",
+  "evaluated_at": "2026-04-19T23:15:38Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

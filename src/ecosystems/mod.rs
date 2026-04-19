@@ -21,6 +21,7 @@ pub mod detection;
 pub mod manifest;
 #[cfg(feature = "ecosystem-mdbook")]
 pub mod mdbook;
+pub mod nfr_gates;
 #[cfg(feature = "ecosystem-pandoc")]
 pub mod pandoc;
 pub mod registry;
