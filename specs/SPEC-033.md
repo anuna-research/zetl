@@ -262,18 +262,56 @@ Trace:
 
 ### REQ-3303: Pandoc Adapter (v1)
 
-The system SHALL ship a Pandoc adapter under the `--features ecosystem-pandoc` cargo flag (on by default). The adapter SHALL:
+The system SHALL ship a Pandoc adapter under the `--features
+ecosystem-pandoc` cargo flag (on by default). The adapter SHALL
+support two invocation modes, declared per manifest via `mode =
+"filter" | "native"`:
 
-- **Probe** the `pandoc` binary via `pandoc --version`; parse out the binary version AND the pandoc-types API version (via `pandoc --from markdown --to json <<< "" | jq .pandoc-api-version` at first invocation, cached for the session).
-- **Invoke plugins** by spawning the plugin executable with argv[1] = output format (`"html"` by default), setting env vars `PANDOC_VERSION`, `PANDOC_API_VERSION`, `PANDOC_READER_OPTIONS`, `PANDOC_WRITER_OPTIONS`, `PANDOC_SCRIPT_FILE`, feeding pandoc-types JSON on stdin, reading pandoc-types JSON on stdout.
-- **Translate** zetl-ext to pandoc-types with marker conventions for zetl concepts (REQ-3307).
-- **Persistent mode** SHALL be supported for plugins that implement it (detected via probe); fallback is one-shot invocation per page.
-- **Run in the `transform` stage** by default. `pre-parse` is not supported for Pandoc filters (Pandoc filters operate on AST, not raw Markdown).
+**`mode = "filter"` (default)** — external filter plugins (the
+"pandoc-*" binary convention). The adapter:
 
-Compat matrix SHALL include golden-HTML fixtures for at least: `pandoc-crossref`, `pandoc-citeproc` (or its successor), `pantable`, `pandoc-include-code`, `pandoc-plantuml`.
+- **Probes** the `pandoc` binary via `pandoc --version`; parses out
+  the binary version AND the pandoc-types API version (via
+  `pandoc --from markdown --to json <<< "" | jq .pandoc-api-version`
+  at first invocation, cached for the session).
+- **Invokes plugins** by spawning the plugin executable with
+  argv[1] = output format (`"html"` by default), setting env vars
+  `PANDOC_VERSION`, `PANDOC_API_VERSION`, `PANDOC_READER_OPTIONS`,
+  `PANDOC_WRITER_OPTIONS`, `PANDOC_SCRIPT_FILE`, feeding pandoc-types
+  JSON on stdin, reading pandoc-types JSON on stdout.
+- **Translates** zetl-ext to pandoc-types with marker conventions for
+  zetl concepts (REQ-3307).
+- **Persistent mode** SHALL be supported for plugins that implement it
+  (detected via probe); fallback is one-shot invocation per page.
+- **Runs in the `transform` stage** by default. `pre-parse` is not
+  supported for Pandoc filters (Pandoc filters operate on AST, not
+  raw Markdown).
+
+**`mode = "native"`** — Pandoc-native invocation modes (`--citeproc`,
+`--lua-filter`, `--from markdown --to html` with flags). The adapter:
+
+- Invokes the installed `pandoc` binary directly with flags from the
+  manifest `args` field (e.g. `args = ["--citeproc",
+  "--bibliography=references.bib"]`) instead of piping JSON through
+  a filter executable.
+- Source is the raw page Markdown; output is Pandoc's HTML. Runs at
+  `pre-parse` OR `transform`-after-translation, depending on manifest
+  stage — `pre-parse` replaces page content with Pandoc's HTML before
+  zetl's own rendering (the default when `mode = "native"`), which
+  lets the user delegate the entire pipeline to Pandoc for that page.
+- Existed because Pandoc's modern citation support is `--citeproc`
+  (a Pandoc-native flag), not a filter. `pandoc-citeproc` was
+  deprecated after Pandoc 2.11 and removed from later Pandoc
+  releases; native mode is the correct path for citations. Lua
+  filters (`--lua-filter=file.lua`) also live here.
+
+Compat matrix SHALL include golden-HTML fixtures for at least, in
+filter mode: `pandoc-crossref`, `pantable`, `pandoc-include-code`,
+`pandoc-plantuml`; in native mode: `--citeproc` with CSL-JSON and a
+BibTeX bibliography.
 
 Trace:
-- TEST-3303
+- TEST-3303 (filter mode), TEST-3303n (native mode)
 - CON-3303
 - ADR-3302
 
@@ -303,6 +341,7 @@ The system SHALL ship a remark adapter under `--features ecosystem-remark` (on b
 - **Invoke plugins** by name + options, e.g., `{"type": "invoke_plugin", "name": "remark-gfm", "options": {}, "ast": <mdast>}`. The harness applies the plugin and returns the transformed mdast.
 - **Translate** zetl-ext ↔ mdast with marker conventions for zetl concepts (REQ-3308). mdast is closer to zetl-ext than pandoc-types is (both are CommonMark-derived), so translation loss is lower.
 - **Stage**: `transform` only. Plugins that require parser-level intervention (`mdast-util-*`) are not supported in v1 — see §1.3 out-of-scope.
+- **Isolation**: a manifest field `isolation = "shared" | "fresh-context"` (default `"shared"`) controls whether plugins share the long-lived harness's module cache. `"shared"` is the perf-default: plugins load once and reuse the cache across pages. `"fresh-context"` spawns a new Node subprocess per invocation, isolating plugins from each other at the cost of per-invocation startup (≈ 100–200 ms). Paranoid users who worry about plugin-A monkey-patching globals that plugin-B later relies on should pick `fresh-context`; the v1 default is `shared` on the basis that ecosystem plugins are expected to play nicely.
 
 Compat matrix SHALL include golden fixtures for at least: `remark-gfm`, `remark-math`, `remark-directive`, `remark-frontmatter`, `remark-smartypants`.
 
@@ -469,6 +508,60 @@ Missing runtime SHALL NOT be a hard failure of `zetl build` or `zetl serve` unle
 Trace:
 - TEST-3313
 
+### REQ-3314: Plugin-Version Drift Detection
+
+Matrix entries (REQ-3311) pin tested plugin versions, but the user's
+installed binary may differ. The system SHALL:
+
+- At ecosystem probe time, invoke each configured plugin's
+  `--version` (Pandoc filters and mdBook preprocessors) or
+  `package.json` version field (remark plugins) and record the
+  observed version alongside the matrix-pinned tested version.
+- Classify the observed version relative to a `version_range` field
+  on the matrix entry (new matrix column):
+  - **Exact match** — silent.
+  - **Minor drift** (same major, observed minor ≥ tested minor) —
+    log `[zetl] ecosystem <eco>: <plugin> v<observed> is newer than
+    last-tested v<tested>; proceeding` once per session, hook runs.
+  - **Incompatible** (different major, or observed lower than
+    tested range) — hook disabled with typed
+    `plugin_version_incompatible` error; actionable hint pointing at
+    the matrix entry's version range.
+- The matrix SHALL therefore carry a `version_range` column declaring
+  the acceptable range per plugin (npm-style semver range syntax).
+
+Trace:
+- TEST-3314
+- CON-3311 amended (version_range column added)
+
+### REQ-3315: Mixed-Parser Diagnostic
+
+REQ-3306 lets different pages declare different parsers (`commonmark`
+vs `pandoc`). Syntax that is valid under both but means different
+things (curly-brace attribute syntax `{.class}`, extended table
+dialects, fenced-div shortcuts) can render inconsistently across the
+vault without any error surfacing.
+
+The system SHALL, on `zetl build`, scan every page's raw Markdown for
+a defined set of **parser-ambiguous syntax patterns** and, for each
+page, record the parser it was processed under. If the vault contains
+any page matching an ambiguous pattern AND the vault has pages using
+both parsers, zetl SHALL emit a warning listing:
+
+- The ambiguous patterns detected and their file:line locations.
+- The parser each page was processed under.
+- A recommendation to unify on one parser, or to inspect the flagged
+  pages for intended behaviour.
+
+Under `zetl build --strict-parsers`, the warning becomes a fatal
+error (CI gate for mixed-parser vaults).
+
+The pattern set ships as `tools/zetl-parser-ambiguity.toml` and is
+release-pinned; new patterns are additive per minor release.
+
+Trace:
+- TEST-3315
+
 ---
 
 ## 4. Non-Functional Requirements
@@ -505,16 +598,74 @@ Each ecosystem feature flag SHALL add ≤ 2 MiB to zetl's release binary size. F
 Trace:
 - TEST-3304-size
 
-### NFR-3305: Translation Round-Trip Fidelity
+### NFR-3305: Translation Round-Trip Fidelity — Canonical-Form Equivalence
 
-For every (ecosystem, ast_version) pair in the matrix, translator round-trip property tests (`translate_from(translate_to(A)) == A` for identity plugin) SHALL pass with 0 byte-level differences across a QuickCheck-style generator producing 10,000 diverse ASTs per release.
+Strict byte-level AST equality across a round-trip through a foreign
+AST is not achievable in general: foreign ASTs (pandoc-types
+especially) admit multiple semantically-equivalent representations of
+the same content (e.g., `Span [] [Str "x"]` vs `[Str "x"]` in inline
+sequences). The NFR therefore uses **canonical-form equivalence**, not
+byte-identity.
+
+For every (ecosystem, ast_version) pair in the matrix, the round-trip
+property is:
+
+```
+∀ A ∈ zetl-ext:  canonicalise(foreign_to_zetl(zetl_to_foreign(A))) == canonicalise(A)
+```
+
+where `canonicalise(·)` is a zetl-owned normaliser that collapses
+representation-level degrees of freedom (empty-attribute spans,
+singleton-wrapper elimination, whitespace normalisation in `Text`
+nodes), defined per ast_type at
+`src/ecosystems/<type>/canonicalise.rs`.
+
+Property tests run a QuickCheck-style generator producing 10,000
+diverse zetl-ext ASTs per release; each must satisfy the canonical-
+form equivalence. The generator itself is published at
+`tools/zetl-ext-generator/` and pinned to the AST schema major.
+
+**Semantic fidelity** (stronger statement): for the same 10,000-AST
+corpus, rendering `A` and `foreign_to_zetl(zetl_to_foreign(A))` to
+HTML via zetl's default renderer SHALL produce byte-identical HTML.
+This is the user-visible invariant — two representations that
+canonicalise to the same form must render identically.
 
 Trace:
 - TEST-3305-fidelity
 
-### NFR-3306: Determinism under Mixed Ecosystems
+### NFR-3306: Determinism — Adapter-Layer Scope
 
-A `zetl build` with Pandoc, mdBook, and remark hooks all active in a pipeline SHALL produce byte-identical HTML across runs and platforms. The ecosystems' individual runtimes (Pandoc, Node, mdBook preprocessors) inherit the same determinism expectation (SPEC-032 NFR-3203); zetl does not introduce non-determinism at the adapter boundary.
+Zetl's adapter and translation layers SHALL introduce no
+non-determinism: the same (vault, zetl version, ecosystem matrix
+snapshot) SHALL produce byte-identical HTML across runs and
+platforms on the adapter side.
+
+**Plugin-internal non-determinism is outside zetl's scope.** Known
+sources that zetl does not and cannot control:
+
+- Pandoc filters that sort citations by a locale-dependent collation
+  (CSL style dependent).
+- remark plugins that iterate over a native `Set` or `Map` whose
+  iteration order depends on insertion order (usually deterministic,
+  but not guaranteed across Node major versions).
+- mdBook preprocessors that generate SVG element IDs via a
+  random/timestamped seed (e.g., `mdbook-mermaid`'s SVG output may
+  differ per-invocation under some versions).
+- Filesystem-order-dependent behaviour in any of the above when
+  scanning `node_modules` or theme directories.
+
+Users needing strict end-to-end determinism SHOULD:
+
+1. Pin plugin versions in the matrix (REQ-3311).
+2. Audit each plugin in the matrix for determinism properties and
+   record findings in the matrix entry.
+3. Where a plugin is known non-deterministic, wrap its output in a
+   post-process normaliser (e.g., rewrite SVG IDs to content-hash
+   form) as a separate hook.
+
+SPEC-032 NFR-3203 (determinism of the native pipeline) applies
+unchanged to the `zetl-ext` path.
 
 Trace:
 - TEST-3306-determinism
@@ -528,6 +679,24 @@ Trace:
 Trace:
 - TEST-3307-memory
 - OBS-3303
+
+### NFR-3308: Combined-Ecosystem Budget
+
+The per-ecosystem NFRs (3301–3303) specify costs in isolation.
+Real users will enable multiple ecosystems on the same vault. With
+all three v1 ecosystems enabled on the 2,000-page demo vault (at
+least one active plugin per ecosystem, persistent mode where
+supported), total `zetl build` wall time SHALL increase by **≤ 3×**
+relative to a `--no-ecosystems` baseline.
+
+Honest ceiling, not aspirational: three serialised subprocess
+pipelines per page, one Node harness round-trip, plus the zetl-ext
+translation layers at each boundary. The 3× bound is a
+test-enforced upper limit, not a target — individual enabled-set
+configurations should measure below it.
+
+Trace:
+- TEST-3308-perf
 
 ---
 
@@ -685,18 +854,60 @@ See REQ-3309 for the envelope shape. Key constraints:
 - `book.sections` is a single `Chapter` object per invocation in page scope; an ordered list of `Chapter` objects in vault scope.
 - Paths are vault-relative; preprocessors expecting absolute paths are flagged `partial` in the matrix.
 
+**Vault-scope invocations — known semantic gap.** When a manifest
+declares `scope = "vault"`, zetl constructs a synthetic `Book` with
+one `Chapter` per vault page (ordered by slug). The preprocessor
+sees the full set, which is what preprocessors like `mdbook-toc`
+need. However:
+
+- Vault-scope invocations have no per-page `HookContext` (SPEC-032
+  passes frontmatter, page_slug, and deadline per page). The
+  preprocessor sees raw chapter content + the synthetic book's
+  top-level metadata only.
+- Per-page `build_data` writes (SPEC-032 REQ-3219) are not available
+  from a vault-scope hook — the hook doesn't know which page it's
+  writing against.
+- Output from a vault-scope hook is spliced back into zetl's per-page
+  pipeline by matching chapter `path` → page slug; preprocessors
+  that rename chapters, drop them, or add new ones have undefined
+  behaviour under v1 and SHOULD be flagged `partial` in the matrix.
+
+Explicitly a v1 limitation: vault-scope is appropriate for
+whole-book TOC / cross-chapter numbering; per-page state must use
+page-scope invocations instead.
+
 Implements: REQ-3309.
 Verified by: TEST-3309.
 
 ### CON-3310: Ecosystem Check Output
 
-Table:
+Table (mixed state example):
 ```
 ECOSYSTEM  STATUS        VERSION              PLUGINS CONFIGURED   PLUGINS AVAILABLE
 pandoc     detected      3.1.12.1             2                    2
 mdbook     detected      n/a (binary absent)  1                    1 (preproc: mdbook-mermaid)
 remark     detected      node 20.10.0         3                    3 (./node_modules)
 ```
+
+**Zero-configured state.** When no ecosystem hooks are declared in the
+vault, the command lists every detected runtime with `configured: 0`
+and an informational hint, e.g.:
+
+```
+ECOSYSTEM  STATUS        VERSION              PLUGINS CONFIGURED   PLUGINS AVAILABLE
+pandoc     detected      3.1.12.1             0                    0
+mdbook     detected      (binary absent)      0                    0
+remark     detected      node 20.10.0         0                    0
+
+No ecosystem hooks configured in this vault.
+To enable an ecosystem, add a manifest under .zetl/hooks/:
+  https://zetl.codeberg.page/docs/ecosystems/
+```
+
+Exit 0 regardless of zero-configured state. Exit 0 when all
+*configured* ecosystems are available; non-zero only when a
+configured ecosystem is missing its runtime (and not disabled via
+`--ecosystem-required=...` inverse semantics).
 
 JSON: same data as an array of objects with `id`, `status`, `version`, `configured`, `available_plugins` fields.
 
