@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check help
 
 all: build
 
@@ -103,6 +103,17 @@ ext-golden:
 ext-golden-update:
 	cargo xtask update-golden
 
+# SPEC-033 task-eco-feature-flags acceptance: each per-ecosystem cargo
+# feature must compile in isolation, the `ecosystems-v1` umbrella must
+# compile (enabling all three at once), and the no-feature build must
+# still succeed. Runs as a CI gate via `.woodpecker/ci.yaml`.
+eco-features-check:
+	cargo check --no-default-features
+	cargo check --no-default-features --features ecosystem-pandoc
+	cargo check --no-default-features --features ecosystem-mdbook
+	cargo check --no-default-features --features ecosystem-remark
+	cargo check --no-default-features --features ecosystems-v1
+
 install: build
 	install -d $(PREFIX)/bin $(MANDIR) $(BASHCOMPDIR) $(ZSHCOMPDIR) $(FISHCOMPDIR)
 	install -m 755 target/release/zetl $(PREFIX)/bin/zetl
@@ -163,6 +174,7 @@ help:
 	@echo "  make ast-reference-check - CI gate: fail if the reference is stale"
 	@echo "  make ext-golden          - Run CON-3212 canonical-extension golden-HTML gate"
 	@echo "  make ext-golden-update   - Regenerate expected.html for every extension fixture"
+	@echo "  make eco-features-check  - Compile-in-isolation gate for every ecosystem feature flag"
 	@echo "  make install      - Install binary, man page, and shell completions"
 	@echo "  make uninstall    - Remove binary, man page, and completions"
 	@echo "  make clean        - Remove build artifacts"

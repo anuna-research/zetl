@@ -1,12 +1,12 @@
 {
-  "task_id": "adapter-trait",
+  "task_id": "eco-feature-flags",
   "token_budget": 8000,
-  "tokens_used": 328,
+  "tokens_used": 321,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "EcosystemAdapter trait per REQ-3302 / CON-3302. Methods: probe (runtime available?), translate_in (zetl-ext→native AST), invoke (run plugin), translate_out (native→zetl-ext).",
-      "token_cost": 44,
+      "content": "Per-ecosystem Cargo features: `ecosystem-pandoc`, `ecosystem-mdbook`, `ecosystem-remark`, umbrella `ecosystems-v1`. Binary size impact per NFR-3304.",
+      "token_cost": 37,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T19:13:03Z"
+  "constructed_at": "2026-04-19T19:24:15Z"
 }

@@ -174,3 +174,69 @@ fn matrix_lint_section_counts_match() {
         matrix_ids.len(),
     );
 }
+
+// ── Cargo-feature lint (task-eco-feature-flags acceptance) ────────────
+
+fn cargo_toml_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")
+}
+
+fn load_cargo_features() -> toml::value::Table {
+    let body = std::fs::read_to_string(cargo_toml_path()).expect("Cargo.toml must be readable");
+    let parsed: toml::Value = toml::from_str(&body).expect("Cargo.toml must parse as TOML");
+    match parsed.get("features") {
+        Some(toml::Value::Table(t)) => t.clone(),
+        _ => panic!("Cargo.toml is missing the [features] table"),
+    }
+}
+
+#[test]
+fn cargo_features_cover_every_registered_ecosystem() {
+    // Every `feature_flag` declared in `src/ecosystems/registry.rs` must
+    // exist as a `[features]` entry in Cargo.toml — otherwise the
+    // `--features ecosystem-<id>` cargo invocation SPEC-033 REQ-3302
+    // advertises to users (and the `zetl ecosystem check` diagnostic
+    // surfaces in its install hint) would silently resolve to a typo.
+    let features = load_cargo_features();
+    for entry in ecosystems::all() {
+        assert!(
+            features.contains_key(entry.feature_flag),
+            "ecosystem '{}' declares feature_flag '{}' but Cargo.toml [features] has no such \
+             entry — add `{} = []` (or its transitive deps) before merging",
+            entry.id,
+            entry.feature_flag,
+            entry.feature_flag,
+        );
+    }
+}
+
+#[test]
+fn ecosystems_v1_umbrella_enables_every_per_ecosystem_flag() {
+    // SPEC-033 §12 + plans/IMPL-032-033.spl task-eco-feature-flags
+    // acceptance: `cargo build --features ecosystems-v1` must enable all
+    // three per-ecosystem flags at once. Encode that as a transitive
+    // check on the Cargo.toml [features] table.
+    let features = load_cargo_features();
+    let umbrella = features
+        .get("ecosystems-v1")
+        .and_then(|v| v.as_array())
+        .unwrap_or_else(|| {
+            panic!(
+                "Cargo.toml must declare an `ecosystems-v1` umbrella feature (see \
+                 SPEC-033 §12) enabling every per-ecosystem flag"
+            )
+        });
+    let enabled: HashSet<String> = umbrella
+        .iter()
+        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+        .collect();
+    for entry in ecosystems::all() {
+        assert!(
+            enabled.contains(entry.feature_flag),
+            "`ecosystems-v1` umbrella does not enable '{}' — expected all three \
+             per-ecosystem flags (got {:?})",
+            entry.feature_flag,
+            enabled,
+        );
+    }
+}
