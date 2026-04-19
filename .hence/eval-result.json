@@ -3,37 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 14,
-    "insertions": 510,
-    "deletions": 6,
+    "files_changed": 2,
+    "insertions": 474,
+    "deletions": 16,
     "file_list": [
       ".hence/context-manifest.json",
-      "tests/ecosystem-fixtures/mdbook/mdbook-admonish/README.md",
-      "tests/ecosystem-fixtures/mdbook/mdbook-admonish/expected.html",
-      "tests/ecosystem-fixtures/mdbook/mdbook-admonish/input.md",
-      "tests/ecosystem-fixtures/mdbook/mdbook-katex/README.md",
-      "tests/ecosystem-fixtures/mdbook/mdbook-katex/expected.html",
-      "tests/ecosystem-fixtures/mdbook/mdbook-katex/input.md",
-      "tests/ecosystem-fixtures/mdbook/mdbook-mermaid/README.md",
-      "tests/ecosystem-fixtures/mdbook/mdbook-mermaid/expected.html",
-      "tests/ecosystem-fixtures/mdbook/mdbook-mermaid/input.md",
-      "tests/ecosystem-fixtures/mdbook/mdbook-toc/README.md",
-      "tests/ecosystem-fixtures/mdbook/mdbook-toc/expected.html",
-      "tests/ecosystem-fixtures/mdbook/mdbook-toc/input.md",
-      "tools/zetl-ecosystem-matrix.toml"
+      "docs/ecosystems/mdbook.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-mdbook-matrix-seed-changes",
-      "content": "Modified 14 files (+510, -6): .hence/context-manifest.json, tests/ecosystem-fixtures/mdbook/mdbook-admonish/README.md, tests/ecosystem-fixtures/mdbook/mdbook-admonish/expected.html, tests/ecosystem-fixtures/mdbook/mdbook-admonish/input.md, tests/ecosystem-fixtures/mdbook/mdbook-katex/README.md and 9 more",
+      "key": "task-mdbook-docs-changes",
+      "content": "Modified 2 files (+474, -16): .hence/context-manifest.json, docs/ecosystems/mdbook.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/mdbook-matrix-seed-v1",
-  "evaluated_at": "2026-04-19T23:43:25Z",
+  "branch_name": "hence/mdbook-docs-v1",
+  "evaluated_at": "2026-04-19T23:48:07Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
