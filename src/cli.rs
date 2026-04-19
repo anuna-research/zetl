@@ -657,6 +657,21 @@ pub enum HookCommand {
         /// Hook extension id to watch.
         name: String,
     },
+    /// Report per-hook coverage (matched pages, invocations, failures,
+    /// latency) for the most-recent build, or a fresh dry-run against the
+    /// current vault if no build coverage has been persisted.
+    /// SPEC-032 REQ-3208 / CON-3208.
+    #[command(
+        after_help = "Examples:\n  zetl hook coverage\n  zetl hook coverage --json\n  zetl hook coverage --stage transform"
+    )]
+    Coverage {
+        /// Theme name (looks in .zetl/themes/<name>/hooks/).
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Restrict the report to a single stage.
+        #[arg(long, value_enum)]
+        stage: Option<AuthoringStage>,
+    },
     /// Evaluate a hook's selector against the vault and print the matched
     /// pages. The hook is NOT invoked. Exits 0 if any pages match; 1 if
     /// zero match. SPEC-032 REQ-3209.

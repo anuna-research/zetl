@@ -1,12 +1,12 @@
 {
-  "task_id": "ext-admonition",
+  "task_id": "hook-coverage",
   "token_budget": 8000,
-  "tokens_used": 315,
+  "tokens_used": 318,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Admonition canonical-extension as thin stub. `ad-*` blocks (Obsidian) + `!!! note` (Python-Markdown MkDocs variant) recognised.",
-      "token_cost": 31,
+      "content": "`zetl hook coverage` per REQ-3208 / CON-3208. Reports: pages matched, hook invocations, unmatched hooks, unmatched pages. Table + --json.",
+      "token_cost": 34,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T18:32:01Z"
+  "constructed_at": "2026-04-19T18:42:01Z"
 }
