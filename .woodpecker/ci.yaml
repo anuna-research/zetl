@@ -37,6 +37,12 @@ steps:
       # isolation, and a no-feature build must also compile. A regression
       # here breaks the "minimal zetl binary" promise in REQ-3302.
       - make eco-features-check
+      # SPEC-033 REQ-3311 / TEST-3311: structural + tier-downgrade gate
+      # for tools/zetl-ecosystem-matrix.toml. `cargo test --verbose`
+      # above already runs it; this surfaces the --nocapture summary
+      # line (per-ecosystem row counts) and makes the gate explicit in
+      # the pipeline log next to its sibling eco-features-check.
+      - make eco-matrix-check
       # SPEC-032 NFR-3201..NFR-3208 performance + determinism gates. The
       # default-on arms (selector P95 ceiling, exit-code policy under
       # `--hook-fail-on never`, AST schema-version pin, memory ceiling,
