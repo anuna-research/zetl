@@ -1,75 +1,15 @@
 {
-  "task_id": "backlinks-presentation",
+  "task_id": "ast-schema",
   "token_budget": 8000,
-  "tokens_used": 345,
+  "tokens_used": 40,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "themes/default/page.html:54 renders every backlink as `line {{ bl.line }}` — raw Markdown line offsets exposed to readers. Also, togias-2019 shows the Memo index twice because it is linked twice from the source (no dedup in src/graph.rs:190-210 backlinks()). Fix both: (a) remove or hide-behind-a-disclosure the `line N` label in the backlinks template, and (b) deduplicate backlink entries by source page — show a single entry, optionally with a `(×N)` count.",
-      "token_cost": 116,
+      "content": "Author tools/zetl-ast-schema-v1.json (JSON Schema Draft 2020-12). Covers Wikilink, Embed, SPL, FrontMatter + core Markdown nodes per SPEC-032 REQ-3202 / CON-3202.",
+      "token_cost": 40,
       "priority": "PlanMeta"
-    },
-    {
-      "source": "memory/episodic/task-widget-overlay-changes",
-      "content": "Modified 2 files (+155, -72): .hence/context-manifest.json, themes/default/base.html",
-      "token_cost": 21,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-preview-heading-demotion-changes",
-      "content": "Modified 2 files (+61, -6): .hence/context-manifest.json, src/web/markdown.rs",
-      "token_cost": 19,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-mobile-overflow-changes",
-      "content": "Modified 2 files (+33, -6): .hence/context-manifest.json, themes/default/base.html",
-      "token_cost": 20,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-chip-contrast-changes",
-      "content": "Modified 5 files (+15, -7): .hence/context-manifest.json, src/web/build.rs, src/web/html.rs, src/web/routes.rs, themes/default/base.html",
-      "token_cost": 34,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-search-match-precision-changes",
-      "content": "Modified 2 files (+38, -7): .hence/context-manifest.json, themes/default/base.html",
-      "token_cost": 20,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-search-dialog-a11y-changes",
-      "content": "Modified 2 files (+68, -6): .hence/context-manifest.json, themes/default/base.html",
-      "token_cost": 20,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-tag-cloud-changes",
-      "content": "Modified 7 files (+450, -7): .hence/context-manifest.json, src/web/build.rs, src/web/context.rs, src/web/engine.rs, src/web/routes.rs and 2 more",
-      "token_cost": 36,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-widget-zerowidth-guard-changes",
-      "content": "Modified 2 files (+150, -86): .hence/context-manifest.json, themes/default/_graph.html",
-      "token_cost": 21,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-favicon-changes",
-      "content": "Modified 2 files (+12, -5): .hence/context-manifest.json, themes/default/base.html",
-      "token_cost": 20,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-graph-page-changes",
-      "content": "Modified 2 files (+24, -6): .hence/context-manifest.json, src/web/build.rs",
-      "token_cost": 18,
-      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-17T11:09:11Z"
+  "constructed_at": "2026-04-19T12:27:00Z"
 }
