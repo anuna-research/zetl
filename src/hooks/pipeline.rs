@@ -26,6 +26,8 @@
 
 use std::time::{Duration, Instant};
 
+use crate::hooks::build_context::BuildContext;
+
 /// The three hook stages per REQ-3201.
 ///
 /// Ordering is fixed: [`Stage::PreParse`] runs before the Markdown parser,
@@ -103,21 +105,30 @@ impl std::fmt::Display for HookError {
 impl std::error::Error for HookError {}
 
 /// A `pre-parse` hook: raw Markdown in, raw Markdown out.
+///
+/// Receives a [`BuildContext`] (REQ-3220) so hooks can branch on the
+/// active theme, page metadata, or the frozen `build_data` snapshot.
 pub trait PreParseHook: Send + Sync {
     fn id(&self) -> &str;
-    fn run(&self, input: String) -> Result<String, HookError>;
+    fn run(&self, input: String, ctx: &BuildContext) -> Result<String, HookError>;
 }
 
 /// A `transform` hook: zetl-ext AST in, zetl-ext AST out.
+///
+/// Receives a [`BuildContext`] (REQ-3220) so hooks can branch on the
+/// active theme, page metadata, or the frozen `build_data` snapshot.
 pub trait TransformHook: Send + Sync {
     fn id(&self) -> &str;
-    fn run(&self, input: AstDocument) -> Result<AstDocument, HookError>;
+    fn run(&self, input: AstDocument, ctx: &BuildContext) -> Result<AstDocument, HookError>;
 }
 
 /// A `post-render` hook: HTML fragment in, HTML fragment out.
+///
+/// Receives a [`BuildContext`] (REQ-3220) so hooks can branch on the
+/// active theme, page metadata, or the frozen `build_data` snapshot.
 pub trait PostRenderHook: Send + Sync {
     fn id(&self) -> &str;
-    fn run(&self, input: String) -> Result<String, HookError>;
+    fn run(&self, input: String, ctx: &BuildContext) -> Result<String, HookError>;
 }
 
 /// An ordered collection of hooks for each of the three stages.
@@ -255,6 +266,7 @@ impl PipelineStats {
 pub fn run_page<ParseFn, RenderFn>(
     pipeline: &HookPipeline,
     raw_markdown: String,
+    ctx: &BuildContext,
     parse: ParseFn,
     render: RenderFn,
 ) -> Result<(String, PipelineStats), HookError>
@@ -269,7 +281,7 @@ where
     if !pipeline.pre_parse.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.pre_parse {
-            text = hook.run(text)?;
+            text = hook.run(text, ctx)?;
         }
         stats.pre_parse = t0.elapsed();
     }
@@ -283,7 +295,7 @@ where
     if !pipeline.transform.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.transform {
-            ast = hook.run(ast)?;
+            ast = hook.run(ast, ctx)?;
         }
         stats.transform = t0.elapsed();
     }
@@ -297,7 +309,7 @@ where
     if !pipeline.post_render.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.post_render {
-            html = hook.run(html)?;
+            html = hook.run(html, ctx)?;
         }
         stats.post_render = t0.elapsed();
     }
@@ -308,8 +320,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hooks::build_context::{BuildMode, PageMeta};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+
+    /// Minimal ctx for tests that don't care about REQ-3220 fields
+    /// beyond the required ones.
+    fn test_ctx() -> BuildContext {
+        BuildContext::new(
+            BuildMode::Build,
+            "/tmp/test-vault",
+            PageMeta::synthetic("Page", "page"),
+        )
+    }
 
     // ── Fixture hooks ──────────────────────────────────────────────────────
 
@@ -325,7 +348,7 @@ mod tests {
         fn id(&self) -> &str {
             &self.id
         }
-        fn run(&self, input: String) -> Result<String, HookError> {
+        fn run(&self, input: String, _ctx: &BuildContext) -> Result<String, HookError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.trace.lock().unwrap().push(format!("pre:{}", self.id));
             Ok(format!("{input} {}", self.marker))
@@ -346,7 +369,11 @@ mod tests {
         fn id(&self) -> &str {
             &self.id
         }
-        fn run(&self, mut input: AstDocument) -> Result<AstDocument, HookError> {
+        fn run(
+            &self,
+            mut input: AstDocument,
+            _ctx: &BuildContext,
+        ) -> Result<AstDocument, HookError> {
             use crate::hooks::ast::{Block, Inline, Position, Text};
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.trace.lock().unwrap().push(format!("tf:{}", self.id));
@@ -378,7 +405,7 @@ mod tests {
         fn id(&self) -> &str {
             &self.id
         }
-        fn run(&self, input: String) -> Result<String, HookError> {
+        fn run(&self, input: String, _ctx: &BuildContext) -> Result<String, HookError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.trace.lock().unwrap().push(format!("post:{}", self.id));
             Ok(format!("{input}<!--{}-->", self.marker))
@@ -460,7 +487,8 @@ mod tests {
     fn empty_pipeline_passes_through() {
         let pipe = HookPipeline::new();
         assert!(pipe.is_empty());
-        let (html, stats) = run_page(&pipe, "hello".into(), parse, render).unwrap();
+        let ctx = test_ctx();
+        let (html, stats) = run_page(&pipe, "hello".into(), &ctx, parse, render).unwrap();
         assert_eq!(html, "<p>hello |marks=</p>");
         // Parse and render still ran; hook stages did not.
         assert_eq!(stats.pre_parse, Duration::ZERO);
@@ -511,7 +539,8 @@ mod tests {
         assert_eq!(pipe.transform_len(), 1);
         assert_eq!(pipe.post_render_len(), 1);
 
-        let (html, stats) = run_page(&pipe, "hello".into(), parse, render).unwrap();
+        let ctx = test_ctx();
+        let (html, stats) = run_page(&pipe, "hello".into(), &ctx, parse, render).unwrap();
 
         // Each hook ran exactly once.
         assert_eq!(calls_pre.load(Ordering::SeqCst), 1);
@@ -575,7 +604,8 @@ mod tests {
             trace: trace.clone(),
         });
 
-        let (html, _) = run_page(&pipe, "x".into(), parse, render).unwrap();
+        let ctx = test_ctx();
+        let (html, _) = run_page(&pipe, "x".into(), &ctx, parse, render).unwrap();
         assert_eq!(html, "<p>x A B |marks=T1,T2</p>");
         assert_eq!(
             *trace.lock().unwrap(),
@@ -593,7 +623,11 @@ mod tests {
             fn id(&self) -> &str {
                 "boom"
             }
-            fn run(&self, _input: AstDocument) -> Result<AstDocument, HookError> {
+            fn run(
+                &self,
+                _input: AstDocument,
+                _ctx: &BuildContext,
+            ) -> Result<AstDocument, HookError> {
                 Err(HookError::new(Stage::Transform, "boom", "rigged"))
             }
         }
@@ -609,7 +643,8 @@ mod tests {
                 trace: post_trace.clone(),
             });
 
-        let err = run_page(&pipe, "x".into(), parse, render).unwrap_err();
+        let ctx = test_ctx();
+        let err = run_page(&pipe, "x".into(), &ctx, parse, render).unwrap_err();
         assert_eq!(err.stage, Stage::Transform);
         assert_eq!(err.hook_id, "boom");
         // Downstream hook was never reached.
@@ -636,7 +671,8 @@ mod tests {
         };
 
         let pipe = HookPipeline::new();
-        let _ = run_page(&pipe, "y".into(), parse_fn, render_fn).unwrap();
+        let ctx = test_ctx();
+        let _ = run_page(&pipe, "y".into(), &ctx, parse_fn, render_fn).unwrap();
         assert_eq!(parse_count.load(Ordering::SeqCst), 1);
         assert_eq!(render_count.load(Ordering::SeqCst), 1);
     }
@@ -661,7 +697,10 @@ mod tests {
         for i in 0..4 {
             let p = pipe.clone();
             handles.push(std::thread::spawn(move || {
-                run_page(&p, format!("page{i}"), parse, render).unwrap().0
+                let ctx = test_ctx();
+                run_page(&p, format!("page{i}"), &ctx, parse, render)
+                    .unwrap()
+                    .0
             }));
         }
         let outputs: Vec<String> = handles.into_iter().map(|h| h.join().unwrap()).collect();
@@ -700,6 +739,153 @@ mod tests {
         assert_eq!(total.render, Duration::from_millis(44));
         assert_eq!(total.post_render, Duration::from_millis(55));
         assert_eq!(total.total(), Duration::from_millis(11 + 22 + 33 + 44 + 55));
+    }
+
+    // ── REQ-3220: hooks receive a complete ctx and can branch on it ───────
+
+    /// Acceptance fixture — a post-render hook reads `ctx.theme` and
+    /// branches its HTML output accordingly. Two back-to-back page
+    /// renders with different theme contexts must produce different
+    /// output from the *same* hook instance, proving ctx is threaded
+    /// per-invocation, not baked in at registration.
+    #[test]
+    fn theme_aware_fixture_hook_branches_on_ctx_theme() {
+        struct ThemeBrancher;
+        impl PostRenderHook for ThemeBrancher {
+            fn id(&self) -> &str {
+                "theme-brancher"
+            }
+            fn run(&self, input: String, ctx: &BuildContext) -> Result<String, HookError> {
+                // Branch: fountain gets wrapped, others pass through.
+                if ctx.theme == "fountain" {
+                    Ok(format!(
+                        "<div class=\"fountain\">{input}</div>"
+                    ))
+                } else {
+                    Ok(format!("<!--theme={}-->{input}", ctx.theme))
+                }
+            }
+        }
+
+        let pipe = HookPipeline::new().with_post_render(ThemeBrancher);
+
+        let fountain_ctx = BuildContext::new(
+            BuildMode::Build,
+            "/v",
+            PageMeta::synthetic("Page", "page"),
+        )
+        .with_theme("fountain");
+
+        let default_ctx = BuildContext::new(
+            BuildMode::Build,
+            "/v",
+            PageMeta::synthetic("Page", "page"),
+        )
+        .with_theme("default");
+
+        let (html_fountain, _) =
+            run_page(&pipe, "hi".into(), &fountain_ctx, parse, render).unwrap();
+        let (html_default, _) =
+            run_page(&pipe, "hi".into(), &default_ctx, parse, render).unwrap();
+
+        assert_eq!(
+            html_fountain,
+            "<div class=\"fountain\"><p>hi |marks=</p></div>"
+        );
+        assert_eq!(html_default, "<!--theme=default--><p>hi |marks=</p>");
+        assert_ne!(html_fountain, html_default);
+    }
+
+    /// Verifies hooks at every stage can read the same ctx the caller
+    /// passes to `run_page` — the full REQ-3220 field set, not just
+    /// `theme`. Each stage writes the value it saw into a shared trace
+    /// so the assertion can prove identity, not just presence.
+    #[test]
+    fn hooks_at_every_stage_observe_the_same_ctx() {
+        let observed: Arc<Mutex<Vec<(Stage, String, String)>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        struct Spy {
+            stage: Stage,
+            observed: Arc<Mutex<Vec<(Stage, String, String)>>>,
+        }
+        impl PreParseHook for Spy {
+            fn id(&self) -> &str {
+                "spy-pre"
+            }
+            fn run(&self, input: String, ctx: &BuildContext) -> Result<String, HookError> {
+                self.observed.lock().unwrap().push((
+                    self.stage,
+                    ctx.theme.clone(),
+                    ctx.page.slug.clone(),
+                ));
+                Ok(input)
+            }
+        }
+        impl TransformHook for Spy {
+            fn id(&self) -> &str {
+                "spy-tf"
+            }
+            fn run(
+                &self,
+                input: AstDocument,
+                ctx: &BuildContext,
+            ) -> Result<AstDocument, HookError> {
+                self.observed.lock().unwrap().push((
+                    self.stage,
+                    ctx.theme.clone(),
+                    ctx.page.slug.clone(),
+                ));
+                Ok(input)
+            }
+        }
+        impl PostRenderHook for Spy {
+            fn id(&self) -> &str {
+                "spy-post"
+            }
+            fn run(&self, input: String, ctx: &BuildContext) -> Result<String, HookError> {
+                self.observed.lock().unwrap().push((
+                    self.stage,
+                    ctx.theme.clone(),
+                    ctx.page.slug.clone(),
+                ));
+                Ok(input)
+            }
+        }
+
+        let pipe = HookPipeline::new()
+            .with_pre_parse(Spy {
+                stage: Stage::PreParse,
+                observed: observed.clone(),
+            })
+            .with_transform(Spy {
+                stage: Stage::Transform,
+                observed: observed.clone(),
+            })
+            .with_post_render(Spy {
+                stage: Stage::PostRender,
+                observed: observed.clone(),
+            });
+
+        let ctx = BuildContext::new(
+            BuildMode::Serve,
+            "/vault",
+            PageMeta::synthetic("Daily", "daily/today"),
+        )
+        .with_theme("obsidian");
+
+        run_page(&pipe, "hi".into(), &ctx, parse, render).unwrap();
+
+        let seen = observed.lock().unwrap().clone();
+        assert_eq!(seen.len(), 3);
+        assert_eq!(
+            seen,
+            vec![
+                (Stage::PreParse, "obsidian".into(), "daily/today".into()),
+                (Stage::Transform, "obsidian".into(), "daily/today".into()),
+                (Stage::PostRender, "obsidian".into(), "daily/today".into()),
+            ]
+        );
     }
 
     #[test]

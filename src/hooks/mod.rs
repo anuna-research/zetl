@@ -10,6 +10,7 @@
 //!   written to hook stdin.
 
 pub mod ast;
+pub mod build_context;
 pub mod build_data;
 pub mod context;
 pub mod pipeline;
