@@ -142,10 +142,12 @@ fn block_to_pandoc(b: &Block) -> Value {
         Block::Paragraph(p) => json!({
             "t": "Para",
             "c": p.children.iter().flat_map(inline_to_pandoc).collect::<Vec<_>>(),
+            "zetl-position": position_to_attr_value(p.position),
         }),
         Block::BlockQuote(bq) => json!({
             "t": "BlockQuote",
             "c": bq.children.iter().map(block_to_pandoc).collect::<Vec<_>>(),
+            "zetl-position": position_to_attr_value(bq.position),
         }),
         Block::List(l) => {
             let items: Vec<Value> = l
@@ -166,11 +168,13 @@ fn block_to_pandoc(b: &Block) -> Value {
                         ],
                         items,
                     ],
+                    "zetl-position": position_to_attr_value(l.position),
                 })
             } else {
                 json!({
                     "t": "BulletList",
                     "c": items,
+                    "zetl-position": position_to_attr_value(l.position),
                 })
             }
         }

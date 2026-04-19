@@ -1,12 +1,12 @@
 {
-  "task_id": "pandoc-adapter",
+  "task_id": "pandoc-translator",
   "token_budget": 8000,
-  "tokens_used": 325,
+  "tokens_used": 326,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Pandoc adapter per REQ-3303 / CON-3303 / ADR-3302. Subprocess invocation, pandoc-types marker convention, mode = filter|native resolution (pandoc-citeproc → native).",
-      "token_cost": 41,
+      "content": "zetl-ext ↔ pandoc-types translator per REQ-3307. Marker-table approach per amended REQ-3307 (slimmed model). Covers Wikilink, Embed, SPL, FrontMatter + core Markdown.",
+      "token_cost": 42,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T21:43:52Z"
+  "constructed_at": "2026-04-19T21:55:37Z"
 }
