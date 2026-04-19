@@ -1,12 +1,12 @@
 {
-  "task_id": "helper-py",
+  "task_id": "frontmatter-opt-out",
   "token_budget": 8000,
-  "tokens_used": 323,
+  "tokens_used": 315,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl-ast-py` package on PyPI per REQ-3210. Version pinned to AST schema v1.0. Provides AST types, @on_node dispatch, manifest helpers, stdio protocol client.",
-      "token_cost": 39,
+      "content": "Per-file extension opt-out via frontmatter per REQ-3211 / CON-3211. `zetl: { ext: { <id>: false } }` disables a single hook.",
+      "token_cost": 31,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T16:54:07Z"
+  "constructed_at": "2026-04-19T17:04:14Z"
 }
