@@ -1,12 +1,12 @@
 {
-  "task_id": "ast-reference-gen",
+  "task_id": "helper-js",
   "token_budget": 8000,
-  "tokens_used": 337,
+  "tokens_used": 317,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "tools/zetl-ast-reference-gen/ (Rust) producing docs/zetl-ast-reference.md from the JSON Schema. One section per node type: shape, attrs, canonical example, HTML rendering expectation. Wired into CI as a diff gate.",
-      "token_cost": 53,
+      "content": "`zetl-ast-js` package on npm per REQ-3210. Same surface as helper-py (types, onNode dispatch, manifest helpers, stdio protocol client).",
+      "token_cost": 33,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T14:23:49Z"
+  "constructed_at": "2026-04-19T14:31:56Z"
 }

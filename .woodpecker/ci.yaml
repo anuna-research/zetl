@@ -6,6 +6,14 @@ steps:
     image: rust:1-bookworm
     commands:
       - rustup component add rustfmt clippy
+      # Install Node for helper-js build + TEST-3210 cross-language test.
+      - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      - apt-get install -y nodejs
+      # SPEC-032 REQ-3210 helper-js: build ESM/CJS/types and run its own
+      # test suite before the Rust-side integration test picks up dist/.
+      - make helper-js-install
+      - make helper-js-build
+      - make helper-js-test
       - cargo test --verbose
       - cargo fmt --check
       - cargo clippy -- -D warnings
