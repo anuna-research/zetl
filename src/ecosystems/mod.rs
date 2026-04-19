@@ -22,6 +22,8 @@ pub mod manifest;
 #[cfg(feature = "ecosystem-pandoc")]
 pub mod pandoc;
 pub mod registry;
+#[cfg(feature = "ecosystem-remark")]
+pub mod remark;
 
 pub use adapter::{
     default_fixtures, mock_adapter_ctor, run_conformance, CheckOutcome, ConformanceFixture,

@@ -1,12 +1,12 @@
 {
-  "task_id": "pandoc-translator",
+  "task_id": "remark-harness",
   "token_budget": 8000,
-  "tokens_used": 326,
+  "tokens_used": 319,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "zetl-ext ↔ pandoc-types translator per REQ-3307. Marker-table approach per amended REQ-3307 (slimmed model). Covers Wikilink, Embed, SPL, FrontMatter + core Markdown.",
-      "token_cost": 42,
+      "content": "remark adapter per REQ-3305 / CON-3305 / ADR-3304. Persistent Node subprocess; JSON-lines harness; REQ-3305 isolation = shared|fresh-context.",
+      "token_cost": 35,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T21:55:37Z"
+  "constructed_at": "2026-04-19T22:10:41Z"
 }
