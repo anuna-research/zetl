@@ -4864,6 +4864,376 @@ fn strip_leading_frontmatter(content: &str) -> &str {
     }
 }
 
+/// Per-page cache used by `cmd_hook_coverage` — parse the frontmatter and
+/// strip the body once up front, then reuse the `(path, frontmatter, body)`
+/// tuple when each hook's selector is evaluated against the vault.
+struct CoveragePage {
+    path: PathBuf,
+    frontmatter: serde_json::Value,
+    body: String,
+}
+
+fn cmd_hook_coverage(
+    cli: &Cli,
+    theme: &str,
+    stage_filter: Option<&zetl::cli::AuthoringStage>,
+) -> Result<()> {
+    use zetl::cli::AuthoringStage;
+    use zetl::hooks::composition::compose_stage;
+    use zetl::hooks::pipeline::Stage;
+    use zetl::web::markdown::parse_frontmatter;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+
+    // Pick which stages to report on. REQ-3208 defaults to every stage;
+    // `--stage` restricts to one.
+    let stages: Vec<Stage> = match stage_filter {
+        Some(AuthoringStage::PreParse) => vec![Stage::PreParse],
+        Some(AuthoringStage::Transform) => vec![Stage::Transform],
+        Some(AuthoringStage::PostRender) => vec![Stage::PostRender],
+        None => Stage::all().to_vec(),
+    };
+
+    // Enumerate the vault once — the selector path is measured against
+    // vault-relative paths, and the total page count feeds both the
+    // per-hook `matched/total` ratio and the unmatched-pages list.
+    let scanned = scan_vault(&vault_root, &cli.scan_options())
+        .with_context(|| format!("failed to scan vault {}", vault_root.display()))?;
+    let total_pages = scanned.len();
+
+    let pages: Vec<CoveragePage> = scanned
+        .iter()
+        .filter_map(|f| {
+            let abs = vault_root.join(&f.path);
+            let content = std::fs::read_to_string(&abs).ok()?;
+            let frontmatter = parse_frontmatter(&content);
+            let body = strip_leading_frontmatter(&content).to_string();
+            Some(CoveragePage {
+                path: f.path.clone(),
+                frontmatter,
+                body,
+            })
+        })
+        .collect();
+
+    // Optional persisted build coverage — a future build writes
+    // `.zetl/build/hook-coverage.json` and we merge its latency / failure
+    // data in here. Missing file = "no build on disk; this is a dry-run".
+    let persisted = load_persisted_coverage(&vault_root);
+    let source = if persisted.is_some() { "build" } else { "dry-run" };
+
+    let mut hook_rows: Vec<HookCoverageRow> = Vec::new();
+
+    for stage in &stages {
+        let pipeline = compose_stage(&vault_root, theme_hooks.path(), *stage)
+            .with_context(|| format!("failed to compose {stage} hooks"))?;
+
+        for hook in &pipeline.hooks {
+            let row = coverage_row_for(hook, &pages, persisted.as_ref())?;
+            hook_rows.push(row);
+        }
+    }
+
+    // Unmatched pages: pages that no enabled hook in the selected stages
+    // matched. In build mode we still compute this from the dry-run
+    // result — the build writes per-hook coverage, not per-page, and the
+    // reader side stays cheap by re-evaluating locally.
+    let mut matched_pages: HashSet<PathBuf> = HashSet::new();
+    for row in &hook_rows {
+        for p in &row.matched_paths {
+            matched_pages.insert(p.clone());
+        }
+    }
+    let mut unmatched_pages: Vec<PathBuf> = pages
+        .iter()
+        .filter(|p| !matched_pages.contains(&p.path))
+        .map(|p| p.path.clone())
+        .collect();
+    unmatched_pages.sort();
+
+    let unmatched_hooks: Vec<UnmatchedHookRow> = hook_rows
+        .iter()
+        .filter(|r| r.matched == 0)
+        .map(|r| UnmatchedHookRow {
+            stage: r.stage.to_string(),
+            id: r.id.clone(),
+        })
+        .collect();
+
+    let output = HookCoverageOutput {
+        source: source.to_string(),
+        total_pages,
+        hooks: hook_rows.iter().map(HookCoverageRow::to_entry).collect(),
+        unmatched_hooks,
+        unmatched_pages: unmatched_pages
+            .iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect(),
+    };
+
+    let emit_json = cli.json || cli.format == OutputFormat::Json;
+    if emit_json {
+        print_json(&output)?;
+    } else {
+        render_coverage_table(&output);
+    }
+
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct HookCoverageOutput {
+    /// `"build"` when coverage was read from `.zetl/build/hook-coverage.json`,
+    /// `"dry-run"` when the report was synthesised from a fresh selector
+    /// evaluation against the current vault (REQ-3208 fallback).
+    source: String,
+    total_pages: usize,
+    hooks: Vec<HookCoverageEntry>,
+    unmatched_hooks: Vec<UnmatchedHookRow>,
+    unmatched_pages: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct HookCoverageEntry {
+    stage: String,
+    id: String,
+    manifest_path: Option<String>,
+    matched: usize,
+    matched_of: usize,
+    invoked: usize,
+    failed: usize,
+    p50_ms: Option<u64>,
+    p95_ms: Option<u64>,
+    last_failure_reason: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+struct UnmatchedHookRow {
+    stage: String,
+    id: String,
+}
+
+struct HookCoverageRow {
+    stage: zetl::hooks::pipeline::Stage,
+    id: String,
+    manifest_path: Option<PathBuf>,
+    matched: usize,
+    matched_of: usize,
+    invoked: usize,
+    failed: usize,
+    p50_ms: Option<u64>,
+    p95_ms: Option<u64>,
+    last_failure_reason: Option<String>,
+    matched_paths: Vec<PathBuf>,
+}
+
+impl HookCoverageRow {
+    fn to_entry(&self) -> HookCoverageEntry {
+        HookCoverageEntry {
+            stage: self.stage.to_string(),
+            id: self.id.clone(),
+            manifest_path: self
+                .manifest_path
+                .as_ref()
+                .map(|p| p.display().to_string()),
+            matched: self.matched,
+            matched_of: self.matched_of,
+            invoked: self.invoked,
+            failed: self.failed,
+            p50_ms: self.p50_ms,
+            p95_ms: self.p95_ms,
+            last_failure_reason: self.last_failure_reason.clone(),
+        }
+    }
+}
+
+fn coverage_row_for(
+    hook: &zetl::hooks::composition::ComposedHook,
+    pages: &[CoveragePage],
+    persisted: Option<&PersistedCoverage>,
+) -> Result<HookCoverageRow> {
+    use zetl::hooks::manifest::{load_manifest, LoadedManifest};
+    use zetl::hooks::selector::{compile, SelectorInput};
+
+    let selector_spec = match &hook.manifest_path {
+        Some(path) => match load_manifest(path)
+            .with_context(|| format!("failed to load manifest {}", path.display()))?
+        {
+            LoadedManifest::Present(m) => m.select,
+            LoadedManifest::Missing => Default::default(),
+        },
+        None => Default::default(),
+    };
+
+    let selector = compile(&selector_spec).map_err(|e| {
+        anyhow::anyhow!(
+            "failed to compile selector for hook '{}' ({}): {e}",
+            hook.extension_id,
+            hook.stage
+        )
+    })?;
+
+    let mut matched_paths: Vec<PathBuf> = Vec::new();
+    for page in pages {
+        let input = SelectorInput {
+            path: &page.path,
+            frontmatter: &page.frontmatter,
+            text: &page.body,
+        };
+        if selector.evaluate(&input) {
+            matched_paths.push(page.path.clone());
+        }
+    }
+    matched_paths.sort();
+
+    let matched = matched_paths.len();
+
+    // Persisted build data (if any) overrides the dry-run synthesised
+    // invoked / failed / latency cells. When absent — the default for now —
+    // invoked == matched and failure stats are None.
+    let persisted_row = persisted.and_then(|p| p.lookup(hook.stage, &hook.extension_id));
+    let (invoked, failed, p50_ms, p95_ms, last_failure_reason) = match persisted_row {
+        Some(r) => (
+            r.invoked,
+            r.failed,
+            r.p50_ms,
+            r.p95_ms,
+            r.last_failure_reason.clone(),
+        ),
+        None => (matched, 0, None, None, None),
+    };
+
+    Ok(HookCoverageRow {
+        stage: hook.stage,
+        id: hook.extension_id.clone(),
+        manifest_path: hook.manifest_path.clone(),
+        matched,
+        matched_of: pages.len(),
+        invoked,
+        failed,
+        p50_ms,
+        p95_ms,
+        last_failure_reason,
+        matched_paths,
+    })
+}
+
+/// Parsed `.zetl/build/hook-coverage.json`. Keys are `(stage, extension_id)`
+/// — same identity used throughout SPEC-032 for hook lookup.
+struct PersistedCoverage {
+    rows: HashMap<(String, String), PersistedRow>,
+}
+
+#[derive(Clone)]
+struct PersistedRow {
+    invoked: usize,
+    failed: usize,
+    p50_ms: Option<u64>,
+    p95_ms: Option<u64>,
+    last_failure_reason: Option<String>,
+}
+
+impl PersistedCoverage {
+    fn lookup(
+        &self,
+        stage: zetl::hooks::pipeline::Stage,
+        id: &str,
+    ) -> Option<&PersistedRow> {
+        self.rows.get(&(stage.as_str().to_string(), id.to_string()))
+    }
+}
+
+fn load_persisted_coverage(vault_root: &Path) -> Option<PersistedCoverage> {
+    let path = vault_root
+        .join(".zetl")
+        .join("build")
+        .join("hook-coverage.json");
+    let bytes = std::fs::read(&path).ok()?;
+    let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    let arr = v.get("hooks").and_then(|h| h.as_array())?;
+    let mut rows: HashMap<(String, String), PersistedRow> = HashMap::new();
+    for row in arr {
+        let stage = row.get("stage")?.as_str()?.to_string();
+        let id = row.get("id")?.as_str()?.to_string();
+        let invoked = row.get("invoked").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+        let failed = row.get("failed").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+        let p50_ms = row.get("p50_ms").and_then(|x| x.as_u64());
+        let p95_ms = row.get("p95_ms").and_then(|x| x.as_u64());
+        let last_failure_reason = row
+            .get("last_failure_reason")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string());
+        rows.insert(
+            (stage, id),
+            PersistedRow {
+                invoked,
+                failed,
+                p50_ms,
+                p95_ms,
+                last_failure_reason,
+            },
+        );
+    }
+    Some(PersistedCoverage { rows })
+}
+
+fn render_coverage_table(output: &HookCoverageOutput) {
+    // CON-3208 table shape: HOOK, STAGE, MATCHED, INVOKED, FAILED, P50, P95.
+    // We add a header above noting `source` (dry-run vs build) and the
+    // total page count so the `N/500` cell has context.
+    println!(
+        "Source: {}   Total pages: {}",
+        output.source, output.total_pages
+    );
+
+    if output.hooks.is_empty() {
+        println!("No hooks configured.");
+    } else {
+        let mut table = Table::new();
+        table.set_header(vec!["HOOK", "STAGE", "MATCHED", "INVOKED", "FAILED", "P50", "P95"]);
+        for h in &output.hooks {
+            table.add_row(vec![
+                Cell::new(&h.id),
+                Cell::new(&h.stage),
+                Cell::new(format!("{}/{}", h.matched, h.matched_of)),
+                Cell::new(h.invoked.to_string()),
+                Cell::new(h.failed.to_string()),
+                Cell::new(match h.p50_ms {
+                    Some(ms) => format!("{ms}ms"),
+                    None => "-".to_string(),
+                }),
+                Cell::new(match h.p95_ms {
+                    Some(ms) => format!("{ms}ms"),
+                    None => "-".to_string(),
+                }),
+            ]);
+        }
+        println!("{table}");
+    }
+
+    if !output.unmatched_hooks.is_empty() {
+        println!();
+        println!("Unmatched hooks ({}):", output.unmatched_hooks.len());
+        for h in &output.unmatched_hooks {
+            println!("  {} ({})", h.id, h.stage);
+        }
+    }
+
+    if !output.unmatched_pages.is_empty() {
+        println!();
+        println!(
+            "Unmatched pages ({} of {}):",
+            output.unmatched_pages.len(),
+            output.total_pages
+        );
+        for p in &output.unmatched_pages {
+            println!("  {p}");
+        }
+    }
+}
+
 fn cmd_hook_watch(cli: &Cli, name: &str) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
@@ -10443,6 +10813,9 @@ fn main() -> anyhow::Result<()> {
             HookCommand::Watch { name } => cmd_hook_watch(&cli, name),
             HookCommand::DryRun { spec, theme, limit } => {
                 cmd_hook_dry_run(&cli, spec, theme, *limit)
+            }
+            HookCommand::Coverage { theme, stage } => {
+                cmd_hook_coverage(&cli, theme, stage.as_ref())
             }
         },
         Command::Ast { command } => {
