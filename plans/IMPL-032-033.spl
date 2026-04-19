@@ -1,0 +1,759 @@
+;; IMPL-032-033: Three-Stage Hooks + Ecosystem Bridges
+;; Implements SPEC-032 v1.1.0 and SPEC-033 v1.0.0
+
+(meta plan
+  (id "IMPL-032-033")
+  (title "Three-Stage Hooks + Ecosystem Bridges")
+  (version "1.0.0")
+  (status "draft")
+  (created "2026-04-19")
+  (author "agent:claude")
+  (spec "SPEC-032, SPEC-033")
+  (description "Implement SPEC-032 three-stage render hook pipeline (pre-parse / transform / post-render) and SPEC-033 ecosystem bridges (Pandoc, mdBook, remark). Phased rollout: (A) foundation plumbing behind --features hooks-v2 + author CLIs + quality gates; (B) Python + JS helper libraries; (C) canonical extensions as thin stubs pointing at ecosystem plugins; (D) ecosystem foundation behind --features ecosystems-v1; (E/F/G) Pandoc, mdBook, remark adapters each with matrix seeding and golden tests; (H) cross-ecosystem gates and feature-flag retirement. SPEC-032 Phase C + SPEC-033 Phase E converge on stub-model per the §13 Q1 resolution."))
+
+;; ── Agents ──────────────────────────────────────────────
+;; agent-core        Rust core plumbing (pipeline, protocol, manifest, selectors)
+;; agent-sdk         Python + JS helper libraries and their ecosystems
+;; agent-ecosystem   Pandoc / mdBook / remark adapter work
+;; agent-release     Matrix maintenance, rollout, supersession, feature-flag retirement
+(given agent-core-available)
+(given agent-sdk-available)
+(given agent-ecosystem-available)
+(given agent-release-available)
+
+;; ── Tasks ───────────────────────────────────────────────
+
+;; === Phase A1: Foundation (SPEC-032 plumbing) ===
+(given task-ast-schema)
+(given task-ast-types-rust)
+(given task-ast-reference-gen)
+(given task-manifest-parser)
+(given task-selector-eval)
+(given task-frontmatter-opt-out)
+(given task-three-stage-pipeline)
+(given task-persistent-protocol)
+(given task-typed-ast-protocol)
+(given task-ast-version-exposure)
+(given task-capability-probe)
+(given task-composition)
+(given task-failure-scoping)
+(given task-build-data-channel)
+(given task-build-context)
+(given task-safe-mode)
+(given task-behavioural-contracts)
+(given task-template-vars)
+(given task-ordering-hooks)
+(given task-node-dispatch)
+
+;; === Phase A2: Author CLIs & diagnostics ===
+(given task-hook-dry-run)
+(given task-hook-coverage)
+(given task-hook-authoring-cli)
+(given task-ast-cli)
+(given task-diagnostic-design)
+
+;; === Phase A3: Quality gates (SPEC-032) ===
+(given task-observability-hooks)
+(given task-security-hooks)
+(given task-nfr-gates-032)
+(given task-test-032-matrix)
+
+;; === Phase B: Helper libraries ===
+(given task-helper-py)
+(given task-helper-js)
+(given task-helper-contracts)
+
+;; === Phase C: Canonical extensions (thin stubs) ===
+(given task-ext-callouts)
+(given task-ext-tasks)
+(given task-ext-admonition)
+(given task-ext-golden-html)
+
+;; === Phase D: Ecosystem foundation (SPEC-033) ===
+(given task-eco-registry)
+(given task-adapter-trait)
+(given task-parser-registry)
+(given task-eco-manifest)
+(given task-eco-runtime-detect)
+(given task-eco-check)
+(given task-eco-feature-flags)
+(given task-eco-translators-scaffold)
+
+;; === Phase E: Pandoc ===
+(given task-pandoc-adapter)
+(given task-pandoc-translator)
+(given task-pandoc-matrix-seed)
+(given task-pandoc-docs)
+
+;; === Phase F: mdBook ===
+(given task-mdbook-adapter)
+(given task-mdbook-envelope)
+(given task-mdbook-matrix-seed)
+(given task-mdbook-docs)
+
+;; === Phase G: remark ===
+(given task-remark-harness)
+(given task-remark-translator)
+(given task-remark-matrix-seed)
+(given task-remark-docs)
+
+;; === Phase H: Cross-ecosystem, rollout, supersession ===
+(given task-eco-matrix)
+(given task-mixed-eco-diagnostic)
+(given task-plugin-version-drift)
+(given task-nfr-gates-033)
+(given task-spec-031-supersede)
+(given task-retire-hooks-v2)
+(given task-retire-ecosystems-v1)
+
+;; ── Task metadata ───────────────────────────────────────
+
+(meta task-ast-schema
+  (description "Author tools/zetl-ast-schema-v1.json (JSON Schema Draft 2020-12). Covers Wikilink, Embed, SPL, FrontMatter + core Markdown nodes per SPEC-032 REQ-3202 / CON-3202.")
+  (acceptance "Schema parses as Draft 2020-12; TEST-3202 fixtures validate; schema file versioned at v1.0.0; reviewed by hand against CON-3202 node-type list."))
+
+(meta task-ast-types-rust
+  (description "Rust representation of zetl-ext AST with serde round-trip to schema. Internal representation used by pre-parse/transform/post-render pipeline.")
+  (acceptance "src/hooks/ast/ types compile; property test: schema.validate(serde_json::to_value(node)) for representative sample; round-trip parse of fixture corpus is stable."))
+
+(meta task-ast-reference-gen
+  (description "tools/zetl-ast-reference-gen/ (Rust) producing docs/zetl-ast-reference.md from the JSON Schema. One section per node type: shape, attrs, canonical example, HTML rendering expectation. Wired into CI as a diff gate.")
+  (acceptance "Running `cargo run -p zetl-ast-reference-gen` regenerates docs/zetl-ast-reference.md; CI fails on uncommitted diff; schema / reference traceability enforced."))
+
+(meta task-manifest-parser
+  (description "Parse .zetl/hooks/<stage>.d/<name>.toml per REQ-3203 / CON-3203. Fields: stage, mode (persistent|one-shot), timeout_ms, selector {path, content, frontmatter}, contract (preserves, idempotent, may_restructure, pure, expansion_bound), ordering, ast_type.")
+  (acceptance "TEST-3203 passes; malformed manifest emits five-part diagnostic (CON-3225); per-field defaults applied; unknown keys rejected in strict mode."))
+
+(meta task-selector-eval
+  (description "Selector evaluator with short-circuit order path → content → frontmatter (REQ-3204 / CON-3204). Compile regexes once per build. Frontmatter predicate grammar per REQ-3205 / CON-3205.")
+  (acceptance "TEST-3204 (short-circuit) + TEST-3205 (predicate grammar) pass; TEST-3201-perf selector hot-path latency NFR-3201 holds at zero-match budget; per-build cache hits measured."))
+
+(meta task-frontmatter-opt-out
+  (description "Per-file extension opt-out via frontmatter per REQ-3211 / CON-3211. `zetl: { ext: { <id>: false } }` disables a single hook.")
+  (acceptance "TEST-3211 passes; unit tests cover page-level disable, no collision with selectors, diagnostic when opting out of non-existent id."))
+
+(meta task-three-stage-pipeline
+  (description "Three-stage pipeline scaffolding per REQ-3201 / ADR-3205. pre-parse (raw text → raw text), transform (AST → AST), post-render (HTML fragment → HTML fragment). Sequential per stage, concurrent across pages.")
+  (acceptance "TEST-3201 three-stage execution order passes; fixture: one hook per stage proves each transformation lands in the right pass; per-stage time accounted in build stats."))
+
+(meta task-persistent-protocol
+  (description "Persistent-mode wire protocol per CON-3201: {type: init|run|finalise|shutdown, ...}. JSON-lines over stdio. NFR-3207 budget: <1.5ms protocol overhead per page.")
+  (acceptance "TEST-3207-perf passes; kill-switch on timeout_ms exceeded; stderr surfaces to diagnostic; child-process leak test: 0 orphans after build."))
+
+(meta task-typed-ast-protocol
+  (description "Typed AST-protocol (ast_type) dispatch surface per REQ-3221 / CON-3221. Hooks declare ast_type = zetl-ext|mdast|pandoc-types; shared translator layer converts to/from zetl-ext canonical form.")
+  (acceptance "Hook with ast_type=mdast executes against a translated AST; translators registered; dispatch table covered by TEST-3221."))
+
+(meta task-ast-version-exposure
+  (description "Dual-version exposure per REQ-3215: both zetl binary version and AST schema version exposed to hooks (`init` payload + `ZETL_AST_SCHEMA_VERSION` env).")
+  (acceptance "Hook can read both versions; capability probe (next task) uses schema version to decide supported ast_types."))
+
+(meta task-capability-probe
+  (description "`zetl hook capabilities` subcommand + init-time capability probe per REQ-3216. Reports supported ast_types, stages, and AST schema version.")
+  (acceptance "JSON output matches CON schema; hook manifest declaring an unsupported ast_type rejected at load-time with diagnostic pointing at the capability report."))
+
+(meta task-composition
+  (description "Directory drop-in precedence per REQ-3206 / CON-3206. Vault .zetl/hooks/<stage>.d/*.toml > theme hooks > built-in, with explicit ordering hooks per REQ-3217.")
+  (acceptance "TEST-3206 composition-and-precedence passes; CON-3217 worked example reproduced in fixture (vault overrides theme, theme overrides built-in)."))
+
+(meta task-failure-scoping
+  (description "Failure scoping and pipeline continuation per REQ-3207 / CON-3207. Hook failure → page fragment revert; structured diagnostic; build continues to next page; non-zero exit if any page failed.")
+  (acceptance "TEST-3207 passes; diagnostic record has five parts per CON-3225; reverted fragment logged; build exit code reflects failure count."))
+
+(meta task-build-data-channel
+  (description "Shared build-scoped data channel per REQ-3219 / CON-3219. `build_data` mutable dict threaded across pages with concurrency-safe semantics (sharding + finalise-stage merge).")
+  (acceptance "Fixture: hook accumulates totals across pages; cross-page concurrency test (race detector) passes; finalise stage sees merged view."))
+
+(meta task-build-context
+  (description "Expose build context to hooks per REQ-3220. `ctx` contains vault_root, theme, page metadata, zetl version, schema version, build_data handle.")
+  (acceptance "Hook init receives complete ctx payload; theme-aware fixture: hook reads theme id and branches output; TEST covers schema of ctx."))
+
+(meta task-safe-mode
+  (description "Safe-mode execution per REQ-3223. `zetl build --safe-mode` disables untrusted hooks (all except explicitly allow-listed theme hooks). Theme hooks must be declared in theme.toml `[hooks]`.")
+  (acceptance "Safe-mode build refuses to execute vault .zetl/hooks/*; theme hook without theme.toml declaration also rejected; TEST covers both."))
+
+(meta task-behavioural-contracts
+  (description "Behavioural contract declarations + enforcement per REQ-3224 / CON-3224. Fields: preserves, idempotent, may_restructure, pure, expansion_bound. Property-test harness validates claims against fixtures.")
+  (acceptance "TEST-3224 + TEST-3224-idempotent pass; hook declaring `idempotent=true` but violating it fails at test-time with five-part diagnostic; enforcement loci (build, test, coverage) documented."))
+
+(meta task-template-vars
+  (description "Template variable publishing per REQ-3214 / CON-3214. Hooks emit `page.ext.<hook_id>.*` + `vault.ext.<hook_id>.*`. All three stages may publish. §13 Q11 proposed answer.")
+  (acceptance "TEST-3214 passes; minijinja templates read page.ext + vault.ext; null when hook didn't run; collision diagnostic when two hooks claim the same id."))
+
+(meta task-ordering-hooks
+  (description "Ordering constraints and optional hooks per REQ-3217. Manifest `ordering.before = [\"id\"]` + `ordering.after = [\"id\"]`. Cycle detection; optional hooks skip silently when selector misses.")
+  (acceptance "Cycle produces diagnostic at load-time; worked example from CON-3217 reproduced; optional hook does not affect coverage %."))
+
+(meta task-node-dispatch
+  (description "Declarative node-type dispatch in helper libraries per REQ-3218. `@on_node(\"Wikilink\")` decorator (py) / `onNode(\"Wikilink\", fn)` (js) routes without if/else chains.")
+  (acceptance "Helper-library contract tests pass; benchmark: dispatch overhead per node <50µs."))
+
+(meta task-hook-dry-run
+  (description "`zetl hook dry-run <page>` per REQ-3209. Runs all matching hooks against a single page; prints before/after diff; no writes.")
+  (acceptance "TEST-3209 passes; diff output readable; --json emits structured form."))
+
+(meta task-hook-coverage
+  (description "`zetl hook coverage` per REQ-3208 / CON-3208. Reports: pages matched, hook invocations, unmatched hooks, unmatched pages. Table + --json.")
+  (acceptance "TEST-3208 passes; report identifies an intentionally-unmatched hook; optional hooks correctly excluded from 'unmatched' list."))
+
+(meta task-hook-authoring-cli
+  (description "`zetl hook new/test/fixture --from/watch` per REQ-3225. Scaffolds hook skeleton + manifest + fixtures; runs fixture tests; `--from PAGE` captures current rendering as fixture; `watch` loops.")
+  (acceptance "TEST-3225 subcommand matrix passes; scaffolded hook runs out-of-box; `test` exits non-zero when fixture diverges; `--from` captures a fixture that re-passes immediately."))
+
+(meta task-ast-cli
+  (description "`zetl ast sample <page>` and `zetl ast diff <a> <b>` per REQ-3225. `sample` prints canonical zetl-ext JSON of a page; `diff` shows AST-level diff (not text diff).")
+  (acceptance "TEST-3225 includes ast subcommand cases; JSON output validates against zetl-ast-schema-v1; diff handles additions, removals, attr changes."))
+
+(meta task-diagnostic-design
+  (description "Five-part diagnostic message design per CON-3225: summary / context / observed / cause / hint. Shared `HookDiagnostic` type used across manifest parse, hook failure, contract violation, schema mismatch.")
+  (acceptance "All hook-originating diagnostics use the shared type; regression gate: snapshot-test of the three CON-3225 worked examples stays byte-stable across releases."))
+
+(meta task-observability-hooks
+  (description "SPEC-032 §9 observability. `[zetl] hook: stage=transform id=callouts page=X duration_ms=N` log lines; stats block: per-stage time, per-hook time, pages matched, diagnostics emitted.")
+  (acceptance "`--verbose` emits per-page, per-hook lines; `zetl stats` surfaces hook aggregates; OBS-style lines match existing codebase style (see OBS-011..013)."))
+
+(meta task-security-hooks
+  (description "SPEC-032 §10 security: untrusted-script considerations, process isolation, timeout enforcement, stdout/stderr streaming (no in-memory buffering), redact-env-by-default.")
+  (acceptance "Timeout test: hook that sleeps > timeout_ms is killed; env leak test: `echo $SECRET` from a hook reveals nothing by default; docs/hook-security.md written."))
+
+(meta task-nfr-gates-032
+  (description "NFR-3201..NFR-3208 performance + determinism gates wired into CI. Per-page budget enforcement; zero-hook startup cost; memory containment (persistent mode).")
+  (acceptance "Bench suite runs in CI; all NFR budgets pass; regressions >5% break the build."))
+
+(meta task-test-032-matrix
+  (description "TEST-3213 matrix gate — confirms every REQ-32XX has at least one linked test. Script reads SPEC-032 §14 and lints for orphaned REQs or TEST-only entries.")
+  (acceptance "`cargo xtask test-matrix --spec SPEC-032` passes; deliberately un-tested REQ in fixture fails the gate."))
+
+(meta task-helper-py
+  (description "`zetl-ast-py` package on PyPI per REQ-3210. Version pinned to AST schema v1.0. Provides AST types, @on_node dispatch, manifest helpers, stdio protocol client.")
+  (acceptance "CON-3210 contract tests pass; `pip install zetl-ast-py && python -c 'import zetl_ast'` works; version metadata readable by capability probe."))
+
+(meta task-helper-js
+  (description "`zetl-ast-js` package on npm per REQ-3210. Same surface as helper-py (types, onNode dispatch, manifest helpers, stdio protocol client).")
+  (acceptance "CON-3210 contract tests pass; `npm install zetl-ast-js` works in a clean project; ESM + CJS entry points; TS types published."))
+
+(meta task-helper-contracts
+  (description "Cross-implementation contract tests per REQ-3210 / CON-3210. Same fixture corpus runs against py + js + native Rust harness; all three must agree bit-for-bit on AST transforms.")
+  (acceptance "CI job `helper-contracts` runs fixture corpus against py+js+rust; disagreement fails build with side-by-side diff."))
+
+(meta task-ext-callouts
+  (description "Callouts canonical-extension as thin stub per REQ-3212 (amended to stub model). Default theme points to mdbook-admonish under mdBook ecosystem or Pandoc native div syntax. Obsidian `> [!note]` syntax recognised via selector; stub records a template-var for the theme to render without running a plugin.")
+  (acceptance "TEST-3212a golden HTML passes; stub documented in docs/canonical-extensions.md; no Python dependency shipped in default theme."))
+
+(meta task-ext-tasks
+  (description "Tasks canonical-extension as thin stub. Obsidian `- [ ]`, `- [x]` syntax captured; stub emits template-vars (`page.ext.tasks.open`, `.done`, `.due`). Theme renders tasks from vars.")
+  (acceptance "TEST-3212b golden HTML passes; named DQL subset per SPEC-032 §13 Q4 documented (`not done`, `due before`, `path includes`, `tag includes`); unsupported queries render as `<span class=\"zetl-unsupported-query\">`."))
+
+(meta task-ext-admonition
+  (description "Admonition canonical-extension as thin stub. `ad-*` blocks (Obsidian) + `!!! note` (Python-Markdown MkDocs variant) recognised.")
+  (acceptance "TEST-3212c golden HTML passes; stub documented."))
+
+(meta task-ext-golden-html
+  (description "Shared golden-HTML harness per CON-3212. Per-extension fixture format; update via `cargo xtask update-golden`; review gate on human-readable diffs.")
+  (acceptance "Harness wired into CI; intentionally-drifted fixture triggers the gate; `update-golden` writes files cleanly."))
+
+(meta task-eco-registry
+  (description "Ecosystem registry per REQ-3301 / CON-3301. Enum + static table of {id, name, runtime, default_stage, feature_flag}.")
+  (acceptance "TEST-3301 registry integrity passes; registering a new ecosystem requires both code + matrix entry (lint enforced)."))
+
+(meta task-adapter-trait
+  (description "EcosystemAdapter trait per REQ-3302 / CON-3302. Methods: probe (runtime available?), translate_in (zetl-ext→native AST), invoke (run plugin), translate_out (native→zetl-ext).")
+  (acceptance "TEST-3302 trait-conformance passes on a mock adapter; real adapters pass too once landed."))
+
+(meta task-parser-registry
+  (description "Parser registry + per-page selection per REQ-3306 / CON-3306. Config key `[parse] default = \"commonmark\"`; per-page `parser: pandoc` in frontmatter overrides.")
+  (acceptance "TEST-3306 parser-selection passes; default keeps commonmark; pandoc parser lives behind `--features ecosystem-pandoc`."))
+
+(meta task-eco-manifest
+  (description "Per-ecosystem manifest fields per REQ-3312 / CON-3312. Pandoc: mode (filter|native) + filter path. mdBook: supports-html probe. remark: plugin name + options.")
+  (acceptance "TEST-3312 manifest validation passes; unknown ecosystem-specific key rejected with diagnostic."))
+
+(meta task-eco-runtime-detect
+  (description "Graceful absence per REQ-3313. Adapter probes its runtime (pandoc --version / mdbook --version / node --version) at init; missing runtime → clear diagnostic + pipeline skip, not crash.")
+  (acceptance "TEST-3313 runtime-detection passes; missing-runtime build still emits HTML (minus the ecosystem's pages); exit code reflects partial build."))
+
+(meta task-eco-check
+  (description "`zetl ecosystem check` subcommand per REQ-3310 / CON-3310. Reports per-ecosystem: detected? version? plugins configured? plugins reachable?")
+  (acceptance "TEST-3310 passes; table output readable; --json output parseable by CI gates; exit code non-zero if any user-requested ecosystem is unavailable."))
+
+(meta task-eco-feature-flags
+  (description "Per-ecosystem Cargo features: `ecosystem-pandoc`, `ecosystem-mdbook`, `ecosystem-remark`, umbrella `ecosystems-v1`. Binary size impact per NFR-3304.")
+  (acceptance "All four flags compile in isolation and together; NFR-3304 size budget holds; `cargo build --features ecosystems-v1` enables all three."))
+
+(meta task-eco-translators-scaffold
+  (description "Translator module scaffolding with property-test harness per NFR-3305. Round-trip fidelity: zetl-ext → native → zetl-ext produces canonical-equivalent form (relaxed from byte-identity per NFR-3305).")
+  (acceptance "Harness in place; proptest strategies for Wikilink, Embed, SPL, FrontMatter defined; CI gate on round-trip property."))
+
+(meta task-pandoc-adapter
+  (description "Pandoc adapter per REQ-3303 / CON-3303 / ADR-3302. Subprocess invocation, pandoc-types marker convention, mode = filter|native resolution (pandoc-citeproc → native).")
+  (acceptance "TEST-3303 passes with real pandoc binary in CI; TEST-3303-perf round-trip budget met; ADR-3302 trade-off documented."))
+
+(meta task-pandoc-translator
+  (description "zetl-ext ↔ pandoc-types translator per REQ-3307. Marker-table approach per amended REQ-3307 (slimmed model). Covers Wikilink, Embed, SPL, FrontMatter + core Markdown.")
+  (acceptance "TEST-3307 translation correctness passes; proptest round-trip gate on fixture corpus."))
+
+(meta task-pandoc-matrix-seed
+  (description "Seed SPEC-033 §REQ-3311 matrix with pandoc-crossref, pandoc-citeproc, pantable. Tier per tier-promotion checklist.")
+  (acceptance "Matrix entries land; each plugin has a named fixture + golden HTML; tier defaults to `experimental` unless checklist items met."))
+
+(meta task-pandoc-docs
+  (description "docs/ecosystems/pandoc.md per SPEC-033 §11. Covers install, config, known-working filters, Quarto subsection (§13 Q6).")
+  (acceptance "Doc landed; example in doc runs in CI via doctest; links to matrix entry + SPEC-033 REQ-3303."))
+
+(meta task-mdbook-adapter
+  (description "mdBook preprocessor adapter per REQ-3304 / CON-3304 / ADR-3303. Runs at pre-parse stage; `supports html` probe before invocation.")
+  (acceptance "TEST-3304 passes with real mdbook binary; adapter rejects preprocessors that fail `supports html`; ADR-3303 stage placement documented."))
+
+(meta task-mdbook-envelope
+  (description "mdBook book envelope per REQ-3309 / CON-3309. JSON shape {book, sections, chapters, ...} constructed per-page; translator round-trips.")
+  (acceptance "TEST-3309 mdBook envelope passes; schema validation on every page; round-trip fidelity property holds."))
+
+(meta task-mdbook-matrix-seed
+  (description "Seed matrix with mdbook-mermaid, mdbook-toc, mdbook-katex, mdbook-admonish. Tier per checklist.")
+  (acceptance "Matrix entries land; each plugin has a named fixture + golden HTML; admonish fixture replaces SPEC-032 Callouts built-in per §13 Q1 resolution."))
+
+(meta task-mdbook-docs
+  (description "docs/ecosystems/mdbook.md. Install, config, known-working preprocessors.")
+  (acceptance "Doc landed; example runs in CI doctest; cross-links to SPEC-033 REQ-3304 + matrix."))
+
+(meta task-remark-harness
+  (description "remark adapter per REQ-3305 / CON-3305 / ADR-3304. Persistent Node subprocess; JSON-lines harness; REQ-3305 isolation = shared|fresh-context.")
+  (acceptance "TEST-3305 passes with real node + remark; cold-start budget per NFR-3301 met; fresh-context mode verified to clear inter-page state."))
+
+(meta task-remark-translator
+  (description "zetl-ext ↔ mdast translator per REQ-3308. Marker-table approach per amended REQ-3308 (slimmed model).")
+  (acceptance "TEST-3308 passes; proptest round-trip fidelity gate on fixture corpus; mdast extension attrs preserved across round-trip."))
+
+(meta task-remark-matrix-seed
+  (description "Seed matrix with remark-gfm, remark-math, remark-directive. Tier per checklist.")
+  (acceptance "Matrix entries land; each plugin has a named fixture + golden HTML."))
+
+(meta task-remark-docs
+  (description "docs/ecosystems/remark.md. Install (Node + harness bundled vs BYO), config, known-working plugins.")
+  (acceptance "Doc landed; doctest example runs; cross-links to SPEC-033 REQ-3305 + matrix."))
+
+(meta task-eco-matrix
+  (description "Build the full SPEC-033 §REQ-3311 matrix: ecosystem × plugin × tier × fixture × contract. Tier-promotion checklist per amended REQ-3311.")
+  (acceptance "Matrix renders in docs; CI gate enforces that every matrix row has the required fixture + contract declaration; promotions go through the checklist."))
+
+(meta task-mixed-eco-diagnostic
+  (description "Mixed-parser diagnostic per REQ-3315. Page configured with multiple parsers → diagnostic + refusal. Config-time + build-time check.")
+  (acceptance "TEST covers: page with `parser: pandoc` + ecosystem-mdbook hook matched → diagnostic cites both and names the resolution."))
+
+(meta task-plugin-version-drift
+  (description "Plugin-version drift detection per REQ-3314. Matrix records tested version; build warns when installed version differs from tested by a minor+ version.")
+  (acceptance "TEST passes with mocked pandoc `--version`; warning has five-part shape per CON-3225."))
+
+(meta task-nfr-gates-033
+  (description "SPEC-033 NFR gates: NFR-3301 cold-start, NFR-3302/3303 per-page latency, NFR-3304 binary size, NFR-3305 round-trip, NFR-3306 determinism, NFR-3307 process lifecycle, NFR-3308 combined-ecosystem budget (≤3×).")
+  (acceptance "Bench suite in CI; all eight NFRs pass; regression >5% breaks build."))
+
+(meta task-spec-031-supersede
+  (description "Mark SPEC-031 as superseded by SPEC-032 + SPEC-033. Update status header + supersede links. Retain top-50 scan findings.")
+  (acceptance "SPEC-031 header shows `status: superseded`, `superseded-by: SPEC-032, SPEC-033`; CI passes."))
+
+(meta task-retire-hooks-v2
+  (description "Retire `--features hooks-v2` umbrella flag per SPEC-032 §12 Phase D. Requires two consecutive clean releases of canonical extensions in CI.")
+  (acceptance "Flag becomes default; `--no-hooks-v2` opt-out introduced for one release then removed; release notes call out the default-on switch."))
+
+(meta task-retire-ecosystems-v1
+  (description "Retire `--features ecosystems-v1` umbrella per SPEC-033 §12 Phase F. Requires two clean releases across all three adapters.")
+  (acceptance "Umbrella flag removed; per-ecosystem flags retained; release notes + migration guide landed."))
+
+;; ── Readiness rules ─────────────────────────────────────
+
+;; Foundation tasks with no deps — ready immediately.
+(normally r-ready-ast-schema     task-ast-schema     ready-ast-schema)
+(normally r-ready-manifest       task-manifest-parser ready-manifest-parser)
+(normally r-ready-three-stage    task-three-stage-pipeline ready-three-stage-pipeline)
+(normally r-ready-composition    task-composition    ready-composition)
+(normally r-ready-ordering       task-ordering-hooks ready-ordering-hooks)
+(normally r-ready-diagnostic-design task-diagnostic-design ready-diagnostic-design)
+
+;; AST types + reference gen depend on schema.
+(normally r-ready-ast-types
+  (and task-ast-types-rust completed-ast-schema)
+  ready-ast-types-rust)
+(normally r-ready-ast-reference
+  (and task-ast-reference-gen completed-ast-schema)
+  ready-ast-reference-gen)
+
+;; Selector + frontmatter opt-out depend on manifest parser.
+(normally r-ready-selector-eval
+  (and task-selector-eval completed-manifest-parser)
+  ready-selector-eval)
+(normally r-ready-frontmatter-opt-out
+  (and task-frontmatter-opt-out completed-manifest-parser)
+  ready-frontmatter-opt-out)
+
+;; Typed AST protocol depends on AST types.
+(normally r-ready-typed-ast-protocol
+  (and task-typed-ast-protocol completed-ast-types-rust)
+  ready-typed-ast-protocol)
+
+;; Persistent protocol depends on three-stage pipeline.
+(normally r-ready-persistent-protocol
+  (and task-persistent-protocol completed-three-stage-pipeline)
+  ready-persistent-protocol)
+
+;; Capability probe depends on version exposure.
+(normally r-ready-ast-version-exposure
+  (and task-ast-version-exposure completed-three-stage-pipeline)
+  ready-ast-version-exposure)
+(normally r-ready-capability-probe
+  (and task-capability-probe completed-ast-version-exposure)
+  ready-capability-probe)
+
+;; Failure scoping depends on three-stage + diagnostic design.
+(normally r-ready-failure-scoping
+  (and task-failure-scoping completed-three-stage-pipeline completed-diagnostic-design)
+  ready-failure-scoping)
+
+;; Build-data channel + context depend on three-stage.
+(normally r-ready-build-data-channel
+  (and task-build-data-channel completed-three-stage-pipeline)
+  ready-build-data-channel)
+(normally r-ready-build-context
+  (and task-build-context completed-three-stage-pipeline)
+  ready-build-context)
+
+;; Safe-mode + behavioural contracts depend on manifest parser.
+(normally r-ready-safe-mode
+  (and task-safe-mode completed-manifest-parser)
+  ready-safe-mode)
+(normally r-ready-behavioural-contracts
+  (and task-behavioural-contracts completed-manifest-parser)
+  ready-behavioural-contracts)
+
+;; Template vars need three-stage pipeline.
+(normally r-ready-template-vars
+  (and task-template-vars completed-three-stage-pipeline)
+  ready-template-vars)
+
+;; Node dispatch depends on AST types.
+(normally r-ready-node-dispatch
+  (and task-node-dispatch completed-ast-types-rust)
+  ready-node-dispatch)
+
+;; Author CLIs: dry-run + coverage need selector eval; authoring-cli
+;; needs scaffolding to know the manifest shape.
+(normally r-ready-hook-dry-run
+  (and task-hook-dry-run completed-selector-eval completed-three-stage-pipeline)
+  ready-hook-dry-run)
+(normally r-ready-hook-coverage
+  (and task-hook-coverage completed-selector-eval)
+  ready-hook-coverage)
+(normally r-ready-hook-authoring-cli
+  (and task-hook-authoring-cli completed-manifest-parser completed-diagnostic-design)
+  ready-hook-authoring-cli)
+(normally r-ready-ast-cli
+  (and task-ast-cli completed-ast-types-rust completed-ast-reference-gen)
+  ready-ast-cli)
+
+;; Quality gates depend on the full core landing (represented by
+;; failure-scoping + template-vars + behavioural-contracts being in).
+(normally r-ready-observability-hooks
+  (and task-observability-hooks completed-failure-scoping completed-persistent-protocol)
+  ready-observability-hooks)
+(normally r-ready-security-hooks
+  (and task-security-hooks completed-persistent-protocol completed-safe-mode)
+  ready-security-hooks)
+(normally r-ready-nfr-gates-032
+  (and task-nfr-gates-032 completed-persistent-protocol completed-selector-eval)
+  ready-nfr-gates-032)
+(normally r-ready-test-032-matrix
+  (and task-test-032-matrix completed-failure-scoping completed-template-vars completed-behavioural-contracts)
+  ready-test-032-matrix)
+
+;; Helper libraries depend on AST schema + types + reference.
+(normally r-ready-helper-py
+  (and task-helper-py completed-ast-schema completed-ast-reference-gen completed-typed-ast-protocol)
+  ready-helper-py)
+(normally r-ready-helper-js
+  (and task-helper-js completed-ast-schema completed-ast-reference-gen completed-typed-ast-protocol)
+  ready-helper-js)
+(normally r-ready-helper-contracts
+  (and task-helper-contracts completed-helper-py completed-helper-js)
+  ready-helper-contracts)
+
+;; Canonical extensions as thin stubs depend on helpers + template vars
+;; + golden-html harness.
+(normally r-ready-ext-golden-html
+  (and task-ext-golden-html completed-helper-contracts completed-template-vars)
+  ready-ext-golden-html)
+(normally r-ready-ext-callouts
+  (and task-ext-callouts completed-ext-golden-html)
+  ready-ext-callouts)
+(normally r-ready-ext-tasks
+  (and task-ext-tasks completed-ext-golden-html)
+  ready-ext-tasks)
+(normally r-ready-ext-admonition
+  (and task-ext-admonition completed-ext-golden-html)
+  ready-ext-admonition)
+
+;; Ecosystem foundation. Gated on SPEC-032 core being in (typed AST,
+;; persistent protocol, failure scoping, behavioural contracts) —
+;; ecosystems reuse every one of those surfaces.
+(normally r-ready-eco-registry
+  (and task-eco-registry completed-typed-ast-protocol completed-persistent-protocol)
+  ready-eco-registry)
+(normally r-ready-adapter-trait
+  (and task-adapter-trait completed-eco-registry completed-behavioural-contracts)
+  ready-adapter-trait)
+(normally r-ready-parser-registry
+  (and task-parser-registry completed-adapter-trait)
+  ready-parser-registry)
+(normally r-ready-eco-manifest
+  (and task-eco-manifest completed-adapter-trait)
+  ready-eco-manifest)
+(normally r-ready-eco-runtime-detect
+  (and task-eco-runtime-detect completed-adapter-trait completed-failure-scoping)
+  ready-eco-runtime-detect)
+(normally r-ready-eco-check
+  (and task-eco-check completed-eco-runtime-detect)
+  ready-eco-check)
+(normally r-ready-eco-feature-flags
+  (and task-eco-feature-flags completed-adapter-trait)
+  ready-eco-feature-flags)
+(normally r-ready-eco-translators-scaffold
+  (and task-eco-translators-scaffold completed-ast-types-rust completed-adapter-trait)
+  ready-eco-translators-scaffold)
+
+;; Pandoc adapter: needs eco foundation + translator scaffold + parser
+;; registry (for native-mode).
+(normally r-ready-pandoc-adapter
+  (and task-pandoc-adapter completed-adapter-trait completed-eco-manifest
+       completed-eco-runtime-detect completed-parser-registry)
+  ready-pandoc-adapter)
+(normally r-ready-pandoc-translator
+  (and task-pandoc-translator completed-eco-translators-scaffold)
+  ready-pandoc-translator)
+(normally r-ready-pandoc-matrix-seed
+  (and task-pandoc-matrix-seed completed-pandoc-adapter completed-pandoc-translator)
+  ready-pandoc-matrix-seed)
+(normally r-ready-pandoc-docs
+  (and task-pandoc-docs completed-pandoc-matrix-seed)
+  ready-pandoc-docs)
+
+;; mdBook adapter.
+(normally r-ready-mdbook-adapter
+  (and task-mdbook-adapter completed-adapter-trait completed-eco-manifest
+       completed-eco-runtime-detect)
+  ready-mdbook-adapter)
+(normally r-ready-mdbook-envelope
+  (and task-mdbook-envelope completed-mdbook-adapter completed-eco-translators-scaffold)
+  ready-mdbook-envelope)
+(normally r-ready-mdbook-matrix-seed
+  (and task-mdbook-matrix-seed completed-mdbook-envelope)
+  ready-mdbook-matrix-seed)
+(normally r-ready-mdbook-docs
+  (and task-mdbook-docs completed-mdbook-matrix-seed)
+  ready-mdbook-docs)
+
+;; remark adapter.
+(normally r-ready-remark-harness
+  (and task-remark-harness completed-adapter-trait completed-eco-manifest
+       completed-eco-runtime-detect completed-persistent-protocol)
+  ready-remark-harness)
+(normally r-ready-remark-translator
+  (and task-remark-translator completed-eco-translators-scaffold)
+  ready-remark-translator)
+(normally r-ready-remark-matrix-seed
+  (and task-remark-matrix-seed completed-remark-harness completed-remark-translator)
+  ready-remark-matrix-seed)
+(normally r-ready-remark-docs
+  (and task-remark-docs completed-remark-matrix-seed)
+  ready-remark-docs)
+
+;; Cross-ecosystem gates and rollout.
+(normally r-ready-eco-matrix
+  (and task-eco-matrix completed-pandoc-matrix-seed completed-mdbook-matrix-seed
+       completed-remark-matrix-seed)
+  ready-eco-matrix)
+(normally r-ready-mixed-eco-diagnostic
+  (and task-mixed-eco-diagnostic completed-parser-registry completed-failure-scoping)
+  ready-mixed-eco-diagnostic)
+(normally r-ready-plugin-version-drift
+  (and task-plugin-version-drift completed-eco-matrix)
+  ready-plugin-version-drift)
+(normally r-ready-nfr-gates-033
+  (and task-nfr-gates-033 completed-pandoc-adapter completed-mdbook-adapter completed-remark-harness)
+  ready-nfr-gates-033)
+(normally r-ready-spec-031-supersede
+  (and task-spec-031-supersede completed-eco-matrix completed-test-032-matrix)
+  ready-spec-031-supersede)
+
+;; Feature-flag retirement gates — the semantic "two clean releases"
+;; is represented as all extension + all ecosystem golden tests being in.
+(normally r-ready-retire-hooks-v2
+  (and task-retire-hooks-v2 completed-ext-callouts completed-ext-tasks
+       completed-ext-admonition completed-nfr-gates-032 completed-test-032-matrix)
+  ready-retire-hooks-v2)
+(normally r-ready-retire-ecosystems-v1
+  (and task-retire-ecosystems-v1 completed-eco-matrix completed-nfr-gates-033)
+  ready-retire-ecosystems-v1)
+
+;; ── Assignment rules ────────────────────────────────────
+
+;; All agents default to a catch-all assignment; specific rules below
+;; override via prefer. Pattern: core tasks → core agent; SDK tasks →
+;; sdk agent; ecosystem tasks → ecosystem agent; rollout → release.
+
+;; Default catch-all: core agent picks up anything ready.
+(normally r-assign-core-default
+  (and ready-ast-schema agent-core-available) assign-to-ast-schema-core)
+(normally r-assign-core-ast-types
+  (and ready-ast-types-rust agent-core-available) assign-to-ast-types-rust-core)
+(normally r-assign-core-ast-reference
+  (and ready-ast-reference-gen agent-core-available) assign-to-ast-reference-gen-core)
+(normally r-assign-core-manifest
+  (and ready-manifest-parser agent-core-available) assign-to-manifest-parser-core)
+(normally r-assign-core-selector
+  (and ready-selector-eval agent-core-available) assign-to-selector-eval-core)
+(normally r-assign-core-frontmatter
+  (and ready-frontmatter-opt-out agent-core-available) assign-to-frontmatter-opt-out-core)
+(normally r-assign-core-three-stage
+  (and ready-three-stage-pipeline agent-core-available) assign-to-three-stage-pipeline-core)
+(normally r-assign-core-persistent
+  (and ready-persistent-protocol agent-core-available) assign-to-persistent-protocol-core)
+(normally r-assign-core-typed-ast
+  (and ready-typed-ast-protocol agent-core-available) assign-to-typed-ast-protocol-core)
+(normally r-assign-core-ast-version
+  (and ready-ast-version-exposure agent-core-available) assign-to-ast-version-exposure-core)
+(normally r-assign-core-capability
+  (and ready-capability-probe agent-core-available) assign-to-capability-probe-core)
+(normally r-assign-core-composition
+  (and ready-composition agent-core-available) assign-to-composition-core)
+(normally r-assign-core-failure
+  (and ready-failure-scoping agent-core-available) assign-to-failure-scoping-core)
+(normally r-assign-core-build-data
+  (and ready-build-data-channel agent-core-available) assign-to-build-data-channel-core)
+(normally r-assign-core-build-context
+  (and ready-build-context agent-core-available) assign-to-build-context-core)
+(normally r-assign-core-safe-mode
+  (and ready-safe-mode agent-core-available) assign-to-safe-mode-core)
+(normally r-assign-core-contracts
+  (and ready-behavioural-contracts agent-core-available) assign-to-behavioural-contracts-core)
+(normally r-assign-core-template-vars
+  (and ready-template-vars agent-core-available) assign-to-template-vars-core)
+(normally r-assign-core-ordering
+  (and ready-ordering-hooks agent-core-available) assign-to-ordering-hooks-core)
+(normally r-assign-core-dispatch
+  (and ready-node-dispatch agent-core-available) assign-to-node-dispatch-core)
+
+;; Author CLIs → core agent.
+(normally r-assign-core-dry-run
+  (and ready-hook-dry-run agent-core-available) assign-to-hook-dry-run-core)
+(normally r-assign-core-coverage
+  (and ready-hook-coverage agent-core-available) assign-to-hook-coverage-core)
+(normally r-assign-core-authoring-cli
+  (and ready-hook-authoring-cli agent-core-available) assign-to-hook-authoring-cli-core)
+(normally r-assign-core-ast-cli
+  (and ready-ast-cli agent-core-available) assign-to-ast-cli-core)
+(normally r-assign-core-diagnostic
+  (and ready-diagnostic-design agent-core-available) assign-to-diagnostic-design-core)
+
+;; Quality gates → core agent.
+(normally r-assign-core-obs
+  (and ready-observability-hooks agent-core-available) assign-to-observability-hooks-core)
+(normally r-assign-core-sec
+  (and ready-security-hooks agent-core-available) assign-to-security-hooks-core)
+(normally r-assign-core-nfr-032
+  (and ready-nfr-gates-032 agent-core-available) assign-to-nfr-gates-032-core)
+(normally r-assign-core-test-032
+  (and ready-test-032-matrix agent-core-available) assign-to-test-032-matrix-core)
+
+;; SDK agent owns helper libraries and their contract tests.
+(normally r-assign-sdk-py
+  (and ready-helper-py agent-sdk-available) assign-to-helper-py-sdk)
+(normally r-assign-sdk-js
+  (and ready-helper-js agent-sdk-available) assign-to-helper-js-sdk)
+(normally r-assign-sdk-contracts
+  (and ready-helper-contracts agent-sdk-available) assign-to-helper-contracts-sdk)
+
+;; SDK agent also owns canonical-extension stubs (they exercise the
+;; helper-lib + template-var + golden surface).
+(normally r-assign-sdk-golden
+  (and ready-ext-golden-html agent-sdk-available) assign-to-ext-golden-html-sdk)
+(normally r-assign-sdk-callouts
+  (and ready-ext-callouts agent-sdk-available) assign-to-ext-callouts-sdk)
+(normally r-assign-sdk-tasks
+  (and ready-ext-tasks agent-sdk-available) assign-to-ext-tasks-sdk)
+(normally r-assign-sdk-admonition
+  (and ready-ext-admonition agent-sdk-available) assign-to-ext-admonition-sdk)
+
+;; Ecosystem agent owns all adapter work.
+(normally r-assign-eco-registry
+  (and ready-eco-registry agent-ecosystem-available) assign-to-eco-registry-ecosystem)
+(normally r-assign-eco-adapter
+  (and ready-adapter-trait agent-ecosystem-available) assign-to-adapter-trait-ecosystem)
+(normally r-assign-eco-parser
+  (and ready-parser-registry agent-ecosystem-available) assign-to-parser-registry-ecosystem)
+(normally r-assign-eco-manifest
+  (and ready-eco-manifest agent-ecosystem-available) assign-to-eco-manifest-ecosystem)
+(normally r-assign-eco-runtime
+  (and ready-eco-runtime-detect agent-ecosystem-available) assign-to-eco-runtime-detect-ecosystem)
+(normally r-assign-eco-check
+  (and ready-eco-check agent-ecosystem-available) assign-to-eco-check-ecosystem)
+(normally r-assign-eco-flags
+  (and ready-eco-feature-flags agent-ecosystem-available) assign-to-eco-feature-flags-ecosystem)
+(normally r-assign-eco-translators-scaffold
+  (and ready-eco-translators-scaffold agent-ecosystem-available) assign-to-eco-translators-scaffold-ecosystem)
+(normally r-assign-eco-pandoc-adapter
+  (and ready-pandoc-adapter agent-ecosystem-available) assign-to-pandoc-adapter-ecosystem)
+(normally r-assign-eco-pandoc-translator
+  (and ready-pandoc-translator agent-ecosystem-available) assign-to-pandoc-translator-ecosystem)
+(normally r-assign-eco-pandoc-matrix
+  (and ready-pandoc-matrix-seed agent-ecosystem-available) assign-to-pandoc-matrix-seed-ecosystem)
+(normally r-assign-eco-pandoc-docs
+  (and ready-pandoc-docs agent-ecosystem-available) assign-to-pandoc-docs-ecosystem)
+(normally r-assign-eco-mdbook-adapter
+  (and ready-mdbook-adapter agent-ecosystem-available) assign-to-mdbook-adapter-ecosystem)
+(normally r-assign-eco-mdbook-envelope
+  (and ready-mdbook-envelope agent-ecosystem-available) assign-to-mdbook-envelope-ecosystem)
+(normally r-assign-eco-mdbook-matrix
+  (and ready-mdbook-matrix-seed agent-ecosystem-available) assign-to-mdbook-matrix-seed-ecosystem)
+(normally r-assign-eco-mdbook-docs
+  (and ready-mdbook-docs agent-ecosystem-available) assign-to-mdbook-docs-ecosystem)
+(normally r-assign-eco-remark-harness
+  (and ready-remark-harness agent-ecosystem-available) assign-to-remark-harness-ecosystem)
+(normally r-assign-eco-remark-translator
+  (and ready-remark-translator agent-ecosystem-available) assign-to-remark-translator-ecosystem)
+(normally r-assign-eco-remark-matrix
+  (and ready-remark-matrix-seed agent-ecosystem-available) assign-to-remark-matrix-seed-ecosystem)
+(normally r-assign-eco-remark-docs
+  (and ready-remark-docs agent-ecosystem-available) assign-to-remark-docs-ecosystem)
+(normally r-assign-eco-matrix-full
+  (and ready-eco-matrix agent-ecosystem-available) assign-to-eco-matrix-ecosystem)
+(normally r-assign-eco-mixed
+  (and ready-mixed-eco-diagnostic agent-ecosystem-available) assign-to-mixed-eco-diagnostic-ecosystem)
+(normally r-assign-eco-version-drift
+  (and ready-plugin-version-drift agent-ecosystem-available) assign-to-plugin-version-drift-ecosystem)
+(normally r-assign-eco-nfr-033
+  (and ready-nfr-gates-033 agent-ecosystem-available) assign-to-nfr-gates-033-ecosystem)
+
+;; Release agent owns supersession + feature-flag retirement.
+(normally r-assign-release-supersede
+  (and ready-spec-031-supersede agent-release-available) assign-to-spec-031-supersede-release)
+(normally r-assign-release-retire-hooks
+  (and ready-retire-hooks-v2 agent-release-available) assign-to-retire-hooks-v2-release)
+(normally r-assign-release-retire-eco
+  (and ready-retire-ecosystems-v1 agent-release-available) assign-to-retire-ecosystems-v1-release)
+
+;; ── Rule metadata ───────────────────────────────────────
+
+(meta r-assign-sdk-py
+  (description "Helper libraries are published under a separate packaging discipline (PyPI/npm) — SDK agent owns the release process.")
+  (justification "SPEC-032 §12 Phase B keeps helper-lib publishing distinct from the core Rust release cadence; the agent who owns npm/PyPI keys lives under agent-sdk."))
+
+(meta r-assign-eco-adapter
+  (description "Ecosystem adapters require real-runtime access (pandoc/mdbook/node binaries) in CI, plus per-ecosystem plugin expertise.")
+  (justification "SPEC-033 §12 Phase A gates each adapter on a real runtime present in CI — the ecosystem agent's workflow image has all three runtimes preinstalled."))
+
+(meta r-ready-retire-hooks-v2
+  (description "Retiring --features hooks-v2 requires all canonical extensions + NFR gates + test matrix green — per SPEC-032 §12 Phase D \"two consecutive releases clean\".")
+  (justification "The checklist in §12 is meaningless without all three canonical stubs and both the performance and coverage gates landed; modelled as hard prerequisites."))
+
+(meta r-ready-retire-ecosystems-v1
+  (description "Retiring --features ecosystems-v1 requires all three adapters + their matrix + NFR gates — per SPEC-033 §12 Phase F.")
+  (justification "Parallel to hooks-v2 retirement; cannot drop the umbrella until all three adapters demonstrate stability."))
