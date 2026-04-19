@@ -1,12 +1,12 @@
 {
-  "task_id": "remark-docs",
+  "task_id": "mdbook-envelope",
   "token_budget": 8000,
-  "tokens_used": 308,
+  "tokens_used": 317,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "docs/ecosystems/remark.md. Install (Node + harness bundled vs BYO), config, known-working plugins.",
-      "token_cost": 24,
+      "content": "mdBook book envelope per REQ-3309 / CON-3309. JSON shape {book, sections, chapters, ...} constructed per-page; translator round-trips.",
+      "token_cost": 33,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T23:21:18Z"
+  "constructed_at": "2026-04-19T23:26:41Z"
 }

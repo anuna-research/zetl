@@ -258,6 +258,242 @@ pub fn build_envelope_for_page(
     )
 }
 
+/// Path to the envelope JSON Schema (REQ-3309 / CON-3309). The schema
+/// is the authoritative shape reference; [`validate_envelope`] is a
+/// hand-rolled fast-path that enforces the structural subset zetl
+/// actually depends on (the full schema is exercised in integration
+/// tests against `jsonschema::Validator`).
+pub const ENVELOPE_SCHEMA_PATH: &str = "tools/zetl-mdbook-envelope-schema-v1.json";
+
+/// Structurally validate the `[Context, Book]` envelope (REQ-3309).
+///
+/// Hand-rolled rather than running `jsonschema` so the mdBook adapter
+/// has zero extra runtime deps; the full JSON Schema at
+/// [`ENVELOPE_SCHEMA_PATH`] is asserted in integration tests. The
+/// checks here are the structural subset zetl itself depends on:
+/// 2-element outer array, required Context fields, required Book
+/// fields, and one Chapter per section when sections are non-empty.
+/// Unknown fields on either side are tolerated — mdBook's own Book
+/// struct is `#[non_exhaustive]` and v2 may add fields.
+pub fn validate_envelope(envelope: &Value) -> Result<(), EnvelopeError> {
+    let arr = envelope
+        .as_array()
+        .ok_or_else(|| EnvelopeError::WrongShape("envelope must be a JSON array".into()))?;
+    if arr.len() != 2 {
+        return Err(EnvelopeError::WrongShape(format!(
+            "envelope must be a 2-element [Context, Book] array, got length {}",
+            arr.len()
+        )));
+    }
+    validate_context(&arr[0])?;
+    validate_book_strict(&arr[1])
+}
+
+fn validate_context(ctx: &Value) -> Result<(), EnvelopeError> {
+    let obj = ctx
+        .as_object()
+        .ok_or_else(|| EnvelopeError::WrongShape("Context must be an object".into()))?;
+    for field in ["root", "config", "renderer", "mdbook_version"] {
+        if !obj.contains_key(field) {
+            return Err(EnvelopeError::MissingField(format!("context.{field}")));
+        }
+    }
+    if !obj["root"].is_string() {
+        return Err(EnvelopeError::WrongShape("context.root must be a string".into()));
+    }
+    if !obj["renderer"].is_string() {
+        return Err(EnvelopeError::WrongShape(
+            "context.renderer must be a string".into(),
+        ));
+    }
+    if !obj["mdbook_version"].is_string() {
+        return Err(EnvelopeError::WrongShape(
+            "context.mdbook_version must be a string".into(),
+        ));
+    }
+
+    let config = obj["config"]
+        .as_object()
+        .ok_or_else(|| EnvelopeError::WrongShape("context.config must be an object".into()))?;
+    let book = config
+        .get("book")
+        .ok_or_else(|| EnvelopeError::MissingField("context.config.book".into()))?
+        .as_object()
+        .ok_or_else(|| {
+            EnvelopeError::WrongShape("context.config.book must be an object".into())
+        })?;
+    for field in ["title", "authors", "src"] {
+        if !book.contains_key(field) {
+            return Err(EnvelopeError::MissingField(format!(
+                "context.config.book.{field}"
+            )));
+        }
+    }
+    if !book["title"].is_string() {
+        return Err(EnvelopeError::WrongShape(
+            "context.config.book.title must be a string".into(),
+        ));
+    }
+    if !book["authors"].is_array() {
+        return Err(EnvelopeError::WrongShape(
+            "context.config.book.authors must be an array".into(),
+        ));
+    }
+    if !book["src"].is_string() {
+        return Err(EnvelopeError::WrongShape(
+            "context.config.book.src must be a string".into(),
+        ));
+    }
+    if !config.contains_key("preprocessor") {
+        return Err(EnvelopeError::MissingField(
+            "context.config.preprocessor".into(),
+        ));
+    }
+    if !config["preprocessor"].is_object() {
+        return Err(EnvelopeError::WrongShape(
+            "context.config.preprocessor must be an object".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_book(book: &Value) -> Result<(), EnvelopeError> {
+    validate_book_with(book, /* require_non_exhaustive = */ false)
+}
+
+/// Strict form of [`validate_book`] — asserts the `__non_exhaustive: null`
+/// marker is present. Used on the envelope zetl itself constructs so a
+/// regression in [`build_envelope_with_chapters`] is caught.
+/// Preprocessor responses use the lenient form because many
+/// preprocessors re-emit the Book through their own JSON library
+/// (serde-js, python json, …) and drop serde-Rust's `#[non_exhaustive]`
+/// marker on the way back.
+fn validate_book_strict(book: &Value) -> Result<(), EnvelopeError> {
+    validate_book_with(book, true)
+}
+
+fn validate_book_with(book: &Value, require_non_exhaustive: bool) -> Result<(), EnvelopeError> {
+    let obj = book
+        .as_object()
+        .ok_or_else(|| EnvelopeError::WrongShape("Book must be an object".into()))?;
+    let sections = obj
+        .get("sections")
+        .ok_or_else(|| EnvelopeError::MissingField("book.sections".into()))?
+        .as_array()
+        .ok_or_else(|| EnvelopeError::WrongShape("book.sections must be an array".into()))?;
+    if require_non_exhaustive {
+        if !obj.contains_key("__non_exhaustive") {
+            return Err(EnvelopeError::MissingField("book.__non_exhaustive".into()));
+        }
+        if !obj["__non_exhaustive"].is_null() {
+            return Err(EnvelopeError::WrongShape(
+                "book.__non_exhaustive must be null".into(),
+            ));
+        }
+    } else if obj.contains_key("__non_exhaustive") && !obj["__non_exhaustive"].is_null() {
+        return Err(EnvelopeError::WrongShape(
+            "book.__non_exhaustive must be null when present".into(),
+        ));
+    }
+    for (i, section) in sections.iter().enumerate() {
+        validate_section(section, i)?;
+    }
+    Ok(())
+}
+
+fn validate_section(section: &Value, index: usize) -> Result<(), EnvelopeError> {
+    // Accept every BookItem variant the schema allows. zetl only emits
+    // `Chapter`, but preprocessors reading the Book back may re-emit
+    // PartTitle / Separator; reject only genuinely unrecognised shapes.
+    if let Some(s) = section.as_str() {
+        if s == "Separator" {
+            return Ok(());
+        }
+        return Err(EnvelopeError::WrongShape(format!(
+            "book.sections[{index}] string must be \"Separator\", got {s:?}"
+        )));
+    }
+    let obj = section.as_object().ok_or_else(|| {
+        EnvelopeError::WrongShape(format!(
+            "book.sections[{index}] must be an object or \"Separator\" string"
+        ))
+    })?;
+    if let Some(chapter) = obj.get("Chapter") {
+        validate_chapter(chapter, index)
+    } else if obj.contains_key("PartTitle") {
+        if obj["PartTitle"].is_string() {
+            Ok(())
+        } else {
+            Err(EnvelopeError::WrongShape(format!(
+                "book.sections[{index}].PartTitle must be a string"
+            )))
+        }
+    } else {
+        Err(EnvelopeError::WrongShape(format!(
+            "book.sections[{index}] must be a Chapter, PartTitle, or Separator"
+        )))
+    }
+}
+
+fn validate_chapter(chapter: &Value, index: usize) -> Result<(), EnvelopeError> {
+    let obj = chapter.as_object().ok_or_else(|| {
+        EnvelopeError::WrongShape(format!(
+            "book.sections[{index}].Chapter must be an object"
+        ))
+    })?;
+    for field in [
+        "name",
+        "content",
+        "number",
+        "sub_items",
+        "path",
+        "source_path",
+        "parent_names",
+    ] {
+        if !obj.contains_key(field) {
+            return Err(EnvelopeError::MissingField(format!(
+                "book.sections[{index}].Chapter.{field}"
+            )));
+        }
+    }
+    if !obj["name"].is_string() {
+        return Err(EnvelopeError::WrongShape(format!(
+            "book.sections[{index}].Chapter.name must be a string"
+        )));
+    }
+    if !obj["content"].is_string() {
+        return Err(EnvelopeError::WrongShape(format!(
+            "book.sections[{index}].Chapter.content must be a string"
+        )));
+    }
+    if !(obj["number"].is_null() || obj["number"].is_array()) {
+        return Err(EnvelopeError::WrongShape(format!(
+            "book.sections[{index}].Chapter.number must be null or an array"
+        )));
+    }
+    if !obj["sub_items"].is_array() {
+        return Err(EnvelopeError::WrongShape(format!(
+            "book.sections[{index}].Chapter.sub_items must be an array"
+        )));
+    }
+    if !(obj["path"].is_string() || obj["path"].is_null()) {
+        return Err(EnvelopeError::WrongShape(format!(
+            "book.sections[{index}].Chapter.path must be a string or null"
+        )));
+    }
+    if !(obj["source_path"].is_string() || obj["source_path"].is_null()) {
+        return Err(EnvelopeError::WrongShape(format!(
+            "book.sections[{index}].Chapter.source_path must be a string or null"
+        )));
+    }
+    if !obj["parent_names"].is_array() {
+        return Err(EnvelopeError::WrongShape(format!(
+            "book.sections[{index}].Chapter.parent_names must be an array"
+        )));
+    }
+    Ok(())
+}
+
 /// Pull the transformed first chapter's `content` out of a preprocessor's
 /// response book.
 ///
@@ -635,6 +871,17 @@ impl EcosystemAdapter for MdbookAdapter {
                         };
                     }
                 };
+                if let Err(e) = validate_book(&book) {
+                    return PluginResponse::Error {
+                        reason: "malformed_output".into(),
+                        detail: format!(
+                            "mdbook preprocessor '{}' returned a Book that failed envelope validation: {e}",
+                            manifest.extension_id
+                        ),
+                        stderr: String::from_utf8_lossy(&exchange.stderr).into_owned(),
+                        duration,
+                    };
+                }
                 match extract_chapter_content(&book) {
                     Ok(out) => PluginResponse::Success {
                         output: StageOutput::PreParse { markdown: out },
@@ -1046,6 +1293,197 @@ mod tests {
         match extract_chapter_content(&book) {
             Err(EnvelopeError::WrongShape(_)) => {}
             other => panic!("expected WrongShape, got {other:?}"),
+        }
+    }
+
+    // ── validate_envelope (REQ-3309 / CON-3309 shape gate) ───────────────
+
+    #[test]
+    fn validate_envelope_accepts_what_builder_emits() {
+        // Every envelope the pure builder produces must pass the
+        // structural validator. Catches a regression where the builder
+        // drifts from the shape `invoke_plugin` promises preprocessors.
+        let opts = MdbookOptions::default();
+        let env = build_envelope_for_page(
+            Path::new("/v"),
+            "Vault",
+            &opts,
+            "Page",
+            "page",
+            "hello",
+        );
+        validate_envelope(&env).expect("builder output must validate");
+    }
+
+    #[test]
+    fn validate_envelope_rejects_non_array() {
+        let env = json!({"root": "/v"});
+        match validate_envelope(&env) {
+            Err(EnvelopeError::WrongShape(m)) => assert!(m.contains("JSON array"), "got {m}"),
+            other => panic!("expected WrongShape, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_envelope_rejects_wrong_array_length() {
+        let env = json!([{"root": "/v"}]);
+        match validate_envelope(&env) {
+            Err(EnvelopeError::WrongShape(m)) => assert!(m.contains("2-element"), "got {m}"),
+            other => panic!("expected WrongShape, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_envelope_rejects_missing_root() {
+        let env = json!([
+            {
+                "config": {"book": {"title": "T", "authors": [], "src": "."}, "preprocessor": {}},
+                "renderer": "html",
+                "mdbook_version": "0.4.40"
+            },
+            {"sections": [], "__non_exhaustive": null}
+        ]);
+        match validate_envelope(&env) {
+            Err(EnvelopeError::MissingField(f)) => assert_eq!(f, "context.root"),
+            other => panic!("expected MissingField(context.root), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_envelope_rejects_wrong_renderer_type() {
+        let env = json!([
+            {
+                "root": "/v",
+                "config": {"book": {"title": "T", "authors": [], "src": "."}, "preprocessor": {}},
+                "renderer": 42,
+                "mdbook_version": "0.4.40"
+            },
+            {"sections": [], "__non_exhaustive": null}
+        ]);
+        match validate_envelope(&env) {
+            Err(EnvelopeError::WrongShape(m)) => assert!(m.contains("renderer"), "got {m}"),
+            other => panic!("expected WrongShape, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_envelope_rejects_missing_config_book_title() {
+        let env = json!([
+            {
+                "root": "/v",
+                "config": {"book": {"authors": [], "src": "."}, "preprocessor": {}},
+                "renderer": "html",
+                "mdbook_version": "0.4.40"
+            },
+            {"sections": [], "__non_exhaustive": null}
+        ]);
+        match validate_envelope(&env) {
+            Err(EnvelopeError::MissingField(f)) => assert_eq!(f, "context.config.book.title"),
+            other => panic!("expected MissingField(context.config.book.title), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_envelope_rejects_missing_non_exhaustive_marker() {
+        // Outgoing envelopes MUST carry the __non_exhaustive marker.
+        // Inbound Books (preprocessor responses) don't; covered by
+        // validate_book_accepts_preprocessor_response_without_marker.
+        let env = json!([
+            {
+                "root": "/v",
+                "config": {"book": {"title": "T", "authors": [], "src": "."}, "preprocessor": {}},
+                "renderer": "html",
+                "mdbook_version": "0.4.40"
+            },
+            {"sections": []}
+        ]);
+        match validate_envelope(&env) {
+            Err(EnvelopeError::MissingField(f)) => assert_eq!(f, "book.__non_exhaustive"),
+            other => panic!("expected MissingField(book.__non_exhaustive), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_book_accepts_preprocessor_response_without_marker() {
+        // Preprocessors often serialise the Book through a non-Rust JSON
+        // library (node, python, …) and drop the __non_exhaustive marker
+        // on the way back. Accept the inbound shape anyway.
+        let book = json!({
+            "sections": [
+                {"Chapter": {
+                    "name": "P", "content": "body", "number": null,
+                    "sub_items": [], "path": "p.md", "source_path": "p.md",
+                    "parent_names": []
+                }}
+            ]
+        });
+        validate_book(&book).expect("lenient validate_book must accept preprocessor output");
+    }
+
+    #[test]
+    fn validate_book_accepts_part_title_and_separator_sections() {
+        // Preprocessors may restructure into an mdBook tree that includes
+        // PartTitle / Separator entries. The validator allows every
+        // BookItem variant mdBook itself accepts.
+        let book = json!({
+            "sections": [
+                {"PartTitle": "Part One"},
+                {"Chapter": {
+                    "name": "c", "content": "", "number": null,
+                    "sub_items": [], "path": "c.md", "source_path": "c.md",
+                    "parent_names": ["Part One"]
+                }},
+                "Separator"
+            ]
+        });
+        validate_book(&book).expect("PartTitle / Chapter / Separator must all validate");
+    }
+
+    #[test]
+    fn validate_book_rejects_chapter_missing_required_field() {
+        let book = json!({
+            "sections": [
+                {"Chapter": {"name": "P", "content": "body"}}
+            ]
+        });
+        match validate_book(&book) {
+            Err(EnvelopeError::MissingField(f)) => assert!(
+                f.starts_with("book.sections[0].Chapter."),
+                "got {f}"
+            ),
+            other => panic!("expected MissingField on Chapter, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_envelope_round_trips_across_fixture_corpus() {
+        // Every default fixture → envelope → validate must succeed; the
+        // preprocessor's identity response (echoing the Book element
+        // back) must also validate as a preprocessor response.
+        let opts = MdbookOptions::default();
+        for fx in crate::ecosystems::default_fixtures() {
+            let env = build_envelope_for_page(
+                Path::new("/v"),
+                "Vault",
+                &opts,
+                &fx.name,
+                &fx.name,
+                &fx.sample_markdown,
+            );
+            validate_envelope(&env).unwrap_or_else(|e| {
+                panic!("fixture {:?} envelope failed validation: {e}", fx.name)
+            });
+            // Round-trip: the Book element alone must validate lenient.
+            validate_book(&env[1]).unwrap_or_else(|e| {
+                panic!("fixture {:?} Book failed validation: {e}", fx.name)
+            });
+            // And extracting the chapter content returns the exact input.
+            let back = extract_chapter_content(&env[1]).unwrap();
+            assert_eq!(
+                back, fx.sample_markdown,
+                "fixture {:?} content round-trip mismatch",
+                fx.name
+            );
         }
     }
 

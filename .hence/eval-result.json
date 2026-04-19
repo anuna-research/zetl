@@ -3,25 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 572,
-    "deletions": 5,
+    "files_changed": 5,
+    "insertions": 822,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
-      "docs/ecosystems/remark.md"
+      "docs/ecosystems/mdbook.md",
+      "src/ecosystems/mdbook.rs",
+      "tests/mdbook_adapter_integration.rs",
+      "tools/zetl-mdbook-envelope-schema-v1.json"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-remark-docs-changes",
-      "content": "Modified 2 files (+572, -5): .hence/context-manifest.json, docs/ecosystems/remark.md",
+      "key": "task-mdbook-envelope-changes",
+      "content": "Modified 5 files (+822, -7): .hence/context-manifest.json, docs/ecosystems/mdbook.md, src/ecosystems/mdbook.rs, tests/mdbook_adapter_integration.rs, tools/zetl-mdbook-envelope-schema-v1.json",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/remark-docs-v1",
-  "evaluated_at": "2026-04-19T23:26:36Z",
+  "branch_name": "hence/mdbook-envelope-v1",
+  "evaluated_at": "2026-04-19T23:36:01Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
