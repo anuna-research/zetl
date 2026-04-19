@@ -1,0 +1,25 @@
+{
+  "ast_version": "1.0",
+  "type": "Document",
+  "position": { "start_line": 1, "start_col": 1, "end_line": 3, "end_col": 6 },
+  "children": [
+    {
+      "type": "Heading",
+      "position": { "start_line": 1, "start_col": 1, "end_line": 1, "end_col": 8 },
+      "level": 1,
+      "children": [
+        { "type": "Text", "position": { "start_line": 1, "start_col": 3, "end_line": 1, "end_col": 8 }, "text": "Title " },
+        { "type": "Emphasis", "position": { "start_line": 1, "start_col": 9, "end_line": 1, "end_col": 15 }, "children": [
+          { "type": "Text", "position": { "start_line": 1, "start_col": 10, "end_line": 1, "end_col": 14 }, "text": "here" }
+        ]}
+      ]
+    },
+    {
+      "type": "Paragraph",
+      "position": { "start_line": 3, "start_col": 1, "end_line": 3, "end_col": 6 },
+      "children": [
+        { "type": "Text", "position": { "start_line": 3, "start_col": 1, "end_line": 3, "end_col": 6 }, "text": "Body." }
+      ]
+    }
+  ]
+}
