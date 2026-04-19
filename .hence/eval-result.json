@@ -3,29 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 1951,
+    "files_changed": 5,
+    "insertions": 1741,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
       "Cargo.toml",
-      "_static/zetl-remark-harness.mjs",
+      "src/ecosystems/mdbook.rs",
       "src/ecosystems/mod.rs",
-      "src/ecosystems/remark.rs",
-      "tests/remark_harness_integration.rs"
+      "tests/mdbook_adapter_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-remark-harness-changes",
-      "content": "Modified 6 files (+1951, -5): .hence/context-manifest.json, Cargo.toml, _static/zetl-remark-harness.mjs, src/ecosystems/mod.rs, src/ecosystems/remark.rs and 1 more",
+      "key": "task-mdbook-adapter-changes",
+      "content": "Modified 5 files (+1741, -5): .hence/context-manifest.json, Cargo.toml, src/ecosystems/mdbook.rs, src/ecosystems/mod.rs, tests/mdbook_adapter_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/remark-harness-v1",
-  "evaluated_at": "2026-04-19T22:25:00Z",
+  "branch_name": "hence/mdbook-adapter-v1",
+  "evaluated_at": "2026-04-19T22:36:31Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

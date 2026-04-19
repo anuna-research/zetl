@@ -19,6 +19,8 @@ pub mod adapter;
 pub mod check;
 pub mod detection;
 pub mod manifest;
+#[cfg(feature = "ecosystem-mdbook")]
+pub mod mdbook;
 #[cfg(feature = "ecosystem-pandoc")]
 pub mod pandoc;
 pub mod registry;
