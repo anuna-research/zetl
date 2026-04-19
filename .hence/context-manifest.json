@@ -1,12 +1,12 @@
 {
-  "task_id": "ext-tasks",
+  "task_id": "remark-translator",
   "token_budget": 8000,
-  "tokens_used": 329,
+  "tokens_used": 309,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Tasks canonical-extension as thin stub. Obsidian `- [ ]`, `- [x]` syntax captured; stub emits template-vars (`page.ext.tasks.open`, `.done`, `.due`). Theme renders tasks from vars.",
-      "token_cost": 45,
+      "content": "zetl-ext ↔ mdast translator per REQ-3308. Marker-table approach per amended REQ-3308 (slimmed model).",
+      "token_cost": 25,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T20:24:54Z"
+  "constructed_at": "2026-04-19T20:31:52Z"
 }
