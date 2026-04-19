@@ -169,3 +169,7 @@ required-features = ["mcp"]
 [[test]]
 name = "pandoc_adapter_integration"
 required-features = ["ecosystem-pandoc"]
+
+[[test]]
+name = "remark_harness_integration"
+required-features = ["ecosystem-remark"]
