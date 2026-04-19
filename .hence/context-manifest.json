@@ -1,12 +1,12 @@
 {
-  "task_id": "frontmatter-opt-out",
+  "task_id": "test-032-matrix",
   "token_budget": 8000,
-  "tokens_used": 315,
+  "tokens_used": 323,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Per-file extension opt-out via frontmatter per REQ-3211 / CON-3211. `zetl: { ext: { <id>: false } }` disables a single hook.",
-      "token_cost": 31,
+      "content": "TEST-3213 matrix gate — confirms every REQ-32XX has at least one linked test. Script reads SPEC-032 §14 and lints for orphaned REQs or TEST-only entries.",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T17:04:14Z"
+  "constructed_at": "2026-04-19T17:10:23Z"
 }

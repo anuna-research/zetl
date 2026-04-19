@@ -3,27 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 361,
+    "files_changed": 2,
+    "insertions": 281,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/frontmatter_opt_out.rs",
-      "src/hooks/mod.rs",
-      "src/hooks/pipeline.rs"
+      "tests/spec_032_matrix_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-frontmatter-opt-out-changes",
-      "content": "Modified 4 files (+361, -5): .hence/context-manifest.json, src/hooks/frontmatter_opt_out.rs, src/hooks/mod.rs, src/hooks/pipeline.rs",
+      "key": "task-test-032-matrix-changes",
+      "content": "Modified 2 files (+281, -5): .hence/context-manifest.json, tests/spec_032_matrix_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/frontmatter-opt-out-v1",
-  "evaluated_at": "2026-04-19T17:10:17Z",
+  "branch_name": "hence/test-032-matrix-v1",
+  "evaluated_at": "2026-04-19T17:16:37Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
