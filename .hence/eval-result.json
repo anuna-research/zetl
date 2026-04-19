@@ -3,30 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 1570,
-    "deletions": 41,
+    "files_changed": 4,
+    "insertions": 728,
+    "deletions": 20,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml",
-      "src/hooks/ast/mod.rs",
+      "src/hooks/build_context.rs",
       "src/hooks/mod.rs",
-      "src/hooks/pipeline.rs",
-      "tests/ast_schema_integration.rs"
+      "src/hooks/pipeline.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-ast-types-rust-changes",
-      "content": "Modified 7 files (+1570, -41): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/hooks/ast/mod.rs, src/hooks/mod.rs and 2 more",
+      "key": "task-build-context-changes",
+      "content": "Modified 4 files (+728, -20): .hence/context-manifest.json, src/hooks/build_context.rs, src/hooks/mod.rs, src/hooks/pipeline.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/ast-types-rust-v1",
-  "evaluated_at": "2026-04-19T13:09:02Z",
+  "branch_name": "hence/build-context-v1",
+  "evaluated_at": "2026-04-19T13:18:01Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
