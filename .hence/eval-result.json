@@ -3,26 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 3,
-    "insertions": 125,
+    "files_changed": 6,
+    "insertions": 1543,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/build_context.rs",
-      "tests/persistent_protocol_integration.rs"
+      "src/cli.rs",
+      "src/hooks/authoring.rs",
+      "src/hooks/mod.rs",
+      "src/main.rs",
+      "tests/hook_authoring_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-ast-version-exposure-changes",
-      "content": "Modified 3 files (+125, -5): .hence/context-manifest.json, src/hooks/build_context.rs, tests/persistent_protocol_integration.rs",
+      "key": "task-hook-authoring-cli-changes",
+      "content": "Modified 6 files (+1543, -5): .hence/context-manifest.json, src/cli.rs, src/hooks/authoring.rs, src/hooks/mod.rs, src/main.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/ast-version-exposure-v1",
-  "evaluated_at": "2026-04-19T16:06:24Z",
+  "branch_name": "hence/hook-authoring-cli-v1",
+  "evaluated_at": "2026-04-19T16:21:09Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

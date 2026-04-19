@@ -1,12 +1,12 @@
 {
-  "task_id": "ast-version-exposure",
+  "task_id": "hook-authoring-cli",
   "token_budget": 8000,
-  "tokens_used": 321,
+  "tokens_used": 331,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Dual-version exposure per REQ-3215: both zetl binary version and AST schema version exposed to hooks (`init` payload + `ZETL_AST_SCHEMA_VERSION` env).",
-      "token_cost": 37,
+      "content": "`zetl hook new/test/fixture --from/watch` per REQ-3225. Scaffolds hook skeleton + manifest + fixtures; runs fixture tests; `--from PAGE` captures current rendering as fixture; `watch` loops.",
+      "token_cost": 47,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T16:01:13Z"
+  "constructed_at": "2026-04-19T16:06:30Z"
 }

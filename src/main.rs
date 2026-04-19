@@ -4640,6 +4640,104 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
     Ok(())
 }
 
+fn cmd_hook_new(
+    cli: &Cli,
+    stage: &zetl::cli::AuthoringStage,
+    name: &str,
+    lang: &zetl::cli::HookLang,
+    ecosystem: Option<&zetl::cli::HookEcosystem>,
+    force: bool,
+) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let paths =
+        zetl::hooks::authoring::scaffold(&vault_root, stage, name, lang, ecosystem, force)?;
+
+    if matches!(cli.format, OutputFormat::Json) {
+        #[derive(Serialize)]
+        struct Out<'a> {
+            hook_file: &'a std::path::Path,
+            manifest_file: &'a std::path::Path,
+            fixture_input: &'a std::path::Path,
+            fixture_expected: &'a std::path::Path,
+        }
+        print_json(&Out {
+            hook_file: &paths.hook_file,
+            manifest_file: &paths.manifest_file,
+            fixture_input: &paths.fixture_input,
+            fixture_expected: &paths.fixture_expected,
+        })?;
+    } else {
+        println!("Scaffolded hook '{name}' ({}):", stage.as_str());
+        println!("  hook:     {}", paths.hook_file.display());
+        println!("  manifest: {}", paths.manifest_file.display());
+        println!("  input:    {}", paths.fixture_input.display());
+        println!("  expected: {}", paths.fixture_expected.display());
+        println!();
+        println!("Run `zetl hook test {name}` to verify the scaffold.");
+    }
+    Ok(())
+}
+
+fn cmd_hook_test(cli: &Cli, name: &str, update: bool) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let outcome = zetl::hooks::authoring::run_test(&vault_root, name, update)?;
+    match outcome {
+        zetl::hooks::authoring::TestOutcome::Match => {
+            println!("ok: hook '{name}' matches golden");
+            Ok(())
+        }
+        zetl::hooks::authoring::TestOutcome::Updated { path } => {
+            println!("updated golden: {}", path.display());
+            Ok(())
+        }
+        zetl::hooks::authoring::TestOutcome::Mismatch { diff, .. } => {
+            eprintln!("FAIL: hook '{name}' output diverges from golden");
+            eprint!("{diff}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn cmd_hook_fixture(cli: &Cli, page: &str, hook: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let captured = zetl::hooks::authoring::capture_fixture(&vault_root, page, hook)?;
+    println!(
+        "captured fixture for hook '{hook}' from page '{page}':\n  input:    {}\n  expected: {}",
+        captured.input_path.display(),
+        captured.expected_path.display()
+    );
+    Ok(())
+}
+
+fn cmd_hook_watch(cli: &Cli, name: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    println!("Watching hook '{name}' (Ctrl-C to stop)");
+    zetl::hooks::authoring::watch(
+        &vault_root,
+        name,
+        zetl::hooks::authoring::WatchOptions::default(),
+        |event| match event {
+            zetl::hooks::authoring::WatchEvent::Spawned => {
+                println!("[zetl] hook spawned");
+            }
+            zetl::hooks::authoring::WatchEvent::Restart => {
+                println!("[zetl] change detected, restarting");
+            }
+            zetl::hooks::authoring::WatchEvent::Stderr(s) => {
+                eprint!("{s}");
+            }
+            zetl::hooks::authoring::WatchEvent::Shutdown => {
+                println!("[zetl] watcher stopped");
+            }
+        },
+    )
+}
+
 fn cmd_ast_sample(cli: &Cli, file: &str, stage: &zetl::cli::AstStage) -> Result<()> {
     use std::path::Path;
     use zetl::cli::AstStage;
@@ -10097,6 +10195,16 @@ fn main() -> anyhow::Result<()> {
         Command::Hook { command } => match command {
             HookCommand::List { theme } => cmd_hook_list(&cli, theme),
             HookCommand::Run { name, theme, extra } => cmd_hook_run(&cli, name, theme, extra),
+            HookCommand::New {
+                stage,
+                name,
+                lang,
+                ecosystem,
+                force,
+            } => cmd_hook_new(&cli, stage, name, lang, ecosystem.as_ref(), *force),
+            HookCommand::Test { name, update } => cmd_hook_test(&cli, name, *update),
+            HookCommand::Fixture { from, hook } => cmd_hook_fixture(&cli, from, hook),
+            HookCommand::Watch { name } => cmd_hook_watch(&cli, name),
         },
         Command::Ast { command } => {
             use zetl::cli::AstCommand;
