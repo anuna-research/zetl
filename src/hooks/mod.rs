@@ -18,6 +18,7 @@ pub mod context;
 pub mod contract;
 pub mod diagnostic;
 pub mod failure_scoping;
+pub mod frontmatter_opt_out;
 pub mod manifest;
 pub mod observability;
 pub mod persistent;

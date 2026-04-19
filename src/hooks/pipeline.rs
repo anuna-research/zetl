@@ -28,6 +28,7 @@ use std::time::{Duration, Instant};
 
 use crate::hooks::build_context::BuildContext;
 use crate::hooks::failure_scoping::{FailureReason, FailureRecord};
+use crate::hooks::frontmatter_opt_out::is_disabled_by_frontmatter;
 use crate::hooks::observability::{
     HookInvocationEvent, HookInvocationStatus, HookObserver, NoopObserver,
 };
@@ -322,6 +323,11 @@ where
     if !pipeline.pre_parse.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.pre_parse {
+            // REQ-3211: `zetl.ext.<id>: false` in page frontmatter skips
+            // this hook entirely — no event, no duration, no failure.
+            if is_disabled_by_frontmatter(&ctx.page.frontmatter, hook.id()) {
+                continue;
+            }
             let hook_start = Instant::now();
             let hook_id = hook.id().to_string();
             // Clone the input so the prior value is preserved if the hook
@@ -364,6 +370,10 @@ where
     if !pipeline.transform.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.transform {
+            // REQ-3211: per-page opt-out via `zetl.ext.<id>: false`.
+            if is_disabled_by_frontmatter(&ctx.page.frontmatter, hook.id()) {
+                continue;
+            }
             let hook_start = Instant::now();
             let hook_id = hook.id().to_string();
             let prev = ast.clone();
@@ -404,6 +414,10 @@ where
     if !pipeline.post_render.is_empty() {
         let t0 = Instant::now();
         for hook in &pipeline.post_render {
+            // REQ-3211: per-page opt-out via `zetl.ext.<id>: false`.
+            if is_disabled_by_frontmatter(&ctx.page.frontmatter, hook.id()) {
+                continue;
+            }
             let hook_start = Instant::now();
             let hook_id = hook.id().to_string();
             let prev = html.clone();
@@ -1018,6 +1032,196 @@ mod tests {
                 (Stage::PostRender, "obsidian".into(), "daily/today".into()),
             ]
         );
+    }
+
+    // ── TEST-3211: per-file frontmatter opt-out ──────────────────────────
+    //
+    // `zetl.ext.<id>: false` in the page's frontmatter disables a single
+    // hook for that page. The pipeline skips the hook silently — no
+    // invocation event, no failure record, no duration accounted — and
+    // the next hook (or the parse/render stages) sees the input the
+    // skipped hook would have received.
+
+    fn page_with_ext_disabled(slug: &str, extension_id: &str) -> PageMeta {
+        use crate::hooks::ast::Frontmatter;
+        use serde_json::{json, Value};
+        let mut fm = Frontmatter::new();
+        fm.insert(
+            "zetl".into(),
+            json!({ "ext": { extension_id: Value::Bool(false) } }),
+        );
+        PageMeta {
+            name: slug.to_string(),
+            path: format!("{slug}.md").into(),
+            slug: slug.to_string(),
+            frontmatter: fm,
+        }
+    }
+
+    #[test]
+    fn test_3211_opt_out_skips_hook_at_each_stage() {
+        // One fixture hook per stage, all with id "callouts". A page that
+        // opts out (`zetl.ext.callouts: false`) must see every callouts
+        // hook skipped while every other hook still runs.
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let pipe = HookPipeline::new()
+            .with_pre_parse(TagPreParse {
+                id: "callouts".into(),
+                marker: "CALL_PRE",
+                calls: calls.clone(),
+                trace: trace.clone(),
+            })
+            .with_pre_parse(TagPreParse {
+                id: "other".into(),
+                marker: "OTHER_PRE",
+                calls: calls.clone(),
+                trace: trace.clone(),
+            })
+            .with_transform(TagTransform {
+                id: "callouts".into(),
+                marker: "CALL_TF",
+                calls: calls.clone(),
+                trace: trace.clone(),
+            })
+            .with_transform(TagTransform {
+                id: "other".into(),
+                marker: "OTHER_TF",
+                calls: calls.clone(),
+                trace: trace.clone(),
+            })
+            .with_post_render(TagPostRender {
+                id: "callouts".into(),
+                marker: "CALL_POST",
+                calls: calls.clone(),
+                trace: trace.clone(),
+            })
+            .with_post_render(TagPostRender {
+                id: "other".into(),
+                marker: "OTHER_POST",
+                calls: calls.clone(),
+                trace: trace.clone(),
+            });
+
+        let opted_out = BuildContext::new(
+            BuildMode::Build,
+            "/v",
+            page_with_ext_disabled("page", "callouts"),
+        );
+        let (html, _, failures) =
+            run_page(&pipe, "hi".into(), &opted_out, parse, render);
+        assert!(failures.is_empty(), "skipping is not a failure");
+
+        // Only the "other" hooks contributed markers; the "callouts" markers
+        // are absent everywhere they would have been observable.
+        assert_eq!(html, "<p>hi OTHER_PRE |marks=OTHER_TF</p><!--OTHER_POST-->");
+
+        // Three hooks ran, three were skipped.
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        let order = trace.lock().unwrap().clone();
+        assert_eq!(order, vec!["pre:other", "tf:other", "post:other"]);
+    }
+
+    #[test]
+    fn test_3211_baseline_without_opt_out_runs_every_hook() {
+        // Symmetric case for TEST-3211: the same pipeline on a page
+        // *without* the opt-out runs every hook.
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let pipe = HookPipeline::new()
+            .with_transform(TagTransform {
+                id: "callouts".into(),
+                marker: "CALL_TF",
+                calls: calls.clone(),
+                trace: trace.clone(),
+            })
+            .with_transform(TagTransform {
+                id: "other".into(),
+                marker: "OTHER_TF",
+                calls: calls.clone(),
+                trace: trace.clone(),
+            });
+
+        let ctx = test_ctx();
+        let (html, _, failures) = run_page(&pipe, "hi".into(), &ctx, parse, render);
+        assert!(failures.is_empty());
+        assert_eq!(html, "<p>hi |marks=CALL_TF,OTHER_TF</p>");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn opt_out_suppresses_observer_events_for_skipped_hooks() {
+        use crate::hooks::observability::CapturingObserver;
+
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let pipe = HookPipeline::new()
+            .with_transform(TagTransform {
+                id: "callouts".into(),
+                marker: "CALL_TF",
+                calls: calls.clone(),
+                trace: trace.clone(),
+            })
+            .with_transform(TagTransform {
+                id: "other".into(),
+                marker: "OTHER_TF",
+                calls: calls.clone(),
+                trace: trace.clone(),
+            });
+
+        let ctx = BuildContext::new(
+            BuildMode::Build,
+            "/v",
+            page_with_ext_disabled("page", "callouts"),
+        );
+        let obs = CapturingObserver::new();
+        let _ = run_page_with_observer(&pipe, "hi".into(), &ctx, parse, render, &obs);
+
+        // Only "other" produced an invocation event.
+        let events = obs.events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].hook_id, "other");
+    }
+
+    #[test]
+    fn opt_out_only_disables_with_literal_false() {
+        // `true`, a config object, or an absent key must leave the hook
+        // enabled — only the literal `false` opts out.
+        use crate::hooks::ast::Frontmatter;
+        use serde_json::{json, Value};
+
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let pipe = HookPipeline::new().with_transform(TagTransform {
+            id: "callouts".into(),
+            marker: "CALL_TF",
+            calls: calls.clone(),
+            trace: trace.clone(),
+        });
+
+        for value in [
+            json!(true),
+            json!(null),
+            json!({ "filter": "done" }),
+            Value::String("false".into()),
+        ] {
+            let mut fm = Frontmatter::new();
+            fm.insert("zetl".into(), json!({ "ext": { "callouts": value } }));
+            let page = PageMeta {
+                name: "p".into(),
+                path: "p.md".into(),
+                slug: "p".into(),
+                frontmatter: fm,
+            };
+            let ctx = BuildContext::new(BuildMode::Build, "/v", page);
+            let pre = calls.load(Ordering::SeqCst);
+            let _ = run_page(&pipe, "hi".into(), &ctx, parse, render);
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                pre + 1,
+                "hook must still run when value is not literal false"
+            );
+        }
     }
 
     #[test]
