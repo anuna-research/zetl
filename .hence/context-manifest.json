@@ -1,12 +1,12 @@
 {
-  "task_id": "mixed-eco-diagnostic",
+  "task_id": "pandoc-docs",
   "token_budget": 8000,
-  "tokens_used": 317,
+  "tokens_used": 314,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Mixed-parser diagnostic per REQ-3315. Page configured with multiple parsers → diagnostic + refusal. Config-time + build-time check.",
-      "token_cost": 33,
+      "content": "docs/ecosystems/pandoc.md per SPEC-033 §11. Covers install, config, known-working filters, Quarto subsection (§13 Q6).",
+      "token_cost": 30,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T22:43:16Z"
+  "constructed_at": "2026-04-19T22:58:48Z"
 }
