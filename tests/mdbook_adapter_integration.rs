@@ -41,8 +41,8 @@ use zetl::ecosystems::adapter::{
 use zetl::ecosystems::default_fixtures;
 use zetl::ecosystems::manifest::MdbookScope;
 use zetl::ecosystems::mdbook::{
-    build_envelope_for_page, extract_chapter_content, mdbook_adapter_ctor, MdbookAdapter,
-    MdbookOptions, MDBOOK_PROTOCOL_VERSION,
+    build_envelope_for_page, extract_chapter_content, mdbook_adapter_ctor, validate_envelope,
+    MdbookAdapter, MdbookOptions, ENVELOPE_SCHEMA_PATH, MDBOOK_PROTOCOL_VERSION,
 };
 use zetl::hooks::build_context::{BuildContext, BuildMode, PageMeta};
 use zetl::hooks::pipeline::Stage;
@@ -544,4 +544,114 @@ fn envelope_builder_matches_req_3309_shape() {
 fn scope_wire_form_is_lowercase() {
     assert_eq!(MdbookScope::Page.as_str(), "page");
     assert_eq!(MdbookScope::Vault.as_str(), "vault");
+}
+
+// ── REQ-3309 / CON-3309: schema validation + round-trip fidelity ─────────
+
+/// Load the canonical envelope JSON Schema. The path is pinned so the
+/// schema file can't be silently moved or renamed.
+fn envelope_schema_validator() -> jsonschema::Validator {
+    let bytes = std::fs::read(ENVELOPE_SCHEMA_PATH)
+        .unwrap_or_else(|e| panic!("cannot read {ENVELOPE_SCHEMA_PATH}: {e}"));
+    let schema: Value = serde_json::from_slice(&bytes).expect("envelope schema is valid JSON");
+    jsonschema::options()
+        .with_draft(jsonschema::Draft::Draft202012)
+        .build(&schema)
+        .expect("envelope schema compiles")
+}
+
+/// REQ-3309 / CON-3309: the envelope zetl constructs MUST validate
+/// against `tools/zetl-mdbook-envelope-schema-v1.json`. Walks the
+/// default conformance corpus so every canonical page content shape
+/// (empty, plain paragraph, paragraph with wikilink) is covered.
+#[test]
+fn test_3309_every_fixture_page_envelope_passes_schema_validation() {
+    let validator = envelope_schema_validator();
+    let opts = MdbookOptions::default();
+
+    for fx in default_fixtures() {
+        let env = build_envelope_for_page(
+            Path::new("/vault/root"),
+            "My Vault",
+            &opts,
+            &fx.name,
+            &fx.name,
+            &fx.sample_markdown,
+        );
+
+        if let Err(err) = validator.validate(&env) {
+            let pretty = serde_json::to_string_pretty(&env).unwrap_or_default();
+            panic!(
+                "fixture {:?} envelope failed schema validation: {err}\nenvelope:\n{pretty}",
+                fx.name
+            );
+        }
+
+        // Hand-rolled validator must agree with the JSON Schema — drift
+        // between the two is a bug in either direction.
+        validate_envelope(&env)
+            .unwrap_or_else(|e| panic!("fixture {:?} hand-rolled validator rejected: {e}", fx.name));
+    }
+}
+
+/// Envelope round-trip fidelity (REQ-3309 acceptance): constructing
+/// the envelope from a body, slicing out the Book, and extracting
+/// `Chapter.content` MUST return the body verbatim. Covers the
+/// preprocessor-identity case — every preprocessor that doesn't rewrite
+/// content preserves it exactly.
+#[test]
+fn test_3309_envelope_content_round_trip_is_byte_identical() {
+    let opts = MdbookOptions::default();
+    let corpus = [
+        "",
+        "plain ascii body\n",
+        "# Heading\n\nwith a [[Wikilink]] and [external](https://example.com)\n",
+        "```\nfenced code — with em dash\n```\n",
+        // Multi-byte + control-adjacent content; UTF-8 must survive.
+        "α β γ\n\r\ntab\there\n",
+        // A full CON-3309 payload exemplifying the SPEC snippet shape.
+        "---\ntitle: Example\n---\n\nBody with $math$ and `code`.\n",
+    ];
+
+    for body in corpus {
+        let env = build_envelope_for_page(
+            Path::new("/vault/root"),
+            "Vault",
+            &opts,
+            "Page",
+            "page",
+            body,
+        );
+        let book = env[1].clone();
+        let back = extract_chapter_content(&book).unwrap();
+        assert_eq!(
+            back, body,
+            "envelope round-trip dropped bytes for input {body:?}"
+        );
+    }
+}
+
+/// Counter-test: a malformed envelope (missing required Context field)
+/// fails both the JSON Schema and the hand-rolled validator. Ensures the
+/// happy-path test isn't silently accepting garbage.
+#[test]
+fn envelope_schema_rejects_missing_required_context_field() {
+    let validator = envelope_schema_validator();
+    let bad = json!([
+        {
+            // "root" is deliberately absent.
+            "config": {"book": {"title": "T", "authors": [], "src": "."}, "preprocessor": {}},
+            "renderer": "html",
+            "mdbook_version": "0.4.40"
+        },
+        {"sections": [], "__non_exhaustive": null}
+    ]);
+    assert!(
+        validator.validate(&bad).is_err(),
+        "schema should reject envelope missing context.root"
+    );
+    assert!(
+        validate_envelope(&bad).is_err(),
+        "hand-rolled validator should reject envelope missing context.root"
+    );
 }
