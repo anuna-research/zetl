@@ -1,12 +1,12 @@
 {
-  "task_id": "ext-callouts",
+  "task_id": "parser-registry",
   "token_budget": 8000,
-  "tokens_used": 359,
+  "tokens_used": 323,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Callouts canonical-extension as thin stub per REQ-3212 (amended to stub model). Default theme points to mdbook-admonish under mdBook ecosystem or Pandoc native div syntax. Obsidian `> [!note]` syntax recognised via selector; stub records a template-var for the theme to render without running a plugin.",
-      "token_cost": 75,
+      "content": "Parser registry + per-page selection per REQ-3306 / CON-3306. Config key `[parse] default = \"commonmark\"`; per-page `parser: pandoc` in frontmatter overrides.",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T20:40:02Z"
+  "constructed_at": "2026-04-19T20:46:08Z"
 }

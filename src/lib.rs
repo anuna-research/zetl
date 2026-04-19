@@ -13,6 +13,7 @@ pub mod hooks;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod merkle;
+pub mod parsers;
 #[cfg(feature = "reason")]
 pub mod reason;
 pub mod scanner;
