@@ -230,8 +230,9 @@ fn render_skeleton(
     }
 }
 
-fn render_py_skeleton(name: &str, _stage: Stage, eco_comment: &str) -> String {
-    format!(
+fn render_py_skeleton(name: &str, stage: Stage, eco_comment: &str) -> String {
+    let stage_name = stage.as_str();
+    let out = format!(
         r#"#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # `{name}` render-pipeline hook.
@@ -260,6 +261,20 @@ for line in sys.stdin:
     t = msg.get("type")
     if t == "shutdown":
         break
+    if t == "probe":
+        # SPEC-032 REQ-3216 capability probe. Declare the stages and AST
+        # types this hook supports so zetl can self-disable cheaply.
+        sys.stdout.write(json.dumps({{
+            "type": "probe_result",
+            "zetl_ast": "1.0",
+            "hook": "{name}",
+            "version": "0.1.0",
+            "stages": ["__STAGE__"],
+            "ast_types": ["zetl-ext"],
+            "ready": True,
+        }}) + "\n")
+        sys.stdout.flush()
+        continue
     # Identity transform. Replace this with your transformation.
     payload = msg.get("payload", None)
     response = {{
@@ -271,7 +286,8 @@ for line in sys.stdin:
     sys.stdout.write(json.dumps(response) + "\n")
     sys.stdout.flush()
 "#
-    )
+    );
+    out.replace("__STAGE__", stage_name)
 }
 
 fn render_js_skeleton(name: &str, _stage: Stage, eco_comment: &str) -> String {
@@ -538,6 +554,9 @@ fn run_hook_once(hook: &ScaffoldedHook, input: &str) -> Result<String> {
         HookMessage::Result { payload, .. } => payload,
         HookMessage::Error { reason, detail } => {
             bail!("hook reported error: {reason} ({detail})");
+        }
+        HookMessage::ProbeResult(_) => {
+            bail!("hook returned probe_result in response to run message");
         }
     };
 
