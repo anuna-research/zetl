@@ -1,12 +1,12 @@
 {
-  "task_id": "hook-authoring-cli",
+  "task_id": "behavioural-contracts",
   "token_budget": 8000,
-  "tokens_used": 331,
+  "tokens_used": 334,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl hook new/test/fixture --from/watch` per REQ-3225. Scaffolds hook skeleton + manifest + fixtures; runs fixture tests; `--from PAGE` captures current rendering as fixture; `watch` loops.",
-      "token_cost": 47,
+      "content": "Behavioural contract declarations + enforcement per REQ-3224 / CON-3224. Fields: preserves, idempotent, may_restructure, pure, expansion_bound. Property-test harness validates claims against fixtures.",
+      "token_cost": 50,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T16:06:30Z"
+  "constructed_at": "2026-04-19T16:21:16Z"
 }
