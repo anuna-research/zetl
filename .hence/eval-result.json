@@ -3,32 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 9,
-    "insertions": 1226,
-    "deletions": 7,
+    "files_changed": 4,
+    "insertions": 1378,
+    "deletions": 14,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
-      "src/hooks/authoring.rs",
-      "src/hooks/capability.rs",
-      "src/hooks/mod.rs",
-      "src/hooks/persistent.rs",
-      "src/main.rs",
-      "tests/capability_probe_integration.rs",
-      "tests/helper_contracts_integration.rs"
+      "src/ecosystems/adapter.rs",
+      "src/ecosystems/mod.rs",
+      "tests/adapter_trait_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-capability-probe-changes",
-      "content": "Modified 9 files (+1226, -7): .hence/context-manifest.json, src/cli.rs, src/hooks/authoring.rs, src/hooks/capability.rs, src/hooks/mod.rs and 4 more",
+      "key": "task-adapter-trait-changes",
+      "content": "Modified 4 files (+1378, -14): .hence/context-manifest.json, src/ecosystems/adapter.rs, src/ecosystems/mod.rs, tests/adapter_trait_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/capability-probe-v1",
-  "evaluated_at": "2026-04-19T19:12:56Z",
+  "branch_name": "hence/adapter-trait-v1",
+  "evaluated_at": "2026-04-19T19:24:09Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

@@ -1,12 +1,12 @@
 {
-  "task_id": "capability-probe",
+  "task_id": "adapter-trait",
   "token_budget": 8000,
-  "tokens_used": 318,
+  "tokens_used": 328,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl hook capabilities` subcommand + init-time capability probe per REQ-3216. Reports supported ast_types, stages, and AST schema version.",
-      "token_cost": 34,
+      "content": "EcosystemAdapter trait per REQ-3302 / CON-3302. Methods: probe (runtime available?), translate_in (zetl-ext→native AST), invoke (run plugin), translate_out (native→zetl-ext).",
+      "token_cost": 44,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T18:58:17Z"
+  "constructed_at": "2026-04-19T19:13:03Z"
 }
