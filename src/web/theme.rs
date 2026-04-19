@@ -171,6 +171,44 @@ pub struct ThemeInfo {
     pub min_zetl_version: Option<String>,
     #[serde(default)]
     pub templates: Option<ThemeTemplates>,
+    /// SPEC-032 REQ-3223 — `[[theme.hooks]]` array of hook declarations a
+    /// theme bundles under its `hooks/` directory. Each entry names the
+    /// `stage` and `extension_id` (matching the hook executable's stem),
+    /// optionally an `ecosystem` adapter id (SPEC-033), a one-line
+    /// `summary`, and an optional `[contract]` table (REQ-3224).
+    ///
+    /// Only declared hooks are eligible to run under `--safe-mode`. The
+    /// declared-vs-discovered diff also drives the
+    /// `theme <name> ships <N> undeclared hook(s)` warning.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hooks: Vec<ThemeHookDecl>,
+}
+
+/// SPEC-032 REQ-3223 — one entry of the theme's `[[theme.hooks]]` array.
+///
+/// `stage` + `extension_id` identify the hook against the on-disk
+/// composition (REQ-3206); `summary` and `contract` are surfaced by
+/// `zetl theme show` so users can audit both execution and behaviour.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ThemeHookDecl {
+    /// One of `pre-parse`, `transform`, `post-render`.
+    pub stage: String,
+    /// Matches the composed-hook `extension_id` (the filename minus
+    /// extension and any leading `\d+-` prefix; see
+    /// [`crate::hooks::composition::default_extension_id`]).
+    pub extension_id: String,
+    /// Optional ecosystem adapter id (SPEC-033 REQ-3301), e.g.
+    /// `"pandoc"`. Surfaced verbatim by `zetl theme show`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ecosystem: Option<String>,
+    /// One-line author-supplied description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Optional `[contract]` table — REQ-3224. Stored as opaque TOML so
+    /// this module stays decoupled from the contract parser; consumers
+    /// (`zetl theme show`, REQ-3224 enforcement) re-parse as needed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract: Option<toml::value::Table>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1039,6 +1077,7 @@ name = "my-theme"
                 homepage: None,
                 min_zetl_version: None,
                 templates: None,
+                hooks: Vec::new(),
             },
             graph_inline: None,
             graph: None,

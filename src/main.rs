@@ -5232,6 +5232,7 @@ fn cmd_serve(
     hostname: Option<&str>,
     server_key_seed: Option<&str>,
     git_poll_interval: std::time::Duration,
+    safe_mode: bool,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -5343,7 +5344,36 @@ fn cmd_serve(
         eprintln!("warning: {w}");
     }
 
-    if !zetl::hooks::hooks_for(&manifest, "pre-serve").is_empty() {
+    // ── REQ-3223 theme hook declaration audit (serve) ─────────────────
+    let theme_manifest = load_theme_manifest_for_audit(&pipeline.vault_root, theme);
+    let audit = zetl::hooks::safe_mode::audit_theme_declarations(
+        theme,
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        theme_manifest.as_ref(),
+    );
+    if audit.has_undeclared() && !safe_mode {
+        eprintln!("{}", zetl::hooks::safe_mode::format_undeclared_warning(&audit));
+    }
+    if safe_mode {
+        let policy = zetl::hooks::safe_mode::SafeMode::from_manifest(theme_manifest.as_ref());
+        match zetl::hooks::composition::compose_all_stages(
+            &pipeline.vault_root,
+            theme_hooks.path(),
+        ) {
+            Ok(pipes) => {
+                let (_kept, skipped) = zetl::hooks::safe_mode::apply_all(pipes, &policy);
+                for s in &skipped {
+                    eprintln!("{}", zetl::hooks::safe_mode::format_skip_line(s));
+                }
+            }
+            Err(e) => {
+                eprintln!("warning: safe-mode hook composition failed: {e}");
+            }
+        }
+    }
+
+    if !safe_mode && !zetl::hooks::hooks_for(&manifest, "pre-serve").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(
             "pre-serve",
             &pipeline.vault_root,
@@ -5516,12 +5546,31 @@ fn cmd_serve(
     Ok(())
 }
 
+/// Best-effort load of `theme.toml` for the active theme so REQ-3223
+/// safe-mode and the declared-vs-discovered audit have something to
+/// read. Looks at the on-disk theme first, then the compile-time
+/// bundle. Returns `None` (silently) for any failure mode — the audit
+/// already handles the "no manifest" case as "everything is undeclared".
+fn load_theme_manifest_for_audit(
+    vault_root: &std::path::Path,
+    theme: &str,
+) -> Option<zetl::web::theme::ThemeManifest> {
+    let disk = vault_root.join(".zetl/themes").join(theme);
+    if disk.is_dir() {
+        if let Ok(Some(m)) = zetl::web::theme::load_theme_manifest(&disk) {
+            return Some(m);
+        }
+    }
+    zetl::web::theme::load_bundled_manifest(theme).ok().flatten()
+}
+
 fn cmd_build(
     cli: &Cli,
     out_dir: &str,
     theme: &str,
     public: Option<&str>,
     site_url: Option<&str>,
+    safe_mode: bool,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -5556,8 +5605,43 @@ fn cmd_build(
         eprintln!("warning: {w}");
     }
 
+    // ── REQ-3223 theme hook declaration audit ──────────────────────────
+    // Surfaces the SPEC-mandated "ships <N> undeclared hook(s)" warning
+    // and computes the safe-mode allow-list. Both surfaces depend on
+    // whether the theme ships SPEC-032 stage hooks (composition uses
+    // the `pre-parse.d/`, `transform.d/`, `post-render.d/` layout); for
+    // legacy SPEC-016 lifecycle hooks the audit is a no-op so existing
+    // themes don't trip the warning until they migrate.
+    let theme_manifest = load_theme_manifest_for_audit(&pipeline.vault_root, theme);
+    let audit = zetl::hooks::safe_mode::audit_theme_declarations(
+        theme,
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        theme_manifest.as_ref(),
+    );
+    if audit.has_undeclared() && !safe_mode {
+        eprintln!("{}", zetl::hooks::safe_mode::format_undeclared_warning(&audit));
+    }
+    if safe_mode {
+        let policy = zetl::hooks::safe_mode::SafeMode::from_manifest(theme_manifest.as_ref());
+        match zetl::hooks::composition::compose_all_stages(
+            &pipeline.vault_root,
+            theme_hooks.path(),
+        ) {
+            Ok(pipes) => {
+                let (_kept, skipped) = zetl::hooks::safe_mode::apply_all(pipes, &policy);
+                for s in &skipped {
+                    eprintln!("{}", zetl::hooks::safe_mode::format_skip_line(s));
+                }
+            }
+            Err(e) => {
+                eprintln!("warning: safe-mode hook composition failed: {e}");
+            }
+        }
+    }
+
     // ── pre-build hooks (abort on failure) ─────────────────────────────
-    if !zetl::hooks::hooks_for(&manifest, "pre-build").is_empty() {
+    if !safe_mode && !zetl::hooks::hooks_for(&manifest, "pre-build").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(
             "pre-build",
             &pipeline.vault_root,
@@ -5637,7 +5721,7 @@ fn cmd_build(
         println!("{}", serde_json::to_string_pretty(&out)?);
     }
 
-    if !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
+    if !safe_mode && !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(
             "post-build",
             &pipeline.vault_root,
@@ -10232,6 +10316,7 @@ fn main() -> anyhow::Result<()> {
             hostname,
             server_key_seed,
             git_poll_interval,
+            safe_mode,
             scan: _,
         } => cmd_serve(
             &cli,
@@ -10244,6 +10329,7 @@ fn main() -> anyhow::Result<()> {
             hostname.as_deref(),
             server_key_seed.as_deref(),
             *git_poll_interval,
+            *safe_mode,
         ),
         Command::Invite {
             as_user,
@@ -10268,8 +10354,16 @@ fn main() -> anyhow::Result<()> {
             theme,
             public,
             site_url,
+            safe_mode,
             scan: _,
-        } => cmd_build(&cli, out_dir, theme, public.as_deref(), site_url.as_deref()),
+        } => cmd_build(
+            &cli,
+            out_dir,
+            theme,
+            public.as_deref(),
+            site_url.as_deref(),
+            *safe_mode,
+        ),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

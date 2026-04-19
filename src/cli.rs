@@ -313,6 +313,11 @@ pub enum Command {
         /// Set to "0" to disable. Requires --collab.
         #[arg(long, default_value = "30s", requires = "collab", value_parser = parse_duration)]
         git_poll_interval: std::time::Duration,
+        /// Skip every hook except theme hooks declared in `theme.toml`'s
+        /// `[[theme.hooks]]` array (SPEC-032 REQ-3223). Intended as an
+        /// audit / hostile-theme-inspection surface.
+        #[arg(long)]
+        safe_mode: bool,
         #[command(flatten)]
         scan: ScanArgs,
     },
@@ -383,6 +388,11 @@ pub enum Command {
         /// the domain root.
         #[arg(long)]
         site_url: Option<String>,
+        /// Skip every hook except theme hooks declared in `theme.toml`'s
+        /// `[[theme.hooks]]` array (SPEC-032 REQ-3223). Vault hooks and
+        /// undeclared theme hooks are skipped with a stderr line per skip.
+        #[arg(long)]
+        safe_mode: bool,
         #[command(flatten)]
         scan: ScanArgs,
     },

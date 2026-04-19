@@ -38,7 +38,7 @@ use crate::hooks::observability::{
 /// Ordering is fixed: [`Stage::PreParse`] runs before the Markdown parser,
 /// [`Stage::Transform`] runs on the parsed AST, and [`Stage::PostRender`]
 /// runs on the rendered HTML fragment before template composition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Stage {
     PreParse,
     Transform,
