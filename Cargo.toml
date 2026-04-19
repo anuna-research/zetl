@@ -165,3 +165,7 @@ required-features = ["semantic"]
 [[test]]
 name = "mcp_integration"
 required-features = ["mcp"]
+
+[[test]]
+name = "pandoc_adapter_integration"
+required-features = ["ecosystem-pandoc"]

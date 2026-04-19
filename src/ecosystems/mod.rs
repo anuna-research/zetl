@@ -19,6 +19,8 @@ pub mod adapter;
 pub mod check;
 pub mod detection;
 pub mod manifest;
+#[cfg(feature = "ecosystem-pandoc")]
+pub mod pandoc;
 pub mod registry;
 
 pub use adapter::{

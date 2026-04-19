@@ -1,12 +1,12 @@
 {
-  "task_id": "retire-hooks-v2",
+  "task_id": "pandoc-adapter",
   "token_budget": 8000,
-  "tokens_used": 319,
+  "tokens_used": 325,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Retire `--features hooks-v2` umbrella flag per SPEC-032 §12 Phase D. Requires two consecutive clean releases of canonical extensions in CI.",
-      "token_cost": 35,
+      "content": "Pandoc adapter per REQ-3303 / CON-3303 / ADR-3302. Subprocess invocation, pandoc-types marker convention, mode = filter|native resolution (pandoc-citeproc → native).",
+      "token_cost": 41,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T21:40:13Z"
+  "constructed_at": "2026-04-19T21:43:52Z"
 }
