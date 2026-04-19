@@ -13,6 +13,7 @@ task merges.
 <!-- toc -->
 - [admonition](#admonition)
 - [tasks](#tasks)
+- [callouts](#callouts)
 
 ## admonition
 
@@ -200,6 +201,122 @@ Regenerate the expected after a stub change:
 
 ```
 cargo xtask update-golden tasks
+```
+
+Review the diff before committing — a surprising change often indicates
+a regression in the stub, not a fixture refresh.
+
+## callouts
+
+Canonical extension recognising Obsidian callout blockquote syntax.
+The extension is a thin stub per REQ-3212 (amended to stub model): the
+default theme ships CSS + templates, the stub records a template-var
+for the theme to render, and real vaults delegate the rewrite to an
+ecosystem plugin (mdbook-admonish under mdBook, or Pandoc's native div
+syntax).
+
+```markdown
+> [!note]
+> Read the README first.
+
+> [!warning] Breaking change
+> Do not upgrade yet.
+
+> [!tip]+ Foldable tip
+> Default-expanded.
+
+> [!danger]-
+> Default-collapsed.
+```
+
+A line starting with `> [!<type>]` opens a callout. An optional
+`+` / `-` suffix marks the block as foldable (default-expanded vs
+default-collapsed) and is surfaced as `data-callout-fold`. Everything
+trailing the `]` marker is the custom title; absent, the title is the
+type-name with its first letter uppercased. Subsequent `>`-prefixed
+lines form the body, rendered as Markdown; the first non-`>` line or
+EOF closes the block.
+
+### Template vars
+
+The backing hook emits a `template_vars` payload that the default theme
+reads as:
+
+- `page.ext.callouts.blocks` — array of callout blocks on the page,
+  each an object with at least `{type, title, body_html, fold}` where
+  `fold` is one of `"none" | "expanded" | "collapsed"`.
+
+The default theme partial iterates `page.ext.callouts.blocks` only when
+a theme author opts into a summary view (e.g. an index of every
+callout on the page); the in-flow render is produced by the backing
+plugin rewriting the source in place.
+
+### Selector
+
+A realistic default-theme selector matches any page whose body contains
+a line matching `^> \[!` (the callout blockquote marker). The selector
+is gated by the extension's manifest (not yet landed) and observed per
+page via `zetl hook coverage --vault .`.
+
+Per-page opt-out works the same as every canonical extension:
+frontmatter key `extensions.callouts: false`.
+
+### HTML output shape
+
+Callouts render to Obsidian's own convention so theme CSS can share
+selectors between in-repo builds and Obsidian preview:
+
+```html
+<div class="callout" data-callout="note">
+<p class="callout-title">Note</p>
+<p>Read the README first.</p>
+</div>
+```
+
+Foldable callouts carry an extra `data-callout-fold` attribute:
+
+```html
+<div class="callout" data-callout="tip" data-callout-fold="expanded">
+<p class="callout-title">Foldable tip</p>
+<p>Default-expanded. Use <strong>keyboard shortcuts</strong>.</p>
+</div>
+```
+
+Inline markdown inside the body (bold, emphasis, inline code, links)
+is rendered normally.
+
+### Backing ecosystem plugin
+
+The theme stub ships CSS + templates only; real vaults run the
+callout rewrite through an ecosystem plugin. Recommended backings:
+
+- **`mdbook-admonish`** — drop-in for mdBook-backed builds. The plugin
+  already recognises a superset of Obsidian callout syntax.
+- **Pandoc native div syntax** — authors who prefer Pandoc's
+  `::: {.callout type=note}` form for the same visual contract.
+
+Without a backing plugin installed, the theme's degraded-render
+fallback still produces a valid `<div class="callout" ...>` shell via
+the in-repo stub — the gate that verifies this contract lives at
+`tests/extension-fixtures/callouts/` and is driven by the shared
+golden-HTML harness (SPEC-032 CON-3212).
+
+### Golden-HTML fixture
+
+- Input: `tests/extension-fixtures/callouts/input.md`
+- Expected HTML: `tests/extension-fixtures/callouts/expected.html`
+- Selector-match: `tests/extension-fixtures/callouts/selector-match.txt`
+
+Run the gate:
+
+```
+cargo test --test ext_golden_html_integration
+```
+
+Regenerate the expected after a stub change:
+
+```
+cargo xtask update-golden callouts
 ```
 
 Review the diff before committing — a surprising change often indicates

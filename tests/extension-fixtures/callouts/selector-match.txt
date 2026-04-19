@@ -1,0 +1,7 @@
+# Pages a realistic `callouts` selector should match.
+# The selector tests `content matches "^> \\[!"` (line-anchored).
+# (Enforcement lives with the extension's manifest selector; the harness in
+# ext_golden_html_integration.rs only gates golden HTML for now.)
+notes/onboarding.md
+guides/deploying.md
+runbooks/incident-response.md
