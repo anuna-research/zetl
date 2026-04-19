@@ -48,6 +48,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::hooks::pipeline::Stage;
+use crate::hooks::translators::AstType;
 
 /// Where a composed hook originated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,6 +116,26 @@ pub struct ComposedHook {
     /// referenced by `before`/`after` drops the constraint; a missing
     /// non-optional reference is a [`CompositionError::MissingRequiredRef`].
     pub optional: bool,
+    /// AST ecosystem the hook wants to operate against (SPEC-032 REQ-3221).
+    /// Defaults to [`AstType::ZetlExt`] when the manifest doesn't declare
+    /// one. `transform`-stage hooks branch on this to choose the
+    /// translator; `pre-parse` / `post-render` hooks ignore it (the
+    /// boundary is raw bytes, not AST).
+    pub ast_type: AstType,
+    /// Semver range declared by the manifest, interpreted against
+    /// [`Self::ast_type`]'s version scheme (REQ-3221). `None` means the
+    /// manifest didn't declare a range — the pipeline treats missing as
+    /// "any version accepted"; stricter compatibility checks live in
+    /// `task-capability-probe` / SPEC-033 REQ-3311.
+    pub ast_version: Option<String>,
+    /// Node types the hook declares it will preserve under the
+    /// `[contract].preserves` tier-1 field (REQ-3224). The pipeline's
+    /// marker-strip detector (REQ-3221) counts occurrences of these
+    /// names pre/post and warns on any net decrease. If the manifest
+    /// omits the field, the default list for the hook's [`AstType`]
+    /// is used (`["Wikilink","Embed","SplBlock"]` for foreign-ext
+    /// adapters, empty for zetl-ext).
+    pub preserves: Vec<String>,
     /// Disable reason if the hook passed the pre-probe filters of REQ-3206;
     /// `None` means the hook is enabled (subject to probe / selector later).
     pub disabled: Option<DisabledReason>,
@@ -328,6 +349,19 @@ struct CompositionManifest {
     after: Option<Vec<String>>,
     optional: Option<bool>,
     ordering: Option<OrderingTable>,
+    /// REQ-3221 — declares which ecosystem's AST shape the hook
+    /// expects. Composition parses it so the pipeline can look up a
+    /// translator at dispatch time; an unknown value is a hard parse
+    /// error (handled by [`AstType`]'s serde impl).
+    ast_type: Option<AstType>,
+    /// REQ-3221 — semver range against the declared ast_type's version
+    /// scheme. Composition preserves it verbatim; range evaluation
+    /// happens at capability-probe time (task-capability-probe).
+    ast_version: Option<String>,
+    /// REQ-3224 — behavioural contract block. Only the `preserves`
+    /// field is read here; the rest is owned by task-behavioural-
+    /// contracts.
+    contract: Option<ContractTable>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -335,6 +369,12 @@ struct CompositionManifest {
 struct OrderingTable {
     before: Option<Vec<String>>,
     after: Option<Vec<String>>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct ContractTable {
+    preserves: Option<Vec<String>>,
 }
 
 impl CompositionManifest {
@@ -476,8 +516,22 @@ fn build_hook_with_name(
     let after = manifest.resolved_after();
     let extension_id = manifest
         .extension_id
+        .clone()
         .unwrap_or_else(|| default_extension_id(&filename));
     let optional = manifest.optional.unwrap_or(false);
+    let ast_type = manifest.ast_type.unwrap_or_default();
+    let ast_version = manifest.ast_version.clone();
+    let preserves = manifest
+        .contract
+        .as_ref()
+        .and_then(|c| c.preserves.clone())
+        .unwrap_or_else(|| {
+            ast_type
+                .default_preserves()
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect()
+        });
 
     Ok(ComposedHook {
         stage,
@@ -489,6 +543,9 @@ fn build_hook_with_name(
         before,
         after,
         optional,
+        ast_type,
+        ast_version,
+        preserves,
         disabled,
     })
 }
@@ -1386,6 +1443,118 @@ after = ["callouts"]
             }
             other => panic!("expected Cycle, got {other:?}"),
         }
+    }
+
+    // ── REQ-3221: ast_type / ast_version / preserves ─────────────────────
+
+    #[test]
+    fn ast_type_defaults_to_zetl_ext_when_manifest_absent() {
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "10-foo.py", "#!/bin/sh\ntrue\n");
+
+        let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
+        assert_eq!(pipe.hooks.len(), 1);
+        assert_eq!(pipe.hooks[0].ast_type, AstType::ZetlExt);
+        assert!(pipe.hooks[0].ast_version.is_none());
+        // zetl-ext default preserves is empty per REQ-3221.
+        assert!(pipe.hooks[0].preserves.is_empty());
+    }
+
+    #[test]
+    fn ast_type_parsed_from_sidecar_manifest() {
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "10-mdast.py", "#!/bin/sh\ntrue\n");
+        write_manifest(
+            &vault_tx,
+            "10-mdast.py.toml",
+            r#"ast_type = "mdast-ext"
+ast_version = ">=1.0 <2"
+"#,
+        );
+
+        let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
+        assert_eq!(pipe.hooks.len(), 1);
+        assert_eq!(pipe.hooks[0].ast_type, AstType::MdastExt);
+        assert_eq!(pipe.hooks[0].ast_version.as_deref(), Some(">=1.0 <2"));
+        // Foreign-ext default preserves per REQ-3221.
+        assert_eq!(
+            pipe.hooks[0].preserves,
+            vec!["Wikilink".to_string(), "Embed".to_string(), "SplBlock".to_string()]
+        );
+    }
+
+    #[test]
+    fn ast_type_short_alias_accepted() {
+        // Authors may spell `mdast` or `pandoc-types` for ergonomic
+        // toml — composition accepts both, canonicalising via the
+        // AstType serde impl.
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "10-pan.py", "#!/bin/sh\ntrue\n");
+        write_manifest(&vault_tx, "10-pan.py.toml", r#"ast_type = "pandoc-types""#);
+        write_exe(&vault_tx, "20-mda.py", "#!/bin/sh\ntrue\n");
+        write_manifest(&vault_tx, "20-mda.py.toml", r#"ast_type = "mdast""#);
+
+        let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
+        let pan = pipe.hooks.iter().find(|h| h.filename == "10-pan.py").unwrap();
+        let mda = pipe.hooks.iter().find(|h| h.filename == "20-mda.py").unwrap();
+        assert_eq!(pan.ast_type, AstType::PandocExt);
+        assert_eq!(mda.ast_type, AstType::MdastExt);
+    }
+
+    #[test]
+    fn unknown_ast_type_is_manifest_parse_error() {
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "10-foo.py", "#!/bin/sh\ntrue\n");
+        write_manifest(&vault_tx, "10-foo.py.toml", r#"ast_type = "djot""#);
+
+        let err = compose_stage(&vault_root, None, Stage::Transform).unwrap_err();
+        match err {
+            CompositionError::ManifestParse { path, error } => {
+                assert!(path.ends_with("10-foo.py.toml"));
+                // toml's serde error wraps our AstType rejection.
+                assert!(error.contains("djot") || error.contains("variant"),
+                    "expected djot/variant error, got: {error}");
+            }
+            other => panic!("expected ManifestParse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn contract_preserves_overrides_default_list() {
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "10-foo.py", "#!/bin/sh\ntrue\n");
+        write_manifest(
+            &vault_tx,
+            "10-foo.py.toml",
+            r#"ast_type = "mdast-ext"
+
+[contract]
+preserves = ["Wikilink", "CodeBlock"]
+"#,
+        );
+
+        let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
+        assert_eq!(pipe.hooks.len(), 1);
+        // Manifest's explicit list wins over the AstType default.
+        assert_eq!(
+            pipe.hooks[0].preserves,
+            vec!["Wikilink".to_string(), "CodeBlock".to_string()]
+        );
     }
 
     #[test]

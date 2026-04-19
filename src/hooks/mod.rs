@@ -17,6 +17,7 @@ pub mod context;
 pub mod persistent;
 pub mod pipeline;
 pub mod template_vars;
+pub mod translators;
 
 use std::io::{Read, Write};
 #[cfg(unix)]

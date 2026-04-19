@@ -1,12 +1,12 @@
 {
-  "task_id": "ordering-hooks",
+  "task_id": "typed-ast-protocol",
   "token_budget": 8000,
-  "tokens_used": 266,
+  "tokens_used": 288,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Ordering constraints and optional hooks per REQ-3217. Manifest `ordering.before = [\"id\"]` + `ordering.after = [\"id\"]`. Cycle detection; optional hooks skip silently when selector misses.",
-      "token_cost": 46,
+      "content": "Typed AST-protocol (ast_type) dispatch surface per REQ-3221 / CON-3221. Hooks declare ast_type = zetl-ext|mdast|pandoc-types; shared translator layer converts to/from zetl-ext canonical form.",
+      "token_cost": 47,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 3 files (+1209, -5): .hence/context-manifest.json, src/hooks/composition.rs, src/hooks/mod.rs",
       "token_cost": 25,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-ordering-hooks-changes",
+      "content": "Modified 2 files (+241, -13): .hence/context-manifest.json, src/hooks/composition.rs",
+      "token_cost": 21,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T13:50:45Z"
+  "constructed_at": "2026-04-19T13:57:08Z"
 }
