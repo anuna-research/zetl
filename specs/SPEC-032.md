@@ -258,7 +258,7 @@ The system SHALL define and publish a versioned JSON schema (`zetl-ast-schema`) 
 - All CommonMark inline types: `Text`, `Emphasis`, `Strong`, `Code`, `Link`, `Image`, `LineBreak`, `SoftBreak`, `HtmlInline`.
 - zetl extensions: `Wikilink` (with target, alias, heading, block-id fields), `Embed` (for `![[...]]` transclusions), `SplBlock` (for `spl` fenced code blocks, if any are to be treated specially), `FrontMatter` (parsed YAML as JSON object at the document root).
 - Source positions: every node has `start_line`, `start_col`, `end_line`, `end_col`.
-- Schema version: every document declares `ast_version: "<major>.<minor>"` at the root.
+- Schema version: every document declares `ast_version: "<major>.<minor>"` at the root. This is an **exact** two-component version string emitted by zetl (e.g., `"1.0"`, `"1.2"`). In a hook *manifest* (REQ-3203), the same key accepts an **npm-style semver range** (e.g., `">=1.0 <2"`) interpreted against the schema version above — see REQ-3215 for the version-drift policy. The dual meaning is intentional: the schema emits a point version; manifests declare compatible ranges.
 
 The schema SHALL be published at `tools/zetl-ast-schema-v1.json` in JSON Schema Draft 2020-12 format, and SHALL be used by the helper libraries (REQ-3210) as the source of truth.
 
@@ -345,7 +345,19 @@ For each stage, the system SHALL discover hook executables from (in precedence o
 
 Executables within each directory SHALL be sorted by filename (lexicographic), and the combined list SHALL be the pipeline order. A vault hook with the same filename as a theme hook SHALL replace the theme hook (not merge).
 
-An empty executable file (`0 bytes` OR shebang-only with no body) SHALL disable the corresponding theme hook (by filename collision) without invoking anything.
+A hook SHALL be treated as **disabled** (theme-hook shadowed without
+invocation) when any of the following holds:
+
+1. The file is `0` bytes.
+2. The file is not executable AND has no shebang line (cannot be run).
+3. The file's probe (REQ-3216) returns `{"ready": false}` or exits
+   non-zero, OR the probe times out (> 5 s).
+
+The earlier "shebang-only with no body" heuristic is dropped — it was
+fooled by `#!/usr/bin/env true` (non-empty, technically runs, but
+does nothing useful). The probe-based check in (3) is the robust
+signal; (1) and (2) are cheap pre-probe filters that avoid even
+starting the hook process.
 
 Single-file hooks at `.zetl/hooks/<stage>` (not in a `.d/` directory) SHALL continue to work — treated as a one-entry `.d/` directory.
 
@@ -375,7 +387,15 @@ The system SHALL provide `zetl hook coverage [--vault PATH] [--json] [--stage ST
 
 - Stage, manifest path, matched-page count, invoked-page count (may differ if selector passed but hook failed early), latency P50/P95, failure count, last failure reason.
 
-Output defaults to table; `--json` emits structured output. Data persists between runs at `<out-dir>/.zetl/hook-coverage.json` for build mode and in-memory for serve mode.
+Output defaults to table; `--json` emits structured output.
+
+**Persistence semantics:** `hook-coverage.json` is **replaced** (not
+merged) on each `zetl build` invocation — a build records its own
+pass only. CI sees exactly the current run's coverage. Serve-mode
+coverage is in-memory and cleared on restart.
+
+A future `--coverage-append` flag for cumulative stats across builds
+is deferred to §13 Open Questions.
 
 Trace:
 - TEST-3208
@@ -580,7 +600,7 @@ Trace:
 
 ### REQ-3218: Declarative Node-Type Dispatch in Helper Libraries
 
-The system's helper libraries (`zetl-ast-py`, `zetl-ast-js`) SHALL provide a `dispatch` entry point that takes a table (dict/object) keyed by AST node type and invokes the corresponding function for each matching node as zetl walks the tree. A reserved `Inline` key matches any inline node not otherwise covered; `Block` matches any block node; `*` matches any node.
+The system's helper libraries (`zetl-ast-py`, `zetl-ast-js`) SHALL provide a `dispatch` entry point that takes a table (dict/object) keyed by AST node type and invokes the corresponding function for each matching node as zetl walks the tree. Reserved keys: `Inline` matches any inline node not otherwise covered; `Block` matches any block node; `_fallback` matches any node (was `*` in an earlier draft; `*` is easy to typo as empty-string and grep-hostile).
 
 Python API:
 ```python
@@ -718,6 +738,29 @@ Trace:
 - CON-3221
 - ADR-3206
 - SPEC-033 REQ-3301, REQ-3307, REQ-3308
+
+### REQ-3222: Pre-Parse Structural Safety Check (Deferred to v1.1)
+
+REQ-3201's pre-parse caveat is advisory — authors are told regex-over-
+Markdown is risky, but nothing detects the breakage. In v1.1 the system
+SHALL provide an opt-in structural-safety check: when a pre-parse hook
+manifest declares `may_restructure = false` (proposed default), zetl
+compares the block-tree shape of the hook's input and output (same
+parser, same extensions, different text) and emits a warning if the
+block tree changed (different number of top-level blocks, different
+block types at the same path, etc.).
+
+Opting in via `may_restructure = true` suppresses the check for hooks
+that legitimately rewrite block structure (e.g. include-directive
+resolution).
+
+**Deferred to v1.1** — this REQ is declared here so the manifest field
+is reserved; implementation can ship in a minor release without a
+manifest-schema break.
+
+Trace:
+- TEST-3222 (deferred)
+- CON-3222 (deferred)
 
 ---
 
@@ -1081,6 +1124,93 @@ CI runs the extension against `input.md`, asserts post-stage HTML equals `expect
 
 Implements: REQ-3212.
 Verified by: TEST-3212a, TEST-3212b, TEST-3212c.
+
+### CON-3219: Shared Build-Scoped Data Channel — Concurrency
+
+REQ-3219 specifies `build_data` as a build-scoped key/value store that
+hooks read from context and extend via response writes. Concurrency
+semantics:
+
+- **Intra-page (within one page's hook pipeline): serial.** Hooks in
+  a single page's pipeline run in order (REQ-3206 / CON-3217). Each
+  hook receives the snapshot *including* writes emitted by earlier
+  hooks on the same page. Order is deterministic.
+- **Inter-page (across pages during `zetl build`): each page sees a
+  snapshot fixed at its render-start.** When zetl renders pages
+  concurrently, every page's pipeline reads from a snapshot frozen
+  at the moment that page began rendering. Writes emitted by one
+  page's pipeline are *not* visible to another page's pipeline
+  rendering concurrently. This avoids races at the cost of
+  cross-page write visibility being release-order-dependent.
+- **End-of-build aggregation: out of scope here.** Hooks needing to
+  see *all* pages' writes (e.g., a tag-cloud aggregator) must use the
+  finalise mechanism proposed in §13 Q9 (`vault.ext.<id>`) — not
+  `build_data`.
+- **Serve mode: store cleared between page renders.** Under `zetl
+  serve`, each page render starts with an empty `build_data`; the
+  one-way-per-build semantics of build mode don't carry over.
+- **Size cap: 16 MiB total per build, enforced on each write.**
+  Oversize writes are dropped with a warning.
+
+**Implication for hook authors:** `build_data` is for intra-page
+coordination and for patterns where the store accumulates
+*deterministically* (e.g., every citation filter stamps its key into
+`build_data[citations].keys`, and a later per-page renderer reads its
+own-page-only keys). Cross-page ordering or finality is not provided.
+
+Implements: REQ-3219.
+Verified by: TEST-3219.
+
+### CON-3217: Composition Ordering — Worked Example
+
+Hook pipelines combine two ordering inputs:
+
+1. Filename lex-sort within a `<stage>.d/` directory (REQ-3206).
+2. `before` / `after` manifest constraints naming other hooks by
+   `extension_id` (REQ-3217).
+
+The effective order is a topological sort over the set of enabled
+hooks, with filename lex-sort as the tiebreaker whenever two or more
+hooks are not constrained relative to each other.
+
+**Worked example.** Given five hooks in `transform.d/`:
+
+| File              | extension_id | before      | after        |
+| ----------------- | ------------ | ----------- | ------------ |
+| `05-prelude.py`   | prelude      | —           | —            |
+| `10-callouts.py`  | callouts     | —           | —            |
+| `10-tasks.py`     | tasks        | —           | `[callouts]` |
+| `20-admon.py`     | admon        | `[tasks]`   | —            |
+| `30-fini.py`      | fini         | —           | —            |
+
+Resolution:
+
+1. Build the constraint graph. Edges: `callouts → tasks` (from
+   tasks.after); `admon → tasks` (from admon.before; `admon` runs
+   before `tasks`).
+2. Check for cycles. None.
+3. Topologically sort. `callouts` must precede `tasks`; `admon`
+   must precede `tasks`. `prelude`, `fini`, and the trio are
+   otherwise unordered.
+4. Apply filename lex-sort as tiebreaker. Lex order of filenames is
+   `05-prelude.py`, `10-callouts.py`, `10-tasks.py`, `20-admon.py`,
+   `30-fini.py`.
+5. Emit the final order: `prelude`, `callouts`, `admon`, `tasks`,
+   `fini`. (`admon` runs before `tasks` per the constraint, even
+   though `20-admon.py` sorts after `10-tasks.py`; the constraint
+   wins.)
+
+**Cycles.** A cycle (e.g. adding `callouts.after = ["tasks"]` to the
+above) is a build error; the diagnostic names the cycle path
+(`callouts → tasks → callouts`) and the affected manifest files.
+
+**`optional = true` interaction.** A `before` / `after` reference to an
+`optional` hook that is absent/disabled is ignored (the constraint is
+dropped, not an error). A reference to a non-optional missing hook is
+a build error.
+
+Implements: REQ-3217.
+Verified by: TEST-3217.
 
 ---
 
@@ -1475,6 +1605,27 @@ Profiles 2.1 (migrant), 2.2 (custom transform author), 2.3 (theme author) walked
 ---
 
 ## 9. Observability
+
+### Metric emission surface
+
+The OBS items below name Prometheus-style metric families. The
+**emission surface** — where those numbers become visible — is:
+
+1. **Primary user-facing surface: `zetl hook coverage [--json]`
+   (REQ-3208).** Rolls up the metric families into a per-hook table:
+   match/invoke counts, P50/P95 latency, failure counts, reasons. This
+   is what humans consume.
+2. **Structured log lines on stderr under `--verbose`.** Each OBS
+   item below names the log-line shape it emits at that verbosity.
+3. **A full `/metrics` Prometheus endpoint is out of scope for this
+   spec.** Adding one requires the `zetl serve` process to expose
+   HTTP metrics infrastructure (counters, histograms, labels — none
+   of which zetl currently wires up); that's a separate SPEC.
+
+Metric-family names below are reserved and their shapes frozen as
+contract — a future Prometheus-endpoint spec can wire them up without
+redesigning the semantics. SPEC-033 OBS items (OBS-3301–3305) follow
+the same surface convention.
 
 ### OBS-3201: Hook Discovery
 
