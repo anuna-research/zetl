@@ -1,12 +1,12 @@
 {
-  "task_id": "mdbook-matrix-seed",
+  "task_id": "mdbook-docs",
   "token_budget": 8000,
-  "tokens_used": 307,
+  "tokens_used": 302,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Seed matrix with mdbook-mermaid, mdbook-toc, mdbook-katex, mdbook-admonish. Tier per checklist.",
-      "token_cost": 23,
+      "content": "docs/ecosystems/mdbook.md. Install, config, known-working preprocessors.",
+      "token_cost": 18,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T23:36:08Z"
+  "constructed_at": "2026-04-19T23:43:32Z"
 }
