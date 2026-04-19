@@ -1,11 +1,11 @@
 {
-  "task_id": "ast-types-rust",
+  "task_id": "build-context",
   "token_budget": 8000,
-  "tokens_used": 106,
+  "tokens_used": 139,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Rust representation of zetl-ext AST with serde round-trip to schema. Internal representation used by pre-parse/transform/post-render pipeline.",
+      "content": "Expose build context to hooks per REQ-3220. `ctx` contains vault_root, theme, page metadata, zetl version, schema version, build_data handle.",
       "token_cost": 35,
       "priority": "PlanMeta"
     },
@@ -26,8 +26,14 @@
       "content": "Modified 3 files (+871, -5): .hence/context-manifest.json, src/hooks/build_data.rs, src/hooks/mod.rs",
       "token_cost": 25,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-ast-types-rust-changes",
+      "content": "Modified 7 files (+1570, -41): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/hooks/ast/mod.rs, src/hooks/mod.rs and 2 more",
+      "token_cost": 33,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T12:49:13Z"
+  "constructed_at": "2026-04-19T13:09:08Z"
 }
