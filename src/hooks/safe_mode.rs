@@ -366,6 +366,7 @@ mod tests {
             ast_type: AstType::default(),
             ast_version: None,
             preserves: Vec::new(),
+            ecosystem: None,
             disabled: None,
         }
     }

@@ -16,6 +16,7 @@
 //!   task-remark-harness).
 
 pub mod adapter;
+pub mod check;
 pub mod detection;
 pub mod registry;
 
@@ -23,6 +24,10 @@ pub use adapter::{
     default_fixtures, mock_adapter_ctor, run_conformance, CheckOutcome, ConformanceFixture,
     ConformanceReport, Diagnostic, EcosystemAdapter, HookContext, MockEcosystemAdapter,
     PluginManifest, PluginResponse, RuntimeStatus, StageInput, StageOutput,
+};
+pub use check::{
+    assemble_report, run_ecosystem_check, EcosystemCheckEntry, EcosystemCheckReport,
+    EcosystemCheckStatus,
 };
 pub use detection::{
     detect_all_ecosystems, diagnostic_for, enforce_required, format_log_line, install_hint_for,

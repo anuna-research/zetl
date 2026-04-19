@@ -421,6 +421,15 @@ pub enum Command {
         command: HookCommand,
     },
 
+    /// Plugin-ecosystem introspection (Pandoc filters, mdBook preprocessors, remark plugins)
+    #[command(
+        after_help = "Examples:\n  zetl ecosystem check               Report runtimes + configured hooks\n  zetl ecosystem check --json        Machine-readable report for CI pre-flight"
+    )]
+    Ecosystem {
+        #[command(subcommand)]
+        command: EcosystemCommand,
+    },
+
     /// Inspect the zetl-ext AST for a page or diff two AST documents
     #[command(
         after_help = "Examples:\n  zetl ast sample notes/page.md                  Print canonical AST JSON\n  zetl ast sample notes/page.md --stage pre-parse  Print raw markdown input\n  zetl ast diff before.json after.json           Tree diff of two AST files"
@@ -707,6 +716,28 @@ pub enum HookCommand {
         /// Restrict the report to a single stage.
         #[arg(long, value_enum)]
         stage: Option<AuthoringStage>,
+    },
+}
+
+/// Subcommands for `zetl ecosystem`.
+#[derive(Subcommand)]
+pub enum EcosystemCommand {
+    /// Probe every registered ecosystem's runtime and report per-ecosystem
+    /// detection + version + configured-hook count + reachable plugins.
+    ///
+    /// Exit 0 when every *configured* ecosystem is available; non-zero only
+    /// when the vault's hooks reference an ecosystem whose runtime is
+    /// missing or below the minimum version. The zero-configured state
+    /// always exits 0.
+    Check {
+        /// Theme name (looks in `.zetl/themes/<name>/hooks/`).
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Emit machine-readable JSON instead of the table. Equivalent to
+        /// the global `--json` flag; kept here so the per-command help is
+        /// self-documenting.
+        #[arg(long)]
+        json: bool,
     },
 }
 

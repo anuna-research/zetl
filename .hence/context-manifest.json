@@ -1,12 +1,12 @@
 {
-  "task_id": "parser-registry",
+  "task_id": "eco-check",
   "token_budget": 8000,
-  "tokens_used": 323,
+  "tokens_used": 318,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Parser registry + per-page selection per REQ-3306 / CON-3306. Config key `[parse] default = \"commonmark\"`; per-page `parser: pandoc` in frontmatter overrides.",
-      "token_cost": 39,
+      "content": "`zetl ecosystem check` subcommand per REQ-3310 / CON-3310. Reports per-ecosystem: detected? version? plugins configured? plugins reachable?",
+      "token_cost": 34,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T20:46:08Z"
+  "constructed_at": "2026-04-19T20:55:46Z"
 }

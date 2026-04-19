@@ -136,6 +136,12 @@ pub struct ComposedHook {
     /// is used (`["Wikilink","Embed","SplBlock"]` for foreign-ext
     /// adapters, empty for zetl-ext).
     pub preserves: Vec<String>,
+    /// Ecosystem id declared on the manifest's top-level `ecosystem = "..."`
+    /// field (SPEC-033 REQ-3301 / CON-3312). `None` means the hook is a
+    /// zetl-native hook (no ecosystem adapter involved); a `Some(id)`
+    /// value is the manifest's verbatim string — not validated here so
+    /// unknown ids surface at dispatch time, not composition time.
+    pub ecosystem: Option<String>,
     /// Disable reason if the hook passed the pre-probe filters of REQ-3206;
     /// `None` means the hook is enabled (subject to probe / selector later).
     pub disabled: Option<DisabledReason>,
@@ -362,6 +368,12 @@ struct CompositionManifest {
     /// field is read here; the rest is owned by task-behavioural-
     /// contracts.
     contract: Option<ContractTable>,
+    /// REQ-3301 / CON-3312 — ecosystem adapter id (e.g. `"pandoc"`,
+    /// `"mdbook"`, `"remark"`). Preserved verbatim; validation against
+    /// the ecosystem registry happens at dispatch time, not composition,
+    /// so an unknown id still composes but its hook is diagnosed when
+    /// actually invoked. `None` means the hook is zetl-native.
+    ecosystem: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -533,6 +545,8 @@ fn build_hook_with_name(
                 .collect()
         });
 
+    let ecosystem = manifest.ecosystem.clone();
+
     Ok(ComposedHook {
         stage,
         filename,
@@ -546,6 +560,7 @@ fn build_hook_with_name(
         ast_type,
         ast_version,
         preserves,
+        ecosystem,
         disabled,
     })
 }
@@ -1584,5 +1599,27 @@ after = ["ghost"]
         assert!(pipe.hooks[0].optional);
         // Warning surfaces the dropped constraint for diagnostics.
         assert!(pipe.warnings.iter().any(|w| w.contains("ghost")));
+    }
+
+    #[test]
+    fn ecosystem_field_is_preserved_verbatim_from_manifest() {
+        // SPEC-033 CON-3312 — the top-level `ecosystem = "..."` value
+        // feeds `zetl ecosystem check`'s per-ecosystem count; composition
+        // keeps it as an opaque string so unknown ids still compose and
+        // surface a diagnostic at dispatch time, not here.
+        let tmp = TempDir::new().unwrap();
+        let (vault_tx, _) = make_stage_dirs(tmp.path());
+        let vault_root = tmp.path().join("vault");
+
+        write_exe(&vault_tx, "10-pan.py", "#!/bin/sh\ntrue\n");
+        write_manifest(&vault_tx, "10-pan.py.toml", r#"ecosystem = "pandoc""#);
+        write_exe(&vault_tx, "20-native.py", "#!/bin/sh\ntrue\n");
+        // No manifest → ecosystem is None.
+
+        let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
+        let pan = pipe.hooks.iter().find(|h| h.filename == "10-pan.py").unwrap();
+        let native = pipe.hooks.iter().find(|h| h.filename == "20-native.py").unwrap();
+        assert_eq!(pan.ecosystem.as_deref(), Some("pandoc"));
+        assert_eq!(native.ecosystem, None);
     }
 }

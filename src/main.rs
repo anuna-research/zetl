@@ -13,7 +13,8 @@ use zetl::cache::{
     files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache,
 };
 use zetl::cli::{
-    AgentCommand, BlockTypeFilter, Cli, Command, FailLevel, HookCommand, OutputFormat, ThemeCommand,
+    AgentCommand, BlockTypeFilter, Cli, Command, EcosystemCommand, FailLevel, HookCommand,
+    OutputFormat, ThemeCommand,
 };
 use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::graph::LinkGraph;
@@ -5355,6 +5356,95 @@ fn render_capabilities_table(reports: &[zetl::hooks::capability::CapabilityRepor
         for r in problem_reports {
             eprintln!("{}", format_diagnostic(r));
         }
+    }
+}
+
+/// SPEC-033 REQ-3310 / CON-3310 — probe every registered ecosystem's
+/// runtime, count hooks declaring each ecosystem, list reachable plugins,
+/// and render either the canonical table or JSON.
+///
+/// Exits non-zero only when a *configured* ecosystem's runtime isn't
+/// available. The zero-configured state prints the informational footer
+/// and exits 0 regardless of host state.
+fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
+    use zetl::ecosystems::check::{run_ecosystem_check, EcosystemCheckStatus};
+    use zetl::hooks::composition::compose_all_stages;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+
+    // Collect every composed hook across the three stages so the
+    // configured-count reflects the whole vault, not a single stage.
+    let pipelines = compose_all_stages(&vault_root, theme_hooks.path())
+        .context("failed to compose hook pipelines for ecosystem check")?;
+    let hooks: Vec<zetl::hooks::composition::ComposedHook> = pipelines
+        .into_iter()
+        .flat_map(|p| p.hooks.into_iter().chain(p.disabled.into_iter()))
+        .collect();
+
+    let report = run_ecosystem_check(&vault_root, &hooks);
+
+    let emit_json = json || cli.json || cli.format == OutputFormat::Json;
+    if emit_json {
+        print_json(&report)?;
+    } else {
+        render_ecosystem_check_table(&report);
+    }
+
+    if report.has_configured_failures() {
+        // Walk in canonical order and surface the first configured
+        // failure's hint on stderr so CI logs read naturally.
+        for e in &report.entries {
+            if e.configured > 0 && e.status != EcosystemCheckStatus::Detected {
+                if let Some(hint) = &e.hint {
+                    eprintln!("[zetl] ecosystem {}: {hint}", e.id);
+                }
+            }
+        }
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn render_ecosystem_check_table(report: &zetl::ecosystems::check::EcosystemCheckReport) {
+    let mut table = Table::new();
+    table.set_header(vec![
+        "ECOSYSTEM",
+        "STATUS",
+        "VERSION",
+        "PLUGINS CONFIGURED",
+        "PLUGINS AVAILABLE",
+    ]);
+    for e in &report.entries {
+        let version = match e.version.as_deref() {
+            Some(v) => v.to_string(),
+            None => "-".to_string(),
+        };
+        let available = if e.available_plugins.is_empty() {
+            e.available_plugins.len().to_string()
+        } else {
+            format!(
+                "{} ({})",
+                e.available_plugins.len(),
+                e.available_plugins.join(", ")
+            )
+        };
+        table.add_row(vec![
+            Cell::new(&e.id),
+            Cell::new(e.status.as_str()),
+            Cell::new(version),
+            Cell::new(e.configured.to_string()),
+            Cell::new(available),
+        ]);
+    }
+    println!("{table}");
+
+    if report.hooks_configured_total == 0 {
+        println!();
+        println!("No ecosystem hooks configured in this vault.");
+        println!("To enable an ecosystem, add a manifest under .zetl/hooks/:");
+        println!("  https://zetl.codeberg.page/docs/ecosystems/");
     }
 }
 
@@ -10944,6 +11034,9 @@ fn main() -> anyhow::Result<()> {
             HookCommand::Capabilities { theme, stage } => {
                 cmd_hook_capabilities(&cli, theme, stage.as_ref())
             }
+        },
+        Command::Ecosystem { command } => match command {
+            EcosystemCommand::Check { theme, json } => cmd_ecosystem_check(&cli, theme, *json),
         },
         Command::Ast { command } => {
             use zetl::cli::AstCommand;
