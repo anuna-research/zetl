@@ -15,6 +15,7 @@ pub mod build_data;
 pub mod context;
 pub mod persistent;
 pub mod pipeline;
+pub mod template_vars;
 
 use std::io::{Read, Write};
 #[cfg(unix)]
