@@ -29,6 +29,7 @@ pub fn resolve(name: &str) -> Option<Runner> {
     match name {
         "baseline-markdown" => Some(baseline_markdown_runner),
         "admonition" => Some(admonition_runner),
+        "tasks" => Some(tasks_runner),
         _ => None,
     }
 }
@@ -297,5 +298,158 @@ fn capitalise_ascii(s: &str) -> String {
     match chars.next() {
         Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
         None => String::new(),
+    }
+}
+
+/// Thin in-process stub for the canonical `tasks` extension
+/// (SPEC-032 REQ-3212). Recognises Obsidian task-list syntax:
+///
+/// ```markdown
+/// - [ ] Open task
+/// - [x] Completed task @due(2026-04-25)
+/// ```
+///
+/// A contiguous run of lines matching `- [ ] ` / `- [x] ` / `- [X] ` is
+/// one task list. The optional inline marker `@due(YYYY-MM-DD)` surfaces
+/// a due date; the stub strips it from the rendered label and emits a
+/// `<time>` element alongside.
+///
+/// Output shape mirrors what a real theme would render after reading the
+/// template vars a persistent hook would emit (`page.ext.tasks.open`,
+/// `.done`, `.due`):
+///
+/// ```html
+/// <ul class="tasks">
+/// <li class="task task-open"><input disabled type="checkbox"> Open task</li>
+/// <li class="task task-done"><input checked disabled type="checkbox"> Completed task <time class="task-due" datetime="2026-04-25">2026-04-25</time></li>
+/// </ul>
+/// ```
+///
+/// Real vaults run the transformation through an ecosystem plugin
+/// (Obsidian Tasks subset); the stub only exists so the golden-HTML gate
+/// can prove the theme CSS + template contract without pulling an
+/// external binary into CI.
+pub fn tasks_runner(input: &str) -> String {
+    let lines: Vec<&str> = input.lines().collect();
+    let mut out = String::new();
+    let mut plain: Vec<&str> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        if parse_task_line(lines[i]).is_some() {
+            flush_plain(&mut plain, &mut out);
+            let (next, items) = read_task_block(&lines, i);
+            emit_task_list(&mut out, &items);
+            i = next;
+            continue;
+        }
+        plain.push(lines[i]);
+        i += 1;
+    }
+    flush_plain(&mut plain, &mut out);
+    out
+}
+
+struct TaskItem {
+    done: bool,
+    text: String,
+    due: Option<String>,
+}
+
+fn parse_task_line(line: &str) -> Option<(bool, &str)> {
+    let body = line
+        .strip_prefix("- [ ] ")
+        .map(|b| (false, b))
+        .or_else(|| {
+            line.strip_prefix("- [x] ")
+                .or_else(|| line.strip_prefix("- [X] "))
+                .map(|b| (true, b))
+        })?;
+    Some(body)
+}
+
+fn read_task_block(lines: &[&str], start: usize) -> (usize, Vec<TaskItem>) {
+    let mut items: Vec<TaskItem> = Vec::new();
+    let mut j = start;
+    while j < lines.len() {
+        let Some((done, body)) = parse_task_line(lines[j]) else {
+            break;
+        };
+        let (text, due) = extract_due(body);
+        items.push(TaskItem { done, text, due });
+        j += 1;
+    }
+    (j, items)
+}
+
+fn extract_due(body: &str) -> (String, Option<String>) {
+    let Some(at) = body.find("@due(") else {
+        return (body.trim().to_string(), None);
+    };
+    let rest = &body[at + 5..];
+    let Some(end) = rest.find(')') else {
+        return (body.trim().to_string(), None);
+    };
+    let date = &rest[..end];
+    if !is_iso_date(date) {
+        return (body.trim().to_string(), None);
+    }
+    let before = body[..at].trim_end();
+    let after = body[at + 5 + end + 1..].trim_start();
+    let mut text = String::new();
+    text.push_str(before);
+    if !before.is_empty() && !after.is_empty() {
+        text.push(' ');
+    }
+    text.push_str(after);
+    (text.trim().to_string(), Some(date.to_string()))
+}
+
+fn is_iso_date(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[0..4].iter().all(|b| b.is_ascii_digit())
+        && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+        && bytes[8..10].iter().all(|b| b.is_ascii_digit())
+}
+
+fn emit_task_list(out: &mut String, items: &[TaskItem]) {
+    out.push_str("<ul class=\"tasks\">\n");
+    for it in items {
+        let class = if it.done {
+            "task task-done"
+        } else {
+            "task task-open"
+        };
+        let checkbox = if it.done {
+            "<input checked disabled type=\"checkbox\">"
+        } else {
+            "<input disabled type=\"checkbox\">"
+        };
+        out.push_str(&format!("<li class=\"{class}\">{checkbox} "));
+        out.push_str(&render_inline(&it.text));
+        if let Some(due) = &it.due {
+            out.push_str(&format!(
+                " <time class=\"task-due\" datetime=\"{due}\">{due}</time>"
+            ));
+        }
+        out.push_str("</li>\n");
+    }
+    out.push_str("</ul>\n");
+}
+
+/// Render inline markdown (bold, emphasis, code, links, etc.) without the
+/// surrounding `<p>…</p>` pulldown-cmark would otherwise wrap around a
+/// single block. Used for the visible label of each task item.
+fn render_inline(text: &str) -> String {
+    let rendered = render_markdown(text);
+    let trimmed = rendered.trim_end_matches('\n');
+    match trimmed
+        .strip_prefix("<p>")
+        .and_then(|s| s.strip_suffix("</p>"))
+    {
+        Some(inner) => inner.to_string(),
+        None => trimmed.to_string(),
     }
 }

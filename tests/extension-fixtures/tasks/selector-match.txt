@@ -1,0 +1,7 @@
+# Pages a realistic `tasks` selector should match.
+# The selector tests `content matches "^- \\[[ xX]\\] "` (line-anchored).
+# (Enforcement lives with the extension's manifest selector; the harness in
+# ext_golden_html_integration.rs only gates golden HTML for now.)
+notes/daily-2026-04-20.md
+projects/launch-checklist.md
+inbox/chores.md

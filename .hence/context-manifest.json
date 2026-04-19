@@ -1,12 +1,12 @@
 {
-  "task_id": "eco-runtime-detect",
+  "task_id": "ext-tasks",
   "token_budget": 8000,
-  "tokens_used": 330,
+  "tokens_used": 329,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Graceful absence per REQ-3313. Adapter probes its runtime (pandoc --version / mdbook --version / node --version) at init; missing runtime → clear diagnostic + pipeline skip, not crash.",
-      "token_cost": 46,
+      "content": "Tasks canonical-extension as thin stub. Obsidian `- [ ]`, `- [x]` syntax captured; stub emits template-vars (`page.ext.tasks.open`, `.done`, `.due`). Theme renders tasks from vars.",
+      "token_cost": 45,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T20:07:34Z"
+  "constructed_at": "2026-04-19T20:24:54Z"
 }
