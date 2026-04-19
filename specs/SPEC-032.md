@@ -262,6 +262,15 @@ The system SHALL define and publish a versioned JSON schema (`zetl-ast-schema`) 
 
 The schema SHALL be published at `tools/zetl-ast-schema-v1.json` in JSON Schema Draft 2020-12 format, and SHALL be used by the helper libraries (REQ-3210) as the source of truth.
 
+**Human-readable reference:** `docs/zetl-ast-reference.md` SHALL be
+auto-generated from the schema at CI time, with one section per
+node type covering shape, attrs, canonical example, and
+HTML-rendering expectations. Plugin authors should not have to
+read a JSON Schema file to learn the AST. The generator lives at
+`tools/zetl-ast-reference-gen/` (Rust) and runs in CI; a
+discrepancy between schema and generated reference is a CI
+failure.
+
 Trace:
 - TEST-3202
 - CON-3202
@@ -899,6 +908,76 @@ Trace:
 - REQ-3221, REQ-3222 (enforcement mechanisms)
 - SPEC-033 REQ-3311 (matrix contract column)
 
+### REQ-3225: Hook Authoring CLI
+
+Plugin authoring is a tight iteration loop: write → run → diff →
+fix. Zetl has REQ-3209 `zetl hook dry-run` for selector iteration;
+nothing else closes the loop. This REQ adds the subcommand surface
+that makes "my first hook" a minutes-not-hours experience and
+makes ongoing iteration feel like `cargo test` for Rust.
+
+The system SHALL provide:
+
+- **`zetl hook new <stage> <name> [--lang py|js|sh] [--ecosystem pandoc|mdbook|remark]`**
+  — scaffold a working hook in the current vault. Emits:
+  - `.zetl/hooks/<stage>.d/<name>.<ext>` — executable skeleton with
+    an identity transform and a comment pointer to the helper
+    library docs.
+  - `.zetl/hooks/<stage>.d/<name>.toml` — manifest with sensible
+    defaults (mode, timeout, empty `[contract]`, permissive selector).
+  - `tests/hook-fixtures/<name>/input.md` + `expected.html` — minimal
+    fixture the author can extend.
+
+  With `--ecosystem`, scaffolds the corresponding ecosystem manifest
+  (SPEC-033 REQ-3303/3304/3305) + a plugin-specific skeleton if
+  applicable (e.g., a Lua filter stub for Pandoc).
+
+- **`zetl hook test <hook>`** — run the hook against
+  `tests/hook-fixtures/<hook>/input.md`, diff against `expected.html`.
+  Non-zero exit on mismatch; prints a coloured line-diff. Honours
+  `--update` to regenerate the golden (equivalent to `cargo insta
+  accept` / `jest --updateSnapshot`).
+
+- **`zetl hook fixture --from <page> --hook <name>`** — capture the
+  current vault page's pre-hook input and post-hook output into
+  `tests/hook-fixtures/<name>/`. Creates the fixture pair from an
+  existing vault rather than requiring the author to synthesise one.
+
+- **`zetl hook watch <hook>`** — file-watch the hook's source;
+  restart the persistent-mode subprocess on change; stream the
+  hook's stderr to the terminal. Identical to what `zetl serve`
+  does internally for hot-reload, lifted as a user-invocable
+  command so authors who are not actively serving can still get
+  the iteration loop.
+
+- **`zetl ast sample <file.md> [--stage pre-parse|transform|post-render]`**
+  — emit the AST JSON (or Markdown text, or HTML fragment) that a
+  hook at the given stage would receive as input for the given file.
+  The single most useful debugging primitive: authors can see the
+  exact bytes their hook will see without instrumenting the hook
+  itself.
+
+- **`zetl ast diff <before.json> <after.json>`** — structural diff of
+  two AST documents as tree-aware delta (added / removed / modified
+  nodes with source positions), not a line-diff of the JSON
+  serialisation. Complements `zetl ast sample` for the
+  "what did my transform change?" workflow.
+
+Exit codes: 0 on success / match, 1 on expected failure (test
+mismatch, hook error), 2 on invalid arguments / missing hook.
+
+**Why this is v1, not v1.1:** the missing authoring loop is the
+single biggest friction to writing a zetl hook today. Shipping
+the machinery without the authoring surface means users see the
+power but can't extract it. Each subcommand is under 200 LOC of
+implementation and reuses existing machinery (discovery, manifest
+parser, persistent-mode runtime).
+
+Trace:
+- TEST-3225 (CLI integration)
+- CON-3225 (diagnostic message design, referenced here because
+  `hook test` diff output uses the same template)
+
 ---
 
 ## 4. Non-Functional Requirements
@@ -1410,6 +1489,85 @@ contract-altering flags.
 Implements: REQ-3224.
 Verified by: TEST-3224, TEST-3224-idempotent, TEST-3222.
 
+### CON-3225: Diagnostic Message Design
+
+Every diagnostic emitted by the hook subsystem SHALL follow a
+five-part structure, progressively disclosing detail:
+
+1. **Summary line** — one line, identifies the hook, the page (if
+   applicable), and the failure class. Machine-grep-able first.
+2. **Context** — which manifest field / which contract invariant /
+   which matrix entry is implicated.
+3. **Observed data** — concrete numbers or sample text showing what
+   went wrong; not just "failed".
+4. **Likely cause** — one sentence naming the most common cause of
+   this failure class.
+5. **Remediation hint** — a link or a command the author can run
+   next to make progress.
+
+**Worked example — contract preservation violation:**
+
+```
+[zetl] hook 'callouts' contract violation on projects/q2-review.md:
+  contract.preserves = ["Wikilink", "Embed"]
+  observed in input:  12 Wikilink, 3 Embed
+  observed in output:  8 Wikilink, 3 Embed
+  net change: -4 Wikilink
+
+  Likely cause: the transform strips unrecognised Span classes or
+  drops inline nodes whose type it doesn't match.
+  Hint: run `zetl ast diff <before.json> <after.json>` on the fixture
+  input to locate the removed nodes; see:
+    https://zetl.codeberg.page/docs/hook-authoring/preservation
+```
+
+**Worked example — idempotence violation (CI double-run):**
+
+```
+[zetl] hook 'tasks' contract violation in CI double-run on
+       tests/hook-fixtures/tasks/input.md:
+  contract.idempotent = true (declared)
+  observed: canonicalise(f(f(x))) != canonicalise(f(x))
+  first run:  3 tasks blocks rendered, 0 nested
+  second run: 3 tasks blocks rendered, 3 nested ← likely bug
+
+  Likely cause: the transform runs over its own output, wrapping
+  already-rendered blocks a second time.
+  Hint: detect already-rendered output (e.g. presence of
+  `class="zetl-tasks-rendered"`) and short-circuit, OR declare
+  contract.idempotent = false if nested output is intended.
+```
+
+**Worked example — manifest parse error:**
+
+```
+[zetl] hook manifest error at .zetl/hooks/transform.d/foo.toml:
+  unknown field 'ecosystm' (did you mean 'ecosystem'?)
+  line 3, column 1
+
+  Hint: valid top-level fields: stage, mode, timeout_ms, memory_mib,
+  ast_type, ast_version, ecosystem, select, before, after, optional,
+  extension_id, contract. See:
+    https://zetl.codeberg.page/docs/hook-authoring/manifest-fields
+```
+
+**Colour and quieting:** diagnostic colouring is honoured per
+`NO_COLOR` env var (standard) and via `--no-color`. Under `--quiet`,
+only the summary line is emitted; under default, all five parts;
+under `--verbose`, additionally the full stderr of the hook process
+if the failure was a crash or timeout.
+
+**Applicability:** this structure applies to every failure path
+zetl logs from the hook subsystem — manifest parse errors, selector
+evaluation failures, contract violations, protocol errors, ecosystem
+runtime absence. Conforming to the structure is a quality-gate item
+(§15) checked against fixture diagnostics.
+
+Implements: CON for hook-diagnostic design across REQ-3207, REQ-3213,
+REQ-3215, REQ-3222, REQ-3224, REQ-3225.
+Verified by: TEST-3225 (fixture of each failure class, assert
+diagnostic shape).
+
 ---
 
 ## 6. Architecture Decisions
@@ -1824,6 +1982,31 @@ downgrade (`supported` → `partial`) and a gated CI failure.
 
 Verifies: REQ-3224.
 
+### TEST-3225: Authoring CLI Integration
+
+Matrix:
+
+| Subcommand                              | Fixture / assertion                                           |
+| --------------------------------------- | ------------------------------------------------------------- |
+| `zetl hook new transform foo --lang py` | scaffold appears at expected paths; `zetl hook test foo` passes before any edits |
+| `zetl hook test <existing>` no-op       | diff is empty; exit 0                                         |
+| `zetl hook test <existing>` after edit  | diff shown; exit 1                                            |
+| `zetl hook test --update`               | golden regenerated; exit 0                                    |
+| `zetl hook fixture --from projects/q2`  | `tests/hook-fixtures/<hook>/input.md` matches page content    |
+| `zetl hook watch` restart               | editing hook source triggers one restart within 500 ms        |
+| `zetl ast sample <file.md>`             | output validates against zetl-ast-schema-v1.json              |
+| `zetl ast diff a.json b.json`           | tree-diff identifies known mutations; exit 1 on non-empty diff |
+
+**Diagnostic-shape fixtures:** TEST-3225 also covers CON-3225 by
+asserting every failure-class diagnostic (manifest parse error,
+selector evaluation failure, contract violation, runtime absence,
+protocol error) renders with all five parts (summary, context,
+observed data, likely cause, remediation hint). Regression gate:
+any diagnostic emitted by the hook subsystem without the full
+shape is a CI failure.
+
+Verifies: REQ-3225, CON-3225.
+
 ### Fuzzing — Predicate and Manifest Parsers
 
 `cargo-fuzz` targets on `hooks::predicate::parse` and `hooks::manifest::parse`. Run 24h nightly. Assert no panics, no UB.
@@ -1929,11 +2112,12 @@ Trace: REQ-3214.
 
 - **README.md** — new "Extension hooks" section: three stages, selector basics, canonical extensions list, how to disable.
 - **CHANGELOG.md** — entry for the new stages, the AST schema, and the supersession of SPEC-031.
-- **`docs/hook-authoring.md`** — primary tutorial. Walks through writing a Python hook with `zetl-ast-py`, writing the manifest, running `zetl hook dry-run`, iterating.
-- **`docs/zetl-ast-schema.md`** — reference for the AST JSON schema with per-node-type examples.
+- **`docs/hook-authoring.md`** — primary tutorial. Walks through writing a Python hook with `zetl-ast-py`, writing the manifest, running `zetl hook new` / `test` / `watch`, iterating. Structured as a five-minute first-hook path followed by deeper topics (selectors, contracts, ecosystem hooks).
+- **`docs/zetl-ast-reference.md`** — auto-generated from `tools/zetl-ast-schema-v1.json` at CI time (REQ-3202). One section per node type with shape, attrs, canonical example, and HTML-rendering expectations. Never hand-edited; a schema/reference discrepancy is a CI failure.
+- **`docs/hook-diagnostics.md`** — a catalogue of every diagnostic class the hook subsystem can emit (manifest parse errors, selector evaluation failures, contract violations, protocol errors, ecosystem runtime absence). Each entry gives the summary-line format, a worked example following CON-3225's five-part structure, and a remediation section.
 - **`docs/hook-migration.md`** — for any (hypothetical) SPEC-031 users: there's nothing to migrate; SPEC-031 never shipped. This doc exists only to anchor the link from SPEC-031's `superseded-by` field.
-- **`docs/canonical-extensions.md`** — per-extension reference for Callouts, Tasks, Admonition, covering syntax, selector, configuration, per-file opt-out, HTML output shape.
-- **Theme authoring reference update (SPEC-028's pattern)** — add the `hooks/<stage>.d/` convention and the empty-file-disables rule.
+- **`docs/canonical-extensions.md`** — per-extension reference for Callouts, Tasks, Admonition (now CSS-stubs per REQ-3212), covering syntax, selector, configuration, per-file opt-out, HTML output shape, and which ecosystem plugin provides the transformation.
+- **Theme authoring reference update (SPEC-028's pattern)** — add the `hooks/<stage>.d/` convention, the empty-file-disables rule (probe-based post-amendment), and the REQ-3223 `[[theme.hooks]]` declaration requirement.
 
 ---
 
@@ -2031,6 +2215,7 @@ Pandoc div syntax, Tasks deferred per §13 Q4).
 | REQ-3222 | TEST-3222                      | CON-3224   | —            | —           |
 | REQ-3223 | TEST-3223                      | CON-3223   | —            | —           |
 | REQ-3224 | TEST-3224, 3224-idempotent, 3222 | CON-3224 | —            | —           |
+| REQ-3225 | TEST-3225                      | CON-3225   | —            | —           |
 | NFR-3201 | TEST-3201-perf                 | —          | ADR-3203     | OBS-3202    |
 | NFR-3202 | TEST-3202-perf                 | —          | —            | OBS-3206    |
 | NFR-3203 | TEST-3203-determinism          | —          | ADR-3201     | —           |

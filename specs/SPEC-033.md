@@ -514,9 +514,53 @@ rationale (same pattern as SPEC-032 REQ-3213). Contract-field changes
 (e.g. dropping `preserves = ["Wikilink"]` from a supported plugin's
 declaration) are treated as tier downgrades and gated identically.
 
+**Tier promotion criteria (checklist):**
+
+Plugin authors or matrix contributors can open a PR moving a plugin
+entry up a tier. The PR SHALL demonstrate each of the following per
+the target tier:
+
+`experimental` → `partial`:
+
+- [ ] Matrix entry exists with `version_range`, `tier = "experimental"`,
+      maintainer contact, and upstream repo URL.
+- [ ] At least one working fixture in
+      `tests/ecosystem-fixtures/<eco>/<plugin>/`.
+- [ ] Golden-HTML fixture asserts end-to-end render is not broken for
+      a simple input.
+- [ ] Known limitations documented in the matrix entry's `notes` field.
+
+`partial` → `supported`:
+
+- [ ] `[plugin.contract]` sub-table declared with at minimum `preserves`
+      listing the node types that must survive.
+- [ ] `contract.idempotent` declared; if `true`, verified by
+      TEST-3224-idempotent's CI double-run on the fixture.
+- [ ] `version_range` reflects a semver-compatible span that has
+      passed CI green for the current release.
+- [ ] Fixture coverage expanded: at minimum one fixture exercising
+      each major feature of the plugin documented in its own README.
+- [ ] No open issues in the matrix entry's `notes` field marked as
+      blockers.
+
+`supported` → `supported, maintainer-adopted` (informational tier —
+signals an active zetl-side maintainer has committed to keeping the
+entry green):
+
+- [ ] A person or org listed in `maintained_by` who commits to
+      responding to breakage within one release cycle.
+- [ ] Automated refresh-of-fixtures hook scheduled to run on each
+      upstream release of the plugin.
+
+The checklist lives in `docs/ecosystems/matrix-contribution.md` and
+is kept in sync with this REQ. A PR that claims tier `supported`
+without the required evidence is rejected with an actionable
+comment pointing at the specific item(s) still missing.
+
 Trace:
 - TEST-3311
 - SPEC-032 REQ-3224, CON-3224
+- `docs/ecosystems/matrix-contribution.md`
 
 ### REQ-3312: Ecosystem-Specific Manifest Fields
 
