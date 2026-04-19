@@ -1,12 +1,12 @@
 {
-  "task_id": "helper-js",
+  "task_id": "diagnostic-design",
   "token_budget": 8000,
-  "tokens_used": 317,
+  "tokens_used": 334,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl-ast-js` package on npm per REQ-3210. Same surface as helper-py (types, onNode dispatch, manifest helpers, stdio protocol client).",
-      "token_cost": 33,
+      "content": "Five-part diagnostic message design per CON-3225: summary / context / observed / cause / hint. Shared `HookDiagnostic` type used across manifest parse, hook failure, contract violation, schema mismatch.",
+      "token_cost": 50,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T14:31:56Z"
+  "constructed_at": "2026-04-19T14:49:27Z"
 }
