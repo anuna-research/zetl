@@ -3,28 +3,37 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 989,
-    "deletions": 31,
+    "files_changed": 14,
+    "insertions": 1168,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/failure_scoping.rs",
-      "src/hooks/mod.rs",
-      "src/hooks/pipeline.rs",
-      "tests/failure_scoping_integration.rs"
+      "tools/zetl-ast-js/test/dispatch-perf.test.ts",
+      "tools/zetl-ast-py/.gitignore",
+      "tools/zetl-ast-py/README.md",
+      "tools/zetl-ast-py/pyproject.toml",
+      "tools/zetl-ast-py/src/zetl_ast/__init__.py",
+      "tools/zetl-ast-py/src/zetl_ast/ast.py",
+      "tools/zetl-ast-py/src/zetl_ast/dispatch.py",
+      "tools/zetl-ast-py/src/zetl_ast/walk.py",
+      "tools/zetl-ast-py/tests/__init__.py",
+      "tools/zetl-ast-py/tests/fixtures.py",
+      "tools/zetl-ast-py/tests/test_dispatch.py",
+      "tools/zetl-ast-py/tests/test_dispatch_perf.py",
+      "tools/zetl-ast-py/tests/test_walk.py"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-failure-scoping-changes",
-      "content": "Modified 5 files (+989, -31): .hence/context-manifest.json, src/hooks/failure_scoping.rs, src/hooks/mod.rs, src/hooks/pipeline.rs, tests/failure_scoping_integration.rs",
+      "key": "task-node-dispatch-changes",
+      "content": "Modified 14 files (+1168, -5): .hence/context-manifest.json, tools/zetl-ast-js/test/dispatch-perf.test.ts, tools/zetl-ast-py/.gitignore, tools/zetl-ast-py/README.md, tools/zetl-ast-py/pyproject.toml and 9 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/failure-scoping-v1",
-  "evaluated_at": "2026-04-19T15:34:02Z",
+  "branch_name": "hence/node-dispatch-v1",
+  "evaluated_at": "2026-04-19T15:43:16Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
