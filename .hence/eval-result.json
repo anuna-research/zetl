@@ -3,49 +3,26 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 26,
-    "insertions": 2528,
-    "deletions": 6,
+    "files_changed": 3,
+    "insertions": 515,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      ".woodpecker/ci.yaml",
-      "Makefile",
-      "tests/helper_js_integration.rs",
-      "tools/zetl-ast-js/.gitignore",
-      "tools/zetl-ast-js/.npmignore",
-      "tools/zetl-ast-js/README.md",
-      "tools/zetl-ast-js/package.json",
-      "tools/zetl-ast-js/scripts/rename-cjs.mjs",
-      "tools/zetl-ast-js/src/ast.ts",
-      "tools/zetl-ast-js/src/context.ts",
-      "tools/zetl-ast-js/src/dispatch.ts",
-      "tools/zetl-ast-js/src/index.ts",
-      "tools/zetl-ast-js/src/manifest.ts",
-      "tools/zetl-ast-js/src/protocol.ts",
-      "tools/zetl-ast-js/src/run.ts",
-      "tools/zetl-ast-js/src/walk.ts",
-      "tools/zetl-ast-js/test/dispatch.test.ts",
-      "tools/zetl-ast-js/test/fixtures/sample.ts",
-      "tools/zetl-ast-js/test/manifest.test.ts",
-      "tools/zetl-ast-js/test/protocol.test.ts",
-      "tools/zetl-ast-js/test/walk.test.ts",
-      "tools/zetl-ast-js/tsconfig.base.json",
-      "tools/zetl-ast-js/tsconfig.cjs.json",
-      "tools/zetl-ast-js/tsconfig.esm.json",
-      "tools/zetl-ast-js/tsconfig.types.json"
+      "src/hooks/diagnostic.rs",
+      "src/hooks/mod.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-helper-js-changes",
-      "content": "Modified 26 files (+2528, -6): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, tests/helper_js_integration.rs, tools/zetl-ast-js/.gitignore and 21 more",
+      "key": "task-diagnostic-design-changes",
+      "content": "Modified 3 files (+515, -5): .hence/context-manifest.json, src/hooks/diagnostic.rs, src/hooks/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/helper-js-v1",
-  "evaluated_at": "2026-04-19T14:49:22Z",
+  "branch_name": "hence/diagnostic-design-v1",
+  "evaluated_at": "2026-04-19T14:57:24Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
