@@ -90,7 +90,126 @@ translate-back cycle without markup corruption."""
 # mdBook preprocessors — SPEC-033 REQ-3304. Matrix rows seeded by
 # task-mdbook-matrix-seed (mdbook-mermaid, mdbook-toc, mdbook-katex,
 # mdbook-admonish).
-plugins = []
+#
+# All four rows land at tier = "experimental" per the REQ-3311 tier-
+# promotion checklist: each has `version_range`, maintainer contact,
+# upstream repo URL, a named fixture under tests/ecosystem-fixtures/,
+# and a `notes` field enumerating known limitations. Promotion to
+# `partial` requires wiring the fixtures into a green golden-HTML
+# runner that actually invokes `mdbook build` with the preprocessor
+# enabled (blocked on task-eco-matrix); promotion to `supported`
+# additionally requires declaring a `[plugin.contract]` sub-table
+# (preserves + idempotent) and CI double-run evidence per
+# TEST-3224-idempotent. The mdbook-admonish row doubles as the
+# upstream backing for the SPEC-032 Callouts canonical extension per
+# §13 Q1 resolution (see docs/canonical-extensions.md §Admonition).
+
+[[ecosystem.mdbook.plugins]]
+name = "mdbook-mermaid"
+version_range = ">=0.14 <0.16"
+tier = "experimental"
+fixture = "tests/ecosystem-fixtures/mdbook/mdbook-mermaid/"
+repo = "https://github.com/badboy/mdbook-mermaid"
+maintainer = "Jan-Erik Rediger <janerik@fnordig.de>"
+notes = """
+Rewrites ```mermaid fenced code blocks into `<pre class=\"mermaid\">` \
+shells and injects the mermaid.js runtime + book-init CSS/JS assets \
+via the HTML renderer. Known limitations at experimental tier: \
+(a) Rendering is client-side — the preprocessor only swaps the fence; \
+the actual SVG is produced by mermaid.js in the browser at page load, \
+so the golden-HTML gate can only assert the shell, not the diagram. \
+(b) The asset-injection path relies on mdbook's `renderer = [\"html\"]` \
+output backend; users running an alternative renderer (epub, linkcheck) \
+will see the shell markup but no runtime, which is cosmetically broken \
+by design — the adapter surfaces this via `mdbook-mermaid install` \
+guidance at probe time. \
+(c) Round-trip preservation of zetl Wikilink/Embed/SplBlock markers \
+inside a mermaid fence is undefined — the preprocessor treats fence \
+bodies opaquely and zetl's SplBlock classifier fires first on \
+```spl, so collisions are unlikely but untested."""
+
+[[ecosystem.mdbook.plugins]]
+name = "mdbook-toc"
+version_range = ">=0.14 <0.15"
+tier = "experimental"
+fixture = "tests/ecosystem-fixtures/mdbook/mdbook-toc/"
+repo = "https://github.com/badboy/mdbook-toc"
+maintainer = "Jan-Erik Rediger <janerik@fnordig.de>"
+notes = """
+Replaces the literal `<!-- toc -->` marker (or a configurable \
+alternate) with a generated `<ul>` list of in-chapter headings. \
+Known limitations at experimental tier: \
+(a) The marker is HTML-comment-based; zetl's frontmatter stripper \
+runs first and the marker survives unmolested, but a user who wraps \
+the marker inside a fenced code block will see it preserved literally \
+— expected behaviour per upstream. \
+(b) Heading-depth range is configurable via `[preprocessor.toc]` in \
+book.toml (defaults `max-level = 4`); the canary fixture exercises \
+only depths 1–2 to stay terse and version-stable. \
+(c) Anchor slugs are computed by mdbook's own GitHub-style slugifier, \
+not zetl's; a page carrying an Obsidian `^block-id` that mirrors an \
+mdbook-generated anchor will collide silently. Promotion to \
+`partial` requires a fixture exercising unicode heading slugs."""
+
+[[ecosystem.mdbook.plugins]]
+name = "mdbook-katex"
+version_range = ">=0.9 <0.10"
+tier = "experimental"
+fixture = "tests/ecosystem-fixtures/mdbook/mdbook-katex/"
+repo = "https://github.com/lzanini/mdbook-katex"
+maintainer = "Luca Zanini <luca.zanini@outlook.com>"
+notes = """
+Server-side renders `$...$` inline and `$$...$$` display math into \
+pre-rendered KaTeX HTML at preprocess time, avoiding a client-side \
+JS runtime. Known limitations at experimental tier: \
+(a) The KaTeX output embeds both a `<math>` MathML subtree and an \
+HTML-span fallback subtree inside a wrapping `<span class=\"katex\">`; \
+byte-stable golden-HTML comparison is brittle across KaTeX versions, \
+so the canary fixture records the expected wrapper shape only and \
+the full tree will land as an opt-in comparison mode under \
+task-eco-matrix. \
+(b) Users pairing this with the `smart_punctuation` book.toml option \
+will see stray curly-quote rewrites inside math delimiters; the \
+canary fixture deliberately avoids strings that would trigger it. \
+(c) Dollar-escape handling (`\\$`) is inherited from the upstream \
+tokenizer; escaped dollars adjacent to a literal `$...$` span have \
+occasionally regressed upstream (see lzanini/mdbook-katex#117) and \
+the fixture avoids that corner."""
+
+[[ecosystem.mdbook.plugins]]
+name = "mdbook-admonish"
+version_range = ">=1.18 <2"
+tier = "experimental"
+fixture = "tests/ecosystem-fixtures/mdbook/mdbook-admonish/"
+repo = "https://github.com/tommilligan/mdbook-admonish"
+maintainer = "Tom Milligan <code@tommilligan.net>"
+notes = """
+Rewrites ```admonish fenced blocks (including the `admonish note`, \
+`admonish warning`, … flavoured opening lines) into \
+`<div class=\"admonition admonish admonish-<type>\">` wrappers with \
+a title div and body div. Designated as the default upstream backing \
+for the SPEC-032 Callouts canonical extension per §13 Q1 resolution \
+— the in-repo stub at tests/extension-fixtures/admonition/ defines \
+the shared contract and this matrix row points at the real plugin \
+mdBook-backed builds would wire up. Known limitations at \
+experimental tier: \
+(a) Class shape differs from the SPEC-032 Callouts canonical \
+(`<div class=\"admonition <type>\">`) — mdbook-admonish adds the \
+`admonish admonish-<type>` classes alongside. The canonical CSS \
+targets `.admonition.<type>` which matches both shapes; downstream \
+theme overrides referencing the `.admonish-<type>` class will break \
+if the user swaps to the pandoc-admonition or Python-Markdown backing, \
+so themes SHOULD target only the shared shape. \
+(b) Title handling: Obsidian's `title:` header key vs mdbook-admonish's \
+`[title]` bracket syntax. The CON-3212 selector accepts the Obsidian \
+form and emits the shared output; this matrix row's fixture \
+exercises the upstream `[title]` form so the golden-HTML runner can \
+round-trip what the real binary produces. \
+(c) Collapsible admonitions (`admonish collapsible.open note`) and \
+custom anchor ids are a v1.x upstream feature not yet wired into the \
+canonical extension contract — promotion to `partial` requires a \
+decision on whether to surface those via Callouts frontmatter keys \
+or leave them plugin-specific."""
 
 [ecosystem.remark]
 # remark plugins — SPEC-033 REQ-3305. Matrix rows seeded by

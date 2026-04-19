@@ -1,12 +1,12 @@
 {
-  "task_id": "mdbook-envelope",
+  "task_id": "mdbook-matrix-seed",
   "token_budget": 8000,
-  "tokens_used": 317,
+  "tokens_used": 307,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "mdBook book envelope per REQ-3309 / CON-3309. JSON shape {book, sections, chapters, ...} constructed per-page; translator round-trips.",
-      "token_cost": 33,
+      "content": "Seed matrix with mdbook-mermaid, mdbook-toc, mdbook-katex, mdbook-admonish. Tier per checklist.",
+      "token_cost": 23,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T23:26:41Z"
+  "constructed_at": "2026-04-19T23:36:08Z"
 }
