@@ -3,27 +3,30 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 1129,
+    "files_changed": 7,
+    "insertions": 318,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/ecosystems/detection.rs",
-      "src/ecosystems/mod.rs",
-      "tests/ecosystem_runtime_detect_integration.rs"
+      "docs/canonical-extensions.md",
+      "tests/extension-fixtures/tasks/README.md",
+      "tests/extension-fixtures/tasks/expected.html",
+      "tests/extension-fixtures/tasks/input.md",
+      "tests/extension-fixtures/tasks/selector-match.txt",
+      "tools/xtask/src/runners.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-eco-runtime-detect-changes",
-      "content": "Modified 4 files (+1129, -5): .hence/context-manifest.json, src/ecosystems/detection.rs, src/ecosystems/mod.rs, tests/ecosystem_runtime_detect_integration.rs",
+      "key": "task-ext-tasks-changes",
+      "content": "Modified 7 files (+318, -5): .hence/context-manifest.json, docs/canonical-extensions.md, tests/extension-fixtures/tasks/README.md, tests/extension-fixtures/tasks/expected.html, tests/extension-fixtures/tasks/input.md and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/eco-runtime-detect-v1",
-  "evaluated_at": "2026-04-19T20:24:48Z",
+  "branch_name": "hence/ext-tasks-v1",
+  "evaluated_at": "2026-04-19T20:31:46Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
