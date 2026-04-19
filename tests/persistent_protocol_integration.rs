@@ -268,6 +268,77 @@ while True:
     }
 }
 
+/// REQ-3215 dual-version exposure: a persistent-mode hook should see
+/// both `zetl_version` and `ast_schema_version` as top-level fields in
+/// the init payload. The echo-init fixture returns the values it
+/// observed; we assert they match zetl's advertised constants. This is
+/// the wire-level complement to `BuildContext::env_vars` — same promise,
+/// the other delivery surface REQ-3215 names.
+#[test]
+fn init_payload_exposes_both_versions() {
+    if !python3_available() {
+        eprintln!("skip: python3 not available");
+        return;
+    }
+
+    let tmp = TempDir::new().unwrap();
+    let hook_body = r#"
+import json, sys
+sys.stdout.write('{"zetl_ast":1,"hook":"echo-init","version":"0.1.0","ready":true}\n')
+sys.stdout.flush()
+for line in sys.stdin:
+    try:
+        msg = json.loads(line)
+    except Exception:
+        continue
+    t = msg.get("type")
+    if t == "shutdown":
+        break
+    if t == "init":
+        resp = {
+            "type": "result",
+            "payload": {
+                "seen_zetl_version": msg.get("zetl_version"),
+                "seen_ast_schema_version": msg.get("ast_schema_version"),
+            },
+        }
+    else:
+        resp = {"type": "result", "payload": {}}
+    sys.stdout.write(json.dumps(resp) + "\n")
+    sys.stdout.flush()
+"#;
+    let hook_path = write_hook(tmp.path(), "echo-init.py", hook_body);
+
+    let mut hook = PersistentHook::spawn(
+        Command::new(&hook_path),
+        "echo-init",
+        Stage::Transform,
+    )
+    .unwrap();
+
+    let init = hook.init(json!({}), 1_000).unwrap();
+    match init {
+        HookMessage::Result { payload, .. } => {
+            assert_eq!(
+                payload["seen_zetl_version"],
+                json!(env!("CARGO_PKG_VERSION")),
+                "init payload must carry the binary version"
+            );
+            assert_eq!(
+                payload["seen_ast_schema_version"],
+                json!(AST_VERSION),
+                "init payload must carry the AST schema version"
+            );
+            // REQ-3215 decouples the two — they are two distinct strings.
+            assert_ne!(
+                payload["seen_zetl_version"],
+                payload["seen_ast_schema_version"]
+            );
+        }
+        other => panic!("unexpected init response: {other:?}"),
+    }
+}
+
 #[test]
 fn typed_error_allows_reuse_of_the_hook() {
     if !python3_available() {
