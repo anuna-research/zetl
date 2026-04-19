@@ -4,25 +4,25 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 3,
-    "insertions": 698,
+    "insertions": 871,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/hooks/mod.rs",
-      "src/hooks/pipeline.rs"
+      "src/hooks/build_data.rs",
+      "src/hooks/mod.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-three-stage-pipeline-changes",
-      "content": "Modified 3 files (+698, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/pipeline.rs",
+      "key": "task-build-data-channel-changes",
+      "content": "Modified 3 files (+871, -5): .hence/context-manifest.json, src/hooks/build_data.rs, src/hooks/mod.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/three-stage-pipeline-v1",
-  "evaluated_at": "2026-04-19T12:39:09Z",
+  "branch_name": "hence/build-data-channel-v1",
+  "evaluated_at": "2026-04-19T12:49:07Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
