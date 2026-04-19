@@ -1,12 +1,12 @@
 {
-  "task_id": "ast-cli",
+  "task_id": "eco-registry",
   "token_budget": 8000,
-  "tokens_used": 324,
+  "tokens_used": 313,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl ast sample <page>` and `zetl ast diff <a> <b>` per REQ-3225. `sample` prints canonical zetl-ext JSON of a page; `diff` shows AST-level diff (not text diff).",
-      "token_cost": 40,
+      "content": "Ecosystem registry per REQ-3301 / CON-3301. Enum + static table of {id, name, runtime, default_stage, feature_flag}.",
+      "token_cost": 29,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T14:57:29Z"
+  "constructed_at": "2026-04-19T15:15:34Z"
 }
