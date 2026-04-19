@@ -30,6 +30,7 @@ pub fn resolve(name: &str) -> Option<Runner> {
         "baseline-markdown" => Some(baseline_markdown_runner),
         "admonition" => Some(admonition_runner),
         "tasks" => Some(tasks_runner),
+        "callouts" => Some(callouts_runner),
         _ => None,
     }
 }
@@ -452,4 +453,163 @@ fn render_inline(text: &str) -> String {
         Some(inner) => inner.to_string(),
         None => trimmed.to_string(),
     }
+}
+
+/// Thin in-process stub for the canonical `callouts` extension
+/// (SPEC-032 REQ-3212 — stub model). Recognises Obsidian callout
+/// blockquote syntax:
+///
+/// ```markdown
+/// > [!note]
+/// > This is a note.
+///
+/// > [!warning] Custom title
+/// > First paragraph.
+/// >
+/// > Second paragraph.
+///
+/// > [!tip]+ Foldable tip
+/// > Default-expanded.
+///
+/// > [!danger]-
+/// > Default-collapsed.
+/// ```
+///
+/// A line starting with `> [!<type>]` opens a callout. An optional
+/// `+` / `-` suffix marks the block as foldable (default-expanded /
+/// default-collapsed) — the stub records it as `data-callout-fold` but
+/// renders the body inline either way. Everything trailing the `]`
+/// marker (after trimming) is the custom title; absent, the title is
+/// the type-name with its first letter uppercased.
+///
+/// Subsequent lines prefixed with `>` form the body, with the leading
+/// `> ` (or bare `>`) stripped and the remainder rendered as Markdown.
+/// The first non-`>` line or EOF closes the block.
+///
+/// Output shape mirrors Obsidian's own callout convention so theme CSS
+/// can share selectors between in-repo builds and Obsidian preview:
+///
+/// ```html
+/// <div class="callout" data-callout="note">
+/// <p class="callout-title">Note</p>
+/// <p>This is a note.</p>
+/// </div>
+/// ```
+///
+/// Real vaults run the transformation through an ecosystem plugin
+/// (`mdbook-admonish` under the mdBook ecosystem, or Pandoc's native
+/// div syntax); the stub only exists so the golden-HTML gate can prove
+/// the theme CSS + template contract without pulling an external binary
+/// into CI.
+pub fn callouts_runner(input: &str) -> String {
+    let lines: Vec<&str> = input.lines().collect();
+    let mut out = String::new();
+    let mut plain: Vec<&str> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        if let Some(open) = parse_callout_open(lines[i]) {
+            flush_plain(&mut plain, &mut out);
+            let (next, body) = read_callout_body(&lines, i + 1);
+            emit_callout(&mut out, &open, &body);
+            i = next;
+            continue;
+        }
+        plain.push(lines[i]);
+        i += 1;
+    }
+    flush_plain(&mut plain, &mut out);
+    out
+}
+
+#[derive(Debug)]
+enum CalloutFold {
+    None,
+    Expanded,
+    Collapsed,
+}
+
+struct CalloutOpen {
+    type_name: String,
+    title: Option<String>,
+    fold: CalloutFold,
+}
+
+fn parse_callout_open(line: &str) -> Option<CalloutOpen> {
+    // `> [!type]`, optionally `+`/`-` fold marker, optionally a title.
+    let after_quote = line.strip_prefix(">")?;
+    let after_quote = after_quote.strip_prefix(' ').unwrap_or(after_quote);
+    let rest = after_quote.strip_prefix("[!")?;
+    let end = rest.find(']')?;
+    let type_name = &rest[..end];
+    if !is_callout_type(type_name) {
+        return None;
+    }
+    let tail = &rest[end + 1..];
+    let (fold, tail) = if let Some(t) = tail.strip_prefix('+') {
+        (CalloutFold::Expanded, t)
+    } else if let Some(t) = tail.strip_prefix('-') {
+        (CalloutFold::Collapsed, t)
+    } else {
+        (CalloutFold::None, tail)
+    };
+    let title_text = tail.trim();
+    let title = if title_text.is_empty() {
+        None
+    } else {
+        Some(title_text.to_string())
+    };
+    Some(CalloutOpen {
+        type_name: type_name.to_string(),
+        title,
+        fold,
+    })
+}
+
+fn is_callout_type(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+fn read_callout_body(lines: &[&str], start: usize) -> (usize, Vec<String>) {
+    let mut body: Vec<String> = Vec::new();
+    let mut j = start;
+    while j < lines.len() {
+        let ln = lines[j];
+        let Some(stripped) = strip_callout_prefix(ln) else {
+            break;
+        };
+        body.push(stripped.to_string());
+        j += 1;
+    }
+    trim_trailing_blank(&mut body);
+    (j, body)
+}
+
+fn strip_callout_prefix(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix('>')?;
+    Some(rest.strip_prefix(' ').unwrap_or(rest))
+}
+
+fn emit_callout(out: &mut String, open: &CalloutOpen, body: &[String]) {
+    let default_title = capitalise_ascii(&open.type_name);
+    let title_text = open.title.as_deref().unwrap_or(&default_title);
+    let fold_attr = match open.fold {
+        CalloutFold::None => "",
+        CalloutFold::Expanded => " data-callout-fold=\"expanded\"",
+        CalloutFold::Collapsed => " data-callout-fold=\"collapsed\"",
+    };
+    out.push_str(&format!(
+        "<div class=\"callout\" data-callout=\"{}\"{}>\n",
+        open.type_name, fold_attr
+    ));
+    out.push_str(&format!(
+        "<p class=\"callout-title\">{}</p>\n",
+        render_inline(title_text)
+    ));
+    let body_md = body.join("\n");
+    if !body_md.is_empty() {
+        out.push_str(&render_markdown(&body_md));
+    }
+    out.push_str("</div>\n");
 }
