@@ -762,6 +762,50 @@ Trace:
 - TEST-3222 (deferred)
 - CON-3222 (deferred)
 
+### REQ-3223: Safe-Mode Build + Theme Hook Declaration
+
+Hooks execute arbitrary code (SPEC-032 §10; same posture for SPEC-033
+ecosystem plugins). Themes today don't execute code; after SPEC-032/033
+themes may. The system SHALL provide two affordances to keep users in
+control of what they consent to running:
+
+**Safe-mode flag** — `zetl build --no-hooks` SHALL:
+
+- Skip every hook in every stage, regardless of source (vault,
+  theme-bundled, ecosystem adapter).
+- Emit one log line per suppressed hook on stderr:
+  `[zetl] --no-hooks: skipped <stage>/<extension_id> from <source>`.
+- Complete the build with plain pipeline output (parse → render →
+  template compose, nothing else). Exit code 0 on success.
+
+`zetl serve --no-hooks` has identical semantics and is intended as
+an audit / hostile-theme-inspection surface.
+
+**Theme hook declaration** — a theme that ships hooks (files under
+`themes/<name>/hooks/`) SHALL list them in `theme.toml` under a
+`[[theme.hooks]]` array of objects with fields `stage`,
+`extension_id`, `ecosystem` (optional), `summary` (one-line
+description). Zetl SHALL:
+
+- At theme-selection time, compute the declared-vs-discovered diff
+  (hooks on disk not listed in `theme.toml`, or vice versa).
+- Emit a warning on first use of a theme with undeclared hooks:
+  `[zetl] theme <name> ships <N> undeclared hook(s); run`
+  `'zetl theme show <name>' for details, or --no-hooks to suppress`.
+- Record the theme's hook declarations in `zetl theme show`'s
+  output so users can audit before running.
+
+Theme authors gain one required bookkeeping step (declare what you
+ship); users gain a single place to see what a theme will execute.
+This is the minimum viable trust boundary; stricter mechanisms
+(theme signatures, per-hook consent) are deferred to a successor
+spec.
+
+Trace:
+- TEST-3223
+- CON-3223
+- §10 (threat model)
+
 ---
 
 ## 4. Non-Functional Requirements

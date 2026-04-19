@@ -1261,6 +1261,21 @@ Log: `[zetl] ecosystem pandoc: pandoc-crossref dropped 4 zetl-wikilink markers o
   - remark plugins: `npm install`; supply-chain risk is `npm`. Zetl does not run `npm audit`; users should.
 - **AI Trust Boundary**: Tier 3 (standard feature code; untrusted JSON at the adapter boundary). Implementation review per USDD §Multi-Model Cognitive Diversity.
 
+**Safe-mode and theme hook declaration:** SPEC-032 REQ-3223 defines a
+shared safe-mode surface — `zetl build --no-hooks` skips every hook
+(zetl-native and ecosystem) and produces plain pipeline output, and
+themes that ship hooks MUST declare them in `theme.toml`. That
+requirement applies uniformly to this spec's ecosystem hooks. Users
+auditing an unfamiliar theme or vault SHOULD run
+`zetl build --no-hooks` first, then re-enable incrementally by
+inspecting `zetl theme show`'s declared-hooks list.
+
+**remark harness poisoning note** — a long-lived Node harness with
+dynamic `import()` can let a first-loaded plugin monkey-patch globals
+that later plugins rely on. Users in a higher-risk posture SHOULD set
+`isolation = "fresh-context"` in their remark manifests (REQ-3305) at
+the cost of per-invocation startup.
+
 ---
 
 ## 11. Documentation Plan
