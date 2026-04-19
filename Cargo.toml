@@ -108,6 +108,9 @@ brotli = "7"
 [dev-dependencies]
 assert_cmd = "2"
 flate2 = "1"
+# Pulled in by src/hooks/ast/ round-trip tests to validate emitted JSON
+# against tools/zetl-ast-schema-v1.json (SPEC-032 REQ-3202 / TEST-3202).
+jsonschema = { version = "0.26", default-features = false }
 libc = "0.2"
 predicates = "3"
 proptest = "1"
