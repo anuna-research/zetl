@@ -475,10 +475,48 @@ Trace:
 
 ### REQ-3311: Ecosystem Matrix
 
-The system SHALL ship `tools/zetl-ecosystem-matrix.toml` recording, per tested (ecosystem, plugin, version) triple: tier (`supported`, `partial`, `experimental`), golden-fixture paths, known limitations, and test matrix status. CI SHALL gate merges that downgrade tier without accompanying rationale (same pattern as SPEC-032 REQ-3213).
+The system SHALL ship `tools/zetl-ecosystem-matrix.toml` recording, per
+tested (ecosystem, plugin, version) triple: tier (`supported`,
+`partial`, `experimental`), `version_range` (REQ-3314), golden-fixture
+paths, known limitations, test matrix status, and a `contract`
+sub-table carrying the plugin's declared behavioural properties per
+SPEC-032 REQ-3224.
+
+Example entry:
+
+```toml
+[[plugin]]
+ecosystem = "pandoc"
+name = "pandoc-crossref"
+version_range = ">=0.3 <0.4"
+tier = "supported"
+fixture = "tests/ecosystem-fixtures/pandoc-crossref/"
+[plugin.contract]
+preserves = ["Wikilink", "Embed", "SPL", "Link", "Image"]
+idempotent = true       # verified by TEST-3224-idempotent
+pure = true             # advisory in v1 (Tier-2 per SPEC-032 REQ-3224)
+```
+
+When a user's hook manifest does not declare a `[contract]` table,
+zetl populates the runtime contract from the matching matrix entry
+(CON-3224 "Ecosystem-adapter provenance"). A manifest-declared
+contract always overrides the matrix — useful when a user patches a
+plugin or invokes it with contract-altering flags.
+
+Unknown plugins (not in the matrix) produce a warning at first use:
+`[zetl] ecosystem <eco>: <plugin> not in matrix; behavioural contract
+unknown, no preservation checks active`. Users wanting safety signals
+SHOULD contribute a matrix entry or declare `[contract]` in their own
+manifest.
+
+CI SHALL gate merges that downgrade tier without accompanying
+rationale (same pattern as SPEC-032 REQ-3213). Contract-field changes
+(e.g. dropping `preserves = ["Wikilink"]` from a supported plugin's
+declaration) are treated as tier downgrades and gated identically.
 
 Trace:
 - TEST-3311
+- SPEC-032 REQ-3224, CON-3224
 
 ### REQ-3312: Ecosystem-Specific Manifest Fields
 

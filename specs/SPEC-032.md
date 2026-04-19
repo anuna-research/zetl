@@ -710,9 +710,15 @@ bidirectional translator with:
   equals *A* under the canonical-form equivalence relation defined in
   SPEC-033 NFR-3305.
 - **Marker-strip detection**: after each foreign-ext hook invocation,
-  zetl SHALL count markers (wikilink / embed / SPL spans / Divs) in
-  input vs output; a net decrease SHALL be logged as a warning
-  (`"<plugin> dropped <N> zetl markers on <page>"`), pipeline continues.
+  zetl SHALL count instances of each node type listed in the hook's
+  `contract.preserves` declaration (REQ-3224) in input vs output; a
+  net decrease SHALL be logged as a warning
+  (`"<plugin> dropped <N> <NodeType> on <page>"`), pipeline
+  continues. The baseline v1 preserves-list for `pandoc-ext` and
+  `mdast-ext` adapters is `["Wikilink", "Embed", "SPL"]` (injected
+  by the adapter when the manifest doesn't declare its own), which
+  matches the earlier hard-coded scope. Users wanting stricter
+  guarantees extend their manifest's `contract.preserves`.
 
 **Protocol-convention emulation:** When zetl invokes a non-default-ast_type
 hook, the hook sees the ecosystem's native invocation contract
@@ -739,28 +745,30 @@ Trace:
 - ADR-3206
 - SPEC-033 REQ-3301, REQ-3307, REQ-3308
 
-### REQ-3222: Pre-Parse Structural Safety Check (Deferred to v1.1)
+### REQ-3222: Pre-Parse Structural Safety Check
 
 REQ-3201's pre-parse caveat is advisory — authors are told regex-over-
-Markdown is risky, but nothing detects the breakage. In v1.1 the system
-SHALL provide an opt-in structural-safety check: when a pre-parse hook
-manifest declares `may_restructure = false` (proposed default), zetl
-compares the block-tree shape of the hook's input and output (same
-parser, same extensions, different text) and emits a warning if the
-block tree changed (different number of top-level blocks, different
-block types at the same path, etc.).
+Markdown is risky, but nothing detects the breakage. The system SHALL
+provide a structural-safety check driven by the hook's behavioural
+contract (REQ-3224): a pre-parse hook declaring `contract.may_restructure
+= false` (the default) triggers a zetl-side comparison of the block-tree
+shape of the hook's input vs output (same parser, same extensions,
+different text). A warning SHALL be emitted if the block tree changed
+(different number of top-level blocks, different block types at the
+same path, block-nesting depth delta > 1).
 
-Opting in via `may_restructure = true` suppresses the check for hooks
-that legitimately rewrite block structure (e.g. include-directive
-resolution).
+Authors whose hook legitimately rewrites block structure (e.g.
+include-directive resolution) set `contract.may_restructure = true` to
+suppress the check.
 
-**Deferred to v1.1** — this REQ is declared here so the manifest field
-is reserved; implementation can ship in a minor release without a
-manifest-schema break.
+Promoted from deferred-v1.1 to v1 alongside REQ-3224's introduction of
+the `[contract]` manifest table. The implementation is ~30 lines of
+tree-shape diffing in the pure core.
 
 Trace:
-- TEST-3222 (deferred)
-- CON-3222 (deferred)
+- TEST-3222
+- CON-3222
+- REQ-3224
 
 ### REQ-3223: Safe-Mode Build + Theme Hook Declaration
 
@@ -785,15 +793,17 @@ an audit / hostile-theme-inspection surface.
 `themes/<name>/hooks/`) SHALL list them in `theme.toml` under a
 `[[theme.hooks]]` array of objects with fields `stage`,
 `extension_id`, `ecosystem` (optional), `summary` (one-line
-description). Zetl SHALL:
+description), and `contract` (REQ-3224, optional). Zetl SHALL:
 
 - At theme-selection time, compute the declared-vs-discovered diff
   (hooks on disk not listed in `theme.toml`, or vice versa).
 - Emit a warning on first use of a theme with undeclared hooks:
   `[zetl] theme <name> ships <N> undeclared hook(s); run`
   `'zetl theme show <name>' for details, or --no-hooks to suppress`.
-- Record the theme's hook declarations in `zetl theme show`'s
-  output so users can audit before running.
+- Record the theme's hook declarations — including their declared
+  contracts — in `zetl theme show`'s output so users can audit both
+  execution surface (which hooks run) and behaviour surface (what
+  each hook promises to do).
 
 Theme authors gain one required bookkeeping step (declare what you
 ship); users gain a single place to see what a theme will execute.
@@ -805,6 +815,89 @@ Trace:
 - TEST-3223
 - CON-3223
 - §10 (threat model)
+
+### REQ-3224: Behavioural Contract Declarations
+
+Structural contracts (protocol, schema, version compat) tell zetl
+*how* to talk to a hook. Behavioural contracts tell zetl (and users
+auditing a vault or theme) *what properties the hook promises to
+hold* about its transformation. This REQ introduces an opt-in
+`[contract]` table in the hook manifest; REQ-3221 and REQ-3222
+enforcement mechanisms read from it.
+
+**Tier 1 fields (v1, verified by zetl):**
+
+```toml
+# .zetl/hooks/transform.d/callouts.toml
+
+[contract]
+preserves = ["Wikilink", "Embed", "CodeBlock", "FrontMatter"]
+idempotent = true
+may_restructure = false       # pre-parse hooks only; see REQ-3222
+```
+
+- **`preserves`** (array of AST node type names) — hook declares it
+  does not strip these node types. Zetl counts instances of each
+  declared type in the hook's input vs output; a net decrease is a
+  typed `contract_violation:preserves` diagnostic (REQ-3207 failure
+  semantics apply). Generalises REQ-3221's existing wikilink /
+  embed / SPL marker-strip detection — the mechanism is identical,
+  the set is now per-manifest.
+- **`idempotent`** (bool, default `false`) — hook asserts
+  `f(f(x))` is canonical-form-equivalent to `f(x)` under NFR-3305's
+  equivalence relation. Zetl verifies in CI by running the hook
+  twice on each matrix fixture page and asserting stability; a
+  mismatch is a `contract_violation:idempotent` typed error and
+  gates matrix tier (`supported` requires `idempotent = true`
+  verified).
+- **`may_restructure`** (bool, default `false`, `pre-parse` stage
+  only) — enforced per REQ-3222.
+
+**Tier 2 fields (reserved for v1.1, advisory in v1):**
+
+```toml
+[contract]
+pure = true                   # reads only stage_input + context; no net/fs/clock
+expansion_bound = 3.0         # output size ≤ N × input size
+```
+
+- **`pure`** — in v1 a documentation/trust label; surfaced in `zetl
+  theme show` and `zetl hook coverage`. In v1.1, optional
+  enforcement under `--sandbox-hooks` via bwrap / Firejail / Docker
+  on platforms where those are available.
+- **`expansion_bound`** — v1 reserves the field name; v1.1 enforces
+  at the protocol boundary (one `len()` comparison; near-free).
+
+**Default behaviour:** a manifest with no `[contract]` table has an
+empty declaration. Zetl behaves as today — no extra enforcement, no
+trust signal. Ecosystem adapters (SPEC-033) MAY populate the table
+on behalf of the plugin using values from the matrix (REQ-3311's
+`contract` column).
+
+**Output surface:**
+
+- `zetl hook coverage` adds a per-hook `contract` column listing
+  declared fields.
+- `zetl theme show <theme>` lists each theme-bundled hook's
+  contract alongside the REQ-3223 declaration.
+- Ecosystem matrix entries (SPEC-033 REQ-3311) carry a `contract`
+  field that maps into the runtime via adapter-owned translation.
+
+**Contract violation → REQ-3207 failure path.** A declared contract
+that zetl detects as violated produces the same failure-scoping
+behaviour as any other hook error: the hook's output is discarded,
+the input is passed to the next hook, a diagnostic with `reason =
+"contract_violation"` and specific sub-reason (`preserves`,
+`idempotent`, `may_restructure`) is logged. Under `--hook-fail-on
+error`, a contract violation fails the build.
+
+Trace:
+- TEST-3224 (preservation diagnostic)
+- TEST-3224-idempotent (CI double-run check)
+- TEST-3222 (may_restructure enforcement)
+- CON-3224
+- REQ-3221, REQ-3222 (enforcement mechanisms)
+- SPEC-033 REQ-3311 (matrix contract column)
 
 ---
 
@@ -1256,6 +1349,67 @@ a build error.
 Implements: REQ-3217.
 Verified by: TEST-3217.
 
+### CON-3224: Behavioural Contract — Schema and Enforcement
+
+**Manifest schema:** The `[contract]` table is optional. When present,
+keys are:
+
+```rust
+#[derive(Serialize, Deserialize, Default)]
+pub struct ContractDecl {
+    /// AST node type names the hook promises not to strip.
+    /// Tier-1. Enforced by post-hook type-counting (REQ-3221 generalisation).
+    #[serde(default)]
+    pub preserves: Vec<String>,
+
+    /// f(f(x)) canonical-form-equivalent to f(x). Tier-1.
+    /// Enforced by CI double-run on matrix fixtures.
+    #[serde(default)]
+    pub idempotent: bool,
+
+    /// Pre-parse stage only. Tier-1. Enforced per REQ-3222.
+    #[serde(default)]
+    pub may_restructure: bool,
+
+    /// Tier-2 (v1.1). In v1: advisory label only.
+    #[serde(default)]
+    pub pure: bool,
+
+    /// Tier-2 (v1.1). In v1: field reserved.
+    #[serde(default)]
+    pub expansion_bound: Option<f32>,
+}
+```
+
+**Enforcement loci:**
+
+| Field              | When checked               | Cost per page   | Diagnostic kind                         |
+| ------------------ | -------------------------- | --------------- | --------------------------------------- |
+| `preserves`        | After each hook invocation | O(nodes_counted) single pass | `contract_violation:preserves` |
+| `idempotent`       | CI double-run on fixtures  | CI only; not in hot path | `contract_violation:idempotent`      |
+| `may_restructure`  | After each pre-parse hook  | O(block_tree) structural diff | `contract_violation:may_restructure` |
+| `pure` (v1.1)      | Under `--sandbox-hooks`    | OS-sandbox cost | `contract_violation:pure`               |
+| `expansion_bound`  | At hook output boundary (v1.1) | O(1)        | `contract_violation:expansion_bound`    |
+
+**Diagnostic format:** contract violations reuse REQ-3207's failure
+record (plugin_id, stage, page_slug, duration_ms) with an additional
+`reason = "contract_violation"` and a `sub_reason` naming the
+violated field. Under default `--hook-fail-on never`, the violation
+is logged and the hook's output is discarded (fail-soft to plain
+input). Under `--hook-fail-on error`, a contract violation fails the
+build.
+
+**Ecosystem-adapter provenance:** when a hook's `ecosystem` field
+names an adapter (SPEC-033), zetl MAY populate `contract` from the
+matrix entry (REQ-3311) if the hook's manifest leaves it empty —
+equivalent to "inherit the matrix's declared contract". A manifest
+that declares its own `[contract]` overrides the matrix for that
+plugin, useful when a user patches a plugin or invokes it with
+contract-altering flags.
+
+Implements: REQ-3224.
+Verified by: TEST-3224, TEST-3224-idempotent, TEST-3222.
+
 ---
 
 ## 6. Architecture Decisions
@@ -1634,6 +1788,42 @@ CI simulation: PR that downgrades a canonical extension's tier or removes a fixt
 
 Verifies: REQ-3213.
 
+### TEST-3222: Pre-Parse Structural Safety Diff
+
+Fixture: a pre-parse hook that wraps every paragraph in an HTML
+`<div>` (restructures the block tree). Manifest declares
+`contract.may_restructure = false`. Assert zetl emits a
+`contract_violation:may_restructure` diagnostic with the specific
+paragraph → div path in the reason field. Flip manifest to
+`may_restructure = true`; assert no diagnostic.
+
+Verifies: REQ-3222, REQ-3224.
+
+### TEST-3224: Preservation Contract Diagnostic
+
+Fixture: a transform hook that strips all `Wikilink` nodes from
+input. Manifest declares `contract.preserves = ["Wikilink"]`.
+Assert zetl emits a `contract_violation:preserves` diagnostic
+enumerating the count delta and the affected page. Hook output is
+discarded per REQ-3207; next hook in the pipeline receives the
+unmodified input.
+
+Matrix of `preserves` declarations tested: empty (no enforcement),
+single type (Wikilink), multiple types (Wikilink + Embed +
+CodeBlock), unknown type (`"NotAType"` — manifest parse error).
+
+Verifies: REQ-3224.
+
+### TEST-3224-idempotent: Idempotence CI Double-Run
+
+For every hook with `contract.idempotent = true`, CI runs the hook
+twice on the matrix's fixture page and asserts
+`canonicalise(f(f(input))) == canonicalise(f(input))`. A hook
+flagged `idempotent = true` that fails this check is a tier
+downgrade (`supported` → `partial`) and a gated CI failure.
+
+Verifies: REQ-3224.
+
 ### Fuzzing — Predicate and Manifest Parsers
 
 `cargo-fuzz` targets on `hooks::predicate::parse` and `hooks::manifest::parse`. Run 24h nightly. Assert no panics, no UB.
@@ -1837,6 +2027,10 @@ Pandoc div syntax, Tasks deferred per §13 Q4).
 | REQ-3218 | TEST-3218                      | CON-3218   | —            | —           |
 | REQ-3219 | TEST-3219                      | CON-3219   | —            | —           |
 | REQ-3220 | TEST-3220                      | CON-3220   | —            | —           |
+| REQ-3221 | TEST-3221                      | CON-3221   | ADR-3206     | —           |
+| REQ-3222 | TEST-3222                      | CON-3224   | —            | —           |
+| REQ-3223 | TEST-3223                      | CON-3223   | —            | —           |
+| REQ-3224 | TEST-3224, 3224-idempotent, 3222 | CON-3224 | —            | —           |
 | NFR-3201 | TEST-3201-perf                 | —          | ADR-3203     | OBS-3202    |
 | NFR-3202 | TEST-3202-perf                 | —          | —            | OBS-3206    |
 | NFR-3203 | TEST-3203-determinism          | —          | ADR-3201     | —           |
