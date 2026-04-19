@@ -2,6 +2,10 @@
 module.exports = {
   content: [
     "../../../themes/default/**/*.html",
+    // JS under themes/default/static/ emits runtime classes too
+    // (e.g. index-toolbar.js builds .btn.btn-sm.btn-outline.mt-4.mx-auto).
+    // Without this glob those utilities would be purged.
+    "../../../themes/default/**/*.js",
     "../../../src/web/**/*.rs",
   ],
   // Classes emitted by Rust code (e.g. wikilink rendering) or constructed
