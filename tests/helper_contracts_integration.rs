@@ -199,6 +199,9 @@ fn drive_identity(hook_bin: &Path, hook_id: &'static str, payload: Value) -> Val
         HookMessage::Error { reason, detail } => {
             panic!("{hook_id}: hook returned error: {reason} ({detail})")
         }
+        HookMessage::ProbeResult(_) => {
+            panic!("{hook_id}: unexpected probe_result on run exchange")
+        }
     };
 
     // Finalise + shutdown so no orphans leak; errors here would be a

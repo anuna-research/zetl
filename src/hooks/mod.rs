@@ -13,6 +13,7 @@ pub mod ast;
 pub mod authoring;
 pub mod build_context;
 pub mod build_data;
+pub mod capability;
 pub mod composition;
 pub mod context;
 pub mod contract;

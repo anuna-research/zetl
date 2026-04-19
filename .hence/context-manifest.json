@@ -1,11 +1,11 @@
 {
-  "task_id": "hook-coverage",
+  "task_id": "capability-probe",
   "token_budget": 8000,
   "tokens_used": 318,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl hook coverage` per REQ-3208 / CON-3208. Reports: pages matched, hook invocations, unmatched hooks, unmatched pages. Table + --json.",
+      "content": "`zetl hook capabilities` subcommand + init-time capability probe per REQ-3216. Reports supported ast_types, stages, and AST schema version.",
       "token_cost": 34,
       "priority": "PlanMeta"
     },
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T18:42:01Z"
+  "constructed_at": "2026-04-19T18:58:17Z"
 }

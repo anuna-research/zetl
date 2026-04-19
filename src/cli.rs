@@ -692,6 +692,22 @@ pub enum HookCommand {
         #[arg(long, default_value = "50")]
         limit: usize,
     },
+    /// Probe every composed hook and report supported stages, AST types,
+    /// and schema version. SPEC-032 REQ-3216.
+    ///
+    /// Each hook is spawned, asked for its capability probe, and shut
+    /// down cleanly. Non-zero exit when any hook's probe fails.
+    #[command(
+        after_help = "Examples:\n  zetl hook capabilities\n  zetl hook capabilities --json\n  zetl hook capabilities --stage transform"
+    )]
+    Capabilities {
+        /// Theme name (looks in .zetl/themes/<name>/hooks/).
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Restrict the report to a single stage.
+        #[arg(long, value_enum)]
+        stage: Option<AuthoringStage>,
+    },
 }
 
 /// Stage for `zetl hook new`. Matches the three on-disk `<stage>.d/`

@@ -5234,6 +5234,130 @@ fn render_coverage_table(output: &HookCoverageOutput) {
     }
 }
 
+/// `zetl hook capabilities` — SPEC-032 REQ-3216. Probes every composed
+/// hook and reports supported stages, AST types, and schema version.
+///
+/// Per-hook the command spawns the executable, waits for the startup
+/// handshake, sends `{"type":"probe"}`, reads the `probe_result` line,
+/// and shuts the child down cleanly. Probe failures are reported but
+/// don't short-circuit — every hook's outcome is surfaced so the report
+/// is complete. Exit code is `1` when any hook's probe failed or did
+/// not declare the composed stage.
+fn cmd_hook_capabilities(
+    cli: &Cli,
+    theme: &str,
+    stage_filter: Option<&zetl::cli::AuthoringStage>,
+) -> Result<()> {
+    use zetl::cli::AuthoringStage;
+    use zetl::hooks::capability::{
+        probe_stage_pipeline, CapabilityOutcome, CapabilityReport, DEFAULT_PROBE_TIMEOUT,
+    };
+    use zetl::hooks::composition::compose_stage;
+    use zetl::hooks::pipeline::Stage;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+
+    let stages: Vec<Stage> = match stage_filter {
+        Some(AuthoringStage::PreParse) => vec![Stage::PreParse],
+        Some(AuthoringStage::Transform) => vec![Stage::Transform],
+        Some(AuthoringStage::PostRender) => vec![Stage::PostRender],
+        None => Stage::all().to_vec(),
+    };
+
+    let mut all_reports: Vec<CapabilityReport> = Vec::new();
+    for stage in &stages {
+        let pipeline = compose_stage(&vault_root, theme_hooks.path(), *stage)
+            .with_context(|| format!("failed to compose {stage} hooks"))?;
+
+        // Probe mode: no build is active, so pass None for `mode`.
+        let reports = probe_stage_pipeline(&pipeline.hooks, None, DEFAULT_PROBE_TIMEOUT);
+        all_reports.extend(reports);
+    }
+
+    let any_failed = all_reports.iter().any(|r| {
+        !matches!(
+            r.outcome,
+            CapabilityOutcome::Ok { .. } | CapabilityOutcome::Declined { .. }
+        )
+    });
+
+    let emit_json = cli.json || cli.format == OutputFormat::Json;
+    if emit_json {
+        print_json(&all_reports)?;
+    } else {
+        render_capabilities_table(&all_reports);
+    }
+
+    if any_failed {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn render_capabilities_table(reports: &[zetl::hooks::capability::CapabilityReport]) {
+    use zetl::hooks::capability::{format_diagnostic, CapabilityOutcome};
+
+    if reports.is_empty() {
+        println!("No hooks configured.");
+        return;
+    }
+
+    let mut table = Table::new();
+    table.set_header(vec![
+        "HOOK", "STAGE", "STATUS", "VERSION", "AST", "STAGES", "READY",
+    ]);
+    for r in reports {
+        let (version, ast_ver, stages_str, ready) = match &r.outcome {
+            CapabilityOutcome::Ok { result }
+            | CapabilityOutcome::Declined { result, .. }
+            | CapabilityOutcome::StageMismatch { result, .. }
+            | CapabilityOutcome::AstVersionMismatch { result, .. } => (
+                result.version.clone(),
+                result.zetl_ast.clone(),
+                result.stages.join(","),
+                if result.ready { "yes" } else { "no" }.to_string(),
+            ),
+            CapabilityOutcome::Error { .. } => (
+                "-".into(),
+                "-".into(),
+                "-".into(),
+                "-".into(),
+            ),
+        };
+        let status = match &r.outcome {
+            CapabilityOutcome::Ok { .. } => "ok",
+            CapabilityOutcome::Declined { .. } => "declined",
+            CapabilityOutcome::StageMismatch { .. } => "stage-mismatch",
+            CapabilityOutcome::AstVersionMismatch { .. } => "ast-mismatch",
+            CapabilityOutcome::Error { .. } => "error",
+        };
+        table.add_row(vec![
+            Cell::new(&r.extension_id),
+            Cell::new(&r.stage),
+            Cell::new(status),
+            Cell::new(version),
+            Cell::new(ast_ver),
+            Cell::new(stages_str),
+            Cell::new(ready),
+        ]);
+    }
+    println!("{table}");
+
+    // Per-hook diagnostic lines for everything except clean `ok`.
+    let problem_reports: Vec<&zetl::hooks::capability::CapabilityReport> = reports
+        .iter()
+        .filter(|r| !matches!(r.outcome, CapabilityOutcome::Ok { .. }))
+        .collect();
+    if !problem_reports.is_empty() {
+        println!();
+        for r in problem_reports {
+            eprintln!("{}", format_diagnostic(r));
+        }
+    }
+}
+
 fn cmd_hook_watch(cli: &Cli, name: &str) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
@@ -10816,6 +10940,9 @@ fn main() -> anyhow::Result<()> {
             }
             HookCommand::Coverage { theme, stage } => {
                 cmd_hook_coverage(&cli, theme, stage.as_ref())
+            }
+            HookCommand::Capabilities { theme, stage } => {
+                cmd_hook_capabilities(&cli, theme, stage.as_ref())
             }
         },
         Command::Ast { command } => {

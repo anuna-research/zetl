@@ -216,7 +216,13 @@ pub struct HookHandshake {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HostMessage {
-    /// One-time setup. Sent immediately after a successful handshake.
+    /// Capability probe (SPEC-032 REQ-3216). Sent once per spawned hook
+    /// immediately after the handshake, before `init`. Hook SHALL reply
+    /// with a single [`HookMessage::ProbeResult`] line declaring the
+    /// stages and AST types it supports. Probe failures disable the hook
+    /// for the current session with an actionable diagnostic.
+    Probe(ProbeMessage),
+    /// One-time setup. Sent immediately after a successful probe.
     Init(InitMessage),
     /// Invoke the hook against a single page.
     Run(RunMessage),
@@ -225,6 +231,19 @@ pub enum HostMessage {
     Finalise(FinaliseMessage),
     /// Graceful teardown. Zetl closes stdin immediately after sending.
     Shutdown(ShutdownMessage),
+}
+
+/// Probe-mode request body (SPEC-032 REQ-3216). Carries the active
+/// build mode so hooks can decline via `applies_when.modes` when the
+/// mode doesn't match (e.g. a build-only hook under `zetl serve`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProbeMessage {
+    /// `"build"` or `"serve"` — hooks pattern-match against this to
+    /// decide whether to report `ready: true` or `ready: false`.
+    /// Absent on `--probe` argv form (where the caller has no build
+    /// context yet); hooks MUST assume "any mode" in that case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
 }
 
 /// Per-build context embedded in the init payload (REQ-3220).
@@ -283,6 +302,10 @@ pub enum HookMessage {
         #[serde(default)]
         build_data: Value,
     },
+    /// Reply to a [`HostMessage::Probe`] — declares the hook's supported
+    /// stages, AST type(s), and readiness (SPEC-032 REQ-3216).
+    #[serde(rename = "probe_result")]
+    ProbeResult(ProbeResult),
     /// Typed failure. The caller's REQ-3207 policy decides whether to
     /// revert the page, continue, or abort.
     Error {
@@ -290,6 +313,89 @@ pub enum HookMessage {
         #[serde(default)]
         detail: String,
     },
+}
+
+/// Capability-probe reply body (SPEC-032 REQ-3216).
+///
+/// The canonical wire shape is:
+/// ```json
+/// {
+///   "type": "probe_result",
+///   "zetl_ast": "1.0",
+///   "hook": "callouts",
+///   "version": "1.0.3",
+///   "stages": ["transform"],
+///   "ast_types": ["zetl-ext"],
+///   "applies_when": {"modes": ["build","serve"], "themes": null, "formats": ["html"]},
+///   "ready": true
+/// }
+/// ```
+///
+/// Hooks that decline to run (`ready: false`) may include `reason` for
+/// the diagnostic surface. `applies_when` is optional; absent means
+/// "applies always".
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProbeResult {
+    /// AST schema version the hook targets. Free-form string; the
+    /// caller does a semver-compatible comparison against
+    /// `crate::hooks::ast::AST_VERSION`.
+    pub zetl_ast: String,
+    /// Hook id — usually the manifest `extension_id`.
+    pub hook: String,
+    /// Hook version string.
+    pub version: String,
+    /// Pipeline stages this hook handles. `[]` is a manifest/probe
+    /// mismatch and disables the hook.
+    #[serde(default)]
+    pub stages: Vec<String>,
+    /// AST ecosystems this hook can read/emit. Absent → `["zetl-ext"]`
+    /// fallback (the historical default before task-capability-probe).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ast_types: Option<Vec<String>>,
+    /// Optional filter. Absent → applies-always.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applies_when: Option<AppliesWhen>,
+    /// `true` — hook accepts invocation; `false` — hook declines.
+    pub ready: bool,
+    /// Free-form reason for `ready: false`; surfaced in the diagnostic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Conditional-applicability clause inside a [`ProbeResult`].
+///
+/// All fields are optional. A `null` / absent field means "no
+/// constraint on this dimension". Within a field, the value is a
+/// *whitelist* — the hook applies when the current build's value is a
+/// member of the list.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct AppliesWhen {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modes: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub themes: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formats: Option<Vec<String>>,
+}
+
+impl AppliesWhen {
+    /// `true` when the clause permits the given mode. Missing modes =
+    /// "no mode constraint" = always permitted.
+    pub fn permits_mode(&self, mode: &str) -> bool {
+        match &self.modes {
+            None => true,
+            Some(list) => list.iter().any(|m| m == mode),
+        }
+    }
+
+    /// `true` when the clause permits the given theme. Missing themes =
+    /// "no theme constraint" = always permitted.
+    pub fn permits_theme(&self, theme: &str) -> bool {
+        match &self.themes {
+            None => true,
+            Some(list) => list.iter().any(|t| t == theme),
+        }
+    }
 }
 
 /// A single structured diagnostic emitted by the hook. Surfaced via
@@ -593,6 +699,36 @@ impl PersistentHook {
     /// or similar from subsequent operations.
     pub fn is_dead(&self) -> bool {
         self.dead
+    }
+
+    /// Send a `probe` message and await the hook's `probe_result` line
+    /// (SPEC-032 REQ-3216). The probe runs once per session, immediately
+    /// after handshake; hooks that don't speak probe will time out and
+    /// be classified as probe-failed by the caller.
+    ///
+    /// `mode` is `"build"` / `"serve"` and is echoed into the probe body
+    /// so hooks can branch on `applies_when.modes`. Pass `None` when the
+    /// probe is run outside a build (e.g. `zetl hook capabilities`).
+    pub fn probe(
+        &mut self,
+        mode: Option<&str>,
+        deadline_ms: u64,
+    ) -> Result<ProbeResult, ProtocolError> {
+        let msg = HostMessage::Probe(ProbeMessage {
+            mode: mode.map(|m| m.to_string()),
+        });
+        match self.exchange(&msg, Duration::from_millis(deadline_ms))? {
+            HookMessage::ProbeResult(pr) => Ok(pr),
+            HookMessage::Result { .. } => Err(ProtocolError::Handshake(
+                "hook returned `result` in response to probe; expected `probe_result`".into(),
+            )),
+            // `Error` is already converted to ProtocolError::HookError by
+            // `exchange` before we get here, so this arm is unreachable —
+            // kept for serde-exhaustiveness.
+            HookMessage::Error { reason, detail } => {
+                Err(ProtocolError::HookError { reason, detail })
+            }
+        }
     }
 
     /// Send an `init` message with per-build context and await the
