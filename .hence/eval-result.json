@@ -3,32 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 9,
-    "insertions": 1025,
-    "deletions": 6,
+    "files_changed": 5,
+    "insertions": 1332,
+    "deletions": 11,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
-      "src/ecosystems/check.rs",
+      "src/ecosystems/manifest.rs",
       "src/ecosystems/mod.rs",
-      "src/hooks/composition.rs",
-      "src/hooks/safe_mode.rs",
-      "src/main.rs",
-      "tests/capability_probe_integration.rs",
-      "tests/ecosystem_check_integration.rs"
+      "src/hooks/manifest.rs",
+      "tests/eco_manifest_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-eco-check-changes",
-      "content": "Modified 9 files (+1025, -6): .hence/context-manifest.json, src/cli.rs, src/ecosystems/check.rs, src/ecosystems/mod.rs, src/hooks/composition.rs and 4 more",
+      "key": "task-eco-manifest-changes",
+      "content": "Modified 5 files (+1332, -11): .hence/context-manifest.json, src/ecosystems/manifest.rs, src/ecosystems/mod.rs, src/hooks/manifest.rs, tests/eco_manifest_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/eco-check-v1",
-  "evaluated_at": "2026-04-19T21:21:58Z",
+  "branch_name": "hence/eco-manifest-v1",
+  "evaluated_at": "2026-04-19T21:40:07Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
