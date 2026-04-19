@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check helper-js-install helper-js-build helper-js-test helper-contracts help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts help
 
 all: build
 
@@ -88,6 +88,21 @@ helper-js-test:
 helper-contracts: helper-js-build
 	cargo test --test helper_contracts_integration -- --nocapture
 
+# SPEC-032 CON-3212 canonical-extension golden-HTML gate. Runs every
+# fixture under tests/extension-fixtures/ through its registered runner
+# and compares against expected.html. Failures surface a unified diff
+# plus the exact `cargo xtask update-golden <name>` command to accept
+# the change after a deliberate review.
+ext-golden:
+	cargo test --test ext_golden_html_integration -- --nocapture
+
+# Regenerate every extension fixture's expected.html from its runner's
+# current output. Run after a deliberate change to a runner or input.md
+# — the same code path the gate uses, so a write here implies a pass
+# there on the next invocation.
+ext-golden-update:
+	cargo xtask update-golden
+
 install: build
 	install -d $(PREFIX)/bin $(MANDIR) $(BASHCOMPDIR) $(ZSHCOMPDIR) $(FISHCOMPDIR)
 	install -m 755 target/release/zetl $(PREFIX)/bin/zetl
@@ -146,6 +161,8 @@ help:
 	@echo "  make helper-contracts    - Run cross-impl (py+js+rust) fixture corpus"
 	@echo "  make ast-reference       - Regenerate docs/zetl-ast-reference.md"
 	@echo "  make ast-reference-check - CI gate: fail if the reference is stale"
+	@echo "  make ext-golden          - Run CON-3212 canonical-extension golden-HTML gate"
+	@echo "  make ext-golden-update   - Regenerate expected.html for every extension fixture"
 	@echo "  make install      - Install binary, man page, and shell completions"
 	@echo "  make uninstall    - Remove binary, man page, and completions"
 	@echo "  make clean        - Remove build artifacts"

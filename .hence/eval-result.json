@@ -3,38 +3,39 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 15,
-    "insertions": 715,
-    "deletions": 8,
+    "files_changed": 16,
+    "insertions": 1138,
+    "deletions": 12,
     "file_list": [
+      ".cargo/config.toml",
       ".hence/context-manifest.json",
       ".woodpecker/ci.yaml",
+      "Cargo.lock",
+      "Cargo.toml",
       "Makefile",
-      "tests/fixtures/helper-contracts/01_empty.json",
-      "tests/fixtures/helper-contracts/02_simple_paragraph.json",
-      "tests/fixtures/helper-contracts/03_heading_and_text.json",
-      "tests/fixtures/helper-contracts/04_wikilinks.json",
-      "tests/fixtures/helper-contracts/05_blockquote_nested.json",
-      "tests/fixtures/helper-contracts/06_list_ordered_and_tight.json",
-      "tests/fixtures/helper-contracts/07_code_and_html.json",
-      "tests/fixtures/helper-contracts/08_links_and_images.json",
-      "tests/fixtures/helper-contracts/09_embed_and_spl.json",
-      "tests/fixtures/helper-contracts/10_frontmatter_and_unicode.json",
-      "tests/fixtures/helper-contracts/README.md",
-      "tests/helper_contracts_integration.rs"
+      "src/extensions/golden.rs",
+      "src/extensions/mod.rs",
+      "src/lib.rs",
+      "tests/ext_golden_html_integration.rs",
+      "tests/extension-fixtures/baseline-markdown/README.md",
+      "tests/extension-fixtures/baseline-markdown/expected.html",
+      "tests/extension-fixtures/baseline-markdown/input.md",
+      "tools/xtask/Cargo.toml",
+      "tools/xtask/src/main.rs",
+      "tools/xtask/src/runners.rs"
     ],
-    "dirty_files": 1
+    "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-helper-contracts-changes",
-      "content": "Modified 15 files (+715, -8): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, tests/fixtures/helper-contracts/01_empty.json, tests/fixtures/helper-contracts/02_simple_paragraph.json and 10 more",
+      "key": "task-ext-golden-html-changes",
+      "content": "Modified 16 files (+1138, -12): .cargo/config.toml, .hence/context-manifest.json, .woodpecker/ci.yaml, Cargo.lock, Cargo.toml and 11 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/helper-contracts-v1",
-  "evaluated_at": "2026-04-19T17:30:08Z",
+  "branch_name": "hence/ext-golden-html-v1",
+  "evaluated_at": "2026-04-19T17:45:17Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

@@ -8,13 +8,13 @@ repository = "https://codeberg.org/anuna/zetl"
 homepage = "https://codeberg.org/anuna/zetl"
 readme = "README.md"
 
-# Workspace declaration exists solely so `cargo run -p zetl-ast-reference-gen`
-# works from the repo root (SPEC-032 REQ-3202 acceptance criterion). The
-# generator lives under tools/ and is intentionally the only workspace
-# member besides the root zetl crate — diamond-types-spike is an
-# IMPL-029 phase-0 spike that pins its own deps and must stay standalone.
+# Workspace declaration exists so repo-local tools (`zetl-ast-reference-gen`
+# for REQ-3202 and `xtask` for CON-3212's `update-golden` command) can run
+# via `cargo run -p <tool>` / `cargo xtask` from the repo root.
+# diamond-types-spike is an IMPL-029 phase-0 spike that pins its own deps
+# and must stay standalone.
 [workspace]
-members = ["tools/zetl-ast-reference-gen"]
+members = ["tools/zetl-ast-reference-gen", "tools/xtask"]
 exclude = ["tools/diamond-types-spike"]
 
 [profile.release]
