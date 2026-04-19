@@ -22,8 +22,12 @@ use std::sync::{Arc, Mutex, RwLock};
 #[cfg(feature = "reason")]
 use crate::acl::{AclDecision, Action};
 
+use axum::extract::Request;
 use axum::http::header;
+use axum::http::StatusCode;
 use axum::middleware;
+use axum::middleware::Next;
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::Router;
 
@@ -485,6 +489,10 @@ pub async fn run(
             );
             resp
         }))
+        // ETag + conditional GET for HTML responses (task-html-etag).
+        // Runs before compression so the ETag is computed from the raw body
+        // and is stable regardless of which encoding the client negotiates.
+        .layer(middleware::from_fn(etag_middleware))
         // Response compression (PERF-AUDIT-2026-04-19 / task-compression-layer).
         // Negotiates gzip or brotli based on Accept-Encoding; text responses
         // typically shrink 5–8× with gzip and 7–10× with brotli. Applied
@@ -497,6 +505,80 @@ pub async fn run(
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+/// ETag + conditional-GET middleware for text/html responses.
+///
+/// Computes a weak ETag as the first 16 hex chars of blake3 over the
+/// response body. On a request carrying `If-None-Match` that matches the
+/// computed tag, the response is replaced with `304 Not Modified` and an
+/// empty body — saving re-transfer of unchanged pages.
+///
+/// Scope: GET requests; 200 OK responses with a Content-Type starting
+/// `text/html`; responses without an explicit `Cache-Control: no-store`.
+/// Responses already carrying an ETag (set by a downstream handler) are
+/// passed through unchanged.
+async fn etag_middleware(req: Request, next: Next) -> Response {
+    let method = req.method().clone();
+    let if_none_match = req
+        .headers()
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let resp = next.run(req).await;
+    if method != axum::http::Method::GET {
+        return resp;
+    }
+    if resp.status() != StatusCode::OK {
+        return resp;
+    }
+    let headers = resp.headers();
+    if headers.contains_key(header::ETAG) {
+        return resp;
+    }
+    let ct = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !ct.starts_with("text/html") {
+        return resp;
+    }
+    if let Some(cc) = headers.get(header::CACHE_CONTROL) {
+        if let Ok(s) = cc.to_str() {
+            if s.contains("no-store") {
+                return resp;
+            }
+        }
+    }
+
+    let (parts, body) = resp.into_parts();
+    let bytes = match axum::body::to_bytes(body, 10 * 1024 * 1024).await {
+        Ok(b) => b,
+        Err(_) => return Response::from_parts(parts, axum::body::Body::empty()),
+    };
+    let digest = blake3::hash(&bytes);
+    let etag = format!("W/\"{}\"", &digest.to_hex()[..16]);
+
+    if let Some(inm) = if_none_match {
+        if inm.split(',').any(|t| t.trim() == etag) {
+            let mut not_modified = Response::builder()
+                .status(StatusCode::NOT_MODIFIED)
+                .body(axum::body::Body::empty())
+                .unwrap();
+            *not_modified.headers_mut() = parts.headers.clone();
+            not_modified
+                .headers_mut()
+                .insert(header::ETAG, etag.parse().unwrap());
+            not_modified.headers_mut().remove(header::CONTENT_LENGTH);
+            return not_modified;
+        }
+    }
+
+    let mut new_resp = Response::from_parts(parts, axum::body::Body::from(bytes));
+    new_resp
+        .headers_mut()
+        .insert(header::ETAG, etag.parse().unwrap());
+    new_resp
 }
 
 /// Spawn a background task that prunes comments older than 30 days once per hour.
