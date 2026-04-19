@@ -1,0 +1,771 @@
+    /* dead link */
+    a.link-error { color: oklch(var(--er)); text-decoration: underline wavy; }
+    /* line anchors for backlink scroll targets */
+    .line-anchor { scroll-margin-top: 2rem; }
+    :has(> .line-anchor:target) {
+      animation: line-highlight 2s ease-out;
+      border-radius: 4px;
+    }
+    @keyframes line-highlight {
+      0%   { background: oklch(var(--wa) / 0.35); }
+      100% { background: transparent; }
+    }
+
+    /* page + transclusion wrapper: stacked on mobile, side-by-side on desktop */
+    .page-with-panel {
+      display: flex;
+      flex-direction: column;
+    }
+    @media (min-width: 1280px) {
+      .page-with-panel { flex-direction: row; }
+    }
+
+    /* transclusion panel — mobile: inline below content */
+    .transclusion-panel {
+      border-top: 1px solid oklch(var(--b3));
+      padding: 1rem;
+      background: oklch(var(--b1));
+    }
+    .transclusion-panel .transclusion-card .tc-excerpt {
+      display: block;
+    }
+    .transclusion-panel .transclusion-card {
+      margin-bottom: 0.75rem;
+    }
+    /* transclusion panel — desktop: sticky sidebar */
+    @media (min-width: 1280px) {
+      .transclusion-panel {
+        width: 36rem;
+        flex-shrink: 0;
+        border-top: none;
+        border-left: 1px solid oklch(var(--b3));
+        overflow-y: auto;
+        position: sticky;
+        top: 0;
+        max-height: 100vh;
+      }
+      .transclusion-panel .transclusion-card .tc-excerpt {
+        display: none;
+      }
+      .transclusion-panel .transclusion-card.tc-active .tc-excerpt {
+        display: block;
+      }
+    }
+    /* stats: horizontal scroll on wider small screens; wrap to 2×2 below
+       ~420px where even scrolling leaves the last tile clipped off-viewport. */
+    .stats { overflow-x: auto; }
+    @media (max-width: 419px) {
+      .stats-horizontal {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        overflow-x: visible;
+      }
+    }
+
+    /* Content headings only — chrome titles stay single-line. */
+    main h1, .prose h1 {
+      hyphens: auto;
+      overflow-wrap: anywhere;
+    }
+
+    /* daisy-typography's `.prose pre` doesn't set overflow, so long single-line
+       code samples push the article wider than the viewport. */
+    .prose pre {
+      overflow-x: auto;
+      max-width: 100%;
+    }
+    .tp-header {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      /* WCAG AA: opacity 0.4 failed contrast; 0.75 clears 4.5:1 on both themes. */
+      opacity: 0.75;
+      margin-bottom: 1rem;
+    }
+    .transclusion-card {
+      border-left: 3px solid transparent;
+      padding: 0.4rem 0.75rem;
+      margin-bottom: 0.25rem;
+      border-radius: 0.375rem;
+      transition: background 0.15s ease, box-shadow 0.15s ease;
+    }
+    .transclusion-card:hover,
+    .transclusion-card.tc-active {
+      background: oklch(var(--b2) / 0.5);
+      box-shadow: 0 0 0 1px oklch(var(--b3) / 0.4);
+      padding: 0.6rem 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .transclusion-card .tc-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      color: oklch(var(--bc));
+    }
+    .transclusion-card .tc-title:hover {
+      text-decoration: underline;
+    }
+    .transclusion-card .tc-excerpt {
+      display: none;
+      margin-top: 0.5rem;
+    }
+    .transclusion-card .tc-excerpt.prose {
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+    .transclusion-card.tc-active .tc-excerpt {
+      display: block;
+    }
+    /* Mobile transclusion panel: stacked below content, all excerpts visible */
+    @media (max-width: 1279px) {
+      .transclusion-panel {
+        border-top: 2px solid oklch(var(--b3));
+        margin-top: 2rem;
+      }
+      .transclusion-panel .transclusion-card .tc-excerpt {
+        display: block;
+      }
+    }
+
+    /* wikilink color underline */
+    a.wikilink {
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+      transition: background 0.12s ease;
+    }
+    a.wikilink.wl-active {
+      background: rgba(0,0,0,0.08);
+      border-radius: 2px;
+      padding: 1px 3px;
+      margin: 0 -3px;
+    }
+    /* BUG-506: suppress the browser-default magenta :visited colour on
+       wikilinks and the per-page backlink list. Inherits the surrounding
+       text colour so visited links stay on-palette; the underline
+       continues to mark the element as a link. The coloured-transclusion
+       underline (set inline by the page.html bridge script) still wins
+       where it's applied because inline styles outrank this rule. */
+    a.wikilink:visited,
+    a.wikilink:link,
+    .link.link-secondary,
+    .link.link-secondary:visited {
+      color: inherit;
+    }
+
+    /* Mobile link-preview tooltip */
+    .wikilink-tooltip {
+      position: fixed;
+      left: 1rem; right: 1rem;
+      max-height: 60vh;
+      background: oklch(var(--b1));
+      border: 1px solid oklch(var(--b3));
+      border-radius: 0.75rem;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+    .wikilink-tooltip.tt-visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .tt-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid oklch(var(--b3));
+      position: sticky; top: 0;
+      background: oklch(var(--b1));
+      border-radius: 0.75rem 0.75rem 0 0;
+    }
+    .tt-header a {
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-decoration: none;
+      color: oklch(var(--p));
+    }
+    .tt-header a:hover { text-decoration: underline; }
+    .tt-close {
+      background: none; border: none;
+      font-size: 1.25rem; cursor: pointer;
+      opacity: 0.75; padding: 0 0.25rem;
+      color: oklch(var(--bc));
+    }
+    .tt-close:hover { opacity: 1; }
+    .tt-body {
+      padding: 0.75rem 1rem;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .tt-body.prose { font-size: 0.85rem; line-height: 1.6; }
+    .tt-footer {
+      padding: 0.5rem 1rem 0.75rem;
+      border-top: 1px solid oklch(var(--b3));
+      text-align: right;
+    }
+    .tt-footer a {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: oklch(var(--p));
+      text-decoration: none;
+    }
+    .tt-footer a:hover { text-decoration: underline; }
+    @media (min-width: 1280px) {
+      .wikilink-tooltip { display: none !important; }
+    }
+
+    /* Visually hide an element while keeping it available to assistive
+       tech (used for the search dialog's labelledby target). */
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ── Search modal (Cmd+K) */
+    .search-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 100;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 15vh;
+    }
+    .search-overlay.open { display: flex; }
+    .search-dialog {
+      background: oklch(var(--b1));
+      border: 1px solid oklch(var(--b3));
+      border-radius: 0.75rem;
+      width: 90vw; max-width: 480px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }
+    .search-input {
+      width: 100%; border: none; outline: none;
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      background: transparent;
+      color: oklch(var(--bc));
+      border-bottom: 1px solid oklch(var(--b3));
+    }
+    .search-results {
+      max-height: 40vh; overflow-y: auto;
+      padding: 0.25rem 0;
+    }
+    .search-result {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      padding: 0.5rem 1rem;
+      text-decoration: none;
+      color: oklch(var(--bc));
+      cursor: pointer;
+    }
+    .search-result:hover,
+    .search-result.sr-active {
+      background: oklch(var(--p) / 0.12);
+    }
+    .search-result .sr-name {
+      font-weight: 500;
+    }
+    .search-result .sr-name b {
+      color: oklch(var(--p));
+      font-weight: 700;
+    }
+    /* Contrast: secondary/tertiary text in the search overlay uses opacity
+       levels tuned for WCAG AA (≥4.5:1 body, ≥3:1 large). Previous values
+       of 0.4–0.6 failed on the dark default theme. */
+    .search-result .sr-slug {
+      font-size: 0.75rem;
+      opacity: 0.75;
+    }
+    .search-result .page-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .search-result .heading {
+      font-size: 0.78rem;
+      opacity: 0.8;
+      font-style: italic;
+    }
+    .search-result .context {
+      font-size: 0.78rem;
+      opacity: 0.75;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .search-result .sr-match {
+      background: oklch(var(--wa) / 0.25);
+      color: inherit;
+      padding: 0 0.1em;
+      border-radius: 0.125rem;
+    }
+    .search-result .score {
+      font-size: 0.7rem;
+      opacity: 0.7;
+      font-family: monospace;
+    }
+    .search-hint {
+      padding: 1rem;
+      text-align: center;
+      font-size: 0.85rem;
+      opacity: 0.75;
+    }
+    .search-btn {
+      display: flex; align-items: center; gap: 0.5rem;
+      width: 100%;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid oklch(var(--b3));
+      border-radius: 0.5rem;
+      background: oklch(var(--b1));
+      color: oklch(var(--bc));
+      font-size: 0.8rem;
+      cursor: pointer;
+      opacity: 0.85;
+      transition: opacity 0.15s;
+      margin-bottom: 0.75rem;
+    }
+    .search-btn:hover { opacity: 1; }
+    .search-btn kbd {
+      margin-left: auto;
+      font-size: 0.7rem;
+      opacity: 0.75;
+    }
+    /* Sidebar actions group, wordmark hover, drawer z-index over graph
+       overlays, and mobile breadcrumb truncation — DESIGN-REVIEW-2026-04-18. */
+    .zetl-actions{margin-bottom:.5rem}
+    .zetl-actions-heading{font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.5;padding:0 .5rem;margin:.25rem 0 .35rem}
+    .zetl-action{display:flex;align-items:center;gap:.5rem;padding:.3rem .5rem;border-radius:.3rem;font-size:.8rem;color:oklch(var(--bc));opacity:.85;line-height:1.2}
+    .zetl-action:hover{background:oklch(var(--b3)/.6);opacity:1}
+    .zetl-action-icon{width:1rem;text-align:center;opacity:.6;font-size:.85rem;line-height:1}
+    .zetl-action:hover .zetl-action-icon{opacity:1}
+    .zetl-wordmark{cursor:pointer}
+    .drawer-side{z-index:50}
+    @media (max-width:420px){
+      .breadcrumbs ul>li:not(:first-child):not(:last-child){display:none}
+      .breadcrumbs ul>li:first-child:not(:nth-last-child(-n+1)):not(:nth-last-child(2))::after{content:"\00A0›\00A0…";opacity:.6;margin-left:.15em}
+    }
+    /* ── Graph widget placement (SPEC-028 REQ-116)
+       The default theme mounts a single persistent graph widget outside the
+       volatile content region. Three placements are supported; the active
+       one is chosen via theme.toml [graph] placement = "docked" | "tabs" |
+       "stacked" and surfaced on the shell container as data-placement.
+
+       CSS custom properties (REQ-114) make every geometric value overridable
+       without touching the template, so theme authors restyle by redeclaring
+       these vars on :root. */
+    :root {
+      --zetl-graph-widget-width: 400px;
+      --zetl-graph-widget-height: 320px;
+      --zetl-graph-widget-right: 16px;
+      --zetl-graph-widget-bottom: 16px;
+      --zetl-graph-widget-breakpoint: 900px;
+      --zetl-graph-widget-min-width: 180px;
+      --zetl-graph-widget-min-height: 140px;
+    }
+
+    .zetl-graph-widget {
+      position: fixed;
+      width: var(--zetl-graph-widget-width, 280px);
+      height: var(--zetl-graph-widget-height, 200px);
+      right: var(--zetl-graph-widget-right, 16px);
+      bottom: var(--zetl-graph-widget-bottom, 16px);
+      min-width: var(--zetl-graph-widget-min-width, 180px);
+      min-height: var(--zetl-graph-widget-min-height, 140px);
+      box-sizing: border-box;
+      background: oklch(var(--b1));
+      border: 1px solid oklch(var(--b3));
+      border-radius: 0.5rem;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      overflow: hidden;
+      z-index: 40;
+      resize: both;
+    }
+    .zetl-graph-widget[data-placement="fullscreen"],
+    [data-placement="docked"] .zetl-graph-widget[data-placement="fullscreen"] {
+      position: relative !important;
+      width: 100% !important;
+      height: 100% !important;
+      right: auto !important;
+      bottom: auto !important;
+      box-shadow: none;
+      resize: none;
+      /* Fullscreen placement sits in normal flow — drop the z-index boost so
+         the daisyUI mobile drawer (position:fixed) overlays it correctly. */
+      z-index: auto !important;
+    }
+    .zetl-graph-widget__canvas {
+      position: absolute;
+      inset: 0;
+      /* Sigma mounts here once vendor bundle lands (task-graph-partial). Until
+         then the canvas is an empty placeholder — the placement geometry is
+         what this task asserts. */
+    }
+    .zetl-graph-widget__expand {
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      z-index: 10;
+      font-size: 0.7rem;
+      line-height: 1;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      background: oklch(var(--b1) / 0.85);
+      color: oklch(var(--bc));
+      text-decoration: none;
+      border: 1px solid oklch(var(--b3));
+      opacity: 0.85;
+      transition: opacity 0.15s ease;
+    }
+    .zetl-graph-widget__expand:hover,
+    .zetl-graph-widget__expand:focus-visible {
+      opacity: 1;
+      text-decoration: underline;
+    }
+
+    /* Default "docked" placement: fixed mini-map, bottom-right, user-resizable. */
+    [data-placement="docked"] .zetl-graph-widget {
+      position: fixed;
+      right: var(--zetl-graph-widget-right);
+      bottom: var(--zetl-graph-widget-bottom);
+      width: var(--zetl-graph-widget-width);
+      height: var(--zetl-graph-widget-height);
+      min-width: var(--zetl-graph-widget-min-width);
+      min-height: var(--zetl-graph-widget-min-height);
+      /* Native CSS resize handle — bottom-right grip (REQ-116). The widget
+         only grows from the corner anchored at the opposite viewport edge, so
+         `resize: both` drags from bottom-right without flipping. */
+      resize: both;
+    }
+
+    /* "tabs" placement: widget and transclusion cards share the right rail
+       via a two-tab header. Themes that opt in render the graph as a
+       right-rail sibling; when this placement is active the fixed docked
+       widget is suppressed. */
+    [data-placement="tabs"] .zetl-graph-widget {
+      position: relative;
+      width: 100%;
+      height: 320px;
+      margin-bottom: 1rem;
+    }
+    [data-placement="tabs"] .transclusion-panel {
+      /* Nudge the rail to host both tabs; actual tab UI is the theme's
+         responsibility and lands with task-graph-partial. */
+      padding-top: 0;
+    }
+
+    /* "stacked" placement: widget sits above the transclusion cards in the
+       right rail, without the tab UI. */
+    [data-placement="stacked"] .zetl-graph-widget {
+      position: relative;
+      width: 100%;
+      height: 240px;
+      margin: 0 1rem 1rem 1rem;
+    }
+
+    /* Mobile behaviour (SPEC-028 REQ-117): below the breakpoint the docked
+       widget is hidden by default and reachable via the top-bar toggle
+       (.zetl-graph-toggle) that expands it to a full-screen overlay. The
+       Sigma instance inside the widget is never unmounted — we only switch
+       the `--open` modifier class, so WebGL context identity is preserved.
+       tabs/stacked placements flow inline with the content and remain
+       visible unchanged. */
+    .zetl-graph-toggle {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      margin-left: auto;
+      padding: 0 0.6rem;
+      height: 2.25rem;
+      border: 1px solid transparent;
+      border-radius: 0.5rem;
+      background: transparent;
+      color: oklch(var(--bc));
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .zetl-graph-toggle:hover {
+      background: oklch(var(--b3) / 0.5);
+    }
+    .zetl-graph-toggle:focus-visible {
+      outline: 2px solid oklch(var(--p));
+      outline-offset: 2px;
+    }
+    .zetl-graph-widget__close {
+      /* Visible on desktop so readers can dismiss the docked mini-map. On
+         mobile, the widget itself is hidden by default (see media query
+         below), which cascades to hide this button too — the --open
+         overlay state then shows it along with the widget. */
+      display: inline-flex;
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      z-index: 10;
+      font-size: 1.25rem;
+      line-height: 1;
+      padding: 0.3rem 0.55rem;
+      border-radius: 0.4rem;
+      border: 1px solid oklch(var(--b3));
+      background: oklch(var(--b1) / 0.9);
+      color: oklch(var(--bc));
+      cursor: pointer;
+      z-index: 2;
+    }
+    .zetl-graph-widget__close:focus-visible {
+      outline: 2px solid oklch(var(--p));
+      outline-offset: 2px;
+    }
+
+    /* Collapsed-by-default state for the docked mini-map. Readers who haven't
+       explicitly expanded the widget see a compact launcher pill in the
+       bottom-right corner; clicking it shows the widget. The
+       html[data-graph="expanded"] attribute is set by the head-script when
+       the persisted preference is expanded, inverting the two rules below.
+       Only applies to the "docked" placement (tabs / stacked flow inline
+       with content and are always visible). */
+    .zetl-graph-widget-launcher {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      position: fixed;
+      right: var(--zetl-graph-widget-right, 16px);
+      bottom: var(--zetl-graph-widget-bottom, 16px);
+      padding: 0.4rem 0.8rem;
+      background: oklch(var(--b1));
+      color: oklch(var(--bc));
+      border: 1px solid oklch(var(--b3));
+      border-radius: 999px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+      font-size: 0.82rem;
+      cursor: pointer;
+      z-index: 40;
+    }
+    .zetl-graph-widget-launcher:hover {
+      background: oklch(var(--b2));
+    }
+    .zetl-graph-widget-launcher:focus-visible {
+      outline: 2px solid oklch(var(--p));
+      outline-offset: 2px;
+    }
+    /* Desktop-only collapsed/expanded behaviour. Mobile (below the
+       breakpoint) keeps its overlay model — widget hidden, navbar toggle
+       reveals it full-screen via `--open` — and the launcher pill is
+       redundant there. Scoping to min-width ensures the `data-graph`
+       attribute never forces a non-overlay widget on narrow viewports. */
+    @media (min-width: 900px) {
+      [data-placement="docked"] .zetl-graph-widget:not([data-placement="fullscreen"]) {
+        display: none;
+      }
+      html[data-graph="expanded"] [data-placement="docked"] .zetl-graph-widget:not([data-placement="fullscreen"]) {
+        display: block;
+      }
+      html[data-graph="expanded"] [data-placement="docked"] .zetl-graph-widget-launcher {
+        display: none;
+      }
+    }
+    /* Suppress the launcher on mobile — the navbar `.zetl-graph-toggle`
+       already provides the reveal affordance, and a second button would
+       be noise at narrow widths. */
+    @media (max-width: 899px) {
+      .zetl-graph-widget-launcher {
+        display: none;
+      }
+    }
+
+    @media (max-width: 899px) {
+      [data-placement="docked"] .zetl-graph-toggle {
+        display: inline-flex;
+      }
+      [data-placement="docked"] .zetl-graph-widget:not([data-placement="fullscreen"]) {
+        display: none;
+      }
+      /* Expanded state — full-screen overlay. Specificity is higher than the
+         rule above so the widget becomes visible the moment the `--open`
+         class is set, without touching layout outside the viewport box. */
+      [data-placement="docked"] .zetl-graph-widget.zetl-graph-widget--open {
+        display: block;
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        min-width: 0;
+        min-height: 0;
+        max-width: none;
+        max-height: none;
+        border: none;
+        border-radius: 0;
+        resize: none;
+        z-index: 100;
+      }
+      .zetl-graph-widget--open .zetl-graph-widget__close {
+        display: inline-flex;
+      }
+    }
+
+    /* ── Sidebar tree */
+    .sidebar-tree details > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 0.25rem 0.5rem;
+      font-weight: 600;
+      font-size: 0.85rem;
+      /* Contrast: was 0.7; 0.85 clears WCAG AA for UI labels. */
+      opacity: 0.85;
+    }
+    .sidebar-tree details > summary::-webkit-details-marker { display: none; }
+    .sidebar-tree details > summary::before {
+      content: '▶';
+      display: inline-block;
+      font-size: 0.6em;
+      margin-right: 0.4em;
+      transition: transform 0.15s ease;
+    }
+    .sidebar-tree details[open] > summary::before {
+      transform: rotate(90deg);
+    }
+    .sidebar-tree details > ul {
+      border-left: 1px solid oklch(var(--b3));
+      margin-left: 0.75rem;
+      padding-left: 0;
+    }
+
+    /* New-page notice banner — shown above the editor when a visitor
+       reaches a slug that has no on-disk file yet. Distinguishes typo
+       from intentional creation per BUG-501. */
+    .new-page-notice {
+      margin: 0 0 1rem;
+      padding: 0.75rem 1rem;
+      border-left: 3px solid oklch(var(--wa));
+      background: oklch(var(--wa) / 0.08);
+      font-size: 0.9rem;
+      border-radius: 0.25rem;
+    }
+    .new-page-notice strong { margin-right: 0.35em; }
+    .new-page-notice a {
+      color: oklch(var(--p));
+      text-decoration: underline;
+    }
+
+    /* ── Print ─────────────────────────────────────────────────────────
+       Drop the interactive shell (sidebar, graph widget, search palette,
+       tooltips, mobile navbar) and let the article flow full-width in
+       black-on-white. The transclusion rail and the on-page backlinks
+       are kept because both are reference material that a reader
+       printing a page is likely to want on paper. */
+    @media print {
+      @page { margin: 2cm; }
+      html, body {
+        background: #fff !important;
+        color: #000 !important;
+      }
+      /* Chrome + interactive widgets. */
+      .drawer-side,
+      .navbar,
+      .zetl-graph-widget,
+      .zetl-graph-widget-launcher,
+      .zetl-graph-toggle,
+      .search-overlay,
+      .search-dialog,
+      .search-btn,
+      .wikilink-tooltip,
+      .drawer-toggle,
+      [data-zetl-graph-fallback],
+      /* Edit button and View-in-graph link serve no purpose on paper
+         (BUG-503, task-print-css-audit). */
+      a[href^="/edit/"],
+      a[href^="&#x2f;edit/"],
+      a[href^="/_graph"],
+      a[href^="&#x2f;_graph"],
+      /* Home-page interactive toolbar (sort pills + folder filter). */
+      .zetl-index-toolbar,
+      /* Fullscreen-graph overlay UI (task-print-css-audit). */
+      .vg-controls,
+      .vg-legend,
+      .vg-focus-chip,
+      /* Editor affordances — a printed editor is a printed document. */
+      .editor-toolbar,
+      .editor-overflow,
+      .editor-status-badge,
+      .presence-bar {
+        display: none !important;
+      }
+      /* daisyUI's .breadcrumbs styling relies on utility classes that
+         don't apply in print; flatten the underlying <ul><li> into a
+         single-line chevron-separated trail (BUG-503). */
+      .breadcrumbs ul {
+        list-style: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: flex !important;
+        flex-wrap: wrap;
+        gap: 0.25em;
+      }
+      .breadcrumbs li { display: inline; }
+      .breadcrumbs li + li::before {
+        content: "›";
+        margin-right: 0.4em;
+        opacity: 0.6;
+      }
+      /* Collapse the daisyUI drawer so main content flows full-width. */
+      .drawer,
+      .drawer-content {
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
+      }
+      /* The page/transclusion two-column layout stacks on paper. */
+      .page-with-panel { flex-direction: column !important; }
+      .transclusion-panel {
+        position: static !important;
+        width: 100% !important;
+        max-height: none !important;
+        overflow: visible !important;
+        border-left: none !important;
+        border-top: 1px solid #ccc !important;
+        page-break-before: avoid;
+      }
+      /* Links: underlined, black. No visited variance. External URLs
+         print after the link text so the reader can follow them from
+         paper; internal wikilinks stay unadorned (the slug is rarely
+         useful out-of-context). */
+      a { color: #000 !important; text-decoration: underline !important; }
+      a[href^="http://"]:after,
+      a[href^="https://"]:after {
+        content: " (" attr(href) ")";
+        font-size: 0.85em;
+        word-break: break-all;
+      }
+      /* Code blocks wrap instead of clipping at the page edge. */
+      pre, code {
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        background: transparent !important;
+        border: 1px solid #ddd;
+      }
+      /* Keep structural elements intact across page breaks. */
+      h1, h2, h3, h4 {
+        page-break-after: avoid;
+        break-after: avoid-page;
+      }
+      img, pre, blockquote, table, .transclusion-card {
+        page-break-inside: avoid;
+        break-inside: avoid-page;
+      }
+      /* Drop all shadows and decorative backgrounds that waste toner. */
+      * {
+        box-shadow: none !important;
+        text-shadow: none !important;
+      }
+    }
