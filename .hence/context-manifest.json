@@ -1,12 +1,12 @@
 {
-  "task_id": "eco-translators-scaffold",
+  "task_id": "nfr-gates-032",
   "token_budget": 8000,
-  "tokens_used": 334,
+  "tokens_used": 323,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Translator module scaffolding with property-test harness per NFR-3305. Round-trip fidelity: zetl-ext → native → zetl-ext produces canonical-equivalent form (relaxed from byte-identity per NFR-3305).",
-      "token_cost": 50,
+      "content": "NFR-3201..NFR-3208 performance + determinism gates wired into CI. Per-page budget enforcement; zero-hook startup cost; memory containment (persistent mode).",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T19:32:46Z"
+  "constructed_at": "2026-04-19T19:50:36Z"
 }
