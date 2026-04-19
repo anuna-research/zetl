@@ -1,12 +1,12 @@
 {
-  "task_id": "nfr-gates-032",
+  "task_id": "eco-runtime-detect",
   "token_budget": 8000,
-  "tokens_used": 323,
+  "tokens_used": 330,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "NFR-3201..NFR-3208 performance + determinism gates wired into CI. Per-page budget enforcement; zero-hook startup cost; memory containment (persistent mode).",
-      "token_cost": 39,
+      "content": "Graceful absence per REQ-3313. Adapter probes its runtime (pandoc --version / mdbook --version / node --version) at init; missing runtime → clear diagnostic + pipeline skip, not crash.",
+      "token_cost": 46,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T19:50:36Z"
+  "constructed_at": "2026-04-19T20:07:34Z"
 }
