@@ -9,6 +9,7 @@
 //! - **Context** (CON-016-001): Serialise vault data to the JSON schema
 //!   written to hook stdin.
 
+pub mod build_data;
 pub mod context;
 pub mod pipeline;
 

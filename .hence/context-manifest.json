@@ -1,12 +1,12 @@
 {
-  "task_id": "three-stage-pipeline",
+  "task_id": "build-data-channel",
   "token_budget": 8000,
-  "tokens_used": 74,
+  "tokens_used": 89,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Three-stage pipeline scaffolding per REQ-3201 / ADR-3205. pre-parse (raw text → raw text), transform (AST → AST), post-render (HTML fragment → HTML fragment). Sequential per stage, concurrent across pages.",
-      "token_cost": 52,
+      "content": "Shared build-scoped data channel per REQ-3219 / CON-3219. `build_data` mutable dict threaded across pages with concurrency-safe semantics (sharding + finalise-stage merge).",
+      "token_cost": 43,
       "priority": "PlanMeta"
     },
     {
@@ -14,8 +14,14 @@
       "content": "Modified 2 files (+383, -65): .hence/context-manifest.json, tools/zetl-ast-schema-v1.json",
       "token_cost": 22,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-three-stage-pipeline-changes",
+      "content": "Modified 3 files (+698, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/pipeline.rs",
+      "token_cost": 24,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T12:30:53Z"
+  "constructed_at": "2026-04-19T12:39:15Z"
 }
