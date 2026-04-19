@@ -1,12 +1,12 @@
 {
-  "task_id": "template-vars",
+  "task_id": "composition",
   "token_budget": 8000,
-  "tokens_used": 212,
+  "tokens_used": 234,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Template variable publishing per REQ-3214 / CON-3214. Hooks emit `page.ext.<hook_id>.*` + `vault.ext.<hook_id>.*`. All three stages may publish. §13 Q11 proposed answer.",
-      "token_cost": 42,
+      "content": "Directory drop-in precedence per REQ-3206 / CON-3206. Vault .zetl/hooks/<stage>.d/*.toml > theme hooks > built-in, with explicit ordering hooks per REQ-3217.",
+      "token_cost": 39,
       "priority": "PlanMeta"
     },
     {
@@ -44,8 +44,14 @@
       "content": "Modified 4 files (+1416, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/persistent.rs, tests/persistent_protocol_integration.rs",
       "token_cost": 35,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-template-vars-changes",
+      "content": "Modified 3 files (+833, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/template_vars.rs",
+      "token_cost": 25,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T13:31:32Z"
+  "constructed_at": "2026-04-19T13:39:48Z"
 }
