@@ -21,6 +21,7 @@ pub mod diagnostic;
 pub mod failure_scoping;
 pub mod frontmatter_opt_out;
 pub mod manifest;
+pub mod nfr_gates;
 pub mod observability;
 pub mod persistent;
 pub mod pipeline;

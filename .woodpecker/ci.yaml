@@ -37,6 +37,13 @@ steps:
       # isolation, and a no-feature build must also compile. A regression
       # here breaks the "minimal zetl binary" promise in REQ-3302.
       - make eco-features-check
+      # SPEC-032 NFR-3201..NFR-3208 performance + determinism gates. The
+      # default-on arms (selector P95 ceiling, exit-code policy under
+      # `--hook-fail-on never`, AST schema-version pin, memory ceiling,
+      # zero-hook startup, per-page budget surface) run on every CI
+      # build. The strict P95 arms are `#[ignore]`-gated and run via
+      # `make nfr-gates-strict` in the nightly / release pipeline.
+      - make nfr-gates
       # SPEC-033 NFR-3305 / TEST-3305-fidelity translator round-trip gate.
       # Drives proptest-generated zetl-ext documents through each translator
       # and asserts canonical-form equivalence (zetl→foreign→zetl). `cargo
