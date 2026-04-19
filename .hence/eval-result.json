@@ -3,30 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 318,
+    "files_changed": 2,
+    "insertions": 494,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "docs/canonical-extensions.md",
-      "tests/extension-fixtures/tasks/README.md",
-      "tests/extension-fixtures/tasks/expected.html",
-      "tests/extension-fixtures/tasks/input.md",
-      "tests/extension-fixtures/tasks/selector-match.txt",
-      "tools/xtask/src/runners.rs"
+      "tests/remark_translator_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-ext-tasks-changes",
-      "content": "Modified 7 files (+318, -5): .hence/context-manifest.json, docs/canonical-extensions.md, tests/extension-fixtures/tasks/README.md, tests/extension-fixtures/tasks/expected.html, tests/extension-fixtures/tasks/input.md and 2 more",
+      "key": "task-remark-translator-changes",
+      "content": "Modified 2 files (+494, -5): .hence/context-manifest.json, tests/remark_translator_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/ext-tasks-v1",
-  "evaluated_at": "2026-04-19T20:31:46Z",
+  "branch_name": "hence/remark-translator-v1",
+  "evaluated_at": "2026-04-19T20:39:56Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
