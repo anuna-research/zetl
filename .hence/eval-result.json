@@ -3,25 +3,33 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 454,
-    "deletions": 5,
+    "files_changed": 10,
+    "insertions": 796,
+    "deletions": 13,
     "file_list": [
       ".hence/context-manifest.json",
-      ".hence/reviews/cap-tier1-shim-2026-04-21.md"
+      "src/cap/public_repo.rs",
+      "src/cap/shim/build.mjs",
+      "src/cap/shim/identity.ts",
+      "src/cap/shim/index.ts",
+      "src/cap/shim/pipeline.ts",
+      "src/cap/shim/test/split_key.test.ts",
+      "src/main.rs",
+      "tests/cap_invite_integration.rs",
+      "tests/cap_public_repo_safety_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-tier1-review-shim-changes",
-      "content": "Modified 2 files (+454, -5): .hence/context-manifest.json, .hence/reviews/cap-tier1-shim-2026-04-21.md",
+      "key": "task-cap-split-key-mode-changes",
+      "content": "Modified 10 files (+796, -13): .hence/context-manifest.json, src/cap/public_repo.rs, src/cap/shim/build.mjs, src/cap/shim/identity.ts, src/cap/shim/index.ts and 5 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-tier1-review-shim-v1",
-  "evaluated_at": "2026-04-20T18:27:13Z",
+  "branch_name": "hence/cap-split-key-mode-v1",
+  "evaluated_at": "2026-04-20T18:45:18Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
