@@ -6,6 +6,10 @@
 // over the emitted `shim.js` covers the pubkey: a CDN that tampers with
 // the pubkey invalidates SRI (REQ-3427).
 
+import {
+  renderCollisionPrompt,
+  type CollisionPrompt,
+} from "./collision.ts";
 import { base64UrlDecode } from "./envelope.ts";
 import { renderError } from "./errors.ts";
 import type { SplitKeyPrompt, SplitKeySecondFactor } from "./identity.ts";
@@ -71,6 +75,7 @@ export async function renderCurrentPage(
     promptHalf2:
       opts.deps?.promptHalf2
       ?? (splitKeyFactor !== null ? defaultPromptHalf2 : undefined),
+    promptCollision: opts.deps?.promptCollision ?? defaultPromptCollision,
   };
 
   try {
@@ -113,6 +118,13 @@ function resolveSplitKeyFactor(): SplitKeySecondFactor | null {
   }
   return null;
 }
+
+/// REQ-3425 default collision prompt — mounts the DOM wireframe
+/// under the capability-mode host and resolves with the reader's
+/// choice. Tests inject a stub `promptCollision` via `opts.deps`
+/// so they never hit this branch.
+const defaultPromptCollision: CollisionPrompt = (ctx) =>
+  renderCollisionPrompt(ctx);
 
 /// Default half2 collector. For `spoken-phrase` we pop a blocking
 /// `window.prompt`. `qr` is a TODO — the camera scanner UI is a

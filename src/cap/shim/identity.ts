@@ -7,6 +7,10 @@
 // the unwrap branch (`unwrap.ts`) recovers priv_A from the persisted
 // TOFU binding via a WebAuthn PRF ceremony.
 
+import {
+  resolveCollision,
+  type CollisionPrompt,
+} from "./collision.ts";
 import { base64UrlDecode, type CohortMode } from "./envelope.ts";
 import {
   clearCachedPrivA,
@@ -53,7 +57,8 @@ export class IdentityError extends Error {
       | "tofu-failed"
       | "unwrap-failed"
       | "split-key-cancelled"
-      | "split-key-invalid-half2",
+      | "split-key-invalid-half2"
+      | "collision-failed",
     message: string,
   ) {
     super(message);
@@ -113,6 +118,13 @@ export interface IdentityContext {
   /// `[access.split_key] second_factor`). The shim passes this to
   /// `promptHalf2` so the UI knows which widget to render.
   splitKeySecondFactor?: SplitKeySecondFactor;
+  /// REQ-3425 TOFU-collision prompt. Invoked when a `#k=`/`#k1=`
+  /// fragment arrives AND an existing IDB binding is found for
+  /// this cohort. Absent when the shim build has no collision UI
+  /// wired — in that case the identity dispatcher preserves the
+  /// pre-REQ-3425 behaviour (silent "already-bound" short-circuit)
+  /// so existing unit suites keep passing.
+  promptCollision?: CollisionPrompt;
 }
 
 /// Returns the 32-byte raw X25519 private scalar (`priv_A`) used by age
@@ -446,11 +458,49 @@ async function maybeBindFragment(
     return null;
   }
 
+  // REQ-3425: collision UI. When the fragment arrives on a device
+  // that already has a binding for this cohort, the reader picks
+  // KEEP / Add / Replace before we touch the authenticator. KEEP
+  // short-circuits TOFU (existing binding preserved); Add and
+  // Replace both clear the stale row so the subsequent
+  // `performTofu` call writes fresh. Without a `promptCollision`
+  // callback we preserve the pre-REQ-3425 behaviour: `performTofu`
+  // detects the existing binding and returns `"already-bound"`.
+  const now = ctx.tofuDeps?.now ?? (() => Date.now());
+  if (ctx.promptCollision) {
+    const existing = await readBindingRecord(ctx.cohortId, idbFactory);
+    if (existing !== null) {
+      let outcome;
+      try {
+        outcome = await resolveCollision(existing, ctx.promptCollision, {
+          now,
+          idbFactory,
+        });
+      } catch (err) {
+        throw new IdentityError(
+          "collision-failed",
+          `collision resolution failed: ${(err as Error).message}`,
+        );
+      }
+      if (!outcome.shouldWrap) {
+        // KEEP — pre-existing binding preserved; no TOFU wrap for
+        // the newly-arrived fragment. The current visit still
+        // decrypts with `privA` from the fragment.
+        return {
+          outcome: "already-bound",
+          binding: existing,
+        };
+      }
+      // Add / Replace — stale row is already cleared; fall through
+      // to the normal TOFU path below.
+    }
+  }
+
   const deps: TofuDeps = {
     createCredential,
     subtle,
     randomBytes,
-    now: ctx.tofuDeps?.now ?? (() => Date.now()),
+    now,
     idbFactory,
   };
   try {

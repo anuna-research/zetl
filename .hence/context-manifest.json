@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-split-key-mode",
+  "task_id": "cap-shim-collision-ui",
   "token_budget": 8000,
-  "tokens_used": 449,
+  "tokens_used": 412,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Optional XOR split-key mode per REQ-3430 + ADR-3415 (BUG-002 mitigation). `zetl cap invite --split-key` splits priv_A via XOR secret-sharing: `priv_A = half1 XOR half2`. URL carries `#k1=<half1>`; `half2` output separately (QR code image or spoken-phrase per `[access.split_key] second_factor`). Shim prompts for second factor (camera QR scan or text input) on first click; reconstructs priv_A; TOFU-binds. Opt-in; default is `enabled = false`.",
-      "token_cost": 111,
+      "content": "TOFU collision disambiguation UI per REQ-3425. When shim detects invite URL + existing IDB binding, renders the wireframe from REQ-3425 with three options: KEEP (default), Add alongside, Replace (requires 1-line rationale stored in local audit log). Focus on KEEP by default. No silent overwrites.",
+      "token_cost": 74,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T18:27:19Z"
+  "constructed_at": "2026-04-20T18:45:27Z"
 }
