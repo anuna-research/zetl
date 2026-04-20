@@ -1100,6 +1100,32 @@ mod tests {
         path
     }
 
+    /// Retry a spawn call on Linux `ETXTBSY` (errno 26, "Text file busy").
+    ///
+    /// Cargo runs integration tests in parallel. If thread A forks a child
+    /// while thread B's `write_python_hook` is between write and exec,
+    /// thread A's child inherits thread B's script-file fd and Linux
+    /// refuses to exec the still-open-for-write target. The race clears
+    /// within milliseconds as the child's fds close on its own exec.
+    /// Production hook spawns never write+exec, so this lives in tests.
+    fn spawn_or_retry<F>(mut f: F) -> PersistentHook
+    where
+        F: FnMut() -> Result<PersistentHook, ProtocolError>,
+    {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            match f() {
+                Ok(h) => return h,
+                Err(ProtocolError::Io(e))
+                    if e.raw_os_error() == Some(26) && std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+                Err(other) => panic!("spawn failed: {other:?}"),
+            }
+        }
+    }
+
     fn python3_available() -> bool {
         Command::new("python3")
             .arg("--version")
@@ -1146,8 +1172,8 @@ for line in sys.stdin:
         let tmp = TempDir::new().unwrap();
         let hook = write_python_hook(tmp.path(), "echo.py", ECHO_BODY);
 
-        let cmd = Command::new(&hook);
-        let h = PersistentHook::spawn(cmd, "echo", Stage::Transform).unwrap();
+        let h =
+            spawn_or_retry(|| PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform));
         assert_eq!(h.handshake().zetl_ast, 1);
         assert_eq!(h.handshake().hook, "echo");
         assert_eq!(h.handshake().version, "0.1.0");
@@ -1162,7 +1188,8 @@ for line in sys.stdin:
         let tmp = TempDir::new().unwrap();
         let hook = write_python_hook(tmp.path(), "echo.py", ECHO_BODY);
 
-        let mut h = PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform).unwrap();
+        let mut h =
+            spawn_or_retry(|| PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform));
 
         // init
         let init = h.init(json!({"theme":"default"}), 1000).unwrap();
@@ -1193,7 +1220,8 @@ for line in sys.stdin:
         let tmp = TempDir::new().unwrap();
         let hook = write_python_hook(tmp.path(), "echo.py", ECHO_BODY);
 
-        let mut h = PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform).unwrap();
+        let mut h =
+            spawn_or_retry(|| PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform));
         let start = Instant::now();
         h.shutdown().unwrap();
         let elapsed = start.elapsed();
@@ -1314,7 +1342,8 @@ for line in sys.stdin:
 "#,
         );
 
-        let mut h = PersistentHook::spawn(Command::new(&hook), "hang", Stage::Transform).unwrap();
+        let mut h =
+            spawn_or_retry(|| PersistentHook::spawn(Command::new(&hook), "hang", Stage::Transform));
 
         let start = Instant::now();
         let err = h.run("slug", json!({}), json!({"x":1}), 200).unwrap_err();
@@ -1354,7 +1383,8 @@ for line in sys.stdin:
 "#,
         );
 
-        let mut h = PersistentHook::spawn(Command::new(&hook), "err", Stage::Transform).unwrap();
+        let mut h =
+            spawn_or_retry(|| PersistentHook::spawn(Command::new(&hook), "err", Stage::Transform));
         let err = h.run("slug", json!({}), json!({}), 1000).unwrap_err();
         match err {
             ProtocolError::HookError { reason, detail } => {
@@ -1389,7 +1419,9 @@ for line in sys.stdin:
 "#,
         );
 
-        let mut h = PersistentHook::spawn(Command::new(&hook), "stderr", Stage::Transform).unwrap();
+        let mut h = spawn_or_retry(|| {
+            PersistentHook::spawn(Command::new(&hook), "stderr", Stage::Transform)
+        });
         let _ = h.run("p", json!({}), json!({}), 1000).unwrap();
         // Give stderr pump a moment.
         thread::sleep(Duration::from_millis(50));
@@ -1452,7 +1484,8 @@ while True:
         require_python!();
         let tmp = TempDir::new().unwrap();
         let hook = write_python_hook(tmp.path(), "echo.py", ECHO_BODY);
-        let mut h = PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform).unwrap();
+        let mut h =
+            spawn_or_retry(|| PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform));
 
         let msg = HostMessage::Run(RunMessage {
             page_slug: "t".into(),
@@ -1584,8 +1617,9 @@ for line in sys.stdin:
         // standard way to surface this to Command::spawn's inheritance.
         std::env::set_var("ZETL_TEST_SECRET", "leaked-via-inherit");
 
-        let mut h =
-            PersistentHook::spawn(Command::new(&hook), "envprobe", Stage::Transform).unwrap();
+        let mut h = spawn_or_retry(|| {
+            PersistentHook::spawn(Command::new(&hook), "envprobe", Stage::Transform)
+        });
         let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
         std::env::remove_var("ZETL_TEST_SECRET");
 
@@ -1610,7 +1644,8 @@ for line in sys.stdin:
         let tmp = TempDir::new().unwrap();
         // Hook executes via `#!/usr/bin/env python3` — needs PATH visible.
         let hook = write_python_hook(tmp.path(), "echo.py", ECHO_BODY);
-        let mut h = PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform).unwrap();
+        let mut h =
+            spawn_or_retry(|| PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform));
         let resp = h.run("p", json!({}), json!({"k": "v"}), 1000).unwrap();
         match resp {
             HookMessage::Result { payload, .. } => {
@@ -1648,11 +1683,12 @@ for line in sys.stdin:
 "#,
         );
 
-        let mut cmd = Command::new(&hook);
-        cmd.env("ZETL_EXTENSION_ID", "explicit-id")
-            .env("ZETL_TEST_OVERRIDE", "explicit-value");
-
-        let mut h = PersistentHook::spawn(cmd, "explicit", Stage::Transform).unwrap();
+        let mut h = spawn_or_retry(|| {
+            let mut cmd = Command::new(&hook);
+            cmd.env("ZETL_EXTENSION_ID", "explicit-id")
+                .env("ZETL_TEST_OVERRIDE", "explicit-value");
+            PersistentHook::spawn(cmd, "explicit", Stage::Transform)
+        });
         let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
         match resp {
             HookMessage::Result { payload, .. } => {
@@ -1695,15 +1731,16 @@ for line in sys.stdin:
         std::env::set_var("ZETL_TEST_STILL_HIDDEN", "must-not-leak");
 
         let policy = SecurityPolicy::default().with_extra_env(["ZETL_TEST_OPT_IN"]);
-        let mut h = PersistentHook::spawn_with_policy(
-            Command::new(&hook),
-            "extra",
-            Stage::Transform,
-            DEFAULT_HANDSHAKE_TIMEOUT,
-            DEFAULT_SHUTDOWN_GRACE,
-            policy,
-        )
-        .unwrap();
+        let mut h = spawn_or_retry(|| {
+            PersistentHook::spawn_with_policy(
+                Command::new(&hook),
+                "extra",
+                Stage::Transform,
+                DEFAULT_HANDSHAKE_TIMEOUT,
+                DEFAULT_SHUTDOWN_GRACE,
+                policy.clone(),
+            )
+        });
         let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
         std::env::remove_var("ZETL_TEST_OPT_IN");
         std::env::remove_var("ZETL_TEST_STILL_HIDDEN");
@@ -1752,15 +1789,16 @@ for line in sys.stdin:
             max_stderr_bytes: 4096,
             ..SecurityPolicy::default()
         };
-        let mut h = PersistentHook::spawn_with_policy(
-            Command::new(&hook),
-            "loud",
-            Stage::Transform,
-            DEFAULT_HANDSHAKE_TIMEOUT,
-            DEFAULT_SHUTDOWN_GRACE,
-            policy,
-        )
-        .unwrap();
+        let mut h = spawn_or_retry(|| {
+            PersistentHook::spawn_with_policy(
+                Command::new(&hook),
+                "loud",
+                Stage::Transform,
+                DEFAULT_HANDSHAKE_TIMEOUT,
+                DEFAULT_SHUTDOWN_GRACE,
+                policy.clone(),
+            )
+        });
         let _ = h.run("p", json!({}), json!({}), 1000).unwrap();
         thread::sleep(Duration::from_millis(100));
         let captured = h.drain_stderr();
@@ -1809,15 +1847,16 @@ for line in sys.stdin:
             max_message_bytes: 4096,
             ..SecurityPolicy::default()
         };
-        let mut h = PersistentHook::spawn_with_policy(
-            Command::new(&hook),
-            "huge",
-            Stage::Transform,
-            DEFAULT_HANDSHAKE_TIMEOUT,
-            DEFAULT_SHUTDOWN_GRACE,
-            policy,
-        )
-        .unwrap();
+        let mut h = spawn_or_retry(|| {
+            PersistentHook::spawn_with_policy(
+                Command::new(&hook),
+                "huge",
+                Stage::Transform,
+                DEFAULT_HANDSHAKE_TIMEOUT,
+                DEFAULT_SHUTDOWN_GRACE,
+                policy.clone(),
+            )
+        });
         let err = h.run("p", json!({}), json!({}), 1000).unwrap_err();
         match err {
             ProtocolError::MessageTooLarge {
@@ -1850,15 +1889,16 @@ for line in sys.stdin:
             max_message_bytes: 1024,
             ..SecurityPolicy::default()
         };
-        let mut h = PersistentHook::spawn_with_policy(
-            Command::new(&hook),
-            "echo",
-            Stage::Transform,
-            DEFAULT_HANDSHAKE_TIMEOUT,
-            DEFAULT_SHUTDOWN_GRACE,
-            policy,
-        )
-        .unwrap();
+        let mut h = spawn_or_retry(|| {
+            PersistentHook::spawn_with_policy(
+                Command::new(&hook),
+                "echo",
+                Stage::Transform,
+                DEFAULT_HANDSHAKE_TIMEOUT,
+                DEFAULT_SHUTDOWN_GRACE,
+                policy.clone(),
+            )
+        });
         let big = "x".repeat(8 * 1024);
         let err = h
             .run("p", json!({}), json!({ "blob": big }), 1000)
