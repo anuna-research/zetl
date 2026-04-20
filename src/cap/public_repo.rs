@@ -162,6 +162,69 @@ pub struct AccessConfig {
     /// against the operator's home directory.
     #[serde(default)]
     pub grants_file_external: Option<String>,
+    /// `[access.split_key]` — SPEC-034 REQ-3417 / REQ-3430. Controls
+    /// whether `zetl cap invite --split-key` is permitted and how the
+    /// second factor (`half2`) should be conveyed to the reader.
+    /// Missing block deserialises as `None` (feature disabled).
+    #[serde(default)]
+    pub split_key: Option<SplitKeyConfig>,
+}
+
+/// `[access.split_key]` block. Opt-in per REQ-3430; operators set
+/// `enabled = true` to allow `zetl cap invite --split-key`. The
+/// `second_factor` knob picks which transport the shim prompts for on
+/// first click (a human-typed phrase vs a camera-scanned QR code). The
+/// pure core only parses + validates; the shell decides render format
+/// (for CLI operator hints) and the shim reads it from runtime config.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SplitKeyConfig {
+    /// Whether split-key mode is permitted at all. Default `false` so
+    /// an operator who did not opt in cannot accidentally mint
+    /// split-key URLs by passing `--split-key`.
+    #[serde(default)]
+    pub enabled: bool,
+    /// How the reader receives `half2`. Required when `enabled=true`;
+    /// when absent the CLI falls back to `SplitKeySecondFactor::default()`
+    /// (spoken-phrase) and emits an operator hint on stdout.
+    #[serde(default)]
+    pub second_factor: Option<SplitKeySecondFactor>,
+}
+
+/// Acceptable values for `[access.split_key] second_factor`. Kebab-
+/// case on the TOML side keeps the schema consistent with
+/// `VisibilityDecl`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum SplitKeySecondFactor {
+    /// Reader types `half2` into a text input. Operator convenience:
+    /// short, dictatable, fits in a chat message or voice call.
+    #[default]
+    SpokenPhrase,
+    /// Reader points a camera at a QR code the operator displayed or
+    /// printed separately. Higher-friction onboarding but robust
+    /// against typos.
+    Qr,
+}
+
+impl SplitKeySecondFactor {
+    /// Canonical wire token used by the CLI hint banner and the shim
+    /// bundle. Matches the TOML form.
+    pub fn as_wire_str(self) -> &'static str {
+        match self {
+            SplitKeySecondFactor::SpokenPhrase => "spoken-phrase",
+            SplitKeySecondFactor::Qr => "qr",
+        }
+    }
+}
+
+impl SplitKeyConfig {
+    /// Convenience accessor used by the invite driver when it has
+    /// already decided to render the operator hint but wants to use
+    /// the explicit config value when present. Returns the default
+    /// when the operator opted in without picking a factor.
+    pub fn effective_second_factor(&self) -> SplitKeySecondFactor {
+        self.second_factor.unwrap_or_default()
+    }
 }
 
 /// Parse `.zetl/config.toml` through the module's lens. Missing
@@ -676,6 +739,61 @@ mod tests {
     }
 
     #[test]
+    fn parse_config_lens_accepts_split_key_block() {
+        let toml_body = r#"
+            [access.split_key]
+            enabled = true
+            second_factor = "qr"
+        "#;
+        let lens = parse_config_lens(toml_body).unwrap();
+        let sk = lens
+            .access
+            .expect("access block")
+            .split_key
+            .expect("split_key block");
+        assert!(sk.enabled);
+        assert_eq!(sk.second_factor, Some(SplitKeySecondFactor::Qr));
+        assert_eq!(sk.effective_second_factor().as_wire_str(), "qr");
+    }
+
+    #[test]
+    fn parse_config_lens_split_key_defaults_to_spoken_phrase() {
+        let toml_body = r#"
+            [access.split_key]
+            enabled = true
+        "#;
+        let lens = parse_config_lens(toml_body).unwrap();
+        let sk = lens.access.unwrap().split_key.unwrap();
+        assert!(sk.enabled);
+        assert_eq!(sk.second_factor, None);
+        assert_eq!(
+            sk.effective_second_factor(),
+            SplitKeySecondFactor::SpokenPhrase
+        );
+    }
+
+    #[test]
+    fn parse_config_lens_split_key_rejects_unknown_factor() {
+        let toml_body = r#"
+            [access.split_key]
+            enabled = true
+            second_factor = "morse-code"
+        "#;
+        parse_config_lens(toml_body).unwrap_err();
+    }
+
+    #[test]
+    fn parse_config_lens_split_key_default_is_disabled() {
+        // REQ-3430 acceptance: default must be `enabled = false`.
+        let toml_body = r#"
+            [access.split_key]
+        "#;
+        let lens = parse_config_lens(toml_body).unwrap();
+        let sk = lens.access.unwrap().split_key.unwrap();
+        assert_eq!(sk.enabled, false);
+    }
+
+    #[test]
     fn parse_config_lens_rejects_unknown_visibility_value() {
         let toml_body = r#"
             [vault]
@@ -726,6 +844,7 @@ mod tests {
         };
         let access = AccessConfig {
             grants_file_external: Some("   ".to_string()),
+            split_key: None,
         };
         let err = decide_grants_source(
             &resolved,
@@ -745,6 +864,7 @@ mod tests {
         };
         let access = AccessConfig {
             grants_file_external: Some("/tmp/repo/hidden/grants.toml".to_string()),
+            split_key: None,
         };
         let err = decide_grants_source(
             &resolved,
@@ -764,6 +884,7 @@ mod tests {
         };
         let access = AccessConfig {
             grants_file_external: Some("/home/op/.config/zetl/site/grants.toml".to_string()),
+            split_key: None,
         };
         let decision = decide_grants_source(
             &resolved,

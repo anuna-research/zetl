@@ -33,6 +33,11 @@ import {
 
 /// Fragment prefix pinned by CON-3401: `#k=<43-char-base64url>`.
 export const FRAGMENT_PREFIX = "k=";
+/// REQ-3430 fragment prefix carrying only `half1` of a split `priv_A`.
+/// The complementary `half2` is conveyed out-of-band (QR or spoken
+/// phrase per `[access.split_key] second_factor`) and reconstructed
+/// in the shim via XOR.
+export const SPLIT_KEY_FRAGMENT_PREFIX = "k1=";
 export const PRIV_A_B64URL_LEN = 43;
 export const PRIV_A_RAW_LEN = 32;
 
@@ -46,12 +51,29 @@ export class IdentityError extends Error {
       | "fragment-base64"
       | "mode-not-supported"
       | "tofu-failed"
-      | "unwrap-failed",
+      | "unwrap-failed"
+      | "split-key-cancelled"
+      | "split-key-invalid-half2",
     message: string,
   ) {
     super(message);
   }
 }
+
+/// How the shim collects `half2` from the reader. The CLI emits a
+/// matching hint at invite time so the reader knows which prompt to
+/// expect. Defaults to `spoken-phrase` (text input); `qr` opens a
+/// camera scanner. `none` is a test-only escape hatch — production
+/// always supplies one of the other two.
+export type SplitKeySecondFactor = "spoken-phrase" | "qr";
+
+/// Callback injected into the shim that acquires `half2` from the
+/// reader. Returns the raw base64url string the reader pasted / the
+/// QR payload the camera saw. Throws on cancellation so the shim can
+/// surface a `split-key-cancelled` IdentityError rather than stalling.
+export type SplitKeyPrompt = (
+  factor: SplitKeySecondFactor,
+) => Promise<string>;
 
 export interface IdentityContext {
   cohortId: string;
@@ -79,6 +101,18 @@ export interface IdentityContext {
   /// Dep overrides for the session-policy cache. Tests inject a
   /// fake sessionStorage + clock.
   policyDeps?: Omit<PolicyDeps, "policy">;
+  /// REQ-3430 split-key prompt. Invoked only when the URL carries a
+  /// `#k1=<half1>` fragment (never on `#k=<priv_A>`). The configured
+  /// `splitKeySecondFactor` selects between a spoken-phrase text
+  /// input and a camera QR scan. Required when
+  /// `splitKeySecondFactor` is set; absent + split-key fragment
+  /// results in an `IdentityError("mode-not-supported")` so a shim
+  /// build that wasn't compiled with split-key support fails loudly.
+  promptHalf2?: SplitKeyPrompt;
+  /// Which second-factor transport the operator configured (mirrors
+  /// `[access.split_key] second_factor`). The shim passes this to
+  /// `promptHalf2` so the UI knows which widget to render.
+  splitKeySecondFactor?: SplitKeySecondFactor;
 }
 
 /// Returns the 32-byte raw X25519 private scalar (`priv_A`) used by age
@@ -99,8 +133,28 @@ export interface IdentityContext {
 export async function acquireIdentity(
   ctx: IdentityContext,
 ): Promise<Uint8Array> {
-  const fromFragment = readFragmentKey(ctx.locationHash);
-  if (fromFragment !== null) {
+  const parsed = parseFragment(ctx.locationHash);
+  if (parsed !== null) {
+    let privA: Uint8Array;
+    if (parsed.kind === "delegated") {
+      privA = parsed.raw;
+    } else {
+      // REQ-3430 split-key path: reconstruct priv_A = half1 XOR half2.
+      // The prompt callback + configured factor are required — a
+      // bundle that wasn't built with split-key support fails fast
+      // rather than silently dropping to `need-invite`.
+      if (!ctx.promptHalf2 || !ctx.splitKeySecondFactor) {
+        throw new IdentityError(
+          "mode-not-supported",
+          "this shim build has no split-key prompt wired; ask your wiki operator for a fresh non-split invite URL",
+        );
+      }
+      privA = await reconstructFromSplitKey(
+        parsed.raw,
+        ctx.promptHalf2,
+        ctx.splitKeySecondFactor,
+      );
+    }
     // First-visit path: try to persist a passkey-wrapped copy of
     // priv_A so subsequent visits can unwrap without the fragment
     // (CON-3409 TOFU). This is best-effort: if the runtime has no
@@ -111,8 +165,8 @@ export async function acquireIdentity(
     // get persistence. Passkey-creation failures while the
     // runtime *does* expose the APIs still propagate so the
     // reader learns their authenticator refused.
-    await maybeBindFragment(ctx, fromFragment);
-    return fromFragment;
+    await maybeBindFragment(ctx, privA);
+    return privA;
   }
 
   const unwrapped = await tryUnwrapBinding(ctx);
@@ -124,6 +178,124 @@ export async function acquireIdentity(
       ? "no stored passkey binding for this cohort on this device — ask your wiki operator for a fresh invite URL"
       : "no invite fragment in URL and no stored binding on this device — ask your wiki operator for a fresh invite URL",
   );
+}
+
+/// Tagged union for the three fragment outcomes the shim must
+/// distinguish: `#k=<priv_A>` (delegated), `#k1=<half1>` (split-key),
+/// and "no fragment" (subsequent-visit unwrap).
+export type ParsedFragment =
+  | { kind: "delegated"; raw: Uint8Array }
+  | { kind: "split-key-half1"; raw: Uint8Array };
+
+/// Dispatching fragment parser: returns `null` when the URL has no
+/// fragment, a `delegated` payload when `#k=` is present, and a
+/// `split-key-half1` payload when `#k1=` is present. Throws on a
+/// present-but-malformed fragment so typos and tampering surface as
+/// a structured diagnostic rather than a silent fallthrough to the
+/// IDB unwrap branch.
+export function parseFragment(locationHash: string): ParsedFragment | null {
+  let hash = locationHash;
+  if (hash.startsWith("#")) hash = hash.slice(1);
+  if (hash.length === 0) return null;
+
+  // Check split-key first: the longer prefix must win over the
+  // shorter `k=` or split-key URLs would look delegated.
+  if (hash.startsWith(SPLIT_KEY_FRAGMENT_PREFIX)) {
+    const payload = hash.slice(SPLIT_KEY_FRAGMENT_PREFIX.length);
+    return { kind: "split-key-half1", raw: decodeFragmentPayload(payload) };
+  }
+  if (hash.startsWith(FRAGMENT_PREFIX)) {
+    const payload = hash.slice(FRAGMENT_PREFIX.length);
+    return { kind: "delegated", raw: decodeFragmentPayload(payload) };
+  }
+  throw new IdentityError(
+    "malformed-fragment",
+    `URL fragment does not begin with ${FRAGMENT_PREFIX} or ${SPLIT_KEY_FRAGMENT_PREFIX} — expected #k=<priv_A> or #k1=<half1>`,
+  );
+}
+
+function decodeFragmentPayload(payload: string): Uint8Array {
+  if (payload.length !== PRIV_A_B64URL_LEN) {
+    throw new IdentityError(
+      "fragment-length",
+      `fragment key is ${payload.length} chars; expected ${PRIV_A_B64URL_LEN}`,
+    );
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(payload)) {
+    throw new IdentityError(
+      "fragment-base64",
+      "fragment contains non-base64url characters",
+    );
+  }
+  let raw: Uint8Array;
+  try {
+    raw = base64UrlDecode(payload);
+  } catch (err) {
+    throw new IdentityError(
+      "fragment-base64",
+      `fragment is not valid base64url: ${(err as Error).message}`,
+    );
+  }
+  if (raw.length !== PRIV_A_RAW_LEN) {
+    throw new IdentityError(
+      "fragment-length",
+      `fragment decodes to ${raw.length} bytes; expected ${PRIV_A_RAW_LEN}`,
+    );
+  }
+  return raw;
+}
+
+/// REQ-3430: XOR-combine `half1` (from the URL fragment) with `half2`
+/// (entered by the reader via the configured second factor) to
+/// recover `priv_A`. The prompt callback returns the raw base64url
+/// payload the reader pasted/scanned; we strip surrounding
+/// whitespace (a spoken-phrase factor tends to accumulate it) and
+/// validate strictly. Errors surface as `IdentityError` so the
+/// pipeline renders a structured error.
+async function reconstructFromSplitKey(
+  half1: Uint8Array,
+  prompt: SplitKeyPrompt,
+  factor: SplitKeySecondFactor,
+): Promise<Uint8Array> {
+  let typed: string;
+  try {
+    typed = await prompt(factor);
+  } catch (err) {
+    throw new IdentityError(
+      "split-key-cancelled",
+      `second-factor prompt was cancelled: ${(err as Error).message}`,
+    );
+  }
+  const trimmed = typed.trim();
+  if (trimmed.length === 0) {
+    throw new IdentityError(
+      "split-key-cancelled",
+      "second-factor prompt returned an empty value",
+    );
+  }
+  let half2: Uint8Array;
+  try {
+    half2 = decodeFragmentPayload(trimmed);
+  } catch (err) {
+    // Re-wrap the generic fragment-length/base64 error into a
+    // split-key-specific kind so the UI can distinguish "the URL
+    // was malformed" from "the reader mistyped half2".
+    if (err instanceof IdentityError) {
+      throw new IdentityError(
+        "split-key-invalid-half2",
+        `entered half2 is not a valid 32-byte base64url key: ${err.message}`,
+      );
+    }
+    throw err;
+  }
+  // XOR-reconstruct. Uniform half1 XOR uniform half2 reveals no
+  // information about priv_A until both halves are in hand — that's
+  // REQ-3430's whole value proposition.
+  const priv = new Uint8Array(PRIV_A_RAW_LEN);
+  for (let i = 0; i < PRIV_A_RAW_LEN; i++) {
+    priv[i] = half1[i]! ^ half2[i]!;
+  }
+  return priv;
 }
 
 /// Parse `#k=<43 b64url chars>` to a 32-byte raw scalar. Returns `null`

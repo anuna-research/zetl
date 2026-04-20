@@ -11621,6 +11621,9 @@ fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
         encode_age_recipient_v1, format_rfc3339_utc, generate_grant_id, generate_invite_keypair,
         parse_expires, xor_split_private_key, DEFAULT_EXPIRES_SECS, URL_SHORTENER_WARNING,
     };
+    use zetl::cap::public_repo::{
+        parse_config_lens, SplitKeyConfig, SplitKeySecondFactor,
+    };
     use zetl::cap::recipients::parsing::{CohortMode, RecipientsFile, AGE_RECIPIENT_V1_PREFIX};
     use zetl::cap::url_format::CapUrl;
 
@@ -11664,6 +11667,35 @@ fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
     })?;
     let mut recipients = RecipientsFile::parse(&body)
         .with_context(|| format!("{} is invalid", recipients_path.display()))?;
+
+    // ─── Read `.zetl/config.toml` for REQ-3417 `[access.split_key]` ──
+    // Missing config + missing block both deserialise as
+    // `split_key = None`, which the gate below treats as "disabled"
+    // per REQ-3430 acceptance ("default is `enabled = false`").
+    let split_key_cfg: SplitKeyConfig = {
+        let config_path = vault_root.join(".zetl").join("config.toml");
+        match std::fs::read_to_string(&config_path) {
+            Ok(body) => parse_config_lens(&body)
+                .with_context(|| format!("{} is invalid", config_path.display()))?
+                .access
+                .and_then(|a| a.split_key)
+                .unwrap_or_default(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => SplitKeyConfig::default(),
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "cannot read {}: {e}",
+                    config_path.display()
+                ));
+            }
+        }
+    };
+    if args.split_key && !split_key_cfg.enabled {
+        anyhow::bail!(
+            "`--split-key` refused: SPEC-034 REQ-3430 requires an explicit opt-in via \
+             `[access.split_key] enabled = true` in .zetl/config.toml \
+             (default is disabled)"
+        );
+    }
 
     // Locate the target cohort (reject unknown ids up-front — a typo
     // is far more likely than the intent to auto-create).
@@ -11859,11 +11891,30 @@ fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
     println!("{URL_SHORTENER_WARNING}");
     println!("{}", url_and_extra.0);
     if let Some(half2) = url_and_extra.1 {
+        let factor = split_key_cfg.effective_second_factor();
         println!();
         println!(
             "# REQ-3430 split-key: convey half2 via a SEPARATE channel (QR, spoken phrase, etc)."
         );
-        println!("# Reader will be prompted for it on first visit; the URL alone does NOT decrypt.");
+        println!(
+            "# Reader will be prompted for it on first visit; the URL alone does NOT decrypt."
+        );
+        match factor {
+            SplitKeySecondFactor::SpokenPhrase => {
+                println!(
+                    "# [access.split_key] second_factor = \"spoken-phrase\" — the reader will see \
+                     a text input on first click. Read half2 aloud over a separate channel."
+                );
+            }
+            SplitKeySecondFactor::Qr => {
+                println!(
+                    "# [access.split_key] second_factor = \"qr\" — render half2 as a QR code \
+                     (any encoder works; the payload is the exact base64url string below) and \
+                     present it over a separate channel."
+                );
+            }
+        }
+        println!("second_factor = \"{}\"", factor.as_wire_str());
         println!("half2 = {half2}");
     }
     eprintln!(

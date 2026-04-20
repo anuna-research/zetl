@@ -8,6 +8,7 @@
 
 import { base64UrlDecode } from "./envelope.ts";
 import { renderError } from "./errors.ts";
+import type { SplitKeyPrompt, SplitKeySecondFactor } from "./identity.ts";
 import {
   defaultFetchEnvelope,
   defaultPurgeServiceWorkers,
@@ -23,6 +24,12 @@ import { clearAllBindings } from "./storage.ts";
 // pubkey string at build time. Keeping it a plain const means the
 // emitted bundle has a single exact byte range to audit.
 declare const __VAULT_SIGNING_PUBKEY_B64URL__: string;
+/// REQ-3430 opt-in. `esbuild --define` swaps this for the literal
+/// value of `[access.split_key] second_factor` at build time when
+/// `enabled = true`, and for `""` otherwise. Empty-string means "no
+/// split-key support in this bundle" — a reader arriving on a
+/// `#k1=` URL will see a `mode-not-supported` diagnostic.
+declare const __SPLIT_KEY_SECOND_FACTOR__: string;
 
 export interface ShimOptions {
   /// Override dependency injection points — used by the Playwright
@@ -51,6 +58,7 @@ export async function renderCurrentPage(
     return { phases: [], errorKind: "internal" };
   }
 
+  const splitKeyFactor = resolveSplitKeyFactor();
   const deps: PipelineDeps = {
     vaultSigningPubkey,
     fetchEnvelope: opts.deps?.fetchEnvelope ?? defaultFetchEnvelope,
@@ -58,6 +66,11 @@ export async function renderCurrentPage(
       opts.deps?.purgeServiceWorkers ?? defaultPurgeServiceWorkers,
     withLock: opts.deps?.withLock ?? defaultWithLock,
     locationHash: opts.deps?.locationHash ?? location.hash,
+    splitKeySecondFactor:
+      opts.deps?.splitKeySecondFactor ?? splitKeyFactor ?? undefined,
+    promptHalf2:
+      opts.deps?.promptHalf2
+      ?? (splitKeyFactor !== null ? defaultPromptHalf2 : undefined),
   };
 
   try {
@@ -78,6 +91,54 @@ export async function renderCurrentPage(
 export async function forgetBinding(): Promise<void> {
   await clearAllBindings();
 }
+
+/// Read the esbuild-substituted split-key factor literal. Returns
+/// `null` when the operator has not opted in (`__SPLIT_KEY_..._$$ = ""`)
+/// OR when the literal was not replaced (undefined at runtime in
+/// non-bundled test harnesses). A non-empty string must be one of
+/// `"spoken-phrase"` / `"qr"` — anything else is a build misconfig
+/// and falls back to null with a console warning so the reader
+/// doesn't get a broken prompt.
+function resolveSplitKeyFactor(): SplitKeySecondFactor | null {
+  const raw =
+    typeof __SPLIT_KEY_SECOND_FACTOR__ !== "undefined"
+      ? __SPLIT_KEY_SECOND_FACTOR__
+      : "";
+  if (raw === "") return null;
+  if (raw === "spoken-phrase" || raw === "qr") return raw;
+  if (typeof console !== "undefined" && typeof console.warn === "function") {
+    console.warn(
+      `zetl: unknown [access.split_key] second_factor ${JSON.stringify(raw)}; disabling split-key support for this bundle`,
+    );
+  }
+  return null;
+}
+
+/// Default half2 collector. For `spoken-phrase` we pop a blocking
+/// `window.prompt`. `qr` is a TODO — the camera scanner UI is a
+/// follow-up task; v1 surfaces a "QR transport not yet implemented"
+/// diagnostic so the reader learns to ask the operator for a
+/// spoken-phrase invite instead of silently hanging. Tests inject a
+/// custom `promptHalf2` so they never hit this branch.
+const defaultPromptHalf2: SplitKeyPrompt = async (factor) => {
+  if (factor === "spoken-phrase") {
+    if (typeof window === "undefined" || typeof window.prompt !== "function") {
+      throw new Error(
+        "spoken-phrase factor requires a browser with window.prompt",
+      );
+    }
+    const entered = window.prompt(
+      "Enter the second-factor phrase you received on a separate channel (REQ-3430):",
+    );
+    if (entered === null) {
+      throw new Error("reader cancelled the second-factor prompt");
+    }
+    return entered;
+  }
+  throw new Error(
+    "qr second-factor transport is not yet wired in this shim build; ask your wiki operator for a spoken-phrase invite",
+  );
+};
 
 declare global {
   interface Window {

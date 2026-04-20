@@ -56,6 +56,21 @@ pubkeys = []
     dir
 }
 
+/// Write `.zetl/config.toml` carrying an explicit `[access.split_key]`
+/// block. `second_factor` goes through verbatim so a test can assert
+/// the operator-hint branch for each transport.
+fn enable_split_key(dir: &std::path::Path, second_factor: &str) {
+    let config_dir = dir.join(".zetl");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    let body = format!(
+        r#"[access.split_key]
+enabled = true
+second_factor = "{second_factor}"
+"#
+    );
+    std::fs::write(config_dir.join("config.toml"), body).unwrap();
+}
+
 #[test]
 fn delegated_mode_emits_banner_url_and_writes_grant() {
     let dir = seed_vault("delegated-url");
@@ -211,6 +226,93 @@ fn two_invites_produce_distinct_priv_a() {
 #[test]
 fn split_key_mode_prints_half2_separately() {
     let dir = seed_vault("delegated-url");
+    enable_split_key(dir.path(), "spoken-phrase");
+    let out = cargo_bin_cmd!("zetl")
+        .env("ZETL_CAP_SECRET", seeded_secret_b64())
+        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+        .args([
+            "-d",
+            dir.path().to_str().unwrap(),
+            "cap",
+            "invite",
+            "carol",
+            "--cohort",
+            "engineering",
+            "--split-key",
+        ])
+        .output()
+        .expect("run");
+    assert!(
+        out.status.success(),
+        "exit={:?}\nstdout={}\nstderr={}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // URL fragment uses #k1= under split-key.
+    assert!(
+        stdout.contains("#k1="),
+        "split-key URL must use #k1= prefix:\n{stdout}",
+    );
+    assert!(!stdout.contains("#k="));
+    // half2 is printed on its own line.
+    assert!(
+        stdout.contains("half2 ="),
+        "half2 missing from stdout:\n{stdout}",
+    );
+    // Operator hint reflects the configured second factor.
+    assert!(
+        stdout.contains("second_factor = \"spoken-phrase\""),
+        "expected spoken-phrase hint:\n{stdout}",
+    );
+}
+
+/// REQ-3430 acceptance: `--split-key` is refused when the config is
+/// absent or when `[access.split_key] enabled = false`. Proves the
+/// opt-in semantics (default is disabled).
+#[test]
+fn split_key_mode_refused_without_opt_in() {
+    let dir = seed_vault("delegated-url");
+    let out = cargo_bin_cmd!("zetl")
+        .env("ZETL_CAP_SECRET", seeded_secret_b64())
+        .env("ZETL_CAP_SITE_URL", "https://wiki.example")
+        .args([
+            "-d",
+            dir.path().to_str().unwrap(),
+            "cap",
+            "invite",
+            "carol",
+            "--cohort",
+            "engineering",
+            "--split-key",
+        ])
+        .output()
+        .expect("run");
+    assert!(
+        !out.status.success(),
+        "expected refusal without opt-in; stdout={}",
+        String::from_utf8_lossy(&out.stdout),
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("REQ-3430") && stderr.contains("access.split_key"),
+        "expected opt-in diagnostic in stderr:\n{stderr}",
+    );
+    // And no grants.toml was written.
+    assert!(!dir.path().join("grants.toml").exists());
+}
+
+/// TEST-3430 reconstruction: half1 (URL fragment) XOR half2 (side
+/// channel) MUST equal the priv_A that matches the pubkey stored in
+/// `recipients.toml`. The URL alone does not carry priv_A.
+#[test]
+fn split_key_halves_reconstruct_priv_a_that_matches_recipient() {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine as _;
+
+    let dir = seed_vault("delegated-url");
+    enable_split_key(dir.path(), "qr");
     let out = cargo_bin_cmd!("zetl")
         .env("ZETL_CAP_SECRET", seeded_secret_b64())
         .env("ZETL_CAP_SITE_URL", "https://wiki.example")
@@ -228,16 +330,66 @@ fn split_key_mode_prints_half2_separately() {
         .expect("run");
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
-    // URL fragment uses #k1= under split-key.
+
+    // Extract half1 from the URL fragment (after `#k1=`).
+    let url_line = stdout
+        .lines()
+        .find(|l| l.contains("#k1="))
+        .expect("expected #k1= URL line in stdout");
+    let half1_b64 = url_line
+        .split("#k1=")
+        .nth(1)
+        .expect("half1 fragment")
+        .trim();
+    // Extract half2 from the `half2 = …` stdout line.
+    let half2_b64 = stdout
+        .lines()
+        .find(|l| l.starts_with("half2 ="))
+        .and_then(|l| l.split_once('=').map(|(_, v)| v.trim()))
+        .expect("half2 line in stdout");
+    // QR-mode hint must have been emitted.
     assert!(
-        stdout.contains("#k1="),
-        "split-key URL must use #k1= prefix:\n{stdout}",
+        stdout.contains("second_factor = \"qr\""),
+        "expected qr hint:\n{stdout}",
     );
-    assert!(!stdout.contains("#k="));
-    // half2 is printed on its own line.
+
+    let h1 = URL_SAFE_NO_PAD.decode(half1_b64).expect("half1 base64url");
+    let h2 = URL_SAFE_NO_PAD.decode(half2_b64).expect("half2 base64url");
+    assert_eq!(h1.len(), 32);
+    assert_eq!(h2.len(), 32);
+    let mut priv_a = [0u8; 32];
+    for i in 0..32 {
+        priv_a[i] = h1[i] ^ h2[i];
+    }
+
+    // Derive pub_A from the reconstructed priv_A; it must match the
+    // `age-recipient-v1:` entry that landed in recipients.toml.
+    use x25519_dalek::{PublicKey, StaticSecret};
+    let sk = StaticSecret::from(priv_a);
+    let pk = PublicKey::from(&sk);
+    let expected_recipient = format!(
+        "{}{}",
+        zetl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX,
+        URL_SAFE_NO_PAD.encode(pk.as_bytes()),
+    );
+
+    let rec_body = std::fs::read_to_string(dir.path().join("recipients.toml")).unwrap();
     assert!(
-        stdout.contains("half2 ="),
-        "half2 missing from stdout:\n{stdout}",
+        rec_body.contains(&expected_recipient),
+        "reconstructed pubkey {expected_recipient:?} missing from recipients.toml:\n{rec_body}",
+    );
+
+    // And: neither half alone may be enough. A partially-leaked
+    // fragment (half1 only) does NOT carry priv_A — under XOR with a
+    // uniform half2 the observed half1 is itself a uniform 32-byte
+    // string and carries zero information about priv_A. We prove the
+    // negative structurally: half1 is not equal to priv_a (with
+    // overwhelming probability under a CSPRNG).
+    assert_ne!(
+        h1.as_slice(),
+        priv_a.as_slice(),
+        "half1 must not equal reconstructed priv_A — the whole point of \
+         XOR splitting is that each half alone is independent of priv_A",
     );
 }
 
