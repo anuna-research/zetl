@@ -111,6 +111,16 @@ getrandom = "0.2"
 # zeroed when the padding-construct function returns — that guarantee
 # is asserted at compile time in `cap::pad` tests.
 x25519-dalek = { version = "2", features = ["static_secrets", "zeroize"] }
+# SPEC-034 REQ-3403 / CON-3404 age v1 ciphertext emission. `cap::age_encrypt`
+# wraps `age::Encryptor::with_recipients` over standard `x25519::Recipient`
+# entries so real + padding recipients are byte-indistinguishable in the
+# header (REQ-3422 acceptance #3).
+age = "0.11"
+# bech32 encoding of raw X25519 pubkeys into the "age1..." form that
+# `age::x25519::Recipient` accepts via `FromStr` (no public constructor
+# from raw bytes exists in 0.11). Standard Bech32 variant (not Bech32m),
+# HRP "age" — matches the age wire format.
+bech32 = "0.11"
 # RngCore / CryptoRng traits + OsRng; used by `cap::pad` and by any
 # other pure-core-with-rng surface that needs to accept seeded RNGs for
 # deterministic tests.
