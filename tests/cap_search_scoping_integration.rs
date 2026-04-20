@@ -123,6 +123,7 @@ fn build_cfg(out: &std::path::Path, access: AccessConfig) -> BuildConfig {
         path_cap_bits: 64,
         visibility: Visibility::Private,
         access,
+        shim_integrity: None,
     }
 }
 

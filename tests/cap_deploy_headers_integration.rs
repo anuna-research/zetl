@@ -115,6 +115,7 @@ fn mk_cfg(out: &std::path::Path, cache: CacheConfig) -> BuildConfig {
             cache,
             ..Default::default()
         },
+        shim_integrity: None,
     }
 }
 

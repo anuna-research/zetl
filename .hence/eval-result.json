@@ -3,29 +3,32 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 920,
-    "deletions": 6,
+    "files_changed": 9,
+    "insertions": 890,
+    "deletions": 40,
     "file_list": [
       ".hence/context-manifest.json",
       "src/cap/build/driver.rs",
       "src/cap/deploy_headers.rs",
+      "src/cap/html_shell.rs",
       "src/cap/mod.rs",
-      "src/cap/scoping/access_config.rs",
-      "tests/cap_deploy_headers_integration.rs"
+      "tests/cap_build_driver_integration.rs",
+      "tests/cap_csp_sri_integration.rs",
+      "tests/cap_deploy_headers_integration.rs",
+      "tests/cap_search_scoping_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-cache-control-changes",
-      "content": "Modified 6 files (+920, -6): .hence/context-manifest.json, src/cap/build/driver.rs, src/cap/deploy_headers.rs, src/cap/mod.rs, src/cap/scoping/access_config.rs and 1 more",
+      "key": "task-cap-csp-sri-changes",
+      "content": "Modified 9 files (+890, -40): .hence/context-manifest.json, src/cap/build/driver.rs, src/cap/deploy_headers.rs, src/cap/html_shell.rs, src/cap/mod.rs and 4 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-cache-control-v1",
-  "evaluated_at": "2026-04-20T15:22:46Z",
+  "branch_name": "hence/cap-csp-sri-v1",
+  "evaluated_at": "2026-04-20T15:49:38Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
