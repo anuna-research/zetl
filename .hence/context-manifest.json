@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-robots-txt",
+  "task_id": "cap-docs-security",
   "token_budget": 8000,
-  "tokens_used": 402,
+  "tokens_used": 440,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Emit `/robots.txt` containing `Disallow: /c/` and `Disallow: /_zetl/` per REQ-3414 (the general robots.txt REQ; separate from the new REQ-3414 PRF salt). Merge with operator's `public/robots.txt` — preserve stricter rules (e.g., `Disallow: /`) if present.",
-      "token_cost": 64,
+      "content": "`docs/capability-security.md` — deeper threat-model discussion per SPEC-034 §12 and §11. Explicit `do NOT use capability mode for X` list (regulated PII, cardholder data, etc.). Comparison table: delegated-URL vs hardened vs `zetl serve` vs reverse-proxy-auth. Prior-art citations (§1.4). Offline brute-force math for padding (NFR-3410 honest bounds). Content-authenticity story (signing key trust model).",
+      "token_cost": 102,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T13:56:46Z"
+  "constructed_at": "2026-04-20T14:08:39Z"
 }
