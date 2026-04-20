@@ -3,31 +3,36 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 1072,
+    "files_changed": 13,
+    "insertions": 2449,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
       "Cargo.lock",
       "Cargo.toml",
+      "src/cap/derivation.rs",
+      "src/cap/grants/mod.rs",
+      "src/cap/grants/validation.rs",
       "src/cap/mod.rs",
-      "src/cap/sanitiser.rs",
-      "src/lib.rs",
-      "tests/cap_sanitiser_integration.rs",
-      "tools/sanitiser-config.toml"
+      "src/cap/recipients/mod.rs",
+      "src/cap/recipients/parsing.rs",
+      "src/cap/scoping/cohort_index.rs",
+      "src/cap/scoping/mod.rs",
+      "src/cap/url_format.rs",
+      "tests/cap_pure_core_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-sanitiser-changes",
-      "content": "Modified 8 files (+1072, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/mod.rs, src/cap/sanitiser.rs and 3 more",
+      "key": "task-cap-pure-core-changes",
+      "content": "Modified 13 files (+2449, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/derivation.rs, src/cap/grants/mod.rs and 8 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-sanitiser-v1",
-  "evaluated_at": "2026-04-20T11:02:17Z",
+  "branch_name": "hence/cap-pure-core-v1",
+  "evaluated_at": "2026-04-20T11:20:34Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
