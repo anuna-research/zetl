@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-cli-skeleton",
+  "task_id": "cap-emergency-shutdown",
   "token_budget": 8000,
-  "tokens_used": 313,
+  "tokens_used": 307,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl cap` subcommand dispatcher with stubs for every verb listed in REQ-3416: `genkey`, `invite`, `list`, `revoke`, `rotate`, `finalise`, `share`, `check`, `sweep`, `pair`, `audit-diff`, `rotate-signing-key`, `emergency-shutdown`. Each stub exits with a `not-yet-implemented` message and follows SPEC-004 exit codes (0/1/2/64+). `--help` text for every verb. `--output json` support plumbed through (even if verb body returns stub). Help output + exit codes testable via `assert_cmd`.",
-      "token_cost": 121,
+      "content": "`zetl cap emergency-shutdown` per REQ-3431 (BUG-024 resolution). Produces a printable operator checklist: (1) remove/redirect DNS; (2) CDN purge/delete `/c/*`; (3) rotate secrets (new `zetl cap genkey`); (4) announce to readers; (5) re-enrol when ready. NOT automated — documentation-generation only. Spec has no cryptographic kill-switch.",
+      "token_cost": 85,
       "priority": "PlanMeta"
     },
     {
@@ -44,8 +44,14 @@
       "content": "Modified 6 files (+1035, -8): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/age_encrypt.rs, src/cap/mod.rs and 1 more",
       "token_cost": 33,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cap-cli-skeleton-changes",
+      "content": "Modified 4 files (+326, -8): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs",
+      "token_cost": 30,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T12:17:01Z"
+  "constructed_at": "2026-04-20T12:24:01Z"
 }
