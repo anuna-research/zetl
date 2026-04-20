@@ -3,27 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 1123,
+    "files_changed": 2,
+    "insertions": 454,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/mod.rs",
-      "src/cap/public_repo.rs",
-      "tests/cap_public_repo_safety_integration.rs"
+      ".hence/reviews/cap-tier1-shim-2026-04-21.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-public-repo-safety-changes",
-      "content": "Modified 4 files (+1123, -5): .hence/context-manifest.json, src/cap/mod.rs, src/cap/public_repo.rs, tests/cap_public_repo_safety_integration.rs",
+      "key": "task-cap-tier1-review-shim-changes",
+      "content": "Modified 2 files (+454, -5): .hence/context-manifest.json, .hence/reviews/cap-tier1-shim-2026-04-21.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-public-repo-safety-v1",
-  "evaluated_at": "2026-04-20T18:13:23Z",
+  "branch_name": "hence/cap-tier1-review-shim-v1",
+  "evaluated_at": "2026-04-20T18:27:13Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
