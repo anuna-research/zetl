@@ -104,15 +104,18 @@ ext-golden-update:
 	cargo xtask update-golden
 
 # SPEC-033 task-eco-feature-flags acceptance: each per-ecosystem cargo
-# feature must compile in isolation, the `ecosystems-v1` umbrella must
-# compile (enabling all three at once), and the no-feature build must
-# still succeed. Runs as a CI gate via `.woodpecker/ci.yaml`.
+# feature must compile in isolation, every combination must compile
+# together, and the no-feature build must still succeed. The
+# `ecosystems-v1` umbrella was retired in SPEC-033 §12 Phase F; we
+# still exercise the all-three combination explicitly because that is
+# the configuration release binaries ship. Runs as a CI gate via
+# `.woodpecker/ci.yaml`.
 eco-features-check:
 	cargo check --no-default-features
 	cargo check --no-default-features --features ecosystem-pandoc
 	cargo check --no-default-features --features ecosystem-mdbook
 	cargo check --no-default-features --features ecosystem-remark
-	cargo check --no-default-features --features ecosystems-v1
+	cargo check --no-default-features --features "ecosystem-pandoc ecosystem-mdbook ecosystem-remark"
 
 # SPEC-033 REQ-3311 / TEST-3311 ecosystem-matrix structural gate. Walks
 # every row in tools/zetl-ecosystem-matrix.toml, asserts required

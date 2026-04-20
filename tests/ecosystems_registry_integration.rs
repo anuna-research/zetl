@@ -211,32 +211,20 @@ fn cargo_features_cover_every_registered_ecosystem() {
 }
 
 #[test]
-fn ecosystems_v1_umbrella_enables_every_per_ecosystem_flag() {
-    // SPEC-033 §12 + plans/IMPL-032-033.spl task-eco-feature-flags
-    // acceptance: `cargo build --features ecosystems-v1` must enable all
-    // three per-ecosystem flags at once. Encode that as a transitive
-    // check on the Cargo.toml [features] table.
+fn ecosystems_v1_umbrella_is_retired() {
+    // SPEC-033 §12 Phase F + plans/IMPL-032-033.spl
+    // task-retire-ecosystems-v1: the `ecosystems-v1` umbrella was
+    // retired after two clean releases of all three adapters. Users
+    // who want every ecosystem compiled in now pass the per-ecosystem
+    // flags explicitly (or use the default release binary, which
+    // ships with all three on). Guard against accidental
+    // reintroduction of the umbrella — any revival must land as a new
+    // task with updated spec prose.
     let features = load_cargo_features();
-    let umbrella = features
-        .get("ecosystems-v1")
-        .and_then(|v| v.as_array())
-        .unwrap_or_else(|| {
-            panic!(
-                "Cargo.toml must declare an `ecosystems-v1` umbrella feature (see \
-                 SPEC-033 §12) enabling every per-ecosystem flag"
-            )
-        });
-    let enabled: HashSet<String> = umbrella
-        .iter()
-        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-        .collect();
-    for entry in ecosystems::all() {
-        assert!(
-            enabled.contains(entry.feature_flag),
-            "`ecosystems-v1` umbrella does not enable '{}' — expected all three \
-             per-ecosystem flags (got {:?})",
-            entry.feature_flag,
-            enabled,
-        );
-    }
+    assert!(
+        !features.contains_key("ecosystems-v1"),
+        "Cargo.toml [features] still defines `ecosystems-v1` — this umbrella was \
+         retired in SPEC-033 §12 Phase F. Drop the flag or open a new task to \
+         justify its reintroduction."
+    );
 }

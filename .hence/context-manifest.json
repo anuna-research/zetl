@@ -1,12 +1,12 @@
 {
-  "task_id": "eco-matrix",
+  "task_id": "retire-ecosystems-v1",
   "token_budget": 8000,
-  "tokens_used": 319,
+  "tokens_used": 315,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Build the full SPEC-033 §REQ-3311 matrix: ecosystem × plugin × tier × fixture × contract. Tier-promotion checklist per amended REQ-3311.",
-      "token_cost": 35,
+      "content": "Retire `--features ecosystems-v1` umbrella per SPEC-033 §12 Phase F. Requires two clean releases across all three adapters.",
+      "token_cost": 31,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T23:48:13Z"
+  "constructed_at": "2026-04-19T23:57:47Z"
 }
