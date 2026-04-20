@@ -7,6 +7,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Render-pipeline hooks (SPEC-032).** A new three-stage hook pipeline
+  — `pre-parse` (raw markdown), `transform` (typed AST), `post-render`
+  (HTML fragment) — runs alongside the existing SPEC-016 lifecycle
+  hooks. Hooks live under `.zetl/hooks/<stage>.d/` and stay resident
+  via a JSON-lines persistent-mode protocol over stdin/stdout (CON-3201;
+  release p95 ≈ 896 µs for a 500-node AST echo). The pipeline carries
+  a typed AST (`zetl-ast` schema v1.0; published as
+  `tools/zetl-ast-schema-v1.json`), a `BuildContext` snapshot, and a
+  shared `build_data` channel with cross-page visibility.
+
+  Composition resolves theme + vault `<stage>.d/` directories, runs a
+  topological sort on the manifest's `[ordering]` table, and applies
+  same-name shadow / disable rules. Hooks declare a TOML manifest
+  (`<name>.<ext>.toml`) covering selectors (glob + frontmatter
+  predicate + content regex), behavioural contracts (`preserves`,
+  `idempotent`, `may_restructure`, `expansion_bound`), per-stage
+  AST-type opt-in, and timeouts.
+
+- **Hook authoring CLI.** Seven new subcommands close the
+  write → run → diff → fix loop:
+
+  ```sh
+  zetl hook new <stage> <name> [--lang py|js|sh] [--ecosystem ...]
+  zetl hook test <name> [--update]
+  zetl hook fixture --from <page> --hook <name>
+  zetl hook watch <name>          # restarts persistent process on edit
+  zetl hook coverage [--stage X]  # matched pages, invocations, latency
+  zetl hook dry-run <stage>/<name>
+  zetl hook capabilities [--stage X] [--json]
+  ```
+
+  Plus `zetl ast sample <file>` and `zetl ast diff <a> <b>` for AST
+  introspection. Each scaffolded hook ships with a starter fixture +
+  golden so `hook test` passes immediately on the fresh skeleton.
+
+- **Behavioural contracts and property-test harness.** Hooks declare a
+  `[contract]` block; the pipeline enforces `preserves` (named node
+  types must survive), `idempotent` (canonical-form equality across
+  two runs), `may_restructure` (block-shape gate, pre-parse only), and
+  `expansion_bound` (advisory output-size ratio). Contract violations
+  surface as `HookDiagnostic` records with the standard five-part
+  format (summary / context / observed / cause / hint).
+
+- **Failure scoping.** When a hook errors mid-pipeline, the page reverts
+  to the previous stage's output and the pipeline continues — failures
+  no longer abort the build. A `FailureRecord` per failure lands in
+  `diagnostics.json`.
+
+- **Helper libraries.** `tools/zetl-ast-js/` (TypeScript / npm) and
+  `tools/zetl-ast-py/` (Python, hatchling) ship typed AST classes,
+  `walk()`/`map_nodes()` traversal, an `@on_node` dispatch decorator,
+  and a persistent-mode protocol client. A cross-impl conformance gate
+  (`make helper-contracts`) drives all three implementations through
+  10 shared JSON fixtures in CI.
+
+- **Plugin ecosystems (SPEC-033).** First-class adapters for Pandoc
+  filters (`ecosystem-pandoc`), mdBook preprocessors (`ecosystem-mdbook`),
+  and remark plugins (`ecosystem-remark`) — gated behind per-ecosystem
+  cargo features (each compiled in by default in release builds).
+  Hooks declare `ecosystem = "pandoc"` (or `mdbook`/`remark`) plus the
+  per-ecosystem fields the chosen adapter requires (`exec`/`lua_filter`,
+  `exec`+`scope`, `package`+`version`+`options`); the pipeline routes
+  them through the matching adapter and translates the foreign AST back
+  to `zetl-ast` for downstream stages.
+
+  The new `zetl ecosystem check` subcommand reports per-ecosystem
+  runtime detection (binary path + version), the count of configured
+  hooks, and the set of reachable plugins — exit 0 unless a configured
+  ecosystem's runtime is missing.
+
+  Mixed-parser misconfigurations (a hook expecting Pandoc AST attached
+  to a CommonMark-parsed page) surface a five-part diagnostic with
+  remediation suggestions; `zetl build --strict-parsers` upgrades the
+  warning to a fatal error. A per-ecosystem compatibility matrix lives
+  at `tools/zetl-ecosystem-matrix.toml` (gated by structural + tier-
+  downgrade tests in CI).
+
+- **Safe mode and security policy.** `zetl build --safe-mode` /
+  `zetl serve --safe-mode` skips every vault hook and only runs theme
+  hooks declared in the theme's `[[theme.hooks]]` manifest table.
+  Persistent hooks spawn under a default `SecurityPolicy` that
+  redacts the host environment to a small allowlist
+  (PATH/HOME/USER/LANG/...), caps stderr at 1 MiB with a truncation
+  marker, and rejects messages over 10 MiB in either direction.
+
+- **Capability probes.** `zetl hook capabilities` issues a `probe`
+  message to every composed hook and reports its supported stages,
+  AST types, and AST schema version; mismatches against the running
+  binary's schema version exit non-zero so CI catches drift before
+  `build`.
+
+- **Observability.** Hooks emit per-invocation log lines
+  (`[zetl] hook: stage=X id=Y page=Z duration_ms=N`) and a build-end
+  totals line (`[zetl] hooks: total_invocations=N total_duration_ms=M
+  failures=K`). Failures additionally surface `status=failed
+  reason=<r>` regardless of verbosity.
+
+- **Documentation.** New guides under `docs/`:
+  `docs/canonical-extensions.md`, `docs/hook-security.md`,
+  `docs/zetl-ast-reference.md` (auto-generated, CI-gated),
+  `docs/ecosystems/{pandoc,mdbook,remark}.md`, and
+  `docs/ecosystems/matrix-contribution.md`.
+
 ### Fixed
 
 - **`zetl hook new` writes the composition-canonical sidecar manifest.**
