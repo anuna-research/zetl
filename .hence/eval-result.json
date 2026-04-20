@@ -3,29 +3,32 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 769,
-    "deletions": 8,
+    "files_changed": 9,
+    "insertions": 1208,
+    "deletions": 10,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/genkey.rs",
+      "src/cap/invite.rs",
       "src/cap/mod.rs",
+      "src/cap/recipients/parsing.rs",
+      "src/cli.rs",
       "src/main.rs",
       "tests/cap_cli_skeleton_integration.rs",
-      "tests/cap_genkey_integration.rs"
+      "tests/cap_invite_integration.rs",
+      "tests/cap_pure_core_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-genkey-changes",
-      "content": "Modified 6 files (+769, -8): .hence/context-manifest.json, src/cap/genkey.rs, src/cap/mod.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs and 1 more",
+      "key": "task-cap-invite-command-changes",
+      "content": "Modified 9 files (+1208, -10): .hence/context-manifest.json, src/cap/invite.rs, src/cap/mod.rs, src/cap/recipients/parsing.rs, src/cli.rs and 4 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-genkey-v1",
-  "evaluated_at": "2026-04-20T12:44:31Z",
+  "branch_name": "hence/cap-invite-command-v1",
+  "evaluated_at": "2026-04-20T13:00:49Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
