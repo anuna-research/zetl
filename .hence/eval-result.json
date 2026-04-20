@@ -3,27 +3,29 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 326,
-    "deletions": 8,
+    "files_changed": 6,
+    "insertions": 653,
+    "deletions": 7,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cli.rs",
+      "src/cap/emergency_shutdown.rs",
+      "src/cap/mod.rs",
       "src/main.rs",
-      "tests/cap_cli_skeleton_integration.rs"
+      "tests/cap_cli_skeleton_integration.rs",
+      "tests/cap_emergency_shutdown_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-cli-skeleton-changes",
-      "content": "Modified 4 files (+326, -8): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs",
+      "key": "task-cap-emergency-shutdown-changes",
+      "content": "Modified 6 files (+653, -7): .hence/context-manifest.json, src/cap/emergency_shutdown.rs, src/cap/mod.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-cli-skeleton-v1",
-  "evaluated_at": "2026-04-20T12:23:52Z",
+  "branch_name": "hence/cap-emergency-shutdown-v1",
+  "evaluated_at": "2026-04-20T12:34:40Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

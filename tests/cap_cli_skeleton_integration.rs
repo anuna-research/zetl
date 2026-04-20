@@ -45,7 +45,8 @@ const STUB_VERBS: &[(&str, &[&str])] = &[
     ("sweep", &[]),
     ("pair", &[]),
     ("rotate-signing-key", &[]),
-    ("emergency-shutdown", &[]),
+    // `emergency-shutdown` is NOT stubbed (SPEC-034 REQ-3431 is landed;
+    // see tests/cap_emergency_shutdown_integration.rs).
 ];
 
 #[test]

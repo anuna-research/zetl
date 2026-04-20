@@ -11,6 +11,7 @@
 pub mod age_encrypt;
 pub mod audit_diff;
 pub mod derivation;
+pub mod emergency_shutdown;
 pub mod grants;
 pub mod pad;
 pub mod recipients;

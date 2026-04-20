@@ -11428,7 +11428,7 @@ fn main() -> anyhow::Result<()> {
             zetl::cli::CapCommand::Sweep => cmd_cap_stub(&cli, "sweep"),
             zetl::cli::CapCommand::Pair { .. } => cmd_cap_stub(&cli, "pair"),
             zetl::cli::CapCommand::RotateSigningKey => cmd_cap_stub(&cli, "rotate-signing-key"),
-            zetl::cli::CapCommand::EmergencyShutdown => cmd_cap_stub(&cli, "emergency-shutdown"),
+            zetl::cli::CapCommand::EmergencyShutdown => cmd_cap_emergency_shutdown(&cli),
             zetl::cli::CapCommand::AuditDiff {
                 old_ref,
                 new_ref,
@@ -11475,6 +11475,97 @@ fn cmd_cap_stub(cli: &Cli, verb: &str) -> Result<()> {
         "Hint: this verb is planned (see SPEC-034 §6 REQ-3416) but its implementation has not landed yet."
     );
     std::process::exit(CAP_NOT_YET_IMPLEMENTED_EXIT);
+}
+
+/// `zetl cap emergency-shutdown` — SPEC-034 REQ-3431 / §11.3.
+///
+/// Documentation-generation only: prints an operator checklist for
+/// taking a capability-mode deployment offline at the host level and
+/// exits 0. NO files are modified, no network calls made, no keys
+/// rotated. See `cap::emergency_shutdown` for the rendered steps.
+///
+/// Vault context is discovered best-effort: the vault basename always
+/// renders, and `recipients.toml` is read if present to enumerate
+/// cohorts + the on-disk signing pubkey. Missing or malformed files
+/// degrade gracefully (the checklist still covers every REQ-3431 step).
+fn cmd_cap_emergency_shutdown(cli: &Cli) -> Result<()> {
+    use zetl::cap::emergency_shutdown::{checklist_json, render_checklist, CohortRef, ShutdownContext};
+    use zetl::cap::recipients::parsing::RecipientsFile;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    let vault_name = vault_root
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    // `recipients.toml` is read best-effort. Parse failures are
+    // surfaced to stderr but never block the checklist — an operator
+    // running this command in an incident does not need a parser
+    // error on the critical path.
+    let recipients_path = vault_root.join("recipients.toml");
+    let (cohorts, signing_pubkey) = match std::fs::read_to_string(&recipients_path) {
+        Ok(body) => match RecipientsFile::parse(&body) {
+            Ok(f) => {
+                let cohorts = f
+                    .cohorts
+                    .iter()
+                    .map(|c| CohortRef {
+                        id: c.id.clone(),
+                        name: c.name.clone(),
+                    })
+                    .collect();
+                (cohorts, Some(f.vault.signing_pubkey.clone()))
+            }
+            Err(e) => {
+                eprintln!(
+                    "[zetl cap emergency-shutdown] warning: {} is unparseable ({e}); continuing without cohort enumeration.",
+                    recipients_path.display(),
+                );
+                (Vec::new(), None)
+            }
+        },
+        Err(_) => (Vec::new(), None),
+    };
+
+    let ctx = ShutdownContext {
+        vault_name,
+        cohorts,
+        deploy_target: None,
+        signing_pubkey,
+    };
+
+    // JSON only when the operator explicitly asked for it — `--json`
+    // or `-f json` / `--format json` on the command line. The auto-TTY
+    // promotion `main` performs on `cli.format` before dispatch is
+    // intentionally ignored: a checklist printed to a pipe is still a
+    // checklist, and silently substituting JSON for the text body
+    // surprises operators who piped into `less` / `cat` during an
+    // incident.
+    let mut args = std::env::args().skip(1);
+    let mut json_requested = cli.json;
+    while let Some(arg) = args.next() {
+        if arg == "--json" || arg == "-f=json" || arg == "--format=json" {
+            json_requested = true;
+            break;
+        }
+        if arg == "-f" || arg == "--format" {
+            if let Some(v) = args.next() {
+                if v.eq_ignore_ascii_case("json") {
+                    json_requested = true;
+                    break;
+                }
+            }
+        }
+    }
+    if json_requested {
+        print_json(&checklist_json(&ctx))?;
+    } else {
+        print!("{}", render_checklist(&ctx));
+    }
+    Ok(())
 }
 
 /// `zetl cap audit-diff` — SPEC-034 REQ-3424 / ADR-3410 PR gate.
