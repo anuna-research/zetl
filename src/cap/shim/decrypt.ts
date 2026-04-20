@@ -73,9 +73,12 @@ export function encodeAgeSecretKey(bytes: Uint8Array): string {
   const combined = new Uint8Array(data.length + checksum.length);
   combined.set(data, 0);
   combined.set(checksum, data.length);
-  let s = AGE_HRP.toUpperCase() + "1";
+  let s = AGE_HRP + "1";
   for (const v of combined) s += BECH32_CHARSET[v];
-  return s;
+  // Bech32 requires entirely-uppercase or entirely-lowercase strings;
+  // age v1 canonicalises to uppercase (typage's `generateIdentity`
+  // emits `AGE-SECRET-KEY-1…` all-caps).
+  return s.toUpperCase();
 }
 
 const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";

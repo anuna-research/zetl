@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-revocation-commands",
+  "task_id": "cap-shim-ed25519-verify",
   "token_budget": 8000,
-  "tokens_used": 481,
+  "tokens_used": 457,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Implement `revoke`, `rotate`, `finalise`, `sweep`, `check`. `revoke <grant-id>`: sets `revoked=true` in grants.toml. `rotate --cohort <id>`: generates new cohort salt (content-key rotation; URL-stable per REQ-3402 / BUG-023). `finalise <grant-id>`: sets `bound=true` (operator-confirmed onboarding); `--rotate-grant` reissues priv_A. `sweep`: marks past-expires grants `revoked=true`. `check`: exits 1 if any grant has expired since last build (wired into CI). `rotate-signing-key`: generates new Ed25519 keypair, rebuilds all pages, marks shim bundle for cache-invalidation.",
-      "token_cost": 143,
+      "content": "Ed25519 signature verification in the shim using `@noble/ed25519`. Public key embedded at build time via template string with SRI-covered import. Verification runs BEFORE any other processing — signature check → decrypt → sanitise → render pipeline (CON-3411 order). On verification failure: render error page `<p>This page's signature did not verify — possible tampering; contact your wiki operator</p>`; do NOT call credentials.get/create; do NOT attempt decryption.",
+      "token_cost": 119,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T15:49:47Z"
+  "constructed_at": "2026-04-20T16:08:46Z"
 }

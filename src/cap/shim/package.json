@@ -8,7 +8,8 @@
   "main": "./index.ts",
   "scripts": {
     "build": "node build.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-transform-types --no-warnings --test 'test/*.test.ts'"
   },
   "dependencies": {
     "@noble/ed25519": "^2.1.0",
@@ -16,7 +17,9 @@
     "age-encryption": "^0.2.1"
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "esbuild": "^0.24.0",
+    "happy-dom": "^15.11.7",
     "typescript": "^5.7.0"
   },
   "engines": {
