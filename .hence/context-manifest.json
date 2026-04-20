@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-audit-diff",
+  "task_id": "cap-x25519-padding",
   "token_budget": 8000,
-  "tokens_used": 232,
+  "tokens_used": 256,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl cap audit-diff <old-ref> <new-ref>` + test corpus per REQ-3424 + ADR-3410 (BUG-016 resolution). Scans vault diff for: external-origin links to previously-unseen domains, raw HTML surviving the sanitiser allowlist, dynamically-constructed URIs, markdown constructs that render to unusual HTML. Paired with `tools/audit-diff-corpus/` — versioned repo of known-malicious patterns + XSS cheatsheet samples + exfiltration templates. CI job `audit-corpus` runs audit-diff against corpus; fails on ANY miss. Corpus update cadence: monthly OR on any reported evasion.",
-      "token_cost": 141,
+      "content": "X25519 ephemeral padding generator per REQ-3422 + ADR-3413 (BUG-001 resolution). Generates tier-sized {10, 30, 100, 300, 1000} padded recipient lists. Each padding entry: generate X25519 keypair, take pubkey, zeroize + discard privkey before returning pubkey. Padding entries MUST be structurally indistinguishable from real X25519 recipients in the age header. Deterministic test: the private-key discard is verifiable via a trait that asserts `ZeroizeOnDrop`. Unit test that real + padded = tier value exactly.",
+      "token_cost": 128,
       "priority": "PlanMeta"
     },
     {
@@ -26,8 +26,14 @@
       "content": "Modified 13 files (+2449, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/derivation.rs, src/cap/grants/mod.rs and 8 more",
       "token_cost": 35,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cap-audit-diff-changes",
+      "content": "Modified 64 files (+1811, -135): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, src/cap/audit_diff.rs, src/cap/derivation.rs and 59 more",
+      "token_cost": 37,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T11:20:43Z"
+  "constructed_at": "2026-04-20T11:52:19Z"
 }

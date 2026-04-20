@@ -22,6 +22,7 @@ use zetl::cap::derivation::{
     PATH_CAP_DEFAULT_BITS, PATH_CAP_MAX_BITS, PATH_CAP_MIN_BITS,
 };
 use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile, ValidationError};
+use zetl::cap::pad::{pad_to_tier_with_rng, tier_for, PadError, MAX_REAL_RECIPIENTS, TIERS};
 use zetl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
 };
@@ -378,4 +379,53 @@ fn scoping_unknown_explicit_cohort_fails() {
         explicit_cohorts: vec!["ghost".to_string()],
     }];
     assert!(CohortIndex::build(&cohorts, &pages).is_err());
+}
+
+// ─── REQ-3422 X25519 padding — TEST-3422 ───────────────────────────────
+
+/// Property: real + padding = tier value exactly, for every tier and
+/// every real-count up through [`MAX_REAL_RECIPIENTS`]. Pairs with the
+/// unit test in `src/cap/pad.rs`, but exercises the public API path
+/// (i.e. catches regressions where the private helper works but the
+/// re-export breaks).
+#[test]
+fn pad_tier_invariant_spans_full_ladder() {
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
+
+    let mut rng = ChaCha20Rng::seed_from_u64(0xBA5E);
+    for &tier in TIERS.iter() {
+        // Smallest count that lands in this tier.
+        let prev_tier = TIERS.iter().copied().take_while(|&t| t < tier).last();
+        let lo = prev_tier.map(|t| t + 1).unwrap_or(0);
+        // Largest count that still lands in this tier.
+        let hi = tier;
+
+        for &real in &[lo, (lo + hi) / 2, hi] {
+            let padding = pad_to_tier_with_rng(real, &mut rng).unwrap();
+            assert_eq!(tier_for(real).unwrap(), tier);
+            assert_eq!(
+                real + padding.len(),
+                tier,
+                "tier={tier} real={real} padding.len()={} violates REQ-3422",
+                padding.len()
+            );
+            assert!(padding.iter().all(|pk| pk.len() == 32));
+        }
+    }
+}
+
+#[test]
+fn pad_overflow_beyond_max_real_recipients() {
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
+
+    let mut rng = ChaCha20Rng::seed_from_u64(0);
+    let err = pad_to_tier_with_rng(MAX_REAL_RECIPIENTS + 1, &mut rng).unwrap_err();
+    assert_eq!(
+        err,
+        PadError::Overflow {
+            got: MAX_REAL_RECIPIENTS + 1
+        }
+    );
 }

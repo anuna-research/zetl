@@ -11,6 +11,7 @@
 pub mod audit_diff;
 pub mod derivation;
 pub mod grants;
+pub mod pad;
 pub mod recipients;
 pub mod sanitiser;
 pub mod scoping;
