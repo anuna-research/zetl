@@ -1,0 +1,25 @@
+{
+  "name": "@zetl/cap-shim",
+  "version": "0.4.0",
+  "description": "zetl capability-mode browser shim (SPEC-034 CON-3408). Private — bundled into /assets/shim.js at build time.",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "./index.ts",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.1.0",
+    "@noble/hashes": "^1.6.1",
+    "age-encryption": "^0.2.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
