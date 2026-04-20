@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 27,
-    "deletions": 19,
+    "insertions": 489,
+    "deletions": 65,
     "file_list": [
       ".hence/context-manifest.json",
-      "specs/SPEC-031.md"
+      ".hence/reviews/cap-tier2-2026-04-20.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-spec-031-supersede-changes",
-      "content": "Modified 2 files (+27, -19): .hence/context-manifest.json, specs/SPEC-031.md",
+      "key": "task-cap-tier2-review-spec-changes",
+      "content": "Modified 2 files (+489, -65): .hence/context-manifest.json, .hence/reviews/cap-tier2-2026-04-20.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/spec-031-supersede-v1",
-  "evaluated_at": "2026-04-20T00:17:05Z",
+  "branch_name": "hence/cap-tier2-review-spec-v1",
+  "evaluated_at": "2026-04-20T10:52:54Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
