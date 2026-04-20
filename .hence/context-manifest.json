@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-shim-tofu",
+  "task_id": "cap-docs-signing",
   "token_budget": 8000,
-  "tokens_used": 473,
+  "tokens_used": 420,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "TOFU branch of the shim: acquire navigator.locks exclusive lock → unregister all ServiceWorkers → generate 32-byte random challenge → invoke navigator.credentials.create() with PRF extension and per-cohort salt → derive K_wrap via HKDF → AES-256-GCM wrap priv_A with origin+cohort_id AAD → store in IndexedDB → replaceState → rewrite hrefs. Per-cohort PRF salt per REQ-3414 + ADR-3414 (BUG-003 resolution). Explicit random challenge per CON-3409 (BUG-005 resolution). Concurrency serialisation via navigator.locks (BUG-010).",
-      "token_cost": 135,
+      "content": "`docs/signing.md` — what the vault-signing key is, why it matters (CDN-substitution defence), rotation procedure (`zetl cap rotate-signing-key` + shim cache invalidation), emergency shutdown (`zetl cap emergency-shutdown` checklist). Explains the v0.4.0 BUG-004 resolution for operators who need to understand the trust model.",
+      "token_cost": 82,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,12 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T16:47:41Z"
+  "constructed_at": "2026-04-20T17:02:08Z",
+  "artifacts": {
+    "files_created": [
+      "docs/signing.md"
+    ],
+    "files_modified": [],
+    "summary": "New operator-facing reference doc for the vault-signing key: what it is, why it exists (CDN-substitution / BUG-004), `zetl cap rotate-signing-key` workflow + shim-cache-invalidation hazards, `zetl cap emergency-shutdown` checklist and JSON wire shape, threat-model recap (A3/A6/A7), cross-refs to SPEC-034 and related source files. Pure documentation; no code or test changes."
+  }
 }
