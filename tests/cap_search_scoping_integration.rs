@@ -126,6 +126,7 @@ fn build_cfg(out: &std::path::Path, access: AccessConfig) -> BuildConfig {
         visibility: Visibility::Private,
         access,
         shim_integrity: None,
+        enroll_integrity: None,
     }
 }
 
