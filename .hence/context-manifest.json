@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-changelog",
+  "task_id": "cap-mark-implemented",
   "token_budget": 8000,
-  "tokens_used": 382,
+  "tokens_used": 426,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "CHANGELOG.md entry for the release that ships SPEC-034 capability mode. References SPEC-034 version, lists user-facing features, documents the two modes, points at operator docs.",
-      "token_cost": 44,
+      "content": "Update `specs/SPEC-034.md` status frontmatter from `draft` to `implemented` per USDD Phase 3 quality gates. Requires: all constitutional quality gates pass, all REQ→TEST traceability verified, Tier 1 + Tier 2 reviews completed and findings addressed, docs generated, synthetic-user walkthroughs confirm behaviour matches spec, CHANGELOG entry present.",
+      "token_cost": 88,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T19:25:08Z"
+  "constructed_at": "2026-04-20T19:26:54Z"
 }

@@ -1,7 +1,7 @@
 ---
 title: "SPEC-034: Capability-URL Static Distribution — Signed, Delegated-URL, TOFU-Bound Encrypted Wikis"
 version: 0.4.0
-status: draft
+status: implemented
 date: 2026-04-20
 audience: agent, human
 supersedes-internally: |
