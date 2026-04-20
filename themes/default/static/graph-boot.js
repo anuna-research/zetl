@@ -1,3 +1,19 @@
+/* Resolve relative URLs in __zetlGraphConfig at script-load time, before
+   the SPA shell can move document.baseURI. The boot function runs later
+   (vendor lazy-load → user opens mobile overlay), which in build mode
+   may be after an SPA nav — at which point "../graph-index.json" would
+   resolve against the wrong page and 404. Pinning here fixes the fetch
+   and keeps click-nav from slipping across subsequent navigations. */
+(function(){
+  var CFG = (typeof window !== 'undefined' && window.__zetlGraphConfig) || null;
+  if (!CFG || CFG.__zetlResolved) return;
+  try {
+    if ('root' in CFG) CFG.root = new URL(CFG.root, document.baseURI).href;
+    if (CFG.graphUrl) CFG.graphUrl = new URL(CFG.graphUrl, document.baseURI).href;
+  } catch (e) {}
+  CFG.__zetlResolved = true;
+})();
+
 window.__zetlBootGraph = function(){
   if (window.__zetlGraphBooted) return;
   window.__zetlGraphBooted = true;
@@ -11,6 +27,14 @@ window.__zetlBootGraph = function(){
   var ROOT = 'root' in CFG ? CFG.root : "";
   var INDEX_FILE = 'indexFile' in CFG ? CFG.indexFile : "index.html";
   var GRAPH_URL = 'graphUrl' in CFG ? CFG.graphUrl : "";
+  /* In build mode ROOT is relative to the initial page's location (`./`,
+     `../`, etc.). Resolve it once against the boot-time baseURI; later
+     click-navigations must not re-resolve against document.baseURI
+     because SPA pushState moves it, producing nested `/foo/bar/` paths
+     on the second click. */
+  var BASE_HREF;
+  try { BASE_HREF = new URL(ROOT, document.baseURI).href; }
+  catch (e) { BASE_HREF = document.baseURI; }
   var MODE_KEY = "zetl:graph:mode";
   var MODE_FALLBACK = "local";
 
@@ -495,7 +519,9 @@ window.__zetlBootGraph = function(){
         var isFullscreen = widget.getAttribute('data-placement') === 'fullscreen';
 
         function navigateToSlug(slug, original) {
-          var href = ROOT + slug + '/' + INDEX_FILE;
+          var href;
+          try { href = new URL(slug + '/' + INDEX_FILE, BASE_HREF).href; }
+          catch (e) { href = ROOT + slug + '/' + INDEX_FILE; }
           if (original && (original.metaKey || original.ctrlKey || original.shiftKey)) {
             window.open(href, '_blank', 'noopener');
             return;

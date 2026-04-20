@@ -437,43 +437,6 @@
       100% { background: transparent; }
     }
 
-    /* ── Mobile link-preview tooltip */
-    .wikilink-tooltip {
-      position: fixed;
-      left: 1rem; right: 1rem;
-      max-height: 60vh;
-      background: #fff;
-      border: 1px solid #d8d6ce;
-      border-radius: 8px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.18);
-      z-index: 50;
-      display: flex;
-      flex-direction: column;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.15s ease;
-    }
-    .wikilink-tooltip.tt-visible { opacity: 1; pointer-events: auto; }
-    .tt-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.75rem 1rem;
-      border-bottom: 1px solid #d8d6ce;
-      position: sticky; top: 0;
-      background: #fff;
-      border-radius: 8px 8px 0 0;
-    }
-    .tt-header a { font-weight: 600; font-size: 0.95rem; text-decoration: none; color: #2563eb; }
-    .tt-header a:hover { text-decoration: underline; }
-    .tt-close { background: none; border: none; font-size: 1.25rem; cursor: pointer; opacity: 0.5; padding: 0 0.25rem; color: #1a1a1a; }
-    .tt-close:hover { opacity: 1; }
-    .tt-body { padding: 0.75rem 1rem; overflow-y: auto; flex: 1; font-size: 0.85rem; line-height: 1.6; }
-    .tt-footer { padding: 0.5rem 1rem 0.75rem; border-top: 1px solid #d8d6ce; text-align: right; }
-    .tt-footer a { font-size: 0.8rem; font-weight: 500; color: #2563eb; text-decoration: none; }
-    .tt-footer a:hover { text-decoration: underline; }
-    @media (min-width: 1280px) { .wikilink-tooltip { display: none !important; } }
-
     {% block styles %}{% endblock %}
   </style>
 </head>
