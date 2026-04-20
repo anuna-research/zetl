@@ -67,10 +67,7 @@ pub const TEMPLATE_VARS_SIZE_CAP_BYTES: usize = 1024 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmitOutcome {
     /// First-time emission for this `hook_id`; value recorded.
-    Emitted {
-        bytes: usize,
-        top_level_keys: usize,
-    },
+    Emitted { bytes: usize, top_level_keys: usize },
     /// Same `hook_id` had a prior emission at `prior_stage`; the new
     /// value replaces the old wholesale (CON-3214). A warning is
     /// also recorded.
@@ -201,10 +198,7 @@ impl PageTemplateVars {
                 hook_id: hook_id.to_string(),
                 stage,
                 kind: WarningKind::DroppedOversize,
-                detail: format!(
-                    "{bytes} bytes exceeds {cap}-byte cap",
-                    cap = self.cap_bytes
-                ),
+                detail: format!("{bytes} bytes exceeds {cap}-byte cap", cap = self.cap_bytes),
             });
             return EmitOutcome::DroppedOversize {
                 bytes,
@@ -220,14 +214,10 @@ impl PageTemplateVars {
                     hook_id: hook_id.to_string(),
                     stage,
                     kind: WarningKind::OverwrittenByLaterStage,
-                    detail: format!(
-                        "replaces emission from stage '{prior_stage}'"
-                    ),
+                    detail: format!("replaces emission from stage '{prior_stage}'"),
                 });
-                self.entries.insert(
-                    hook_id.to_string(),
-                    PageEntry { vars, stage, bytes },
-                );
+                self.entries
+                    .insert(hook_id.to_string(), PageEntry { vars, stage, bytes });
                 EmitOutcome::OverwrittenByLaterStage {
                     prior_stage,
                     bytes,
@@ -235,10 +225,8 @@ impl PageTemplateVars {
                 }
             }
             None => {
-                self.entries.insert(
-                    hook_id.to_string(),
-                    PageEntry { vars, stage, bytes },
-                );
+                self.entries
+                    .insert(hook_id.to_string(), PageEntry { vars, stage, bytes });
                 EmitOutcome::Emitted {
                     bytes,
                     top_level_keys,
@@ -321,9 +309,7 @@ impl PageTemplateVars {
     pub fn merge_into_vault(&self, vault: &VaultTemplateVars) {
         let mut guard = vault.inner.lock().unwrap();
         for (id, entry) in &self.entries {
-            guard
-                .entries
-                .insert(id.clone(), entry.vars.clone());
+            guard.entries.insert(id.clone(), entry.vars.clone());
         }
     }
 }
@@ -568,9 +554,7 @@ mod tests {
 
         for (o, hook) in [(o_num, "n"), (o_arr, "a"), (o_str, "s")] {
             match o {
-                EmitOutcome::Emitted {
-                    top_level_keys, ..
-                } => {
+                EmitOutcome::Emitted { top_level_keys, .. } => {
                     assert_eq!(top_level_keys, 0, "hook={hook}");
                 }
                 other => panic!("hook={hook} unexpected {other:?}"),
@@ -741,11 +725,8 @@ mod tests {
         let mut env = minijinja::Environment::new();
         // Match the global autoescape rule zetl uses for .html templates.
         env.set_auto_escape_callback(|_| minijinja::AutoEscape::Html);
-        env.add_template(
-            "t.html",
-            "{{ page.ext.xss.note }}",
-        )
-        .unwrap();
+        env.add_template("t.html", "{{ page.ext.xss.note }}")
+            .unwrap();
 
         let rendered = env
             .get_template("t.html")
@@ -775,11 +756,8 @@ mod tests {
 
         let mut env = minijinja::Environment::new();
         env.set_undefined_behavior(minijinja::UndefinedBehavior::Chainable);
-        env.add_template(
-            "t.html",
-            "before|{{ page.ext.unknown.field }}|after",
-        )
-        .unwrap();
+        env.add_template("t.html", "before|{{ page.ext.unknown.field }}|after")
+            .unwrap();
 
         let rendered = env
             .get_template("t.html")

@@ -118,9 +118,18 @@ extension_id = "crossref"
     assert_eq!(entries.len(), 3, "three ecosystems: pandoc, mdbook, remark");
 
     // Canonical ordering in JSON.
-    assert_eq!(entries[0].get("id").and_then(|v| v.as_str()), Some("pandoc"));
-    assert_eq!(entries[1].get("id").and_then(|v| v.as_str()), Some("mdbook"));
-    assert_eq!(entries[2].get("id").and_then(|v| v.as_str()), Some("remark"));
+    assert_eq!(
+        entries[0].get("id").and_then(|v| v.as_str()),
+        Some("pandoc")
+    );
+    assert_eq!(
+        entries[1].get("id").and_then(|v| v.as_str()),
+        Some("mdbook")
+    );
+    assert_eq!(
+        entries[2].get("id").and_then(|v| v.as_str()),
+        Some("remark")
+    );
 
     for row in entries {
         let obj = row.as_object().unwrap();

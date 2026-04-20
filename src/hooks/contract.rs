@@ -454,9 +454,7 @@ pub fn validate_may_restructure(
         .enumerate()
     {
         if before_kind != after_kind {
-            observed.push(format!(
-                "block[{i}]: {before_kind} \u{2192} {after_kind}"
-            ));
+            observed.push(format!("block[{i}]: {before_kind} \u{2192} {after_kind}"));
         }
     }
     let depth_delta = b.max_depth as isize - a.max_depth as isize;
@@ -716,8 +714,8 @@ where
 mod tests {
     use super::*;
     use crate::hooks::ast::{
-        BlockQuote, Document, DocumentKind, Embed, Heading, List, ListItem, Paragraph,
-        Position, Text, Wikilink, AST_VERSION,
+        BlockQuote, Document, DocumentKind, Embed, Heading, List, ListItem, Paragraph, Position,
+        Text, Wikilink, AST_VERSION,
     };
 
     fn pos() -> Position {
@@ -782,10 +780,7 @@ mod tests {
             ContractSubReason::ExpansionBound.as_str(),
             "expansion_bound"
         );
-        assert_eq!(
-            format!("{}", ContractSubReason::Preserves),
-            "preserves"
-        );
+        assert_eq!(format!("{}", ContractSubReason::Preserves), "preserves");
     }
 
     // ── validate_preserves ─────────────────────────────────────────────
@@ -796,14 +791,7 @@ mod tests {
         // "empty (no enforcement)" row of TEST-3224's matrix.
         let input = doc(vec![para(vec![wikilink("A")])]);
         let output = doc(vec![]); // hook stripped everything
-        let v = validate_preserves(
-            Stage::Transform,
-            "hook",
-            "page",
-            &[],
-            &input,
-            &output,
-        );
+        let v = validate_preserves(Stage::Transform, "hook", "page", &[], &input, &output);
         assert!(v.is_empty());
     }
 
@@ -833,10 +821,7 @@ mod tests {
     #[test]
     fn preserves_multiple_types_flags_each_dropped() {
         // "multiple types (Wikilink + Embed + CodeBlock)" row.
-        let input = doc(vec![
-            para(vec![wikilink("A"), wikilink("B")]),
-            embed("X"),
-        ]);
+        let input = doc(vec![para(vec![wikilink("A"), wikilink("B")]), embed("X")]);
         let output = doc(vec![para(vec![text("x")])]); // dropped both wl and embed
         let preserves = vec![
             "Wikilink".to_string(),
@@ -853,10 +838,7 @@ mod tests {
         );
         // CodeBlock count is zero on both sides → no violation; the two
         // that dropped each produce one record.
-        let subs: Vec<&str> = v
-            .iter()
-            .map(|v| v.detail.as_str())
-            .collect();
+        let subs: Vec<&str> = v.iter().map(|v| v.detail.as_str()).collect();
         assert!(subs.contains(&"-2 Wikilink"), "got: {subs:?}");
         assert!(subs.contains(&"-1 Embed"), "got: {subs:?}");
         assert_eq!(v.len(), 2);
@@ -939,10 +921,7 @@ mod tests {
         let v = validate_may_restructure(Stage::PreParse, "joiner", "page", &before, &after);
         let v = v.expect("expected a restructure violation");
         assert_eq!(v.sub_reason, ContractSubReason::MayRestructure);
-        assert!(v
-            .observed
-            .iter()
-            .any(|o| o.contains("top-level blocks: 2")));
+        assert!(v.observed.iter().any(|o| o.contains("top-level blocks: 2")));
     }
 
     #[test]
@@ -1001,10 +980,7 @@ mod tests {
         })]);
         let v = validate_may_restructure(Stage::PreParse, "deep", "page", &before, &after);
         let v = v.expect("expected a depth-delta violation");
-        assert!(v
-            .observed
-            .iter()
-            .any(|o| o.contains("nesting depth")));
+        assert!(v.observed.iter().any(|o| o.contains("nesting depth")));
     }
 
     #[test]
@@ -1094,14 +1070,8 @@ mod tests {
     #[test]
     fn idempotence_passes_for_an_identity_hook() {
         let input = doc(vec![para(vec![text("x")])]);
-        let v = validate_idempotence(
-            Stage::Transform,
-            "identity",
-            "page",
-            input,
-            |d| Ok(d),
-        )
-        .unwrap();
+        let v =
+            validate_idempotence(Stage::Transform, "identity", "page", input, |d| Ok(d)).unwrap();
         assert!(v.is_none());
     }
 
@@ -1126,24 +1096,15 @@ mod tests {
                 ..d
             })
         };
-        let v = validate_idempotence(
-            Stage::Transform,
-            "wrapper",
-            "page",
-            input,
-            wrap,
-        )
-        .unwrap()
-        .expect("expected an idempotence violation");
+        let v = validate_idempotence(Stage::Transform, "wrapper", "page", input, wrap)
+            .unwrap()
+            .expect("expected an idempotence violation");
         assert_eq!(v.sub_reason, ContractSubReason::Idempotent);
         assert_eq!(v.detail, "f(f(x)) != f(x)");
         // First run: 1 blockquote. Second: still 1 blockquote at top
         // level — but depth doubled. Observed message must report the
         // shape of the difference, not just "mismatch".
-        assert!(v
-            .observed
-            .iter()
-            .any(|o| o.contains("canonicalise")));
+        assert!(v.observed.iter().any(|o| o.contains("canonicalise")));
     }
 
     #[test]
@@ -1155,14 +1116,8 @@ mod tests {
             d.position = Position::new(99, 99, 99, 99);
             Ok(d)
         };
-        let v = validate_idempotence(
-            Stage::Transform,
-            "shifter",
-            "page",
-            input,
-            pos_shifter,
-        )
-        .unwrap();
+        let v =
+            validate_idempotence(Stage::Transform, "shifter", "page", input, pos_shifter).unwrap();
         assert!(v.is_none());
     }
 
@@ -1225,8 +1180,7 @@ mod tests {
                 "net change: -4 Wikilink".into(),
             ],
         };
-        let d = viol
-            .to_diagnostic(r#"contract.preserves = ["Wikilink", "Embed"]"#);
+        let d = viol.to_diagnostic(r#"contract.preserves = ["Wikilink", "Embed"]"#);
         assert_eq!(d.class, DiagnosticClass::ContractViolation);
         let rendered = d.to_string();
         assert!(rendered.starts_with("[zetl] hook 'callouts'"));
@@ -1255,7 +1209,11 @@ mod tests {
 
     // ── run_property_test ──────────────────────────────────────────────
 
-    fn make_contract(preserves: Vec<&str>, idempotent: bool, may_restructure: bool) -> ContractDecl {
+    fn make_contract(
+        preserves: Vec<&str>,
+        idempotent: bool,
+        may_restructure: bool,
+    ) -> ContractDecl {
         ContractDecl {
             preserves: preserves.into_iter().map(String::from).collect(),
             idempotent,
@@ -1274,8 +1232,7 @@ mod tests {
             input: doc(vec![para(vec![wikilink("A")]), embed("X")]),
             input_size: 0,
         };
-        let report =
-            run_property_test(&case, "identity", "page", |d| Ok(d)).unwrap();
+        let report = run_property_test(&case, "identity", "page", |d| Ok(d)).unwrap();
         assert!(report.passed(), "expected empty report, got {:?}", report);
         assert_eq!(report.case_name, "identity-passes");
     }
@@ -1319,8 +1276,7 @@ mod tests {
         })
         .unwrap();
         assert!(!report.passed());
-        let subs: Vec<ContractSubReason> =
-            report.violations.iter().map(|v| v.sub_reason).collect();
+        let subs: Vec<ContractSubReason> = report.violations.iter().map(|v| v.sub_reason).collect();
         assert!(subs.contains(&ContractSubReason::Preserves));
         assert!(subs.contains(&ContractSubReason::Idempotent));
     }
@@ -1408,11 +1364,7 @@ mod tests {
         // Output serialises to much more than 12 bytes; the bound is
         // 1.2x so this trips.
         let report = run_property_test(&case, "h", "p", |d| Ok(d)).unwrap();
-        let subs: Vec<_> = report
-            .violations
-            .iter()
-            .map(|v| v.sub_reason)
-            .collect();
+        let subs: Vec<_> = report.violations.iter().map(|v| v.sub_reason).collect();
         assert!(subs.contains(&ContractSubReason::ExpansionBound));
     }
 

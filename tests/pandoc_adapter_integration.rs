@@ -241,8 +241,10 @@ fn test_3303n_native_mode_diagnostic_on_pandoc_citeproc_promotion() {
         invocation.argv
     );
     assert!(
-        invocation.argv.windows(2).any(|w| w
-            == ["--from".to_string(), "json".to_string()]),
+        invocation
+            .argv
+            .windows(2)
+            .any(|w| w == ["--from".to_string(), "json".to_string()]),
         "native mode must pipe pandoc-types JSON in/out, got {:?}",
         invocation.argv
     );

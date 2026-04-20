@@ -21,9 +21,7 @@
 
 use std::ops::Range;
 
-use pulldown_cmark::{
-    CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd,
-};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 use super::{
     Block, BlockQuote, Code, CodeBlock, Document, DocumentKind, Embed, Emphasis, Frontmatter,
@@ -107,7 +105,11 @@ impl<'a> LineMap<'a> {
         let starts: Vec<usize> = std::iter::once(0)
             .chain(body.match_indices('\n').map(|(i, _)| i + 1))
             .collect();
-        Self { body, starts, fm_lines }
+        Self {
+            body,
+            starts,
+            fm_lines,
+        }
     }
 
     fn total_lines(&self) -> usize {
@@ -117,10 +119,15 @@ impl<'a> LineMap<'a> {
     /// Map a *byte* offset into the body to a 1-indexed (line, col).
     fn offset(&self, byte: usize) -> (u32, u32) {
         let byte = byte.min(self.body.len());
-        let line_idx = self.starts.partition_point(|&s| s <= byte).saturating_sub(1);
+        let line_idx = self
+            .starts
+            .partition_point(|&s| s <= byte)
+            .saturating_sub(1);
         let line_start = self.starts[line_idx];
         let col_bytes = byte - line_start;
-        let col_chars = self.body[line_start..line_start + col_bytes].chars().count();
+        let col_chars = self.body[line_start..line_start + col_bytes]
+            .chars()
+            .count();
         let line = (line_idx + 1 + self.fm_lines) as u32;
         let col = (col_chars + 1) as u32;
         (line.max(1), col.max(1))
@@ -196,7 +203,10 @@ struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     fn new(line_map: &'a LineMap<'a>) -> Self {
-        Self { line_map, stack: vec![Frame::Root(Vec::new())] }
+        Self {
+            line_map,
+            stack: vec![Frame::Root(Vec::new())],
+        }
     }
 
     fn handle(&mut self, event: Event<'_>, range: Range<usize>) {
@@ -264,7 +274,8 @@ impl<'a> Builder<'a> {
         match tag {
             Tag::Paragraph => self.stack.push(Frame::Paragraph(pos, Vec::new())),
             Tag::Heading { level, .. } => {
-                self.stack.push(Frame::Heading(pos, heading_level(level), Vec::new()))
+                self.stack
+                    .push(Frame::Heading(pos, heading_level(level), Vec::new()))
             }
             Tag::BlockQuote(_) => self.stack.push(Frame::BlockQuote(pos, Vec::new())),
             Tag::CodeBlock(kind) => {
@@ -273,7 +284,11 @@ impl<'a> Builder<'a> {
                     CodeBlockKind::Fenced(info_cow) => {
                         let info_str = info_cow.to_string();
                         let lang = info_str.split_whitespace().next().map(str::to_owned);
-                        let info = if info_str.is_empty() { None } else { Some(info_str) };
+                        let info = if info_str.is_empty() {
+                            None
+                        } else {
+                            Some(info_str)
+                        };
                         (true, info, lang)
                     }
                 };
@@ -285,7 +300,10 @@ impl<'a> Builder<'a> {
                     text: String::new(),
                 });
             }
-            Tag::HtmlBlock => self.stack.push(Frame::HtmlBlock { position: pos, text: String::new() }),
+            Tag::HtmlBlock => self.stack.push(Frame::HtmlBlock {
+                position: pos,
+                text: String::new(),
+            }),
             Tag::List(start) => self.stack.push(Frame::List {
                 position: pos,
                 ordered: start.is_some(),
@@ -300,16 +318,28 @@ impl<'a> Builder<'a> {
             }),
             Tag::Emphasis => self.stack.push(Frame::Emphasis(pos, Vec::new())),
             Tag::Strong => self.stack.push(Frame::Strong(pos, Vec::new())),
-            Tag::Link { dest_url, title, .. } => self.stack.push(Frame::Link {
+            Tag::Link {
+                dest_url, title, ..
+            } => self.stack.push(Frame::Link {
                 position: pos,
                 url: dest_url.to_string(),
-                title: if title.is_empty() { None } else { Some(title.to_string()) },
+                title: if title.is_empty() {
+                    None
+                } else {
+                    Some(title.to_string())
+                },
                 children: Vec::new(),
             }),
-            Tag::Image { dest_url, title, .. } => self.stack.push(Frame::Image {
+            Tag::Image {
+                dest_url, title, ..
+            } => self.stack.push(Frame::Image {
                 position: pos,
                 url: dest_url.to_string(),
-                title: if title.is_empty() { None } else { Some(title.to_string()) },
+                title: if title.is_empty() {
+                    None
+                } else {
+                    Some(title.to_string())
+                },
                 alt_buf: String::new(),
                 children: Vec::new(),
             }),
@@ -328,7 +358,9 @@ impl<'a> Builder<'a> {
     }
 
     fn end_tag(&mut self, _end: TagEnd, _range: Range<usize>) {
-        let Some(frame) = self.stack.pop() else { return };
+        let Some(frame) = self.stack.pop() else {
+            return;
+        };
         match frame {
             Frame::Root(children) => {
                 // Shouldn't happen in balanced input; restore and stop.
@@ -338,16 +370,29 @@ impl<'a> Builder<'a> {
                 if let Some(embed) = detect_embed_paragraph(&inlines, position) {
                     self.push_block(Block::Embed(embed));
                 } else {
-                    self.push_block(Block::Paragraph(Paragraph { position, children: inlines }));
+                    self.push_block(Block::Paragraph(Paragraph {
+                        position,
+                        children: inlines,
+                    }));
                 }
             }
             Frame::Heading(position, level, children) => {
-                self.push_block(Block::Heading(Heading { position, level, children }));
+                self.push_block(Block::Heading(Heading {
+                    position,
+                    level,
+                    children,
+                }));
             }
             Frame::BlockQuote(position, children) => {
                 self.push_block(Block::BlockQuote(BlockQuote { position, children }));
             }
-            Frame::List { position, ordered, start, items, loose } => {
+            Frame::List {
+                position,
+                ordered,
+                start,
+                items,
+                loose,
+            } => {
                 self.push_block(Block::List(List {
                     position,
                     ordered,
@@ -356,7 +401,11 @@ impl<'a> Builder<'a> {
                     children: items,
                 }));
             }
-            Frame::Item { position, mut blocks, pending_inlines } => {
+            Frame::Item {
+                position,
+                mut blocks,
+                pending_inlines,
+            } => {
                 // Tight-list items may accumulate inlines without a wrapping
                 // Paragraph event from pulldown-cmark; wrap them now so the
                 // schema's `children: Block[]` constraint holds.
@@ -376,10 +425,26 @@ impl<'a> Builder<'a> {
             Frame::Strong(position, children) => {
                 self.push_inline(Inline::Strong(Strong { position, children }));
             }
-            Frame::Link { position, url, title, children } => {
-                self.push_inline(Inline::Link(Link { position, url, title, children }));
+            Frame::Link {
+                position,
+                url,
+                title,
+                children,
+            } => {
+                self.push_inline(Inline::Link(Link {
+                    position,
+                    url,
+                    title,
+                    children,
+                }));
             }
-            Frame::Image { position, url, title, alt_buf, children } => {
+            Frame::Image {
+                position,
+                url,
+                title,
+                alt_buf,
+                children,
+            } => {
                 self.push_inline(Inline::Image(Image {
                     position,
                     url,
@@ -388,10 +453,20 @@ impl<'a> Builder<'a> {
                     children,
                 }));
             }
-            Frame::CodeBlock { position, fenced, info, lang, text } => {
+            Frame::CodeBlock {
+                position,
+                fenced,
+                info,
+                lang,
+                text,
+            } => {
                 let lang_key = lang.as_deref().unwrap_or("");
                 if lang_key == "spl" {
-                    self.push_block(Block::SplBlock(SplBlock { position, info, text }));
+                    self.push_block(Block::SplBlock(SplBlock {
+                        position,
+                        info,
+                        text,
+                    }));
                 } else {
                     self.push_block(Block::CodeBlock(CodeBlock {
                         position,
@@ -413,7 +488,12 @@ impl<'a> Builder<'a> {
         match self.stack.last_mut() {
             Some(Frame::Root(children)) => children.push(block),
             Some(Frame::BlockQuote(_, children)) => children.push(block),
-            Some(Frame::Item { blocks, pending_inlines, position, .. }) => {
+            Some(Frame::Item {
+                blocks,
+                pending_inlines,
+                position,
+                ..
+            }) => {
                 // Starting a Paragraph inside the item indicates a loose list;
                 // record that up-stack by flushing any pending inlines first.
                 if !pending_inlines.is_empty() {
@@ -443,16 +523,24 @@ impl<'a> Builder<'a> {
             | Some(Frame::Heading(_, _, inlines))
             | Some(Frame::Emphasis(_, inlines))
             | Some(Frame::Strong(_, inlines))
-            | Some(Frame::Link { children: inlines, .. }) => {
+            | Some(Frame::Link {
+                children: inlines, ..
+            }) => {
                 inlines.push(inline);
             }
-            Some(Frame::Image { children: inlines, alt_buf, .. }) => {
+            Some(Frame::Image {
+                children: inlines,
+                alt_buf,
+                ..
+            }) => {
                 if let Inline::Text(t) = &inline {
                     alt_buf.push_str(&t.text);
                 }
                 inlines.push(inline);
             }
-            Some(Frame::Item { pending_inlines, .. }) => {
+            Some(Frame::Item {
+                pending_inlines, ..
+            }) => {
                 pending_inlines.push(inline);
             }
             _ => {}
@@ -634,7 +722,10 @@ fn split_wikilinks(s: &str, position: Position) -> Vec<Inline> {
             // in the text when we can't promote, so `![[foo]]` embedded
             // inline (rare) round-trips visually.
             if is_embed {
-                out.push(Inline::Text(Text { position, text: "!".into() }));
+                out.push(Inline::Text(Text {
+                    position,
+                    text: "!".into(),
+                }));
             }
             out.push(wl);
             i = close_idx + 2;
@@ -737,11 +828,17 @@ mod tests {
     #[test]
     fn wikilink_block_id_fragment() {
         let doc = parse_markdown("see [[Target#^abc]]\n");
-        let Block::Paragraph(p) = &doc.children[0] else { panic!() };
-        let wl = p.children.iter().find_map(|i| match i {
-            Inline::Wikilink(w) => Some(w),
-            _ => None,
-        }).unwrap();
+        let Block::Paragraph(p) = &doc.children[0] else {
+            panic!()
+        };
+        let wl = p
+            .children
+            .iter()
+            .find_map(|i| match i {
+                Inline::Wikilink(w) => Some(w),
+                _ => None,
+            })
+            .unwrap();
         assert_eq!(wl.target, "Target");
         assert_eq!(wl.block_id.as_deref(), Some("abc"));
         assert!(wl.heading.is_none());
@@ -786,7 +883,9 @@ mod tests {
     fn nested_list_keeps_block_children() {
         let src = "- one\n- two\n";
         let doc = parse_markdown(src);
-        let Block::List(list) = &doc.children[0] else { panic!("expected list") };
+        let Block::List(list) = &doc.children[0] else {
+            panic!("expected list")
+        };
         assert!(!list.ordered);
         assert_eq!(list.children.len(), 2);
     }
@@ -795,7 +894,9 @@ mod tests {
     fn ordered_list_start_is_recorded() {
         let src = "3. one\n4. two\n";
         let doc = parse_markdown(src);
-        let Block::List(list) = &doc.children[0] else { panic!() };
+        let Block::List(list) = &doc.children[0] else {
+            panic!()
+        };
         assert!(list.ordered);
         assert_eq!(list.start, Some(3));
     }
@@ -803,7 +904,9 @@ mod tests {
     #[test]
     fn blockquote_preserves_inner_paragraphs() {
         let doc = parse_markdown("> hello\n> world\n");
-        let Block::BlockQuote(bq) = &doc.children[0] else { panic!() };
+        let Block::BlockQuote(bq) = &doc.children[0] else {
+            panic!()
+        };
         assert!(!bq.children.is_empty());
     }
 
@@ -816,16 +919,24 @@ mod tests {
     #[test]
     fn emphasis_and_strong_nest_correctly() {
         let doc = parse_markdown("**bold *em***\n");
-        let Block::Paragraph(p) = &doc.children[0] else { panic!() };
-        let Inline::Strong(s) = &p.children[0] else { panic!() };
+        let Block::Paragraph(p) = &doc.children[0] else {
+            panic!()
+        };
+        let Inline::Strong(s) = &p.children[0] else {
+            panic!()
+        };
         assert!(matches!(s.children.last(), Some(Inline::Emphasis(_))));
     }
 
     #[test]
     fn link_preserves_url_title_and_children() {
         let doc = parse_markdown("[home](https://e.x \"Title\")\n");
-        let Block::Paragraph(p) = &doc.children[0] else { panic!() };
-        let Inline::Link(l) = &p.children[0] else { panic!() };
+        let Block::Paragraph(p) = &doc.children[0] else {
+            panic!()
+        };
+        let Inline::Link(l) = &p.children[0] else {
+            panic!()
+        };
         assert_eq!(l.url, "https://e.x");
         assert_eq!(l.title.as_deref(), Some("Title"));
     }
@@ -833,8 +944,12 @@ mod tests {
     #[test]
     fn image_alt_text_populated() {
         let doc = parse_markdown("![cat](cat.png)\n");
-        let Block::Paragraph(p) = &doc.children[0] else { panic!() };
-        let Inline::Image(img) = &p.children[0] else { panic!() };
+        let Block::Paragraph(p) = &doc.children[0] else {
+            panic!()
+        };
+        let Inline::Image(img) = &p.children[0] else {
+            panic!()
+        };
         assert_eq!(img.url, "cat.png");
         assert_eq!(img.alt, "cat");
     }
@@ -861,7 +976,9 @@ mod tests {
     #[test]
     fn wikilink_with_unclosed_brackets_is_left_as_text() {
         let doc = parse_markdown("text [[unclosed\n");
-        let Block::Paragraph(p) = &doc.children[0] else { panic!() };
+        let Block::Paragraph(p) = &doc.children[0] else {
+            panic!()
+        };
         assert!(matches!(p.children.first(), Some(Inline::Text(_))));
         assert!(p.children.iter().all(|i| !matches!(i, Inline::Wikilink(_))));
     }

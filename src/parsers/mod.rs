@@ -353,10 +353,9 @@ impl std::fmt::Display for ParseConfigError {
             ParseConfigError::Malformed(e) => {
                 write!(f, "malformed [parse] config in .zetl/config.toml: {e}")
             }
-            ParseConfigError::BadPattern { pattern, detail } => write!(
-                f,
-                "invalid [[parse.rule]] pattern '{pattern}': {detail}"
-            ),
+            ParseConfigError::BadPattern { pattern, detail } => {
+                write!(f, "invalid [[parse.rule]] pattern '{pattern}': {detail}")
+            }
         }
     }
 }
@@ -432,11 +431,9 @@ pub enum ParseError {
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseError::UnknownParser { name, known } => write!(
-                f,
-                "unknown parser '{name}' (known: [{}])",
-                known.join(", ")
-            ),
+            ParseError::UnknownParser { name, known } => {
+                write!(f, "unknown parser '{name}' (known: [{}])", known.join(", "))
+            }
             ParseError::RuntimeUnavailable { parser, hint } => {
                 write!(f, "parser '{parser}' is unavailable: {hint}")
             }

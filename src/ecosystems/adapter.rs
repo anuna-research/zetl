@@ -376,11 +376,7 @@ impl PluginResponse {
 
     /// Convenience helper for adapter internals: build an `Error`
     /// variant from the three most-used fields.
-    pub fn error(
-        reason: impl Into<String>,
-        detail: impl Into<String>,
-        duration: Duration,
-    ) -> Self {
+    pub fn error(reason: impl Into<String>, detail: impl Into<String>, duration: Duration) -> Self {
         PluginResponse::Error {
             reason: reason.into(),
             detail: detail.into(),
@@ -452,7 +448,9 @@ pub struct ConformanceReport {
 impl ConformanceReport {
     /// `true` when every check passed.
     pub fn is_ok(&self) -> bool {
-        self.checks.values().all(|c| matches!(c, CheckOutcome::Pass))
+        self.checks
+            .values()
+            .all(|c| matches!(c, CheckOutcome::Pass))
     }
 
     /// Iterator over failing checks — primarily used by the caller's
@@ -580,10 +578,7 @@ pub fn run_conformance<A: EcosystemAdapter>(
     };
     checks.insert("invoke_plugin_identity".into(), invoke_check);
 
-    ConformanceReport {
-        adapter_id,
-        checks,
-    }
+    ConformanceReport { adapter_id, checks }
 }
 
 fn run_invoke_conformance<A: EcosystemAdapter>(
@@ -1030,10 +1025,7 @@ mod tests {
             fn supported_stages(&self) -> &[Stage] {
                 &[Stage::Transform]
             }
-            fn translate_to_foreign(
-                &self,
-                _doc: &Document,
-            ) -> Result<Value, TranslationError> {
+            fn translate_to_foreign(&self, _doc: &Document) -> Result<Value, TranslationError> {
                 Err(TranslationError::to_foreign(AstType::ZetlExt, "boom"))
             }
             fn translate_from_foreign(
@@ -1073,10 +1065,7 @@ mod tests {
 
     #[test]
     fn plugin_manifest_default_timeout_is_thirty_seconds() {
-        assert_eq!(
-            PluginManifest::default_timeout(),
-            Duration::from_secs(30)
-        );
+        assert_eq!(PluginManifest::default_timeout(), Duration::from_secs(30));
     }
 
     #[test]
@@ -1086,4 +1075,3 @@ mod tests {
         assert_eq!(adapter.ast_type(), AstType::ZetlExt);
     }
 }
-

@@ -108,7 +108,10 @@ fn missing_runtime_yields_runtime_absence_diagnostic_with_hint() {
     assert_eq!(diag.class, DiagnosticClass::RuntimeAbsence);
     assert!(diag.summary.contains("pandoc"));
     assert!(!diag.context.is_empty(), "context must name the binary");
-    assert!(!diag.observed.is_empty(), "observed must include probe outcome");
+    assert!(
+        !diag.observed.is_empty(),
+        "observed must include probe outcome"
+    );
     assert!(diag.cause.is_some(), "cause line is mandatory");
     let hint = diag.hint.as_deref().unwrap_or("");
     assert!(hint.contains("pandoc"), "hint must reference the binary");
@@ -188,8 +191,8 @@ fn enforce_required_rejects_unknown_ecosystem_id() {
             version: "v18.0.0".into(),
         },
     );
-    let diag = enforce_required(&report, &["djot".into()])
-        .expect_err("unknown ecosystem id must error");
+    let diag =
+        enforce_required(&report, &["djot".into()]).expect_err("unknown ecosystem id must error");
     assert_eq!(diag.class, DiagnosticClass::RuntimeAbsence);
     assert!(diag.summary.contains("djot"));
 }
@@ -235,17 +238,8 @@ fn synthetic_report(
     let mut entries: BTreeMap<&'static str, RuntimeStatus> = BTreeMap::new();
     // Look the ids up via `by_id` so the test breaks loudly if the
     // registry's canonical id strings drift.
-    entries.insert(
-        by_id("pandoc").expect("registry has pandoc").id,
-        pandoc,
-    );
-    entries.insert(
-        by_id("mdbook").expect("registry has mdbook").id,
-        mdbook,
-    );
-    entries.insert(
-        by_id("remark").expect("registry has remark").id,
-        remark,
-    );
+    entries.insert(by_id("pandoc").expect("registry has pandoc").id, pandoc);
+    entries.insert(by_id("mdbook").expect("registry has mdbook").id, mdbook);
+    entries.insert(by_id("remark").expect("registry has remark").id, remark);
     EcosystemDetectionReport { entries }
 }

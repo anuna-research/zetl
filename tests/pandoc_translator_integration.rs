@@ -95,13 +95,10 @@ fn paragraph(children: Vec<Inline>) -> Block {
 /// Look up a pandoc Attr 3-tuple's attr map by key. The Attr shape is
 /// `[id, [classes...], [[k,v], ...]]`.
 fn attr_get<'a>(attr: &'a serde_json::Value, key: &str) -> Option<&'a str> {
-    attr.get(2)?
-        .as_array()?
-        .iter()
-        .find_map(|pair| {
-            let arr = pair.as_array()?;
-            (arr.first()?.as_str()? == key).then_some(arr.get(1)?.as_str()?)
-        })
+    attr.get(2)?.as_array()?.iter().find_map(|pair| {
+        let arr = pair.as_array()?;
+        (arr.first()?.as_str()? == key).then_some(arr.get(1)?.as_str()?)
+    })
 }
 
 /// Extract the `classes` array from an Attr 3-tuple.
@@ -474,10 +471,7 @@ fn pandoc_root_envelope_carries_zetl_ast_version_marker() {
     assert!(pandoc["meta"].is_object());
     assert!(pandoc["blocks"].is_array());
     assert_eq!(pandoc["meta"]["zetl-ast-version"]["t"], "MetaInlines");
-    assert_eq!(
-        pandoc["meta"]["zetl-ast-version"]["c"][0]["c"],
-        AST_VERSION
-    );
+    assert_eq!(pandoc["meta"]["zetl-ast-version"]["c"][0]["c"], AST_VERSION);
 }
 
 /// Per REQ-3307, the translator declares `AstType::PandocExt` — a

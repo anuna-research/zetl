@@ -228,22 +228,14 @@ fn req_3205_canonical_examples_via_manifest() {
             json!({ "frontmatter": { "extensions": { "tasks": false } } }),
             false,
         ),
-        (
-            r#"word_count > 500"#,
-            json!({ "word_count": 742 }),
-            true,
-        ),
+        (r#"word_count > 500"#, json!({ "word_count": 742 }), true),
         (
             r#"title matches "^Daily.*""#,
             json!({ "title": "Daily log" }),
             true,
         ),
         // Type-strict: string "500" is not ordered against number 500.
-        (
-            r#"word_count > 500"#,
-            json!({ "word_count": "500" }),
-            false,
-        ),
+        (r#"word_count > 500"#, json!({ "word_count": "500" }), false),
     ] {
         let manifest_src = format!(
             r#"
@@ -259,11 +251,7 @@ frontmatter_where = {}
             frontmatter: &fm,
             text: "",
         };
-        assert_eq!(
-            selector_passes(&s, &inp),
-            expect,
-            "expr={expr:?} fm={fm}"
-        );
+        assert_eq!(selector_passes(&s, &inp), expect, "expr={expr:?} fm={fm}");
     }
 }
 

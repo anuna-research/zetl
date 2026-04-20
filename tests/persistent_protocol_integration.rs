@@ -31,9 +31,7 @@ use tempfile::TempDir;
 use zetl::hooks::ast::{
     Block, Document, DocumentKind, Inline, Paragraph, Position, Text, AST_VERSION,
 };
-use zetl::hooks::persistent::{
-    HookMessage, PersistentHook, ProtocolError, DEFAULT_SHUTDOWN_GRACE,
-};
+use zetl::hooks::persistent::{HookMessage, PersistentHook, ProtocolError, DEFAULT_SHUTDOWN_GRACE};
 use zetl::hooks::pipeline::Stage;
 
 fn python3_available() -> bool {
@@ -112,12 +110,8 @@ fn full_lifecycle_typed_ast_round_trip() {
     let tmp = TempDir::new().unwrap();
     let hook_path = write_hook(tmp.path(), "echo.py", ECHO_AST_BODY);
 
-    let mut hook = PersistentHook::spawn(
-        Command::new(&hook_path),
-        "echo-ast",
-        Stage::Transform,
-    )
-    .unwrap();
+    let mut hook =
+        PersistentHook::spawn(Command::new(&hook_path), "echo-ast", Stage::Transform).unwrap();
     assert_eq!(hook.handshake().hook, "echo-ast");
 
     // init
@@ -128,10 +122,17 @@ fn full_lifecycle_typed_ast_round_trip() {
     let ast = build_500_node_ast();
     let payload = serde_json::to_value(&ast).unwrap();
     let resp = hook
-        .run("daily/today", json!({"title":"Today"}), payload.clone(), 1_000)
+        .run(
+            "daily/today",
+            json!({"title":"Today"}),
+            payload.clone(),
+            1_000,
+        )
         .unwrap();
     match resp {
-        HookMessage::Result { payload: returned, .. } => {
+        HookMessage::Result {
+            payload: returned, ..
+        } => {
             let doc: Document = serde_json::from_value(returned).unwrap();
             assert_eq!(doc, ast);
         }
@@ -162,12 +163,8 @@ fn protocol_overhead_per_run_is_fast() {
 
     let tmp = TempDir::new().unwrap();
     let hook_path = write_hook(tmp.path(), "echo.py", ECHO_AST_BODY);
-    let mut hook = PersistentHook::spawn(
-        Command::new(&hook_path),
-        "echo-ast",
-        Stage::Transform,
-    )
-    .unwrap();
+    let mut hook =
+        PersistentHook::spawn(Command::new(&hook_path), "echo-ast", Stage::Transform).unwrap();
     let _ = hook.init(json!({}), 1_000).unwrap();
 
     let ast = build_500_node_ast();
@@ -192,10 +189,7 @@ fn protocol_overhead_per_run_is_fast() {
     let p95 = samples[(samples.len() as f64 * 0.95) as usize];
     let p50 = samples[samples.len() / 2];
 
-    eprintln!(
-        "persistent protocol p50={:?} p95={:?}",
-        p50, p95
-    );
+    eprintln!("persistent protocol p50={:?} p95={:?}", p50, p95);
 
     // Hard-cap at the spec budget (10 ms) so the gate matches NFR-3207
     // regardless of host. Loopback Python echo on any modern CI worker
@@ -208,9 +202,7 @@ fn protocol_overhead_per_run_is_fast() {
     // fail — flaky CI hosts should not block the build on a perf
     // rule-of-thumb. The strict gate lives in NFR-gates-032.
     if p95 > Duration::from_micros(1_500) {
-        eprintln!(
-            "WARN: persistent protocol p95 = {p95:?} exceeds task internal budget of 1.5ms"
-        );
+        eprintln!("WARN: persistent protocol p95 = {p95:?} exceeds task internal budget of 1.5ms");
     }
 }
 
@@ -254,10 +246,7 @@ while True:
     }
     // All instances dropped — no stubborn.py descendants should remain.
     std::thread::sleep(Duration::from_millis(200));
-    let out = Command::new("pgrep")
-        .arg("-f")
-        .arg("stubborn.py")
-        .output();
+    let out = Command::new("pgrep").arg("-f").arg("stubborn.py").output();
     if let Ok(out) = out {
         let listed = String::from_utf8_lossy(&out.stdout);
         // pgrep exits 1 with empty stdout when no processes match.
@@ -309,12 +298,8 @@ for line in sys.stdin:
 "#;
     let hook_path = write_hook(tmp.path(), "echo-init.py", hook_body);
 
-    let mut hook = PersistentHook::spawn(
-        Command::new(&hook_path),
-        "echo-init",
-        Stage::Transform,
-    )
-    .unwrap();
+    let mut hook =
+        PersistentHook::spawn(Command::new(&hook_path), "echo-init", Stage::Transform).unwrap();
 
     let init = hook.init(json!({}), 1_000).unwrap();
     match init {
@@ -370,12 +355,8 @@ for line in sys.stdin:
 "#,
     );
 
-    let mut hook = PersistentHook::spawn(
-        Command::new(&hook_path),
-        "partial",
-        Stage::Transform,
-    )
-    .unwrap();
+    let mut hook =
+        PersistentHook::spawn(Command::new(&hook_path), "partial", Stage::Transform).unwrap();
 
     match hook.run("p1", json!({}), json!({}), 1_000) {
         Err(ProtocolError::HookError { reason, .. }) => assert_eq!(reason, "first"),

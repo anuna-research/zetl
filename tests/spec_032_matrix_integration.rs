@@ -44,8 +44,7 @@ struct MatrixRow {
 }
 
 fn read_spec() -> String {
-    std::fs::read_to_string(SPEC_PATH)
-        .unwrap_or_else(|e| panic!("cannot read {SPEC_PATH}: {e}"))
+    std::fs::read_to_string(SPEC_PATH).unwrap_or_else(|e| panic!("cannot read {SPEC_PATH}: {e}"))
 }
 
 /// Return the inclusive-start / exclusive-end line indices of §14.
@@ -61,10 +60,7 @@ fn traceability_section(src: &str) -> (usize, usize) {
             break;
         }
     }
-    (
-        start.expect("SPEC-032 §14 header `## 14. ` not found"),
-        end,
-    )
+    (start.expect("SPEC-032 §14 header `## 14. ` not found"), end)
 }
 
 /// Normalise one cell-token into a canonical `TEST-XXXX[-suffix]`

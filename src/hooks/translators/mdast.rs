@@ -131,23 +131,14 @@ fn block_to_mdast(block: &Block) -> Value {
             obj.insert("position".into(), position_to_mdast(c.position));
             obj.insert(
                 "lang".into(),
-                c.lang
-                    .clone()
-                    .map(Value::String)
-                    .unwrap_or(Value::Null),
+                c.lang.clone().map(Value::String).unwrap_or(Value::Null),
             );
             obj.insert(
                 "meta".into(),
-                c.info
-                    .clone()
-                    .map(Value::String)
-                    .unwrap_or(Value::Null),
+                c.info.clone().map(Value::String).unwrap_or(Value::Null),
             );
             obj.insert("value".into(), Value::String(c.text.clone()));
-            obj.insert(
-                "zetl_fenced".into(),
-                Value::Bool(c.fenced),
-            );
+            obj.insert("zetl_fenced".into(), Value::Bool(c.fenced));
             Value::Object(obj)
         }
         Block::ThematicBreak(t) => json!({
@@ -169,10 +160,7 @@ fn block_to_mdast(block: &Block) -> Value {
             obj.insert("lang".into(), Value::String("spl".into()));
             obj.insert(
                 "meta".into(),
-                s.info
-                    .clone()
-                    .map(Value::String)
-                    .unwrap_or(Value::Null),
+                s.info.clone().map(Value::String).unwrap_or(Value::Null),
             );
             obj.insert("value".into(), Value::String(s.text.clone()));
             obj.insert("zetl_spl".into(), Value::Bool(true));
@@ -285,24 +273,15 @@ fn wikilink_to_mdast(w: &Wikilink) -> Value {
     let mut data = serde_json::Map::new();
     data.insert(
         "alias".into(),
-        w.alias
-            .clone()
-            .map(Value::String)
-            .unwrap_or(Value::Null),
+        w.alias.clone().map(Value::String).unwrap_or(Value::Null),
     );
     data.insert(
         "heading".into(),
-        w.heading
-            .clone()
-            .map(Value::String)
-            .unwrap_or(Value::Null),
+        w.heading.clone().map(Value::String).unwrap_or(Value::Null),
     );
     data.insert(
         "block_id".into(),
-        w.block_id
-            .clone()
-            .map(Value::String)
-            .unwrap_or(Value::Null),
+        w.block_id.clone().map(Value::String).unwrap_or(Value::Null),
     );
     json!({
         "type": MDAST_WIKILINK_TYPE,
@@ -317,17 +296,11 @@ fn embed_to_mdast(e: &Embed) -> Value {
     data.insert("embed".into(), Value::Bool(true));
     data.insert(
         "heading".into(),
-        e.heading
-            .clone()
-            .map(Value::String)
-            .unwrap_or(Value::Null),
+        e.heading.clone().map(Value::String).unwrap_or(Value::Null),
     );
     data.insert(
         "block_id".into(),
-        e.block_id
-            .clone()
-            .map(Value::String)
-            .unwrap_or(Value::Null),
+        e.block_id.clone().map(Value::String).unwrap_or(Value::Null),
     );
     json!({
         "type": MDAST_WIKILINK_TYPE,
@@ -362,7 +335,10 @@ fn mdast_to_doc(v: Value) -> Result<Document, TranslationError> {
         Some(other) => {
             return Err(TranslationError::from_foreign(
                 AstType::MdastExt,
-                format!("frontmatter must be an object, got {:?}", value_kind(&other)),
+                format!(
+                    "frontmatter must be an object, got {:?}",
+                    value_kind(&other)
+                ),
             ))
         }
     };
@@ -438,10 +414,7 @@ fn mdast_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
                 .remove("depth")
                 .and_then(|v| v.as_u64())
                 .ok_or_else(|| {
-                    TranslationError::from_foreign(
-                        AstType::MdastExt,
-                        "heading missing 'depth'",
-                    )
+                    TranslationError::from_foreign(AstType::MdastExt, "heading missing 'depth'")
                 })? as u8;
             let children = take_inline_children(&mut obj)?;
             Ok(Some(Block::Heading(Heading {
@@ -468,7 +441,10 @@ fn mdast_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             let tight = !spread;
-            let start = obj.remove("start").and_then(|v| v.as_u64()).map(|n| n as u32);
+            let start = obj
+                .remove("start")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32);
             let children_val = obj.remove("children").unwrap_or(Value::Array(Vec::new()));
             let children = array_or_empty(children_val)?
                 .into_iter()
@@ -613,7 +589,7 @@ fn mdast_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
                 .unwrap_or_default();
             let children = obj
                 .remove("zetl_children")
-                .map(|v| array_or_empty(v))
+                .map(array_or_empty)
                 .transpose()?
                 .map(|arr| {
                     arr.into_iter()
@@ -762,7 +738,10 @@ fn mdast_position_to_zetl(v: Value) -> Result<Position, TranslationError> {
         other => {
             return Err(TranslationError::from_foreign(
                 AstType::MdastExt,
-                format!("position must be an object or null, got {}", value_kind(&other)),
+                format!(
+                    "position must be an object or null, got {}",
+                    value_kind(&other)
+                ),
             ))
         }
     };
@@ -794,10 +773,7 @@ fn take_position(obj: &mut serde_json::Map<String, Value>) -> Position {
     }
 }
 
-fn require_object(
-    v: Value,
-    ctx: &str,
-) -> Result<serde_json::Map<String, Value>, TranslationError> {
+fn require_object(v: Value, ctx: &str) -> Result<serde_json::Map<String, Value>, TranslationError> {
     match v {
         Value::Object(o) => Ok(o),
         other => Err(TranslationError::from_foreign(
@@ -813,10 +789,7 @@ fn array_or_empty(v: Value) -> Result<Vec<Value>, TranslationError> {
         Value::Null => Ok(Vec::new()),
         other => Err(TranslationError::from_foreign(
             AstType::MdastExt,
-            format!(
-                "expected array for 'children', got {}",
-                value_kind(&other)
-            ),
+            format!("expected array for 'children', got {}", value_kind(&other)),
         )),
     }
 }
@@ -1065,20 +1038,25 @@ mod tests {
 
     fn arb_leaf_inline() -> impl Strategy<Value = Inline> {
         prop_oneof![
-            (arb_position(), "[a-z ]{0,20}")
-                .prop_map(|(p, s)| Inline::Text(Text { position: p, text: s })),
-            (arb_position(), "[a-z]{1,10}")
-                .prop_map(|(p, s)| Inline::Code(Code { position: p, text: s })),
+            (arb_position(), "[a-z ]{0,20}").prop_map(|(p, s)| Inline::Text(Text {
+                position: p,
+                text: s
+            })),
+            (arb_position(), "[a-z]{1,10}").prop_map(|(p, s)| Inline::Code(Code {
+                position: p,
+                text: s
+            })),
             arb_position().prop_map(|p| Inline::LineBreak(LineBreak { position: p })),
             arb_position().prop_map(|p| Inline::SoftBreak(SoftBreak { position: p })),
-            (arb_position(), "[a-z]{1,10}", "[a-z]{0,5}")
-                .prop_map(|(p, t, a)| Inline::Wikilink(Wikilink {
+            (arb_position(), "[a-z]{1,10}", "[a-z]{0,5}").prop_map(|(p, t, a)| Inline::Wikilink(
+                Wikilink {
                     position: p,
                     target: t,
                     alias: if a.is_empty() { None } else { Some(a) },
                     heading: None,
                     block_id: None,
-                })),
+                }
+            )),
         ]
     }
 
@@ -1088,30 +1066,33 @@ mod tests {
         // inline children.
         let inline = prop::collection::vec(arb_leaf_inline(), 0..3).boxed();
         prop_oneof![
-            (arb_position(), inline.clone())
-                .prop_map(|(p, c)| Block::Paragraph(Paragraph { position: p, children: c })),
-            (arb_position(), 1u8..=6, inline.clone())
-                .prop_map(|(p, l, c)| Block::Heading(Heading {
+            (arb_position(), inline.clone()).prop_map(|(p, c)| Block::Paragraph(Paragraph {
+                position: p,
+                children: c
+            })),
+            (arb_position(), 1u8..=6, inline.clone()).prop_map(|(p, l, c)| Block::Heading(
+                Heading {
                     position: p,
                     level: l,
                     children: c,
-                })),
+                }
+            )),
             arb_position().prop_map(|p| Block::ThematicBreak(ThematicBreak { position: p })),
-            (arb_position(), "[a-z]{0,20}")
-                .prop_map(|(p, t)| Block::HtmlBlock(HtmlBlock { position: p, text: t })),
-            (arb_position(), "[a-z]{1,10}")
-                .prop_map(|(p, t)| Block::SplBlock(SplBlock {
-                    position: p,
-                    info: None,
-                    text: t,
-                })),
-            (arb_position(), "[a-z]{1,10}")
-                .prop_map(|(p, t)| Block::Embed(Embed {
-                    position: p,
-                    target: t,
-                    heading: None,
-                    block_id: None,
-                })),
+            (arb_position(), "[a-z]{0,20}").prop_map(|(p, t)| Block::HtmlBlock(HtmlBlock {
+                position: p,
+                text: t
+            })),
+            (arb_position(), "[a-z]{1,10}").prop_map(|(p, t)| Block::SplBlock(SplBlock {
+                position: p,
+                info: None,
+                text: t,
+            })),
+            (arb_position(), "[a-z]{1,10}").prop_map(|(p, t)| Block::Embed(Embed {
+                position: p,
+                target: t,
+                heading: None,
+                block_id: None,
+            })),
         ]
     }
 

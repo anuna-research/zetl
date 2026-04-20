@@ -60,7 +60,12 @@ pub struct Position {
 
 impl Position {
     pub const fn new(start_line: u32, start_col: u32, end_line: u32, end_col: u32) -> Self {
-        Self { start_line, start_col, end_line, end_col }
+        Self {
+            start_line,
+            start_col,
+            end_line,
+            end_col,
+        }
     }
 
     /// Zero-width position at the document origin — useful for synthetic
@@ -479,7 +484,10 @@ mod tests {
                 position: pos(),
                 level: 2,
                 children: vec![
-                    Inline::Text(Text { position: pos(), text: "Hello ".into() }),
+                    Inline::Text(Text {
+                        position: pos(),
+                        text: "Hello ".into(),
+                    }),
                     Inline::Strong(Strong {
                         position: pos(),
                         children: vec![Inline::Text(Text {
@@ -495,12 +503,16 @@ mod tests {
 
     #[test]
     fn list_preserves_start_and_listitem_tag() {
-        let item = ListItem::new(pos(), vec![
-            Block::Paragraph(Paragraph {
+        let item = ListItem::new(
+            pos(),
+            vec![Block::Paragraph(Paragraph {
                 position: pos(),
-                children: vec![Inline::Text(Text { position: pos(), text: "a".into() })],
-            }),
-        ]);
+                children: vec![Inline::Text(Text {
+                    position: pos(),
+                    text: "a".into(),
+                })],
+            })],
+        );
         let list = Block::List(List {
             position: pos(),
             ordered: true,
@@ -603,7 +615,10 @@ mod tests {
             position: pos(),
             url: "https://example.com".into(),
             title: None,
-            children: vec![Inline::Text(Text { position: pos(), text: "ex".into() })],
+            children: vec![Inline::Text(Text {
+                position: pos(),
+                text: "ex".into(),
+            })],
         });
         let img = Inline::Image(Image {
             position: pos(),
@@ -670,7 +685,10 @@ mod tests {
 
     #[test]
     fn html_block_and_inline_preserve_raw_text() {
-        let hb = Block::HtmlBlock(HtmlBlock { position: pos(), text: "<div>x</div>".into() });
+        let hb = Block::HtmlBlock(HtmlBlock {
+            position: pos(),
+            text: "<div>x</div>".into(),
+        });
         let hi = Inline::HtmlInline(HtmlInline {
             position: pos(),
             text: "<br>".into(),
@@ -771,7 +789,10 @@ mod tests {
 
     #[test]
     fn inline_not_parseable_as_block() {
-        let t = Inline::Text(Text { position: pos(), text: "x".into() });
+        let t = Inline::Text(Text {
+            position: pos(),
+            text: "x".into(),
+        });
         let v = serde_json::to_value(&t).unwrap();
         assert!(serde_json::from_value::<Block>(v).is_err());
     }
@@ -797,26 +818,32 @@ mod tests {
                     ordered: false,
                     tight: false,
                     start: None,
-                    children: vec![ListItem::new(pos(), vec![Block::Paragraph(Paragraph {
-                        position: pos(),
-                        children: vec![
-                            Inline::Emphasis(Emphasis {
-                                position: pos(),
-                                children: vec![Inline::Text(Text {
+                    children: vec![ListItem::new(
+                        pos(),
+                        vec![Block::Paragraph(Paragraph {
+                            position: pos(),
+                            children: vec![
+                                Inline::Emphasis(Emphasis {
                                     position: pos(),
-                                    text: "inner".into(),
-                                })],
-                            }),
-                            Inline::Code(Code { position: pos(), text: "x()".into() }),
-                            Inline::Wikilink(Wikilink {
-                                position: pos(),
-                                target: "Other".into(),
-                                alias: Some("alt".into()),
-                                heading: None,
-                                block_id: None,
-                            }),
-                        ],
-                    })])],
+                                    children: vec![Inline::Text(Text {
+                                        position: pos(),
+                                        text: "inner".into(),
+                                    })],
+                                }),
+                                Inline::Code(Code {
+                                    position: pos(),
+                                    text: "x()".into(),
+                                }),
+                                Inline::Wikilink(Wikilink {
+                                    position: pos(),
+                                    target: "Other".into(),
+                                    alias: Some("alt".into()),
+                                    heading: None,
+                                    block_id: None,
+                                }),
+                            ],
+                        })],
+                    )],
                 })],
             })],
         };
@@ -825,14 +852,23 @@ mod tests {
 
     #[test]
     fn block_and_inline_kind_str_report_variant() {
-        assert_eq!(Block::ThematicBreak(ThematicBreak { position: pos() }).kind_str(), "ThematicBreak");
-        assert_eq!(Inline::LineBreak(LineBreak { position: pos() }).kind_str(), "LineBreak");
+        assert_eq!(
+            Block::ThematicBreak(ThematicBreak { position: pos() }).kind_str(),
+            "ThematicBreak"
+        );
+        assert_eq!(
+            Inline::LineBreak(LineBreak { position: pos() }).kind_str(),
+            "LineBreak"
+        );
     }
 
     #[test]
     fn block_and_inline_position_accessor() {
         let p = Position::new(5, 10, 7, 1);
-        assert_eq!(Block::ThematicBreak(ThematicBreak { position: p }).position(), p);
+        assert_eq!(
+            Block::ThematicBreak(ThematicBreak { position: p }).position(),
+            p
+        );
         assert_eq!(Inline::SoftBreak(SoftBreak { position: p }).position(), p);
     }
 
@@ -849,10 +885,18 @@ mod tests {
     fn arb_inline() -> impl proptest::strategy::Strategy<Value = Inline> {
         use proptest::prelude::*;
         let leaf = prop_oneof![
-            (arb_position(), ".*").prop_map(|(p, t)| Inline::Text(Text { position: p, text: t })),
-            (arb_position(), ".*").prop_map(|(p, t)| Inline::Code(Code { position: p, text: t })),
-            (arb_position(), ".*")
-                .prop_map(|(p, t)| Inline::HtmlInline(HtmlInline { position: p, text: t })),
+            (arb_position(), ".*").prop_map(|(p, t)| Inline::Text(Text {
+                position: p,
+                text: t
+            })),
+            (arb_position(), ".*").prop_map(|(p, t)| Inline::Code(Code {
+                position: p,
+                text: t
+            })),
+            (arb_position(), ".*").prop_map(|(p, t)| Inline::HtmlInline(HtmlInline {
+                position: p,
+                text: t
+            })),
             arb_position().prop_map(|p| Inline::LineBreak(LineBreak { position: p })),
             arb_position().prop_map(|p| Inline::SoftBreak(SoftBreak { position: p })),
             (
@@ -862,21 +906,31 @@ mod tests {
                 proptest::option::of(".*"),
                 proptest::option::of(".*")
             )
-                .prop_map(|(p, target, alias, heading, block_id)| Inline::Wikilink(Wikilink {
-                    position: p,
-                    target,
-                    alias,
-                    heading,
-                    block_id,
-                })),
+                .prop_map(|(p, target, alias, heading, block_id)| Inline::Wikilink(
+                    Wikilink {
+                        position: p,
+                        target,
+                        alias,
+                        heading,
+                        block_id,
+                    }
+                )),
         ];
         leaf.prop_recursive(3, 16, 4, |inner| {
             use proptest::prelude::*;
             prop_oneof![
-                (arb_position(), prop::collection::vec(inner.clone(), 0..3))
-                    .prop_map(|(p, c)| Inline::Emphasis(Emphasis { position: p, children: c })),
-                (arb_position(), prop::collection::vec(inner.clone(), 0..3))
-                    .prop_map(|(p, c)| Inline::Strong(Strong { position: p, children: c })),
+                (arb_position(), prop::collection::vec(inner.clone(), 0..3)).prop_map(|(p, c)| {
+                    Inline::Emphasis(Emphasis {
+                        position: p,
+                        children: c,
+                    })
+                }),
+                (arb_position(), prop::collection::vec(inner.clone(), 0..3)).prop_map(|(p, c)| {
+                    Inline::Strong(Strong {
+                        position: p,
+                        children: c,
+                    })
+                }),
                 (
                     arb_position(),
                     ".*",
@@ -911,8 +965,10 @@ mod tests {
         use proptest::prelude::*;
         let leaf = prop_oneof![
             arb_position().prop_map(|p| Block::ThematicBreak(ThematicBreak { position: p })),
-            (arb_position(), ".*")
-                .prop_map(|(p, t)| Block::HtmlBlock(HtmlBlock { position: p, text: t })),
+            (arb_position(), ".*").prop_map(|(p, t)| Block::HtmlBlock(HtmlBlock {
+                position: p,
+                text: t
+            })),
             (
                 arb_position(),
                 any::<bool>(),
@@ -920,15 +976,22 @@ mod tests {
                 proptest::option::of(".*"),
                 ".*"
             )
-                .prop_map(|(p, fenced, lang, info, text)| Block::CodeBlock(CodeBlock {
+                .prop_map(|(p, fenced, lang, info, text)| Block::CodeBlock(
+                    CodeBlock {
+                        position: p,
+                        fenced,
+                        lang,
+                        info,
+                        text,
+                    }
+                )),
+            (arb_position(), proptest::option::of(".*"), ".*").prop_map(|(p, info, text)| {
+                Block::SplBlock(SplBlock {
                     position: p,
-                    fenced,
-                    lang,
                     info,
                     text,
-                })),
-            (arb_position(), proptest::option::of(".*"), ".*")
-                .prop_map(|(p, info, text)| Block::SplBlock(SplBlock { position: p, info, text })),
+                })
+            }),
             (
                 arb_position(),
                 ".*",
@@ -941,17 +1004,32 @@ mod tests {
                     heading,
                     block_id,
                 })),
-            (arb_position(), prop::collection::vec(arb_inline(), 0..3))
-                .prop_map(|(p, c)| Block::Paragraph(Paragraph { position: p, children: c })),
-            (arb_position(), 1u8..=6, prop::collection::vec(arb_inline(), 0..3)).prop_map(
-                |(p, l, c)| Block::Heading(Heading { position: p, level: l, children: c })
-            ),
+            (arb_position(), prop::collection::vec(arb_inline(), 0..3)).prop_map(|(p, c)| {
+                Block::Paragraph(Paragraph {
+                    position: p,
+                    children: c,
+                })
+            }),
+            (
+                arb_position(),
+                1u8..=6,
+                prop::collection::vec(arb_inline(), 0..3)
+            )
+                .prop_map(|(p, l, c)| Block::Heading(Heading {
+                    position: p,
+                    level: l,
+                    children: c
+                })),
         ];
         leaf.prop_recursive(3, 8, 3, |inner| {
             use proptest::prelude::*;
             prop_oneof![
-                (arb_position(), prop::collection::vec(inner.clone(), 0..3))
-                    .prop_map(|(p, c)| Block::BlockQuote(BlockQuote { position: p, children: c })),
+                (arb_position(), prop::collection::vec(inner.clone(), 0..3)).prop_map(|(p, c)| {
+                    Block::BlockQuote(BlockQuote {
+                        position: p,
+                        children: c,
+                    })
+                }),
                 (
                     arb_position(),
                     any::<bool>(),

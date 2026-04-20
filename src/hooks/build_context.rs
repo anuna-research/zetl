@@ -227,9 +227,7 @@ impl BuildContext {
     /// Look up a value at `build_data[extension_id][key]` in the hook's
     /// frozen snapshot.
     pub fn build_data_get(&self, extension_id: &str, key: &str) -> Option<&Value> {
-        self.build_data
-            .get(extension_id)
-            .and_then(|m| m.get(key))
+        self.build_data.get(extension_id).and_then(|m| m.get(key))
     }
 
     /// Environment variables REQ-3220 requires zetl to set before spawning
@@ -417,12 +415,8 @@ mod tests {
         store.merge_shard(p1);
 
         let shard = store.begin_page();
-        let ctx = BuildContext::from_page_view(
-            BuildMode::Build,
-            "/v",
-            sample_page(),
-            &shard.view(),
-        );
+        let ctx =
+            BuildContext::from_page_view(BuildMode::Build, "/v", sample_page(), &shard.view());
 
         assert_eq!(
             ctx.build_data_get("citations", "keys"),
@@ -439,12 +433,8 @@ mod tests {
         // retroactively appear in ctx's frozen view (CON-3219).
         let store = BuildDataStore::new();
         let shard_a = store.begin_page();
-        let ctx_a = BuildContext::from_page_view(
-            BuildMode::Build,
-            "/v",
-            sample_page(),
-            &shard_a.view(),
-        );
+        let ctx_a =
+            BuildContext::from_page_view(BuildMode::Build, "/v", sample_page(), &shard_a.view());
 
         // Page B commits after the snapshot — ctx_a must not see it.
         let mut shard_b = store.begin_page();

@@ -103,7 +103,11 @@ impl HookError {
 
 impl std::fmt::Display for HookError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "hook '{}' ({}) failed: {}", self.hook_id, self.stage, self.reason)
+        write!(
+            f,
+            "hook '{}' ({}) failed: {}",
+            self.hook_id, self.stage, self.reason
+        )
     }
 }
 
@@ -351,9 +355,7 @@ where
             match result {
                 Ok(next) => text = next,
                 Err(err) => {
-                    failures.push(FailureRecord::from_hook_error(
-                        &err, &page_slug, duration,
-                    ));
+                    failures.push(FailureRecord::from_hook_error(&err, &page_slug, duration));
                     text = prev;
                 }
             }
@@ -395,9 +397,7 @@ where
             match result {
                 Ok(next) => ast = next,
                 Err(err) => {
-                    failures.push(FailureRecord::from_hook_error(
-                        &err, &page_slug, duration,
-                    ));
+                    failures.push(FailureRecord::from_hook_error(&err, &page_slug, duration));
                     ast = prev;
                 }
             }
@@ -439,9 +439,7 @@ where
             match result {
                 Ok(next) => html = next,
                 Err(err) => {
-                    failures.push(FailureRecord::from_hook_error(
-                        &err, &page_slug, duration,
-                    ));
+                    failures.push(FailureRecord::from_hook_error(&err, &page_slug, duration));
                     html = prev;
                 }
             }
@@ -598,7 +596,11 @@ mod tests {
             }
             None => (Vec::new(), Vec::new()),
         };
-        format!("<p>{} |marks={}</p>", raw_parts.join(""), marker_parts.join(","))
+        format!(
+            "<p>{} |marks={}</p>",
+            raw_parts.join(""),
+            marker_parts.join(",")
+        )
     }
 
     // ── Tests ───────────────────────────────────────────────────────────────
@@ -832,14 +834,12 @@ mod tests {
     fn pipeline_is_shareable_across_threads() {
         let trace = Arc::new(Mutex::new(Vec::new()));
         let calls = Arc::new(AtomicUsize::new(0));
-        let pipe = Arc::new(
-            HookPipeline::new().with_pre_parse(TagPreParse {
-                id: "a".into(),
-                marker: "A",
-                calls: calls.clone(),
-                trace: trace.clone(),
-            }),
-        );
+        let pipe = Arc::new(HookPipeline::new().with_pre_parse(TagPreParse {
+            id: "a".into(),
+            marker: "A",
+            calls: calls.clone(),
+            trace: trace.clone(),
+        }));
 
         let mut handles = Vec::new();
         for i in 0..4 {
@@ -904,9 +904,7 @@ mod tests {
             fn run(&self, input: String, ctx: &BuildContext) -> Result<String, HookError> {
                 // Branch: fountain gets wrapped, others pass through.
                 if ctx.theme == "fountain" {
-                    Ok(format!(
-                        "<div class=\"fountain\">{input}</div>"
-                    ))
+                    Ok(format!("<div class=\"fountain\">{input}</div>"))
                 } else {
                     Ok(format!("<!--theme={}-->{input}", ctx.theme))
                 }
@@ -915,24 +913,16 @@ mod tests {
 
         let pipe = HookPipeline::new().with_post_render(ThemeBrancher);
 
-        let fountain_ctx = BuildContext::new(
-            BuildMode::Build,
-            "/v",
-            PageMeta::synthetic("Page", "page"),
-        )
-        .with_theme("fountain");
+        let fountain_ctx =
+            BuildContext::new(BuildMode::Build, "/v", PageMeta::synthetic("Page", "page"))
+                .with_theme("fountain");
 
-        let default_ctx = BuildContext::new(
-            BuildMode::Build,
-            "/v",
-            PageMeta::synthetic("Page", "page"),
-        )
-        .with_theme("default");
+        let default_ctx =
+            BuildContext::new(BuildMode::Build, "/v", PageMeta::synthetic("Page", "page"))
+                .with_theme("default");
 
-        let (html_fountain, _, _) =
-            run_page(&pipe, "hi".into(), &fountain_ctx, parse, render);
-        let (html_default, _, _) =
-            run_page(&pipe, "hi".into(), &default_ctx, parse, render);
+        let (html_fountain, _, _) = run_page(&pipe, "hi".into(), &fountain_ctx, parse, render);
+        let (html_default, _, _) = run_page(&pipe, "hi".into(), &default_ctx, parse, render);
 
         assert_eq!(
             html_fountain,
@@ -948,8 +938,7 @@ mod tests {
     /// so the assertion can prove identity, not just presence.
     #[test]
     fn hooks_at_every_stage_observe_the_same_ctx() {
-        let observed: Arc<Mutex<Vec<(Stage, String, String)>>> =
-            Arc::new(Mutex::new(Vec::new()));
+        let observed: Arc<Mutex<Vec<(Stage, String, String)>>> = Arc::new(Mutex::new(Vec::new()));
 
         struct Spy {
             stage: Stage,
@@ -1108,8 +1097,7 @@ mod tests {
             "/v",
             page_with_ext_disabled("page", "callouts"),
         );
-        let (html, _, failures) =
-            run_page(&pipe, "hi".into(), &opted_out, parse, render);
+        let (html, _, failures) = run_page(&pipe, "hi".into(), &opted_out, parse, render);
         assert!(failures.is_empty(), "skipping is not a failure");
 
         // Only the "other" hooks contributed markers; the "callouts" markers

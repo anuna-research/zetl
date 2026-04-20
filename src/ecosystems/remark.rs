@@ -362,7 +362,9 @@ impl Harness {
                     .lock()
                     .map(|g| String::from_utf8_lossy(&g).into_owned())
                     .unwrap_or_default();
-                Err(HarnessError::Closed { stderr: stderr_tail })
+                Err(HarnessError::Closed {
+                    stderr: stderr_tail,
+                })
             }
             Ok(_) => {
                 if timed_out {
@@ -655,9 +657,7 @@ impl RemarkAdapter {
                 let plugin_id = reply
                     .get("plugin_id")
                     .and_then(Value::as_str)
-                    .ok_or_else(|| {
-                        HarnessError::Protocol("load_result missing plugin_id".into())
-                    })?
+                    .ok_or_else(|| HarnessError::Protocol("load_result missing plugin_id".into()))?
                     .to_string();
                 harness
                     .plugin_ids

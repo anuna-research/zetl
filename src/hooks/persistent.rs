@@ -164,7 +164,10 @@ pub struct SecurityPolicy {
 impl Default for SecurityPolicy {
     fn default() -> Self {
         Self {
-            env_allowlist: DEFAULT_ENV_ALLOWLIST.iter().map(|s| (*s).to_string()).collect(),
+            env_allowlist: DEFAULT_ENV_ALLOWLIST
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
             max_stderr_bytes: DEFAULT_MAX_STDERR_BYTES,
             max_message_bytes: DEFAULT_MAX_MESSAGE_BYTES,
         }
@@ -419,11 +422,16 @@ pub enum ProtocolError {
     UnexpectedEof,
     /// The hook did not respond within the deadline. The child has
     /// been hard-killed; the instance is no longer usable.
-    Timeout { deadline: Duration },
+    Timeout {
+        deadline: Duration,
+    },
     /// Handshake was malformed or declared an incompatible AST major.
     Handshake(String),
     /// Hook returned a typed `{"type":"error"}` message.
-    HookError { reason: String, detail: String },
+    HookError {
+        reason: String,
+        detail: String,
+    },
     /// A single host-or-hook message exceeded
     /// [`SecurityPolicy::max_message_bytes`]. Direction is `"send"` for
     /// host → hook writes (caller serialised something too large) and
@@ -453,9 +461,11 @@ impl std::fmt::Display for ProtocolError {
         match self {
             ProtocolError::Io(e) => write!(f, "persistent hook io error: {e}"),
             ProtocolError::Json(e) => write!(f, "persistent hook json error: {e}"),
-            ProtocolError::UnexpectedEof => f.write_str("persistent hook closed stdout unexpectedly"),
+            ProtocolError::UnexpectedEof => {
+                f.write_str("persistent hook closed stdout unexpectedly")
+            }
             ProtocolError::Timeout { deadline } => {
-                write!(f, "persistent hook exceeded deadline of {:?}", deadline)
+                write!(f, "persistent hook exceeded deadline of {deadline:?}")
             }
             ProtocolError::Handshake(msg) => write!(f, "persistent hook handshake failed: {msg}"),
             ProtocolError::HookError { reason, detail } => {
@@ -658,9 +668,7 @@ impl PersistentHook {
         if !handshake.ready {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(ProtocolError::Handshake(
-                "hook reported ready=false".into(),
-            ));
+            return Err(ProtocolError::Handshake("hook reported ready=false".into()));
         }
 
         Ok(Self {
@@ -733,11 +741,7 @@ impl PersistentHook {
 
     /// Send an `init` message with per-build context and await the
     /// hook's `result` line.
-    pub fn init(
-        &mut self,
-        ctx: Value,
-        deadline_ms: u64,
-    ) -> Result<HookMessage, ProtocolError> {
+    pub fn init(&mut self, ctx: Value, deadline_ms: u64) -> Result<HookMessage, ProtocolError> {
         let msg = HostMessage::Init(InitMessage {
             stage: self.stage.as_str().into(),
             zetl_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -876,10 +880,7 @@ impl PersistentHook {
     }
 
     fn send(&mut self, msg: &HostMessage) -> Result<(), ProtocolError> {
-        let stdin = self
-            .stdin
-            .as_mut()
-            .ok_or(ProtocolError::UnexpectedEof)?;
+        let stdin = self.stdin.as_mut().ok_or(ProtocolError::UnexpectedEof)?;
         let line = serde_json::to_string(msg)?;
         // SPEC-032 §10: enforce the wire-size cap on the host side too,
         // so a host-bug-induced runaway payload trips the same diagnostic
@@ -981,10 +982,8 @@ fn pump_stdout(
                 let line = match std::str::from_utf8(&buf) {
                     Ok(s) => s.to_string(),
                     Err(e) => {
-                        let _ = tx.send(Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            e,
-                        )));
+                        let _ =
+                            tx.send(Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e)));
                         break;
                     }
                 };
@@ -1052,11 +1051,7 @@ fn read_line_capped<R: BufRead>(
     }
 }
 
-fn pump_stderr(
-    mut stderr: std::process::ChildStderr,
-    buf: Arc<Mutex<Vec<u8>>>,
-    max_bytes: usize,
-) {
+fn pump_stderr(mut stderr: std::process::ChildStderr, buf: Arc<Mutex<Vec<u8>>>, max_bytes: usize) {
     let mut chunk = [0u8; 4096];
     let mut truncated = false;
     loop {
@@ -1319,13 +1314,10 @@ for line in sys.stdin:
 "#,
         );
 
-        let mut h =
-            PersistentHook::spawn(Command::new(&hook), "hang", Stage::Transform).unwrap();
+        let mut h = PersistentHook::spawn(Command::new(&hook), "hang", Stage::Transform).unwrap();
 
         let start = Instant::now();
-        let err = h
-            .run("slug", json!({}), json!({"x":1}), 200)
-            .unwrap_err();
+        let err = h.run("slug", json!({}), json!({"x":1}), 200).unwrap_err();
         let elapsed = start.elapsed();
 
         match err {
@@ -1397,13 +1389,15 @@ for line in sys.stdin:
 "#,
         );
 
-        let mut h =
-            PersistentHook::spawn(Command::new(&hook), "stderr", Stage::Transform).unwrap();
+        let mut h = PersistentHook::spawn(Command::new(&hook), "stderr", Stage::Transform).unwrap();
         let _ = h.run("p", json!({}), json!({}), 1000).unwrap();
         // Give stderr pump a moment.
         thread::sleep(Duration::from_millis(50));
         let captured = h.drain_stderr();
-        assert!(captured.contains("diagnostic line"), "captured: {captured:?}");
+        assert!(
+            captured.contains("diagnostic line"),
+            "captured: {captured:?}"
+        );
         // Subsequent drain is empty.
         assert_eq!(h.drain_stderr(), "");
     }
@@ -1458,8 +1452,7 @@ while True:
         require_python!();
         let tmp = TempDir::new().unwrap();
         let hook = write_python_hook(tmp.path(), "echo.py", ECHO_BODY);
-        let mut h =
-            PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform).unwrap();
+        let mut h = PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform).unwrap();
 
         let msg = HostMessage::Run(RunMessage {
             page_slug: "t".into(),
@@ -1467,7 +1460,9 @@ while True:
             payload: json!({"k":"v"}),
             deadline_ms: 1000,
         });
-        let (_resp, dur) = h.exchange_with_timing(&msg, Duration::from_secs(1)).unwrap();
+        let (_resp, dur) = h
+            .exchange_with_timing(&msg, Duration::from_secs(1))
+            .unwrap();
         // Just assert it was recorded — absolute floors vary wildly across
         // hosts. Upper bound of 500 ms is generous for a single Python
         // round-trip on any sane CI worker.
@@ -1500,14 +1495,23 @@ while True:
         assert_eq!(wire.get("deadline_ms").and_then(Value::as_u64), Some(50));
 
         for (name, msg) in [
-            ("init", HostMessage::Init(InitMessage {
-                stage: Stage::Transform.as_str().into(),
-                zetl_version: "0.5.0".into(),
-                ast_schema_version: AST_VERSION.into(),
-                ctx: json!({}),
-            })),
-            ("finalise", HostMessage::Finalise(FinaliseMessage::default())),
-            ("shutdown", HostMessage::Shutdown(ShutdownMessage::default())),
+            (
+                "init",
+                HostMessage::Init(InitMessage {
+                    stage: Stage::Transform.as_str().into(),
+                    zetl_version: "0.5.0".into(),
+                    ast_schema_version: AST_VERSION.into(),
+                    ctx: json!({}),
+                }),
+            ),
+            (
+                "finalise",
+                HostMessage::Finalise(FinaliseMessage::default()),
+            ),
+            (
+                "shutdown",
+                HostMessage::Shutdown(ShutdownMessage::default()),
+            ),
         ] {
             let v = serde_json::to_value(&msg).unwrap();
             assert_eq!(v.get("type").and_then(Value::as_str), Some(name));
@@ -1516,22 +1520,22 @@ while True:
 
     #[test]
     fn hook_message_parses_result_and_error() {
-        let r: HookMessage = serde_json::from_str(
-            r#"{"type":"result","payload":{"html":"<p>x</p>"}}"#,
-        )
-        .unwrap();
+        let r: HookMessage =
+            serde_json::from_str(r#"{"type":"result","payload":{"html":"<p>x</p>"}}"#).unwrap();
         match r {
-            HookMessage::Result { payload, diagnostics, .. } => {
+            HookMessage::Result {
+                payload,
+                diagnostics,
+                ..
+            } => {
                 assert_eq!(payload, json!({"html":"<p>x</p>"}));
                 assert!(diagnostics.is_empty());
             }
             _ => panic!("wrong variant"),
         }
 
-        let e: HookMessage = serde_json::from_str(
-            r#"{"type":"error","reason":"r","detail":"d"}"#,
-        )
-        .unwrap();
+        let e: HookMessage =
+            serde_json::from_str(r#"{"type":"error","reason":"r","detail":"d"}"#).unwrap();
         match e {
             HookMessage::Error { reason, detail } => {
                 assert_eq!(reason, "r");
@@ -1580,12 +1584,8 @@ for line in sys.stdin:
         // standard way to surface this to Command::spawn's inheritance.
         std::env::set_var("ZETL_TEST_SECRET", "leaked-via-inherit");
 
-        let mut h = PersistentHook::spawn(
-            Command::new(&hook),
-            "envprobe",
-            Stage::Transform,
-        )
-        .unwrap();
+        let mut h =
+            PersistentHook::spawn(Command::new(&hook), "envprobe", Stage::Transform).unwrap();
         let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
         std::env::remove_var("ZETL_TEST_SECRET");
 
@@ -1610,12 +1610,7 @@ for line in sys.stdin:
         let tmp = TempDir::new().unwrap();
         // Hook executes via `#!/usr/bin/env python3` — needs PATH visible.
         let hook = write_python_hook(tmp.path(), "echo.py", ECHO_BODY);
-        let mut h = PersistentHook::spawn(
-            Command::new(&hook),
-            "echo",
-            Stage::Transform,
-        )
-        .unwrap();
+        let mut h = PersistentHook::spawn(Command::new(&hook), "echo", Stage::Transform).unwrap();
         let resp = h.run("p", json!({}), json!({"k": "v"}), 1000).unwrap();
         match resp {
             HookMessage::Result { payload, .. } => {
@@ -1657,8 +1652,7 @@ for line in sys.stdin:
         cmd.env("ZETL_EXTENSION_ID", "explicit-id")
             .env("ZETL_TEST_OVERRIDE", "explicit-value");
 
-        let mut h =
-            PersistentHook::spawn(cmd, "explicit", Stage::Transform).unwrap();
+        let mut h = PersistentHook::spawn(cmd, "explicit", Stage::Transform).unwrap();
         let resp = h.run("p", json!({}), json!({}), 1000).unwrap();
         match resp {
             HookMessage::Result { payload, .. } => {

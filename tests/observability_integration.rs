@@ -48,13 +48,11 @@ impl TransformHook for TagTransform {
     fn id(&self) -> &str {
         self.id
     }
-    fn run(
-        &self,
-        mut input: AstDocument,
-        _ctx: &BuildContext,
-    ) -> Result<AstDocument, HookError> {
-        if let Some(Block::Paragraph(p)) =
-            input.children.iter_mut().find(|b| matches!(b, Block::Paragraph(_)))
+    fn run(&self, mut input: AstDocument, _ctx: &BuildContext) -> Result<AstDocument, HookError> {
+        if let Some(Block::Paragraph(p)) = input
+            .children
+            .iter_mut()
+            .find(|b| matches!(b, Block::Paragraph(_)))
         {
             if let Some(Inline::Text(t)) = p.children.first_mut() {
                 t.text = format!("{}|{}", t.text, self.marker);
@@ -73,11 +71,7 @@ impl TransformHook for FailingTransform {
     fn id(&self) -> &str {
         self.id
     }
-    fn run(
-        &self,
-        _input: AstDocument,
-        _ctx: &BuildContext,
-    ) -> Result<AstDocument, HookError> {
+    fn run(&self, _input: AstDocument, _ctx: &BuildContext) -> Result<AstDocument, HookError> {
         Err(HookError::new(Stage::Transform, self.id, self.reason))
     }
 }
@@ -351,11 +345,7 @@ fn observer_sees_events_from_concurrent_renders() {
     }
 
     assert_eq!(observer.len(), 4);
-    let slugs: Vec<String> = observer
-        .events()
-        .into_iter()
-        .map(|e| e.page_slug)
-        .collect();
+    let slugs: Vec<String> = observer.events().into_iter().map(|e| e.page_slug).collect();
     for i in 0..4 {
         assert!(slugs.iter().any(|s| s == &format!("page{i}")));
     }

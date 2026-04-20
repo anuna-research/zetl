@@ -238,12 +238,8 @@ pub fn resolve_mode(
             // Native mode routes through the host pandoc with a
             // JSON-in / JSON-out round-trip so the transform-stage
             // contract (foreign AST in, foreign AST out) keeps holding.
-            let mut argv: Vec<String> = vec![
-                "--from".into(),
-                "json".into(),
-                "--to".into(),
-                "json".into(),
-            ];
+            let mut argv: Vec<String> =
+                vec!["--from".into(), "json".into(), "--to".into(), "json".into()];
             if auto_native {
                 argv.push("--citeproc".into());
             }
@@ -323,7 +319,11 @@ impl PandocAdapter {
     /// (CON-3303). Exposed separately from [`Self::invoke_plugin`] so
     /// unit tests can assert exactly which variables the adapter sets
     /// without having to spawn a real subprocess.
-    pub fn filter_env(&self, manifest: &PluginManifest, target_format: &str) -> Vec<(String, String)> {
+    pub fn filter_env(
+        &self,
+        manifest: &PluginManifest,
+        target_format: &str,
+    ) -> Vec<(String, String)> {
         let version = self
             .pandoc_version
             .clone()
@@ -332,10 +332,7 @@ impl PandocAdapter {
         let writer_opts = default_writer_options_json(target_format);
         vec![
             ("PANDOC_VERSION".into(), version),
-            (
-                "PANDOC_API_VERSION".into(),
-                self.api_version_env_string(),
-            ),
+            ("PANDOC_API_VERSION".into(), self.api_version_env_string()),
             ("PANDOC_READER_OPTIONS".into(), reader_opts),
             ("PANDOC_WRITER_OPTIONS".into(), writer_opts),
             (
@@ -462,7 +459,9 @@ impl EcosystemAdapter for PandocAdapter {
             .stderr(Stdio::piped());
 
         if invocation.mode == PandocMode::Filter {
-            for (k, v) in self.filter_env(manifest, options.target_format.as_deref().unwrap_or("html")) {
+            for (k, v) in
+                self.filter_env(manifest, options.target_format.as_deref().unwrap_or("html"))
+            {
                 cmd.env(k, v);
             }
         }
@@ -568,10 +567,7 @@ fn spawn_and_exchange(
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let binary = cmd
-                .get_program()
-                .to_string_lossy()
-                .into_owned();
+            let binary = cmd.get_program().to_string_lossy().into_owned();
             return Err(SpawnError::NotFound { binary });
         }
         Err(e) => return Err(SpawnError::Io(e)),
@@ -787,10 +783,16 @@ mod tests {
     #[test]
     fn resolve_mode_defaults_to_filter() {
         let manifest = sample_manifest("/usr/local/bin/pandoc-crossref", vec![]);
-        let invocation =
-            resolve_mode(&manifest, &PandocOptions::default(), Path::new("/bin/pandoc"));
+        let invocation = resolve_mode(
+            &manifest,
+            &PandocOptions::default(),
+            Path::new("/bin/pandoc"),
+        );
         assert_eq!(invocation.mode, PandocMode::Filter);
-        assert_eq!(invocation.executable, PathBuf::from("/usr/local/bin/pandoc-crossref"));
+        assert_eq!(
+            invocation.executable,
+            PathBuf::from("/usr/local/bin/pandoc-crossref")
+        );
         assert_eq!(invocation.argv, vec!["html".to_string()]);
         assert!(invocation.diagnostics.is_empty());
     }
@@ -798,8 +800,11 @@ mod tests {
     #[test]
     fn resolve_mode_auto_promotes_pandoc_citeproc() {
         let manifest = sample_manifest("/usr/local/bin/pandoc-citeproc", vec![]);
-        let invocation =
-            resolve_mode(&manifest, &PandocOptions::default(), Path::new("/bin/pandoc"));
+        let invocation = resolve_mode(
+            &manifest,
+            &PandocOptions::default(),
+            Path::new("/bin/pandoc"),
+        );
         assert_eq!(invocation.mode, PandocMode::Native);
         assert_eq!(invocation.executable, PathBuf::from("/bin/pandoc"));
         assert!(
@@ -835,10 +840,7 @@ mod tests {
 
     #[test]
     fn resolve_mode_native_routes_through_host_pandoc() {
-        let manifest = sample_manifest(
-            "/irrelevant/pandoc-crossref",
-            vec!["--something".into()],
-        );
+        let manifest = sample_manifest("/irrelevant/pandoc-crossref", vec!["--something".into()]);
         let opts = PandocOptions {
             mode: Some(PandocMode::Native),
             ..Default::default()
@@ -897,11 +899,7 @@ mod tests {
                 "filter_env missing CON-3303 variable {required} (got: {keys:?})"
             );
         }
-        let lookup = |name: &str| {
-            env.iter()
-                .find(|(k, _)| k == name)
-                .map(|(_, v)| v.as_str())
-        };
+        let lookup = |name: &str| env.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
         assert_eq!(lookup("PANDOC_VERSION"), Some("3.1.12.1"));
         assert_eq!(lookup("PANDOC_API_VERSION"), Some("1,23,1,0"));
         assert_eq!(
@@ -962,10 +960,7 @@ mod tests {
             PageMeta::synthetic("Page", "page"),
         );
         let ctx = HookContext::new(Stage::Transform, "test-pandoc", &build);
-        let manifest = sample_manifest(
-            "/definitely-not-a-real-binary-zetl-pandoc-test",
-            vec![],
-        );
+        let manifest = sample_manifest("/definitely-not-a-real-binary-zetl-pandoc-test", vec![]);
         let input = StageInput::Transform {
             foreign: serde_json::json!({"pandoc-api-version": [1,23,1,0], "meta": {}, "blocks": []}),
         };

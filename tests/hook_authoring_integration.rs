@@ -84,7 +84,10 @@ fn hook_new_scaffolds_at_expected_paths() {
 
     // Manifest parses as valid TOML + has the expected stage field.
     let manifest_text = fs::read_to_string(&manifest_path).unwrap();
-    assert!(manifest_text.contains(r#"stage = "transform""#), "{manifest_text}");
+    assert!(
+        manifest_text.contains(r#"stage = "transform""#),
+        "{manifest_text}"
+    );
     assert!(manifest_text.contains(r#"extension_id = "foo""#));
 }
 
@@ -105,7 +108,10 @@ fn hook_new_then_hook_test_passes_on_fresh_scaffold() {
         String::from_utf8_lossy(&out.stderr)
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("ok"), "expected match message, got: {stdout}");
+    assert!(
+        stdout.contains("ok"),
+        "expected match message, got: {stdout}"
+    );
 }
 
 // ── Matrix row 2: `zetl hook test <existing>` no-op ──────────────────────
@@ -172,7 +178,10 @@ for line in sys.stdin:
     let out = run_zetl(vault, &["hook", "test", "edit_me"]);
     assert!(!out.status.success(), "must exit non-zero after hook edit");
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("FAIL"), "expected FAIL message, got: {stderr}");
+    assert!(
+        stderr.contains("FAIL"),
+        "expected FAIL message, got: {stderr}"
+    );
     // Diff output mentions the mutation.
     assert!(
         stderr.contains("MUTATED") || stderr.contains("+") && stderr.contains("-"),
@@ -188,10 +197,7 @@ fn hook_test_update_regenerates_golden_and_exits_zero() {
     let tmp = TempDir::new().unwrap();
     let vault = touch_vault(&tmp);
 
-    let out = run_zetl(
-        vault,
-        &["hook", "new", "pre-parse", "gold", "--lang", "py"],
-    );
+    let out = run_zetl(vault, &["hook", "new", "pre-parse", "gold", "--lang", "py"]);
     assert!(out.status.success());
 
     // Mutate the hook as in row 3.
@@ -219,7 +225,10 @@ for line in sys.stdin:
     // Without --update this should fail; with --update it should pass
     // AND the new golden should contain the mutation string.
     let out = run_zetl(vault, &["hook", "test", "gold"]);
-    assert!(!out.status.success(), "diverged hook must fail without --update");
+    assert!(
+        !out.status.success(),
+        "diverged hook must fail without --update"
+    );
 
     let out = run_zetl(vault, &["hook", "test", "gold", "--update"]);
     assert!(
@@ -228,7 +237,10 @@ for line in sys.stdin:
         String::from_utf8_lossy(&out.stderr)
     );
     let golden = fs::read_to_string(vault.join("tests/hook-fixtures/gold/expected.md")).unwrap();
-    assert!(golden.starts_with("REGEN"), "new golden must reflect mutation: {golden:?}");
+    assert!(
+        golden.starts_with("REGEN"),
+        "new golden must reflect mutation: {golden:?}"
+    );
 
     // Subsequent plain `hook test` now passes against the regenerated
     // golden.
@@ -323,7 +335,10 @@ fn scaffold_refuses_overwrite_without_force() {
     let out = run_zetl(vault, &["hook", "new", "transform", "dup", "--lang", "py"]);
     assert!(out.status.success());
     let out = run_zetl(vault, &["hook", "new", "transform", "dup", "--lang", "py"]);
-    assert!(!out.status.success(), "second scaffold without --force must fail");
+    assert!(
+        !out.status.success(),
+        "second scaffold without --force must fail"
+    );
     let out = run_zetl(
         vault,
         &["hook", "new", "transform", "dup", "--lang", "py", "--force"],
@@ -369,16 +384,14 @@ fn watch_loop_restarts_on_source_edit_within_500ms() {
             debounce: std::time::Duration::from_millis(50),
             max_events: Some(1), // stop after one restart
         };
-        zetl::hooks::authoring::watch(&vault_owned, "watched", opts, |e| {
-            match e {
-                zetl::hooks::authoring::WatchEvent::Spawned => {
-                    let _ = tx.send(zetl::hooks::authoring::WatchEvent::Spawned);
-                }
-                zetl::hooks::authoring::WatchEvent::Restart => {
-                    let _ = tx.send(zetl::hooks::authoring::WatchEvent::Restart);
-                }
-                _ => {}
+        zetl::hooks::authoring::watch(&vault_owned, "watched", opts, |e| match e {
+            zetl::hooks::authoring::WatchEvent::Spawned => {
+                let _ = tx.send(zetl::hooks::authoring::WatchEvent::Spawned);
             }
+            zetl::hooks::authoring::WatchEvent::Restart => {
+                let _ = tx.send(zetl::hooks::authoring::WatchEvent::Restart);
+            }
+            _ => {}
         })
         .unwrap();
     });

@@ -112,13 +112,13 @@ impl TransformHook for TagTransform {
     fn id(&self) -> &str {
         self.id
     }
-    fn run(
-        &self,
-        mut input: AstDocument,
-        _ctx: &BuildContext,
-    ) -> Result<AstDocument, HookError> {
+    fn run(&self, mut input: AstDocument, _ctx: &BuildContext) -> Result<AstDocument, HookError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        if let Some(Block::Paragraph(p)) = input.children.iter_mut().find(|b| matches!(b, Block::Paragraph(_))) {
+        if let Some(Block::Paragraph(p)) = input
+            .children
+            .iter_mut()
+            .find(|b| matches!(b, Block::Paragraph(_)))
+        {
             if let Some(Inline::Text(t)) = p.children.first_mut() {
                 t.text = format!("{}|{}", t.text, self.marker);
             }
@@ -136,11 +136,7 @@ impl TransformHook for FailingTransform {
     fn id(&self) -> &str {
         self.id
     }
-    fn run(
-        &self,
-        _input: AstDocument,
-        _ctx: &BuildContext,
-    ) -> Result<AstDocument, HookError> {
+    fn run(&self, _input: AstDocument, _ctx: &BuildContext) -> Result<AstDocument, HookError> {
         Err(HookError::new(Stage::Transform, self.id, self.reason))
     }
 }
@@ -164,7 +160,11 @@ fn parse(text: &str) -> AstDocument {
 }
 
 fn render(ast: &AstDocument) -> String {
-    let Some(Block::Paragraph(p)) = ast.children.iter().find(|b| matches!(b, Block::Paragraph(_))) else {
+    let Some(Block::Paragraph(p)) = ast
+        .children
+        .iter()
+        .find(|b| matches!(b, Block::Paragraph(_)))
+    else {
         return String::from("<p></p>");
     };
     let text = p
@@ -282,7 +282,10 @@ fn failure_does_not_cascade_across_stages() {
     assert_eq!(tf_calls.load(Ordering::SeqCst), 1);
     // Post-render saw the *non*-reverted render output.
     assert_eq!(post_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(*post_seen.lock().unwrap(), vec!["<p>hello|TF</p>".to_string()]);
+    assert_eq!(
+        *post_seen.lock().unwrap(),
+        vec!["<p>hello|TF</p>".to_string()]
+    );
     assert_eq!(html, "<p>hello|TF</p><!--POST-->");
 
     // The single failure was pinned to the transform stage.

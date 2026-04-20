@@ -100,8 +100,12 @@ fn mock_adapter_exposes_con_3302_surface() {
         frontmatter: None,
         children: vec![],
     };
-    let foreign = adapter.translate_to_foreign(&doc).expect("translate_to_foreign");
-    let back = adapter.translate_from_foreign(foreign).expect("translate_from_foreign");
+    let foreign = adapter
+        .translate_to_foreign(&doc)
+        .expect("translate_to_foreign");
+    let back = adapter
+        .translate_from_foreign(foreign)
+        .expect("translate_from_foreign");
     assert_eq!(back, doc);
 
     let build = mock_build_context();
@@ -118,7 +122,9 @@ fn mock_adapter_exposes_con_3302_surface() {
     };
     let response = adapter.invoke_plugin(&manifest, input, &ctx);
     match response {
-        PluginResponse::Success { output, duration, .. } => {
+        PluginResponse::Success {
+            output, duration, ..
+        } => {
             // Identity adapter returns its input untouched.
             assert_eq!(
                 output,
@@ -219,10 +225,7 @@ impl EcosystemAdapter for IdentityZetlAdapter {
         &self.stages
     }
 
-    fn translate_to_foreign(
-        &self,
-        doc: &Document,
-    ) -> Result<serde_json::Value, TranslationError> {
+    fn translate_to_foreign(&self, doc: &Document) -> Result<serde_json::Value, TranslationError> {
         serde_json::to_value(doc)
             .map_err(|e| TranslationError::to_foreign(AstType::ZetlExt, e.to_string()))
     }

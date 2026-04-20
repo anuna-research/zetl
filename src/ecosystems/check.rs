@@ -553,7 +553,10 @@ mod tests {
         std::fs::write(node_modules.join("remark-not-a-dir"), b"").unwrap();
 
         let got = remark_plugins_in_node_modules(tmp.path());
-        assert_eq!(got, vec!["remark-gfm".to_string(), "remark-math".to_string()]);
+        assert_eq!(
+            got,
+            vec!["remark-gfm".to_string(), "remark-math".to_string()]
+        );
     }
 
     #[test]

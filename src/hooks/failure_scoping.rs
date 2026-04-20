@@ -115,8 +115,7 @@ impl FailureReason {
             || lower.contains("parse error")
         {
             FailureReason::MalformedOutput
-        } else if lower.contains("crash") || lower.contains("signal") || lower.contains("sigkill")
-        {
+        } else if lower.contains("crash") || lower.contains("signal") || lower.contains("sigkill") {
             FailureReason::Crash
         } else if lower.contains("non-zero") || lower.contains("exit code") {
             FailureReason::NonZeroExit
@@ -350,26 +349,60 @@ mod tests {
 
     #[test]
     fn reason_classify_hits_named_categories() {
-        assert_eq!(FailureReason::classify("timeout exceeded"), FailureReason::Timeout);
-        assert_eq!(FailureReason::classify("hit deadline_ms"), FailureReason::Timeout);
-        assert_eq!(FailureReason::classify("memory exceeded"), FailureReason::MemoryExceeded);
-        assert_eq!(FailureReason::classify("OOM kill"), FailureReason::MemoryExceeded);
+        assert_eq!(
+            FailureReason::classify("timeout exceeded"),
+            FailureReason::Timeout
+        );
+        assert_eq!(
+            FailureReason::classify("hit deadline_ms"),
+            FailureReason::Timeout
+        );
+        assert_eq!(
+            FailureReason::classify("memory exceeded"),
+            FailureReason::MemoryExceeded
+        );
+        assert_eq!(
+            FailureReason::classify("OOM kill"),
+            FailureReason::MemoryExceeded
+        );
         assert_eq!(
             FailureReason::classify("contract violation: preserves"),
             FailureReason::ContractViolation
         );
-        assert_eq!(FailureReason::classify("malformed output"), FailureReason::MalformedOutput);
-        assert_eq!(FailureReason::classify("invalid json"), FailureReason::MalformedOutput);
-        assert_eq!(FailureReason::classify("schema mismatch"), FailureReason::MalformedOutput);
-        assert_eq!(FailureReason::classify("crashed in SIGKILL"), FailureReason::Crash);
-        assert_eq!(FailureReason::classify("non-zero exit"), FailureReason::NonZeroExit);
-        assert_eq!(FailureReason::classify("exit code 127"), FailureReason::NonZeroExit);
+        assert_eq!(
+            FailureReason::classify("malformed output"),
+            FailureReason::MalformedOutput
+        );
+        assert_eq!(
+            FailureReason::classify("invalid json"),
+            FailureReason::MalformedOutput
+        );
+        assert_eq!(
+            FailureReason::classify("schema mismatch"),
+            FailureReason::MalformedOutput
+        );
+        assert_eq!(
+            FailureReason::classify("crashed in SIGKILL"),
+            FailureReason::Crash
+        );
+        assert_eq!(
+            FailureReason::classify("non-zero exit"),
+            FailureReason::NonZeroExit
+        );
+        assert_eq!(
+            FailureReason::classify("exit code 127"),
+            FailureReason::NonZeroExit
+        );
         assert_eq!(FailureReason::classify("who knows"), FailureReason::Other);
     }
 
     #[test]
     fn from_hook_error_populates_all_fields() {
-        let err = HookError::new(Stage::Transform, "callouts", "timeout exceeded deadline_ms=100");
+        let err = HookError::new(
+            Stage::Transform,
+            "callouts",
+            "timeout exceeded deadline_ms=100",
+        );
         let rec = FailureRecord::from_hook_error(&err, "projects/q2", Duration::from_millis(180));
         assert_eq!(rec.hook, "callouts");
         assert_eq!(rec.stage, "transform");

@@ -581,10 +581,7 @@ mod tests {
         store.merge_shard(p1);
         store.merge_shard(p2);
 
-        assert_eq!(
-            store.snapshot_json(),
-            json!({"shared": {"k": "from-2"}})
-        );
+        assert_eq!(store.snapshot_json(), json!({"shared": {"k": "from-2"}}));
     }
 
     #[test]

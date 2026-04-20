@@ -50,15 +50,11 @@ use crate::hooks::translators::AstType;
 /// Execution mode declared by the manifest (REQ-3203).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum Mode {
+    #[default]
     OneShot,
     Persistent,
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::OneShot
-    }
 }
 
 impl Mode {
@@ -79,15 +75,11 @@ impl std::fmt::Display for Mode {
 /// Policy for combining `content_probe` hits (REQ-3203 / CON-3204).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ProbeMatch {
+    #[default]
     Any,
     All,
-}
-
-impl Default for ProbeMatch {
-    fn default() -> Self {
-        ProbeMatch::Any
-    }
 }
 
 impl ProbeMatch {
@@ -237,6 +229,7 @@ impl Default for Manifest {
 /// and emit a "recommend a manifest" warning. `Present` carries the
 /// parsed result.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)] // Boxing `Present` would force every match-and-field-access path through an extra dereference; manifests are loaded once per hook lifecycle, so the ~336-byte upper bound is a non-issue in practice.
 pub enum LoadedManifest {
     Missing,
     Present(Manifest),
@@ -312,13 +305,11 @@ impl ManifestError {
                 );
                 d
             }
-            ManifestError::Io { path, source } => {
-                HookDiagnostic::new(
-                    DiagnosticClass::ManifestParse,
-                    format!("cannot read hook manifest {}", path.display()),
-                )
-                .with_context(source.to_string())
-            }
+            ManifestError::Io { path, source } => HookDiagnostic::new(
+                DiagnosticClass::ManifestParse,
+                format!("cannot read hook manifest {}", path.display()),
+            )
+            .with_context(source.to_string()),
         }
     }
 }
@@ -327,7 +318,11 @@ impl std::fmt::Display for ManifestError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ManifestError::Parse { path, message } => match path {
-                Some(p) => write!(f, "failed to parse hook manifest {}: {message}", p.display()),
+                Some(p) => write!(
+                    f,
+                    "failed to parse hook manifest {}: {message}",
+                    p.display()
+                ),
                 None => write!(f, "failed to parse hook manifest: {message}"),
             },
             ManifestError::Io { path, source } => {
@@ -369,30 +364,28 @@ impl From<ManifestError> for HookDiagnostic {
 /// pointing at the ecosystem block, not at the SPEC-032 base parser
 /// (SPEC-033 REQ-3312 / TEST-3312).
 pub fn parse_manifest(text: &str, path_hint: Option<&Path>) -> Result<Manifest, ManifestError> {
-    let table: toml::value::Table =
-        toml::from_str(text).map_err(|e| ManifestError::Parse {
-            path: path_hint.map(Path::to_path_buf),
-            message: e.to_string(),
-        })?;
+    let table: toml::value::Table = toml::from_str(text).map_err(|e| ManifestError::Parse {
+        path: path_hint.map(Path::to_path_buf),
+        message: e.to_string(),
+    })?;
 
     let (base_table, eco_table) = split_base_and_ecosystem(table);
 
     let extra = match eco_table {
-        Some(t) => Some(eco_manifest::parse(t).map_err(|e| {
-            ManifestError::Parse {
-                path: path_hint.map(Path::to_path_buf),
-                message: format_ecosystem_error(&e),
-            }
+        Some(t) => Some(eco_manifest::parse(t).map_err(|e| ManifestError::Parse {
+            path: path_hint.map(Path::to_path_buf),
+            message: format_ecosystem_error(&e),
         })?),
         None => None,
     };
 
-    let wire: ManifestWire = toml::Value::Table(base_table)
-        .try_into()
-        .map_err(|e: toml::de::Error| ManifestError::Parse {
-            path: path_hint.map(Path::to_path_buf),
-            message: e.to_string(),
-        })?;
+    let wire: ManifestWire =
+        toml::Value::Table(base_table)
+            .try_into()
+            .map_err(|e: toml::de::Error| ManifestError::Parse {
+                path: path_hint.map(Path::to_path_buf),
+                message: e.to_string(),
+            })?;
 
     let mut manifest = wire.into_manifest();
     manifest.extra = extra;
@@ -653,7 +646,10 @@ expansion_bound = 3.0
         assert_eq!(m.extension_id.as_deref(), Some("my_callouts"));
         assert!(m.optional);
         // before/after merge [ordering] then top-level alias.
-        assert_eq!(m.before, vec!["tasks".to_string(), "admonition".to_string()]);
+        assert_eq!(
+            m.before,
+            vec!["tasks".to_string(), "admonition".to_string()]
+        );
         assert_eq!(m.after, vec!["callouts".to_string(), "prelude".to_string()]);
         assert_eq!(
             m.select.include,
@@ -944,10 +940,7 @@ after = ["canonical-after"]
         )
         .unwrap();
         // Canonical first, top-level alias second.
-        assert_eq!(
-            m.before,
-            vec!["canonical".to_string(), "top".to_string()]
-        );
+        assert_eq!(m.before, vec!["canonical".to_string(), "top".to_string()]);
         assert_eq!(
             m.after,
             vec!["canonical-after".to_string(), "bottom".to_string()]
@@ -1061,10 +1054,7 @@ exec = "mdbook-mermaid"
         match m.extra.expect("ecosystem block should be present") {
             crate::ecosystems::manifest::EcosystemSpecific::Mdbook(b) => {
                 assert_eq!(b.exec, "mdbook-mermaid");
-                assert_eq!(
-                    b.scope,
-                    crate::ecosystems::manifest::MdbookScope::Page
-                );
+                assert_eq!(b.scope, crate::ecosystems::manifest::MdbookScope::Page);
             }
             other => panic!("expected Mdbook variant, got {other:?}"),
         }
@@ -1215,7 +1205,9 @@ timeout_ms = 150
         assert_eq!(m.timeout_ms, 150);
         assert!(matches!(
             m.extra,
-            Some(crate::ecosystems::manifest::EcosystemSpecific::ZetlNative(_))
+            Some(crate::ecosystems::manifest::EcosystemSpecific::ZetlNative(
+                _
+            ))
         ));
     }
 

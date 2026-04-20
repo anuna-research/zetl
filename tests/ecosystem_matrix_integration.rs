@@ -130,9 +130,7 @@ fn collect_rows(matrix: &toml::Value) -> Vec<PluginRow> {
             let name = get_str(t, "name")
                 .unwrap_or_else(|| panic!("{ctx}: missing required field `name`"));
             let version_range = get_str(t, "version_range").unwrap_or_else(|| {
-                panic!(
-                    "{ctx}: missing required field `version_range` (REQ-3314 amendment)"
-                )
+                panic!("{ctx}: missing required field `version_range` (REQ-3314 amendment)")
             });
             let tier = get_str(t, "tier")
                 .unwrap_or_else(|| panic!("{ctx}: missing required field `tier`"));
@@ -157,9 +155,7 @@ fn collect_rows(matrix: &toml::Value) -> Vec<PluginRow> {
                         )
                     }),
                     idempotent: get_bool(ct, "idempotent").unwrap_or_else(|| {
-                        panic!(
-                            "{ctx}.contract: missing required field `idempotent` (bool)"
-                        )
+                        panic!("{ctx}.contract: missing required field `idempotent` (bool)")
                     }),
                 });
 

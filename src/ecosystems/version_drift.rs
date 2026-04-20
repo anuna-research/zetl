@@ -213,10 +213,12 @@ pub fn parse_range(input: &str) -> Result<VersionRange, VersionRangeParseError> 
     }
     let mut predicates = Vec::new();
     for part in trimmed.split_whitespace() {
-        predicates.push(parse_predicate(part).map_err(|reason| VersionRangeParseError {
-            input: input.to_string(),
-            reason,
-        })?);
+        predicates.push(
+            parse_predicate(part).map_err(|reason| VersionRangeParseError {
+                input: input.to_string(),
+                reason,
+            })?,
+        );
     }
     Ok(VersionRange {
         original: trimmed.to_string(),
@@ -316,10 +318,7 @@ impl IncompatReason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginVersionDrift {
     /// `observed == tested` component-wise. Silent.
-    Exact {
-        observed: Version,
-        tested: Version,
-    },
+    Exact { observed: Version, tested: Version },
     /// Same major as tested, observed is newer, still within the
     /// matrix range. Warn once per session; the hook runs.
     MinorDrift {
@@ -365,10 +364,12 @@ pub fn classify(
     observed: Version,
 ) -> Result<PluginVersionDrift, VersionRangeParseError> {
     let range = parse_range(version_range)?;
-    let tested = range.tested_version().ok_or_else(|| VersionRangeParseError {
-        input: version_range.to_string(),
-        reason: "range has no predicates".into(),
-    })?;
+    let tested = range
+        .tested_version()
+        .ok_or_else(|| VersionRangeParseError {
+            input: version_range.to_string(),
+            reason: "range has no predicates".into(),
+        })?;
 
     if observed == tested {
         return Ok(PluginVersionDrift::Exact { observed, tested });
@@ -443,7 +444,9 @@ pub fn diagnostic_for_incompatible(
 ) -> HookDiagnostic {
     HookDiagnostic::new(
         DiagnosticClass::RuntimeAbsence,
-        format!("plugin_version_incompatible: {ecosystem}/{plugin} v{observed} outside tested range"),
+        format!(
+            "plugin_version_incompatible: {ecosystem}/{plugin} v{observed} outside tested range"
+        ),
     )
     .with_context(format!("matrix version_range = {range:?}"))
     .with_context(format!("last-tested v{tested}"))
@@ -566,12 +569,13 @@ pub fn probe_node_package_version(
             binary: format!("{}/{package}/package.json", node_modules_path.display()),
             detail: format!("not valid JSON: {e}"),
         })?;
-    let version_str = parsed.get("version").and_then(|v| v.as_str()).ok_or_else(|| {
-        PluginProbeError::ProbeFailed {
+    let version_str = parsed
+        .get("version")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| PluginProbeError::ProbeFailed {
             binary: format!("{}/{package}/package.json", node_modules_path.display()),
             detail: "`version` field missing or not a string".into(),
-        }
-    })?;
+        })?;
     parse_version(version_str)
         .map(Version::from)
         .ok_or_else(|| PluginProbeError::ProbeFailed {

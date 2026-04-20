@@ -29,9 +29,7 @@ use zetl::hooks::ast::{
 };
 use zetl::hooks::composition::compose_stage;
 use zetl::hooks::pipeline::Stage;
-use zetl::hooks::translators::{
-    dispatch_transform, AstType, DispatchError, TranslatorRegistry,
-};
+use zetl::hooks::translators::{dispatch_transform, AstType, DispatchError, TranslatorRegistry};
 
 fn pos() -> Position {
     Position::origin()
@@ -318,15 +316,8 @@ fn malformed_foreign_response_surfaces_translation_error() {
         }))
     };
 
-    let err = dispatch_transform(
-        &registry,
-        AstType::MdastExt,
-        "malformed",
-        &[],
-        doc,
-        run,
-    )
-    .unwrap_err();
+    let err =
+        dispatch_transform(&registry, AstType::MdastExt, "malformed", &[], doc, run).unwrap_err();
 
     match err {
         DispatchError::Translation(t) => {

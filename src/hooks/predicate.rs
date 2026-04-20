@@ -761,7 +761,10 @@ impl<'a> Parser<'a> {
                     return Err(ParseError::new("expected `)`", p));
                 }
                 None => {
-                    return Err(ParseError::new("expected `)` before end of input", self.src.len()));
+                    return Err(ParseError::new(
+                        "expected `)` before end of input",
+                        self.src.len(),
+                    ));
                 }
             }
         }
@@ -867,10 +870,7 @@ impl<'a> Parser<'a> {
                     match self.advance() {
                         Some((Tok::Ident(s), _)) => segs.push(Segment::Field(s)),
                         Some((_, p)) => {
-                            return Err(ParseError::new(
-                                "expected identifier after `.`",
-                                p,
-                            ));
+                            return Err(ParseError::new("expected identifier after `.`", p));
                         }
                         None => {
                             return Err(ParseError::new(
@@ -931,10 +931,7 @@ impl<'a> Parser<'a> {
                 format!("expected literal value, got {other:?}"),
                 pos,
             )),
-            None => Err(ParseError::new(
-                "expected literal value",
-                self.src.len(),
-            )),
+            None => Err(ParseError::new("expected literal value", self.src.len())),
         }
     }
 }
@@ -948,11 +945,7 @@ mod tests {
 
     fn check(src: &str, fm: Value, expected: bool) {
         let p = parse(src).unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
-        assert_eq!(
-            p.evaluate(&fm),
-            expected,
-            "src={src:?} fm={fm}",
-        );
+        assert_eq!(p.evaluate(&fm), expected, "src={src:?} fm={fm}",);
     }
 
     // ── Canonical REQ-3205 examples ───────────────────────────────────────
@@ -998,25 +991,13 @@ mod tests {
             false,
         );
         // Missing path resolves to null → `null != false` is true (different types).
-        check(
-            r#"frontmatter.extensions.tasks != false"#,
-            json!({}),
-            true,
-        );
+        check(r#"frontmatter.extensions.tasks != false"#, json!({}), true);
     }
 
     #[test]
     fn word_count_gt_500() {
-        check(
-            r#"word_count > 500"#,
-            json!({ "word_count": 742 }),
-            true,
-        );
-        check(
-            r#"word_count > 500"#,
-            json!({ "word_count": 100 }),
-            false,
-        );
+        check(r#"word_count > 500"#, json!({ "word_count": 742 }), true);
+        check(r#"word_count > 500"#, json!({ "word_count": 100 }), false);
     }
 
     #[test]
@@ -1039,11 +1020,7 @@ mod tests {
     fn strict_types_string_vs_number_false() {
         // "500" != 500 — comparison between string and number is always
         // false (never coerces).
-        check(
-            r#"word_count > 500"#,
-            json!({ "word_count": "500" }),
-            false,
-        );
+        check(r#"word_count > 500"#, json!({ "word_count": "500" }), false);
         check(r#"v == 5"#, json!({ "v": "5" }), false);
         check(r#"v != 5"#, json!({ "v": "5" }), true);
     }
@@ -1053,7 +1030,11 @@ mod tests {
         check(r#"a.b.c == 1"#, json!({}), false);
         check(r#"a.b.c is null"#, json!({}), true);
         check(r#"a.b.c is not null"#, json!({ "a": 1 }), false);
-        check(r#"a.b.c is not null"#, json!({ "a": { "b": { "c": 3 } } }), true);
+        check(
+            r#"a.b.c is not null"#,
+            json!({ "a": { "b": { "c": 3 } } }),
+            true,
+        );
     }
 
     #[test]
@@ -1139,11 +1120,7 @@ mod tests {
     #[test]
     fn contains_type_mismatched_returns_false() {
         // String needle against array of numbers.
-        check(
-            r#"tags contains "x""#,
-            json!({ "tags": [1, 2, 3] }),
-            false,
-        );
+        check(r#"tags contains "x""#, json!({ "tags": [1, 2, 3] }), false);
         // Contains against null-valued / missing / scalar path.
         check(r#"x contains "y""#, json!({ "x": null }), false);
         check(r#"x contains "y""#, json!({ "x": 5 }), false);
@@ -1166,11 +1143,7 @@ mod tests {
             false,
         );
         // `a == 1` alone makes it true regardless.
-        check(
-            r#"a == 1 || b == 2 && c == 3"#,
-            json!({ "a": 1 }),
-            true,
-        );
+        check(r#"a == 1 || b == 2 && c == 3"#, json!({ "a": 1 }), true);
     }
 
     #[test]
@@ -1248,16 +1221,8 @@ mod tests {
 
     #[test]
     fn path_underscore_and_dash_idents() {
-        check(
-            r#"word_count > 0"#,
-            json!({ "word_count": 1 }),
-            true,
-        );
-        check(
-            r#"kebab-case == "ok""#,
-            json!({ "kebab-case": "ok" }),
-            true,
-        );
+        check(r#"word_count > 0"#, json!({ "word_count": 1 }), true);
+        check(r#"kebab-case == "ok""#, json!({ "kebab-case": "ok" }), true);
     }
 
     // ── Regex / matches ──────────────────────────────────────────────────
@@ -1394,11 +1359,7 @@ mod tests {
 
     #[test]
     fn single_quoted_strings_accepted() {
-        check(
-            r#"name == 'bravo'"#,
-            json!({ "name": "bravo" }),
-            true,
-        );
+        check(r#"name == 'bravo'"#, json!({ "name": "bravo" }), true);
     }
 
     #[test]

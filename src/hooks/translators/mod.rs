@@ -85,9 +85,10 @@ use crate::hooks::ast::{Block, Document, Inline};
 /// Serialisation uses the wire spelling from the manifest grammar; the
 /// short aliases `"mdast"` / `"pandoc-types"` are accepted on parse for
 /// ergonomic toml authoring but emitted in canonical form.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum AstType {
     #[serde(rename = "zetl-ext")]
+    #[default]
     ZetlExt,
     #[serde(rename = "mdast-ext", alias = "mdast")]
     MdastExt,
@@ -119,12 +120,6 @@ impl AstType {
             AstType::ZetlExt => &[],
             AstType::MdastExt | AstType::PandocExt => &["Wikilink", "Embed", "SplBlock"],
         }
-    }
-}
-
-impl Default for AstType {
-    fn default() -> Self {
-        AstType::ZetlExt
     }
 }
 
@@ -326,7 +321,11 @@ impl TranslatorRegistry {
     /// [`DispatchError::EcosystemNotCompiled`] with the same error text
     /// `zetl ecosystem check` prints so users can triage both paths
     /// with one message.
-    pub fn require(&self, ast_type: AstType, hook_id: &str) -> Result<&dyn Translator, DispatchError> {
+    pub fn require(
+        &self,
+        ast_type: AstType,
+        hook_id: &str,
+    ) -> Result<&dyn Translator, DispatchError> {
         match self.get(ast_type) {
             Some(t) => Ok(t),
             None => Err(DispatchError::EcosystemNotCompiled {
@@ -401,11 +400,12 @@ impl From<TranslationError> for DispatchError {
 impl std::fmt::Display for DispatchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DispatchError::EcosystemNotCompiled { ast_type, hook_id, hint } => {
-                write!(
-                    f,
-                    "hook '{hook_id}' declared ast_type='{ast_type}': {hint}"
-                )
+            DispatchError::EcosystemNotCompiled {
+                ast_type,
+                hook_id,
+                hint,
+            } => {
+                write!(f, "hook '{hook_id}' declared ast_type='{ast_type}': {hint}")
             }
             DispatchError::Translation(e) => e.fmt(f),
             DispatchError::HookError { reason, detail } => {
@@ -436,10 +436,7 @@ impl StripWarning {
     /// `"<hook> dropped <N> <NodeType>"`.
     pub fn log_line(&self) -> String {
         let dropped = self.before.saturating_sub(self.after);
-        format!(
-            "{} dropped {} {}",
-            self.hook_id, dropped, self.node_type
-        )
+        format!("{} dropped {} {}", self.hook_id, dropped, self.node_type)
     }
 }
 
@@ -523,8 +520,7 @@ where
 /// marker-strip scanner treats absent as 0.
 pub fn count_node_types(doc: &Document, names: &[String]) -> BTreeMap<String, usize> {
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-    let interest: std::collections::HashSet<&str> =
-        names.iter().map(|s| s.as_str()).collect();
+    let interest: std::collections::HashSet<&str> = names.iter().map(|s| s.as_str()).collect();
     for block in &doc.children {
         walk_block(block, &interest, &mut counts);
     }
@@ -667,7 +663,10 @@ mod tests {
     #[test]
     fn ast_type_parse_accepts_short_aliases() {
         assert_eq!("mdast".parse::<AstType>().unwrap(), AstType::MdastExt);
-        assert_eq!("pandoc-types".parse::<AstType>().unwrap(), AstType::PandocExt);
+        assert_eq!(
+            "pandoc-types".parse::<AstType>().unwrap(),
+            AstType::PandocExt
+        );
     }
 
     #[test]
@@ -722,7 +721,11 @@ mod tests {
             Err(e) => e,
         };
         match err {
-            DispatchError::EcosystemNotCompiled { ast_type, hook_id, hint } => {
+            DispatchError::EcosystemNotCompiled {
+                ast_type,
+                hook_id,
+                hint,
+            } => {
                 assert_eq!(ast_type, AstType::MdastExt);
                 assert_eq!(hook_id, "mdast-hook");
                 // REQ-3313 requires an actionable hint.
@@ -755,15 +758,11 @@ mod tests {
         // The hook closure returns its input unchanged; the zetl-ext
         // identity translator means the document we get back is byte-
         // equivalent to the input.
-        let outcome = dispatch_transform(
-            &reg,
-            AstType::ZetlExt,
-            "identity",
-            &[],
-            doc.clone(),
-            |v| Ok(v),
-        )
-        .unwrap();
+        let outcome =
+            dispatch_transform(&reg, AstType::ZetlExt, "identity", &[], doc.clone(), |v| {
+                Ok(v)
+            })
+            .unwrap();
 
         assert_eq!(outcome.output, doc);
         assert!(outcome.warnings.is_empty());
@@ -829,15 +828,11 @@ mod tests {
         let input = doc_with(vec![para(vec![text("hi"), wikilink("Target")])]);
         let preserves = vec!["Wikilink".to_string()];
 
-        let outcome = dispatch_transform(
-            &reg,
-            AstType::ZetlExt,
-            "identity",
-            &preserves,
-            input,
-            |v| Ok(v),
-        )
-        .unwrap();
+        let outcome =
+            dispatch_transform(&reg, AstType::ZetlExt, "identity", &preserves, input, |v| {
+                Ok(v)
+            })
+            .unwrap();
 
         assert!(outcome.warnings.is_empty());
     }
@@ -849,18 +844,17 @@ mod tests {
         let reg = TranslatorRegistry::zetl_only();
         let doc = doc_with(vec![]);
 
-        let err = dispatch_transform(
-            &reg,
-            AstType::PandocExt,
-            "needs-pandoc",
-            &[],
-            doc,
-            |v| Ok(v),
-        )
+        let err = dispatch_transform(&reg, AstType::PandocExt, "needs-pandoc", &[], doc, |v| {
+            Ok(v)
+        })
         .unwrap_err();
 
         match err {
-            DispatchError::EcosystemNotCompiled { ast_type, hook_id, hint } => {
+            DispatchError::EcosystemNotCompiled {
+                ast_type,
+                hook_id,
+                hint,
+            } => {
                 assert_eq!(ast_type, AstType::PandocExt);
                 assert_eq!(hook_id, "needs-pandoc");
                 assert!(hint.contains("pandoc-ext"));

@@ -119,9 +119,10 @@ fn safe_mode_skips_undeclared_theme_hook_with_log_line() {
         .assert()
         .success()
         // Declared theme hook (callouts) is *not* skipped.
-        .stderr(predicate::str::contains(
-            "[zetl] --safe-mode: skipped transform/callouts from theme",
-        ).not())
+        .stderr(
+            predicate::str::contains("[zetl] --safe-mode: skipped transform/callouts from theme")
+                .not(),
+        )
         // Undeclared theme hook (rogue) is skipped, with SPEC-shape line.
         .stderr(predicate::str::contains(
             "[zetl] --safe-mode: skipped transform/rogue from theme",
@@ -175,9 +176,7 @@ fn undeclared_warning_emitted_without_safe_mode() {
         .stderr(predicate::str::contains(
             "[zetl] theme fountain ships 1 undeclared hook(s); run",
         ))
-        .stderr(predicate::str::contains(
-            "'zetl theme show fountain'",
-        ))
+        .stderr(predicate::str::contains("'zetl theme show fountain'"))
         .stderr(predicate::str::contains("--safe-mode to suppress"));
 }
 
@@ -201,9 +200,7 @@ fn safe_mode_suppresses_undeclared_warning() {
         .success()
         // The warning is suppressed under safe-mode (skip lines speak
         // for themselves).
-        .stderr(
-            predicate::str::contains("ships 1 undeclared hook(s)").not(),
-        );
+        .stderr(predicate::str::contains("ships 1 undeclared hook(s)").not());
 }
 
 #[test]

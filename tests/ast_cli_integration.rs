@@ -15,8 +15,7 @@ use tempfile::TempDir;
 const SCHEMA_PATH: &str = "tools/zetl-ast-schema-v1.json";
 
 fn schema_validator() -> jsonschema::Validator {
-    let bytes = fs::read(SCHEMA_PATH)
-        .unwrap_or_else(|e| panic!("cannot read {SCHEMA_PATH}: {e}"));
+    let bytes = fs::read(SCHEMA_PATH).unwrap_or_else(|e| panic!("cannot read {SCHEMA_PATH}: {e}"));
     let schema: Value = serde_json::from_slice(&bytes).unwrap();
     jsonschema::options()
         .with_draft(jsonschema::Draft::Draft202012)
@@ -58,8 +57,7 @@ fn sample_transform_output_validates_against_schema() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let json: Value = serde_json::from_slice(&output.stdout)
-        .expect("sample emits valid JSON");
+    let json: Value = serde_json::from_slice(&output.stdout).expect("sample emits valid JSON");
     let validator = schema_validator();
     validator
         .validate(&json)
@@ -72,10 +70,7 @@ fn sample_transform_output_validates_against_schema() {
     assert_eq!(json["frontmatter"]["title"], "Sample");
 
     let children = json["children"].as_array().expect("children is array");
-    let kinds: Vec<&str> = children
-        .iter()
-        .filter_map(|c| c["type"].as_str())
-        .collect();
+    let kinds: Vec<&str> = children.iter().filter_map(|c| c["type"].as_str()).collect();
     assert!(kinds.contains(&"Heading"), "{kinds:?}");
     assert!(kinds.contains(&"Paragraph"), "{kinds:?}");
     assert!(kinds.contains(&"BlockQuote"), "{kinds:?}");
@@ -115,14 +110,21 @@ fn sample_post_render_stage_emits_html_fragment() {
         .expect("run post-render");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("<h1"), "post-render output should contain HTML: {stdout}");
+    assert!(
+        stdout.contains("<h1"),
+        "post-render output should contain HTML: {stdout}"
+    );
     assert!(stdout.contains("Heading"));
 }
 
 #[test]
 fn sample_wikilink_fields_populated() {
     let dir = TempDir::new().unwrap();
-    let page = write_page(&dir, "p.md", "see [[Target#Sec|alias]] and [[Other#^bid]]\n");
+    let page = write_page(
+        &dir,
+        "p.md",
+        "see [[Target#Sec|alias]] and [[Other#^bid]]\n",
+    );
 
     let output = cargo_bin_cmd!("zetl")
         .args(["ast", "sample"])
@@ -241,7 +243,10 @@ fn diff_detects_addition_removal_and_attr_change() {
     // Non-empty diff → exit 1.
     assert_eq!(json_output.status.code(), Some(1));
     let entries: Vec<Value> = serde_json::from_slice(&json_output.stdout).unwrap();
-    let kinds: Vec<&str> = entries.iter().map(|e| e["kind"].as_str().unwrap()).collect();
+    let kinds: Vec<&str> = entries
+        .iter()
+        .map(|e| e["kind"].as_str().unwrap())
+        .collect();
     assert!(kinds.contains(&"modified"), "{kinds:?}");
     assert!(kinds.contains(&"added"), "{kinds:?}");
 

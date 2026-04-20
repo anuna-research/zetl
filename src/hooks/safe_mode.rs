@@ -26,7 +26,9 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use crate::hooks::composition::{compose_all_stages, ComposedHook, CompositionSource, StagePipeline};
+use crate::hooks::composition::{
+    compose_all_stages, ComposedHook, CompositionSource, StagePipeline,
+};
 use crate::hooks::pipeline::Stage;
 use crate::web::theme::{ThemeHookDecl, ThemeManifest};
 
@@ -309,7 +311,11 @@ pub fn audit_theme_declarations(
         .difference(&on_disk)
         .filter_map(|key| decls_by_key.get(key).cloned())
         .collect();
-    missing_on_disk.sort_by(|a, b| a.stage.cmp(&b.stage).then_with(|| a.extension_id.cmp(&b.extension_id)));
+    missing_on_disk.sort_by(|a, b| {
+        a.stage
+            .cmp(&b.stage)
+            .then_with(|| a.extension_id.cmp(&b.extension_id))
+    });
 
     ThemeAudit {
         theme_name: theme_name.to_string(),
@@ -394,8 +400,7 @@ mod tests {
     #[test]
     fn declaration_is_stage_specific() {
         let policy = SafeMode::from_pairs([(Stage::Transform, "callouts")]);
-        let same_id_wrong_stage =
-            make_hook(Stage::PreParse, "callouts", CompositionSource::Theme);
+        let same_id_wrong_stage = make_hook(Stage::PreParse, "callouts", CompositionSource::Theme);
         assert!(!policy.allows(&same_id_wrong_stage));
     }
 

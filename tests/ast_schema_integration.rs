@@ -15,8 +15,8 @@ use zetl::hooks::ast::{
 const SCHEMA_PATH: &str = "tools/zetl-ast-schema-v1.json";
 
 fn load_schema() -> jsonschema::Validator {
-    let bytes = std::fs::read(SCHEMA_PATH)
-        .unwrap_or_else(|e| panic!("cannot read {SCHEMA_PATH}: {e}"));
+    let bytes =
+        std::fs::read(SCHEMA_PATH).unwrap_or_else(|e| panic!("cannot read {SCHEMA_PATH}: {e}"));
     let schema: Value = serde_json::from_slice(&bytes).expect("schema is valid JSON");
     jsonschema::options()
         .with_draft(jsonschema::Draft::Draft202012)
@@ -27,9 +27,7 @@ fn load_schema() -> jsonschema::Validator {
 fn assert_valid(validator: &jsonschema::Validator, value: &Value, label: &str) {
     if let Err(err) = validator.validate(value) {
         let pretty = serde_json::to_string_pretty(value).unwrap_or_default();
-        panic!(
-            "{label} failed schema validation: {err}\nvalue:\n{pretty}"
-        );
+        panic!("{label} failed schema validation: {err}\nvalue:\n{pretty}");
     }
 }
 
@@ -57,7 +55,10 @@ fn representative_document() -> Document {
                 position: pos(1, 1, 1, 20),
                 level: 1,
                 children: vec![
-                    Inline::Text(Text { position: pos(1, 3, 1, 10), text: "Header ".into() }),
+                    Inline::Text(Text {
+                        position: pos(1, 3, 1, 10),
+                        text: "Header ".into(),
+                    }),
                     Inline::Strong(Strong {
                         position: pos(1, 10, 1, 20),
                         children: vec![Inline::Emphasis(Emphasis {
@@ -73,7 +74,10 @@ fn representative_document() -> Document {
             Block::Paragraph(Paragraph {
                 position: pos(3, 1, 3, 40),
                 children: vec![
-                    Inline::Text(Text { position: pos(3, 1, 3, 6), text: "see ".into() }),
+                    Inline::Text(Text {
+                        position: pos(3, 1, 3, 6),
+                        text: "see ".into(),
+                    }),
                     Inline::Link(Link {
                         position: pos(3, 5, 3, 20),
                         url: "https://example.com".into(),
@@ -83,7 +87,9 @@ fn representative_document() -> Document {
                             text: "home".into(),
                         })],
                     }),
-                    Inline::SoftBreak(SoftBreak { position: pos(3, 20, 3, 21) }),
+                    Inline::SoftBreak(SoftBreak {
+                        position: pos(3, 20, 3, 21),
+                    }),
                     Inline::Image(Image {
                         position: pos(3, 22, 3, 40),
                         url: "cat.png".into(),
@@ -91,8 +97,13 @@ fn representative_document() -> Document {
                         alt: "cat".into(),
                         children: vec![],
                     }),
-                    Inline::LineBreak(LineBreak { position: pos(3, 40, 3, 41) }),
-                    Inline::Code(Code { position: pos(3, 42, 3, 50), text: "fn x()".into() }),
+                    Inline::LineBreak(LineBreak {
+                        position: pos(3, 40, 3, 41),
+                    }),
+                    Inline::Code(Code {
+                        position: pos(3, 42, 3, 50),
+                        text: "fn x()".into(),
+                    }),
                     Inline::HtmlInline(HtmlInline {
                         position: pos(3, 52, 3, 56),
                         text: "<br>".into(),
@@ -129,20 +140,26 @@ fn representative_document() -> Document {
                         tight: true,
                         start: Some(2),
                         children: vec![
-                            ListItem::new(pos(7, 1, 7, 10), vec![Block::Paragraph(Paragraph {
-                                position: pos(7, 4, 7, 10),
-                                children: vec![Inline::Text(Text {
+                            ListItem::new(
+                                pos(7, 1, 7, 10),
+                                vec![Block::Paragraph(Paragraph {
                                     position: pos(7, 4, 7, 10),
-                                    text: "one".into(),
+                                    children: vec![Inline::Text(Text {
+                                        position: pos(7, 4, 7, 10),
+                                        text: "one".into(),
+                                    })],
                                 })],
-                            })]),
-                            ListItem::new(pos(8, 1, 8, 10), vec![Block::Paragraph(Paragraph {
-                                position: pos(8, 4, 8, 10),
-                                children: vec![Inline::Text(Text {
+                            ),
+                            ListItem::new(
+                                pos(8, 1, 8, 10),
+                                vec![Block::Paragraph(Paragraph {
                                     position: pos(8, 4, 8, 10),
-                                    text: "two".into(),
+                                    children: vec![Inline::Text(Text {
+                                        position: pos(8, 4, 8, 10),
+                                        text: "two".into(),
+                                    })],
                                 })],
-                            })]),
+                            ),
                         ],
                     }),
                     Block::List(List {
@@ -168,7 +185,9 @@ fn representative_document() -> Document {
                 info: None,
                 text: "    indented\n".into(),
             }),
-            Block::ThematicBreak(ThematicBreak { position: pos(19, 1, 19, 3) }),
+            Block::ThematicBreak(ThematicBreak {
+                position: pos(19, 1, 19, 3),
+            }),
             Block::HtmlBlock(HtmlBlock {
                 position: pos(21, 1, 21, 20),
                 text: "<div>raw</div>".into(),

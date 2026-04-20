@@ -126,7 +126,8 @@ include = ["does-not-exist/**/*.md"]
     let out = run_dry_run(vault, &["transform/callouts"]);
     let code = out.status.code().unwrap_or(-1);
     assert_eq!(
-        code, 1,
+        code,
+        1,
         "expected exit 1 on zero matches; stdout={} stderr={}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)

@@ -98,7 +98,8 @@ fn compare_node(before: &Value, after: &Value, path: String, out: &mut AstDiff) 
     // identities).
     if before_type != after_type {
         if let Some(_bt) = before_type.clone() {
-            out.entries.push(entry(AstDiffKind::Removed, path.clone(), before));
+            out.entries
+                .push(entry(AstDiffKind::Removed, path.clone(), before));
         }
         if let Some(_at) = after_type {
             out.entries.push(entry(AstDiffKind::Added, path, after));
@@ -188,16 +189,17 @@ fn children_of(v: &Value) -> &[Value] {
 }
 
 fn node_type(v: &Value) -> Option<String> {
-    v.get("type")
-        .and_then(|t| t.as_str())
-        .map(str::to_owned)
+    v.get("type").and_then(|t| t.as_str()).map(str::to_owned)
 }
 
 fn entry(kind: AstDiffKind, path: String, node: &Value) -> AstDiffEntry {
     let (start_line, start_col) = node
         .get("position")
         .map(|p| {
-            let sl = p.get("start_line").and_then(Value::as_u64).map(|n| n as u32);
+            let sl = p
+                .get("start_line")
+                .and_then(Value::as_u64)
+                .map(|n| n as u32);
             let sc = p.get("start_col").and_then(Value::as_u64).map(|n| n as u32);
             (sl, sc)
         })
@@ -242,15 +244,18 @@ mod tests {
 
     #[test]
     fn identical_documents_produce_empty_diff() {
-        let a = doc(json!([paragraph((1,1), "hello")]));
-        let b = doc(json!([paragraph((1,1), "hello")]));
+        let a = doc(json!([paragraph((1, 1), "hello")]));
+        let b = doc(json!([paragraph((1, 1), "hello")]));
         assert!(diff_documents(&a, &b).is_empty());
     }
 
     #[test]
     fn added_block_is_detected() {
-        let a = doc(json!([paragraph((1,1), "hello")]));
-        let b = doc(json!([paragraph((1,1), "hello"), paragraph((3,1), "world")]));
+        let a = doc(json!([paragraph((1, 1), "hello")]));
+        let b = doc(json!([
+            paragraph((1, 1), "hello"),
+            paragraph((3, 1), "world")
+        ]));
         let d = diff_documents(&a, &b);
         assert_eq!(d.entries.len(), 1);
         assert_eq!(d.entries[0].kind, AstDiffKind::Added);
@@ -261,8 +266,11 @@ mod tests {
 
     #[test]
     fn removed_block_is_detected() {
-        let a = doc(json!([paragraph((1,1), "hello"), paragraph((3,1), "world")]));
-        let b = doc(json!([paragraph((1,1), "hello")]));
+        let a = doc(json!([
+            paragraph((1, 1), "hello"),
+            paragraph((3, 1), "world")
+        ]));
+        let b = doc(json!([paragraph((1, 1), "hello")]));
         let d = diff_documents(&a, &b);
         assert_eq!(d.entries.len(), 1);
         assert_eq!(d.entries[0].kind, AstDiffKind::Removed);
@@ -297,7 +305,7 @@ mod tests {
 
     #[test]
     fn type_change_at_same_index_is_removed_plus_added() {
-        let a = doc(json!([paragraph((1,1), "hello")]));
+        let a = doc(json!([paragraph((1, 1), "hello")]));
         let b = doc(json!([{
             "type": "ThematicBreak",
             "position": {"start_line":1,"start_col":1,"end_line":1,"end_col":3}
@@ -333,8 +341,8 @@ mod tests {
 
     #[test]
     fn nested_attr_change_carries_full_path() {
-        let a = doc(json!([paragraph((1,1), "hello")]));
-        let b = doc(json!([paragraph((1,1), "world")]));
+        let a = doc(json!([paragraph((1, 1), "hello")]));
+        let b = doc(json!([paragraph((1, 1), "world")]));
         let d = diff_documents(&a, &b);
         // The Paragraph itself is unchanged (type + position match); the
         // Text child's `text` attribute changed.

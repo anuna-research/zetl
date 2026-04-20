@@ -223,9 +223,18 @@ fn test_3304_supports_html_gates_invocation() {
     // Probe ran once; real run did not.
     let calls = std::fs::read_to_string(&counter).unwrap_or_default();
     let probe_calls = calls.matches("call supports").count();
-    let real_calls = calls.lines().filter(|l| !l.starts_with("call supports")).count();
-    assert_eq!(probe_calls, 1, "probe should fire exactly once (got {probe_calls})");
-    assert_eq!(real_calls, 0, "real run must not fire when probe rejects html");
+    let real_calls = calls
+        .lines()
+        .filter(|l| !l.starts_with("call supports"))
+        .count();
+    assert_eq!(
+        probe_calls, 1,
+        "probe should fire exactly once (got {probe_calls})"
+    );
+    assert_eq!(
+        real_calls, 0,
+        "real run must not fire when probe rejects html"
+    );
 }
 
 /// A preprocessor that exits non-zero on the real run surfaces as a
@@ -489,8 +498,9 @@ fn test_3304_vault_scope_emits_warning_diagnostic() {
     match response {
         PluginResponse::Success { diagnostics, .. } => {
             assert!(
-                diagnostics.iter().any(|d| d.severity == "warning"
-                    && d.message.contains("scope=\"vault\"")),
+                diagnostics
+                    .iter()
+                    .any(|d| d.severity == "warning" && d.message.contains("scope=\"vault\"")),
                 "expected vault-scope warning diagnostic, got: {diagnostics:?}"
             );
         }
@@ -532,10 +542,7 @@ fn envelope_builder_matches_req_3309_shape() {
     // Round-trip: extract_chapter_content on the envelope's Book element
     // returns the exact input body.
     let book = env[1].clone();
-    assert_eq!(
-        extract_chapter_content(&book).unwrap(),
-        "raw markdown body"
-    );
+    assert_eq!(extract_chapter_content(&book).unwrap(), "raw markdown body");
 }
 
 /// MdbookScope wire form is stable ("page" / "vault"). Manifests depend
@@ -589,8 +596,9 @@ fn test_3309_every_fixture_page_envelope_passes_schema_validation() {
 
         // Hand-rolled validator must agree with the JSON Schema — drift
         // between the two is a bug in either direction.
-        validate_envelope(&env)
-            .unwrap_or_else(|e| panic!("fixture {:?} hand-rolled validator rejected: {e}", fx.name));
+        validate_envelope(&env).unwrap_or_else(|e| {
+            panic!("fixture {:?} hand-rolled validator rejected: {e}", fx.name)
+        });
     }
 }
 

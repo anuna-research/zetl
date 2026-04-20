@@ -334,6 +334,7 @@ pub fn diagnostic_for(entry: &EcosystemEntry, status: &RuntimeStatus) -> Option<
 /// Unknown ids in `required` are treated as fatal — the caller asked for
 /// an ecosystem zetl doesn't know about, which is almost certainly a typo
 /// in CI config and not something to silently skip.
+#[allow(clippy::result_large_err)] // HookDiagnostic carries diagnostic-context strings; boxing the error adds a dereference on every `?` with no runtime benefit on this cold path.
 pub fn enforce_required(
     report: &EcosystemDetectionReport,
     required: &[String],
@@ -794,8 +795,8 @@ mod tests {
                 version: "v18".into(),
             },
         );
-        let err = enforce_required(&report, &["djot".into()])
-            .expect_err("unknown ecosystem must error");
+        let err =
+            enforce_required(&report, &["djot".into()]).expect_err("unknown ecosystem must error");
         assert_eq!(err.class, DiagnosticClass::RuntimeAbsence);
         assert!(err.summary.contains("djot"));
     }

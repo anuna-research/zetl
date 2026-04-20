@@ -4651,8 +4651,7 @@ fn cmd_hook_new(
 ) -> Result<()> {
     let vault_root = std::fs::canonicalize(&cli.dir)
         .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
-    let paths =
-        zetl::hooks::authoring::scaffold(&vault_root, stage, name, lang, ecosystem, force)?;
+    let paths = zetl::hooks::authoring::scaffold(&vault_root, stage, name, lang, ecosystem, force)?;
 
     if matches!(cli.format, OutputFormat::Json) {
         #[derive(Serialize)]
@@ -4767,8 +4766,11 @@ fn cmd_hook_dry_run(cli: &Cli, spec: &str, theme: &str, limit: usize) -> Result<
                 .find(|h| default_extension_id(&h.filename) == name)
         })
         .ok_or_else(|| {
-            let available: Vec<String> =
-                pipeline.hooks.iter().map(|h| h.extension_id.clone()).collect();
+            let available: Vec<String> = pipeline
+                .hooks
+                .iter()
+                .map(|h| h.extension_id.clone())
+                .collect();
             if available.is_empty() {
                 anyhow::anyhow!("no hook '{name}' found in stage '{stage}' (stage has no hooks)")
             } else {
@@ -4791,8 +4793,12 @@ fn cmd_hook_dry_run(cli: &Cli, spec: &str, theme: &str, limit: usize) -> Result<
         None => Default::default(),
     };
 
-    let selector = compile(&selector_spec)
-        .map_err(|e| anyhow::anyhow!("failed to compile selector for hook '{}': {e}", hook.extension_id))?;
+    let selector = compile(&selector_spec).map_err(|e| {
+        anyhow::anyhow!(
+            "failed to compile selector for hook '{}': {e}",
+            hook.extension_id
+        )
+    })?;
 
     // Enumerate vault pages. `scan_vault` already returns vault-relative
     // paths, which is exactly what the selector's path globs are written
@@ -4923,7 +4929,11 @@ fn cmd_hook_coverage(
     // `.zetl/build/hook-coverage.json` and we merge its latency / failure
     // data in here. Missing file = "no build on disk; this is a dry-run".
     let persisted = load_persisted_coverage(&vault_root);
-    let source = if persisted.is_some() { "build" } else { "dry-run" };
+    let source = if persisted.is_some() {
+        "build"
+    } else {
+        "dry-run"
+    };
 
     let mut hook_rows: Vec<HookCoverageRow> = Vec::new();
 
@@ -5035,10 +5045,7 @@ impl HookCoverageRow {
         HookCoverageEntry {
             stage: self.stage.to_string(),
             id: self.id.clone(),
-            manifest_path: self
-                .manifest_path
-                .as_ref()
-                .map(|p| p.display().to_string()),
+            manifest_path: self.manifest_path.as_ref().map(|p| p.display().to_string()),
             matched: self.matched,
             matched_of: self.matched_of,
             invoked: self.invoked,
@@ -5137,11 +5144,7 @@ struct PersistedRow {
 }
 
 impl PersistedCoverage {
-    fn lookup(
-        &self,
-        stage: zetl::hooks::pipeline::Stage,
-        id: &str,
-    ) -> Option<&PersistedRow> {
+    fn lookup(&self, stage: zetl::hooks::pipeline::Stage, id: &str) -> Option<&PersistedRow> {
         self.rows.get(&(stage.as_str().to_string(), id.to_string()))
     }
 }
@@ -5193,7 +5196,9 @@ fn render_coverage_table(output: &HookCoverageOutput) {
         println!("No hooks configured.");
     } else {
         let mut table = Table::new();
-        table.set_header(vec!["HOOK", "STAGE", "MATCHED", "INVOKED", "FAILED", "P50", "P95"]);
+        table.set_header(vec![
+            "HOOK", "STAGE", "MATCHED", "INVOKED", "FAILED", "P50", "P95",
+        ]);
         for h in &output.hooks {
             table.add_row(vec![
                 Cell::new(&h.id),
@@ -5320,12 +5325,7 @@ fn render_capabilities_table(reports: &[zetl::hooks::capability::CapabilityRepor
                 result.stages.join(","),
                 if result.ready { "yes" } else { "no" }.to_string(),
             ),
-            CapabilityOutcome::Error { .. } => (
-                "-".into(),
-                "-".into(),
-                "-".into(),
-                "-".into(),
-            ),
+            CapabilityOutcome::Error { .. } => ("-".into(), "-".into(), "-".into(), "-".into()),
         };
         let status = match &r.outcome {
             CapabilityOutcome::Ok { .. } => "ok",
@@ -5380,7 +5380,7 @@ fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
         .context("failed to compose hook pipelines for ecosystem check")?;
     let hooks: Vec<zetl::hooks::composition::ComposedHook> = pipelines
         .into_iter()
-        .flat_map(|p| p.hooks.into_iter().chain(p.disabled.into_iter()))
+        .flat_map(|p| p.hooks.into_iter().chain(p.disabled))
         .collect();
 
     let report = run_ecosystem_check(&vault_root, &hooks);
@@ -5509,8 +5509,7 @@ fn cmd_ast_sample(cli: &Cli, file: &str, stage: &zetl::cli::AstStage) -> Result<
         AstStage::Transform => {
             // Parsed zetl-ext Document — what a transform hook receives.
             let doc = zetl::hooks::ast::parse_markdown(&content);
-            let json = serde_json::to_value(&doc)
-                .context("Failed to serialise AST document")?;
+            let json = serde_json::to_value(&doc).context("Failed to serialise AST document")?;
             // Canonical JSON output: pretty-printed for CLI readability,
             // compact when the user forced `--json`.
             if matches!(cli.format, OutputFormat::Json) {
@@ -5525,12 +5524,8 @@ fn cmd_ast_sample(cli: &Cli, file: &str, stage: &zetl::cli::AstStage) -> Result<
             // is the correct shape for a stage-input view (no vault context
             // is available for link resolution here).
             use std::collections::HashMap;
-            let html = zetl::web::markdown::render_to_html(
-                &content,
-                &HashMap::new(),
-                "",
-                "index.html",
-            );
+            let html =
+                zetl::web::markdown::render_to_html(&content, &HashMap::new(), "", "index.html");
             print!("{html}");
         }
     }
@@ -6106,14 +6101,15 @@ fn cmd_serve(
         theme_manifest.as_ref(),
     );
     if audit.has_undeclared() && !safe_mode {
-        eprintln!("{}", zetl::hooks::safe_mode::format_undeclared_warning(&audit));
+        eprintln!(
+            "{}",
+            zetl::hooks::safe_mode::format_undeclared_warning(&audit)
+        );
     }
     if safe_mode {
         let policy = zetl::hooks::safe_mode::SafeMode::from_manifest(theme_manifest.as_ref());
-        match zetl::hooks::composition::compose_all_stages(
-            &pipeline.vault_root,
-            theme_hooks.path(),
-        ) {
+        match zetl::hooks::composition::compose_all_stages(&pipeline.vault_root, theme_hooks.path())
+        {
             Ok(pipes) => {
                 let (_kept, skipped) = zetl::hooks::safe_mode::apply_all(pipes, &policy);
                 for s in &skipped {
@@ -6314,7 +6310,9 @@ fn load_theme_manifest_for_audit(
             return Some(m);
         }
     }
-    zetl::web::theme::load_bundled_manifest(theme).ok().flatten()
+    zetl::web::theme::load_bundled_manifest(theme)
+        .ok()
+        .flatten()
 }
 
 /// SPEC-033 REQ-3315 — walk every composed hook against every vault
@@ -6334,8 +6332,8 @@ fn detect_mixed_parser_violations(
     use zetl::hooks::manifest::{load_manifest, LoadedManifest, SelectorSpec};
     use zetl::hooks::selector::{compile, CompiledSelector};
     use zetl::parsers::{
-        detect_mixed_parsers, ecosystem_expected_parser, HookForDetection, ParseConfig,
-        PageForDetection,
+        detect_mixed_parsers, ecosystem_expected_parser, HookForDetection, PageForDetection,
+        ParseConfig,
     };
 
     // Compose every stage once; only hooks that declare an ecosystem
@@ -6421,11 +6419,9 @@ fn detect_mixed_parser_violations(
         let fm_value = zetl::web::markdown::parse_frontmatter(&content);
         let body = strip_leading_frontmatter(&content).to_string();
         let parser = match &fm_value {
-            serde_json::Value::Object(m) => zetl::parsers::select_parser_name(
-                Some(m),
-                &f.path,
-                &parse_config,
-            ),
+            serde_json::Value::Object(m) => {
+                zetl::parsers::select_parser_name(Some(m), &f.path, &parse_config)
+            }
             _ => zetl::parsers::select_parser_name(None, &f.path, &parse_config),
         };
         page_entries.push(PageEntry {
@@ -6515,14 +6511,15 @@ fn cmd_build(
         theme_manifest.as_ref(),
     );
     if audit.has_undeclared() && !safe_mode {
-        eprintln!("{}", zetl::hooks::safe_mode::format_undeclared_warning(&audit));
+        eprintln!(
+            "{}",
+            zetl::hooks::safe_mode::format_undeclared_warning(&audit)
+        );
     }
     if safe_mode {
         let policy = zetl::hooks::safe_mode::SafeMode::from_manifest(theme_manifest.as_ref());
-        match zetl::hooks::composition::compose_all_stages(
-            &pipeline.vault_root,
-            theme_hooks.path(),
-        ) {
+        match zetl::hooks::composition::compose_all_stages(&pipeline.vault_root, theme_hooks.path())
+        {
             Ok(pipes) => {
                 let (_kept, skipped) = zetl::hooks::safe_mode::apply_all(pipes, &policy);
                 for s in &skipped {
@@ -6541,13 +6538,13 @@ fn cmd_build(
     // resolved parser differs from what the ecosystem expects, surface
     // a five-part diagnostic. Under `--strict-parsers` the warning is
     // fatal (CI gate for mixed-parser vaults).
-    let mixed_report = detect_mixed_parser_violations(
-        &pipeline.vault_root,
-        theme_hooks.path(),
-        &data.files,
-    )?;
+    let mixed_report =
+        detect_mixed_parser_violations(&pipeline.vault_root, theme_hooks.path(), &data.files)?;
     if !mixed_report.is_empty() {
-        eprintln!("{}", zetl::parsers::format_mixed_parser_report(&mixed_report));
+        eprintln!(
+            "{}",
+            zetl::parsers::format_mixed_parser_report(&mixed_report)
+        );
         if strict_parsers {
             anyhow::bail!(
                 "mixed-parser configuration detected on {} page(s); \

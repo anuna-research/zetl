@@ -14,9 +14,7 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use zetl::hooks::ast::Frontmatter;
-use zetl::parsers::{
-    select_parser_name, ParseConfig, ParseError, ParserRegistry, DEFAULT_PARSER,
-};
+use zetl::parsers::{select_parser_name, ParseConfig, ParseError, ParserRegistry, DEFAULT_PARSER};
 
 /// Build a tempdir-backed vault with an optional `.zetl/config.toml`.
 fn make_vault(config_toml: Option<&str>) -> TempDir {
@@ -120,11 +118,7 @@ parser = "pandoc"
         .unwrap();
 
     let frontmatter = fm(json!({ "parser": "commonmark" }));
-    let name = select_parser_name(
-        Some(&frontmatter),
-        Path::new("papers/whitepaper.md"),
-        &cfg,
-    );
+    let name = select_parser_name(Some(&frontmatter), Path::new("papers/whitepaper.md"), &cfg);
     assert_eq!(name, "commonmark");
 }
 
@@ -140,10 +134,7 @@ fn test_3306_row5_unknown_frontmatter_parser_is_registry_error() {
     assert_eq!(name, "djot");
 
     let reg = ParserRegistry::with_builtins();
-    let err = reg
-        .require(&name)
-        .err()
-        .expect("unknown parser must error");
+    let err = reg.require(&name).err().expect("unknown parser must error");
     match err {
         ParseError::UnknownParser { name, known } => {
             assert_eq!(name, "djot");

@@ -22,9 +22,9 @@
 //! extension (`.md` / `.json` / `.html`) follows the payload shape.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
@@ -110,7 +110,12 @@ pub fn scaffold(
     let fixture_input = fixture_dir.join("input.md");
     let fixture_expected = fixture_dir.join(golden_filename(pipeline_stage));
 
-    for path in [&hook_file, &manifest_file, &fixture_input, &fixture_expected] {
+    for path in [
+        &hook_file,
+        &manifest_file,
+        &fixture_input,
+        &fixture_expected,
+    ] {
         if path.exists() && !force {
             bail!(
                 "refusing to overwrite existing file {} (pass --force to overwrite)",
@@ -153,9 +158,7 @@ fn validate_name(name: &str) -> Result<()> {
     // Extension ids namespace template vars (REQ-3214) — keep them tame.
     for ch in name.chars() {
         if !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '-') {
-            bail!(
-                "invalid hook name '{name}': only ascii alphanumerics, '_', and '-' are allowed"
-            );
+            bail!("invalid hook name '{name}': only ascii alphanumerics, '_', and '-' are allowed");
         }
     }
     Ok(())
@@ -660,11 +663,7 @@ pub struct CapturedFixture {
 
 /// Copy a vault page into the fixture directory and seed the golden from
 /// the hook's current output. SPEC-032 REQ-3225 `zetl hook fixture`.
-pub fn capture_fixture(
-    vault_root: &Path,
-    page: &str,
-    hook_name: &str,
-) -> Result<CapturedFixture> {
+pub fn capture_fixture(vault_root: &Path, page: &str, hook_name: &str) -> Result<CapturedFixture> {
     let hook = find_scaffolded_hook(vault_root, hook_name)?;
 
     let page_path = resolve_page_path(vault_root, page)?;
@@ -753,7 +752,12 @@ impl Default for WatchOptions {
 /// terminal, tests use it to observe restart timing. Returns when the
 /// file watcher shuts down (Ctrl-C on the CLI, `max_events` exhausted
 /// in tests) or an unrecoverable error surfaces.
-pub fn watch<F>(vault_root: &Path, hook_name: &str, opts: WatchOptions, mut on_event: F) -> Result<()>
+pub fn watch<F>(
+    vault_root: &Path,
+    hook_name: &str,
+    opts: WatchOptions,
+    mut on_event: F,
+) -> Result<()>
 where
     F: FnMut(&WatchEvent),
 {
@@ -818,9 +822,7 @@ where
                 child = match spawn_watched_hook(&hook) {
                     Ok(c) => c,
                     Err(e) => {
-                        on_event(&WatchEvent::Stderr(format!(
-                            "[zetl] respawn failed: {e}\n"
-                        )));
+                        on_event(&WatchEvent::Stderr(format!("[zetl] respawn failed: {e}\n")));
                         // Keep looping — the author may fix the error.
                         // A fresh Persistent process is required for
                         // further events, so spawn a placeholder that
@@ -832,9 +834,7 @@ where
                 on_event(&WatchEvent::Spawned);
             }
             Ok(Err(e)) => {
-                on_event(&WatchEvent::Stderr(format!(
-                    "[zetl] watcher error: {e}\n"
-                )));
+                on_event(&WatchEvent::Stderr(format!("[zetl] watcher error: {e}\n")));
             }
             Err(stdmpsc::RecvTimeoutError::Timeout) => continue,
             Err(stdmpsc::RecvTimeoutError::Disconnected) => break,

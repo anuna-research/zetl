@@ -171,7 +171,11 @@ fn coverage_json_structure_matches_con_3208() {
     scaffold_vault(vault);
 
     let out = run_coverage(vault, &["--json"]);
-    assert!(out.status.success(), "stderr={}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("stdout is JSON");
 
     assert_eq!(v["source"], "dry-run");
@@ -195,10 +199,7 @@ fn coverage_json_structure_matches_con_3208() {
             "p95_ms",
             "last_failure_reason",
         ] {
-            assert!(
-                h.get(field).is_some(),
-                "hook entry missing `{field}`: {h}"
-            );
+            assert!(h.get(field).is_some(), "hook entry missing `{field}`: {h}");
         }
         assert_eq!(h["matched_of"], 5);
     }
@@ -236,7 +237,11 @@ fn coverage_stage_filter_restricts_output_to_one_stage() {
     scaffold_vault(vault);
 
     let out = run_coverage(vault, &["--stage", "transform", "--json"]);
-    assert!(out.status.success(), "stderr={}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
 
     let hooks = v["hooks"].as_array().unwrap();
@@ -300,7 +305,11 @@ content_probe = [":::note"]
     );
 
     let out = run_coverage(vault, &["--json"]);
-    assert!(out.status.success(), "stderr={}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let unmatched = v["unmatched_pages"].as_array().unwrap();
     let names: Vec<&str> = unmatched.iter().filter_map(|p| p.as_str()).collect();
@@ -314,7 +323,11 @@ fn coverage_handles_vault_with_no_hooks() {
     write(&vault.join("solo.md"), "---\ntitle: Solo\n---\n\n");
 
     let out = run_coverage(vault, &["--json"]);
-    assert!(out.status.success(), "stderr={}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["total_pages"], 1);
     assert!(v["hooks"].as_array().unwrap().is_empty());
@@ -352,7 +365,11 @@ fn coverage_reads_persisted_build_coverage_when_present() {
     );
 
     let out = run_coverage(vault, &["--json"]);
-    assert!(out.status.success(), "stderr={}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
 
     // Source flips to "build" once a persisted file is on disk.

@@ -96,10 +96,7 @@ impl MixedParserViolation {
     pub fn to_diagnostic(&self) -> HookDiagnostic {
         HookDiagnostic::new(
             DiagnosticClass::ContractViolation,
-            format!(
-                "mixed-parser configuration on {}",
-                self.page_path.display()
-            ),
+            format!("mixed-parser configuration on {}", self.page_path.display()),
         )
         .with_context(format!(
             "page parser: {} (resolved from frontmatter / [parse] config)",
@@ -422,7 +419,15 @@ mod tests {
             .iter()
             .map(|v| v.page_path.clone())
             .collect();
-        assert_eq!(paths, vec![PathBuf::from("a.md"), PathBuf::from("a.md"), PathBuf::from("z.md"), PathBuf::from("z.md")]);
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("a.md"),
+                PathBuf::from("a.md"),
+                PathBuf::from("z.md"),
+                PathBuf::from("z.md")
+            ]
+        );
         // Within same path, sorted by hook_id.
         assert_eq!(report.violations[0].hook_id, "aa");
         assert_eq!(report.violations[1].hook_id, "zz");
@@ -430,7 +435,7 @@ mod tests {
 
     #[test]
     fn hook_ecosystem_extracts_from_composed_hook() {
-        use crate::hooks::composition::{CompositionSource, ComposedHook};
+        use crate::hooks::composition::{ComposedHook, CompositionSource};
         use crate::hooks::translators::AstType;
 
         let h = ComposedHook {

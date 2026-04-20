@@ -152,12 +152,10 @@ impl From<predicate::ParseError> for CompileError {
 /// All regexes and globs are compiled here; evaluation does no further
 /// compilation. Call this once per hook at build start (REQ-3204).
 pub fn compile(spec: &SelectorSpec) -> Result<CompiledSelector, CompileError> {
-    let include = build_globset(&spec.include).map_err(|(pattern, source)| {
-        CompileError::InvalidInclude { pattern, source }
-    })?;
-    let exclude = build_globset(&spec.exclude).map_err(|(pattern, source)| {
-        CompileError::InvalidExclude { pattern, source }
-    })?;
+    let include = build_globset(&spec.include)
+        .map_err(|(pattern, source)| CompileError::InvalidInclude { pattern, source })?;
+    let exclude = build_globset(&spec.exclude)
+        .map_err(|(pattern, source)| CompileError::InvalidExclude { pattern, source })?;
     let frontmatter_where = match &spec.frontmatter_where {
         Some(src) => Some(predicate::parse(src)?),
         None => None,
@@ -182,7 +180,8 @@ fn build_globset(patterns: &[String]) -> Result<GlobSet, (String, String)> {
         let g = Glob::new(p).map_err(|e| (p.clone(), e.to_string()))?;
         b.add(g);
     }
-    b.build().map_err(|e| ("(globset build)".to_string(), e.to_string()))
+    b.build()
+        .map_err(|e| ("(globset build)".to_string(), e.to_string()))
 }
 
 fn compile_probe(raw: &str) -> Result<Probe, CompileError> {
@@ -393,7 +392,11 @@ mod tests {
         // Missing → null → `null != false` → true (type-mismatched).
         assert!(s.evaluate(&input("a.md", &json!({}), "")));
         // Explicit false → excluded.
-        assert!(!s.evaluate(&input("a.md", &json!({ "extensions": { "tasks": false } }), "")));
+        assert!(!s.evaluate(&input(
+            "a.md",
+            &json!({ "extensions": { "tasks": false } }),
+            ""
+        )));
     }
 
     #[test]
@@ -571,32 +574,40 @@ mod tests {
 
         // Manual short-circuit mirroring CON-3204 pseudocode.
         counter.store(0, Ordering::SeqCst);
-        let outcome = call_path("not-a-match.txt")
-            && call_fm(&fm_ok)
-            && call_content("BEGIN x");
+        let outcome = call_path("not-a-match.txt") && call_fm(&fm_ok) && call_content("BEGIN x");
         assert!(!outcome);
-        assert_eq!(counter.load(Ordering::SeqCst), 1, "path-fail short-circuits");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1,
+            "path-fail short-circuits"
+        );
 
         counter.store(0, Ordering::SeqCst);
-        let outcome = call_path("a.md")
-            && call_fm(&fm_bad)
-            && call_content("BEGIN x");
+        let outcome = call_path("a.md") && call_fm(&fm_bad) && call_content("BEGIN x");
         assert!(!outcome);
-        assert_eq!(counter.load(Ordering::SeqCst), 2, "frontmatter-fail short-circuits");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            2,
+            "frontmatter-fail short-circuits"
+        );
 
         counter.store(0, Ordering::SeqCst);
-        let outcome = call_path("a.md")
-            && call_fm(&fm_ok)
-            && call_content("nothing matches");
+        let outcome = call_path("a.md") && call_fm(&fm_ok) && call_content("nothing matches");
         assert!(!outcome);
-        assert_eq!(counter.load(Ordering::SeqCst), 3, "content-probe-fail reaches content");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            3,
+            "content-probe-fail reaches content"
+        );
 
         counter.store(0, Ordering::SeqCst);
-        let outcome = call_path("a.md")
-            && call_fm(&fm_ok)
-            && call_content("BEGIN something");
+        let outcome = call_path("a.md") && call_fm(&fm_ok) && call_content("BEGIN something");
         assert!(outcome);
-        assert_eq!(counter.load(Ordering::SeqCst), 3, "all-pass reaches all layers exactly once");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            3,
+            "all-pass reaches all layers exactly once"
+        );
     }
 
     // ── Compile-once invariant ───────────────────────────────────────────
@@ -631,8 +642,14 @@ mod tests {
         let fm = json!({ "status": "published" });
         let inp = input("a.md", &fm, "BEGIN now");
         assert_eq!(match_path(&s, inp.path), s.match_path(inp.path));
-        assert_eq!(eval_frontmatter(&s, inp.frontmatter), s.eval_frontmatter(inp.frontmatter));
-        assert_eq!(run_content_probe(&s, inp.text), s.run_content_probe(inp.text));
+        assert_eq!(
+            eval_frontmatter(&s, inp.frontmatter),
+            s.eval_frontmatter(inp.frontmatter)
+        );
+        assert_eq!(
+            run_content_probe(&s, inp.text),
+            s.run_content_probe(inp.text)
+        );
         assert_eq!(selector_passes(&s, &inp), s.evaluate(&inp));
     }
 

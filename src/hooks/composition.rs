@@ -192,21 +192,14 @@ pub enum CompositionError {
         manifest: Option<PathBuf>,
     },
     /// A sidecar manifest file failed to parse.
-    ManifestParse {
-        path: PathBuf,
-        error: String,
-    },
+    ManifestParse { path: PathBuf, error: String },
 }
 
 impl std::fmt::Display for CompositionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CompositionError::Cycle { stage, path, .. } => {
-                write!(
-                    f,
-                    "cycle in {stage} hook ordering: {}",
-                    path.join(" → ")
-                )
+                write!(f, "cycle in {stage} hook ordering: {}", path.join(" → "))
             }
             CompositionError::MissingRequiredRef {
                 stage,
@@ -219,7 +212,11 @@ impl std::fmt::Display for CompositionError {
                 "hook '{hook_id}' ({stage}) declares {kind} = [{ref_id:?}] but no such hook exists"
             ),
             CompositionError::ManifestParse { path, error } => {
-                write!(f, "failed to parse hook manifest {}: {error}", path.display())
+                write!(
+                    f,
+                    "failed to parse hook manifest {}: {error}",
+                    path.display()
+                )
             }
         }
     }
@@ -266,8 +263,7 @@ pub fn compose_stage(
 
     // Apply REQ-3206 precedence: a vault filename shadows the theme entry
     // with the same filename.
-    let vault_names: HashSet<String> =
-        vault_entries.iter().map(|h| h.filename.clone()).collect();
+    let vault_names: HashSet<String> = vault_entries.iter().map(|h| h.filename.clone()).collect();
     let mut shadowed = Vec::new();
     let mut theme_surviving = Vec::new();
     for hook in theme_entries {
@@ -642,7 +638,10 @@ fn topo_sort(
     // that id apply to every matching hook. We track a list of indices.
     let mut id_to_indices: HashMap<String, Vec<usize>> = HashMap::new();
     for (i, h) in hooks.iter().enumerate() {
-        id_to_indices.entry(h.extension_id.clone()).or_default().push(i);
+        id_to_indices
+            .entry(h.extension_id.clone())
+            .or_default()
+            .push(i);
     }
 
     let mut warnings = Vec::new();
@@ -721,13 +720,14 @@ fn topo_sort(
             .collect::<Vec<_>>();
         let files = cycle_path_indices
             .iter()
-            .filter_map(|&i| hooks[i].manifest_path.clone().or_else(|| Some(hooks[i].path.clone())))
+            .filter_map(|&i| {
+                hooks[i]
+                    .manifest_path
+                    .clone()
+                    .or_else(|| Some(hooks[i].path.clone()))
+            })
             .collect::<Vec<_>>();
-        return Err(CompositionError::Cycle {
-            stage,
-            path,
-            files,
-        });
+        return Err(CompositionError::Cycle { stage, path, files });
     }
 
     // Move ordered hooks into the final vector.
@@ -918,7 +918,10 @@ mod tests {
 
         // Three enabled hooks, lex order by filename.
         let names: Vec<&str> = pipe.hooks.iter().map(|h| h.filename.as_str()).collect();
-        assert_eq!(names, vec!["10-callouts.py", "20-tasks.py", "30-admonition.py"]);
+        assert_eq!(
+            names,
+            vec!["10-callouts.py", "20-tasks.py", "30-admonition.py"]
+        );
 
         // Sources preserved.
         assert_eq!(pipe.hooks[0].source, CompositionSource::Theme);
@@ -981,8 +984,7 @@ mod tests {
         //   1. 10-callouts.py — vault's empty file → disabled.
         //   2. 20-tasks.py    — vault's version → runs.
         //   3. 30-admonition.py — theme's version → runs.
-        let enabled_names: Vec<&str> =
-            pipe.hooks.iter().map(|h| h.filename.as_str()).collect();
+        let enabled_names: Vec<&str> = pipe.hooks.iter().map(|h| h.filename.as_str()).collect();
         assert_eq!(enabled_names, vec!["20-tasks.py", "30-admonition.py"]);
         assert_eq!(
             pipe.hooks
@@ -1075,7 +1077,11 @@ optional = true
         write_exe(&vault_tx, "20-bar.py", "#!/bin/sh\ntrue\n");
 
         let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
-        let foo = pipe.hooks.iter().find(|h| h.filename == "10-foo.py").unwrap();
+        let foo = pipe
+            .hooks
+            .iter()
+            .find(|h| h.filename == "10-foo.py")
+            .unwrap();
         assert_eq!(foo.extension_id, "my_foo");
         assert_eq!(foo.before, vec!["bar".to_string()]);
         assert!(foo.optional);
@@ -1219,7 +1225,12 @@ optional = true
 
         let err = compose_stage(&vault_root, None, Stage::Transform).unwrap_err();
         match err {
-            CompositionError::MissingRequiredRef { hook_id, ref_id, kind, .. } => {
+            CompositionError::MissingRequiredRef {
+                hook_id,
+                ref_id,
+                kind,
+                ..
+            } => {
                 assert_eq!(hook_id, "foo");
                 assert_eq!(ref_id, "ghost");
                 assert_eq!(kind, RefKind::After);
@@ -1500,7 +1511,11 @@ ast_version = ">=1.0 <2"
         // Foreign-ext default preserves per REQ-3221.
         assert_eq!(
             pipe.hooks[0].preserves,
-            vec!["Wikilink".to_string(), "Embed".to_string(), "SplBlock".to_string()]
+            vec![
+                "Wikilink".to_string(),
+                "Embed".to_string(),
+                "SplBlock".to_string()
+            ]
         );
     }
 
@@ -1519,8 +1534,16 @@ ast_version = ">=1.0 <2"
         write_manifest(&vault_tx, "20-mda.py.toml", r#"ast_type = "mdast""#);
 
         let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
-        let pan = pipe.hooks.iter().find(|h| h.filename == "10-pan.py").unwrap();
-        let mda = pipe.hooks.iter().find(|h| h.filename == "20-mda.py").unwrap();
+        let pan = pipe
+            .hooks
+            .iter()
+            .find(|h| h.filename == "10-pan.py")
+            .unwrap();
+        let mda = pipe
+            .hooks
+            .iter()
+            .find(|h| h.filename == "20-mda.py")
+            .unwrap();
         assert_eq!(pan.ast_type, AstType::PandocExt);
         assert_eq!(mda.ast_type, AstType::MdastExt);
     }
@@ -1539,8 +1562,10 @@ ast_version = ">=1.0 <2"
             CompositionError::ManifestParse { path, error } => {
                 assert!(path.ends_with("10-foo.py.toml"));
                 // toml's serde error wraps our AstType rejection.
-                assert!(error.contains("djot") || error.contains("variant"),
-                    "expected djot/variant error, got: {error}");
+                assert!(
+                    error.contains("djot") || error.contains("variant"),
+                    "expected djot/variant error, got: {error}"
+                );
             }
             other => panic!("expected ManifestParse, got {other:?}"),
         }
@@ -1617,8 +1642,16 @@ after = ["ghost"]
         // No manifest → ecosystem is None.
 
         let pipe = compose_stage(&vault_root, None, Stage::Transform).unwrap();
-        let pan = pipe.hooks.iter().find(|h| h.filename == "10-pan.py").unwrap();
-        let native = pipe.hooks.iter().find(|h| h.filename == "20-native.py").unwrap();
+        let pan = pipe
+            .hooks
+            .iter()
+            .find(|h| h.filename == "10-pan.py")
+            .unwrap();
+        let native = pipe
+            .hooks
+            .iter()
+            .find(|h| h.filename == "20-native.py")
+            .unwrap();
         assert_eq!(pan.ecosystem.as_deref(), Some("pandoc"));
         assert_eq!(native.ecosystem, None);
     }

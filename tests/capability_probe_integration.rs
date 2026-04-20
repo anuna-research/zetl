@@ -23,10 +23,8 @@ use std::time::Duration;
 use assert_cmd::cargo::cargo_bin_cmd;
 use tempfile::TempDir;
 
-use zetl::hooks::capability::{
-    classify, probe_hook, ProbeOutcome, DEFAULT_PROBE_TIMEOUT,
-};
-use zetl::hooks::composition::{CompositionSource, ComposedHook};
+use zetl::hooks::capability::{classify, probe_hook, ProbeOutcome, DEFAULT_PROBE_TIMEOUT};
+use zetl::hooks::composition::{ComposedHook, CompositionSource};
 use zetl::hooks::persistent::{AppliesWhen, PersistentHook, ProbeResult};
 use zetl::hooks::pipeline::Stage;
 use zetl::hooks::translators::AstType;
@@ -255,12 +253,8 @@ fn probe_via_persistent_hook_api_direct() {
         &probe_only_hook(&["transform", "post-render"], true),
     );
 
-    let mut hook = PersistentHook::spawn(
-        Command::new(&hook_path),
-        "direct",
-        Stage::Transform,
-    )
-    .unwrap();
+    let mut hook =
+        PersistentHook::spawn(Command::new(&hook_path), "direct", Stage::Transform).unwrap();
     let result: ProbeResult = hook.probe(Some("build"), 2_000).unwrap();
     assert_eq!(result.stages, vec!["transform", "post-render"]);
     assert_eq!(result.zetl_ast, "1.0");
@@ -320,7 +314,12 @@ fn cli_hook_capabilities_reports_every_composed_hook() {
     let tmp = TempDir::new().unwrap();
     let vault = tmp.path();
 
-    scaffold_vault_with_hook(vault, "transform", "alpha", &probe_only_hook(&["transform"], true));
+    scaffold_vault_with_hook(
+        vault,
+        "transform",
+        "alpha",
+        &probe_only_hook(&["transform"], true),
+    );
 
     let out = cargo_bin_cmd!("zetl")
         .args([

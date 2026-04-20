@@ -8,8 +8,8 @@
 //! end as the user-facing entry point.
 
 use zetl::hooks::ast::{
-    Block, BlockQuote, Document, DocumentKind, Embed, Inline, Paragraph, Position, Text,
-    Wikilink, AST_VERSION,
+    Block, BlockQuote, Document, DocumentKind, Embed, Inline, Paragraph, Position, Text, Wikilink,
+    AST_VERSION,
 };
 use zetl::hooks::contract::{
     canonicalise, run_property_test, validate_idempotence, validate_may_restructure,
@@ -174,10 +174,7 @@ fn test_3224_multiple_preserved_types_only_flags_the_dropped_ones() {
 /// `may_restructure = false` (default) sees a violation.
 #[test]
 fn test_3222_may_restructure_false_detects_block_tree_change() {
-    let before = doc(vec![
-        para(vec![text("one")]),
-        para(vec![text("two")]),
-    ]);
+    let before = doc(vec![para(vec![text("one")]), para(vec![text("two")])]);
     let after = doc(vec![
         Block::BlockQuote(BlockQuote {
             position: Position::origin(),
@@ -348,7 +345,11 @@ fn property_test_harness_end_to_end_reports_only_observed_violations() {
             expansion_bound: None,
         },
         stage: Stage::Transform,
-        input: doc(vec![para(vec![wikilink("A"), text(" and "), wikilink("B")])]),
+        input: doc(vec![para(vec![
+            wikilink("A"),
+            text(" and "),
+            wikilink("B"),
+        ])]),
         input_size: 0,
     };
     // f: prepend a paragraph each call; never strips wikilinks.
@@ -380,10 +381,7 @@ fn property_test_harness_identity_hook_passes_every_tier1_check() {
             expansion_bound: Some(10.0),
         },
         stage: Stage::Transform,
-        input: doc(vec![
-            para(vec![wikilink("A"), wikilink("B")]),
-            embed("X"),
-        ]),
+        input: doc(vec![para(vec![wikilink("A"), wikilink("B")]), embed("X")]),
         input_size: 1000,
     };
     let report = run_property_test(&case, "identity", "page", |d| Ok(d)).unwrap();

@@ -64,11 +64,7 @@ fn write_mock_version_script(dir: &Path, name: &str, version_output: &str) -> Pa
 fn test_3314_exact_match_via_mocked_probe_is_silent() {
     // Matrix range `>=0.3.14 <0.4`; probe reports the exact lower bound.
     let tmp = tempfile::tempdir().unwrap();
-    let path = write_mock_version_script(
-        tmp.path(),
-        "pandoc-crossref",
-        "pandoc-crossref 0.3.14",
-    );
+    let path = write_mock_version_script(tmp.path(), "pandoc-crossref", "pandoc-crossref 0.3.14");
     let observed = probe_plugin_version(path.to_str().unwrap()).expect("probe succeeds");
     assert_eq!(observed, Version(0, 3, 14));
 
@@ -80,11 +76,7 @@ fn test_3314_exact_match_via_mocked_probe_is_silent() {
 fn test_3314_minor_drift_via_mocked_probe_warns_and_continues() {
     // pandoc-crossref 0.3.16 → newer patch within the tested range.
     let tmp = tempfile::tempdir().unwrap();
-    let path = write_mock_version_script(
-        tmp.path(),
-        "pandoc-crossref",
-        "pandoc-crossref 0.3.16",
-    );
+    let path = write_mock_version_script(tmp.path(), "pandoc-crossref", "pandoc-crossref 0.3.16");
     let observed = probe_plugin_version(path.to_str().unwrap()).expect("probe succeeds");
     assert_eq!(observed, Version(0, 3, 16));
 
@@ -102,7 +94,12 @@ fn test_3314_minor_drift_via_mocked_probe_warns_and_continues() {
     }
 
     // Log line matches REQ-3314 prose verbatim.
-    let log = format_minor_drift_log("pandoc", "pandoc-crossref", Version(0, 3, 16), Version(0, 3, 14));
+    let log = format_minor_drift_log(
+        "pandoc",
+        "pandoc-crossref",
+        Version(0, 3, 16),
+        Version(0, 3, 14),
+    );
     assert_eq!(
         log,
         "[zetl] ecosystem pandoc: pandoc-crossref v0.3.16 is newer than last-tested v0.3.14; proceeding"
@@ -113,16 +110,15 @@ fn test_3314_minor_drift_via_mocked_probe_warns_and_continues() {
 fn test_3314_incompatible_major_mismatch_via_mocked_probe_disables_hook() {
     // pandoc-crossref 1.0.0 — major bump from tested 0.3.14.
     let tmp = tempfile::tempdir().unwrap();
-    let path = write_mock_version_script(
-        tmp.path(),
-        "pandoc-crossref",
-        "pandoc-crossref 1.0.0",
-    );
+    let path = write_mock_version_script(tmp.path(), "pandoc-crossref", "pandoc-crossref 1.0.0");
     let observed = probe_plugin_version(path.to_str().unwrap()).expect("probe succeeds");
     assert_eq!(observed, Version(1, 0, 0));
 
     let drift = classify(">=0.3.14 <0.4", observed).expect("classify");
-    assert!(drift.is_incompatible(), "incompatible expected, got {drift:?}");
+    assert!(
+        drift.is_incompatible(),
+        "incompatible expected, got {drift:?}"
+    );
     match drift {
         PluginVersionDrift::Incompatible { reason, .. } => {
             assert_eq!(reason, IncompatReason::MajorMismatch);
@@ -136,11 +132,7 @@ fn test_3314_incompatible_below_range_via_mocked_probe() {
     // pandoc-crossref 0.3.10 — older than the tested lower bound 0.3.14
     // (same major 0 but patch below).
     let tmp = tempfile::tempdir().unwrap();
-    let path = write_mock_version_script(
-        tmp.path(),
-        "pandoc-crossref",
-        "pandoc-crossref 0.3.10",
-    );
+    let path = write_mock_version_script(tmp.path(), "pandoc-crossref", "pandoc-crossref 0.3.10");
     let observed = probe_plugin_version(path.to_str().unwrap()).expect("probe succeeds");
     assert_eq!(observed, Version(0, 3, 10));
 
@@ -275,7 +267,9 @@ fn test_3314_every_live_matrix_version_range_parses_and_classifies_its_own_lower
             let name = t.get("name").and_then(|v| v.as_str()).unwrap();
             let range_str = t.get("version_range").and_then(|v| v.as_str()).unwrap();
             let range = parse_range(range_str).unwrap_or_else(|e| {
-                panic!("matrix row {eco_id}/{name}: version_range {range_str:?} failed to parse: {e}")
+                panic!(
+                    "matrix row {eco_id}/{name}: version_range {range_str:?} failed to parse: {e}"
+                )
             });
             let tested = range
                 .tested_version()

@@ -25,10 +25,7 @@ impl Translator for ZetlExtTranslator {
             .map_err(|e| TranslationError::to_foreign(AstType::ZetlExt, e.to_string()))
     }
 
-    fn foreign_to_zetl(
-        &self,
-        foreign: serde_json::Value,
-    ) -> Result<Document, TranslationError> {
+    fn foreign_to_zetl(&self, foreign: serde_json::Value) -> Result<Document, TranslationError> {
         serde_json::from_value(foreign)
             .map_err(|e| TranslationError::from_foreign(AstType::ZetlExt, e.to_string()))
     }
@@ -107,6 +104,9 @@ mod tests {
         let bogus = serde_json::json!({"type": "Document", "children": "not an array"});
         let err = t.foreign_to_zetl(bogus).unwrap_err();
         assert_eq!(err.ast_type, AstType::ZetlExt);
-        assert_eq!(err.direction, super::super::TranslationDirection::ForeignToZetl);
+        assert_eq!(
+            err.direction,
+            super::super::TranslationDirection::ForeignToZetl
+        );
     }
 }

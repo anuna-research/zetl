@@ -21,7 +21,10 @@ use zetl::hooks::pipeline::Stage;
 /// Assert the parse fails with `ManifestError::Parse` whose message
 /// contains every substring in `needles`.
 #[track_caller]
-fn assert_parse_error_contains(result: Result<impl std::fmt::Debug, ManifestError>, needles: &[&str]) {
+fn assert_parse_error_contains(
+    result: Result<impl std::fmt::Debug, ManifestError>,
+    needles: &[&str],
+) {
     let err = result.expect_err("expected a parse error");
     match err {
         ManifestError::Parse { message, .. } => {

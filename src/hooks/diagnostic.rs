@@ -315,7 +315,10 @@ mod tests {
     #[test]
     fn class_tag_stable() {
         assert_eq!(DiagnosticClass::ManifestParse.tag(), "manifest-parse");
-        assert_eq!(DiagnosticClass::ContractViolation.tag(), "contract-violation");
+        assert_eq!(
+            DiagnosticClass::ContractViolation.tag(),
+            "contract-violation"
+        );
         assert_eq!(DiagnosticClass::HookFailure.tag(), "hook-failure");
         assert_eq!(DiagnosticClass::SchemaMismatch.tag(), "schema-mismatch");
     }
@@ -381,7 +384,10 @@ mod tests {
     fn summary_only_diagnostic_omits_separator() {
         // No context, no observed, no cause, no hint — summary only.
         let d = HookDiagnostic::new(DiagnosticClass::HookFailure, "hook 'foo' exited 1");
-        assert_eq!(d.render(Verbosity::Default), "[zetl] hook 'foo' exited 1:\n");
+        assert_eq!(
+            d.render(Verbosity::Default),
+            "[zetl] hook 'foo' exited 1:\n"
+        );
     }
 
     #[test]
@@ -398,8 +404,8 @@ mod tests {
 
     #[test]
     fn verbose_omits_stderr_when_empty() {
-        let d = HookDiagnostic::new(DiagnosticClass::HookFailure, "hook 'foo' crashed")
-            .with_stderr("");
+        let d =
+            HookDiagnostic::new(DiagnosticClass::HookFailure, "hook 'foo' crashed").with_stderr("");
         let rendered = d.render(Verbosity::Verbose);
         assert!(!rendered.contains("stderr"));
     }

@@ -55,11 +55,7 @@ macro_rules! skip_without_node {
 }
 
 fn build_ctx(vault: PathBuf) -> BuildContext {
-    BuildContext::new(
-        BuildMode::Build,
-        vault,
-        PageMeta::synthetic("Page", "page"),
-    )
+    BuildContext::new(BuildMode::Build, vault, PageMeta::synthetic("Page", "page"))
 }
 
 /// Build a self-contained tempdir with a fake `unified` + a fake
@@ -423,16 +419,13 @@ fn test_3305_fresh_context_emits_info_diagnostic() {
     };
     let input = json!({"type": "root", "children": []});
 
-    let response = adapter.invoke_plugin(
-        &manifest,
-        StageInput::Transform { foreign: input },
-        &ctx,
-    );
+    let response = adapter.invoke_plugin(&manifest, StageInput::Transform { foreign: input }, &ctx);
     match response {
         PluginResponse::Success { diagnostics, .. } => {
             assert!(
-                diagnostics.iter().any(|d| d.severity == "info"
-                    && d.message.contains("fresh-context")),
+                diagnostics
+                    .iter()
+                    .any(|d| d.severity == "info" && d.message.contains("fresh-context")),
                 "expected fresh-context info diagnostic, got: {diagnostics:?}"
             );
         }
@@ -472,11 +465,7 @@ fn test_3305_missing_unified_reports_plugin_error() {
     };
     let input = json!({"type": "root", "children": []});
 
-    let response = adapter.invoke_plugin(
-        &manifest,
-        StageInput::Transform { foreign: input },
-        &ctx,
-    );
+    let response = adapter.invoke_plugin(&manifest, StageInput::Transform { foreign: input }, &ctx);
     match response {
         PluginResponse::Error { reason, detail, .. } => {
             assert_eq!(
@@ -518,11 +507,7 @@ fn test_3305_shutdown_is_idempotent() {
         timeout: Duration::from_secs(10),
     };
     let input = json!({"type": "root", "children": []});
-    let _ = adapter.invoke_plugin(
-        &manifest,
-        StageInput::Transform { foreign: input },
-        &ctx,
-    );
+    let _ = adapter.invoke_plugin(&manifest, StageInput::Transform { foreign: input }, &ctx);
     adapter.shutdown(Duration::from_secs(2));
     adapter.shutdown(Duration::from_secs(2));
 }

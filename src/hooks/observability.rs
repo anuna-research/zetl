@@ -231,7 +231,7 @@ impl HookStats {
     /// separately via [`Self::record_failures`] so this method stays
     /// decoupled from the on-disk schema.
     pub fn record(&mut self, event: &HookInvocationEvent) {
-        let stage = stage_from_str(&event.stage.as_str())
+        let stage = stage_from_str(event.stage.as_str())
             .expect("Stage::as_str round-trips to a valid Stage");
         self.per_stage[stage_to_index(stage) as usize] += event.duration;
         self.total_invocations += 1;
@@ -412,7 +412,13 @@ mod tests {
         s.record(&ok_event(Stage::Transform, "callouts", "page-1", 10));
         s.record(&ok_event(Stage::Transform, "callouts", "page-2", 15));
         s.record(&ok_event(Stage::Transform, "tasks", "page-1", 7));
-        s.record(&fail_event(Stage::PostRender, "admonition", "page-1", 4, "timeout"));
+        s.record(&fail_event(
+            Stage::PostRender,
+            "admonition",
+            "page-1",
+            4,
+            "timeout",
+        ));
 
         assert_eq!(s.per_stage(Stage::PreParse), Duration::from_millis(5));
         assert_eq!(s.per_stage(Stage::Transform), Duration::from_millis(32));
@@ -487,7 +493,11 @@ mod tests {
             .get(&HookKey::new(Stage::Transform, "callouts"))
             .unwrap();
         assert_eq!(a.invocations, 5);
-        assert_eq!(a.pages_matched(), 1, "5 invocations on same page = 1 page matched");
+        assert_eq!(
+            a.pages_matched(),
+            1,
+            "5 invocations on same page = 1 page matched"
+        );
     }
 
     #[test]

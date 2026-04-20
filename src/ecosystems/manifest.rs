@@ -144,17 +144,13 @@ pub struct MdbookManifestFields {
 /// Invocation scope for an mdBook preprocessor (SPEC-033 REQ-3312).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum MdbookScope {
     /// Invoke the preprocessor once per page. Default.
+    #[default]
     Page,
     /// Invoke the preprocessor once with the full vault envelope.
     Vault,
-}
-
-impl Default for MdbookScope {
-    fn default() -> Self {
-        MdbookScope::Page
-    }
 }
 
 impl MdbookScope {

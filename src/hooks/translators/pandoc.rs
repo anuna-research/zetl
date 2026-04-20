@@ -153,9 +153,7 @@ fn block_to_pandoc(b: &Block) -> Value {
             let items: Vec<Value> = l
                 .children
                 .iter()
-                .map(|item| {
-                    Value::Array(item.children.iter().map(block_to_pandoc).collect())
-                })
+                .map(|item| Value::Array(item.children.iter().map(block_to_pandoc).collect()))
                 .collect();
             if l.ordered {
                 json!({
@@ -436,7 +434,10 @@ fn pandoc_to_doc(v: Value) -> Result<Document, TranslationError> {
         .and_then(meta_inlines_first_str)
         .and_then(|s| serde_json::from_str::<Frontmatter>(&s).ok());
 
-    let blocks_val = obj.get("blocks").cloned().unwrap_or(Value::Array(Vec::new()));
+    let blocks_val = obj
+        .get("blocks")
+        .cloned()
+        .unwrap_or(Value::Array(Vec::new()));
     let blocks = require_array(blocks_val, "blocks")?;
     let children = blocks
         .into_iter()
@@ -473,9 +474,7 @@ fn pandoc_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
     let t = obj
         .get("t")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            TranslationError::from_foreign(AstType::PandocExt, "block missing 't'")
-        })?
+        .ok_or_else(|| TranslationError::from_foreign(AstType::PandocExt, "block missing 't'"))?
         .to_string();
     let c = obj.get("c").cloned();
     let outer_position = obj
@@ -643,10 +642,7 @@ fn pandoc_to_block(v: Value) -> Result<Option<Block>, TranslationError> {
                     "Div without zetl-embed class has no zetl-ext mapping",
                 ));
             }
-            let target = attr_map
-                .get("zetl-target")
-                .cloned()
-                .unwrap_or_default();
+            let target = attr_map.get("zetl-target").cloned().unwrap_or_default();
             let heading = attr_map.get("zetl-heading").cloned();
             let block_id = attr_map.get("zetl-block-id").cloned();
             let position = attr_map
@@ -694,9 +690,7 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
     let t = obj
         .get("t")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            TranslationError::from_foreign(AstType::PandocExt, "inline missing 't'")
-        })?
+        .ok_or_else(|| TranslationError::from_foreign(AstType::PandocExt, "inline missing 't'"))?
         .to_string();
     let c = obj.get("c").cloned();
     let outer_position = obj
@@ -862,10 +856,7 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
                     "Span without zetl-wikilink class has no zetl-ext mapping",
                 ));
             }
-            let target = attr_map
-                .get("zetl-target")
-                .cloned()
-                .unwrap_or_default();
+            let target = attr_map.get("zetl-target").cloned().unwrap_or_default();
             let alias = attr_map.get("zetl-alias").cloned();
             let heading = attr_map.get("zetl-heading").cloned();
             let block_id = attr_map.get("zetl-block-id").cloned();
@@ -888,7 +879,13 @@ fn pandoc_to_inline(v: Value) -> Result<Option<Inline>, TranslationError> {
     }
 }
 
-fn decompose_attr(v: &Value) -> (String, Vec<String>, std::collections::BTreeMap<String, String>) {
+fn decompose_attr(
+    v: &Value,
+) -> (
+    String,
+    Vec<String>,
+    std::collections::BTreeMap<String, String>,
+) {
     let arr = match v.as_array() {
         Some(a) if a.len() == 3 => a,
         _ => return ("".into(), Vec::new(), Default::default()),
@@ -928,10 +925,7 @@ fn attr_position(v: &Value) -> Option<Position> {
         .map(|s| position_from_attr_value(s))
 }
 
-fn require_object(
-    v: Value,
-    ctx: &str,
-) -> Result<serde_json::Map<String, Value>, TranslationError> {
+fn require_object(v: Value, ctx: &str) -> Result<serde_json::Map<String, Value>, TranslationError> {
     match v {
         Value::Object(o) => Ok(o),
         other => Err(TranslationError::from_foreign(

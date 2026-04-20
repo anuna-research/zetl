@@ -194,11 +194,7 @@ impl From<ProbeOutcome> for CapabilityOutcome {
 ///
 /// `deadline` bounds the total time spent inside [`PersistentHook::probe`]
 /// (the handshake has its own [`DEFAULT_HANDSHAKE_TIMEOUT`]).
-pub fn probe_hook(
-    hook: &ComposedHook,
-    mode: Option<&str>,
-    deadline: Duration,
-) -> ProbeOutcome {
+pub fn probe_hook(hook: &ComposedHook, mode: Option<&str>, deadline: Duration) -> ProbeOutcome {
     let cmd = Command::new(&hook.path);
     let mut persistent = match PersistentHook::spawn_with_policy(
         cmd,
@@ -393,17 +389,16 @@ mod tests {
     #[test]
     fn classify_ok_when_stage_matches() {
         let r = sample_result(&["transform"], true);
-        assert!(matches!(
-            classify(r, Stage::Transform),
-            ProbeOutcome::Ok(_)
-        ));
+        assert!(matches!(classify(r, Stage::Transform), ProbeOutcome::Ok(_)));
     }
 
     #[test]
     fn classify_stage_mismatch_disables_hook() {
         let r = sample_result(&["post-render"], true);
         match classify(r, Stage::Transform) {
-            ProbeOutcome::StageMismatch { expected, declared, .. } => {
+            ProbeOutcome::StageMismatch {
+                expected, declared, ..
+            } => {
                 assert_eq!(expected, Stage::Transform);
                 assert_eq!(declared, vec!["post-render"]);
             }
@@ -417,7 +412,10 @@ mod tests {
         r.reason = Some("build-only hook skipped under serve".into());
         match classify(r, Stage::Transform) {
             ProbeOutcome::Declined { reason, .. } => {
-                assert_eq!(reason.as_deref(), Some("build-only hook skipped under serve"));
+                assert_eq!(
+                    reason.as_deref(),
+                    Some("build-only hook skipped under serve")
+                );
             }
             other => panic!("expected Declined, got {other:?}"),
         }

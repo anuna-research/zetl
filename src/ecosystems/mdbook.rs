@@ -86,7 +86,9 @@ use crate::ecosystems::manifest::MdbookScope;
 use crate::ecosystems::registry::{Ecosystem, EcosystemEntry};
 use crate::hooks::ast::Document;
 use crate::hooks::pipeline::Stage;
-use crate::hooks::translators::{zetl_ext::ZetlExtTranslator, AstType, TranslationError, Translator};
+use crate::hooks::translators::{
+    zetl_ext::ZetlExtTranslator, AstType, TranslationError, Translator,
+};
 
 /// `mdbook_version` string baked into the synthetic envelope (REQ-3309).
 ///
@@ -172,7 +174,11 @@ pub struct Chapter {
 }
 
 impl Chapter {
-    pub fn new(name: impl Into<String>, content: impl Into<String>, path: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        content: impl Into<String>,
+        path: impl Into<PathBuf>,
+    ) -> Self {
         Self {
             name: name.into(),
             content: content.into(),
@@ -299,7 +305,9 @@ fn validate_context(ctx: &Value) -> Result<(), EnvelopeError> {
         }
     }
     if !obj["root"].is_string() {
-        return Err(EnvelopeError::WrongShape("context.root must be a string".into()));
+        return Err(EnvelopeError::WrongShape(
+            "context.root must be a string".into(),
+        ));
     }
     if !obj["renderer"].is_string() {
         return Err(EnvelopeError::WrongShape(
@@ -319,9 +327,7 @@ fn validate_context(ctx: &Value) -> Result<(), EnvelopeError> {
         .get("book")
         .ok_or_else(|| EnvelopeError::MissingField("context.config.book".into()))?
         .as_object()
-        .ok_or_else(|| {
-            EnvelopeError::WrongShape("context.config.book must be an object".into())
-        })?;
+        .ok_or_else(|| EnvelopeError::WrongShape("context.config.book must be an object".into()))?;
     for field in ["title", "authors", "src"] {
         if !book.contains_key(field) {
             return Err(EnvelopeError::MissingField(format!(
@@ -437,9 +443,7 @@ fn validate_section(section: &Value, index: usize) -> Result<(), EnvelopeError> 
 
 fn validate_chapter(chapter: &Value, index: usize) -> Result<(), EnvelopeError> {
     let obj = chapter.as_object().ok_or_else(|| {
-        EnvelopeError::WrongShape(format!(
-            "book.sections[{index}].Chapter must be an object"
-        ))
+        EnvelopeError::WrongShape(format!("book.sections[{index}].Chapter must be an object"))
     })?;
     for field in [
         "name",
@@ -1191,14 +1195,7 @@ mod tests {
         // it breaks serde round-tripping on preprocessors that accept
         // the Book back into mdBook's own types.
         let opts = MdbookOptions::default();
-        let env = build_envelope_for_page(
-            Path::new("/tmp/vault"),
-            "V",
-            &opts,
-            "P",
-            "p",
-            "",
-        );
+        let env = build_envelope_for_page(Path::new("/tmp/vault"), "V", &opts, "P", "p", "");
         assert!(env[1]["__non_exhaustive"].is_null());
     }
 
@@ -1209,14 +1206,7 @@ mod tests {
             mdbook_version: Some("0.4.99".into()),
             ..Default::default()
         };
-        let env = build_envelope_for_page(
-            Path::new("/tmp"),
-            "V",
-            &opts,
-            "P",
-            "p",
-            "",
-        );
+        let env = build_envelope_for_page(Path::new("/tmp"), "V", &opts, "P", "p", "");
         assert_eq!(env[0]["renderer"], "linkcheck");
         assert_eq!(env[0]["mdbook_version"], "0.4.99");
     }
@@ -1227,13 +1217,8 @@ mod tests {
             Chapter::new("A", "body of a", PathBuf::from("a.md")),
             Chapter::new("B", "body of b", PathBuf::from("b.md")),
         ];
-        let env = build_envelope_with_chapters(
-            Path::new("/v"),
-            "Vault",
-            "html",
-            "0.4.40",
-            &chapters,
-        );
+        let env =
+            build_envelope_with_chapters(Path::new("/v"), "Vault", "html", "0.4.40", &chapters);
         let sections = env[1]["sections"].as_array().unwrap();
         assert_eq!(sections.len(), 2);
         assert_eq!(sections[0]["Chapter"]["name"], "A");
@@ -1257,14 +1242,7 @@ mod tests {
     #[test]
     fn extract_round_trips_envelope_produced_by_builder() {
         let opts = MdbookOptions::default();
-        let env = build_envelope_for_page(
-            Path::new("/v"),
-            "V",
-            &opts,
-            "Page",
-            "page",
-            "the body",
-        );
+        let env = build_envelope_for_page(Path::new("/v"), "V", &opts, "Page", "page", "the body");
         // The second element of the envelope is the Book — that's what a
         // preprocessor emits on stdout for a round-trip identity.
         let book = env[1].clone();
@@ -1284,7 +1262,10 @@ mod tests {
     #[test]
     fn extract_rejects_empty_sections() {
         let book = json!({"sections": []});
-        assert_eq!(extract_chapter_content(&book), Err(EnvelopeError::EmptySections));
+        assert_eq!(
+            extract_chapter_content(&book),
+            Err(EnvelopeError::EmptySections)
+        );
     }
 
     #[test]
@@ -1304,14 +1285,7 @@ mod tests {
         // structural validator. Catches a regression where the builder
         // drifts from the shape `invoke_plugin` promises preprocessors.
         let opts = MdbookOptions::default();
-        let env = build_envelope_for_page(
-            Path::new("/v"),
-            "Vault",
-            &opts,
-            "Page",
-            "page",
-            "hello",
-        );
+        let env = build_envelope_for_page(Path::new("/v"), "Vault", &opts, "Page", "page", "hello");
         validate_envelope(&env).expect("builder output must validate");
     }
 
@@ -1447,10 +1421,9 @@ mod tests {
             ]
         });
         match validate_book(&book) {
-            Err(EnvelopeError::MissingField(f)) => assert!(
-                f.starts_with("book.sections[0].Chapter."),
-                "got {f}"
-            ),
+            Err(EnvelopeError::MissingField(f)) => {
+                assert!(f.starts_with("book.sections[0].Chapter."), "got {f}")
+            }
             other => panic!("expected MissingField on Chapter, got {other:?}"),
         }
     }
@@ -1474,9 +1447,8 @@ mod tests {
                 panic!("fixture {:?} envelope failed validation: {e}", fx.name)
             });
             // Round-trip: the Book element alone must validate lenient.
-            validate_book(&env[1]).unwrap_or_else(|e| {
-                panic!("fixture {:?} Book failed validation: {e}", fx.name)
-            });
+            validate_book(&env[1])
+                .unwrap_or_else(|e| panic!("fixture {:?} Book failed validation: {e}", fx.name));
             // And extracting the chapter content returns the exact input.
             let back = extract_chapter_content(&env[1]).unwrap();
             assert_eq!(
@@ -1535,9 +1507,7 @@ mod tests {
         );
         let ctx = HookContext::new(Stage::Transform, "test-mdbook", &build);
         let manifest = sample_manifest("/bin/cat", vec![], None);
-        let input = StageInput::Transform {
-            foreign: json!({}),
-        };
+        let input = StageInput::Transform { foreign: json!({}) };
         match adapter.invoke_plugin(&manifest, input, &ctx) {
             PluginResponse::Error { reason, .. } => assert_eq!(reason, "unsupported_stage"),
             other => panic!("expected unsupported_stage error, got {other:?}"),
