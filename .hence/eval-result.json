@@ -3,35 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 12,
-    "insertions": 1254,
-    "deletions": 59,
+    "files_changed": 2,
+    "insertions": 412,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/shim/enroll.ts",
-      "src/cap/shim/errors.ts",
-      "src/cap/shim/identity.ts",
-      "src/cap/shim/index.ts",
-      "src/cap/shim/package-lock.json",
-      "src/cap/shim/package.json",
-      "src/cap/shim/pipeline.ts",
-      "src/cap/shim/prf_salt.ts",
-      "src/cap/shim/storage.ts",
-      "src/cap/shim/test/tofu.test.ts",
-      "src/cap/shim/tofu.ts"
+      "docs/signing.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-shim-tofu-changes",
-      "content": "Modified 12 files (+1254, -59): .hence/context-manifest.json, src/cap/shim/enroll.ts, src/cap/shim/errors.ts, src/cap/shim/identity.ts, src/cap/shim/index.ts and 7 more",
+      "key": "task-cap-docs-signing-changes",
+      "content": "Modified 2 files (+412, -5): .hence/context-manifest.json, docs/signing.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-shim-tofu-v1",
-  "evaluated_at": "2026-04-20T17:02:01Z",
+  "branch_name": "hence/cap-docs-signing-v1",
+  "evaluated_at": "2026-04-20T17:06:31Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
