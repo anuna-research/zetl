@@ -3,27 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 4,
-    "insertions": 1217,
-    "deletions": 5,
+    "files_changed": 2,
+    "insertions": 27,
+    "deletions": 19,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/ecosystems/mod.rs",
-      "src/ecosystems/version_drift.rs",
-      "tests/plugin_version_drift_integration.rs"
+      "specs/SPEC-031.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-plugin-version-drift-changes",
-      "content": "Modified 4 files (+1217, -5): .hence/context-manifest.json, src/ecosystems/mod.rs, src/ecosystems/version_drift.rs, tests/plugin_version_drift_integration.rs",
+      "key": "task-spec-031-supersede-changes",
+      "content": "Modified 2 files (+27, -19): .hence/context-manifest.json, specs/SPEC-031.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/plugin-version-drift-v1",
-  "evaluated_at": "2026-04-20T00:15:24Z",
+  "branch_name": "hence/spec-031-supersede-v1",
+  "evaluated_at": "2026-04-20T00:17:05Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
