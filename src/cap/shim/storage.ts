@@ -14,8 +14,16 @@
 // is ever bypassed).
 
 export const DB_NAME = "zetl-cap-shim";
-export const DB_VERSION = 1;
+/// v2 adds `STORE_AUDIT` for REQ-3425 collision-UI audit entries.
+/// Existing readers with a v1 DB upgrade in place — `STORE_BINDINGS`
+/// rows are preserved; only the new store is created.
+export const DB_VERSION = 2;
 export const STORE_BINDINGS = "bindings";
+/// REQ-3425: local audit log of TOFU-collision resolutions. Entries
+/// are append-only and never leave the device; the object store is
+/// auto-incremented so bursty collisions with identical `at`
+/// timestamps don't overwrite each other.
+export const STORE_AUDIT = "collision-audit";
 
 /// Persisted record shape. All `Uint8Array` fields are stored as
 /// structured-cloned bytes; IDB preserves the exact contents.
@@ -80,6 +88,9 @@ export async function openDb(
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_BINDINGS)) {
         db.createObjectStore(STORE_BINDINGS, { keyPath: "cohortId" });
+      }
+      if (!db.objectStoreNames.contains(STORE_AUDIT)) {
+        db.createObjectStore(STORE_AUDIT, { autoIncrement: true });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -174,6 +185,126 @@ export async function writeBindingRecord(
   }
 }
 
+/// Delete the binding row for a single cohort. Used by the REQ-3425
+/// collision resolver on the `add` / `replace` paths so the
+/// subsequent `performTofu` call skips its idempotency short-circuit
+/// and writes a fresh row.
+export async function deleteBindingRecord(
+  cohortId: string,
+  factory: IdbFactoryLike | null = defaultFactory(),
+): Promise<void> {
+  if (!factory) return;
+  const db = await openDb(factory);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_BINDINGS, "readwrite");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () =>
+        reject(
+          new StorageError(
+            "transaction-failed",
+            `IDB delete(${STORE_BINDINGS}, ${cohortId}) tx failed: ${tx.error?.message ?? "unknown"}`,
+          ),
+        );
+      tx.onabort = () =>
+        reject(
+          new StorageError(
+            "transaction-failed",
+            `IDB delete(${STORE_BINDINGS}, ${cohortId}) tx aborted: ${tx.error?.message ?? "unknown"}`,
+          ),
+        );
+      tx.objectStore(STORE_BINDINGS).delete(cohortId);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/// Persisted shape of a REQ-3425 audit-log entry. Mirrors the TS
+/// interface in `collision.ts`; kept here so the storage layer can
+/// validate on read without creating a circular import.
+export interface CollisionAuditRecord {
+  at: number;
+  origin: string;
+  cohortId: string;
+  choice: "keep" | "add" | "replace";
+  rationale?: string;
+  existingBindingCreatedAt: number;
+}
+
+/// Append an audit-log entry. The object store auto-increments so
+/// two simultaneous collisions with identical `at` timestamps both
+/// persist.
+export async function appendAuditEntry(
+  entry: CollisionAuditRecord,
+  factory: IdbFactoryLike | null = defaultFactory(),
+): Promise<void> {
+  if (!factory) {
+    throw new StorageError(
+      "unavailable",
+      "IndexedDB is unavailable in this runtime; the REQ-3425 collision audit log cannot persist",
+    );
+  }
+  const db = await openDb(factory);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_AUDIT, "readwrite");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () =>
+        reject(
+          new StorageError(
+            "transaction-failed",
+            `IDB write(${STORE_AUDIT}) tx failed: ${tx.error?.message ?? "unknown"}`,
+          ),
+        );
+      tx.onabort = () =>
+        reject(
+          new StorageError(
+            "transaction-failed",
+            `IDB write(${STORE_AUDIT}) tx aborted: ${tx.error?.message ?? "unknown"}`,
+          ),
+        );
+      tx.objectStore(STORE_AUDIT).add(entry);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/// Read every audit-log entry in insertion order. Exposed for the
+/// reader-facing `forgetBinding` UX + local CLI diagnostics; not
+/// wired into the hot path.
+export async function readAuditLog(
+  factory: IdbFactoryLike | null = defaultFactory(),
+): Promise<CollisionAuditRecord[]> {
+  if (!factory) return [];
+  const db = await openDb(factory);
+  try {
+    return await new Promise<CollisionAuditRecord[]>((resolve, reject) => {
+      const tx = db.transaction(STORE_AUDIT, "readonly");
+      const store = tx.objectStore(STORE_AUDIT);
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const raw = (req.result ?? []) as unknown[];
+        try {
+          resolve(raw.map(validateAuditRecord));
+        } catch (err) {
+          reject(err);
+        }
+      };
+      req.onerror = () =>
+        reject(
+          new StorageError(
+            "transaction-failed",
+            `IDB read(${STORE_AUDIT}) failed: ${req.error?.message ?? "unknown"}`,
+          ),
+        );
+    });
+  } finally {
+    db.close();
+  }
+}
+
 /// Delete every persisted binding. Used by [`forgetBinding`] in the
 /// shim entry point. Implemented via `deleteDatabase` so the entire
 /// object-store schema resets — on the next TOFU we start from a
@@ -249,4 +380,58 @@ function validateRecord(raw: unknown): TofuBinding {
     ciphertext: mustBytes("ciphertext"),
     createdAt: mustNumber("createdAt"),
   };
+}
+
+function validateAuditRecord(raw: unknown): CollisionAuditRecord {
+  if (!raw || typeof raw !== "object") {
+    throw new StorageError(
+      "malformed-record",
+      "IDB collision-audit record is not an object",
+    );
+  }
+  const r = raw as Record<string, unknown>;
+  const at = r["at"];
+  if (typeof at !== "number" || !Number.isFinite(at)) {
+    throw new StorageError("malformed-record", "audit entry .at is not a finite number");
+  }
+  const origin = r["origin"];
+  if (typeof origin !== "string") {
+    throw new StorageError("malformed-record", "audit entry .origin is not a string");
+  }
+  const cohortId = r["cohortId"];
+  if (typeof cohortId !== "string") {
+    throw new StorageError("malformed-record", "audit entry .cohortId is not a string");
+  }
+  const choice = r["choice"];
+  if (choice !== "keep" && choice !== "add" && choice !== "replace") {
+    throw new StorageError(
+      "malformed-record",
+      `audit entry .choice is ${JSON.stringify(choice)}; expected "keep"|"add"|"replace"`,
+    );
+  }
+  const createdAt = r["existingBindingCreatedAt"];
+  if (typeof createdAt !== "number" || !Number.isFinite(createdAt)) {
+    throw new StorageError(
+      "malformed-record",
+      "audit entry .existingBindingCreatedAt is not a finite number",
+    );
+  }
+  const out: CollisionAuditRecord = {
+    at,
+    origin,
+    cohortId,
+    choice,
+    existingBindingCreatedAt: createdAt,
+  };
+  const rationale = r["rationale"];
+  if (rationale !== undefined) {
+    if (typeof rationale !== "string") {
+      throw new StorageError(
+        "malformed-record",
+        "audit entry .rationale is not a string",
+      );
+    }
+    out.rationale = rationale;
+  }
+  return out;
 }

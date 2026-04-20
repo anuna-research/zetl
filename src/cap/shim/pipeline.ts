@@ -9,6 +9,7 @@
 // MUST NOT call `credentials.get/create` (REQ-3427 acceptance), and a
 // missing-identity error MUST NOT attempt decryption.
 
+import type { CollisionPrompt } from "./collision.ts";
 import { parseEnvelope, type ParsedEnvelope } from "./envelope.ts";
 import { verifyEd25519 } from "./signature.ts";
 import {
@@ -106,6 +107,11 @@ export interface PipelineDeps {
   /// from the operator's config so the shim knows which prompt
   /// widget to render.
   splitKeySecondFactor?: SplitKeySecondFactor;
+  /// REQ-3425 TOFU-collision prompt. Injected by the shim entry
+  /// point (`index.ts`) as the DOM renderer in production and
+  /// stubbed by tests. Omitted entries fall through to the
+  /// pre-REQ-3425 silent "already-bound" behaviour.
+  promptCollision?: CollisionPrompt;
 }
 
 export async function runPipeline(deps: PipelineDeps): Promise<PipelineTrace> {
@@ -165,6 +171,7 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineTrace> {
         idbFactory: fallbackActive ? null : deps.idbFactory,
         promptHalf2: deps.promptHalf2,
         splitKeySecondFactor: deps.splitKeySecondFactor,
+        promptCollision: deps.promptCollision,
       });
       trace.phases.push(Phase.IdentityAcquired);
 
@@ -214,6 +221,7 @@ function errorKindFrom(err: unknown): ErrorKind {
   if (err instanceof IdentityError) {
     if (err.kind === "need-invite") return "need-invite";
     if (err.kind === "tofu-failed") return "tofu-failed";
+    if (err.kind === "collision-failed") return "tofu-failed";
     if (err.kind === "split-key-cancelled") return "need-invite";
     if (err.kind === "split-key-invalid-half2") return "need-invite";
     return "identity-unavailable";
