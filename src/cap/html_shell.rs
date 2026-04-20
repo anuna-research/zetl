@@ -59,6 +59,15 @@ pub const CAPABILITY_SHELL_FILENAME: &str = "capability-shell.html";
 /// exact string.
 pub const HOST_SELECTOR: &str = "main[data-zetl-capability]";
 
+/// Document-wide referrer policy meta tag (SPEC-034 REQ-3413 /
+/// OBS-3407). Pinned byte-for-byte so CI and operators can grep the
+/// shell for the exact line. Complements the per-external-link
+/// `rel="noopener noreferrer"` emitted by
+/// [`crate::cap::referrer_scrub`]: the `<meta>` is the
+/// document-default (honoured by all modern browsers) and the
+/// `rel` attribute on `<a>` is the per-link override.
+pub const REFERRER_META: &str = "<meta name=\"referrer\" content=\"no-referrer\">";
+
 /// Prefix a well-formed SRI hash begins with. We deliberately only
 /// support SHA-384 (per REQ-3421) — no negotiation with SHA-256 or
 /// SHA-512 alternatives, so the shim bundle's hash format is a
@@ -114,6 +123,8 @@ pub fn render_shell(sri_hash: &str) -> String {
     out.push_str("<head>\n");
     out.push_str("<meta charset=\"utf-8\">\n");
     out.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+    out.push_str(REFERRER_META);
+    out.push('\n');
     out.push_str("<meta http-equiv=\"Content-Security-Policy\" content=\"");
     out.push_str(&attr_escape(CAP_CSP));
     out.push_str("\">\n");
@@ -166,7 +177,8 @@ fn attr_escape(raw: &str) -> String {
 mod tests {
     use super::*;
 
-    const SAMPLE_SRI: &str = "sha384-deadbeefcafef00d1234567890abcdef1234567890abcdef1234567890abcdef";
+    const SAMPLE_SRI: &str =
+        "sha384-deadbeefcafef00d1234567890abcdef1234567890abcdef1234567890abcdef";
 
     #[test]
     fn shell_renders_doctype_and_csp_meta_byte_for_byte() {
@@ -177,9 +189,8 @@ mod tests {
         // the escaped form as equivalent per the CSP §3.1 grammar
         // (HTML unescapes the attribute before handoff).
         let escaped = CAP_CSP.replace('\'', "&#39;");
-        let expected_meta = format!(
-            "<meta http-equiv=\"Content-Security-Policy\" content=\"{escaped}\">"
-        );
+        let expected_meta =
+            format!("<meta http-equiv=\"Content-Security-Policy\" content=\"{escaped}\">");
         assert!(
             html.contains(&expected_meta),
             "missing CSP meta tag, got:\n{html}"
@@ -213,6 +224,24 @@ mod tests {
     }
 
     #[test]
+    fn shell_emits_referrer_no_referrer_meta() {
+        // SPEC-034 REQ-3413 document-wide referrer policy. Paired
+        // with per-link `rel="noopener noreferrer"` in
+        // `cap::referrer_scrub` — belt-and-braces defence against
+        // the path-cap leaking into outgoing Referer headers.
+        let html = render_shell(SAMPLE_SRI);
+        assert!(
+            html.contains(REFERRER_META),
+            "missing referrer meta, got:\n{html}"
+        );
+        // Byte-pinned shape so CI greps stay stable.
+        assert_eq!(
+            REFERRER_META,
+            "<meta name=\"referrer\" content=\"no-referrer\">"
+        );
+    }
+
+    #[test]
     fn attr_escape_covers_csp_directive() {
         // The CAP_CSP string contains `'` — verify the escape
         // survives into the meta value so a downstream linter (or
@@ -227,7 +256,11 @@ mod tests {
     #[test]
     fn load_shim_integrity_trims_newline_and_returns_hash() {
         let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(tmp.path().join(SHIM_SRI_FILENAME), format!("{SAMPLE_SRI}\n")).unwrap();
+        fs::write(
+            tmp.path().join(SHIM_SRI_FILENAME),
+            format!("{SAMPLE_SRI}\n"),
+        )
+        .unwrap();
         let hash = load_shim_integrity(tmp.path()).unwrap();
         assert_eq!(hash, SAMPLE_SRI);
     }
@@ -243,11 +276,7 @@ mod tests {
     #[test]
     fn load_shim_integrity_rejects_non_sha384_prefix() {
         let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(
-            tmp.path().join(SHIM_SRI_FILENAME),
-            "sha256-0000\n",
-        )
-        .unwrap();
+        fs::write(tmp.path().join(SHIM_SRI_FILENAME), "sha256-0000\n").unwrap();
         let err = load_shim_integrity(tmp.path()).unwrap_err();
         assert!(matches!(err, ShellError::Malformed { .. }));
     }

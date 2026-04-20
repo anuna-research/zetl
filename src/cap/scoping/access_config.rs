@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 
 /// Combined access-scoping config. Either sub-section is optional
 /// in TOML; all fall back to documented defaults when absent.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccessConfig {
     #[serde(default)]
@@ -42,6 +42,37 @@ pub struct AccessConfig {
     pub backlinks: BacklinksConfig,
     #[serde(default)]
     pub cache: CacheConfig,
+    /// External-link referrer scrubbing (SPEC-034 REQ-3413 /
+    /// OBS-3407). When `true` (default), the build rewrites external
+    /// `<a>` tags to carry `rel="noopener noreferrer"` and emits
+    /// `<meta name="referrer" content="no-referrer">` in the
+    /// capability HTML shell so outgoing clicks do not leak the
+    /// current page's `/c/<path-cap>/<slug>.html` URL into the
+    /// destination's `Referer` header.
+    ///
+    /// Setting this to `false` is a deliberate weakening: it restores
+    /// the browser's default referrer behaviour on external clicks,
+    /// which exposes the path-cap to the destination site and any
+    /// on-path observer who can see the outgoing request headers.
+    /// Only disable when the destination is a trusted analytics
+    /// partner that has been briefed on the exposure.
+    #[serde(default = "default_rel_noreferrer")]
+    pub rel_noreferrer: bool,
+}
+
+fn default_rel_noreferrer() -> bool {
+    true
+}
+
+impl Default for AccessConfig {
+    fn default() -> Self {
+        Self {
+            search: SearchConfig::default(),
+            backlinks: BacklinksConfig::default(),
+            cache: CacheConfig::default(),
+            rel_noreferrer: default_rel_noreferrer(),
+        }
+    }
 }
 
 /// `[access.search]` table. The `mode` field is the only tunable
@@ -222,9 +253,29 @@ mod tests {
         let cfg = AccessConfig::default();
         assert_eq!(cfg.search.mode, SearchMode::Off);
         assert_eq!(cfg.backlinks.mode, BacklinksMode::Scoped);
+        assert!(cfg.rel_noreferrer, "rel_noreferrer defaults to true");
         assert!(cfg.validate().is_ok());
         assert!(!cfg.search_ui_enabled());
         assert!(cfg.backlinks_enabled());
+    }
+
+    #[test]
+    fn rel_noreferrer_defaults_true_when_absent_in_toml() {
+        // REQ-3413: the knob is private-by-default. Operator silence
+        // must not regress into the unsafe state.
+        let parsed: AccessConfig = toml::from_str("").unwrap();
+        assert!(parsed.rel_noreferrer);
+    }
+
+    #[test]
+    fn rel_noreferrer_opt_out_parses() {
+        let src = "rel_noreferrer = false\n";
+        let parsed: AccessConfig = toml::from_str(src).unwrap();
+        assert!(!parsed.rel_noreferrer);
+        // Opt-out is a documented weakening but not a build-time
+        // error — the operator is explicitly trading path-cap
+        // privacy for referrer analytics.
+        assert!(parsed.validate().is_ok());
     }
 
     #[test]
@@ -377,10 +428,7 @@ mod tests {
                 cache: CacheConfig { max_age: value },
                 ..Default::default()
             };
-            assert!(
-                cfg.validate().is_ok(),
-                "boundary {value} should validate"
-            );
+            assert!(cfg.validate().is_ok(), "boundary {value} should validate");
         }
     }
 

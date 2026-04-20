@@ -258,7 +258,16 @@ fn common_commonmark_paragraph_roundtrips() {
     let out = sanitise(html);
     assert!(out.contains("<em>world</em>"));
     assert!(out.contains("href=\"https://example.com\""));
-    assert!(out.contains("rel=\"noopener noreferrer\""));
+    // REQ-3413's per-link rel rewrite is owned by `cap::referrer_scrub`
+    // (invoked downstream in the build driver), not the sanitiser.
+    // The sanitiser's contract here is only to strip author-supplied
+    // rels so the scrubber sees a clean slate — see
+    // `cap::sanitiser::tests::strips_author_rel_so_referrer_scrub_owns_rel_policy`.
+    assert!(
+        !out.contains("rel="),
+        "sanitiser must not emit rel attributes: {}",
+        out
+    );
 }
 
 #[test]

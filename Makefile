@@ -171,6 +171,20 @@ translator-roundtrip:
 audit-corpus:
 	cargo run --quiet --bin zetl -- cap audit-diff --corpus-root tools/audit-diff-corpus
 
+# SPEC-034 REQ-3413 / OBS-3407 referrer-leak canary. Runs the TEST-3413
+# integration suite that builds a mixed-link page through the
+# capability driver, decrypts the emitted envelope, and asserts:
+#   • external <a> carries rel="noopener noreferrer"
+#   • internal <a> is byte-identical to the sanitiser output
+#   • the capability HTML shell carries
+#     <meta name="referrer" content="no-referrer">
+#   • [access] rel_noreferrer = false opts out of the per-link
+#     rewrite but leaves the shell meta tag in place
+# Miss == the path-cap leaks into outgoing Referer headers, so
+# treat any red here as a spec regression.
+ref-leak-test:
+	cargo test --test cap_referrer_scrubbing_integration -- --nocapture
+
 install: build
 	install -d $(PREFIX)/bin $(MANDIR) $(BASHCOMPDIR) $(ZSHCOMPDIR) $(FISHCOMPDIR)
 	install -m 755 target/release/zetl $(PREFIX)/bin/zetl

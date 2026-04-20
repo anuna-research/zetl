@@ -200,6 +200,30 @@ mitigations and their honest limits:
   cache for `/assets/shim.js`. The rotation window is the exposure
   window — design your incident-response SLA accordingly.
 
+- **Outbound Referer leak of the path-cap (REQ-3413, OBS-3407).** When
+  a reader clicks an external link, the browser would by default send
+  the current URL (including `/c/<path-cap>/<slug>.html`) to the
+  destination site's `Referer` header. That hands the path-cap — a
+  cohort-scoped secret — to a third party. Two defences ship in v1:
+
+  1. Every external `<a>` is rewritten during build to carry
+     `rel="noopener noreferrer"`. Internal links (root-relative,
+     relative, or anchor-only) are left byte-identical so same-site
+     `Referer` remains available for operator analytics.
+  2. The capability HTML shell carries `<meta name="referrer"
+     content="no-referrer">` as the document-wide default, honoured
+     by every modern browser even for links the rewrite missed.
+
+  Operators who need the browser's default referrer behaviour on
+  external clicks (e.g. for a trusted analytics partner that has been
+  briefed on the exposure) can opt out with `[access] rel_noreferrer
+  = false`. The `<meta>` default stays in the shell either way, so
+  opting out weakens path-cap privacy without fully removing the
+  document-level defence. The trade-off is explicit: **disabling
+  `rel_noreferrer` reduces path-cap privacy — the destination site
+  and any on-path observer will see the path-cap in their `Referer`
+  logs.** `make ref-leak-test` is the CI canary.
+
 - **ZETL_CAP_SECRET compromise (A6).** Catastrophic. `zetl cap
   emergency-shutdown` prints the operator checklist (DNS, CDN purge,
   secret rotation, reader notification).

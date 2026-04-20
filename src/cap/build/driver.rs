@@ -88,6 +88,7 @@ use crate::cap::grants::validation::{Grant, GrantsFile};
 use crate::cap::html_shell;
 use crate::cap::pad::X25519Pubkey;
 use crate::cap::recipients::parsing::{Cohort, RecipientsFile, AGE_RECIPIENT_V1_PREFIX};
+use crate::cap::referrer_scrub;
 use crate::cap::sanitiser;
 use crate::cap::scoping::access_config::{AccessConfig, AccessConfigError};
 use crate::cap::scoping::cohort_index::{CohortIndex, CohortScope, IndexError, PageRef};
@@ -434,9 +435,22 @@ pub fn run_capability_build(
                 .get(slug.as_str())
                 .expect("cohort index slugs come from pages list");
 
-            let sanitised = sanitised_cache
-                .entry(slug.as_str())
-                .or_insert_with(|| sanitiser::sanitise(&page.html));
+            let sanitised = sanitised_cache.entry(slug.as_str()).or_insert_with(|| {
+                let cleaned = sanitiser::sanitise(&page.html);
+                // REQ-3413: add rel="noopener noreferrer" to external
+                // <a> tags so the path-cap does not leak into the
+                // Referer header on outgoing clicks. Internal links
+                // are left byte-identical. The `<meta name="referrer"
+                // content="no-referrer">` document-default lives in
+                // the HTML shell (`html_shell::REFERRER_META`); the
+                // per-link rel is belt-and-braces for browsers that
+                // honour rel over meta.
+                if config.access.rel_noreferrer {
+                    referrer_scrub::scrub_external_link_rels(&cleaned)
+                } else {
+                    cleaned
+                }
+            });
             let plaintext = sanitised.as_bytes();
 
             let path_cap = derive_path_cap(

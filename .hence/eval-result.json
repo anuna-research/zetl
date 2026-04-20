@@ -3,25 +3,34 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 412,
-    "deletions": 5,
+    "files_changed": 11,
+    "insertions": 899,
+    "deletions": 43,
     "file_list": [
       ".hence/context-manifest.json",
-      "docs/signing.md"
+      "Makefile",
+      "docs/capability-security.md",
+      "src/cap/build/driver.rs",
+      "src/cap/html_shell.rs",
+      "src/cap/mod.rs",
+      "src/cap/referrer_scrub.rs",
+      "src/cap/sanitiser.rs",
+      "src/cap/scoping/access_config.rs",
+      "tests/cap_referrer_scrubbing_integration.rs",
+      "tests/cap_sanitiser_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-docs-signing-changes",
-      "content": "Modified 2 files (+412, -5): .hence/context-manifest.json, docs/signing.md",
+      "key": "task-cap-referrer-scrubbing-changes",
+      "content": "Modified 11 files (+899, -43): .hence/context-manifest.json, Makefile, docs/capability-security.md, src/cap/build/driver.rs, src/cap/html_shell.rs and 6 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-docs-signing-v1",
-  "evaluated_at": "2026-04-20T17:06:31Z",
+  "branch_name": "hence/cap-referrer-scrubbing-v1",
+  "evaluated_at": "2026-04-20T17:27:47Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
