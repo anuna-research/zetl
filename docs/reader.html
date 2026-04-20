@@ -91,6 +91,7 @@
     <li><a href="#new-device">Reading on a new device</a></li>
     <li><a href="#lost">If you lose your authenticator</a></li>
     <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#fallback-prf-unavailable">Fragment-required mode (non-PRF browsers)</a></li>
   </ul>
 </div>
 
@@ -236,6 +237,27 @@
   <p><strong>What it means.</strong> The wiki hit an unexpected condition the browser did not have a specific message for.</p>
   <p><strong>What to do.</strong> Reload once. If it repeats, contact your wiki operator and quote the URL.</p>
 </section>
+
+<h2 id="fallback-prf-unavailable">Fragment-required mode (non-PRF browsers)</h2>
+
+<p>If your browser or authenticator does not support the WebAuthn feature this wiki uses to bind a passkey to your device (the <strong>PRF extension</strong>), the page still decrypts — but it does so directly from the secret at the end of the URL, <em>on every visit</em>. The shim shows a small banner at the top of the page reading <em>“Running in fragment-required mode…”</em> so you know you are in this mode. This is a deliberate graceful fallback, not an error.</p>
+
+<p>What this means in practice:</p>
+
+<ul>
+  <li>The secret fragment after <code>#</code> in the URL <strong>stays visible in your address bar</strong> — the shim does not scrub it, because it needs the fragment on the next visit too.</li>
+  <li>There is <strong>no passkey binding</strong> on this device. Clearing browser data loses nothing extra; you only ever had the invite URL.</li>
+  <li>You must reopen the <strong>same invite URL</strong> (with its <code>#k=…</code> suffix) each time you want to read. Bookmark it; do not share it.</li>
+  <li>Clicking internal wiki links may land you on other pages without the fragment — if those pages also need decryption, you will see <a href="#err-need-invite">“need-invite”</a>. Reopen from your bookmarked invite URL.</li>
+</ul>
+
+<div class="note">
+  <strong>Fragment-required mode widens the URL-leak surface described in §11.2 of the capability spec.</strong> The fragment stays in your URL bar, browser history, and any place the browser syncs or hands off URLs. Treat the bookmarked invite URL itself as the secret. If that is unacceptable, ask your operator for access from a device whose browser supports WebAuthn PRF — see the list below.
+</div>
+
+<p><strong>Known-good combinations.</strong> Recent Chromium-based browsers (Chrome 116+, Edge, Brave, Arc) on any OS; Firefox 128+ on desktop; recent Safari on macOS Sonoma+ / iOS 17+. If you are hitting fragment-required mode on one of these, update the browser — the PRF extension is present in recent releases but was not in older ones.</p>
+
+<p><strong>Older Safari, locked-down enterprise browsers, or browsers inside a WebView</strong> often do not advertise PRF. A different browser on the same device usually works.</p>
 
 <footer>
   <p>This page is part of a capability-mode zetl wiki. The operator-facing reference for the underlying model lives in <code>docs/capability-security.md</code>; the troubleshooting entries above have a mirror in <code>docs/reader-troubleshooting.md</code>.</p>
