@@ -4,24 +4,24 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 2,
-    "insertions": 1027,
+    "insertions": 69,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "docs/capability-mode.md"
+      "CHANGELOG.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-docs-operator-changes",
-      "content": "Modified 2 files (+1027, -5): .hence/context-manifest.json, docs/capability-mode.md",
+      "key": "task-cap-changelog-changes",
+      "content": "Modified 2 files (+69, -5): .hence/context-manifest.json, CHANGELOG.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-docs-operator-v1",
-  "evaluated_at": "2026-04-20T19:25:02Z",
+  "branch_name": "hence/cap-changelog-v1",
+  "evaluated_at": "2026-04-20T19:26:49Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

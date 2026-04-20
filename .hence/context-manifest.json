@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-docs-operator",
+  "task_id": "cap-changelog",
   "token_budget": 8000,
-  "tokens_used": 457,
+  "tokens_used": 382,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`docs/capability-mode.md` — full operator guide per SPEC-034 §12. Sections: threat model (quoting §11 verbatim), per-cohort mode-selection decision aid, quickstart (genkey → config → first build → deploy), grants lifecycle (invite / revoke / rotate / finalise / signing-key rotation), deploy recipes for nginx, Caddy, Netlify, Cloudflare Pages, S3+CloudFront, Vercel (with copy-paste blocks), troubleshooting flowchart (`my reader can't decrypt` → diagnostic tree).",
-      "token_cost": 119,
+      "content": "CHANGELOG.md entry for the release that ships SPEC-034 capability mode. References SPEC-034 version, lists user-facing features, documents the two modes, points at operator docs.",
+      "token_cost": 44,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T19:16:26Z"
+  "constructed_at": "2026-04-20T19:25:08Z"
 }
