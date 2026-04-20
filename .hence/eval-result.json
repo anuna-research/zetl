@@ -3,28 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 364,
-    "deletions": 10,
+    "files_changed": 2,
+    "insertions": 582,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/build.rs",
-      "src/web/mod.rs",
-      "src/web/robots.rs",
-      "tests/cap_robots_txt_integration.rs"
+      "docs/capability-security.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-robots-txt-changes",
-      "content": "Modified 5 files (+364, -10): .hence/context-manifest.json, src/web/build.rs, src/web/mod.rs, src/web/robots.rs, tests/cap_robots_txt_integration.rs",
+      "key": "task-cap-docs-security-changes",
+      "content": "Modified 2 files (+582, -5): .hence/context-manifest.json, docs/capability-security.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-robots-txt-v1",
-  "evaluated_at": "2026-04-20T14:08:31Z",
+  "branch_name": "hence/cap-docs-security-v1",
+  "evaluated_at": "2026-04-20T14:14:51Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
