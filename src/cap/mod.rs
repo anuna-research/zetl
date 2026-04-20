@@ -17,6 +17,7 @@ pub mod genkey;
 pub mod grants;
 pub mod invite;
 pub mod pad;
+pub mod pair;
 pub mod recipients;
 pub mod sanitiser;
 pub mod scoping;

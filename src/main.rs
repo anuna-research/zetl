@@ -11449,7 +11449,22 @@ fn main() -> anyhow::Result<()> {
             zetl::cli::CapCommand::Share { .. } => cmd_cap_stub(&cli, "share"),
             zetl::cli::CapCommand::Check { .. } => cmd_cap_stub(&cli, "check"),
             zetl::cli::CapCommand::Sweep => cmd_cap_stub(&cli, "sweep"),
-            zetl::cli::CapCommand::Pair { .. } => cmd_cap_stub(&cli, "pair"),
+            zetl::cli::CapCommand::Pair {
+                grantor,
+                grantee,
+                peer,
+                phrase,
+                pubkey,
+            } => cmd_cap_pair(
+                &cli,
+                CapPairArgs {
+                    grantor: *grantor,
+                    grantee: *grantee,
+                    peer: peer.clone(),
+                    phrase: phrase.clone(),
+                    pubkey: pubkey.clone(),
+                },
+            ),
             zetl::cli::CapCommand::RotateSigningKey => cmd_cap_stub(&cli, "rotate-signing-key"),
             zetl::cli::CapCommand::EmergencyShutdown => cmd_cap_emergency_shutdown(&cli),
             zetl::cli::CapCommand::AuditDiff {
@@ -11960,6 +11975,345 @@ fn cmd_cap_emergency_shutdown(cli: &Cli) -> Result<()> {
         print!("{}", render_checklist(&ctx));
     }
     Ok(())
+}
+
+/// Argument bundle threaded through to [`cmd_cap_pair`]. Named struct
+/// mirrors [`CapInviteArgs`] so the main-fn dispatch table stays
+/// readable as new flags land.
+struct CapPairArgs {
+    grantor: bool,
+    grantee: bool,
+    peer: Option<String>,
+    phrase: Option<String>,
+    pubkey: Option<String>,
+}
+
+/// `zetl cap pair` — SPEC-034 REQ-3408 (CLI) / REQ-3416.
+///
+/// SPAKE2-authenticated pubkey handoff. Two roles:
+///
+///   * **Grantor** (default; `--grantor`): interactive. Generates or
+///     accepts a 4-word phrase, refuses reuse within 30 days, starts
+///     SPAKE2, prints phrase + handshake, then reads three lines from
+///     stdin — peer handshake, peer pubkey (b64), peer HMAC tag (b64).
+///     Verifies the tag and prints the authenticated pubkey.
+///
+///   * **Grantee** (`--grantee`): one-shot. Given the grantor's
+///     handshake, the shared phrase, and the local pubkey, starts its
+///     own SPAKE2 session, derives the shared key, and prints the
+///     outbound handshake + HMAC tag so the operator can relay both
+///     back to the grantor.
+///
+/// The grantor's SPAKE2 session stays alive for the whole pairing in a
+/// single process because the upstream `spake2` crate does not
+/// serialise session state — splitting the flow across multiple
+/// invocations on the grantor side would break convergence.
+///
+/// Phrase reuse within 30 days is refused via
+/// `.zetl/caps/.pair-nonces`; see [`zetl::cap::pair`] for the on-disk
+/// format and the SPAKE2 state machine.
+fn cmd_cap_pair(cli: &Cli, args: CapPairArgs) -> Result<()> {
+    use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
+    use base64::Engine as _;
+    use zetl::cap::pair::{
+        generate_phrase, NonceStore, PairMessage, PairPhrase, PairSession, PAIR_HMAC_LEN,
+        PAIR_PUBKEY_LEN,
+    };
+
+    let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
+
+    // Default to grantor if neither flag set — operators running
+    // `zetl cap pair` without arguments are the one who controls the
+    // vault, so that's the safer default.
+    let is_grantee = args.grantee;
+    let is_grantor = args.grantor || !is_grantee;
+    debug_assert!(is_grantor ^ is_grantee);
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let caps_dir = vault_root.join(".zetl").join("caps");
+    let nonce_store_path = caps_dir.join(".pair-nonces");
+
+    let now_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    if is_grantee {
+        return cmd_cap_pair_grantee(cli, &args, &caps_dir, &nonce_store_path, now_unix);
+    }
+
+    // ── Grantor role ────────────────────────────────────────────────
+    //
+    // Generate (or accept from --phrase) the pairing phrase, refuse
+    // reuse, start SPAKE2, print phrase + handshake, then block on
+    // stdin for the grantee's response.
+
+    std::fs::create_dir_all(&caps_dir)
+        .with_context(|| format!("creating {}", caps_dir.display()))?;
+
+    let prior_nonces = match std::fs::read_to_string(&nonce_store_path) {
+        Ok(s) => NonceStore::from_toml(&s).unwrap_or_default(),
+        Err(_) => NonceStore::default(),
+    };
+
+    // Seed the phrase: either the operator pinned it (`--phrase`,
+    // integration tests) or we draw fresh from OsRng. A pinned phrase
+    // that is already in the nonce store is a hard error so tests
+    // catch reuse refusal deterministically.
+    let phrase = if let Some(user_phrase) = args.phrase.as_deref() {
+        let p = PairPhrase::parse(user_phrase)
+            .map_err(|e| anyhow::anyhow!("--phrase: {e}"))?;
+        let updated = prior_nonces
+            .clone()
+            .accept(&p.nonce_hash(), now_unix)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        std::fs::write(&nonce_store_path, updated.to_toml())
+            .with_context(|| format!("writing {}", nonce_store_path.display()))?;
+        p
+    } else {
+        // Draw up to three phrases — a collision against a 30-day
+        // window at 2⁴⁴ entropy is negligible but the retry loop
+        // protects against a degenerate RNG seed.
+        let mut rng = rand_core::OsRng;
+        let mut accepted: Option<(PairPhrase, NonceStore)> = None;
+        for _ in 0..3 {
+            let candidate = generate_phrase(&mut rng);
+            if let Ok(store) = prior_nonces
+                .clone()
+                .accept(&candidate.nonce_hash(), now_unix)
+            {
+                accepted = Some((candidate, store));
+                break;
+            }
+        }
+        let (p, store) = accepted.ok_or_else(|| {
+            anyhow::anyhow!(
+                "could not generate an unused phrase after 3 attempts — nonce store may be corrupt"
+            )
+        })?;
+        std::fs::write(&nonce_store_path, store.to_toml())
+            .with_context(|| format!("writing {}", nonce_store_path.display()))?;
+        p
+    };
+
+    let (session, outbound) = PairSession::start(&phrase)
+        .map_err(|e| anyhow::anyhow!("SPAKE2 start failed: {e}"))?;
+
+    // Print phrase + handshake for the grantee to consume. We print
+    // immediately (flushing stdout) so a grantee watching this
+    // terminal can copy the values out before we block on stdin.
+    use std::io::Write;
+    let mut stdout = std::io::stdout().lock();
+    if json_requested {
+        // JSON emits a "phase": "prompt" line here so a scripted
+        // consumer knows the stdin blockage is imminent. The final
+        // "phase": "verified" / "rejected" JSON line closes the
+        // session.
+        writeln!(
+            stdout,
+            "{}",
+            serde_json::json!({
+                "phase": "prompt",
+                "phrase": phrase.canonical(),
+                "handshake_b64": outbound.to_b64(),
+                "next_step": "Read peer handshake, pubkey (b64), HMAC (b64) from stdin, one per line.",
+            })
+        )?;
+    } else {
+        writeln!(stdout, "zetl cap pair (REQ-3408) — session started")?;
+        writeln!(stdout, "================================================")?;
+        writeln!(stdout)?;
+        writeln!(
+            stdout,
+            "Pairing phrase (share with the peer over a TRUSTED channel only — voice / in person):"
+        )?;
+        writeln!(stdout, "    {}", phrase.canonical())?;
+        writeln!(stdout)?;
+        writeln!(
+            stdout,
+            "Handshake message (share over any channel; the peer needs it for their `--peer` flag):"
+        )?;
+        writeln!(stdout, "    {}", outbound.to_b64())?;
+        writeln!(stdout)?;
+        writeln!(
+            stdout,
+            "Waiting for peer response (paste three lines into stdin):"
+        )?;
+        writeln!(stdout, "  1. peer handshake (base64)")?;
+        writeln!(stdout, "  2. peer pubkey (base64, 32 bytes)")?;
+        writeln!(stdout, "  3. peer HMAC tag (base64, 32 bytes)")?;
+    }
+    stdout.flush()?;
+    drop(stdout);
+
+    // Block on stdin for the three response lines.
+    let peer_handshake_b64 = read_trimmed_stdin_line("peer handshake")?;
+    let peer_pubkey_b64 = read_trimmed_stdin_line("peer pubkey")?;
+    let peer_hmac_b64 = read_trimmed_stdin_line("peer HMAC tag")?;
+
+    let peer_msg = PairMessage::from_b64(&peer_handshake_b64)
+        .map_err(|e| anyhow::anyhow!("peer handshake: {e}"))?;
+    let peer_pubkey = B64
+        .decode(peer_pubkey_b64.as_bytes())
+        .map_err(|_| anyhow::anyhow!("peer pubkey is not valid base64 (standard, no padding)"))?;
+    if peer_pubkey.len() != PAIR_PUBKEY_LEN {
+        return Err(anyhow::anyhow!(
+            "peer pubkey must decode to {PAIR_PUBKEY_LEN} bytes (got {})",
+            peer_pubkey.len()
+        ));
+    }
+    let peer_tag = B64
+        .decode(peer_hmac_b64.as_bytes())
+        .map_err(|_| anyhow::anyhow!("peer HMAC tag is not valid base64 (standard, no padding)"))?;
+    if peer_tag.len() != PAIR_HMAC_LEN {
+        return Err(anyhow::anyhow!(
+            "peer HMAC tag must decode to {PAIR_HMAC_LEN} bytes (got {})",
+            peer_tag.len()
+        ));
+    }
+
+    let shared = session
+        .finish(&peer_msg)
+        .map_err(|e| anyhow::anyhow!("SPAKE2 finish failed: {e}"))?;
+
+    match shared.verify_pubkey(&peer_pubkey, &peer_tag) {
+        Ok(()) => {
+            if json_requested {
+                // One-line JSON matches the `"phase":"prompt"` line we
+                // emitted before the stdin block. A scripted consumer
+                // reads line-by-line, so pretty-printing would break
+                // the protocol.
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "phase": "verified",
+                        "pubkey_b64": peer_pubkey_b64,
+                    })
+                );
+            } else {
+                println!();
+                println!("zetl cap pair — pubkey verified");
+                println!("================================");
+                println!();
+                println!("Verified pubkey (safe to pass to `zetl cap invite --recipient`):");
+                println!("    {peer_pubkey_b64}");
+            }
+            Ok(())
+        }
+        Err(e) => {
+            let msg = format!(
+                "HMAC verification failed ({e}) — phrase mismatch or MITM. Abort pairing."
+            );
+            if json_requested {
+                exit_json_error(&msg, 1);
+            }
+            eprintln!("{msg}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Grantee side — one-shot. Derives the shared key from the grantor's
+/// handshake + the shared phrase, and emits the grantee's own handshake
+/// plus an HMAC tag over the grantee's pubkey.
+fn cmd_cap_pair_grantee(
+    cli: &Cli,
+    args: &CapPairArgs,
+    caps_dir: &Path,
+    nonce_store_path: &Path,
+    now_unix: u64,
+) -> Result<()> {
+    use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
+    use base64::Engine as _;
+    use zetl::cap::pair::{NonceStore, PairMessage, PairPhrase, PairSession, PAIR_PUBKEY_LEN};
+
+    let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
+
+    let peer_b64 = args
+        .peer
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("--peer <HANDSHAKE> is required for --grantee"))?;
+    let peer_msg = PairMessage::from_b64(peer_b64)
+        .map_err(|e| anyhow::anyhow!("--peer: {e}"))?;
+
+    let phrase_text = args
+        .phrase
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("--phrase is required for --grantee"))?;
+    let phrase = PairPhrase::parse(phrase_text)
+        .map_err(|e| anyhow::anyhow!("--phrase: {e}"))?;
+
+    let pubkey_b64 = args
+        .pubkey
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("--pubkey <B64> is required for --grantee"))?;
+    let pubkey = B64
+        .decode(pubkey_b64.as_bytes())
+        .map_err(|_| anyhow::anyhow!("--pubkey is not valid base64 (standard, no padding)"))?;
+    if pubkey.len() != PAIR_PUBKEY_LEN {
+        return Err(anyhow::anyhow!(
+            "--pubkey must decode to {PAIR_PUBKEY_LEN} bytes (got {})",
+            pubkey.len()
+        ));
+    }
+
+    std::fs::create_dir_all(caps_dir)
+        .with_context(|| format!("creating {}", caps_dir.display()))?;
+    let prior_nonces = match std::fs::read_to_string(nonce_store_path) {
+        Ok(s) => NonceStore::from_toml(&s).unwrap_or_default(),
+        Err(_) => NonceStore::default(),
+    };
+    let updated_nonces = prior_nonces
+        .accept(&phrase.nonce_hash(), now_unix)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    std::fs::write(nonce_store_path, updated_nonces.to_toml())
+        .with_context(|| format!("writing {}", nonce_store_path.display()))?;
+
+    let (session, outbound) =
+        PairSession::start(&phrase).map_err(|e| anyhow::anyhow!("SPAKE2 start failed: {e}"))?;
+    let shared = session
+        .finish(&peer_msg)
+        .map_err(|e| anyhow::anyhow!("SPAKE2 finish failed: {e}"))?;
+    let tag = shared
+        .authenticate_pubkey(&pubkey)
+        .map_err(|e| anyhow::anyhow!("HMAC compute failed: {e}"))?;
+
+    if json_requested {
+        print_json(&serde_json::json!({
+            "handshake_b64": outbound.to_b64(),
+            "pubkey_b64": pubkey_b64,
+            "hmac_b64": B64.encode(tag),
+        }))?;
+    } else {
+        println!("zetl cap pair (REQ-3408) — grantee response");
+        println!("==========================================");
+        println!();
+        println!("Paste the following three lines into the grantor's running `zetl cap pair` terminal:");
+        println!();
+        println!("    {}", outbound.to_b64());
+        println!("    {pubkey_b64}");
+        println!("    {}", B64.encode(tag));
+    }
+    Ok(())
+}
+
+/// Read one line from stdin, trim whitespace, error if EOF. Used by
+/// the grantor side to consume the three base64 strings the peer
+/// relays back.
+fn read_trimmed_stdin_line(what: &str) -> Result<String> {
+    use std::io::BufRead;
+    let mut buf = String::new();
+    let n = std::io::stdin()
+        .lock()
+        .read_line(&mut buf)
+        .with_context(|| format!("reading {what} from stdin"))?;
+    if n == 0 {
+        return Err(anyhow::anyhow!(
+            "EOF on stdin while waiting for {what} — pairing aborted"
+        ));
+    }
+    Ok(buf.trim().to_string())
 }
 
 /// `zetl cap audit-diff` — SPEC-034 REQ-3424 / ADR-3410 PR gate.

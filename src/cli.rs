@@ -688,11 +688,57 @@ pub enum CapCommand {
     /// Mark past-expiry grants as revoked in-place.
     Sweep,
 
-    /// SPAKE2-EE pubkey handoff between two operators (REQ-3408).
+    /// SPAKE2 pubkey handoff between two operators (REQ-3408).
+    ///
+    /// The pairing runs in a single process per side so the SPAKE2
+    /// session state (which the upstream crate does not serialise) can
+    /// stay resident across the three message exchanges. Two roles:
+    ///
+    ///   * **Grantor** (`--grantor`, the default): generate a fresh
+    ///     4-word BIP39 phrase, refuse reuse within 30 days (tracked
+    ///     in `.zetl/caps/.pair-nonces`), start SPAKE2, print phrase +
+    ///     outbound handshake, then BLOCK reading three lines from
+    ///     stdin — peer handshake, peer pubkey (base64), peer HMAC
+    ///     tag (base64). Verifies the HMAC and prints the authenticated
+    ///     pubkey on success (exit 1 on mismatch).
+    ///
+    ///   * **Grantee** (`--grantee`): one-shot. Takes the grantor's
+    ///     handshake + the phrase + the local pubkey, starts its own
+    ///     SPAKE2 session, derives the shared key, and prints its
+    ///     outbound handshake + HMAC tag of the pubkey. The operator
+    ///     relays those two strings back to the grantor.
+    ///
+    /// The handoff is authenticated by the phrase: if the phrase
+    /// differs on the two sides, SPAKE2 derives different keys and the
+    /// HMAC verification fails.
+    #[command(
+        after_help = "Examples:\n  zetl cap pair --grantor\n                                              Start a new pairing (interactive — reads stdin)\n  zetl cap pair --grantee --peer <handshake> --phrase <4-words> --pubkey <b64>\n                                              Complete the pairing as the grantee\n\nSee SPEC-034 REQ-3408 (CLI) / CON-3407."
+    )]
     Pair {
-        /// Pairing role — producer (invites) or consumer (accepts).
-        #[arg(long, value_name = "ROLE")]
-        role: Option<String>,
+        /// Run the grantor side (default if neither flag is set).
+        /// Blocks on stdin after printing phrase + handshake.
+        #[arg(long, conflicts_with = "grantee")]
+        grantor: bool,
+        /// Run the grantee side (one-shot). Requires `--peer`,
+        /// `--phrase`, `--pubkey`.
+        #[arg(long, conflicts_with = "grantor")]
+        grantee: bool,
+
+        /// Peer's base64 SPAKE2 outbound message (grantor's handshake,
+        /// from stdout of `zetl cap pair --grantor`). Required by
+        /// `--grantee`.
+        #[arg(long, value_name = "HANDSHAKE")]
+        peer: Option<String>,
+        /// 4-word BIP39 pairing phrase. Required by `--grantee`;
+        /// optional for `--grantor` (test hook — seeds reuse a pinned
+        /// phrase rather than drawing from the RNG).
+        #[arg(long, value_name = "PHRASE", env = "ZETL_CAP_PAIR_PHRASE")]
+        phrase: Option<String>,
+        /// 32-byte raw pubkey as base64 (standard, no padding).
+        /// Required by `--grantee` — the pubkey being authenticated
+        /// into the grantor's cohort.
+        #[arg(long, value_name = "PUBKEY_B64")]
+        pubkey: Option<String>,
     },
 
     /// Scan a vault diff for malicious-content patterns
