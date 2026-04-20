@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-csp-sri",
+  "task_id": "cap-revocation-commands",
   "token_budget": 8000,
-  "tokens_used": 485,
+  "tokens_used": 481,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "CSP + SRI per REQ-3421 + CON-3410 (BUG-006 resolution). Emit `Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';` as both an HTTP response header (via deploy configs) and a `<meta http-equiv>` fallback in every encrypted page's HTML shell. Shim script tag: `<script src=\"/assets/shim.js\" integrity=\"sha384-<hash>\" crossorigin=\"anonymous\">`. SRI hash generated during shim bundle.",
-      "token_cost": 147,
+      "content": "Implement `revoke`, `rotate`, `finalise`, `sweep`, `check`. `revoke <grant-id>`: sets `revoked=true` in grants.toml. `rotate --cohort <id>`: generates new cohort salt (content-key rotation; URL-stable per REQ-3402 / BUG-023). `finalise <grant-id>`: sets `bound=true` (operator-confirmed onboarding); `--rotate-grant` reissues priv_A. `sweep`: marks past-expires grants `revoked=true`. `check`: exits 1 if any grant has expired since last build (wired into CI). `rotate-signing-key`: generates new Ed25519 keypair, rebuilds all pages, marks shim bundle for cache-invalidation.",
+      "token_cost": 143,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T15:22:56Z"
+  "constructed_at": "2026-04-20T15:49:47Z"
 }

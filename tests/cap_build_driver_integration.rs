@@ -77,6 +77,8 @@ fn mk_cohort(
         pubkeys: pubkeys.iter().map(age_recipient_v1).collect(),
         pages: pages_glob.map(String::from),
         salt_stable: Some(salt_b64.to_string()),
+        salt_rotated: None,
+        last_rotated: None,
     }
 }
 

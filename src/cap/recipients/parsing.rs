@@ -76,6 +76,22 @@ pub struct Cohort {
     /// first issued URL is stable thereafter.
     #[serde(default)]
     pub salt_stable: Option<String>,
+    /// Rotatable content-key salt per CON-3401 (base64url, 16+ bytes).
+    /// Managed by `zetl cap rotate --cohort <id>`; bumping it records a
+    /// rotation event without touching `salt_stable` so URLs remain
+    /// stable across rotations (REQ-3402 / BUG-023 resolution). The
+    /// build driver consumes the field only as an observability counter
+    /// today; because `age` already picks a random file key per
+    /// encryption, rerunning `zetl build` after a rotation is what
+    /// invalidates any ciphertext a removed reader may have cached.
+    #[serde(default)]
+    pub salt_rotated: Option<String>,
+    /// RFC 3339 UTC timestamp of the most recent `zetl cap rotate` call
+    /// for this cohort. Human-readable audit trail; pinned to the same
+    /// strict format as `grants.toml::created` so operators can grep
+    /// recipients.toml chronologically.
+    #[serde(default)]
+    pub last_rotated: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -247,6 +263,8 @@ mod tests {
                 ],
                 pages: None,
                 salt_stable: None,
+                salt_rotated: None,
+                last_rotated: None,
             }],
         }
     }
@@ -364,6 +382,8 @@ mod tests {
             pubkeys: vec![],
             pages: None,
             salt_stable: None,
+            salt_rotated: None,
+            last_rotated: None,
         });
         let ids = f.cohort_ids();
         assert!(ids.contains("engineering"));

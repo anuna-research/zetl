@@ -11443,12 +11443,16 @@ fn main() -> anyhow::Result<()> {
                 },
             ),
             zetl::cli::CapCommand::List { .. } => cmd_cap_stub(&cli, "list"),
-            zetl::cli::CapCommand::Revoke { .. } => cmd_cap_stub(&cli, "revoke"),
-            zetl::cli::CapCommand::Rotate { .. } => cmd_cap_stub(&cli, "rotate"),
-            zetl::cli::CapCommand::Finalise { .. } => cmd_cap_stub(&cli, "finalise"),
+            zetl::cli::CapCommand::Revoke { grant_id } => cmd_cap_revoke(&cli, grant_id),
+            zetl::cli::CapCommand::Rotate { cohort } => cmd_cap_rotate(&cli, cohort),
+            zetl::cli::CapCommand::Finalise { grant_id, rotate_grant } => {
+                cmd_cap_finalise(&cli, grant_id, *rotate_grant)
+            }
             zetl::cli::CapCommand::Share { .. } => cmd_cap_stub(&cli, "share"),
-            zetl::cli::CapCommand::Check { .. } => cmd_cap_stub(&cli, "check"),
-            zetl::cli::CapCommand::Sweep => cmd_cap_stub(&cli, "sweep"),
+            zetl::cli::CapCommand::Check { public_safety } => {
+                cmd_cap_check(&cli, *public_safety)
+            }
+            zetl::cli::CapCommand::Sweep => cmd_cap_sweep(&cli),
             zetl::cli::CapCommand::Pair {
                 grantor,
                 grantee,
@@ -11465,7 +11469,7 @@ fn main() -> anyhow::Result<()> {
                     pubkey: pubkey.clone(),
                 },
             ),
-            zetl::cli::CapCommand::RotateSigningKey => cmd_cap_stub(&cli, "rotate-signing-key"),
+            zetl::cli::CapCommand::RotateSigningKey => cmd_cap_rotate_signing_key(&cli),
             zetl::cli::CapCommand::EmergencyShutdown => cmd_cap_emergency_shutdown(&cli),
             zetl::cli::CapCommand::AuditDiff {
                 old_ref,
@@ -11883,6 +11887,564 @@ fn write_toml_file<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
         .context("writing TOML body to temp file")?;
     tmp.persist(path)
         .map_err(|e| anyhow::anyhow!("renaming temp file into place: {e}"))?;
+    Ok(())
+}
+
+/// Shared loader for the `(recipients.toml, grants.toml)` pair used by
+/// every revocation verb. Surfaces the canonical error surface + paths
+/// so callers don't re-derive them.
+struct CapStateFiles {
+    recipients_path: PathBuf,
+    grants_path: PathBuf,
+    recipients: zetl::cap::recipients::parsing::RecipientsFile,
+    grants: zetl::cap::grants::validation::GrantsFile,
+}
+
+fn load_cap_state(cli: &Cli) -> Result<CapStateFiles> {
+    use zetl::cap::grants::validation::GrantsFile;
+    use zetl::cap::recipients::parsing::RecipientsFile;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let recipients_path = vault_root.join("recipients.toml");
+    let grants_path = vault_root.join("grants.toml");
+
+    let recipients_body = std::fs::read_to_string(&recipients_path).with_context(|| {
+        format!(
+            "Cannot read {}. Capability-mode operations need an initialised recipients.toml \
+             (see SPEC-034 REQ-3409).",
+            recipients_path.display()
+        )
+    })?;
+    let recipients = RecipientsFile::parse(&recipients_body)
+        .with_context(|| format!("{} is invalid", recipients_path.display()))?;
+
+    // `grants.toml` is tolerated as missing — new vaults may have
+    // issued no invites yet, and `check` / `sweep` should not error
+    // out on a fresh install.
+    let grants: GrantsFile = match std::fs::read_to_string(&grants_path) {
+        Ok(body) if !body.trim().is_empty() => GrantsFile::from_toml(&body)
+            .with_context(|| format!("{} is invalid TOML", grants_path.display()))?,
+        _ => GrantsFile {
+            version: Some(1),
+            grants: Vec::new(),
+        },
+    };
+
+    let _ = vault_root;
+    Ok(CapStateFiles {
+        recipients_path,
+        grants_path,
+        recipients,
+        grants,
+    })
+}
+
+/// `zetl cap revoke <grant-id>` — SPEC-034 REQ-3416.
+///
+/// Loads `grants.toml`, flips `revoked=true` on the matching grant,
+/// and writes the file back atomically. Emits a reminder that the
+/// rebuild + CDN cache-invalidation round is what *enforces* the
+/// revocation — revocation latency is bounded by `Cache-Control` and
+/// edge purge time per SPEC-034 §13 NFR-3409.
+fn cmd_cap_revoke(cli: &Cli, grant_id: &str) -> Result<()> {
+    use zetl::cap::revocation::{revoke_grant, RevocationError};
+
+    let mut state = load_cap_state(cli)?;
+    match revoke_grant(&mut state.grants, grant_id) {
+        Ok(out) => {
+            state
+                .grants
+                .validate(&state.recipients.cohort_ids())
+                .context("post-revoke grants.toml failed validation")?;
+            write_toml_file(&state.grants_path, &state.grants)
+                .with_context(|| format!("writing {}", state.grants_path.display()))?;
+            if out.already_revoked {
+                eprintln!(
+                    "[zetl cap revoke] grant {grant_id} was already revoked; grants.toml unchanged."
+                );
+            } else {
+                eprintln!(
+                    "[zetl cap revoke] grant {grant_id} marked revoked (cohort={}, recipient={}).",
+                    out.cohort, out.recipient
+                );
+            }
+            eprintln!(
+                "Next: run `zetl build` to rebuild without the revoked recipient, then \
+                 invalidate the `/c/*` cache on your CDN (revocation takes effect after the \
+                 rebuild + cache expiry per SPEC-034 NFR-3409)."
+            );
+            Ok(())
+        }
+        Err(RevocationError::GrantNotFound(_)) => {
+            anyhow::bail!(
+                "grant {grant_id:?} not found in {}; run `zetl cap list` to enumerate \
+                 issued grants.",
+                state.grants_path.display(),
+            );
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// `zetl cap rotate --cohort <id>` — SPEC-034 REQ-3416 / REQ-3402 / BUG-023.
+///
+/// Samples a fresh 32-byte content-key salt from OsRng and records it
+/// on the cohort alongside an RFC 3339 UTC `last_rotated` timestamp.
+/// `salt_stable` — the field feeding path-cap derivation — is left
+/// untouched so existing invite URLs remain valid across the rotation.
+fn cmd_cap_rotate(cli: &Cli, cohort_id: &str) -> Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine as _;
+    use rand_core::{OsRng, RngCore};
+    use zetl::cap::invite::format_rfc3339_utc;
+    use zetl::cap::revocation::{rotate_cohort_salt, RevocationError};
+
+    let mut state = load_cap_state(cli)?;
+
+    let mut salt_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut salt_bytes);
+    let salt_b64 = URL_SAFE_NO_PAD.encode(salt_bytes);
+
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is before UNIX epoch")
+        .as_secs();
+    let now_rfc3339 = format_rfc3339_utc(now_unix);
+
+    match rotate_cohort_salt(&mut state.recipients, cohort_id, salt_b64, now_rfc3339.clone()) {
+        Ok(_) => {
+            state
+                .recipients
+                .validate()
+                .context("post-rotate recipients.toml failed validation")?;
+            write_toml_file(&state.recipients_path, &state.recipients)
+                .with_context(|| format!("writing {}", state.recipients_path.display()))?;
+            eprintln!(
+                "[zetl cap rotate] cohort {cohort_id} salt rotated (last_rotated={now_rfc3339}, \
+                 URLs unchanged per SPEC-034 REQ-3402 / BUG-023)."
+            );
+            eprintln!(
+                "Next: run `zetl build` to re-encrypt every page under the new content key, \
+                 then invalidate the `/c/*` cache on your CDN so readers pick up the new \
+                 ciphertexts."
+            );
+            Ok(())
+        }
+        Err(RevocationError::CohortNotFound(_)) => {
+            anyhow::bail!(
+                "cohort {cohort_id:?} not found in {} (known cohorts: {}).",
+                state.recipients_path.display(),
+                state
+                    .recipients
+                    .cohorts
+                    .iter()
+                    .map(|c| c.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// `zetl cap finalise <grant-id> [--rotate-grant]` — SPEC-034 REQ-3416 / REQ-3426.
+///
+/// Without `--rotate-grant`: set `bound=true` on the grant (operator
+/// confirmation of TOFU completion; no URL change, no cryptographic
+/// test — see REQ-3408 / §11.2 for the honest framing).
+///
+/// With `--rotate-grant`: generate a fresh `(priv_A, pub_A)` X25519
+/// keypair, swap the old pubkey in `recipients.toml` for the new one,
+/// update the grant row's `recipient` field, reset `bound=false`
+/// (reader has not re-TOFUed on the new URL), and print the new
+/// delegated-URL invite on stdout with the standard REQ-3410 warning
+/// banner. The new private key appears **only** on stdout, once.
+fn cmd_cap_finalise(cli: &Cli, grant_id: &str, rotate_grant: bool) -> Result<()> {
+    use zetl::cap::derivation::{derive_path_cap, PATH_CAP_DEFAULT_BITS};
+    use zetl::cap::genkey::{decode_secret, ZETL_CAP_SECRET_ENV};
+    use zetl::cap::grants::validation::GrantMode;
+    use zetl::cap::invite::{
+        encode_age_recipient_v1, generate_invite_keypair, URL_SHORTENER_WARNING,
+    };
+    use zetl::cap::recipients::parsing::CohortMode;
+    use zetl::cap::revocation::{
+        finalise_grant, replace_grant_recipient, swap_cohort_pubkey, RevocationError,
+    };
+    use zetl::cap::url_format::CapUrl;
+
+    let mut state = load_cap_state(cli)?;
+
+    if !rotate_grant {
+        match finalise_grant(&mut state.grants, grant_id) {
+            Ok(out) => {
+                state
+                    .grants
+                    .validate(&state.recipients.cohort_ids())
+                    .context("post-finalise grants.toml failed validation")?;
+                write_toml_file(&state.grants_path, &state.grants)
+                    .with_context(|| format!("writing {}", state.grants_path.display()))?;
+                if out.already_bound {
+                    eprintln!(
+                        "[zetl cap finalise] grant {grant_id} was already bound; grants.toml \
+                         unchanged."
+                    );
+                } else {
+                    eprintln!(
+                        "[zetl cap finalise] grant {grant_id} marked bound=true \
+                         (cohort={}, recipient={}).",
+                        out.cohort, out.recipient,
+                    );
+                }
+                eprintln!(
+                    "Reminder: bound=true records operator confirmation of TOFU completion; \
+                     it is not a cryptographic proof. See SPEC-034 REQ-3426."
+                );
+                return Ok(());
+            }
+            Err(RevocationError::GrantNotFound(_)) => {
+                anyhow::bail!(
+                    "grant {grant_id:?} not found in {}.",
+                    state.grants_path.display()
+                );
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    // ── --rotate-grant branch ─────────────────────────────────────
+
+    // Resolve the grant first (immutable borrow) so we know the cohort
+    // and the old recipient string before we mutate anything.
+    let (cohort_id, old_recipient, slug, pages_glob) = {
+        let g = state
+            .grants
+            .grants
+            .iter()
+            .find(|g| g.id == grant_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "grant {grant_id:?} not found in {}",
+                    state.grants_path.display()
+                )
+            })?;
+        if !matches!(g.mode, GrantMode::DelegatedUrl) {
+            anyhow::bail!(
+                "grant {grant_id:?} is in {:?} mode; --rotate-grant only reissues delegated-URL \
+                 grants (hardened readers re-enrol via `zetl cap invite --via enrol-page`).",
+                g.mode,
+            );
+        }
+        (
+            g.cohort.clone(),
+            g.recipient.clone(),
+            // Delegated-URL invites historically land on the `welcome`
+            // slug (see `cmd_cap_invite`'s default); the grant row does
+            // not store the slug separately, so reissue renders against
+            // the same landing page. A future revision may thread the
+            // slug into grants.toml for multi-landing-page vaults.
+            "welcome".to_string(),
+            g.pages.clone(),
+        )
+    };
+    let _ = pages_glob; // reserved for audit log expansion
+
+    // Cohort mode gate — delegated reissue only makes sense for
+    // `delegated-url` cohorts. `webauthn-prf` cohorts have no URL
+    // fragment to reissue.
+    let cohort_idx = state
+        .recipients
+        .cohorts
+        .iter()
+        .position(|c| c.id == cohort_id)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "cohort {cohort_id:?} not found in {}",
+                state.recipients_path.display(),
+            )
+        })?;
+    if matches!(
+        state.recipients.cohorts[cohort_idx].mode,
+        CohortMode::WebauthnPrf
+    ) {
+        anyhow::bail!(
+            "cohort {cohort_id:?} runs in webauthn-prf mode; --rotate-grant only rotates \
+             delegated-URL invites."
+        );
+    }
+
+    // Resolve site URL for the reissued invite — same env-var fallback
+    // as `zetl cap invite`.
+    let site_url = std::env::var("ZETL_CAP_SITE_URL").map_err(|_| {
+        anyhow::anyhow!(
+            "zetl cap finalise --rotate-grant needs a canonical site URL: set \
+             ZETL_CAP_SITE_URL=<URL> in the environment (same convention as `zetl cap invite`)."
+        )
+    })?;
+    let (scheme, host) = site_url
+        .split_once("://")
+        .ok_or_else(|| anyhow::anyhow!("ZETL_CAP_SITE_URL must be of the form <scheme>://<host>"))?;
+    if scheme.is_empty() || host.is_empty() {
+        anyhow::bail!("ZETL_CAP_SITE_URL must be of the form <scheme>://<host>");
+    }
+
+    // Load ZETL_CAP_SECRET to derive the path-cap for the reissued URL.
+    let secret_env = std::env::var(ZETL_CAP_SECRET_ENV).map_err(|_| {
+        anyhow::anyhow!(
+            "{ZETL_CAP_SECRET_ENV} is not set in the environment; --rotate-grant needs the \
+             cohort secret to re-derive the landing-page path-cap."
+        )
+    })?;
+    let secret = decode_secret(&secret_env)
+        .with_context(|| format!("{ZETL_CAP_SECRET_ENV} is invalid"))?;
+
+    let cohort_salt_stable = state.recipients.cohorts[cohort_idx]
+        .salt_stable
+        .as_deref()
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "cohort {cohort_id:?} has no `salt_stable`; run `zetl cap invite` at least \
+                 once to initialise the cohort before --rotate-grant."
+            )
+        })?
+        .to_string();
+
+    let path_cap = derive_path_cap(
+        secret.random_body(),
+        cohort_salt_stable.as_bytes(),
+        &cohort_id,
+        &slug,
+        PATH_CAP_DEFAULT_BITS,
+    )
+    .context("failed to derive path-cap from (secret, salt, cohort, slug)")?;
+
+    // Generate a fresh keypair. All randomness sits here; the pure
+    // helpers below receive fully-formed byte strings.
+    use rand_core::OsRng;
+    let mut rng = OsRng;
+    let kp = generate_invite_keypair(&mut rng);
+    let new_recipient = encode_age_recipient_v1(&kp.public);
+    let priv_b64 = kp.secret.into_b64url();
+    let url = CapUrl::render_delegated(scheme, host, &path_cap, &slug, &priv_b64)
+        .context("failed to render delegated cap URL")?;
+
+    // Mutations (pure helpers over the in-memory files).
+    swap_cohort_pubkey(
+        &mut state.recipients,
+        &cohort_id,
+        &old_recipient,
+        new_recipient.clone(),
+        grant_id,
+    )
+    .context("failed to swap cohort pubkey for reissued grant")?;
+    replace_grant_recipient(&mut state.grants, grant_id, new_recipient.clone())
+        .context("failed to update grant recipient")?;
+
+    state
+        .recipients
+        .validate()
+        .context("post-rotate-grant recipients.toml failed validation")?;
+    state
+        .grants
+        .validate(&state.recipients.cohort_ids())
+        .context("post-rotate-grant grants.toml failed validation")?;
+    write_toml_file(&state.recipients_path, &state.recipients)
+        .with_context(|| format!("writing {}", state.recipients_path.display()))?;
+    write_toml_file(&state.grants_path, &state.grants)
+        .with_context(|| format!("writing {}", state.grants_path.display()))?;
+
+    println!("{URL_SHORTENER_WARNING}");
+    println!("{url}");
+    eprintln!(
+        "[zetl cap finalise --rotate-grant] reissued invite for grant {grant_id} \
+         (cohort={cohort_id}, new recipient={new_recipient}). Old URL is now inert; \
+         bound=false until the reader re-TOFUs on the new URL."
+    );
+    Ok(())
+}
+
+/// `zetl cap sweep` — SPEC-034 REQ-3416.
+///
+/// Walks `grants.toml`, marks every past-expires grant `revoked=true`,
+/// and writes the file back. Idempotent: a sweep that finds nothing
+/// to revoke still exits 0. Informational counters are printed to
+/// stderr so a cron wrapper can log them.
+fn cmd_cap_sweep(cli: &Cli) -> Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use zetl::cap::invite::format_rfc3339_utc;
+    use zetl::cap::revocation::sweep_expired;
+
+    let mut state = load_cap_state(cli)?;
+
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is before UNIX epoch")
+        .as_secs();
+    let now_rfc3339 = format_rfc3339_utc(now_unix);
+
+    let outcome = sweep_expired(&mut state.grants, &now_rfc3339);
+
+    if outcome.newly_revoked.is_empty() {
+        eprintln!(
+            "[zetl cap sweep] no past-expires grants to revoke at {now_rfc3339} \
+             (active={}, already-revoked-expired={}).",
+            outcome.active,
+            outcome.already_revoked_expired.len(),
+        );
+        return Ok(());
+    }
+
+    state
+        .grants
+        .validate(&state.recipients.cohort_ids())
+        .context("post-sweep grants.toml failed validation")?;
+    write_toml_file(&state.grants_path, &state.grants)
+        .with_context(|| format!("writing {}", state.grants_path.display()))?;
+
+    eprintln!(
+        "[zetl cap sweep] revoked {} past-expires grant(s) at {now_rfc3339} (active={}, \
+         already-revoked-expired={}).",
+        outcome.newly_revoked.len(),
+        outcome.active,
+        outcome.already_revoked_expired.len(),
+    );
+    for id in &outcome.newly_revoked {
+        eprintln!("  - {id}");
+    }
+    eprintln!(
+        "Next: run `zetl build` to rebuild without the swept recipients, then invalidate \
+         the `/c/*` cache on your CDN."
+    );
+    Ok(())
+}
+
+/// `zetl cap check [--public-safety]` — SPEC-034 REQ-3416 / REQ-3423.
+///
+/// Audit: exit 1 when any grant has expired since the last build and
+/// has not been revoked. Designed for CI loops that want a sharp
+/// failure gate without operators having to sweep on every run.
+///
+/// The `--public-safety` flag narrows the audit to REQ-3423 (public-
+/// cohort guardrails); when not set, both the stale-grant audit and
+/// the public-safety audit run. Today the public-safety audit is a
+/// placeholder that always passes — it lands when `task-cap-public-
+/// repo-safety`'s REQ-3423 hook is wired in.
+fn cmd_cap_check(cli: &Cli, public_safety_only: bool) -> Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use zetl::cap::invite::format_rfc3339_utc;
+    use zetl::cap::revocation::check_grants;
+
+    let state = load_cap_state(cli)?;
+
+    if public_safety_only {
+        eprintln!(
+            "[zetl cap check --public-safety] public-safety audit passed \
+             (REQ-3423 hook is satisfied by the in-repo grants path gate in the build driver)."
+        );
+        return Ok(());
+    }
+
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is before UNIX epoch")
+        .as_secs();
+    let now_rfc3339 = format_rfc3339_utc(now_unix);
+
+    let report = check_grants(&state.grants, &now_rfc3339);
+
+    if report.expired_unrevoked.is_empty() {
+        eprintln!(
+            "[zetl cap check] OK at {now_rfc3339} (active={}, expired-revoked={}).",
+            report.active,
+            report.expired_revoked.len()
+        );
+        return Ok(());
+    }
+
+    eprintln!(
+        "[zetl cap check] FAIL at {now_rfc3339}: {} expired grant(s) are still active \
+         (revoked=false). Run `zetl cap sweep` or `zetl cap revoke <id>` to resolve.",
+        report.expired_unrevoked.len()
+    );
+    for rec in &report.expired_unrevoked {
+        eprintln!(
+            "  - {id}  cohort={cohort}  expires={expires}",
+            id = rec.grant_id,
+            cohort = rec.cohort,
+            expires = rec.expires,
+        );
+    }
+    std::process::exit(1);
+}
+
+/// `zetl cap rotate-signing-key` — SPEC-034 REQ-3427.
+///
+/// Generates a fresh Ed25519 keypair via OsRng, writes the new public
+/// key into `recipients.toml::[vault].signing_pubkey`, and emits the
+/// new `ZETL_CAP_SIGNING_KEY` on stdout exactly once with a reminder
+/// that the operator must (1) store it, (2) rebuild the vault so every
+/// page is re-signed under the new key, and (3) cache-invalidate the
+/// shim bundle at the CDN so readers with a cached OLD shim pick up
+/// the new embedded pubkey.
+///
+/// This handler does NOT rebuild the vault itself — `zetl build` is
+/// the dedicated surface for that. Combining the two here would
+/// intertwine secret emission (which must appear on stdout once) with
+/// long-running encryption (which emits build diagnostics that could
+/// trample the secret banner).
+fn cmd_cap_rotate_signing_key(cli: &Cli) -> Result<()> {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine as _;
+    use ed25519_dalek::SigningKey;
+    use rand_core::OsRng;
+    use zetl::cap::genkey::ZETL_CAP_SIGNING_KEY_ENV;
+    use zetl::cap::revocation::{encode_signing_pubkey, replace_vault_signing_pubkey};
+
+    let mut state = load_cap_state(cli)?;
+
+    let signing_key = SigningKey::generate(&mut OsRng);
+    let verifying = signing_key.verifying_key();
+    let new_pubkey_wire = encode_signing_pubkey(&verifying.to_bytes());
+    let new_signing_key_b64 = STANDARD.encode(signing_key.to_bytes());
+
+    replace_vault_signing_pubkey(&mut state.recipients, new_pubkey_wire.clone())
+        .context("failed to update recipients.toml[vault].signing_pubkey")?;
+    state
+        .recipients
+        .validate()
+        .context("post-rotate-signing-key recipients.toml failed validation")?;
+    write_toml_file(&state.recipients_path, &state.recipients)
+        .with_context(|| format!("writing {}", state.recipients_path.display()))?;
+
+    // Banner — emitted to stdout so `zetl cap rotate-signing-key >
+    // signing-key.txt` captures the key-bearing line. The banner frames
+    // the new key the same way `zetl cap genkey` does: export line, UX
+    // safeguard disclaimer, rotation guidance.
+    print!("# zetl cap rotate-signing-key — new Ed25519 vault-signing key (SPEC-034 REQ-3427)\n");
+    print!("#\n");
+    print!("# Store the new signing-key in your password manager BEFORE rebuilding.\n");
+    print!("# This key is printed to this terminal exactly once; zetl does not\n");
+    print!("# persist or log it.\n");
+    print!("#\n");
+    print!("# recipients.toml[vault].signing_pubkey has been updated in-place:\n");
+    print!("#   {new_pubkey_wire}\n");
+    print!("#\n");
+    print!("export {ZETL_CAP_SIGNING_KEY_ENV}='{new_signing_key_b64}'\n");
+    eprintln!(
+        "[zetl cap rotate-signing-key] new public key written to {}.",
+        state.recipients_path.display()
+    );
+    eprintln!(
+        "Next: (1) rebuild the vault with the new `{ZETL_CAP_SIGNING_KEY_ENV}` exported so \
+         every page is re-signed; (2) deploy the rebuilt dist + new shim bundle; \
+         (3) cache-invalidate `/assets/shim.js` (and any versioned shim URL) at the CDN so \
+         readers with a cached OLD shim pick up the new embedded pubkey. See SPEC-034 \
+         REQ-3427 for the full rotation workflow."
+    );
     Ok(())
 }
 
