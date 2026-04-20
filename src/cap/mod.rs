@@ -11,6 +11,7 @@
 pub mod age_encrypt;
 pub mod audit_diff;
 pub mod build;
+pub mod deploy_headers;
 pub mod derivation;
 pub mod emergency_shutdown;
 pub mod genkey;

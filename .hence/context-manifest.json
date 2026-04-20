@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-spake2-pair",
+  "task_id": "cap-cache-control",
   "token_budget": 8000,
-  "tokens_used": 468,
+  "tokens_used": 470,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl cap pair` SPAKE2-EE pubkey handoff per REQ-3408 (the CLI-commands REQ; distinct from REQ-3408 grants-file). Fresh CSPRNG-generated 4-word BIP39 phrase per pairing; refusal to reuse phrase within 30 days (tracked in `.zetl/caps/.pair-nonces`). Uses `@noble/curves` SPAKE2 for constant-time elliptic operations. Pairing completes with no server, no relay (messages exchanged via copy-paste / QR / in-person). Derived shared key used ONLY to authenticate pubkey handoff — not stored, not used for content encryption.",
-      "token_cost": 130,
+      "content": "Cache-Control + Clear-Site-Data headers per REQ-3407 + REQ-3428. Emit `Cache-Control: private, max-age=300, must-revalidate` on `/c/*` paths in all deploy configs (nginx, Caddy, Netlify `_headers`, Vercel `vercel.json`, Cloudflare Pages). Emit `Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\"` on `/enroll.html` and `/logout`. Emit `Cache-Control: public, max-age=31536000, immutable` on `/assets/shim.js` (immutable since filename-hashed). Operator can override max-age via `[access.cache]` with hard bounds [60, 3600].",
+      "token_cost": 132,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T14:28:25Z"
+  "constructed_at": "2026-04-20T15:03:52Z"
 }
