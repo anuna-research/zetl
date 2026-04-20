@@ -11417,7 +11417,7 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Cap { command } => match command {
-            zetl::cli::CapCommand::Genkey => cmd_cap_stub(&cli, "genkey"),
+            zetl::cli::CapCommand::Genkey => cmd_cap_genkey(&cli),
             zetl::cli::CapCommand::Invite { .. } => cmd_cap_stub(&cli, "invite"),
             zetl::cli::CapCommand::List { .. } => cmd_cap_stub(&cli, "list"),
             zetl::cli::CapCommand::Revoke { .. } => cmd_cap_stub(&cli, "revoke"),
@@ -11475,6 +11475,55 @@ fn cmd_cap_stub(cli: &Cli, verb: &str) -> Result<()> {
         "Hint: this verb is planned (see SPEC-034 §6 REQ-3416) but its implementation has not landed yet."
     );
     std::process::exit(CAP_NOT_YET_IMPLEMENTED_EXIT);
+}
+
+/// `zetl cap genkey` — SPEC-034 REQ-3419.
+///
+/// Prints BOTH capability-mode secrets (`ZETL_CAP_SECRET` +
+/// `ZETL_CAP_SIGNING_KEY`) to stdout exactly once, with secure-storage
+/// instructions. Never writes to any file; never logs. The random
+/// bytes come from [`rand_core::OsRng`] via `cap::genkey::generate`.
+///
+/// The 15-byte checksum embedded in `ZETL_CAP_SECRET` is framed as a
+/// UX safeguard — BUG-017 resolution — so operators paste-corrupting
+/// the value hit a targeted remediation message at build time rather
+/// than a surprise decryption failure in prod.
+fn cmd_cap_genkey(cli: &Cli) -> Result<()> {
+    let out = zetl::cap::genkey::generate();
+
+    // JSON only when the operator explicitly asked for it — `--json`
+    // or `-f json` / `--format json` on the command line. The auto-TTY
+    // promotion `main` performs on `cli.format` before dispatch is
+    // intentionally ignored here: `genkey` output is a one-shot banner
+    // that operators routinely pipe into `less` or a file for paste
+    // into a password manager, and silently substituting JSON for the
+    // human-readable form breaks that workflow.
+    let mut args = std::env::args().skip(1);
+    let mut json_requested = cli.json;
+    while let Some(arg) = args.next() {
+        if arg == "--json" || arg == "-f=json" || arg == "--format=json" {
+            json_requested = true;
+            break;
+        }
+        if arg == "-f" || arg == "--format" {
+            if let Some(v) = args.next() {
+                if v.eq_ignore_ascii_case("json") {
+                    json_requested = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if json_requested {
+        print_json(&zetl::cap::genkey::render_json(&out))?;
+    } else {
+        // Direct write to stdout — avoid any intermediate logging /
+        // tracing layer that might echo the secret into a log sink.
+        // A single `print!` emits the banner once.
+        print!("{}", zetl::cap::genkey::render_human(&out));
+    }
+    Ok(())
 }
 
 /// `zetl cap emergency-shutdown` — SPEC-034 REQ-3431 / §11.3.

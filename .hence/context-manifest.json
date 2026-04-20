@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-emergency-shutdown",
+  "task_id": "cap-genkey",
   "token_budget": 8000,
-  "tokens_used": 307,
+  "tokens_used": 400,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl cap emergency-shutdown` per REQ-3431 (BUG-024 resolution). Produces a printable operator checklist: (1) remove/redirect DNS; (2) CDN purge/delete `/c/*`; (3) rotate secrets (new `zetl cap genkey`); (4) announce to readers; (5) re-enrol when ready. NOT automated — documentation-generation only. Spec has no cryptographic kill-switch.",
-      "token_cost": 85,
+      "content": "`zetl cap genkey` implementation: emits BOTH `ZETL_CAP_SECRET` (48 bytes: 1-byte version + 32-byte random + 15-byte keyed checksum, base64) AND `ZETL_CAP_SIGNING_KEY` (Ed25519 private key, base64) to stdout exactly once with secure-storage instructions. Reads from OS CSPRNG via `rand_core::OsRng`. Checksum verification in build secret parser — framed in docs as UX safeguard (BUG-017 resolution), not as security control. Never writes to any file, never logs, stdout only. Test: checksum tampering detected; verify-error surfaces remediation text.",
+      "token_cost": 137,
       "priority": "PlanMeta"
     },
     {
@@ -50,8 +50,14 @@
       "content": "Modified 4 files (+326, -8): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs",
       "token_cost": 30,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cap-emergency-shutdown-changes",
+      "content": "Modified 6 files (+653, -7): .hence/context-manifest.json, src/cap/emergency_shutdown.rs, src/cap/mod.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs and 1 more",
+      "token_cost": 41,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T12:24:01Z"
+  "constructed_at": "2026-04-20T12:34:47Z"
 }
