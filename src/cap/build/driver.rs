@@ -86,6 +86,7 @@ use crate::cap::grants::validation::{Grant, GrantsFile};
 use crate::cap::pad::X25519Pubkey;
 use crate::cap::recipients::parsing::{Cohort, RecipientsFile, AGE_RECIPIENT_V1_PREFIX};
 use crate::cap::sanitiser;
+use crate::cap::scoping::access_config::{AccessConfig, AccessConfigError};
 use crate::cap::scoping::cohort_index::{CohortIndex, CohortScope, IndexError, PageRef};
 use crate::cap::sign::{self, EnvelopeHeader, VaultSigningKey};
 
@@ -117,11 +118,18 @@ pub struct BuildConfig {
     /// Public-repo safety flag. [`Visibility::Public`] refuses the
     /// build (task-cap-public-repo-safety).
     pub visibility: Visibility,
+    /// `[access.search]` / `[access.backlinks]` settings (REQ-3415).
+    /// Defaults refuse global search/backlinks and scope the panel to
+    /// in-cohort sources.  `run_capability_build` calls
+    /// [`AccessConfig::validate`] before writing any ciphertext so
+    /// misconfiguration short-circuits cleanly.
+    pub access: AccessConfig,
 }
 
 impl BuildConfig {
     /// Construct a build config with defaults (`path_cap_bits = 64`,
-    /// `visibility = Private`). Callers fill in the rest.
+    /// `visibility = Private`, scoped backlinks, search off). Callers
+    /// fill in the rest.
     pub fn new(vault_root: impl Into<PathBuf>, out_dir: impl Into<PathBuf>) -> Self {
         Self {
             vault_root: vault_root.into(),
@@ -130,6 +138,7 @@ impl BuildConfig {
             now_unix: 0,
             path_cap_bits: PATH_CAP_DEFAULT_BITS,
             visibility: Visibility::Private,
+            access: AccessConfig::default(),
         }
     }
 }
@@ -292,6 +301,8 @@ pub enum BuildError {
     PublicRepoRefused,
     #[error("duplicate slug {0:?} in the page list")]
     DuplicateSlug(String),
+    #[error(transparent)]
+    AccessConfig(#[from] AccessConfigError),
 }
 
 /// Run a capability-mode build end-to-end. Returns on first
@@ -317,6 +328,12 @@ pub fn run_capability_build(
     if matches!(config.visibility, Visibility::Public) {
         return Err(BuildError::PublicRepoRefused);
     }
+
+    // REQ-3415: reject global search/backlinks before any ciphertext
+    // or dist-tree bytes land on disk. Failing here keeps a
+    // misconfigured build from emitting a partial tree that looks
+    // legitimate on quick inspection.
+    config.access.validate()?;
 
     // Duplicate-slug guard: the cohort index would also catch this,
     // but raising here produces a clearer error pointed at the page
@@ -680,6 +697,7 @@ mod tests {
             now_unix: 1_745_140_500,
             path_cap_bits: PATH_CAP_DEFAULT_BITS,
             visibility: Visibility::Private,
+            access: AccessConfig::default(),
         }
     }
 

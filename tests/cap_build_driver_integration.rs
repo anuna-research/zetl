@@ -116,6 +116,7 @@ fn build_cfg(out: &std::path::Path) -> BuildConfig {
         now_unix: 1_745_149_200,
         path_cap_bits: 64,
         visibility: Visibility::Private,
+        access: zetl::cap::scoping::access_config::AccessConfig::default(),
     }
 }
 
