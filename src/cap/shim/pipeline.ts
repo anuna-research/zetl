@@ -16,6 +16,8 @@ import { ageDecrypt } from "./decrypt.ts";
 import { sanitiseHtml } from "./sanitise.ts";
 import { renderInto, rewriteWikiHrefs, scrubFragment } from "./render.ts";
 import { errorKindFromException, renderError, type ErrorKind } from "./errors.ts";
+import type { IdbFactoryLike } from "./storage.ts";
+import type { TofuDeps } from "./tofu.ts";
 
 export const LOCK_NAME = "zetl-capability-shim";
 
@@ -54,6 +56,18 @@ export interface PipelineDeps {
   /// `BroadcastChannel` fallback per REQ-3429.
   withLock: <T>(body: () => Promise<T>) => Promise<T>;
   locationHash: string;
+  /// Origin the shim binds TOFU records to. Defaults to
+  /// `location.origin` when omitted; tests override to decouple
+  /// from happy-dom defaults.
+  origin?: string;
+  /// Dep overrides threaded into the TOFU flow. Production leaves
+  /// these undefined and the tofu module resolves the browser
+  /// built-ins itself; tests inject fakes for
+  /// `navigator.credentials.create`, `crypto.subtle`, RNG, and
+  /// clock.
+  tofuDeps?: Partial<TofuDeps>;
+  /// Override the IDB factory (fake-indexeddb in the test suite).
+  idbFactory?: IdbFactoryLike | null;
 }
 
 export async function runPipeline(deps: PipelineDeps): Promise<PipelineTrace> {
@@ -88,6 +102,9 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineTrace> {
         cohortId: envelope.header.cohortId,
         cohortMode: envelope.header.cohortMode,
         locationHash: deps.locationHash,
+        origin: deps.origin,
+        tofuDeps: deps.tofuDeps,
+        idbFactory: deps.idbFactory,
       });
       trace.phases.push(Phase.IdentityAcquired);
 
@@ -124,7 +141,9 @@ export class SignatureVerifyError extends Error {
 function errorKindFrom(err: unknown): ErrorKind {
   if (err instanceof SignatureVerifyError) return "signature-failed";
   if (err instanceof IdentityError) {
-    return err.kind === "need-invite" ? "need-invite" : "identity-unavailable";
+    if (err.kind === "need-invite") return "need-invite";
+    if (err.kind === "tofu-failed") return "tofu-failed";
+    return "identity-unavailable";
   }
   return errorKindFromException(err);
 }

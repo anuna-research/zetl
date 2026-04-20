@@ -34,10 +34,9 @@ import { sha256 } from "@noble/hashes/sha2";
 import { identityToRecipient } from "age-encryption";
 
 import { encodeAgeSecretKey } from "./decrypt.ts";
+import { computePrfSalt, PRF_SALT_PREFIX } from "./prf_salt.ts";
 
-/// REQ-3414 PRF salt prefix. Must stay byte-identical to
-/// `cap::enrolment::PRF_SALT_PREFIX` on the Rust side.
-export const PRF_SALT_PREFIX = "zetl/webauthn-prf/v1/";
+export { computePrfSalt, PRF_SALT_PREFIX };
 
 /// Filippo "Encrypting Files with Passkeys and age" info string.
 /// HKDF domain-separates this derivation from any other PRF use.
@@ -116,28 +115,6 @@ export async function detectPrfSupport(): Promise<boolean> {
     // failures.
   }
   return Boolean(navigator.credentials && "create" in navigator.credentials);
-}
-
-/// Compute the REQ-3414 per-cohort PRF salt. Pure function;
-/// matches `cap::enrolment::compute_prf_salt` byte-for-byte.
-export function computePrfSalt(origin: string, cohortId: string): Uint8Array {
-  const enc = new TextEncoder();
-  const prefix = enc.encode(PRF_SALT_PREFIX);
-  const originBytes = enc.encode(origin);
-  const cohortBytes = enc.encode(cohortId);
-  const slash = enc.encode("/");
-  const buf = new Uint8Array(
-    prefix.length + originBytes.length + slash.length + cohortBytes.length,
-  );
-  let off = 0;
-  buf.set(prefix, off);
-  off += prefix.length;
-  buf.set(originBytes, off);
-  off += originBytes.length;
-  buf.set(slash, off);
-  off += slash.length;
-  buf.set(cohortBytes, off);
-  return sha256(buf);
 }
 
 export interface WebAuthnCreateFn {

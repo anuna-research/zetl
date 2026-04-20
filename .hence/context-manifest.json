@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-enrolment-page",
+  "task_id": "cap-shim-tofu",
   "token_budget": 8000,
-  "tokens_used": 462,
+  "tokens_used": 473,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`/enroll.html` static page per REQ-3404 for hardened mode. Self-contained HTML + JS (no network to zetl endpoints). Accepts `?cohort=<cohort-id>` query param. Calls navigator.credentials.create with per-cohort PRF salt `SHA-256('zetl/webauthn-prf/v1/' || origin || '/' || cohort_id)` per REQ-3414. Derives X25519 keypair via typage's PRF-recipient helpers. Displays derived pubkey as `age-recipient-v1:<b64url>` with copy-to-clipboard and QR code affordances. Clear diagnostic for no-PRF scenarios.",
-      "token_cost": 124,
+      "content": "TOFU branch of the shim: acquire navigator.locks exclusive lock → unregister all ServiceWorkers → generate 32-byte random challenge → invoke navigator.credentials.create() with PRF extension and per-cohort salt → derive K_wrap via HKDF → AES-256-GCM wrap priv_A with origin+cohort_id AAD → store in IndexedDB → replaceState → rewrite hrefs. Per-cohort PRF salt per REQ-3414 + ADR-3414 (BUG-003 resolution). Explicit random challenge per CON-3409 (BUG-005 resolution). Concurrency serialisation via navigator.locks (BUG-010).",
+      "token_cost": 135,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T16:27:37Z"
+  "constructed_at": "2026-04-20T16:47:41Z"
 }
