@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-referrer-scrubbing",
+  "task_id": "cap-docs-reader",
   "token_budget": 8000,
-  "tokens_used": 412,
+  "tokens_used": 430,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Rewrite external `<a>` tags during render to include `rel=\"noopener noreferrer\"`; emit `<meta name=\"referrer\" content=\"no-referrer\">` in every page's HTML shell per REQ-3413. Internal links unmodified. Operator opt-out via `[access] rel_noreferrer = false` documented as reducing path-cap-privacy.",
-      "token_cost": 74,
+      "content": "`docs/reader.html` (static, served from dist/ in capability builds) + `docs/reader-troubleshooting.md`. Reader-facing onboarding: what a passkey is (no crypto jargon), how to enrol, what to do on a new device, what to do if you lose your authenticator, what to do if the shim shows a signature-verify error (contact your wiki operator). Linked from shim error messages.",
+      "token_cost": 92,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T17:06:37Z"
+  "constructed_at": "2026-04-20T17:28:00Z"
 }
