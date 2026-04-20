@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Repo-local dev tasks: `cargo xtask update-golden` regenerates extension fixture expecteds (SPEC-032 CON-3212)."
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+pulldown-cmark = "0.12"
+zetl = { path = "../.." }

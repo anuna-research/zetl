@@ -1,0 +1,30 @@
+{
+  "ast_version": "1.0",
+  "type": "Document",
+  "position": { "start_line": 1, "start_col": 1, "end_line": 1, "end_col": 80 },
+  "children": [
+    {
+      "type": "Paragraph",
+      "position": { "start_line": 1, "start_col": 1, "end_line": 1, "end_col": 80 },
+      "children": [
+        {
+          "type": "Wikilink",
+          "position": { "start_line": 1, "start_col": 1, "end_line": 1, "end_col": 10 },
+          "target": "Other",
+          "alias": null,
+          "heading": null,
+          "block_id": null
+        },
+        { "type": "Text", "position": { "start_line": 1, "start_col": 11, "end_line": 1, "end_col": 12 }, "text": " " },
+        {
+          "type": "Wikilink",
+          "position": { "start_line": 1, "start_col": 13, "end_line": 1, "end_col": 30 },
+          "target": "Page",
+          "alias": "display",
+          "heading": "Section",
+          "block_id": "beta"
+        }
+      ]
+    }
+  ]
+}

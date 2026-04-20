@@ -6,6 +6,65 @@ steps:
     image: rust:1-bookworm
     commands:
       - rustup component add rustfmt clippy
+      # Install Node + Python for helper-js build, TEST-3210 cross-language
+      # test, and the helper-contracts cross-implementation gate.
+      - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      - apt-get install -y nodejs python3
+      # SPEC-032 REQ-3210 helper-js: build ESM/CJS/types and run its own
+      # test suite before the Rust-side integration test picks up dist/.
+      - make helper-js-install
+      - make helper-js-build
+      - make helper-js-test
+      # SPEC-032 REQ-3210 / CON-3210: run the fixture corpus against
+      # rust + py + js helpers. `cargo test` below also picks up the
+      # integration, but the dedicated invocation surfaces the diff
+      # output with `--nocapture` on regression.
+      - make helper-contracts
       - cargo test --verbose
       - cargo fmt --check
       - cargo clippy -- -D warnings
+      # SPEC-032 REQ-3202: docs/zetl-ast-reference.md is generated from
+      # tools/zetl-ast-schema-v1.json. A drift between the two is a CI
+      # failure — --check exits nonzero on any diff.
+      - cargo run -p zetl-ast-reference-gen -- --check
+      # SPEC-032 CON-3212 canonical-extension golden-HTML gate. Walks
+      # tests/extension-fixtures/ and fails on any fixture whose
+      # rendered output drifts from expected.html after whitespace +
+      # attribute-order normalisation.
+      - make ext-golden
+      # SPEC-033 NFR-3304 / task-eco-feature-flags: each per-ecosystem
+      # cargo feature must compile in isolation, the all-three
+      # combination must compile (the default release configuration
+      # that replaced the retired `ecosystems-v1` umbrella per §12
+      # Phase F), and a no-feature build must also compile. A
+      # regression here breaks the "minimal zetl binary" promise in
+      # REQ-3302.
+      - make eco-features-check
+      # SPEC-033 REQ-3311 / TEST-3311: structural + tier-downgrade gate
+      # for tools/zetl-ecosystem-matrix.toml. `cargo test --verbose`
+      # above already runs it; this surfaces the --nocapture summary
+      # line (per-ecosystem row counts) and makes the gate explicit in
+      # the pipeline log next to its sibling eco-features-check.
+      - make eco-matrix-check
+      # SPEC-032 NFR-3201..NFR-3208 performance + determinism gates. The
+      # default-on arms (selector P95 ceiling, exit-code policy under
+      # `--hook-fail-on never`, AST schema-version pin, memory ceiling,
+      # zero-hook startup, per-page budget surface) run on every CI
+      # build. The strict P95 arms are `#[ignore]`-gated and run via
+      # `make nfr-gates-strict` in the nightly / release pipeline.
+      - make nfr-gates
+      # SPEC-033 NFR-3301..NFR-3308 ecosystem performance + lifecycle gates.
+      # Pins the cold-start, per-page round-trip (pipe + Node-harness),
+      # binary-size, round-trip-fidelity, determinism scope, process-
+      # memory ceiling, and combined-ecosystem 3× multiplier constants
+      # against the spec, and asserts the lifecycle table stays in sync
+      # with the ecosystem registry. Strict arms (live cold-start probe,
+      # release-binary size) run via `make nfr-gates-033-strict`.
+      - make nfr-gates-033
+      # SPEC-033 NFR-3305 / TEST-3305-fidelity translator round-trip gate.
+      # Drives proptest-generated zetl-ext documents through each translator
+      # and asserts canonical-form equivalence (zetl→foreign→zetl). `cargo
+      # test` above already runs the 64-case default; this surfaces the
+      # wider 256-case sweep with shrunk-counterexample output on regression.
+      # Raise PROPTEST_CASES in the nightly pipeline for the 10k corpus.
+      - make translator-roundtrip

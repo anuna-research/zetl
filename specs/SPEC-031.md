@@ -1,15 +1,22 @@
 ---
 title: "SPEC-031: Obsidian Plugin Compatibility — Markdown Post-Processor Transformer"
 version: 0.1.0
-status: draft
+status: superseded
 date: 2026-04-19
 audience: agent, human
 parent: SPEC-004
+superseded-by:
+  - SPEC-032  # Three-stage render hooks with first-class file selection
+  - SPEC-033  # Ecosystem bridges (Pandoc, mdBook, remark)
 related:
   - SPEC-004  # Web UI and static export (render pipeline integration point)
   - SPEC-026  # Vault scanning and ignore files (.obsidian/ exclusion)
   - SPEC-028  # Interactive graph view (theme-layer precedent, static asset bundling)
+  - SPEC-032  # Successor: three-stage render hooks
+  - SPEC-033  # Successor: ecosystem bridges
 ---
+
+> **Status: Superseded.** This spec never shipped. The Obsidian-shim approach was replaced by **SPEC-032** (three-stage render hooks with first-class file selection) and **SPEC-033** (ecosystem bridges for Pandoc, mdBook, and remark). The top-50 plugin-symbol scan findings in §4 / §5 are retained as historical justification for SPEC-032's shape and SPEC-033's ecosystem prioritisation. ADR-3101 (QuickJS engine choice) is superseded by SPEC-032's persistent-mode subprocess protocol; see SPEC-032 ADR-3201.
 
 # SPEC-031: Obsidian Plugin Compatibility — Markdown Post-Processor Transformer
 
@@ -17,17 +24,18 @@ related:
 
 | Field        | Value                                                                   |
 | ------------ | ----------------------------------------------------------------------- |
-| Document ID  | SPEC-031                                                                |
-| Title        | Obsidian Plugin Compatibility — Markdown Post-Processor Transformer     |
-| Version      | 0.1.0                                                                   |
-| Status       | Draft                                                                   |
-| Author       | Agent (USDD Protocol v1.3.0)                                            |
-| Date         | 2026-04-19                                                              |
-| Audience     | Agent, Human                                                            |
-| Trace        | USDD Agent Protocol v1.3.0                                              |
-| Parent       | SPEC-004: Web UI and static export                                      |
-| Related      | SPEC-026 (scanning), SPEC-028 (theme-layer precedent, static bundling)  |
-| Dependencies | Minijinja render pipeline; `.obsidian/` directory layout; embedded JS runtime |
+| Document ID    | SPEC-031                                                                |
+| Title          | Obsidian Plugin Compatibility — Markdown Post-Processor Transformer     |
+| Version        | 0.1.0                                                                   |
+| Status         | Superseded                                                              |
+| Superseded by  | SPEC-032 (three-stage render hooks), SPEC-033 (ecosystem bridges)       |
+| Author         | Agent (USDD Protocol v1.3.0)                                            |
+| Date           | 2026-04-19                                                              |
+| Audience       | Agent, Human                                                            |
+| Trace          | USDD Agent Protocol v1.3.0                                              |
+| Parent         | SPEC-004: Web UI and static export                                      |
+| Related        | SPEC-026 (scanning), SPEC-028 (theme-layer precedent, static bundling), SPEC-032 (successor), SPEC-033 (successor) |
+| Dependencies   | Minijinja render pipeline; `.obsidian/` directory layout; embedded JS runtime |
 
 ---
 
@@ -569,9 +577,9 @@ Verified by: TEST-3113.
 - **Boa (pure Rust JS engine):** Tempting for supply-chain simplicity but significantly slower and incomplete for ES2020. Reconsider in 12 months if its spec conformance closes the gap.
 - **WASM-compiled JS engine (e.g., `wasmtime` + a JS-in-WASM engine):** Added indirection without clear benefit.
 
-Status: Proposed.
+Status: Superseded.
 Supersedes: —.
-Superseded by: —.
+Superseded by: SPEC-032 ADR-3201 (persistent-mode subprocess protocol replaces in-process JS engine).
 
 ### ADR-3102: Shim Scope — Markdown Post-Processors Only (v1)
 

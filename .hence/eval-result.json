@@ -3,28 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 5,
-    "insertions": 68,
-    "deletions": 25,
+    "files_changed": 2,
+    "insertions": 27,
+    "deletions": 19,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/web/context.rs",
-      "themes/default/page.html",
-      "themes/docs/page.html",
-      "themes/minimal/page.html"
+      "specs/SPEC-031.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-backlinks-presentation-changes",
-      "content": "Modified 5 files (+68, -25): .hence/context-manifest.json, src/web/context.rs, themes/default/page.html, themes/docs/page.html, themes/minimal/page.html",
+      "key": "task-spec-031-supersede-changes",
+      "content": "Modified 2 files (+27, -19): .hence/context-manifest.json, specs/SPEC-031.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/backlinks-presentation-v1",
-  "evaluated_at": "2026-04-17T11:14:14Z",
+  "branch_name": "hence/spec-031-supersede-v1",
+  "evaluated_at": "2026-04-20T00:17:05Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

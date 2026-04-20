@@ -8,6 +8,15 @@ repository = "https://codeberg.org/anuna/zetl"
 homepage = "https://codeberg.org/anuna/zetl"
 readme = "README.md"
 
+# Workspace declaration exists so repo-local tools (`zetl-ast-reference-gen`
+# for REQ-3202 and `xtask` for CON-3212's `update-golden` command) can run
+# via `cargo run -p <tool>` / `cargo xtask` from the repo root.
+# diamond-types-spike is an IMPL-029 phase-0 spike that pins its own deps
+# and must stay standalone.
+[workspace]
+members = ["tools/zetl-ast-reference-gen", "tools/xtask"]
+exclude = ["tools/diamond-types-spike"]
+
 [profile.release]
 lto = true
 codegen-units = 1
@@ -24,6 +33,21 @@ mcp = ["dep:rmcp"]
 # no-op; preserved so `cargo test --features collab` keeps working for
 # callers and CI that still pass the flag.
 collab = []
+# SPEC-033 per-ecosystem feature flags (REQ-3301, NFR-3304). Each flag
+# gates one ecosystem's adapter + translator code at compile time so a
+# minimal zetl build can drop whole ecosystems. `src/ecosystems/` holds
+# the shared registry + trait scaffolding unconditionally so
+# `zetl ecosystem check` can list every ecosystem's id and installation
+# hint even on a stripped binary (REQ-3313).
+#
+# The `ecosystems-v1` umbrella that previously enabled all three at
+# once was retired in Phase F (SPEC-033 §12) after two clean releases
+# of all three adapters. Users who want the full ecosystem set now
+# pass `--features ecosystem-pandoc,ecosystem-mdbook,ecosystem-remark`
+# explicitly (they are on by default in the release binaries).
+ecosystem-pandoc = []
+ecosystem-mdbook = []
+ecosystem-remark = []
 # Vendor and statically link OpenSSL into the binary instead of linking
 # against the system libssl. Enable this on cross-compile / static-binary
 # release builds where no target-side OpenSSL sysroot is available.
@@ -108,6 +132,9 @@ brotli = "7"
 [dev-dependencies]
 assert_cmd = "2"
 flate2 = "1"
+# Pulled in by src/hooks/ast/ round-trip tests to validate emitted JSON
+# against tools/zetl-ast-schema-v1.json (SPEC-032 REQ-3202 / TEST-3202).
+jsonschema = { version = "0.26", default-features = false }
 libc = "0.2"
 predicates = "3"
 proptest = "1"
@@ -135,3 +162,15 @@ required-features = ["semantic"]
 [[test]]
 name = "mcp_integration"
 required-features = ["mcp"]
+
+[[test]]
+name = "pandoc_adapter_integration"
+required-features = ["ecosystem-pandoc"]
+
+[[test]]
+name = "mdbook_adapter_integration"
+required-features = ["ecosystem-mdbook"]
+
+[[test]]
+name = "remark_harness_integration"
+required-features = ["ecosystem-remark"]

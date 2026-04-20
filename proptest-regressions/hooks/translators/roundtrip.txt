@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4077deaa4afd2e0ae3d9d4123443805381b13fdd8608c8349bd86493e29f61a9 # shrinks to doc = Document { ast_version: "1.0", kind: Document, position: Position { start_line: 1, start_col: 1, end_line: 1, end_col: 1 }, frontmatter: None, children: [List(List { position: Position { start_line: 1, start_col: 1, end_line: 1, end_col: 1 }, ordered: true, tight: true, start: None, children: [ListItem { kind: ListItem, position: Position { start_line: 1, start_col: 1, end_line: 1, end_col: 1 }, children: [Paragraph(Paragraph { position: Position { start_line: 1, start_col: 1, end_line: 1, end_col: 1 }, children: [] })] }] })] }

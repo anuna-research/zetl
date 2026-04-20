@@ -1,0 +1,378 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zetl.dev/schemas/ast/v1/zetl-ast-schema-v1.json",
+  "title": "zetl-ext AST (v1.0.0)",
+  "description": "Versioned JSON Schema for zetl's native Markdown AST used on the transform-stage hook boundary. Covers the CommonMark subset plus zetl extensions (Wikilink, Embed, SplBlock, FrontMatter) and source positions. Normative per SPEC-032 REQ-3202 / CON-3202; the schema wins against any prose that disagrees. Schema version is additive-only within major 1 per NFR-3206.",
+  "$ref": "#/$defs/Document",
+  "$defs": {
+    "ast_version": {
+      "description": "Exact two-component schema version emitted by zetl (e.g. \"1.0\", \"1.2\"). Hook manifests declare a semver *range* (REQ-3215); this field is always a point version.",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+
+    "position": {
+      "description": "Source-text position of a node. Lines and columns are 1-indexed and inclusive, matching CommonMark's source-map convention.",
+      "type": "object",
+      "properties": {
+        "start_line": { "type": "integer", "minimum": 1 },
+        "start_col":  { "type": "integer", "minimum": 1 },
+        "end_line":   { "type": "integer", "minimum": 1 },
+        "end_col":    { "type": "integer", "minimum": 1 }
+      },
+      "required": ["start_line", "start_col", "end_line", "end_col"],
+      "additionalProperties": false
+    },
+
+    "frontmatter": {
+      "description": "Parsed YAML frontmatter rendered as a JSON object. Attached to the Document root; not a child node. Arbitrary user-defined keys are permitted.",
+      "type": "object"
+    },
+
+    "node": {
+      "description": "Any AST node. Discriminated by the `type` field.",
+      "oneOf": [
+        { "$ref": "#/$defs/Heading" },
+        { "$ref": "#/$defs/Paragraph" },
+        { "$ref": "#/$defs/BlockQuote" },
+        { "$ref": "#/$defs/List" },
+        { "$ref": "#/$defs/ListItem" },
+        { "$ref": "#/$defs/CodeBlock" },
+        { "$ref": "#/$defs/ThematicBreak" },
+        { "$ref": "#/$defs/HtmlBlock" },
+        { "$ref": "#/$defs/SplBlock" },
+        { "$ref": "#/$defs/Embed" },
+        { "$ref": "#/$defs/Text" },
+        { "$ref": "#/$defs/Emphasis" },
+        { "$ref": "#/$defs/Strong" },
+        { "$ref": "#/$defs/Code" },
+        { "$ref": "#/$defs/Link" },
+        { "$ref": "#/$defs/Image" },
+        { "$ref": "#/$defs/LineBreak" },
+        { "$ref": "#/$defs/SoftBreak" },
+        { "$ref": "#/$defs/HtmlInline" },
+        { "$ref": "#/$defs/Wikilink" }
+      ]
+    },
+
+    "block": {
+      "description": "A block-level node. The return-type contract (CON-3201) forbids replacing a block with an inline, so the Block / Inline distinction is normative.",
+      "oneOf": [
+        { "$ref": "#/$defs/Heading" },
+        { "$ref": "#/$defs/Paragraph" },
+        { "$ref": "#/$defs/BlockQuote" },
+        { "$ref": "#/$defs/List" },
+        { "$ref": "#/$defs/CodeBlock" },
+        { "$ref": "#/$defs/ThematicBreak" },
+        { "$ref": "#/$defs/HtmlBlock" },
+        { "$ref": "#/$defs/SplBlock" },
+        { "$ref": "#/$defs/Embed" }
+      ]
+    },
+
+    "inline": {
+      "description": "An inline-level node.",
+      "oneOf": [
+        { "$ref": "#/$defs/Text" },
+        { "$ref": "#/$defs/Emphasis" },
+        { "$ref": "#/$defs/Strong" },
+        { "$ref": "#/$defs/Code" },
+        { "$ref": "#/$defs/Link" },
+        { "$ref": "#/$defs/Image" },
+        { "$ref": "#/$defs/LineBreak" },
+        { "$ref": "#/$defs/SoftBreak" },
+        { "$ref": "#/$defs/HtmlInline" },
+        { "$ref": "#/$defs/Wikilink" }
+      ]
+    },
+
+    "Document": {
+      "description": "Root of a zetl-ext AST document. Carries the schema version, optional parsed frontmatter, and the sequence of top-level block children.",
+      "type": "object",
+      "properties": {
+        "ast_version": { "$ref": "#/$defs/ast_version" },
+        "type":        { "const": "Document" },
+        "position":    { "$ref": "#/$defs/position" },
+        "frontmatter": { "$ref": "#/$defs/frontmatter" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/block" }
+        }
+      },
+      "required": ["ast_version", "type", "position", "children"],
+      "additionalProperties": false
+    },
+
+    "Heading": {
+      "type": "object",
+      "properties": {
+        "type":     { "const": "Heading" },
+        "position": { "$ref": "#/$defs/position" },
+        "level":    { "type": "integer", "minimum": 1, "maximum": 6 },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inline" }
+        }
+      },
+      "required": ["type", "position", "level", "children"],
+      "additionalProperties": false
+    },
+
+    "Paragraph": {
+      "type": "object",
+      "properties": {
+        "type":     { "const": "Paragraph" },
+        "position": { "$ref": "#/$defs/position" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inline" }
+        }
+      },
+      "required": ["type", "position", "children"],
+      "additionalProperties": false
+    },
+
+    "BlockQuote": {
+      "type": "object",
+      "properties": {
+        "type":     { "const": "BlockQuote" },
+        "position": { "$ref": "#/$defs/position" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/block" }
+        }
+      },
+      "required": ["type", "position", "children"],
+      "additionalProperties": false
+    },
+
+    "List": {
+      "description": "Ordered or unordered list. `start` is null for unordered lists; for ordered lists it is the first item's number (default 1).",
+      "type": "object",
+      "properties": {
+        "type":     { "const": "List" },
+        "position": { "$ref": "#/$defs/position" },
+        "ordered":  { "type": "boolean" },
+        "tight":    { "type": "boolean" },
+        "start":    { "type": ["integer", "null"], "minimum": 0 },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ListItem" }
+        }
+      },
+      "required": ["type", "position", "ordered", "tight", "children"],
+      "additionalProperties": false
+    },
+
+    "ListItem": {
+      "type": "object",
+      "properties": {
+        "type":     { "const": "ListItem" },
+        "position": { "$ref": "#/$defs/position" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/block" }
+        }
+      },
+      "required": ["type", "position", "children"],
+      "additionalProperties": false
+    },
+
+    "CodeBlock": {
+      "description": "Fenced or indented code block. `fenced` distinguishes the two; `lang` and `info` are null for indented blocks. The raw block content (without the fence delimiters) lives in `text`.",
+      "type": "object",
+      "properties": {
+        "type":     { "const": "CodeBlock" },
+        "position": { "$ref": "#/$defs/position" },
+        "fenced":   { "type": "boolean" },
+        "lang":     { "type": ["string", "null"] },
+        "info":     { "type": ["string", "null"] },
+        "text":     { "type": "string" }
+      },
+      "required": ["type", "position", "fenced", "lang", "info", "text"],
+      "additionalProperties": false
+    },
+
+    "ThematicBreak": {
+      "type": "object",
+      "properties": {
+        "type":     { "const": "ThematicBreak" },
+        "position": { "$ref": "#/$defs/position" }
+      },
+      "required": ["type", "position"],
+      "additionalProperties": false
+    },
+
+    "HtmlBlock": {
+      "description": "A raw HTML block; contents are passed through the renderer verbatim (subject to the renderer's sanitiser).",
+      "type": "object",
+      "properties": {
+        "type":     { "const": "HtmlBlock" },
+        "position": { "$ref": "#/$defs/position" },
+        "text":     { "type": "string" }
+      },
+      "required": ["type", "position", "text"],
+      "additionalProperties": false
+    },
+
+    "SplBlock": {
+      "description": "A fenced code block whose info string is exactly `spl`; promoted to a first-class node so transform hooks can operate on SPL source without string-matching info strings. `text` holds the raw SPL source between the fences.",
+      "type": "object",
+      "properties": {
+        "type":     { "const": "SplBlock" },
+        "position": { "$ref": "#/$defs/position" },
+        "info":     { "type": ["string", "null"] },
+        "text":     { "type": "string" }
+      },
+      "required": ["type", "position", "text"],
+      "additionalProperties": false
+    },
+
+    "Embed": {
+      "description": "Obsidian-style transclusion (`![[target]]`, `![[target#heading]]`, `![[target#^block-id]]`). Block-level. `heading` and `block_id` are mutually exclusive in practice but both are permitted by the schema; consumers may treat both-set as a diagnostic.",
+      "type": "object",
+      "properties": {
+        "type":      { "const": "Embed" },
+        "position":  { "$ref": "#/$defs/position" },
+        "target":    { "type": "string" },
+        "heading":   { "type": ["string", "null"] },
+        "block_id":  { "type": ["string", "null"] }
+      },
+      "required": ["type", "position", "target", "heading", "block_id"],
+      "additionalProperties": false
+    },
+
+    "Text": {
+      "type": "object",
+      "properties": {
+        "type":     { "const": "Text" },
+        "position": { "$ref": "#/$defs/position" },
+        "text":     { "type": "string" }
+      },
+      "required": ["type", "position", "text"],
+      "additionalProperties": false
+    },
+
+    "Emphasis": {
+      "type": "object",
+      "properties": {
+        "type":     { "const": "Emphasis" },
+        "position": { "$ref": "#/$defs/position" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inline" }
+        }
+      },
+      "required": ["type", "position", "children"],
+      "additionalProperties": false
+    },
+
+    "Strong": {
+      "type": "object",
+      "properties": {
+        "type":     { "const": "Strong" },
+        "position": { "$ref": "#/$defs/position" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inline" }
+        }
+      },
+      "required": ["type", "position", "children"],
+      "additionalProperties": false
+    },
+
+    "Code": {
+      "description": "Inline code span. `text` is the literal content between the backticks.",
+      "type": "object",
+      "properties": {
+        "type":     { "const": "Code" },
+        "position": { "$ref": "#/$defs/position" },
+        "text":     { "type": "string" }
+      },
+      "required": ["type", "position", "text"],
+      "additionalProperties": false
+    },
+
+    "Link": {
+      "type": "object",
+      "properties": {
+        "type":     { "const": "Link" },
+        "position": { "$ref": "#/$defs/position" },
+        "url":      { "type": "string" },
+        "title":    { "type": ["string", "null"] },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inline" }
+        }
+      },
+      "required": ["type", "position", "url", "title", "children"],
+      "additionalProperties": false
+    },
+
+    "Image": {
+      "type": "object",
+      "properties": {
+        "type":     { "const": "Image" },
+        "position": { "$ref": "#/$defs/position" },
+        "url":      { "type": "string" },
+        "title":    { "type": ["string", "null"] },
+        "alt":      { "type": "string" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inline" }
+        }
+      },
+      "required": ["type", "position", "url", "title", "alt", "children"],
+      "additionalProperties": false
+    },
+
+    "LineBreak": {
+      "description": "A hard line break (two-space-newline or backslash-newline).",
+      "type": "object",
+      "properties": {
+        "type":     { "const": "LineBreak" },
+        "position": { "$ref": "#/$defs/position" }
+      },
+      "required": ["type", "position"],
+      "additionalProperties": false
+    },
+
+    "SoftBreak": {
+      "description": "A soft line break (single newline within a paragraph). Renders as a space or newline depending on the renderer.",
+      "type": "object",
+      "properties": {
+        "type":     { "const": "SoftBreak" },
+        "position": { "$ref": "#/$defs/position" }
+      },
+      "required": ["type", "position"],
+      "additionalProperties": false
+    },
+
+    "HtmlInline": {
+      "description": "A span of raw HTML inside a paragraph or other inline context.",
+      "type": "object",
+      "properties": {
+        "type":     { "const": "HtmlInline" },
+        "position": { "$ref": "#/$defs/position" },
+        "text":     { "type": "string" }
+      },
+      "required": ["type", "position", "text"],
+      "additionalProperties": false
+    },
+
+    "Wikilink": {
+      "description": "Obsidian-style wikilink (`[[target]]`, `[[target|alias]]`, `[[target#heading]]`, `[[target#^block-id]]`, or any combination). Inline-level. `alias`, `heading` and `block_id` are null when absent from the source.",
+      "type": "object",
+      "properties": {
+        "type":      { "const": "Wikilink" },
+        "position":  { "$ref": "#/$defs/position" },
+        "target":    { "type": "string" },
+        "alias":     { "type": ["string", "null"] },
+        "heading":   { "type": ["string", "null"] },
+        "block_id":  { "type": ["string", "null"] }
+      },
+      "required": ["type", "position", "target", "alias", "heading", "block_id"],
+      "additionalProperties": false
+    }
+  }
+}

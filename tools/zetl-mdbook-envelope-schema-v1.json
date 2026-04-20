@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zetl.codeberg.page/schema/mdbook-envelope-v1.json",
+  "title": "zetl mdBook preprocessor envelope v1",
+  "description": "JSON shape exchanged with mdBook preprocessors per SPEC-033 REQ-3309 / CON-3309. Implements mdBook's own `[Context, Book]` protocol (CON-3304): the host writes a 2-element array to the preprocessor's stdin and reads back a `Book` on stdout. Version tracks the zetl adapter, not mdBook — the embedded `mdbook_version` field records which mdBook protocol version the envelope conforms to.",
+  "type": "array",
+  "prefixItems": [
+    { "$ref": "#/$defs/Context" },
+    { "$ref": "#/$defs/Book" }
+  ],
+  "items": false,
+  "minItems": 2,
+  "maxItems": 2,
+  "$defs": {
+    "Context": {
+      "type": "object",
+      "description": "mdBook preprocessor invocation context (first array element). Fields mirror mdBook's internal `PreprocessorContext` struct; zetl constructs synthetic values because there is no on-disk book.toml.",
+      "required": ["root", "config", "renderer", "mdbook_version"],
+      "properties": {
+        "root": {
+          "type": "string",
+          "description": "Absolute or vault-relative path to the book root. zetl passes the vault root."
+        },
+        "config": {
+          "type": "object",
+          "required": ["book", "preprocessor"],
+          "properties": {
+            "book": {
+              "type": "object",
+              "required": ["title", "authors", "src"],
+              "properties": {
+                "title": { "type": "string" },
+                "authors": { "type": "array", "items": { "type": "string" } },
+                "src": { "type": "string" }
+              }
+            },
+            "preprocessor": {
+              "type": "object",
+              "description": "Preprocessor-specific config block read from book.toml's `[preprocessor.<name>]` tables. zetl synthesises an empty object; preprocessors requiring custom config are currently unsupported (tracked in the compat matrix)."
+            }
+          }
+        },
+        "renderer": {
+          "type": "string",
+          "description": "Renderer id the preprocessor is being invoked for. Defaults to `html`; options.renderer overrides when set.",
+          "minLength": 1
+        },
+        "mdbook_version": {
+          "type": "string",
+          "description": "SemVer string acceptable to the preprocessor's compatibility check.",
+          "minLength": 1
+        }
+      }
+    },
+    "Book": {
+      "type": "object",
+      "description": "mdBook `Book` envelope (second array element). A flat ordered list of sections plus the `__non_exhaustive` marker mdBook's own serde emits.",
+      "required": ["sections", "__non_exhaustive"],
+      "properties": {
+        "sections": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/BookItem" }
+        },
+        "__non_exhaustive": { "type": "null" }
+      }
+    },
+    "BookItem": {
+      "description": "One entry in `book.sections`. The envelope v1 emits only `Chapter` items; mdBook itself also supports `PartTitle` and `Separator`, which zetl does not produce and does not pattern-match when reading back preprocessor output.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["Chapter"],
+          "properties": { "Chapter": { "$ref": "#/$defs/Chapter" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["PartTitle"],
+          "properties": { "PartTitle": { "type": "string" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "string",
+          "const": "Separator"
+        }
+      ]
+    },
+    "Chapter": {
+      "type": "object",
+      "required": [
+        "name",
+        "content",
+        "number",
+        "sub_items",
+        "path",
+        "source_path",
+        "parent_names"
+      ],
+      "properties": {
+        "name": { "type": "string" },
+        "content": {
+          "type": "string",
+          "description": "Raw chapter Markdown; the field preprocessors rewrite."
+        },
+        "number": {
+          "description": "Section number; zetl emits null (no auto-numbering) but mdBook-mermaid and similar may set it on the way back.",
+          "oneOf": [
+            { "type": "null" },
+            { "type": "array", "items": { "type": "integer", "minimum": 0 } }
+          ]
+        },
+        "sub_items": {
+          "type": "array",
+          "description": "Nested chapters. zetl emits an empty array for per-page scope; preprocessors like mdbook-toc may add entries on the way back.",
+          "items": { "$ref": "#/$defs/BookItem" }
+        },
+        "path": {
+          "description": "Vault-relative chapter path; zetl uses `<slug>.md`. May be null for Draft chapters.",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
+        },
+        "source_path": {
+          "description": "Source-file path; zetl copies `path` here.",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
+        },
+        "parent_names": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

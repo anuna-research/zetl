@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zetl-ast-py"
+version = "1.0.0"
+description = "First-party helper library for authoring zetl transform-stage hooks. Dispatch surface and AST node constants pinned to AST schema major v1."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+keywords = ["zetl", "markdown", "ast", "hook"]
+authors = [{ name = "zetl contributors" }]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
+
+[project.urls]
+Homepage = "https://zetl.dev"
+Issues = "https://github.com/hence/zetl/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zetl_ast"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/zetl_ast", "tests", "README.md", "LICENSE", "pyproject.toml"]

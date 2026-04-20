@@ -1,0 +1,10 @@
+[package]
+name = "zetl-ast-reference-gen"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Generate docs/zetl-ast-reference.md from tools/zetl-ast-schema-v1.json. SPEC-032 REQ-3202."
+
+[dependencies]
+anyhow = "1"
+serde_json = "1"

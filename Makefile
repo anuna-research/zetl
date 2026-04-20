@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build check lint clippy fmt fmt-fix install uninstall clean doc doc-open release help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip help
 
 all: build
 
@@ -59,6 +59,107 @@ fmt-fix:
 # into tools/theme-build/default/node_modules and subsequent runs are fast.
 theme-css:
 	cd tools/theme-build/default && npm install --silent && npm run build
+
+# Regenerate docs/zetl-ast-reference.md from tools/zetl-ast-schema-v1.json
+# (SPEC-032 REQ-3202). `ast-reference-check` is the CI diff gate — it exits
+# nonzero if the on-disk file is stale.
+ast-reference:
+	cargo run -p zetl-ast-reference-gen
+
+ast-reference-check:
+	cargo run -p zetl-ast-reference-gen -- --check
+
+# zetl-ast-js helper library (SPEC-032 REQ-3210). `helper-js-build` emits
+# dist/{esm,cjs,types}/ so tests/helper_js_integration.rs can spawn the
+# helper against zetl's persistent-protocol driver.
+helper-js-install:
+	cd tools/zetl-ast-js && npm install
+
+helper-js-build:
+	cd tools/zetl-ast-js && npm run build
+
+helper-js-test:
+	cd tools/zetl-ast-js && node --experimental-strip-types --test test/*.test.ts
+
+# SPEC-032 REQ-3210 / CON-3210 cross-implementation contract gate.
+# Runs the fixture corpus under tests/fixtures/helper-contracts/ against
+# the Rust, Python, and JavaScript helper identity transforms. Requires
+# `python3` + `node` on PATH and a fresh helper-js dist.
+helper-contracts: helper-js-build
+	cargo test --test helper_contracts_integration -- --nocapture
+
+# SPEC-032 CON-3212 canonical-extension golden-HTML gate. Runs every
+# fixture under tests/extension-fixtures/ through its registered runner
+# and compares against expected.html. Failures surface a unified diff
+# plus the exact `cargo xtask update-golden <name>` command to accept
+# the change after a deliberate review.
+ext-golden:
+	cargo test --test ext_golden_html_integration -- --nocapture
+
+# Regenerate every extension fixture's expected.html from its runner's
+# current output. Run after a deliberate change to a runner or input.md
+# — the same code path the gate uses, so a write here implies a pass
+# there on the next invocation.
+ext-golden-update:
+	cargo xtask update-golden
+
+# SPEC-033 task-eco-feature-flags acceptance: each per-ecosystem cargo
+# feature must compile in isolation, every combination must compile
+# together, and the no-feature build must still succeed. The
+# `ecosystems-v1` umbrella was retired in SPEC-033 §12 Phase F; we
+# still exercise the all-three combination explicitly because that is
+# the configuration release binaries ship. Runs as a CI gate via
+# `.woodpecker/ci.yaml`.
+eco-features-check:
+	cargo check --no-default-features
+	cargo check --no-default-features --features ecosystem-pandoc
+	cargo check --no-default-features --features ecosystem-mdbook
+	cargo check --no-default-features --features ecosystem-remark
+	cargo check --no-default-features --features "ecosystem-pandoc ecosystem-mdbook ecosystem-remark"
+
+# SPEC-033 REQ-3311 / TEST-3311 ecosystem-matrix structural gate. Walks
+# every row in tools/zetl-ecosystem-matrix.toml, asserts required
+# columns, semver-range shape, fixture-path existence, tier→contract
+# coupling, and runs the tier-downgrade-without-rationale simulation.
+# Runs as a CI gate via `.woodpecker/ci.yaml`; local contributors can
+# invoke it directly when editing the matrix.
+eco-matrix-check:
+	cargo test --test ecosystem_matrix_integration -- --nocapture
+
+# SPEC-032 NFR-3201..NFR-3208 performance + determinism gates. The
+# default-on tests (selector P95, exit-code policy, AST schema pin,
+# memory-default, etc.) are coarse and host-stable — they run in CI
+# under `cargo test`. `nfr-gates` makes the surface explicit and lets
+# regressions print one-line per-NFR telemetry on local runs.
+nfr-gates:
+	cargo test --test nfr_gates_integration -- --nocapture
+
+# Strict-budget arms (e.g. NFR-3201 P95 on 1k samples; NFR-3207 round
+# trip on 200 samples). Marked `#[ignore]` in the harness because they
+# are host-dependent; this target unlocks them on demand and runs in
+# release mode so the budgets bind to the fast path zetl ships.
+nfr-gates-strict:
+	cargo test --release --test nfr_gates_integration -- --ignored --nocapture
+
+# SPEC-033 NFR-3301..NFR-3308 ecosystem performance + lifecycle gates.
+# Default-on arms (constants pinned to spec, lifecycle table parity with
+# the registry, canonicalise idempotence, in-process translation
+# headroom) run in CI; strict arms (cold-start probe of every runtime,
+# release-binary size sanity ceiling) are `#[ignore]`-gated and unlock
+# via `make nfr-gates-033-strict`.
+nfr-gates-033:
+	cargo test --test nfr_gates_033_integration -- --nocapture
+
+nfr-gates-033-strict:
+	cargo test --release --test nfr_gates_033_integration -- --ignored --nocapture
+
+# SPEC-033 NFR-3305 / TEST-3305-fidelity translator round-trip property.
+# Drives `arb_document()` through each registered translator and asserts
+# canonical-form equivalence after a zetl→foreign→zetl round trip.
+# Bump PROPTEST_CASES for the nightly / release sweep (NFR-3305 cites
+# 10,000 as the release-gate corpus).
+translator-roundtrip:
+	PROPTEST_CASES=$${PROPTEST_CASES:-256} cargo test --lib -p zetl translators::roundtrip -- --nocapture
 
 install: build
 	install -d $(PREFIX)/bin $(MANDIR) $(BASHCOMPDIR) $(ZSHCOMPDIR) $(FISHCOMPDIR)
@@ -112,6 +213,21 @@ help:
 	@echo "  make clippy       - Run clippy lints"
 	@echo "  make fmt          - Check formatting"
 	@echo "  make fmt-fix      - Auto-fix formatting"
+	@echo "  make helper-js-install   - npm install for tools/zetl-ast-js"
+	@echo "  make helper-js-build     - Build ESM/CJS/types for zetl-ast-js"
+	@echo "  make helper-js-test      - Run zetl-ast-js unit tests"
+	@echo "  make helper-contracts    - Run cross-impl (py+js+rust) fixture corpus"
+	@echo "  make ast-reference       - Regenerate docs/zetl-ast-reference.md"
+	@echo "  make ast-reference-check - CI gate: fail if the reference is stale"
+	@echo "  make ext-golden          - Run CON-3212 canonical-extension golden-HTML gate"
+	@echo "  make ext-golden-update   - Regenerate expected.html for every extension fixture"
+	@echo "  make eco-features-check  - Compile-in-isolation gate for every ecosystem feature flag"
+	@echo "  make eco-matrix-check    - SPEC-033 REQ-3311 / TEST-3311 ecosystem-matrix structural gate"
+	@echo "  make translator-roundtrip - NFR-3305 property-test gate: zetl→foreign→zetl canonical equivalence"
+	@echo "  make nfr-gates           - SPEC-032 NFR-3201..NFR-3208 performance + determinism gates"
+	@echo "  make nfr-gates-strict    - Run the #[ignore]-gated strict-budget arms (release mode)"
+	@echo "  make nfr-gates-033       - SPEC-033 NFR-3301..NFR-3308 ecosystem performance + lifecycle gates"
+	@echo "  make nfr-gates-033-strict- Run the #[ignore]-gated SPEC-033 strict arms (release mode)"
 	@echo "  make install      - Install binary, man page, and shell completions"
 	@echo "  make uninstall    - Remove binary, man page, and completions"
 	@echo "  make clean        - Remove build artifacts"

@@ -57,6 +57,8 @@ zetl parses `[[wikilinks]]` from Markdown files, builds an in-memory link graph,
 ### Automation & extensibility
 
 - **Lifecycle hooks** — executables at `pre-build`, `post-build`, `post-index`, `post-check`, `pre-serve`, `on-save`, `on-agent`, `on-access-request`; receive vault context as JSON on stdin
+- **Render-pipeline hooks** — three-stage pipeline (`pre-parse`, `transform`, `post-render`) with a typed AST, persistent-mode JSON-lines protocol, behavioural contracts, and authoring CLI (`zetl hook new/test/fixture/watch/coverage/dry-run/capabilities`); helper libraries for Python and TypeScript
+- **Plugin ecosystems** — first-class adapters for Pandoc filters, mdBook preprocessors, and remark plugins; `zetl ecosystem check` reports per-ecosystem runtime detection and configured-hook reachability
 - **MCP server** (`--features mcp`) — graph, search, and reasoning as typed tools over stdio and HTTP; user-signed JWT delegation with per-tool and per-page scoping
 - **Agent-friendly CLI** — auto-detects JSON when piped, structured errors on stderr, non-zero exit codes, `--no-input` for unattended runs, shell completions, man page
 
@@ -959,6 +961,132 @@ Themes can ship hooks in their `hooks/` subdirectory. When a theme is active (`-
   base.html
   page.html
 ```
+
+### Render-pipeline hooks
+
+Separate from the lifecycle hooks above, zetl ships a **three-stage render pipeline** that lets you transform a page mid-build by mutating a typed AST rather than its serialised form. Pipeline hooks live under `.zetl/hooks/<stage>.d/` (or the active theme's `hooks/<stage>.d/`) and stay resident for the duration of a build via a JSON-lines protocol over stdin/stdout — there's no per-page subprocess spawn.
+
+The three stages run in fixed order:
+
+| Stage | Payload at the boundary | Use cases |
+|-------|------------------------|-----------|
+| `pre-parse` | raw markdown string | Frontmatter rewrites, include/import expansion, prelude injection |
+| `transform` | typed AST (`zetl-ast` schema v1.0) | Custom blocks, callouts, link-graph mutations, ecosystem-plugin wiring |
+| `post-render` | HTML fragment string | Banner injection, post-processing, accessibility fixes |
+
+Each hook ships a sidecar TOML manifest declaring its selectors (glob + frontmatter predicate + content regex), behavioural contracts (`preserves`, `idempotent`, `may_restructure`, `expansion_bound`), per-stage timeouts, and the AST shape it expects.
+
+```bash
+# Scaffold a transform-stage hook in Python (also: --lang js | sh)
+zetl hook new transform callouts
+
+# Run it against its starter fixture
+zetl hook test callouts
+
+# Watch the source file and restart the persistent process on edit
+zetl hook watch callouts
+
+# Probe every composed hook for supported stages / AST schema version
+zetl hook capabilities
+
+# Check selector reachability without invoking the hook
+zetl hook dry-run transform/callouts
+
+# Per-hook coverage from the most-recent build
+zetl hook coverage --stage transform
+
+# Inspect or diff the AST directly
+zetl ast sample notes/foo.md --stage transform
+zetl ast diff before.json after.json
+```
+
+The scaffolder writes:
+
+```
+.zetl/hooks/transform.d/
+  callouts.py            # persistent-mode skeleton (chmod +x set)
+  callouts.py.toml       # sidecar manifest (composition reads <name>.<ext>.toml)
+tests/hook-fixtures/callouts/
+  input.md
+  expected.json          # golden, seeded so `hook test` passes immediately
+```
+
+Hooks declare a behavioural `[contract]` block; the pipeline enforces it by counting node types pre/post (`preserves`), running the hook a second time on its own output (`idempotent`), gating `may_restructure` to `pre-parse` only, and bounding output expansion. Violations surface as five-part diagnostics (summary / context / observed / cause / hint).
+
+When a hook errors mid-pipeline, the page reverts to the previous stage's output and the pipeline continues — failures no longer abort the build. A `FailureRecord` per failure lands in `diagnostics.json`.
+
+#### Helper libraries
+
+Companion AST + protocol-client libraries live alongside the runtime, so hooks don't have to hand-roll JSON wire framing:
+
+- **TypeScript / npm** — `tools/zetl-ast-js/` ships typed AST classes, `walk()`/`map_nodes()` traversal, an `onNode()` dispatch table, and a persistent-mode protocol client.
+- **Python** — `tools/zetl-ast-py/` (src-layout, py3.9+) ships the same surface, plus an `@on_node` decorator.
+
+A cross-implementation conformance gate (`make helper-contracts`) drives the rust, py, and js libraries through 10 shared JSON fixtures in CI, so type-translations stay aligned.
+
+#### Safe mode and security
+
+`zetl build --safe-mode` and `zetl serve --safe-mode` skip every vault hook and only run theme hooks declared in the theme manifest's `[[theme.hooks]]` table — handy for previewing untrusted vaults. Persistent hooks always spawn under a `SecurityPolicy` that redacts the host environment to a small allowlist (`PATH`, `HOME`, `USER`, `LANG`, `TERM`, `SHELL`), caps stderr at 1 MiB with a truncation marker, and rejects messages over 10 MiB in either direction. Full details: [`docs/hook-security.md`](docs/hook-security.md).
+
+The schema, protocol shape, and full manifest reference are documented at [`docs/zetl-ast-reference.md`](docs/zetl-ast-reference.md) (auto-generated and CI-gated against `tools/zetl-ast-schema-v1.json`).
+
+### Plugin ecosystems
+
+Render-pipeline hooks can target a **plugin-ecosystem adapter** to delegate the actual transformation to an existing tool — Pandoc filters, mdBook preprocessors, or remark plugins — instead of writing the transform from scratch. The adapter handles AST translation in both directions; the hook manifest just names the plugin.
+
+```toml
+# .zetl/hooks/transform.d/smallcaps.py.toml
+ecosystem = "pandoc"
+lua_filter = "filters/smallcaps.lua"   # OR: exec = "pandoc-smallcaps"
+
+stage = "transform"
+mode  = "persistent"
+extension_id = "smallcaps"
+```
+
+Each ecosystem has its own manifest fields:
+
+| Ecosystem | Required fields | Optional |
+|-----------|----------------|----------|
+| `pandoc`  | `exec` **or** `lua_filter` | `args` |
+| `mdbook`  | `exec` | `scope = "page" \| "vault"` |
+| `remark`  | `package` | `version`, `options` |
+
+Scaffold against an ecosystem with `--ecosystem`:
+
+```bash
+zetl hook new transform smallcaps --ecosystem pandoc
+# Writes the manifest with the SPEC-033 required fields populated
+# and (for pandoc) drops a starter identity Lua filter on disk.
+```
+
+Probe every registered ecosystem for runtime detection, version, and configured-hook reachability:
+
+```bash
+$ zetl ecosystem check
+{
+  "entries": [
+    { "id": "pandoc", "status": "detected", "version": "pandoc 3.7.0.2",
+      "executable": "/opt/homebrew/bin/pandoc",
+      "configured": 1, "available_plugins": ["smallcaps"] },
+    { "id": "mdbook", "status": "detected", "version": "mdbook v0.5.2", ... },
+    { "id": "remark", "status": "detected", "version": "v22.12.0", ... }
+  ],
+  "hooks_configured_total": 1
+}
+```
+
+Exit is 0 when every *configured* ecosystem is available; the zero-configured state always exits 0. Missing-runtime hints point at the install path for the relevant tool.
+
+If a page parsed by CommonMark gets routed through a hook expecting Pandoc AST (or vice versa), you'll see a five-part **mixed-parser diagnostic** with three concrete remediations (set `parser:` in frontmatter, narrow the selector, or disable the hook for that page); `zetl build --strict-parsers` upgrades the warning to a fatal error.
+
+The cargo features `ecosystem-pandoc`, `ecosystem-mdbook`, and `ecosystem-remark` gate each adapter independently. All three are compiled in by default for release builds; build minimally with `cargo build --no-default-features` if you want none of them.
+
+Per-ecosystem authoring guides:
+- [`docs/ecosystems/pandoc.md`](docs/ecosystems/pandoc.md)
+- [`docs/ecosystems/mdbook.md`](docs/ecosystems/mdbook.md)
+- [`docs/ecosystems/remark.md`](docs/ecosystems/remark.md)
+- [`docs/ecosystems/matrix-contribution.md`](docs/ecosystems/matrix-contribution.md) — how to file a known-working plugin for the compatibility matrix.
 
 ## Collaboration
 

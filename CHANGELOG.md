@@ -7,6 +7,174 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Render-pipeline hooks (SPEC-032).** A new three-stage hook pipeline
+  — `pre-parse` (raw markdown), `transform` (typed AST), `post-render`
+  (HTML fragment) — runs alongside the existing SPEC-016 lifecycle
+  hooks. Hooks live under `.zetl/hooks/<stage>.d/` and stay resident
+  via a JSON-lines persistent-mode protocol over stdin/stdout (CON-3201;
+  release p95 ≈ 896 µs for a 500-node AST echo). The pipeline carries
+  a typed AST (`zetl-ast` schema v1.0; published as
+  `tools/zetl-ast-schema-v1.json`), a `BuildContext` snapshot, and a
+  shared `build_data` channel with cross-page visibility.
+
+  Composition resolves theme + vault `<stage>.d/` directories, runs a
+  topological sort on the manifest's `[ordering]` table, and applies
+  same-name shadow / disable rules. Hooks declare a TOML manifest
+  (`<name>.<ext>.toml`) covering selectors (glob + frontmatter
+  predicate + content regex), behavioural contracts (`preserves`,
+  `idempotent`, `may_restructure`, `expansion_bound`), per-stage
+  AST-type opt-in, and timeouts.
+
+- **Hook authoring CLI.** Seven new subcommands close the
+  write → run → diff → fix loop:
+
+  ```sh
+  zetl hook new <stage> <name> [--lang py|js|sh] [--ecosystem ...]
+  zetl hook test <name> [--update]
+  zetl hook fixture --from <page> --hook <name>
+  zetl hook watch <name>          # restarts persistent process on edit
+  zetl hook coverage [--stage X]  # matched pages, invocations, latency
+  zetl hook dry-run <stage>/<name>
+  zetl hook capabilities [--stage X] [--json]
+  ```
+
+  Plus `zetl ast sample <file>` and `zetl ast diff <a> <b>` for AST
+  introspection. Each scaffolded hook ships with a starter fixture +
+  golden so `hook test` passes immediately on the fresh skeleton.
+
+- **Behavioural contracts and property-test harness.** Hooks declare a
+  `[contract]` block; the pipeline enforces `preserves` (named node
+  types must survive), `idempotent` (canonical-form equality across
+  two runs), `may_restructure` (block-shape gate, pre-parse only), and
+  `expansion_bound` (advisory output-size ratio). Contract violations
+  surface as `HookDiagnostic` records with the standard five-part
+  format (summary / context / observed / cause / hint).
+
+- **Failure scoping.** When a hook errors mid-pipeline, the page reverts
+  to the previous stage's output and the pipeline continues — failures
+  no longer abort the build. A `FailureRecord` per failure lands in
+  `diagnostics.json`.
+
+- **Helper libraries.** `tools/zetl-ast-js/` (TypeScript / npm) and
+  `tools/zetl-ast-py/` (Python, hatchling) ship typed AST classes,
+  `walk()`/`map_nodes()` traversal, an `@on_node` dispatch decorator,
+  and a persistent-mode protocol client. A cross-impl conformance gate
+  (`make helper-contracts`) drives all three implementations through
+  10 shared JSON fixtures in CI.
+
+- **Plugin ecosystems (SPEC-033).** First-class adapters for Pandoc
+  filters (`ecosystem-pandoc`), mdBook preprocessors (`ecosystem-mdbook`),
+  and remark plugins (`ecosystem-remark`) — gated behind per-ecosystem
+  cargo features (each compiled in by default in release builds).
+  Hooks declare `ecosystem = "pandoc"` (or `mdbook`/`remark`) plus the
+  per-ecosystem fields the chosen adapter requires (`exec`/`lua_filter`,
+  `exec`+`scope`, `package`+`version`+`options`); the pipeline routes
+  them through the matching adapter and translates the foreign AST back
+  to `zetl-ast` for downstream stages.
+
+  The new `zetl ecosystem check` subcommand reports per-ecosystem
+  runtime detection (binary path + version), the count of configured
+  hooks, and the set of reachable plugins — exit 0 unless a configured
+  ecosystem's runtime is missing.
+
+  Mixed-parser misconfigurations (a hook expecting Pandoc AST attached
+  to a CommonMark-parsed page) surface a five-part diagnostic with
+  remediation suggestions; `zetl build --strict-parsers` upgrades the
+  warning to a fatal error. A per-ecosystem compatibility matrix lives
+  at `tools/zetl-ecosystem-matrix.toml` (gated by structural + tier-
+  downgrade tests in CI).
+
+- **Safe mode and security policy.** `zetl build --safe-mode` /
+  `zetl serve --safe-mode` skips every vault hook and only runs theme
+  hooks declared in the theme's `[[theme.hooks]]` manifest table.
+  Persistent hooks spawn under a default `SecurityPolicy` that
+  redacts the host environment to a small allowlist
+  (PATH/HOME/USER/LANG/...), caps stderr at 1 MiB with a truncation
+  marker, and rejects messages over 10 MiB in either direction.
+
+- **Capability probes.** `zetl hook capabilities` issues a `probe`
+  message to every composed hook and reports its supported stages,
+  AST types, and AST schema version; mismatches against the running
+  binary's schema version exit non-zero so CI catches drift before
+  `build`.
+
+- **Observability.** Hooks emit per-invocation log lines
+  (`[zetl] hook: stage=X id=Y page=Z duration_ms=N`) and a build-end
+  totals line (`[zetl] hooks: total_invocations=N total_duration_ms=M
+  failures=K`). Failures additionally surface `status=failed
+  reason=<r>` regardless of verbosity.
+
+- **Documentation.** New guides under `docs/`:
+  `docs/canonical-extensions.md`, `docs/hook-security.md`,
+  `docs/zetl-ast-reference.md` (auto-generated, CI-gated),
+  `docs/ecosystems/{pandoc,mdbook,remark}.md`, and
+  `docs/ecosystems/matrix-contribution.md`.
+
+### Fixed
+
+- **`zetl hook new` writes the composition-canonical sidecar manifest.**
+  The scaffolder previously wrote `<name>.toml`, but
+  `compose_stage` looks for `<name>.<ext>.toml` (e.g. `callouts.py.toml`).
+  Freshly scaffolded hooks were silently invisible to the pipeline until
+  the manifest was renamed by hand. The scaffolder now emits the
+  canonical form directly; `find_scaffolded_hook` (used by `hook test`
+  and `hook watch`) accepts both the canonical and legacy filenames so
+  hooks scaffolded by older builds keep working.
+- **`zetl hook new --ecosystem <id>` seeds the SPEC-033 REQ-3312
+  required fields.** Previously the scaffolded manifest carried only
+  `ecosystem = "<id>"` and an explanatory comment, so the per-ecosystem
+  manifest parser rejected it with the cryptic *"pandoc manifest must
+  declare `exec = ...` or `lua_filter = ...`"*. The scaffolder now emits:
+  - `pandoc` → `lua_filter = "filters/<name>.lua"` plus a starter
+    identity Lua filter on disk at that path, so `dry-run` and `build`
+    work without further hand-edits;
+  - `mdbook` → `exec = "mdbook-<name>"` + `scope = "page"` (rename
+    `exec` or place the binary on `PATH` before `build`);
+  - `remark` → `package = "remark-<name>"` (install under the vault's
+    `node_modules/`).
+
+  The convention hint also strips ecosystem prefixes from the hook name
+  so `zetl hook new transform pandoc-smallcaps --ecosystem pandoc` no
+  longer suggests `exec = "pandoc-pandoc-smallcaps"`.
+
+### Changed
+
+- **`--features hooks-v2` umbrella retired.** SPEC-032's three-stage hook
+  pipeline (pre-parse / transform / post-render), AST schema v1.0,
+  selector evaluator, and persistent-mode protocol are default-on. The
+  umbrella was originally planned as a Phase-A preview gate; in practice
+  it shipped unconditionally because the schema converged faster than
+  expected, so no `--no-hooks-v2` opt-out is provided (there is nothing
+  to opt out of). To skip every hook, use the existing
+  `zetl build --no-hooks` flag. (SPEC-032 §12 Phase D)
+- **`--features ecosystems-v1` umbrella retired.** All three
+  ecosystem adapters (Pandoc, mdBook, remark) have shipped stable
+  across two consecutive releases, so the preview umbrella that
+  bundled them is gone. The per-ecosystem cargo flags
+  (`ecosystem-pandoc`, `ecosystem-mdbook`, `ecosystem-remark`)
+  remain and are now the stable compile-time surface.
+
+  **Migration.** Release binaries already compile every adapter in
+  by default — if you use a packaged build, nothing changes. If you
+  build from source and were passing `--features ecosystems-v1`,
+  replace it with the three per-ecosystem flags explicitly:
+
+  ```sh
+  # before
+  cargo build --features ecosystems-v1
+  # after
+  cargo build --features "ecosystem-pandoc ecosystem-mdbook ecosystem-remark"
+  ```
+
+  A minimal build that drops every ecosystem is
+  `cargo build --no-default-features`. Each per-ecosystem flag can
+  still be toggled independently (see `docs/ecosystems/*.md` for the
+  corresponding opt-out instructions). The
+  `ecosystems_v1_umbrella_is_retired` integration test guards
+  against accidental reintroduction. (SPEC-033 §12 Phase F)
+
 ## [0.3.0] - 2026-04-17
 
 ### Added

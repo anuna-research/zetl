@@ -13,7 +13,8 @@ use zetl::cache::{
     files_needing_reparse, load_cache, load_theory_cache, load_vault_root_hex, save_cache,
 };
 use zetl::cli::{
-    AgentCommand, BlockTypeFilter, Cli, Command, FailLevel, HookCommand, OutputFormat, ThemeCommand,
+    AgentCommand, BlockTypeFilter, Cli, Command, EcosystemCommand, FailLevel, HookCommand,
+    OutputFormat, ThemeCommand,
 };
 use zetl::drift::{detect_explicit_drift, detect_section_drift};
 use zetl::graph::LinkGraph;
@@ -4640,6 +4641,991 @@ fn cmd_hook_run(cli: &Cli, name: &str, theme: &str, extra: &[String]) -> Result<
     Ok(())
 }
 
+fn cmd_hook_new(
+    cli: &Cli,
+    stage: &zetl::cli::AuthoringStage,
+    name: &str,
+    lang: &zetl::cli::HookLang,
+    ecosystem: Option<&zetl::cli::HookEcosystem>,
+    force: bool,
+) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let paths = zetl::hooks::authoring::scaffold(&vault_root, stage, name, lang, ecosystem, force)?;
+
+    if matches!(cli.format, OutputFormat::Json) {
+        #[derive(Serialize)]
+        struct Out<'a> {
+            hook_file: &'a std::path::Path,
+            manifest_file: &'a std::path::Path,
+            fixture_input: &'a std::path::Path,
+            fixture_expected: &'a std::path::Path,
+        }
+        print_json(&Out {
+            hook_file: &paths.hook_file,
+            manifest_file: &paths.manifest_file,
+            fixture_input: &paths.fixture_input,
+            fixture_expected: &paths.fixture_expected,
+        })?;
+    } else {
+        println!("Scaffolded hook '{name}' ({}):", stage.as_str());
+        println!("  hook:     {}", paths.hook_file.display());
+        println!("  manifest: {}", paths.manifest_file.display());
+        println!("  input:    {}", paths.fixture_input.display());
+        println!("  expected: {}", paths.fixture_expected.display());
+        println!();
+        println!("Run `zetl hook test {name}` to verify the scaffold.");
+    }
+    Ok(())
+}
+
+fn cmd_hook_test(cli: &Cli, name: &str, update: bool) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let outcome = zetl::hooks::authoring::run_test(&vault_root, name, update)?;
+    match outcome {
+        zetl::hooks::authoring::TestOutcome::Match => {
+            println!("ok: hook '{name}' matches golden");
+            Ok(())
+        }
+        zetl::hooks::authoring::TestOutcome::Updated { path } => {
+            println!("updated golden: {}", path.display());
+            Ok(())
+        }
+        zetl::hooks::authoring::TestOutcome::Mismatch { diff, .. } => {
+            eprintln!("FAIL: hook '{name}' output diverges from golden");
+            eprint!("{diff}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn cmd_hook_fixture(cli: &Cli, page: &str, hook: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let captured = zetl::hooks::authoring::capture_fixture(&vault_root, page, hook)?;
+    println!(
+        "captured fixture for hook '{hook}' from page '{page}':\n  input:    {}\n  expected: {}",
+        captured.input_path.display(),
+        captured.expected_path.display()
+    );
+    Ok(())
+}
+
+/// Evaluate a hook's selector against the vault and print the matched
+/// pages. SPEC-032 REQ-3209 / TEST-3209.
+///
+/// The hook itself is NOT invoked — this is a selector-reachability check
+/// for CI and hook authoring. Exit code mirrors "did the selector hit":
+/// 0 if at least one page matched, 1 if zero matched.
+fn cmd_hook_dry_run(cli: &Cli, spec: &str, theme: &str, limit: usize) -> Result<()> {
+    use zetl::hooks::composition::{compose_stage, default_extension_id, ComposedHook};
+    use zetl::hooks::manifest::{load_manifest, LoadedManifest};
+    use zetl::hooks::pipeline::Stage;
+    use zetl::hooks::selector::{compile, SelectorInput};
+    use zetl::web::markdown::parse_frontmatter;
+
+    // Parse `<stage>/<name>`.
+    let (stage_str, name) = spec.split_once('/').ok_or_else(|| {
+        anyhow::anyhow!(
+            "hook spec must be `<stage>/<name>` (e.g. `transform/callouts`); got {spec:?}"
+        )
+    })?;
+    let stage = match stage_str {
+        "pre-parse" => Stage::PreParse,
+        "transform" => Stage::Transform,
+        "post-render" => Stage::PostRender,
+        other => anyhow::bail!(
+            "unknown stage {other:?}; expected one of `pre-parse`, `transform`, `post-render`"
+        ),
+    };
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    // Compose the requested stage so we see the hook exactly as the build
+    // pipeline would (vault shadowing, ordering, disabled entries).
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+    let pipeline = compose_stage(&vault_root, theme_hooks.path(), stage)
+        .with_context(|| format!("failed to compose {stage} hooks"))?;
+
+    // Lookup resolves against the canonical extension_id; a sidecar manifest
+    // can override the default filename-derived id, so check the composed
+    // value first and fall back to the filename-derived default. That keeps
+    // `hook dry-run transform/callouts` working whether the on-disk file is
+    // `callouts.py`, `20-callouts.py`, or a renamed exe with
+    // `extension_id = "callouts"` in its sidecar.
+    let hook: &ComposedHook = pipeline
+        .hooks
+        .iter()
+        .find(|h| h.extension_id == name)
+        .or_else(|| {
+            pipeline
+                .hooks
+                .iter()
+                .find(|h| default_extension_id(&h.filename) == name)
+        })
+        .ok_or_else(|| {
+            let available: Vec<String> = pipeline
+                .hooks
+                .iter()
+                .map(|h| h.extension_id.clone())
+                .collect();
+            if available.is_empty() {
+                anyhow::anyhow!("no hook '{name}' found in stage '{stage}' (stage has no hooks)")
+            } else {
+                anyhow::anyhow!(
+                    "no hook '{name}' found in stage '{stage}'; available: {}",
+                    available.join(", ")
+                )
+            }
+        })?;
+
+    // Load the sidecar manifest for the selector spec — a missing manifest
+    // means "default selector" per REQ-3203.
+    let selector_spec = match &hook.manifest_path {
+        Some(path) => match load_manifest(path)
+            .with_context(|| format!("failed to load manifest {}", path.display()))?
+        {
+            LoadedManifest::Present(m) => m.select,
+            LoadedManifest::Missing => Default::default(),
+        },
+        None => Default::default(),
+    };
+
+    let selector = compile(&selector_spec).map_err(|e| {
+        anyhow::anyhow!(
+            "failed to compile selector for hook '{}': {e}",
+            hook.extension_id
+        )
+    })?;
+
+    // Enumerate vault pages. `scan_vault` already returns vault-relative
+    // paths, which is exactly what the selector's path globs are written
+    // against.
+    let scanned = scan_vault(&vault_root, &cli.scan_options())
+        .with_context(|| format!("failed to scan vault {}", vault_root.display()))?;
+
+    let mut matched: Vec<PathBuf> = Vec::new();
+    for file in &scanned {
+        let abs = vault_root.join(&file.path);
+        let content = match std::fs::read_to_string(&abs) {
+            Ok(c) => c,
+            Err(_) => continue, // unreadable file → skip, not a dry-run error
+        };
+        let frontmatter = parse_frontmatter(&content);
+        let body = strip_leading_frontmatter(&content);
+        let input = SelectorInput {
+            path: &file.path,
+            frontmatter: &frontmatter,
+            text: body,
+        };
+        if selector.evaluate(&input) {
+            matched.push(file.path.clone());
+        }
+    }
+
+    // Deterministic output order — byte-stable for TEST-3209 goldens.
+    matched.sort();
+
+    let total = matched.len();
+    let truncated = total > limit;
+    let shown: Vec<PathBuf> = matched.into_iter().take(limit).collect();
+
+    // SPEC-032 REQ-3209 / TEST-3209: matched page list, one path per line,
+    // byte-stable across TTY vs pipe. Auto-format JSON would defeat the
+    // "byte-identical to a golden" requirement, so we ignore `cli.format`
+    // here and always emit the canonical plain text form.
+    for p in &shown {
+        // Force POSIX separators for cross-platform byte-stability.
+        println!("{}", p.to_string_lossy().replace('\\', "/"));
+    }
+    if truncated {
+        eprintln!("(matched {total}, showing first {limit}; raise with --limit)");
+    }
+
+    if total == 0 {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Strip a leading YAML frontmatter block (between `---` fences) from a
+/// markdown document, returning the body. No frontmatter → the full input.
+///
+/// Mirrors `web::markdown::strip_frontmatter` (kept private there); the
+/// dry-run path needs the body to feed the selector's content-probe layer,
+/// which CON-3204 defines as "raw Markdown body, post-frontmatter".
+fn strip_leading_frontmatter(content: &str) -> &str {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return content;
+    }
+    let after_first = &trimmed[3..];
+    if let Some(end_pos) = after_first.find("\n---") {
+        let skip = 3 + end_pos + 4;
+        let rest = &trimmed[skip..];
+        rest.strip_prefix('\n').unwrap_or(rest)
+    } else {
+        content
+    }
+}
+
+/// Per-page cache used by `cmd_hook_coverage` — parse the frontmatter and
+/// strip the body once up front, then reuse the `(path, frontmatter, body)`
+/// tuple when each hook's selector is evaluated against the vault.
+struct CoveragePage {
+    path: PathBuf,
+    frontmatter: serde_json::Value,
+    body: String,
+}
+
+fn cmd_hook_coverage(
+    cli: &Cli,
+    theme: &str,
+    stage_filter: Option<&zetl::cli::AuthoringStage>,
+) -> Result<()> {
+    use zetl::cli::AuthoringStage;
+    use zetl::hooks::composition::compose_stage;
+    use zetl::hooks::pipeline::Stage;
+    use zetl::web::markdown::parse_frontmatter;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+
+    // Pick which stages to report on. REQ-3208 defaults to every stage;
+    // `--stage` restricts to one.
+    let stages: Vec<Stage> = match stage_filter {
+        Some(AuthoringStage::PreParse) => vec![Stage::PreParse],
+        Some(AuthoringStage::Transform) => vec![Stage::Transform],
+        Some(AuthoringStage::PostRender) => vec![Stage::PostRender],
+        None => Stage::all().to_vec(),
+    };
+
+    // Enumerate the vault once — the selector path is measured against
+    // vault-relative paths, and the total page count feeds both the
+    // per-hook `matched/total` ratio and the unmatched-pages list.
+    let scanned = scan_vault(&vault_root, &cli.scan_options())
+        .with_context(|| format!("failed to scan vault {}", vault_root.display()))?;
+    let total_pages = scanned.len();
+
+    let pages: Vec<CoveragePage> = scanned
+        .iter()
+        .filter_map(|f| {
+            let abs = vault_root.join(&f.path);
+            let content = std::fs::read_to_string(&abs).ok()?;
+            let frontmatter = parse_frontmatter(&content);
+            let body = strip_leading_frontmatter(&content).to_string();
+            Some(CoveragePage {
+                path: f.path.clone(),
+                frontmatter,
+                body,
+            })
+        })
+        .collect();
+
+    // Optional persisted build coverage — a future build writes
+    // `.zetl/build/hook-coverage.json` and we merge its latency / failure
+    // data in here. Missing file = "no build on disk; this is a dry-run".
+    let persisted = load_persisted_coverage(&vault_root);
+    let source = if persisted.is_some() {
+        "build"
+    } else {
+        "dry-run"
+    };
+
+    let mut hook_rows: Vec<HookCoverageRow> = Vec::new();
+
+    for stage in &stages {
+        let pipeline = compose_stage(&vault_root, theme_hooks.path(), *stage)
+            .with_context(|| format!("failed to compose {stage} hooks"))?;
+
+        for hook in &pipeline.hooks {
+            let row = coverage_row_for(hook, &pages, persisted.as_ref())?;
+            hook_rows.push(row);
+        }
+    }
+
+    // Unmatched pages: pages that no enabled hook in the selected stages
+    // matched. In build mode we still compute this from the dry-run
+    // result — the build writes per-hook coverage, not per-page, and the
+    // reader side stays cheap by re-evaluating locally.
+    let mut matched_pages: HashSet<PathBuf> = HashSet::new();
+    for row in &hook_rows {
+        for p in &row.matched_paths {
+            matched_pages.insert(p.clone());
+        }
+    }
+    let mut unmatched_pages: Vec<PathBuf> = pages
+        .iter()
+        .filter(|p| !matched_pages.contains(&p.path))
+        .map(|p| p.path.clone())
+        .collect();
+    unmatched_pages.sort();
+
+    let unmatched_hooks: Vec<UnmatchedHookRow> = hook_rows
+        .iter()
+        .filter(|r| r.matched == 0)
+        .map(|r| UnmatchedHookRow {
+            stage: r.stage.to_string(),
+            id: r.id.clone(),
+        })
+        .collect();
+
+    let output = HookCoverageOutput {
+        source: source.to_string(),
+        total_pages,
+        hooks: hook_rows.iter().map(HookCoverageRow::to_entry).collect(),
+        unmatched_hooks,
+        unmatched_pages: unmatched_pages
+            .iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect(),
+    };
+
+    let emit_json = cli.json || cli.format == OutputFormat::Json;
+    if emit_json {
+        print_json(&output)?;
+    } else {
+        render_coverage_table(&output);
+    }
+
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct HookCoverageOutput {
+    /// `"build"` when coverage was read from `.zetl/build/hook-coverage.json`,
+    /// `"dry-run"` when the report was synthesised from a fresh selector
+    /// evaluation against the current vault (REQ-3208 fallback).
+    source: String,
+    total_pages: usize,
+    hooks: Vec<HookCoverageEntry>,
+    unmatched_hooks: Vec<UnmatchedHookRow>,
+    unmatched_pages: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct HookCoverageEntry {
+    stage: String,
+    id: String,
+    manifest_path: Option<String>,
+    matched: usize,
+    matched_of: usize,
+    invoked: usize,
+    failed: usize,
+    p50_ms: Option<u64>,
+    p95_ms: Option<u64>,
+    last_failure_reason: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+struct UnmatchedHookRow {
+    stage: String,
+    id: String,
+}
+
+struct HookCoverageRow {
+    stage: zetl::hooks::pipeline::Stage,
+    id: String,
+    manifest_path: Option<PathBuf>,
+    matched: usize,
+    matched_of: usize,
+    invoked: usize,
+    failed: usize,
+    p50_ms: Option<u64>,
+    p95_ms: Option<u64>,
+    last_failure_reason: Option<String>,
+    matched_paths: Vec<PathBuf>,
+}
+
+impl HookCoverageRow {
+    fn to_entry(&self) -> HookCoverageEntry {
+        HookCoverageEntry {
+            stage: self.stage.to_string(),
+            id: self.id.clone(),
+            manifest_path: self.manifest_path.as_ref().map(|p| p.display().to_string()),
+            matched: self.matched,
+            matched_of: self.matched_of,
+            invoked: self.invoked,
+            failed: self.failed,
+            p50_ms: self.p50_ms,
+            p95_ms: self.p95_ms,
+            last_failure_reason: self.last_failure_reason.clone(),
+        }
+    }
+}
+
+fn coverage_row_for(
+    hook: &zetl::hooks::composition::ComposedHook,
+    pages: &[CoveragePage],
+    persisted: Option<&PersistedCoverage>,
+) -> Result<HookCoverageRow> {
+    use zetl::hooks::manifest::{load_manifest, LoadedManifest};
+    use zetl::hooks::selector::{compile, SelectorInput};
+
+    let selector_spec = match &hook.manifest_path {
+        Some(path) => match load_manifest(path)
+            .with_context(|| format!("failed to load manifest {}", path.display()))?
+        {
+            LoadedManifest::Present(m) => m.select,
+            LoadedManifest::Missing => Default::default(),
+        },
+        None => Default::default(),
+    };
+
+    let selector = compile(&selector_spec).map_err(|e| {
+        anyhow::anyhow!(
+            "failed to compile selector for hook '{}' ({}): {e}",
+            hook.extension_id,
+            hook.stage
+        )
+    })?;
+
+    let mut matched_paths: Vec<PathBuf> = Vec::new();
+    for page in pages {
+        let input = SelectorInput {
+            path: &page.path,
+            frontmatter: &page.frontmatter,
+            text: &page.body,
+        };
+        if selector.evaluate(&input) {
+            matched_paths.push(page.path.clone());
+        }
+    }
+    matched_paths.sort();
+
+    let matched = matched_paths.len();
+
+    // Persisted build data (if any) overrides the dry-run synthesised
+    // invoked / failed / latency cells. When absent — the default for now —
+    // invoked == matched and failure stats are None.
+    let persisted_row = persisted.and_then(|p| p.lookup(hook.stage, &hook.extension_id));
+    let (invoked, failed, p50_ms, p95_ms, last_failure_reason) = match persisted_row {
+        Some(r) => (
+            r.invoked,
+            r.failed,
+            r.p50_ms,
+            r.p95_ms,
+            r.last_failure_reason.clone(),
+        ),
+        None => (matched, 0, None, None, None),
+    };
+
+    Ok(HookCoverageRow {
+        stage: hook.stage,
+        id: hook.extension_id.clone(),
+        manifest_path: hook.manifest_path.clone(),
+        matched,
+        matched_of: pages.len(),
+        invoked,
+        failed,
+        p50_ms,
+        p95_ms,
+        last_failure_reason,
+        matched_paths,
+    })
+}
+
+/// Parsed `.zetl/build/hook-coverage.json`. Keys are `(stage, extension_id)`
+/// — same identity used throughout SPEC-032 for hook lookup.
+struct PersistedCoverage {
+    rows: HashMap<(String, String), PersistedRow>,
+}
+
+#[derive(Clone)]
+struct PersistedRow {
+    invoked: usize,
+    failed: usize,
+    p50_ms: Option<u64>,
+    p95_ms: Option<u64>,
+    last_failure_reason: Option<String>,
+}
+
+impl PersistedCoverage {
+    fn lookup(&self, stage: zetl::hooks::pipeline::Stage, id: &str) -> Option<&PersistedRow> {
+        self.rows.get(&(stage.as_str().to_string(), id.to_string()))
+    }
+}
+
+fn load_persisted_coverage(vault_root: &Path) -> Option<PersistedCoverage> {
+    let path = vault_root
+        .join(".zetl")
+        .join("build")
+        .join("hook-coverage.json");
+    let bytes = std::fs::read(&path).ok()?;
+    let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    let arr = v.get("hooks").and_then(|h| h.as_array())?;
+    let mut rows: HashMap<(String, String), PersistedRow> = HashMap::new();
+    for row in arr {
+        let stage = row.get("stage")?.as_str()?.to_string();
+        let id = row.get("id")?.as_str()?.to_string();
+        let invoked = row.get("invoked").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+        let failed = row.get("failed").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+        let p50_ms = row.get("p50_ms").and_then(|x| x.as_u64());
+        let p95_ms = row.get("p95_ms").and_then(|x| x.as_u64());
+        let last_failure_reason = row
+            .get("last_failure_reason")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string());
+        rows.insert(
+            (stage, id),
+            PersistedRow {
+                invoked,
+                failed,
+                p50_ms,
+                p95_ms,
+                last_failure_reason,
+            },
+        );
+    }
+    Some(PersistedCoverage { rows })
+}
+
+fn render_coverage_table(output: &HookCoverageOutput) {
+    // CON-3208 table shape: HOOK, STAGE, MATCHED, INVOKED, FAILED, P50, P95.
+    // We add a header above noting `source` (dry-run vs build) and the
+    // total page count so the `N/500` cell has context.
+    println!(
+        "Source: {}   Total pages: {}",
+        output.source, output.total_pages
+    );
+
+    if output.hooks.is_empty() {
+        println!("No hooks configured.");
+    } else {
+        let mut table = Table::new();
+        table.set_header(vec![
+            "HOOK", "STAGE", "MATCHED", "INVOKED", "FAILED", "P50", "P95",
+        ]);
+        for h in &output.hooks {
+            table.add_row(vec![
+                Cell::new(&h.id),
+                Cell::new(&h.stage),
+                Cell::new(format!("{}/{}", h.matched, h.matched_of)),
+                Cell::new(h.invoked.to_string()),
+                Cell::new(h.failed.to_string()),
+                Cell::new(match h.p50_ms {
+                    Some(ms) => format!("{ms}ms"),
+                    None => "-".to_string(),
+                }),
+                Cell::new(match h.p95_ms {
+                    Some(ms) => format!("{ms}ms"),
+                    None => "-".to_string(),
+                }),
+            ]);
+        }
+        println!("{table}");
+    }
+
+    if !output.unmatched_hooks.is_empty() {
+        println!();
+        println!("Unmatched hooks ({}):", output.unmatched_hooks.len());
+        for h in &output.unmatched_hooks {
+            println!("  {} ({})", h.id, h.stage);
+        }
+    }
+
+    if !output.unmatched_pages.is_empty() {
+        println!();
+        println!(
+            "Unmatched pages ({} of {}):",
+            output.unmatched_pages.len(),
+            output.total_pages
+        );
+        for p in &output.unmatched_pages {
+            println!("  {p}");
+        }
+    }
+}
+
+/// `zetl hook capabilities` — SPEC-032 REQ-3216. Probes every composed
+/// hook and reports supported stages, AST types, and schema version.
+///
+/// Per-hook the command spawns the executable, waits for the startup
+/// handshake, sends `{"type":"probe"}`, reads the `probe_result` line,
+/// and shuts the child down cleanly. Probe failures are reported but
+/// don't short-circuit — every hook's outcome is surfaced so the report
+/// is complete. Exit code is `1` when any hook's probe failed or did
+/// not declare the composed stage.
+fn cmd_hook_capabilities(
+    cli: &Cli,
+    theme: &str,
+    stage_filter: Option<&zetl::cli::AuthoringStage>,
+) -> Result<()> {
+    use zetl::cli::AuthoringStage;
+    use zetl::hooks::capability::{
+        probe_stage_pipeline, CapabilityOutcome, CapabilityReport, DEFAULT_PROBE_TIMEOUT,
+    };
+    use zetl::hooks::composition::compose_stage;
+    use zetl::hooks::pipeline::Stage;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+
+    let stages: Vec<Stage> = match stage_filter {
+        Some(AuthoringStage::PreParse) => vec![Stage::PreParse],
+        Some(AuthoringStage::Transform) => vec![Stage::Transform],
+        Some(AuthoringStage::PostRender) => vec![Stage::PostRender],
+        None => Stage::all().to_vec(),
+    };
+
+    let mut all_reports: Vec<CapabilityReport> = Vec::new();
+    for stage in &stages {
+        let pipeline = compose_stage(&vault_root, theme_hooks.path(), *stage)
+            .with_context(|| format!("failed to compose {stage} hooks"))?;
+
+        // Probe mode: no build is active, so pass None for `mode`.
+        let reports = probe_stage_pipeline(&pipeline.hooks, None, DEFAULT_PROBE_TIMEOUT);
+        all_reports.extend(reports);
+    }
+
+    let any_failed = all_reports.iter().any(|r| {
+        !matches!(
+            r.outcome,
+            CapabilityOutcome::Ok { .. } | CapabilityOutcome::Declined { .. }
+        )
+    });
+
+    let emit_json = cli.json || cli.format == OutputFormat::Json;
+    if emit_json {
+        print_json(&all_reports)?;
+    } else {
+        render_capabilities_table(&all_reports);
+    }
+
+    if any_failed {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn render_capabilities_table(reports: &[zetl::hooks::capability::CapabilityReport]) {
+    use zetl::hooks::capability::{format_diagnostic, CapabilityOutcome};
+
+    if reports.is_empty() {
+        println!("No hooks configured.");
+        return;
+    }
+
+    let mut table = Table::new();
+    table.set_header(vec![
+        "HOOK", "STAGE", "STATUS", "VERSION", "AST", "STAGES", "READY",
+    ]);
+    for r in reports {
+        let (version, ast_ver, stages_str, ready) = match &r.outcome {
+            CapabilityOutcome::Ok { result }
+            | CapabilityOutcome::Declined { result, .. }
+            | CapabilityOutcome::StageMismatch { result, .. }
+            | CapabilityOutcome::AstVersionMismatch { result, .. } => (
+                result.version.clone(),
+                result.zetl_ast.clone(),
+                result.stages.join(","),
+                if result.ready { "yes" } else { "no" }.to_string(),
+            ),
+            CapabilityOutcome::Error { .. } => ("-".into(), "-".into(), "-".into(), "-".into()),
+        };
+        let status = match &r.outcome {
+            CapabilityOutcome::Ok { .. } => "ok",
+            CapabilityOutcome::Declined { .. } => "declined",
+            CapabilityOutcome::StageMismatch { .. } => "stage-mismatch",
+            CapabilityOutcome::AstVersionMismatch { .. } => "ast-mismatch",
+            CapabilityOutcome::Error { .. } => "error",
+        };
+        table.add_row(vec![
+            Cell::new(&r.extension_id),
+            Cell::new(&r.stage),
+            Cell::new(status),
+            Cell::new(version),
+            Cell::new(ast_ver),
+            Cell::new(stages_str),
+            Cell::new(ready),
+        ]);
+    }
+    println!("{table}");
+
+    // Per-hook diagnostic lines for everything except clean `ok`.
+    let problem_reports: Vec<&zetl::hooks::capability::CapabilityReport> = reports
+        .iter()
+        .filter(|r| !matches!(r.outcome, CapabilityOutcome::Ok { .. }))
+        .collect();
+    if !problem_reports.is_empty() {
+        println!();
+        for r in problem_reports {
+            eprintln!("{}", format_diagnostic(r));
+        }
+    }
+}
+
+/// SPEC-033 REQ-3310 / CON-3310 — probe every registered ecosystem's
+/// runtime, count hooks declaring each ecosystem, list reachable plugins,
+/// and render either the canonical table or JSON.
+///
+/// Exits non-zero only when a *configured* ecosystem's runtime isn't
+/// available. The zero-configured state prints the informational footer
+/// and exits 0 regardless of host state.
+fn cmd_ecosystem_check(cli: &Cli, theme: &str, json: bool) -> Result<()> {
+    use zetl::ecosystems::check::{run_ecosystem_check, EcosystemCheckStatus};
+    use zetl::hooks::composition::compose_all_stages;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let theme_hooks = zetl::hooks::resolve_theme_hooks(&vault_root, theme);
+
+    // Collect every composed hook across the three stages so the
+    // configured-count reflects the whole vault, not a single stage.
+    let pipelines = compose_all_stages(&vault_root, theme_hooks.path())
+        .context("failed to compose hook pipelines for ecosystem check")?;
+    let hooks: Vec<zetl::hooks::composition::ComposedHook> = pipelines
+        .into_iter()
+        .flat_map(|p| p.hooks.into_iter().chain(p.disabled))
+        .collect();
+
+    let report = run_ecosystem_check(&vault_root, &hooks);
+
+    let emit_json = json || cli.json || cli.format == OutputFormat::Json;
+    if emit_json {
+        print_json(&report)?;
+    } else {
+        render_ecosystem_check_table(&report);
+    }
+
+    // REQ-3315 config-time check: surface any mixed-parser
+    // configurations so authors catch them before `zetl build`.
+    // Needs the vault's page list, which `ecosystem check` doesn't
+    // otherwise load — do a cheap scan here. Run before the
+    // `configured failures` exit so mixed-parser + missing-runtime
+    // surface together.
+    let scanned = scan_vault(&vault_root, &cli.scan_options()).unwrap_or_default();
+    let mixed = detect_mixed_parser_violations(&vault_root, theme_hooks.path(), &scanned)
+        .unwrap_or_default();
+    if !mixed.is_empty() {
+        // Emit on stderr regardless of `--json` / format mode: the
+        // rendered diagnostic is human-readable by construction and
+        // leaves stdout (JSON or table) intact for tool consumers.
+        eprintln!("{}", zetl::parsers::format_mixed_parser_report(&mixed));
+    }
+
+    if report.has_configured_failures() {
+        // Walk in canonical order and surface the first configured
+        // failure's hint on stderr so CI logs read naturally.
+        for e in &report.entries {
+            if e.configured > 0 && e.status != EcosystemCheckStatus::Detected {
+                if let Some(hint) = &e.hint {
+                    eprintln!("[zetl] ecosystem {}: {hint}", e.id);
+                }
+            }
+        }
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn render_ecosystem_check_table(report: &zetl::ecosystems::check::EcosystemCheckReport) {
+    let mut table = Table::new();
+    table.set_header(vec![
+        "ECOSYSTEM",
+        "STATUS",
+        "VERSION",
+        "PLUGINS CONFIGURED",
+        "PLUGINS AVAILABLE",
+    ]);
+    for e in &report.entries {
+        let version = match e.version.as_deref() {
+            Some(v) => v.to_string(),
+            None => "-".to_string(),
+        };
+        let available = if e.available_plugins.is_empty() {
+            e.available_plugins.len().to_string()
+        } else {
+            format!(
+                "{} ({})",
+                e.available_plugins.len(),
+                e.available_plugins.join(", ")
+            )
+        };
+        table.add_row(vec![
+            Cell::new(&e.id),
+            Cell::new(e.status.as_str()),
+            Cell::new(version),
+            Cell::new(e.configured.to_string()),
+            Cell::new(available),
+        ]);
+    }
+    println!("{table}");
+
+    if report.hooks_configured_total == 0 {
+        println!();
+        println!("No ecosystem hooks configured in this vault.");
+        println!("To enable an ecosystem, add a manifest under .zetl/hooks/:");
+        println!("  https://zetl.codeberg.page/docs/ecosystems/");
+    }
+}
+
+fn cmd_hook_watch(cli: &Cli, name: &str) -> Result<()> {
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    println!("Watching hook '{name}' (Ctrl-C to stop)");
+    zetl::hooks::authoring::watch(
+        &vault_root,
+        name,
+        zetl::hooks::authoring::WatchOptions::default(),
+        |event| match event {
+            zetl::hooks::authoring::WatchEvent::Spawned => {
+                println!("[zetl] hook spawned");
+            }
+            zetl::hooks::authoring::WatchEvent::Restart => {
+                println!("[zetl] change detected, restarting");
+            }
+            zetl::hooks::authoring::WatchEvent::Stderr(s) => {
+                eprint!("{s}");
+            }
+            zetl::hooks::authoring::WatchEvent::Shutdown => {
+                println!("[zetl] watcher stopped");
+            }
+        },
+    )
+}
+
+fn cmd_ast_sample(cli: &Cli, file: &str, stage: &zetl::cli::AstStage) -> Result<()> {
+    use std::path::Path;
+    use zetl::cli::AstStage;
+
+    let path = Path::new(file);
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Cannot read page file: {}", path.display()))?;
+
+    match stage {
+        AstStage::PreParse => {
+            // Raw Markdown — what a pre-parse hook receives. Frontmatter is
+            // retained: pre-parse sees the file verbatim before any zetl
+            // processing.
+            print!("{content}");
+        }
+        AstStage::Transform => {
+            // Parsed zetl-ext Document — what a transform hook receives.
+            let doc = zetl::hooks::ast::parse_markdown(&content);
+            let json = serde_json::to_value(&doc).context("Failed to serialise AST document")?;
+            // Canonical JSON output: pretty-printed for CLI readability,
+            // compact when the user forced `--json`.
+            if matches!(cli.format, OutputFormat::Json) {
+                print!("{}", serde_json::to_string(&json)?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&json)?);
+            }
+        }
+        AstStage::PostRender => {
+            // Rendered HTML fragment — what a post-render hook receives.
+            // Empty slug_map: wikilinks render with link-error class, which
+            // is the correct shape for a stage-input view (no vault context
+            // is available for link resolution here).
+            use std::collections::HashMap;
+            let html =
+                zetl::web::markdown::render_to_html(&content, &HashMap::new(), "", "index.html");
+            print!("{html}");
+        }
+    }
+    Ok(())
+}
+
+fn cmd_ast_diff(cli: &Cli, before_path: &str, after_path: &str) -> Result<()> {
+    use zetl::hooks::ast::{diff_documents, AstDiffKind};
+
+    let before_bytes = std::fs::read(before_path)
+        .with_context(|| format!("Cannot read before file: {before_path}"))?;
+    let after_bytes = std::fs::read(after_path)
+        .with_context(|| format!("Cannot read after file: {after_path}"))?;
+    let before: serde_json::Value = serde_json::from_slice(&before_bytes)
+        .with_context(|| format!("Before file is not valid JSON: {before_path}"))?;
+    let after: serde_json::Value = serde_json::from_slice(&after_bytes)
+        .with_context(|| format!("After file is not valid JSON: {after_path}"))?;
+
+    let diff = diff_documents(&before, &after);
+
+    if matches!(cli.format, OutputFormat::Json) {
+        #[derive(Serialize)]
+        struct AttrOut {
+            field: String,
+            before: serde_json::Value,
+            after: serde_json::Value,
+        }
+        #[derive(Serialize)]
+        struct EntryOut {
+            kind: String,
+            path: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            node_type: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            start_line: Option<u32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            start_col: Option<u32>,
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            attr_changes: Vec<AttrOut>,
+        }
+        let out: Vec<EntryOut> = diff
+            .entries
+            .iter()
+            .map(|e| EntryOut {
+                kind: e.kind.as_str().to_string(),
+                path: e.path.clone(),
+                node_type: e.node_type.clone(),
+                start_line: e.start_line,
+                start_col: e.start_col,
+                attr_changes: e
+                    .attr_changes
+                    .iter()
+                    .map(|c| AttrOut {
+                        field: c.field.clone(),
+                        before: c.before.clone(),
+                        after: c.after.clone(),
+                    })
+                    .collect(),
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&out)?);
+    } else if diff.is_empty() {
+        println!("No AST differences.");
+    } else {
+        for entry in &diff.entries {
+            let pos = match (entry.start_line, entry.start_col) {
+                (Some(l), Some(c)) => format!(" ({l}:{c})"),
+                _ => String::new(),
+            };
+            let ty = entry.node_type.as_deref().unwrap_or("?");
+            let sign = match entry.kind {
+                AstDiffKind::Added => "+",
+                AstDiffKind::Removed => "-",
+                AstDiffKind::Modified => "~",
+            };
+            println!("{sign} {ty}{pos} at {}", entry.path);
+            for change in &entry.attr_changes {
+                let bv = summarise_value(&change.before);
+                let av = summarise_value(&change.after);
+                println!("    {}: {bv} → {av}", change.field);
+            }
+        }
+    }
+
+    if !diff.is_empty() {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn summarise_value(v: &serde_json::Value) -> String {
+    let s = serde_json::to_string(v).unwrap_or_else(|_| "<err>".into());
+    // Keep one-liners short; deep subtrees are noise in a diff summary.
+    if s.len() > 80 {
+        format!("{}…", &s[..80])
+    } else {
+        s
+    }
+}
+
 fn cmd_agent_run(
     cli: &Cli,
     name: &str,
@@ -4994,6 +5980,7 @@ fn cmd_serve(
     hostname: Option<&str>,
     server_key_seed: Option<&str>,
     git_poll_interval: std::time::Duration,
+    safe_mode: bool,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -5105,7 +6092,37 @@ fn cmd_serve(
         eprintln!("warning: {w}");
     }
 
-    if !zetl::hooks::hooks_for(&manifest, "pre-serve").is_empty() {
+    // ── REQ-3223 theme hook declaration audit (serve) ─────────────────
+    let theme_manifest = load_theme_manifest_for_audit(&pipeline.vault_root, theme);
+    let audit = zetl::hooks::safe_mode::audit_theme_declarations(
+        theme,
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        theme_manifest.as_ref(),
+    );
+    if audit.has_undeclared() && !safe_mode {
+        eprintln!(
+            "{}",
+            zetl::hooks::safe_mode::format_undeclared_warning(&audit)
+        );
+    }
+    if safe_mode {
+        let policy = zetl::hooks::safe_mode::SafeMode::from_manifest(theme_manifest.as_ref());
+        match zetl::hooks::composition::compose_all_stages(&pipeline.vault_root, theme_hooks.path())
+        {
+            Ok(pipes) => {
+                let (_kept, skipped) = zetl::hooks::safe_mode::apply_all(pipes, &policy);
+                for s in &skipped {
+                    eprintln!("{}", zetl::hooks::safe_mode::format_skip_line(s));
+                }
+            }
+            Err(e) => {
+                eprintln!("warning: safe-mode hook composition failed: {e}");
+            }
+        }
+    }
+
+    if !safe_mode && !zetl::hooks::hooks_for(&manifest, "pre-serve").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(
             "pre-serve",
             &pipeline.vault_root,
@@ -5278,12 +6295,173 @@ fn cmd_serve(
     Ok(())
 }
 
+/// Best-effort load of `theme.toml` for the active theme so REQ-3223
+/// safe-mode and the declared-vs-discovered audit have something to
+/// read. Looks at the on-disk theme first, then the compile-time
+/// bundle. Returns `None` (silently) for any failure mode — the audit
+/// already handles the "no manifest" case as "everything is undeclared".
+fn load_theme_manifest_for_audit(
+    vault_root: &std::path::Path,
+    theme: &str,
+) -> Option<zetl::web::theme::ThemeManifest> {
+    let disk = vault_root.join(".zetl/themes").join(theme);
+    if disk.is_dir() {
+        if let Ok(Some(m)) = zetl::web::theme::load_theme_manifest(&disk) {
+            return Some(m);
+        }
+    }
+    zetl::web::theme::load_bundled_manifest(theme)
+        .ok()
+        .flatten()
+}
+
+/// SPEC-033 REQ-3315 — walk every composed hook against every vault
+/// page and return the set of (page, hook) pairs whose resolved
+/// parser doesn't match the ecosystem the hook belongs to.
+///
+/// Pure plumbing — all the detection logic lives in
+/// [`zetl::parsers::detect_mixed_parsers`]; this function's only job
+/// is gathering the inputs (pages, parsers, compiled selectors) from
+/// on-disk state.
+fn detect_mixed_parser_violations(
+    vault_root: &std::path::Path,
+    theme_hooks_dir: Option<&std::path::Path>,
+    files: &[zetl::types::ParsedFile],
+) -> Result<zetl::parsers::MixedParserReport> {
+    use zetl::hooks::composition::compose_all_stages;
+    use zetl::hooks::manifest::{load_manifest, LoadedManifest, SelectorSpec};
+    use zetl::hooks::selector::{compile, CompiledSelector};
+    use zetl::parsers::{
+        detect_mixed_parsers, ecosystem_expected_parser, HookForDetection, PageForDetection,
+        ParseConfig,
+    };
+
+    // Compose every stage once; only hooks that declare an ecosystem
+    // whose id is a known v1 ecosystem can participate in a
+    // mixed-parser violation.
+    let pipelines = match compose_all_stages(vault_root, theme_hooks_dir) {
+        Ok(p) => p,
+        Err(e) => {
+            // Composition errors are already surfaced elsewhere in the
+            // build path; degrade to "no violations" so the mixed-parser
+            // check doesn't double-report.
+            eprintln!("warning: hook composition failed during mixed-parser check: {e}");
+            return Ok(Default::default());
+        }
+    };
+
+    let parse_config = ParseConfig::load_from_vault(vault_root)
+        .and_then(ParseConfig::compile)
+        .map_err(|e| anyhow::anyhow!("failed to load [parse] config: {e}"))?;
+
+    // Collect (hook, compiled_selector) pairs up front so the detector
+    // borrows them by reference. Selectors are compiled once per hook
+    // (REQ-3204).
+    struct HookEntry {
+        stage: zetl::hooks::pipeline::Stage,
+        hook_id: String,
+        ecosystem: String,
+        selector: CompiledSelector,
+    }
+    let mut hook_entries: Vec<HookEntry> = Vec::new();
+    for pipe in &pipelines {
+        for h in &pipe.hooks {
+            let Some(eco) = h.ecosystem.as_deref() else {
+                continue;
+            };
+            if ecosystem_expected_parser(eco).is_none() {
+                continue;
+            }
+            let selector_spec: SelectorSpec = match &h.manifest_path {
+                Some(p) => match load_manifest(p) {
+                    Ok(LoadedManifest::Present(m)) => m.select,
+                    Ok(LoadedManifest::Missing) | Err(_) => SelectorSpec::default(),
+                },
+                None => SelectorSpec::default(),
+            };
+            let selector = match compile(&selector_spec) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!(
+                        "warning: skipping mixed-parser check for hook '{}': {e}",
+                        h.extension_id
+                    );
+                    continue;
+                }
+            };
+            hook_entries.push(HookEntry {
+                stage: h.stage,
+                hook_id: h.extension_id.clone(),
+                ecosystem: eco.to_string(),
+                selector,
+            });
+        }
+    }
+
+    if hook_entries.is_empty() {
+        return Ok(Default::default());
+    }
+
+    // Per-page inputs: read file body, parse frontmatter, resolve
+    // parser. Skip unreadable files (they'll error out elsewhere).
+    struct PageEntry {
+        path: std::path::PathBuf,
+        parser: String,
+        frontmatter: serde_json::Value,
+        body: String,
+    }
+    let mut page_entries: Vec<PageEntry> = Vec::new();
+    for f in files {
+        let abs = vault_root.join(&f.path);
+        let Ok(content) = std::fs::read_to_string(&abs) else {
+            continue;
+        };
+        let fm_value = zetl::web::markdown::parse_frontmatter(&content);
+        let body = strip_leading_frontmatter(&content).to_string();
+        let parser = match &fm_value {
+            serde_json::Value::Object(m) => {
+                zetl::parsers::select_parser_name(Some(m), &f.path, &parse_config)
+            }
+            _ => zetl::parsers::select_parser_name(None, &f.path, &parse_config),
+        };
+        page_entries.push(PageEntry {
+            path: f.path.clone(),
+            parser,
+            frontmatter: fm_value,
+            body,
+        });
+    }
+
+    let pages: Vec<PageForDetection<'_>> = page_entries
+        .iter()
+        .map(|p| PageForDetection {
+            path: &p.path,
+            parser: p.parser.clone(),
+            frontmatter: &p.frontmatter,
+            body: &p.body,
+        })
+        .collect();
+    let hooks: Vec<HookForDetection<'_>> = hook_entries
+        .iter()
+        .map(|h| HookForDetection {
+            stage: h.stage,
+            hook_id: &h.hook_id,
+            ecosystem: &h.ecosystem,
+            selector: &h.selector,
+        })
+        .collect();
+
+    Ok(detect_mixed_parsers(&pages, &hooks))
+}
+
 fn cmd_build(
     cli: &Cli,
     out_dir: &str,
     theme: &str,
     public: Option<&str>,
     site_url: Option<&str>,
+    safe_mode: bool,
+    strict_parsers: bool,
 ) -> Result<()> {
     let pipeline = run_pipeline(cli)?;
 
@@ -5318,8 +6496,66 @@ fn cmd_build(
         eprintln!("warning: {w}");
     }
 
+    // ── REQ-3223 theme hook declaration audit ──────────────────────────
+    // Surfaces the SPEC-mandated "ships <N> undeclared hook(s)" warning
+    // and computes the safe-mode allow-list. Both surfaces depend on
+    // whether the theme ships SPEC-032 stage hooks (composition uses
+    // the `pre-parse.d/`, `transform.d/`, `post-render.d/` layout); for
+    // legacy SPEC-016 lifecycle hooks the audit is a no-op so existing
+    // themes don't trip the warning until they migrate.
+    let theme_manifest = load_theme_manifest_for_audit(&pipeline.vault_root, theme);
+    let audit = zetl::hooks::safe_mode::audit_theme_declarations(
+        theme,
+        &pipeline.vault_root,
+        theme_hooks.path(),
+        theme_manifest.as_ref(),
+    );
+    if audit.has_undeclared() && !safe_mode {
+        eprintln!(
+            "{}",
+            zetl::hooks::safe_mode::format_undeclared_warning(&audit)
+        );
+    }
+    if safe_mode {
+        let policy = zetl::hooks::safe_mode::SafeMode::from_manifest(theme_manifest.as_ref());
+        match zetl::hooks::composition::compose_all_stages(&pipeline.vault_root, theme_hooks.path())
+        {
+            Ok(pipes) => {
+                let (_kept, skipped) = zetl::hooks::safe_mode::apply_all(pipes, &policy);
+                for s in &skipped {
+                    eprintln!("{}", zetl::hooks::safe_mode::format_skip_line(s));
+                }
+            }
+            Err(e) => {
+                eprintln!("warning: safe-mode hook composition failed: {e}");
+            }
+        }
+    }
+
+    // ── REQ-3315 mixed-parser diagnostic ───────────────────────────────
+    // Pair every vault page with every composed hook that carries an
+    // ecosystem id; if the hook's selector matches a page whose
+    // resolved parser differs from what the ecosystem expects, surface
+    // a five-part diagnostic. Under `--strict-parsers` the warning is
+    // fatal (CI gate for mixed-parser vaults).
+    let mixed_report =
+        detect_mixed_parser_violations(&pipeline.vault_root, theme_hooks.path(), &data.files)?;
+    if !mixed_report.is_empty() {
+        eprintln!(
+            "{}",
+            zetl::parsers::format_mixed_parser_report(&mixed_report)
+        );
+        if strict_parsers {
+            anyhow::bail!(
+                "mixed-parser configuration detected on {} page(s); \
+                 `--strict-parsers` is set — refusing to build",
+                mixed_report.violations.len()
+            );
+        }
+    }
+
     // ── pre-build hooks (abort on failure) ─────────────────────────────
-    if !zetl::hooks::hooks_for(&manifest, "pre-build").is_empty() {
+    if !safe_mode && !zetl::hooks::hooks_for(&manifest, "pre-build").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(
             "pre-build",
             &pipeline.vault_root,
@@ -5399,7 +6635,7 @@ fn cmd_build(
         println!("{}", serde_json::to_string_pretty(&out)?);
     }
 
-    if !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
+    if !safe_mode && !zetl::hooks::hooks_for(&manifest, "post-build").is_empty() {
         let mut ctx = zetl::hooks::context::build_hook_context(
             "post-build",
             &pipeline.vault_root,
@@ -9957,7 +11193,36 @@ fn main() -> anyhow::Result<()> {
         Command::Hook { command } => match command {
             HookCommand::List { theme } => cmd_hook_list(&cli, theme),
             HookCommand::Run { name, theme, extra } => cmd_hook_run(&cli, name, theme, extra),
+            HookCommand::New {
+                stage,
+                name,
+                lang,
+                ecosystem,
+                force,
+            } => cmd_hook_new(&cli, stage, name, lang, ecosystem.as_ref(), *force),
+            HookCommand::Test { name, update } => cmd_hook_test(&cli, name, *update),
+            HookCommand::Fixture { from, hook } => cmd_hook_fixture(&cli, from, hook),
+            HookCommand::Watch { name } => cmd_hook_watch(&cli, name),
+            HookCommand::DryRun { spec, theme, limit } => {
+                cmd_hook_dry_run(&cli, spec, theme, *limit)
+            }
+            HookCommand::Coverage { theme, stage } => {
+                cmd_hook_coverage(&cli, theme, stage.as_ref())
+            }
+            HookCommand::Capabilities { theme, stage } => {
+                cmd_hook_capabilities(&cli, theme, stage.as_ref())
+            }
         },
+        Command::Ecosystem { command } => match command {
+            EcosystemCommand::Check { theme, json } => cmd_ecosystem_check(&cli, theme, *json),
+        },
+        Command::Ast { command } => {
+            use zetl::cli::AstCommand;
+            match command {
+                AstCommand::Sample { file, stage } => cmd_ast_sample(&cli, file, stage),
+                AstCommand::Diff { before, after } => cmd_ast_diff(&cli, before, after),
+            }
+        }
         Command::Agent { command } => match command {
             AgentCommand::Run {
                 name,
@@ -9977,6 +11242,7 @@ fn main() -> anyhow::Result<()> {
             hostname,
             server_key_seed,
             git_poll_interval,
+            safe_mode,
             scan: _,
         } => cmd_serve(
             &cli,
@@ -9989,6 +11255,7 @@ fn main() -> anyhow::Result<()> {
             hostname.as_deref(),
             server_key_seed.as_deref(),
             *git_poll_interval,
+            *safe_mode,
         ),
         Command::Invite {
             as_user,
@@ -10013,8 +11280,18 @@ fn main() -> anyhow::Result<()> {
             theme,
             public,
             site_url,
+            safe_mode,
+            strict_parsers,
             scan: _,
-        } => cmd_build(&cli, out_dir, theme, public.as_deref(), site_url.as_deref()),
+        } => cmd_build(
+            &cli,
+            out_dir,
+            theme,
+            public.as_deref(),
+            site_url.as_deref(),
+            *safe_mode,
+            *strict_parsers,
+        ),
         #[cfg(feature = "reason")]
         Command::Reason { command } => {
             use zetl::cli::ReasonCommand;

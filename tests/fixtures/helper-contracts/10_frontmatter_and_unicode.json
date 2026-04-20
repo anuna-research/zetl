@@ -1,0 +1,22 @@
+{
+  "ast_version": "1.0",
+  "type": "Document",
+  "position": { "start_line": 1, "start_col": 1, "end_line": 8, "end_col": 12 },
+  "frontmatter": {
+    "title": "Café ☕",
+    "tags": ["日本語", "emoji-🎉"],
+    "numbers": [1, 2.5, -3],
+    "flags": { "draft": false, "pinned": true },
+    "empty_list": [],
+    "nil": null
+  },
+  "children": [
+    {
+      "type": "Paragraph",
+      "position": { "start_line": 8, "start_col": 1, "end_line": 8, "end_col": 12 },
+      "children": [
+        { "type": "Text", "position": { "start_line": 8, "start_col": 1, "end_line": 8, "end_col": 12 }, "text": "Héllo 🌍 world" }
+      ]
+    }
+  ]
+}

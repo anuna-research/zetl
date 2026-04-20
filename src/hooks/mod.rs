@@ -9,7 +9,27 @@
 //! - **Context** (CON-016-001): Serialise vault data to the JSON schema
 //!   written to hook stdin.
 
+pub mod ast;
+pub mod authoring;
+pub mod build_context;
+pub mod build_data;
+pub mod capability;
+pub mod composition;
 pub mod context;
+pub mod contract;
+pub mod diagnostic;
+pub mod failure_scoping;
+pub mod frontmatter_opt_out;
+pub mod manifest;
+pub mod nfr_gates;
+pub mod observability;
+pub mod persistent;
+pub mod pipeline;
+pub mod predicate;
+pub mod safe_mode;
+pub mod selector;
+pub mod template_vars;
+pub mod translators;
 
 use std::io::{Read, Write};
 #[cfg(unix)]

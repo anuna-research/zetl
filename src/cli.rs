@@ -313,6 +313,11 @@ pub enum Command {
         /// Set to "0" to disable. Requires --collab.
         #[arg(long, default_value = "30s", requires = "collab", value_parser = parse_duration)]
         git_poll_interval: std::time::Duration,
+        /// Skip every hook except theme hooks declared in `theme.toml`'s
+        /// `[[theme.hooks]]` array (SPEC-032 REQ-3223). Intended as an
+        /// audit / hostile-theme-inspection surface.
+        #[arg(long)]
+        safe_mode: bool,
         #[command(flatten)]
         scan: ScanArgs,
     },
@@ -383,6 +388,17 @@ pub enum Command {
         /// the domain root.
         #[arg(long)]
         site_url: Option<String>,
+        /// Skip every hook except theme hooks declared in `theme.toml`'s
+        /// `[[theme.hooks]]` array (SPEC-032 REQ-3223). Vault hooks and
+        /// undeclared theme hooks are skipped with a stderr line per skip.
+        #[arg(long)]
+        safe_mode: bool,
+        /// Make mixed-parser configurations fatal (SPEC-033 REQ-3315).
+        /// By default, pages whose resolved parser doesn't match a
+        /// matched ecosystem hook's expected parser produce a warning;
+        /// under `--strict-parsers` the warning is promoted to an error.
+        #[arg(long)]
+        strict_parsers: bool,
         #[command(flatten)]
         scan: ScanArgs,
     },
@@ -409,6 +425,24 @@ pub enum Command {
     Hook {
         #[command(subcommand)]
         command: HookCommand,
+    },
+
+    /// Plugin-ecosystem introspection (Pandoc filters, mdBook preprocessors, remark plugins)
+    #[command(
+        after_help = "Examples:\n  zetl ecosystem check               Report runtimes + configured hooks\n  zetl ecosystem check --json        Machine-readable report for CI pre-flight"
+    )]
+    Ecosystem {
+        #[command(subcommand)]
+        command: EcosystemCommand,
+    },
+
+    /// Inspect the zetl-ext AST for a page or diff two AST documents
+    #[command(
+        after_help = "Examples:\n  zetl ast sample notes/page.md                  Print canonical AST JSON\n  zetl ast sample notes/page.md --stage pre-parse  Print raw markdown input\n  zetl ast diff before.json after.json           Tree diff of two AST files"
+    )]
+    Ast {
+        #[command(subcommand)]
+        command: AstCommand,
     },
 
     /// Agent lifecycle integration
@@ -586,6 +620,247 @@ pub enum HookCommand {
         /// Extra JSON fields merged into the context (after --)
         #[arg(last = true)]
         extra: Vec<String>,
+    },
+    /// Scaffold a new render-pipeline hook (skeleton + manifest + fixture).
+    ///
+    /// Writes the persistent-mode skeleton at
+    /// `.zetl/hooks/<stage>.d/<name>.<ext>` and the sidecar manifest at
+    /// `.zetl/hooks/<stage>.d/<name>.<ext>.toml` (the canonical form
+    /// composition reads — do not rename to `<name>.toml`).
+    /// SPEC-032 REQ-3225.
+    #[command(
+        after_help = "Examples:\n  zetl hook new transform callouts\n  zetl hook new pre-parse prelude --lang sh\n  zetl hook new post-render banner --lang js\n  zetl hook new transform smallcaps --ecosystem pandoc"
+    )]
+    New {
+        /// Hook pipeline stage (pre-parse, transform, or post-render).
+        stage: AuthoringStage,
+        /// Extension id (also used as filename stem and template-var namespace).
+        name: String,
+        /// Implementation language for the scaffolded skeleton.
+        #[arg(long, value_enum, default_value_t = HookLang::Py)]
+        lang: HookLang,
+        /// Scaffold against an ecosystem plugin adapter. Seeds the SPEC-033
+        /// REQ-3312 manifest fields the chosen ecosystem requires (so
+        /// `dry-run`/`build` work without further hand-edits) and, for
+        /// `pandoc`, drops a starter identity Lua filter on disk at the
+        /// `lua_filter` path.
+        #[arg(long, value_enum)]
+        ecosystem: Option<HookEcosystem>,
+        /// Overwrite existing scaffold files.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Run a render-pipeline hook against its test fixture and diff the
+    /// output against the stored golden. Non-zero exit on mismatch.
+    /// SPEC-032 REQ-3225 / TEST-3225.
+    Test {
+        /// Hook extension id to test. Looks for the hook under
+        /// `.zetl/hooks/<stage>.d/<name>.*` and its fixture at
+        /// `tests/hook-fixtures/<name>/`.
+        name: String,
+        /// Regenerate the golden from the hook's current output instead
+        /// of diffing (equivalent to `cargo insta accept`).
+        #[arg(long)]
+        update: bool,
+    },
+    /// Capture a vault page's pre- and post-hook forms into the hook's
+    /// fixture directory. SPEC-032 REQ-3225.
+    Fixture {
+        /// Vault-relative page path (e.g. `projects/q2.md`; the `.md`
+        /// suffix is optional).
+        #[arg(long, value_name = "PAGE")]
+        from: String,
+        /// Hook extension id whose fixture is populated.
+        #[arg(long, value_name = "NAME")]
+        hook: String,
+    },
+    /// Watch a hook's source file and stream its stderr; restarts the
+    /// persistent-mode subprocess when the source changes.
+    /// SPEC-032 REQ-3225.
+    Watch {
+        /// Hook extension id to watch.
+        name: String,
+    },
+    /// Report per-hook coverage (matched pages, invocations, failures,
+    /// latency) for the most-recent build, or a fresh dry-run against the
+    /// current vault if no build coverage has been persisted.
+    /// SPEC-032 REQ-3208 / CON-3208.
+    #[command(
+        after_help = "Examples:\n  zetl hook coverage\n  zetl hook coverage --json\n  zetl hook coverage --stage transform"
+    )]
+    Coverage {
+        /// Theme name (looks in .zetl/themes/<name>/hooks/).
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Restrict the report to a single stage.
+        #[arg(long, value_enum)]
+        stage: Option<AuthoringStage>,
+    },
+    /// Evaluate a hook's selector against the vault and print the matched
+    /// pages. The hook is NOT invoked. Exits 0 if any pages match; 1 if
+    /// zero match. SPEC-032 REQ-3209.
+    #[command(
+        name = "dry-run",
+        after_help = "Examples:\n  zetl hook dry-run transform/callouts\n  zetl hook dry-run pre-parse/prelude --limit 100\n  zetl -d demo-vault hook dry-run transform/callouts"
+    )]
+    DryRun {
+        /// Hook selector in the form `<stage>/<name>`. `<stage>` is one of
+        /// `pre-parse`, `transform`, or `post-render`; `<name>` matches the
+        /// hook's extension_id (filename stem minus any leading `\d+-`
+        /// ordering prefix).
+        spec: String,
+        /// Theme name (looks in .zetl/themes/<name>/hooks/).
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Maximum number of matched pages to print.
+        #[arg(long, default_value = "50")]
+        limit: usize,
+    },
+    /// Probe every composed hook and report supported stages, AST types,
+    /// and schema version. SPEC-032 REQ-3216.
+    ///
+    /// Each hook is spawned, asked for its capability probe, and shut
+    /// down cleanly. Non-zero exit when any hook's probe fails.
+    #[command(
+        after_help = "Examples:\n  zetl hook capabilities\n  zetl hook capabilities --json\n  zetl hook capabilities --stage transform"
+    )]
+    Capabilities {
+        /// Theme name (looks in .zetl/themes/<name>/hooks/).
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Restrict the report to a single stage.
+        #[arg(long, value_enum)]
+        stage: Option<AuthoringStage>,
+    },
+}
+
+/// Subcommands for `zetl ecosystem`.
+#[derive(Subcommand)]
+pub enum EcosystemCommand {
+    /// Probe every registered ecosystem's runtime and report per-ecosystem
+    /// detection + version + configured-hook count + reachable plugins.
+    ///
+    /// Exit 0 when every *configured* ecosystem is available; non-zero only
+    /// when the vault's hooks reference an ecosystem whose runtime is
+    /// missing or below the minimum version. The zero-configured state
+    /// always exits 0.
+    Check {
+        /// Theme name (looks in `.zetl/themes/<name>/hooks/`).
+        #[arg(long, default_value = "default")]
+        theme: String,
+        /// Emit machine-readable JSON instead of the table. Equivalent to
+        /// the global `--json` flag; kept here so the per-command help is
+        /// self-documenting.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+/// Stage for `zetl hook new`. Matches the three on-disk `<stage>.d/`
+/// directory names from SPEC-032 REQ-3201.
+#[derive(Clone, ValueEnum, PartialEq, Eq, Debug)]
+pub enum AuthoringStage {
+    #[value(name = "pre-parse")]
+    PreParse,
+    Transform,
+    #[value(name = "post-render")]
+    PostRender,
+}
+
+impl AuthoringStage {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AuthoringStage::PreParse => "pre-parse",
+            AuthoringStage::Transform => "transform",
+            AuthoringStage::PostRender => "post-render",
+        }
+    }
+}
+
+/// Language selection for `zetl hook new`. The scaffolder writes a
+/// persistent-mode skeleton in the chosen language with a shebang so
+/// `chmod +x` suffices to make it runnable.
+#[derive(Clone, ValueEnum, PartialEq, Eq, Debug)]
+pub enum HookLang {
+    Py,
+    Js,
+    Sh,
+}
+
+impl HookLang {
+    pub fn ext(&self) -> &'static str {
+        match self {
+            HookLang::Py => "py",
+            HookLang::Js => "js",
+            HookLang::Sh => "sh",
+        }
+    }
+}
+
+/// Ecosystem adapter to target when scaffolding. The scaffolded manifest
+/// carries the SPEC-033 REQ-3312 fields the chosen ecosystem requires:
+///
+/// - `pandoc` — `ecosystem = "pandoc"` + `lua_filter = "filters/<name>.lua"`,
+///   plus a starter identity Lua filter on disk at that path.
+/// - `mdbook` — `ecosystem = "mdbook"` + `exec = "mdbook-<name>"` +
+///   `scope = "page"`. Place the preprocessor binary on PATH (or rename
+///   `exec`) before `zetl build`.
+/// - `remark` — `ecosystem = "remark"` + `package = "remark-<name>"`.
+///   Install the npm package under the vault's `node_modules/`.
+///
+/// SPEC-033 REQ-3303/3304/3305.
+#[derive(Clone, ValueEnum, PartialEq, Eq, Debug)]
+pub enum HookEcosystem {
+    Pandoc,
+    Mdbook,
+    Remark,
+}
+
+impl HookEcosystem {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HookEcosystem::Pandoc => "pandoc",
+            HookEcosystem::Mdbook => "mdbook",
+            HookEcosystem::Remark => "remark",
+        }
+    }
+}
+
+/// Pipeline stage at whose *input* boundary `zetl ast sample` emits a view
+/// of the page. `pre-parse` prints the raw markdown text (frontmatter
+/// stripped); `transform` prints the zetl-ext AST JSON; `post-render` prints
+/// the rendered HTML fragment.
+#[derive(Clone, ValueEnum, PartialEq, Eq, Debug, Default)]
+pub enum AstStage {
+    #[value(name = "pre-parse")]
+    PreParse,
+    #[default]
+    Transform,
+    #[value(name = "post-render")]
+    PostRender,
+}
+
+#[derive(Subcommand)]
+pub enum AstCommand {
+    /// Print the canonical zetl-ext AST (or pre-parse text / post-render
+    /// HTML) for a page file.
+    Sample {
+        /// Path to a Markdown file. Relative paths resolve against the
+        /// current working directory (not the vault root) so the command is
+        /// usable outside an indexed vault.
+        file: String,
+        /// Which pipeline stage's input to emit. Defaults to `transform`,
+        /// which prints the AST JSON a transform hook would receive.
+        #[arg(long, value_enum, default_value_t = AstStage::default())]
+        stage: AstStage,
+    },
+    /// Tree-aware structural diff of two zetl-ext AST JSON documents.
+    /// Exits non-zero when the diff is non-empty.
+    Diff {
+        /// Path to the *before* AST JSON file.
+        before: String,
+        /// Path to the *after* AST JSON file.
+        after: String,
     },
 }
 

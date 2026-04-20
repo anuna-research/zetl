@@ -4,6 +4,8 @@ pub mod cache;
 pub mod cli;
 pub mod crdt;
 pub mod drift;
+pub mod ecosystems;
+pub mod extensions;
 pub mod graph;
 #[cfg(feature = "history")]
 pub mod history;
@@ -11,6 +13,7 @@ pub mod hooks;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod merkle;
+pub mod parsers;
 #[cfg(feature = "reason")]
 pub mod reason;
 pub mod scanner;

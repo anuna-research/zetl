@@ -1,0 +1,8 @@
+# Workspace-local cargo aliases.
+#
+# `cargo xtask <cmd>` routes to the `xtask` workspace member under
+# `tools/xtask/`. Per the xtask pattern, this lets repo-local dev tasks
+# live as normal Rust binaries without polluting top-level commands or
+# requiring a separate install step.
+[alias]
+xtask = "run --package xtask --"

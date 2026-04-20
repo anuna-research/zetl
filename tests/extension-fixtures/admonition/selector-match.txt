@@ -1,0 +1,7 @@
+# Pages a realistic `admonition` selector should match.
+# The selector tests `content contains "```ad-"` OR `content contains "!!! "`.
+# (Enforcement lives with the extension's manifest selector; the harness in
+# ext_golden_html_integration.rs only gates golden HTML for now.)
+notes/ad-note-block.md
+notes/ad-danger-block.md
+guides/mkdocs-style.md
