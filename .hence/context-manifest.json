@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-content-signing",
+  "task_id": "cap-tier1-review-crypto",
   "token_budget": 8000,
-  "tokens_used": 462,
+  "tokens_used": 449,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Ed25519 content signing layer per REQ-3427 + CON-3411 + ADR-3412 (BUG-004 resolution). `src/cap/sign.rs` composes: envelope header (plaintext, unsigned) + Ed25519 signature over the age ciphertext bytes + age ciphertext itself. Uses `ed25519-dalek` v2 (constant-time). Signing key loaded from `ZETL_CAP_SIGNING_KEY` env var; never touches disk. Public key exported via accessor for embedding into shim bundle at build time. Envelope builder is pure (given inputs); signing is the effectful shell.",
-      "token_cost": 124,
+      "content": "Tier 1 cross-model adversarial review of crypto integration: `age` usage, Ed25519 signing layer, X25519 padding key-discard, HKDF `info` parameter separation, WebAuthn PRF salt construction. Reviewer should examine source for: key material handling (zeroization, no-log policies), padding pubkey generation that verifiably discards privkeys, signature byte-range correctness, challenge randomness. Required before any crypto code merges to main.",
+      "token_cost": 111,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T13:00:57Z"
+  "constructed_at": "2026-04-20T13:14:07Z"
 }
