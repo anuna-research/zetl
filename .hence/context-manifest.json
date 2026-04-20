@@ -1,12 +1,12 @@
 {
-  "task_id": "plugin-version-drift",
+  "task_id": "spec-031-supersede",
   "token_budget": 8000,
-  "tokens_used": 321,
+  "tokens_used": 314,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Plugin-version drift detection per REQ-3314. Matrix records tested version; build warns when installed version differs from tested by a minor+ version.",
-      "token_cost": 37,
+      "content": "Mark SPEC-031 as superseded by SPEC-032 + SPEC-033. Update status header + supersede links. Retain top-50 scan findings.",
+      "token_cost": 30,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T00:03:48Z"
+  "constructed_at": "2026-04-20T00:15:31Z"
 }
