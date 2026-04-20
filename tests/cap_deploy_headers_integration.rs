@@ -73,6 +73,8 @@ fn minimal_recipients(pk: [u8; 32]) -> RecipientsFile {
             pubkeys: vec![age_recipient_v1(&pk)],
             pages: None,
             salt_stable: Some(salt),
+            salt_rotated: None,
+            last_rotated: None,
         }],
     }
 }

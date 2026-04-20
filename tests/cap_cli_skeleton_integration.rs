@@ -35,13 +35,11 @@ const CAP_VERBS: &[&str] = &[
 
 const STUB_VERBS: &[(&str, &[&str])] = &[
     ("list", &[]),
-    ("revoke", &["grant-id-xyz"]),
-    ("rotate", &["--cohort", "eng"]),
-    ("finalise", &["grant-id-xyz"]),
     ("share", &["grant-id-xyz"]),
-    ("check", &[]),
-    ("sweep", &[]),
-    ("rotate-signing-key", &[]),
+    // `revoke`, `rotate`, `finalise`, `sweep`, `check`, and
+    // `rotate-signing-key` are NOT stubbed (SPEC-034 REQ-3416 /
+    // REQ-3426 / REQ-3427 are landed; see
+    // tests/cap_revocation_commands_integration.rs).
     // `emergency-shutdown` is NOT stubbed (SPEC-034 REQ-3431 is landed;
     // see tests/cap_emergency_shutdown_integration.rs).
     // `genkey` is NOT stubbed (SPEC-034 REQ-3419 is landed; see
@@ -125,7 +123,7 @@ fn cap_stub_verbs_emit_json_under_json_flag() {
 #[test]
 fn cap_stub_verbs_emit_json_under_format_flag() {
     let assert = cargo_bin_cmd!("zetl")
-        .args(["-f", "json", "cap", "sweep"])
+        .args(["-f", "json", "cap", "share", "grant-id-xyz"])
         .assert()
         .code(2);
     let out = assert.get_output();

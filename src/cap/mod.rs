@@ -21,6 +21,7 @@ pub mod invite;
 pub mod pad;
 pub mod pair;
 pub mod recipients;
+pub mod revocation;
 pub mod sanitiser;
 pub mod scoping;
 pub mod sign;

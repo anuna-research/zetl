@@ -289,6 +289,8 @@ fn grants_references_unknown_cohort_detected() {
             pubkeys: vec![],
             pages: None,
             salt_stable: None,
+            salt_rotated: None,
+            last_rotated: None,
         }],
     };
     recipients.validate().unwrap();

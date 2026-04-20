@@ -80,6 +80,8 @@ fn mk_cohort(id: &str, pk: &[u8; 32], salt_b64: &str) -> Cohort {
         pubkeys: vec![age_recipient_v1(pk)],
         pages: None,
         salt_stable: Some(salt_b64.to_string()),
+        salt_rotated: None,
+        last_rotated: None,
     }
 }
 

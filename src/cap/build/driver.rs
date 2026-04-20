@@ -706,6 +706,8 @@ mod tests {
                 pubkeys: cohort_pubkeys.iter().map(age_recipient_v1).collect(),
                 pages: None,
                 salt_stable: Some(salt_b64.to_string()),
+                salt_rotated: None,
+                last_rotated: None,
             }],
         }
     }
@@ -937,6 +939,8 @@ mod tests {
             pubkeys: vec![age_recipient_v1(&pk)],
             pages: None,
             salt_stable: Some(salt_b64.clone()),
+            salt_rotated: None,
+            last_rotated: None,
         });
         let summary = run_capability_build(
             &build_cfg(tmp.path()),

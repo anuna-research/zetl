@@ -3,32 +3,36 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 9,
-    "insertions": 890,
-    "deletions": 40,
+    "files_changed": 13,
+    "insertions": 1724,
+    "deletions": 18,
     "file_list": [
       ".hence/context-manifest.json",
       "src/cap/build/driver.rs",
-      "src/cap/deploy_headers.rs",
-      "src/cap/html_shell.rs",
       "src/cap/mod.rs",
+      "src/cap/recipients/parsing.rs",
+      "src/cap/revocation.rs",
+      "src/main.rs",
       "tests/cap_build_driver_integration.rs",
+      "tests/cap_cli_skeleton_integration.rs",
       "tests/cap_csp_sri_integration.rs",
       "tests/cap_deploy_headers_integration.rs",
+      "tests/cap_pure_core_integration.rs",
+      "tests/cap_revocation_commands_integration.rs",
       "tests/cap_search_scoping_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-csp-sri-changes",
-      "content": "Modified 9 files (+890, -40): .hence/context-manifest.json, src/cap/build/driver.rs, src/cap/deploy_headers.rs, src/cap/html_shell.rs, src/cap/mod.rs and 4 more",
+      "key": "task-cap-revocation-commands-changes",
+      "content": "Modified 13 files (+1724, -18): .hence/context-manifest.json, src/cap/build/driver.rs, src/cap/mod.rs, src/cap/recipients/parsing.rs, src/cap/revocation.rs and 8 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-csp-sri-v1",
-  "evaluated_at": "2026-04-20T15:49:38Z",
+  "branch_name": "hence/cap-revocation-commands-v1",
+  "evaluated_at": "2026-04-20T16:08:38Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
