@@ -80,6 +80,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 
 use crate::cap::age_encrypt::{self, AgeCiphertext, AgeEncryptError};
+use crate::cap::deploy_headers::{self, HeaderSpec};
 use crate::cap::derivation::{derive_path_cap, DerivationError, PATH_CAP_DEFAULT_BITS};
 use crate::cap::genkey::ParsedSecret;
 use crate::cap::grants::validation::{Grant, GrantsFile};
@@ -488,6 +489,18 @@ pub fn run_capability_build(
             });
         }
     }
+
+    // SPEC-034 REQ-3407 / REQ-3418 / REQ-3428 (CON-3406): emit deploy-
+    // header recipes so the operator can configure nginx / Caddy /
+    // Netlify / Vercel / Cloudflare Pages without reading the spec.
+    // Idempotent overwrite — a later rebuild replaces each file.
+    let header_spec = HeaderSpec::from_cache_config(&config.access.cache);
+    deploy_headers::write_deploy_recipes(&config.out_dir, &header_spec).map_err(|e| {
+        BuildError::Io {
+            path: config.out_dir.join("_zetl").join("deploy"),
+            source: e,
+        }
+    })?;
 
     Ok(BuildSummary {
         cohorts: recipients.cohorts.len(),

@@ -32,7 +32,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Combined access-scoping config. Either sub-section is optional
-/// in TOML; both fall back to the REQ-3415 defaults when absent.
+/// in TOML; all fall back to documented defaults when absent.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccessConfig {
@@ -40,6 +40,8 @@ pub struct AccessConfig {
     pub search: SearchConfig,
     #[serde(default)]
     pub backlinks: BacklinksConfig,
+    #[serde(default)]
+    pub cache: CacheConfig,
 }
 
 /// `[access.search]` table. The `mode` field is the only tunable
@@ -107,6 +109,44 @@ impl Default for BacklinksMode {
     }
 }
 
+/// `[access.cache]` table. Operator-facing knob controlling the
+/// `Cache-Control: max-age` emitted on `/c/*` ciphertext responses
+/// via the deploy-headers recipes (SPEC-034 REQ-3407 / CON-3406).
+///
+/// Hard bounds `[60, 3600]` (NFR-3409 revocation-latency envelope);
+/// the `validate` method rejects anything outside so a misconfigured
+/// value short-circuits the build before any recipe is written.
+///
+/// The immutable cache on `/assets/shim.js` (`max-age=31536000`) and
+/// the `Clear-Site-Data` header on `/enroll.html` + `/logout` are
+/// NOT operator-tunable — both are fixed by spec.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CacheConfig {
+    /// Seconds. Default 300 (5 min). Bounds [60, 3600].
+    #[serde(default = "default_cap_max_age")]
+    pub max_age: u32,
+}
+
+/// Default `/c/*` max-age in seconds (5 minutes).
+pub const DEFAULT_CAP_MAX_AGE: u32 = 300;
+/// Lower bound (NFR-3409 revocation-latency floor).
+pub const MIN_CAP_MAX_AGE: u32 = 60;
+/// Upper bound (NFR-3409 revocation-latency ceiling: 1 hour).
+pub const MAX_CAP_MAX_AGE: u32 = 3600;
+
+fn default_cap_max_age() -> u32 {
+    DEFAULT_CAP_MAX_AGE
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            max_age: DEFAULT_CAP_MAX_AGE,
+        }
+    }
+}
+
 /// Validation error surfaced at the build-driver boundary so the
 /// whole build short-circuits before any ciphertext is written.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -123,6 +163,13 @@ pub enum AccessConfigError {
          another; set mode = \"scoped\" (default) (SPEC-034 REQ-3415)"
     )]
     GlobalBacklinksRejected,
+    #[error(
+        "[access.cache] max_age = {got} is outside the permitted bounds [{min}, {max}] \
+         (SPEC-034 REQ-3407 / NFR-3409 — revocation latency envelope)",
+        min = MIN_CAP_MAX_AGE,
+        max = MAX_CAP_MAX_AGE,
+    )]
+    CacheMaxAgeOutOfBounds { got: u32 },
 }
 
 impl AccessConfig {
@@ -135,6 +182,11 @@ impl AccessConfig {
         }
         if matches!(self.backlinks.mode, BacklinksMode::Global) {
             return Err(AccessConfigError::GlobalBacklinksRejected);
+        }
+        if self.cache.max_age < MIN_CAP_MAX_AGE || self.cache.max_age > MAX_CAP_MAX_AGE {
+            return Err(AccessConfigError::CacheMaxAgeOutOfBounds {
+                got: self.cache.max_age,
+            });
         }
         Ok(())
     }
@@ -272,6 +324,72 @@ mod tests {
             [search]
             mode = "off"
             mode2 = "per-cohort"
+        "#;
+        assert!(toml::from_str::<AccessConfig>(src).is_err());
+    }
+
+    #[test]
+    fn cache_defaults_to_300s() {
+        let cfg = AccessConfig::default();
+        assert_eq!(cfg.cache.max_age, DEFAULT_CAP_MAX_AGE);
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn cache_toml_parses_override() {
+        let src = r#"
+            [cache]
+            max_age = 600
+        "#;
+        let parsed: AccessConfig = toml::from_str(src).unwrap();
+        assert_eq!(parsed.cache.max_age, 600);
+        assert!(parsed.validate().is_ok());
+    }
+
+    #[test]
+    fn cache_max_age_below_floor_rejected() {
+        let cfg = AccessConfig {
+            cache: CacheConfig { max_age: 30 },
+            ..Default::default()
+        };
+        assert_eq!(
+            cfg.validate().unwrap_err(),
+            AccessConfigError::CacheMaxAgeOutOfBounds { got: 30 }
+        );
+    }
+
+    #[test]
+    fn cache_max_age_above_ceiling_rejected() {
+        let cfg = AccessConfig {
+            cache: CacheConfig { max_age: 7200 },
+            ..Default::default()
+        };
+        assert_eq!(
+            cfg.validate().unwrap_err(),
+            AccessConfigError::CacheMaxAgeOutOfBounds { got: 7200 }
+        );
+    }
+
+    #[test]
+    fn cache_max_age_boundaries_accepted() {
+        for value in [MIN_CAP_MAX_AGE, MAX_CAP_MAX_AGE] {
+            let cfg = AccessConfig {
+                cache: CacheConfig { max_age: value },
+                ..Default::default()
+            };
+            assert!(
+                cfg.validate().is_ok(),
+                "boundary {value} should validate"
+            );
+        }
+    }
+
+    #[test]
+    fn cache_unknown_field_rejected() {
+        let src = r#"
+            [cache]
+            max_age = 300
+            ttl = 999
         "#;
         assert!(toml::from_str::<AccessConfig>(src).is_err());
     }
