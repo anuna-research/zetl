@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-search-scoping",
+  "task_id": "cap-robots-txt",
   "token_budget": 8000,
-  "tokens_used": 457,
+  "tokens_used": 402,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Cohort-scope search and backlinks per REQ-3415. Default: no search UI; backlinks panel shows only in-cohort backlinks per the page's decrypted context. `[access.search] mode = \"per-cohort\"` opts into per-cohort encrypted search indices (NOTE: search-index format deferred per BUG-019; feature ships as off-by-default in v1 with documentation that enabling it is a future deliverable). Attempts to enable global cross-cohort search/backlinks rejected at build with clear error.",
-      "token_cost": 119,
+      "content": "Emit `/robots.txt` containing `Disallow: /c/` and `Disallow: /_zetl/` per REQ-3414 (the general robots.txt REQ; separate from the new REQ-3414 PRF salt). Merge with operator's `public/robots.txt` — preserve stricter rules (e.g., `Disallow: /`) if present.",
+      "token_cost": 64,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T13:45:03Z"
+  "constructed_at": "2026-04-20T13:56:46Z"
 }
