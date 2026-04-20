@@ -27,6 +27,7 @@ pub mod pandoc;
 pub mod registry;
 #[cfg(feature = "ecosystem-remark")]
 pub mod remark;
+pub mod version_drift;
 
 pub use adapter::{
     default_fixtures, mock_adapter_ctor, run_conformance, CheckOutcome, ConformanceFixture,
@@ -47,3 +48,9 @@ pub use manifest::{
     PandocManifestFields, RemarkManifestFields, ZetlNativeManifestFields, BASE_MANIFEST_KEYS,
 };
 pub use registry::{all, by_id, Ecosystem, EcosystemEntry, RuntimeDep};
+pub use version_drift::{
+    classify as classify_plugin_drift, diagnostic_for_incompatible as diagnostic_for_plugin_drift,
+    format_minor_drift_log, parse_range, probe_node_package_version, probe_plugin_version,
+    IncompatReason, PluginProbeError, PluginVersionDrift, RangeOp, RangePredicate, Version,
+    VersionRange, VersionRangeParseError,
+};

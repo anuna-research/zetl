@@ -1,12 +1,12 @@
 {
-  "task_id": "retire-ecosystems-v1",
+  "task_id": "plugin-version-drift",
   "token_budget": 8000,
-  "tokens_used": 315,
+  "tokens_used": 321,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Retire `--features ecosystems-v1` umbrella per SPEC-033 §12 Phase F. Requires two clean releases across all three adapters.",
-      "token_cost": 31,
+      "content": "Plugin-version drift detection per REQ-3314. Matrix records tested version; build warns when installed version differs from tested by a minor+ version.",
+      "token_cost": 37,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-19T23:57:47Z"
+  "constructed_at": "2026-04-20T00:03:48Z"
 }
