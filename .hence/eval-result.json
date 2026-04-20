@@ -3,32 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 9,
-    "insertions": 1208,
-    "deletions": 10,
+    "files_changed": 4,
+    "insertions": 1219,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/invite.rs",
       "src/cap/mod.rs",
-      "src/cap/recipients/parsing.rs",
-      "src/cli.rs",
-      "src/main.rs",
-      "tests/cap_cli_skeleton_integration.rs",
-      "tests/cap_invite_integration.rs",
-      "tests/cap_pure_core_integration.rs"
+      "src/cap/sign.rs",
+      "tests/cap_content_signing_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-invite-command-changes",
-      "content": "Modified 9 files (+1208, -10): .hence/context-manifest.json, src/cap/invite.rs, src/cap/mod.rs, src/cap/recipients/parsing.rs, src/cli.rs and 4 more",
+      "key": "task-cap-content-signing-changes",
+      "content": "Modified 4 files (+1219, -5): .hence/context-manifest.json, src/cap/mod.rs, src/cap/sign.rs, tests/cap_content_signing_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-invite-command-v1",
-  "evaluated_at": "2026-04-20T13:00:49Z",
+  "branch_name": "hence/cap-content-signing-v1",
+  "evaluated_at": "2026-04-20T13:14:00Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
