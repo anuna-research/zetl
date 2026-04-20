@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-shim-collision-ui",
+  "task_id": "cap-deploy-artifacts",
   "token_budget": 8000,
-  "tokens_used": 412,
+  "tokens_used": 442,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "TOFU collision disambiguation UI per REQ-3425. When shim detects invite URL + existing IDB binding, renders the wireframe from REQ-3425 with three options: KEEP (default), Add alongside, Replace (requires 1-line rationale stored in local audit log). Focus on KEEP by default. No silent overwrites.",
-      "token_cost": 74,
+      "content": "Deploy artifact emission per REQ-3418 + CON-3406: `dist/_zetl/_gone.map` (nginx), `dist/_redirects` (Netlify), `dist/vercel.json`, `dist/_zetl/deploy-{nginx,caddy,netlify,vercel,cloudflare}.conf` with complete copy-paste recipes including Cache-Control + Clear-Site-Data entries, `dist/robots.txt` with Disallow: /c/ and /_zetl/, optional `dist/<vault-name>-<cohort>.html` single-file bundle per `[access.single_file]`.",
+      "token_cost": 104,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T18:45:27Z"
+  "constructed_at": "2026-04-20T18:57:55Z"
 }
