@@ -575,12 +575,116 @@ pub enum Command {
     },
 }
 
-/// Subcommands for `zetl cap`.
+/// Subcommands for `zetl cap` (SPEC-034 REQ-3416 capability-URL
+/// static-distribution mode).
 ///
-/// v0.5.0 ships only the verbs implementation has landed for — other
-/// verbs listed in the cap CLI surface are added by later plan tasks.
+/// The CLI surface is the full set of verbs called out in REQ-3416;
+/// verbs whose implementation has not landed exit non-zero with a
+/// `not-yet-implemented` diagnostic so operators discover the surface
+/// without hitting a half-implemented workflow.
 #[derive(Subcommand)]
 pub enum CapCommand {
+    /// Generate both the content-encryption secret and the vault-signing
+    /// keypair. Emits to stdout exactly once — see SPEC-034 REQ-3419.
+    #[command(
+        after_help = "Examples:\n  zetl cap genkey                             Print ZETL_CAP_SECRET + signing key\n\nSee SPEC-034 REQ-3419 / ADR-3405 for storage guidance."
+    )]
+    Genkey,
+
+    /// Issue an invitation grant for a new reader.
+    #[command(
+        after_help = "Examples:\n  zetl cap invite alice --cohort eng\n  zetl cap invite bob --cohort ops --expires 7d --pages 'projects/*'\n  zetl cap invite carol --cohort eng --recipient age1...   # hardened mode\n\nSee SPEC-034 REQ-3416 / REQ-3410."
+    )]
+    Invite {
+        /// Human-readable invitee label (stored in grants.toml).
+        name: String,
+        /// Cohort id the grant belongs to.
+        #[arg(long, value_name = "ID")]
+        cohort: String,
+        /// Expiry duration (e.g. "72h", "7d").
+        #[arg(long, value_name = "DUR")]
+        expires: Option<String>,
+        /// Page scope glob restricting what this grant decrypts.
+        #[arg(long, value_name = "GLOB")]
+        pages: Option<String>,
+        /// Pre-collected recipient pubkey (hardened mode — skip delegated
+        /// URL generation).
+        #[arg(long, value_name = "PUBKEY")]
+        recipient: Option<String>,
+        /// Print an `enrol.html` URL instead of generating the grant
+        /// locally (hardened mode, REQ-3404).
+        #[arg(long = "via", value_name = "MODE")]
+        via: Option<String>,
+        /// Split the private key across URL + second factor (REQ-3430).
+        #[arg(long)]
+        split_key: bool,
+    },
+
+    /// List all issued grants.
+    #[command(
+        after_help = "Examples:\n  zetl cap list\n  zetl cap list --cohort eng\n  zetl cap list --output json"
+    )]
+    List {
+        /// Restrict output to one cohort.
+        #[arg(long, value_name = "ID")]
+        cohort: Option<String>,
+        /// Output format for this verb (overrides the global --format).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Auto)]
+        output: OutputFormat,
+    },
+
+    /// Revoke an issued grant by id.
+    Revoke {
+        /// Grant id to revoke (see `zetl cap list`).
+        grant_id: String,
+    },
+
+    /// Rotate a cohort's content-key salt (URLs remain stable per
+    /// REQ-3402).
+    Rotate {
+        /// Cohort id to rotate.
+        #[arg(long, value_name = "ID")]
+        cohort: String,
+    },
+
+    /// Mark a grant as operator-confirmed-onboarded
+    /// (`bound=true`; REQ-3416).
+    Finalise {
+        /// Grant id to finalise.
+        grant_id: String,
+        /// Reissue the delegated private key at finalisation time.
+        #[arg(long)]
+        rotate_grant: bool,
+    },
+
+    /// Share: not part of the SPEC-034 verb set today; reserved for a
+    /// future workflow that bundles an invite URL with auxiliary metadata
+    /// for out-of-band delivery.
+    Share {
+        /// Grant id whose invite artefacts should be re-emitted.
+        grant_id: String,
+    },
+
+    /// Stale-grant and public-safety audit (REQ-3423 / REQ-3416).
+    ///
+    /// Exits non-zero if any grant has expired since the last build or
+    /// if a configured public cohort is missing the required guardrails.
+    Check {
+        /// Run the public-safety audit only.
+        #[arg(long)]
+        public_safety: bool,
+    },
+
+    /// Mark past-expiry grants as revoked in-place.
+    Sweep,
+
+    /// SPAKE2-EE pubkey handoff between two operators (REQ-3408).
+    Pair {
+        /// Pairing role — producer (invites) or consumer (accepts).
+        #[arg(long, value_name = "ROLE")]
+        role: Option<String>,
+    },
+
     /// Scan a vault diff for malicious-content patterns
     #[command(
         after_help = "Examples:\n  zetl cap audit-diff main HEAD                Scan changes since main\n  zetl cap audit-diff --corpus tools/audit-diff-corpus/fixtures/001-*\n                                              Run against a single corpus fixture\n  zetl cap audit-diff --corpus-root tools/audit-diff-corpus\n                                              Walk every fixture under the corpus root"
@@ -602,6 +706,14 @@ pub enum CapCommand {
         #[arg(long, value_name = "DIR", conflicts_with_all = ["old_ref", "new_ref", "corpus"])]
         corpus_root: Option<std::path::PathBuf>,
     },
+
+    /// Rotate the Ed25519 vault-signing key. Requires rebuilding every
+    /// page so old signatures are re-issued under the new key.
+    RotateSigningKey,
+
+    /// Print the operator checklist for removing the wiki from service
+    /// (REQ-3431). Does not modify any files.
+    EmergencyShutdown,
 }
 
 #[derive(Subcommand)]

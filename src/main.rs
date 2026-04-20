@@ -11417,6 +11417,18 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Cap { command } => match command {
+            zetl::cli::CapCommand::Genkey => cmd_cap_stub(&cli, "genkey"),
+            zetl::cli::CapCommand::Invite { .. } => cmd_cap_stub(&cli, "invite"),
+            zetl::cli::CapCommand::List { .. } => cmd_cap_stub(&cli, "list"),
+            zetl::cli::CapCommand::Revoke { .. } => cmd_cap_stub(&cli, "revoke"),
+            zetl::cli::CapCommand::Rotate { .. } => cmd_cap_stub(&cli, "rotate"),
+            zetl::cli::CapCommand::Finalise { .. } => cmd_cap_stub(&cli, "finalise"),
+            zetl::cli::CapCommand::Share { .. } => cmd_cap_stub(&cli, "share"),
+            zetl::cli::CapCommand::Check { .. } => cmd_cap_stub(&cli, "check"),
+            zetl::cli::CapCommand::Sweep => cmd_cap_stub(&cli, "sweep"),
+            zetl::cli::CapCommand::Pair { .. } => cmd_cap_stub(&cli, "pair"),
+            zetl::cli::CapCommand::RotateSigningKey => cmd_cap_stub(&cli, "rotate-signing-key"),
+            zetl::cli::CapCommand::EmergencyShutdown => cmd_cap_stub(&cli, "emergency-shutdown"),
             zetl::cli::CapCommand::AuditDiff {
                 old_ref,
                 new_ref,
@@ -11431,6 +11443,38 @@ fn main() -> anyhow::Result<()> {
             ),
         },
     }
+}
+
+/// Exit code emitted by `zetl cap` stubs whose implementation has not
+/// landed yet. Follows SPEC-004's 0/1/2/64+ convention — we pick `2`
+/// for "not-yet-implemented" so CI gates can distinguish a skeleton
+/// verb from a runtime failure (`1`) and a usage error (clap's default
+/// also 2, but a stub is semantically closer to misuse than runtime
+/// failure).
+const CAP_NOT_YET_IMPLEMENTED_EXIT: i32 = 2;
+
+/// Stub for `zetl cap` verbs whose implementation has not landed. Emits
+/// a diagnostic and exits with `CAP_NOT_YET_IMPLEMENTED_EXIT`. When
+/// `--json`/`-f json` is in effect the diagnostic is JSON on stdout so
+/// agents can parse it (CLIG-adjacent behaviour mirroring
+/// `exit_json_error`).
+///
+/// SPEC-034 REQ-3416 — every verb listed in the CLI surface is
+/// reachable and produces a predictable error code even before its
+/// handler exists.
+fn cmd_cap_stub(cli: &Cli, verb: &str) -> Result<()> {
+    let message = format!(
+        "zetl cap {verb}: not-yet-implemented (SPEC-034 REQ-3416 CLI surface stub)"
+    );
+    let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
+    if json_requested {
+        exit_json_error(&message, CAP_NOT_YET_IMPLEMENTED_EXIT);
+    }
+    eprintln!("{message}");
+    eprintln!(
+        "Hint: this verb is planned (see SPEC-034 §6 REQ-3416) but its implementation has not landed yet."
+    );
+    std::process::exit(CAP_NOT_YET_IMPLEMENTED_EXIT);
 }
 
 /// `zetl cap audit-diff` — SPEC-034 REQ-3424 / ADR-3410 PR gate.
