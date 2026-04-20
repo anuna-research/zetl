@@ -447,9 +447,11 @@ fn nfr_3308_combined_multiplier_pinned_and_helper_works() {
 
 /// Coarse synthetic gate: simulate a baseline + treatment build pair
 /// and assert the multiplier helper agrees with hand math. The full
-/// `--no-ecosystems` vs `--features ecosystems-v1` build comparison is
-/// a release-gate bench (it requires building two binaries on the same
-/// vault) and lives in the bench harness, not here.
+/// `--no-default-features` vs all-three-ecosystems build comparison
+/// (previously `--features ecosystems-v1`; the umbrella was retired
+/// in SPEC-033 §12 Phase F) is a release-gate bench — it requires
+/// building two binaries on the same vault — and lives in the bench
+/// harness, not here.
 #[test]
 fn nfr_3308_synthetic_build_pair_within_budget() {
     let baseline = Duration::from_millis(2_500);

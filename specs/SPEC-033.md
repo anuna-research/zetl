@@ -1399,7 +1399,12 @@ theme-stub canonical extensions (SPEC-032 REQ-3212, Phase C).
 - `zetl ecosystem check` subcommand (reports zero ecosystems available initially).
 - Parser registry + commonmark + pandoc parser adapters.
 
-Ships as preview behind `--features ecosystems-v1` umbrella flag.
+Originally shipped as a preview behind the `--features ecosystems-v1`
+umbrella flag; that umbrella was retired in Phase F below and the
+per-ecosystem flags are now the stable surface. Release binaries
+ship with all three on by default; a minimal build passes
+`--no-default-features` plus whichever per-ecosystem flags the user
+wants.
 
 **Phase B — Pandoc adapter (first user-visible ecosystem):**
 
@@ -1425,9 +1430,19 @@ Ships as preview behind `--features ecosystems-v1` umbrella flag.
 - SPEC-031 status → `superseded`, link to SPEC-033.
 - SPEC-032 REQ-3212 / ADR-3204 (canonical first-party extensions) marked as moved to SPEC-033 ecosystem selection; no canonical extensions shipped first-party.
 
-**Phase F — Feature flag retirement:**
+**Phase F — Feature flag retirement (completed):**
 
-- `--features ecosystems-v1` umbrella retired when all three adapters are stable for two consecutive releases.
+- `--features ecosystems-v1` umbrella retired. All three adapters
+  (Pandoc, mdBook, remark) have shipped stable across two
+  consecutive releases, so the preview umbrella is no longer
+  needed. The per-ecosystem flags (`ecosystem-pandoc`,
+  `ecosystem-mdbook`, `ecosystem-remark`) remain as the stable
+  compile-time surface — identical to every other SPEC-033
+  adapter story going forward. Users who relied on the umbrella
+  should pass the three per-ecosystem flags explicitly, or use a
+  default release binary which ships with all three on. The
+  `tests/ecosystems_registry_integration.rs::ecosystems_v1_umbrella_is_retired`
+  gate prevents accidental reintroduction.
 
 **Rollback:** If any adapter proves unstable post-release, it reverts to `experimental` tier in the matrix and is feature-flag-off by default. Users can opt back in if needed.
 

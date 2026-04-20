@@ -17,6 +17,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   expected, so no `--no-hooks-v2` opt-out is provided (there is nothing
   to opt out of). To skip every hook, use the existing
   `zetl build --no-hooks` flag. (SPEC-032 §12 Phase D)
+- **`--features ecosystems-v1` umbrella retired.** All three
+  ecosystem adapters (Pandoc, mdBook, remark) have shipped stable
+  across two consecutive releases, so the preview umbrella that
+  bundled them is gone. The per-ecosystem cargo flags
+  (`ecosystem-pandoc`, `ecosystem-mdbook`, `ecosystem-remark`)
+  remain and are now the stable compile-time surface.
+
+  **Migration.** Release binaries already compile every adapter in
+  by default — if you use a packaged build, nothing changes. If you
+  build from source and were passing `--features ecosystems-v1`,
+  replace it with the three per-ecosystem flags explicitly:
+
+  ```sh
+  # before
+  cargo build --features ecosystems-v1
+  # after
+  cargo build --features "ecosystem-pandoc ecosystem-mdbook ecosystem-remark"
+  ```
+
+  A minimal build that drops every ecosystem is
+  `cargo build --no-default-features`. Each per-ecosystem flag can
+  still be toggled independently (see `docs/ecosystems/*.md` for the
+  corresponding opt-out instructions). The
+  `ecosystems_v1_umbrella_is_retired` integration test guards
+  against accidental reintroduction. (SPEC-033 §12 Phase F)
 
 ## [0.3.0] - 2026-04-17
 

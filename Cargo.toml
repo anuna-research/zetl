@@ -35,22 +35,19 @@ mcp = ["dep:rmcp"]
 collab = []
 # SPEC-033 per-ecosystem feature flags (REQ-3301, NFR-3304). Each flag
 # gates one ecosystem's adapter + translator code at compile time so a
-# minimal zetl build can drop whole ecosystems. No-op until
-# task-pandoc-adapter / task-mdbook-adapter / task-remark-harness land
-# adapter modules behind `#[cfg(feature = "ecosystem-<id>")]` — today
-# `src/ecosystems/` only holds the shared registry + trait scaffolding,
-# which stays unconditional so `zetl ecosystem check` can list every
-# ecosystem's id and installation hint even on a stripped binary
-# (REQ-3313).
+# minimal zetl build can drop whole ecosystems. `src/ecosystems/` holds
+# the shared registry + trait scaffolding unconditionally so
+# `zetl ecosystem check` can list every ecosystem's id and installation
+# hint even on a stripped binary (REQ-3313).
 #
-# The `ecosystems-v1` umbrella turns all three on at once — this is
-# the preview flag SPEC-033 §12 calls out and the one the NFR-3304
-# binary-size budget is measured against. It's retired in Phase F
-# once all three adapters have shipped stable.
+# The `ecosystems-v1` umbrella that previously enabled all three at
+# once was retired in Phase F (SPEC-033 §12) after two clean releases
+# of all three adapters. Users who want the full ecosystem set now
+# pass `--features ecosystem-pandoc,ecosystem-mdbook,ecosystem-remark`
+# explicitly (they are on by default in the release binaries).
 ecosystem-pandoc = []
 ecosystem-mdbook = []
 ecosystem-remark = []
-ecosystems-v1 = ["ecosystem-pandoc", "ecosystem-mdbook", "ecosystem-remark"]
 # Vendor and statically link OpenSSL into the binary instead of linking
 # against the system libssl. Enable this on cross-compile / static-binary
 # release builds where no target-side OpenSSL sysroot is available.
