@@ -4,28 +4,28 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 6,
-    "insertions": 369,
-    "deletions": 5,
+    "insertions": 1035,
+    "deletions": 8,
     "file_list": [
       ".hence/context-manifest.json",
       "Cargo.lock",
       "Cargo.toml",
+      "src/cap/age_encrypt.rs",
       "src/cap/mod.rs",
-      "src/cap/pad.rs",
-      "tests/cap_pure_core_integration.rs"
+      "tests/cap_age_encrypt_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-x25519-padding-changes",
-      "content": "Modified 6 files (+369, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/mod.rs, src/cap/pad.rs and 1 more",
+      "key": "task-cap-age-encrypt-changes",
+      "content": "Modified 6 files (+1035, -8): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/age_encrypt.rs, src/cap/mod.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-x25519-padding-v1",
-  "evaluated_at": "2026-04-20T12:04:05Z",
+  "branch_name": "hence/cap-age-encrypt-v1",
+  "evaluated_at": "2026-04-20T12:16:54Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
