@@ -3,35 +3,25 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 12,
-    "insertions": 1394,
+    "files_changed": 2,
+    "insertions": 1027,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/build/driver.rs",
-      "src/cap/deploy_artifacts.rs",
-      "src/cap/mod.rs",
-      "src/cap/scoping/access_config.rs",
-      "tests/cap_build_driver_integration.rs",
-      "tests/cap_csp_sri_integration.rs",
-      "tests/cap_deploy_artifacts_integration.rs",
-      "tests/cap_deploy_headers_integration.rs",
-      "tests/cap_enrolment_page_integration.rs",
-      "tests/cap_referrer_scrubbing_integration.rs",
-      "tests/cap_search_scoping_integration.rs"
+      "docs/capability-mode.md"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-deploy-artifacts-changes",
-      "content": "Modified 12 files (+1394, -5): .hence/context-manifest.json, src/cap/build/driver.rs, src/cap/deploy_artifacts.rs, src/cap/mod.rs, src/cap/scoping/access_config.rs and 7 more",
+      "key": "task-cap-docs-operator-changes",
+      "content": "Modified 2 files (+1027, -5): .hence/context-manifest.json, docs/capability-mode.md",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-deploy-artifacts-v1",
-  "evaluated_at": "2026-04-20T19:16:17Z",
+  "branch_name": "hence/cap-docs-operator-v1",
+  "evaluated_at": "2026-04-20T19:25:02Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
