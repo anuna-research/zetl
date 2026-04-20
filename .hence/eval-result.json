@@ -3,33 +3,30 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 10,
-    "insertions": 796,
-    "deletions": 13,
+    "files_changed": 7,
+    "insertions": 1219,
+    "deletions": 8,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/public_repo.rs",
-      "src/cap/shim/build.mjs",
+      "src/cap/shim/collision.ts",
       "src/cap/shim/identity.ts",
       "src/cap/shim/index.ts",
       "src/cap/shim/pipeline.ts",
-      "src/cap/shim/test/split_key.test.ts",
-      "src/main.rs",
-      "tests/cap_invite_integration.rs",
-      "tests/cap_public_repo_safety_integration.rs"
+      "src/cap/shim/storage.ts",
+      "src/cap/shim/test/collision.test.ts"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-split-key-mode-changes",
-      "content": "Modified 10 files (+796, -13): .hence/context-manifest.json, src/cap/public_repo.rs, src/cap/shim/build.mjs, src/cap/shim/identity.ts, src/cap/shim/index.ts and 5 more",
+      "key": "task-cap-shim-collision-ui-changes",
+      "content": "Modified 7 files (+1219, -8): .hence/context-manifest.json, src/cap/shim/collision.ts, src/cap/shim/identity.ts, src/cap/shim/index.ts, src/cap/shim/pipeline.ts and 2 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-split-key-mode-v1",
-  "evaluated_at": "2026-04-20T18:45:18Z",
+  "branch_name": "hence/cap-shim-collision-ui-v1",
+  "evaluated_at": "2026-04-20T18:57:49Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
