@@ -1,15 +1,21 @@
 {
-  "task_id": "cap-tier2-review-spec",
+  "task_id": "cap-sanitiser",
   "token_budget": 8000,
-  "tokens_used": 201,
+  "tokens_used": 186,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Tier 2 fresh-context, cross-model adversarial review of SPEC-034 v0.4.0. Per USDD Constitutional Principle 12 and SPEC-034 §16. Reviewer should be given the spec + prior-art URLs from §1.4 with explicit mandate to find design defects and unstated assumptions, with particular attention to: (a) REQ-3427+CON-3411 Ed25519 signing byte-range and envelope tampering, (b) REQ-3422+ADR-3413 X25519 padding private-key discard verifiability and correlation channels, (c) REQ-3414+ADR-3414 cohort-scoped PRF salt interaction with the age-encryption.org/fido2prf standard, (d) ADR-3415 TOFU residual-leak honesty and unaddressed mitigations, (e) CON-3409 challenge generation and non-verification disclosure. Reviewer must NOT have participated in the v0.3→v0.4 iteration (both prior reviews were same-session).",
-      "token_cost": 201,
+      "content": "HTML sanitiser using the `ammonia` Rust crate with an allowlist config mirroring OWASP recommendations per SPEC-034 REQ-3421. Deny `<script>`, `<iframe>`, `<object>`, `<embed>`, `<base>`, `<meta http-equiv>`, `<link rel=preconnect|dns-prefetch|prerender>`, all event handlers, `javascript:`/`data:`/`vbscript:` URIs in href/src, `srcdoc`/`formaction`/`ping` attributes, MathML `<script>`, SVG `<script>`, CSS `@import`, HTML5 `<template>`. Allowlist: standard CommonMark rendering output. Ship config at `tools/sanitiser-config.toml` for operator visibility. Fuzz-test against OWASP XSS cheatsheet and the `audit-diff-corpus` (task-cap-audit-diff).",
+      "token_cost": 162,
       "priority": "PlanMeta"
+    },
+    {
+      "source": "memory/episodic/task-cap-tier2-review-spec-changes",
+      "content": "Modified 2 files (+489, -65): .hence/context-manifest.json, .hence/reviews/cap-tier2-2026-04-20.md",
+      "token_cost": 24,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T10:41:51Z"
+  "constructed_at": "2026-04-20T10:53:00Z"
 }

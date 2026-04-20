@@ -3,25 +3,31 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 489,
-    "deletions": 65,
+    "files_changed": 8,
+    "insertions": 1072,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      ".hence/reviews/cap-tier2-2026-04-20.md"
+      "Cargo.lock",
+      "Cargo.toml",
+      "src/cap/mod.rs",
+      "src/cap/sanitiser.rs",
+      "src/lib.rs",
+      "tests/cap_sanitiser_integration.rs",
+      "tools/sanitiser-config.toml"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-tier2-review-spec-changes",
-      "content": "Modified 2 files (+489, -65): .hence/context-manifest.json, .hence/reviews/cap-tier2-2026-04-20.md",
+      "key": "task-cap-sanitiser-changes",
+      "content": "Modified 8 files (+1072, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/mod.rs, src/cap/sanitiser.rs and 3 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-tier2-review-spec-v1",
-  "evaluated_at": "2026-04-20T10:52:54Z",
+  "branch_name": "hence/cap-sanitiser-v1",
+  "evaluated_at": "2026-04-20T11:02:17Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
