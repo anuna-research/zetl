@@ -2,9 +2,19 @@
 // URL fragment (delegated-URL mode first-visit) or IndexedDB (subsequent
 // visits). On a first-visit with a fragment this module also drives the
 // TOFU wrap — see `tofu.ts` — so priv_A can be recovered on the next
-// visit without the fragment (CON-3409).
+// visit without the fragment (CON-3409). On a subsequent visit with
+// no fragment (delegated-URL repeat OR hardened webauthn-prf mode)
+// the unwrap branch (`unwrap.ts`) recovers priv_A from the persisted
+// TOFU binding via a WebAuthn PRF ceremony.
 
 import { base64UrlDecode, type CohortMode } from "./envelope.ts";
+import {
+  clearCachedPrivA,
+  lookupCachedPrivA,
+  storeCachedPrivA,
+  type PolicyDeps,
+  type SessionPolicy,
+} from "./session_policy.ts";
 import { readBindingRecord, type IdbFactoryLike } from "./storage.ts";
 import {
   cryptoRandomBytes,
@@ -14,6 +24,12 @@ import {
   type TofuDeps,
   type TofuResult,
 } from "./tofu.ts";
+import {
+  performUnwrap,
+  resolveGetCredential,
+  UnwrapError,
+  type UnwrapDeps,
+} from "./unwrap.ts";
 
 /// Fragment prefix pinned by CON-3401: `#k=<43-char-base64url>`.
 export const FRAGMENT_PREFIX = "k=";
@@ -29,7 +45,8 @@ export class IdentityError extends Error {
       | "fragment-length"
       | "fragment-base64"
       | "mode-not-supported"
-      | "tofu-failed",
+      | "tofu-failed"
+      | "unwrap-failed",
     message: string,
   ) {
     super(message);
@@ -49,28 +66,39 @@ export interface IdentityContext {
   /// and the TOFU module resolves `navigator.credentials.create` +
   /// `crypto.subtle` at call time.
   tofuDeps?: Partial<TofuDeps>;
+  /// Dep overrides for the subsequent-visit unwrap flow. Production
+  /// leaves this undefined and `unwrap.ts` resolves
+  /// `navigator.credentials.get` + `crypto.subtle` at call time.
+  unwrapDeps?: Partial<UnwrapDeps>;
   /// Override the IDB factory — tests inject fake-indexeddb here.
   idbFactory?: IdbFactoryLike | null;
+  /// REQ-3417 `[access.session]` — gates how often
+  /// `navigator.credentials.get()` is re-run. Defaults to `per-page`
+  /// when omitted.
+  sessionPolicy?: SessionPolicy;
+  /// Dep overrides for the session-policy cache. Tests inject a
+  /// fake sessionStorage + clock.
+  policyDeps?: Omit<PolicyDeps, "policy">;
 }
 
 /// Returns the 32-byte raw X25519 private scalar (`priv_A`) used by age
-/// to decrypt the cohort ciphertext. In delegated-URL mode the
-/// fragment is the source of truth for the current visit; if there
-/// is no existing IDB binding this call also drives the TOFU wrap so
-/// the next visit can unwrap from IDB without the fragment
-/// (CON-3409). Hardened (`webauthn-prf`) mode still throws
-/// `"mode-not-supported"` here — `task-cap-shim-unwrap` lands that
-/// branch.
+/// to decrypt the cohort ciphertext. Three source branches:
+///
+///   1. URL fragment present (first-visit delegated-URL): decode
+///      `#k=<b64url>`, run TOFU wrap best-effort, return the
+///      fragment scalar.
+///   2. URL fragment absent, IDB binding present (subsequent visit
+///      in either delegated-URL or hardened mode): unwrap via
+///      `navigator.credentials.get` + AES-GCM. REQ-3406 mandates
+///      this branch is fragment-free.
+///   3. Neither source available: `need-invite`.
+///
+/// REQ-3417 session-policy caching short-circuits branch 2 when a
+/// cached priv_A is still fresh under the active policy; a stale or
+/// absent cache entry triggers the full UV ceremony.
 export async function acquireIdentity(
   ctx: IdentityContext,
 ): Promise<Uint8Array> {
-  if (ctx.cohortMode === "webauthn-prf") {
-    throw new IdentityError(
-      "mode-not-supported",
-      "hardened mode (webauthn-prf) requires the subsequent-visit unwrap branch — not yet wired in v1 core",
-    );
-  }
-
   const fromFragment = readFragmentKey(ctx.locationHash);
   if (fromFragment !== null) {
     // First-visit path: try to persist a passkey-wrapped copy of
@@ -87,12 +115,14 @@ export async function acquireIdentity(
     return fromFragment;
   }
 
-  const fromBinding = await readBinding(ctx.cohortId, ctx.idbFactory);
-  if (fromBinding !== null) return fromBinding;
+  const unwrapped = await tryUnwrapBinding(ctx);
+  if (unwrapped !== null) return unwrapped;
 
   throw new IdentityError(
     "need-invite",
-    "no invite fragment in URL and no stored binding on this device — ask your wiki operator for a fresh invite URL",
+    ctx.cohortMode === "webauthn-prf"
+      ? "no stored passkey binding for this cohort on this device — ask your wiki operator for a fresh invite URL"
+      : "no invite fragment in URL and no stored binding on this device — ask your wiki operator for a fresh invite URL",
   );
 }
 
@@ -142,23 +172,85 @@ export function readFragmentKey(locationHash: string): Uint8Array | null {
   return raw;
 }
 
-/// Read a persisted TOFU binding. Returns the raw priv_A when the
-/// record unwraps successfully, `null` when no record is present.
-/// The unwrap side (AES-GCM + `credentials.get()`) is owned by the
-/// subsequent-visit task; v1 of this module reports "record exists"
-/// via the storage layer for the TOFU idempotency check but cannot
-/// yet recover priv_A without the fragment.
-export async function readBinding(
-  cohortId: string,
-  factory?: IdbFactoryLike | null,
+/// Attempt to recover priv_A from a persisted TOFU binding via the
+/// WebAuthn PRF unwrap ceremony. Returns `null` when no binding
+/// exists (caller falls through to `need-invite`). Every other
+/// failure — revoked authenticator, absent WebAuthn API, decrypt
+/// mismatch — is reclassified into an `IdentityError` so the
+/// pipeline renders a structured diagnostic.
+///
+/// On success, caches priv_A under the active
+/// `[access.session]` policy so subsequent intra-session visits
+/// can skip the UV prompt.
+async function tryUnwrapBinding(
+  ctx: IdentityContext,
 ): Promise<Uint8Array | null> {
-  const record = await readBindingRecord(cohortId, factory ?? undefined);
+  const factory = resolveFactoryOverride(ctx);
+  if (factory === null) return null;
+  const record = await readBindingRecord(ctx.cohortId, factory);
   if (record === null) return null;
-  // Presence without unwrap capability means we can't return a
-  // priv_A — the fragment path is the only v1 source. Returning
-  // null lets the pipeline fall through to `need-invite`, which is
-  // the correct diagnostic until `task-cap-shim-unwrap` lands.
-  return null;
+
+  const origin = ctx.origin ?? resolveOrigin();
+  const policyDeps = {
+    ...(ctx.policyDeps ?? {}),
+    policy: ctx.sessionPolicy,
+  };
+  const cacheKey = {
+    origin,
+    cohortId: ctx.cohortId,
+    bindingCreatedAt: record.createdAt,
+  };
+  const cached = lookupCachedPrivA(cacheKey, policyDeps);
+  if (cached !== null) return cached;
+
+  const getCredential =
+    ctx.unwrapDeps?.getCredential ?? resolveGetCredential();
+  const subtle = ctx.unwrapDeps?.subtle ?? resolveSubtle();
+  const randomBytes = ctx.unwrapDeps?.randomBytes ?? cryptoRandomBytes;
+
+  if (!getCredential) {
+    // REQ-3406 path requires WebAuthn. A runtime without
+    // `credentials.get` means the reader's browser cannot unwrap
+    // the stored binding — surface `need-invite` rather than
+    // silently falling through to a misleading diagnostic. We
+    // still clear any cached priv_A so a later browser upgrade
+    // doesn't read a stale entry.
+    clearCachedPrivA(cacheKey, policyDeps);
+    throw new IdentityError(
+      "unwrap-failed",
+      "this browser does not expose navigator.credentials.get — ask your wiki operator for a fresh invite URL",
+    );
+  }
+  if (!subtle) {
+    throw new IdentityError(
+      "unwrap-failed",
+      "SubtleCrypto is unavailable — cannot unwrap the stored binding",
+    );
+  }
+
+  const deps: UnwrapDeps = {
+    getCredential,
+    subtle,
+    randomBytes,
+    idbFactory: factory,
+  };
+  try {
+    const result = await performUnwrap({ cohortId: ctx.cohortId }, deps);
+    storeCachedPrivA(cacheKey, result.privA, policyDeps);
+    return result.privA;
+  } catch (err) {
+    // Any unwrap failure invalidates the session-policy cache so a
+    // subsequent visit re-runs the UV ceremony rather than reading
+    // a stale priv_A.
+    clearCachedPrivA(cacheKey, policyDeps);
+    if (err instanceof UnwrapError) {
+      throw new IdentityError(
+        "unwrap-failed",
+        `subsequent-visit unwrap failed (${err.kind}): ${err.message}`,
+      );
+    }
+    throw err;
+  }
 }
 
 async function maybeBindFragment(

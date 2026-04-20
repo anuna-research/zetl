@@ -396,7 +396,12 @@ test("acquireIdentity falls through to need-invite when no fragment + no binding
   );
 });
 
-test("acquireIdentity refuses webauthn-prf mode in v1 (task-cap-shim-unwrap territory)", async () => {
+test("acquireIdentity in webauthn-prf mode falls through to need-invite when no binding exists", async () => {
+  // With task-cap-shim-unwrap landed, hardened mode no longer
+  // throws `mode-not-supported` — it goes straight to the unwrap
+  // branch. A cohort without a persisted binding surfaces
+  // `need-invite` so the reader is directed to request a fresh
+  // invite URL.
   await assert.rejects(
     () =>
       acquireIdentity({
@@ -405,7 +410,7 @@ test("acquireIdentity refuses webauthn-prf mode in v1 (task-cap-shim-unwrap terr
         locationHash: "",
         origin: ORIGIN,
       }),
-    (err) => err instanceof IdentityError && err.kind === "mode-not-supported",
+    (err) => err instanceof IdentityError && err.kind === "need-invite",
   );
 });
 

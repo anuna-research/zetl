@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-shim-fallback",
+  "task_id": "cap-shim-unwrap",
   "token_budget": 8000,
-  "tokens_used": 423,
+  "tokens_used": 454,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Graceful fallback for non-PRF browsers per REQ-3412. Shim detects PRF availability via feature-probe or `PublicKeyCredential.getClientCapabilities()`. If unavailable: operate in fragment-required mode (decrypt directly from URL fragment on every visit), no TOFU binding, no replaceState. Display non-intrusive notice. Log to OBS-3412 metric.",
-      "token_cost": 85,
+      "content": "Subsequent-visit branch of the shim: detect existing IndexedDB entry → navigator.credentials.get with prf.eval.first = stored salt → derive K_wrap → unwrap priv_A from IDB → age-decrypt → render. Requires ZERO URL fragment (REQ-3406). Handles passkey-unavailable (authenticator deleted/revoked) by presenting clear `re-invite needed` diagnostic. Session-policy caching per REQ-3417 `[access.session]` (per-page / per-session / per-minute user-verification).",
+      "token_cost": 116,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T17:38:19Z"
+  "constructed_at": "2026-04-20T17:53:02Z"
 }
