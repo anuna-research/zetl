@@ -4,28 +4,28 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 6,
-    "insertions": 653,
-    "deletions": 7,
+    "insertions": 769,
+    "deletions": 8,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/emergency_shutdown.rs",
+      "src/cap/genkey.rs",
       "src/cap/mod.rs",
       "src/main.rs",
       "tests/cap_cli_skeleton_integration.rs",
-      "tests/cap_emergency_shutdown_integration.rs"
+      "tests/cap_genkey_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-emergency-shutdown-changes",
-      "content": "Modified 6 files (+653, -7): .hence/context-manifest.json, src/cap/emergency_shutdown.rs, src/cap/mod.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs and 1 more",
+      "key": "task-cap-genkey-changes",
+      "content": "Modified 6 files (+769, -8): .hence/context-manifest.json, src/cap/genkey.rs, src/cap/mod.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-emergency-shutdown-v1",
-  "evaluated_at": "2026-04-20T12:34:40Z",
+  "branch_name": "hence/cap-genkey-v1",
+  "evaluated_at": "2026-04-20T12:44:31Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
