@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-deploy-artifacts",
+  "task_id": "cap-docs-operator",
   "token_budget": 8000,
-  "tokens_used": 442,
+  "tokens_used": 457,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Deploy artifact emission per REQ-3418 + CON-3406: `dist/_zetl/_gone.map` (nginx), `dist/_redirects` (Netlify), `dist/vercel.json`, `dist/_zetl/deploy-{nginx,caddy,netlify,vercel,cloudflare}.conf` with complete copy-paste recipes including Cache-Control + Clear-Site-Data entries, `dist/robots.txt` with Disallow: /c/ and /_zetl/, optional `dist/<vault-name>-<cohort>.html` single-file bundle per `[access.single_file]`.",
-      "token_cost": 104,
+      "content": "`docs/capability-mode.md` — full operator guide per SPEC-034 §12. Sections: threat model (quoting §11 verbatim), per-cohort mode-selection decision aid, quickstart (genkey → config → first build → deploy), grants lifecycle (invite / revoke / rotate / finalise / signing-key rotation), deploy recipes for nginx, Caddy, Netlify, Cloudflare Pages, S3+CloudFront, Vercel (with copy-paste blocks), troubleshooting flowchart (`my reader can't decrypt` → diagnostic tree).",
+      "token_cost": 119,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T18:57:55Z"
+  "constructed_at": "2026-04-20T19:16:26Z"
 }
