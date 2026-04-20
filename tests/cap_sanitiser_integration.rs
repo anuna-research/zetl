@@ -18,10 +18,9 @@ use zetl::cap::sanitiser::{
 /// REQ-3421 denylist of active-content / side-channel tags that MUST be
 /// absent from any sanitiser output.
 const DENIED_TAGS: &[&str] = &[
-    "script", "iframe", "object", "embed", "template", "math",
-    "base", "meta", "link", "style", "form", "button", "input",
-    "frame", "frameset", "noframes", "noscript", "xmp", "svg",
-    "applet", "canvas", "audio", "video", "source", "track",
+    "script", "iframe", "object", "embed", "template", "math", "base", "meta", "link", "style",
+    "form", "button", "input", "frame", "frameset", "noframes", "noscript", "xmp", "svg", "applet",
+    "canvas", "audio", "video", "source", "track",
 ];
 
 /// Samples drawn from the OWASP XSS Filter Evasion cheatsheet. Each is
@@ -189,12 +188,14 @@ fn every_allowlisted_tag_survives_open_close() {
     fn wrap(tag: &str) -> String {
         match tag {
             // Table internals
-            "caption" | "thead" | "tbody" | "tfoot" | "tr" | "colgroup" =>
-                format!("<table><{tag}>x</{tag}></table>", tag = tag),
-            "th" | "td" =>
-                format!("<table><tbody><tr><{tag}>x</{tag}></tr></tbody></table>", tag = tag),
-            "col" =>
-                format!("<table><colgroup><col></colgroup></table>"),
+            "caption" | "thead" | "tbody" | "tfoot" | "tr" | "colgroup" => {
+                format!("<table><{tag}>x</{tag}></table>", tag = tag)
+            }
+            "th" | "td" => format!(
+                "<table><tbody><tr><{tag}>x</{tag}></tr></tbody></table>",
+                tag = tag
+            ),
+            "col" => format!("<table><colgroup><col></colgroup></table>"),
             // List items
             "li" => format!("<ul><li>x</li></ul>"),
             "dd" | "dt" => format!("<dl><{tag}>x</{tag}></dl>", tag = tag),
@@ -267,7 +268,13 @@ fn table_with_thead_tbody_survives() {
                 <tbody><tr><td>a</td><td>b</td></tr></tbody>\
                 </table>";
     let out = sanitise(html);
-    for frag in ["<table>", "<thead>", "<tbody>", "<th scope=\"col\">", "<td>a</td>"] {
+    for frag in [
+        "<table>",
+        "<thead>",
+        "<tbody>",
+        "<th scope=\"col\">",
+        "<td>a</td>",
+    ] {
         assert!(out.contains(frag), "missing {}: {}", frag, out);
     }
 }

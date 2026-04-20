@@ -8,6 +8,7 @@
 //! See `specs/SPEC-034.md` §8 (Purity Boundary Map) for which modules
 //! live in the pure core vs the effectful shell.
 
+pub mod audit_diff;
 pub mod derivation;
 pub mod grants;
 pub mod recipients;

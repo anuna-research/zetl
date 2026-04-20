@@ -68,3 +68,12 @@ steps:
       # wider 256-case sweep with shrunk-counterexample output on regression.
       # Raise PROPTEST_CASES in the nightly pipeline for the 10k corpus.
       - make translator-roundtrip
+      # SPEC-034 REQ-3424 / ADR-3410 malicious-author PR gate. Runs
+      # `zetl cap audit-diff` against every fixture under
+      # tools/audit-diff-corpus/. Any fixture whose expected-finding
+      # tags are missed fails the build — that is the exact
+      # regression signal the `audit-corpus` CI job exists to catch
+      # (BUG-016 resolution). `cargo test` above also runs the same
+      # corpus via the library API; the explicit step here surfaces
+      # the per-fixture PASS/MISS trace in the CI log.
+      - make audit-corpus
