@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-tier1-review-crypto",
+  "task_id": "cap-build-driver",
   "token_budget": 8000,
-  "tokens_used": 449,
+  "tokens_used": 452,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Tier 1 cross-model adversarial review of crypto integration: `age` usage, Ed25519 signing layer, X25519 padding key-discard, HKDF `info` parameter separation, WebAuthn PRF salt construction. Reviewer should examine source for: key material handling (zeroization, no-log policies), padding pubkey generation that verifiably discards privkeys, signature byte-range correctness, challenge randomness. Required before any crypto code merges to main.",
-      "token_cost": 111,
+      "content": "`src/cap/build/driver.rs` orchestrates the full capability build: enumerate pages, compute per-page path-caps, sanitise HTML (task-cap-sanitiser), encrypt (task-cap-age-encrypt) with padding (task-cap-x25519-padding), sign (task-cap-content-signing), write to `dist/c/<path-cap>/<slug>.html`, emit deploy artifacts (task-cap-deploy-artifacts). Iterates cohorts; respects public-repo safety (task-cap-public-repo-safety). Emits build-summary log per OBS-3401.",
+      "token_cost": 114,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T13:14:07Z"
+  "constructed_at": "2026-04-20T13:26:11Z"
 }

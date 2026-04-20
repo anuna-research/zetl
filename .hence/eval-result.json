@@ -3,25 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 2,
-    "insertions": 701,
+    "files_changed": 5,
+    "insertions": 1468,
     "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      ".hence/reviews/cap-tier1-crypto-2026-04-20.md"
+      "src/cap/build/driver.rs",
+      "src/cap/build/mod.rs",
+      "src/cap/mod.rs",
+      "tests/cap_build_driver_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-tier1-review-crypto-changes",
-      "content": "Modified 2 files (+701, -5): .hence/context-manifest.json, .hence/reviews/cap-tier1-crypto-2026-04-20.md",
+      "key": "task-cap-build-driver-changes",
+      "content": "Modified 5 files (+1468, -5): .hence/context-manifest.json, src/cap/build/driver.rs, src/cap/build/mod.rs, src/cap/mod.rs, tests/cap_build_driver_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-tier1-review-crypto-v1",
-  "evaluated_at": "2026-04-20T13:26:05Z",
+  "branch_name": "hence/cap-build-driver-v1",
+  "evaluated_at": "2026-04-20T13:44:54Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
