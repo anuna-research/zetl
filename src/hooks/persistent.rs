@@ -1100,7 +1100,10 @@ mod tests {
         path
     }
 
-    /// Retry a spawn call on Linux `ETXTBSY` (errno 26, "Text file busy").
+    /// Retry a spawn call on Linux `ETXTBSY` (errno 26, "Text file busy")
+    /// until it returns any other result. Returns that result verbatim,
+    /// so callers can `.unwrap()` for success paths or `.unwrap_err()`
+    /// when the test expects a specific downstream error.
     ///
     /// Cargo runs integration tests in parallel. If thread A forks a child
     /// while thread B's `write_python_hook` is between write and exec,
@@ -1108,22 +1111,29 @@ mod tests {
     /// refuses to exec the still-open-for-write target. The race clears
     /// within milliseconds as the child's fds close on its own exec.
     /// Production hook spawns never write+exec, so this lives in tests.
-    fn spawn_or_retry<F>(mut f: F) -> PersistentHook
+    fn spawn_try_or_retry<F>(mut f: F) -> Result<PersistentHook, ProtocolError>
     where
         F: FnMut() -> Result<PersistentHook, ProtocolError>,
     {
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
         loop {
             match f() {
-                Ok(h) => return h,
                 Err(ProtocolError::Io(e))
                     if e.raw_os_error() == Some(26) && std::time::Instant::now() < deadline =>
                 {
                     std::thread::sleep(Duration::from_millis(25));
                 }
-                Err(other) => panic!("spawn failed: {other:?}"),
+                result => return result,
             }
         }
+    }
+
+    /// Success-path convenience wrapper around [`spawn_try_or_retry`].
+    fn spawn_or_retry<F>(f: F) -> PersistentHook
+    where
+        F: FnMut() -> Result<PersistentHook, ProtocolError>,
+    {
+        spawn_try_or_retry(f).unwrap_or_else(|e| panic!("spawn failed: {e:?}"))
     }
 
     fn python3_available() -> bool {
@@ -1254,13 +1264,15 @@ while True:
         );
 
         let start = Instant::now();
-        let err = PersistentHook::spawn_with_config(
-            Command::new(&hook),
-            "silent",
-            Stage::Transform,
-            Duration::from_millis(300),
-            DEFAULT_SHUTDOWN_GRACE,
-        )
+        let err = spawn_try_or_retry(|| {
+            PersistentHook::spawn_with_config(
+                Command::new(&hook),
+                "silent",
+                Stage::Transform,
+                Duration::from_millis(300),
+                DEFAULT_SHUTDOWN_GRACE,
+            )
+        })
         .unwrap_err();
         let elapsed = start.elapsed();
 
@@ -1290,8 +1302,10 @@ time.sleep(5)
 "#,
         );
 
-        let err =
-            PersistentHook::spawn(Command::new(&hook), "future", Stage::Transform).unwrap_err();
+        let err = spawn_try_or_retry(|| {
+            PersistentHook::spawn(Command::new(&hook), "future", Stage::Transform)
+        })
+        .unwrap_err();
         match err {
             ProtocolError::Handshake(msg) => {
                 assert!(msg.contains("ast_version_mismatch"), "msg: {msg}");
@@ -1316,7 +1330,10 @@ time.sleep(5)
 "#,
         );
 
-        let err = PersistentHook::spawn(Command::new(&hook), "x", Stage::Transform).unwrap_err();
+        let err = spawn_try_or_retry(|| {
+            PersistentHook::spawn(Command::new(&hook), "x", Stage::Transform)
+        })
+        .unwrap_err();
         match err {
             ProtocolError::Handshake(msg) => {
                 assert!(msg.contains("ready=false"), "msg: {msg}");
@@ -1455,14 +1472,15 @@ while True:
         );
 
         let pid = {
-            let h = PersistentHook::spawn_with_config(
-                Command::new(&hook),
-                "ignore",
-                Stage::Transform,
-                DEFAULT_HANDSHAKE_TIMEOUT,
-                Duration::from_millis(100), // short grace so drop completes quickly
-            )
-            .unwrap();
+            let h = spawn_or_retry(|| {
+                PersistentHook::spawn_with_config(
+                    Command::new(&hook),
+                    "ignore",
+                    Stage::Transform,
+                    DEFAULT_HANDSHAKE_TIMEOUT,
+                    Duration::from_millis(100), // short grace so drop completes quickly
+                )
+            });
             h.child.id()
         };
 
