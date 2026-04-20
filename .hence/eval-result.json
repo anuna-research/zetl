@@ -4,28 +4,28 @@
   "exit_code": 0,
   "diff_summary": {
     "files_changed": 6,
-    "insertions": 705,
-    "deletions": 8,
+    "insertions": 1321,
+    "deletions": 41,
     "file_list": [
       ".hence/context-manifest.json",
-      "docs/reader-troubleshooting.md",
-      "docs/reader.html",
-      "src/cap/shim/fallback.ts",
-      "src/cap/shim/pipeline.ts",
-      "src/cap/shim/test/fallback.test.ts"
+      "src/cap/shim/identity.ts",
+      "src/cap/shim/session_policy.ts",
+      "src/cap/shim/test/tofu.test.ts",
+      "src/cap/shim/test/unwrap.test.ts",
+      "src/cap/shim/unwrap.ts"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-shim-fallback-changes",
-      "content": "Modified 6 files (+705, -8): .hence/context-manifest.json, docs/reader-troubleshooting.md, docs/reader.html, src/cap/shim/fallback.ts, src/cap/shim/pipeline.ts and 1 more",
+      "key": "task-cap-shim-unwrap-changes",
+      "content": "Modified 6 files (+1321, -41): .hence/context-manifest.json, src/cap/shim/identity.ts, src/cap/shim/session_policy.ts, src/cap/shim/test/tofu.test.ts, src/cap/shim/test/unwrap.test.ts and 1 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-shim-fallback-v1",
-  "evaluated_at": "2026-04-20T17:52:55Z",
+  "branch_name": "hence/cap-shim-unwrap-v1",
+  "evaluated_at": "2026-04-20T18:03:46Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
