@@ -102,6 +102,9 @@ ammonia = "4"
 bip39 = { version = "2", features = ["rand"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 hmac = "0.12"
+# SPEC-034 CON-3401 path-cap derivation + CON-3409 TOFU-wrap derivation.
+# Used by the pure-core `cap::derivation` module (RFC 5869 HKDF-SHA256).
+hkdf = "0.12"
 getrandom = "0.2"
 # default-features=false disables `https` + `ssh`. zetl only uses git2
 # for local repo inspection and auto-commits (no network), so neither
