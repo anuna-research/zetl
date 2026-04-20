@@ -19,19 +19,20 @@ import { errorKindFromException, renderError, type ErrorKind } from "./errors.ts
 
 export const LOCK_NAME = "zetl-capability-shim";
 
-export const enum Phase {
-  Init = 0,
-  LockAcquired = 1,
-  SwPurged = 2,
-  EnvelopeFetched = 3,
-  SignatureVerified = 4,
-  IdentityAcquired = 5,
-  Decrypted = 6,
-  Sanitised = 7,
-  Scrubbed = 8,
-  Rendered = 9,
-  Errored = 99,
-}
+export const Phase = {
+  Init: 0,
+  LockAcquired: 1,
+  SwPurged: 2,
+  EnvelopeFetched: 3,
+  SignatureVerified: 4,
+  IdentityAcquired: 5,
+  Decrypted: 6,
+  Sanitised: 7,
+  Scrubbed: 8,
+  Rendered: 9,
+  Errored: 99,
+} as const;
+export type Phase = (typeof Phase)[keyof typeof Phase];
 
 /// Captured transition log — exposed so tests can assert "pipeline
 /// stopped at SignatureVerified, never reached IdentityAcquired".

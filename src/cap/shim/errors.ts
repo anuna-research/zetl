@@ -15,7 +15,7 @@ export type ErrorKind =
 
 const COPY: Record<ErrorKind, string> = {
   "signature-failed":
-    "This page's signature did not verify — possible tampering; contact your wiki operator.",
+    "This page's signature did not verify — possible tampering; contact your wiki operator",
   "need-invite":
     "This page is only readable from a fresh invite URL on this device. Ask your wiki operator for a new invite URL.",
   "identity-unavailable":
