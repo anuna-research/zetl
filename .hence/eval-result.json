@@ -3,29 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 1321,
-    "deletions": 41,
+    "files_changed": 4,
+    "insertions": 1123,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/shim/identity.ts",
-      "src/cap/shim/session_policy.ts",
-      "src/cap/shim/test/tofu.test.ts",
-      "src/cap/shim/test/unwrap.test.ts",
-      "src/cap/shim/unwrap.ts"
+      "src/cap/mod.rs",
+      "src/cap/public_repo.rs",
+      "tests/cap_public_repo_safety_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-shim-unwrap-changes",
-      "content": "Modified 6 files (+1321, -41): .hence/context-manifest.json, src/cap/shim/identity.ts, src/cap/shim/session_policy.ts, src/cap/shim/test/tofu.test.ts, src/cap/shim/test/unwrap.test.ts and 1 more",
+      "key": "task-cap-public-repo-safety-changes",
+      "content": "Modified 4 files (+1123, -5): .hence/context-manifest.json, src/cap/mod.rs, src/cap/public_repo.rs, tests/cap_public_repo_safety_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-shim-unwrap-v1",
-  "evaluated_at": "2026-04-20T18:03:46Z",
+  "branch_name": "hence/cap-public-repo-safety-v1",
+  "evaluated_at": "2026-04-20T18:13:23Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
