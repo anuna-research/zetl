@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-docs-security",
+  "task_id": "cap-shim-core",
   "token_budget": 8000,
-  "tokens_used": 440,
+  "tokens_used": 469,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`docs/capability-security.md` — deeper threat-model discussion per SPEC-034 §12 and §11. Explicit `do NOT use capability mode for X` list (regulated PII, cardholder data, etc.). Comparison table: delegated-URL vs hardened vs `zetl serve` vs reverse-proxy-auth. Prior-art citations (§1.4). Offline brute-force math for padding (NFR-3410 honest bounds). Content-authenticity story (signing key trust model).",
-      "token_cost": 102,
+      "content": "TypeScript shim at `src/cap/shim/index.ts`. Implements the CON-3408 pipeline: navigator.locks lock → unregister ServiceWorkers → fetch envelope → verify Ed25519 → acquire identity (TOFU or subsequent) → age-decrypt → sanitise → replaceState → rewrite hrefs → render. The pipeline order is security-critical and enforced by the state machine. Bundled via esbuild with SRI hash generated into a manifest at build time. Includes `@noble/ed25519` for signature verification + `age-encryption` (typage) for unwrap.",
+      "token_cost": 131,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T14:08:39Z"
+  "constructed_at": "2026-04-20T14:14:56Z"
 }
