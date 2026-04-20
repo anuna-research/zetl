@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-cache-control",
+  "task_id": "cap-csp-sri",
   "token_budget": 8000,
-  "tokens_used": 470,
+  "tokens_used": 485,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Cache-Control + Clear-Site-Data headers per REQ-3407 + REQ-3428. Emit `Cache-Control: private, max-age=300, must-revalidate` on `/c/*` paths in all deploy configs (nginx, Caddy, Netlify `_headers`, Vercel `vercel.json`, Cloudflare Pages). Emit `Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\"` on `/enroll.html` and `/logout`. Emit `Cache-Control: public, max-age=31536000, immutable` on `/assets/shim.js` (immutable since filename-hashed). Operator can override max-age via `[access.cache]` with hard bounds [60, 3600].",
-      "token_cost": 132,
+      "content": "CSP + SRI per REQ-3421 + CON-3410 (BUG-006 resolution). Emit `Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';` as both an HTTP response header (via deploy configs) and a `<meta http-equiv>` fallback in every encrypted page's HTML shell. Shim script tag: `<script src=\"/assets/shim.js\" integrity=\"sha384-<hash>\" crossorigin=\"anonymous\">`. SRI hash generated during shim bundle.",
+      "token_cost": 147,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T15:03:52Z"
+  "constructed_at": "2026-04-20T15:22:56Z"
 }

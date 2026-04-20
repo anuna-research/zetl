@@ -16,6 +16,7 @@ pub mod derivation;
 pub mod emergency_shutdown;
 pub mod genkey;
 pub mod grants;
+pub mod html_shell;
 pub mod invite;
 pub mod pad;
 pub mod pair;

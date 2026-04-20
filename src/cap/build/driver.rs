@@ -84,6 +84,7 @@ use crate::cap::deploy_headers::{self, HeaderSpec};
 use crate::cap::derivation::{derive_path_cap, DerivationError, PATH_CAP_DEFAULT_BITS};
 use crate::cap::genkey::ParsedSecret;
 use crate::cap::grants::validation::{Grant, GrantsFile};
+use crate::cap::html_shell;
 use crate::cap::pad::X25519Pubkey;
 use crate::cap::recipients::parsing::{Cohort, RecipientsFile, AGE_RECIPIENT_V1_PREFIX};
 use crate::cap::sanitiser;
@@ -125,6 +126,15 @@ pub struct BuildConfig {
     /// [`AccessConfig::validate`] before writing any ciphertext so
     /// misconfiguration short-circuits cleanly.
     pub access: AccessConfig,
+    /// SHA-384 SRI integrity token for `/assets/shim.js` (REQ-3421 /
+    /// CON-3410). When `Some`, `run_capability_build` additionally
+    /// emits the capability-mode HTML shell under
+    /// `<out_dir>/_zetl/capability-shell.html` with a
+    /// `<meta http-equiv="Content-Security-Policy">` fallback and an
+    /// SRI-tagged shim `<script>`. When `None`, shell emission is
+    /// skipped — this keeps pre-shim-bundle dev builds unblocked and
+    /// lets unit tests target the envelope path in isolation.
+    pub shim_integrity: Option<String>,
 }
 
 impl BuildConfig {
@@ -140,6 +150,7 @@ impl BuildConfig {
             path_cap_bits: PATH_CAP_DEFAULT_BITS,
             visibility: Visibility::Private,
             access: AccessConfig::default(),
+            shim_integrity: None,
         }
     }
 }
@@ -502,6 +513,21 @@ pub fn run_capability_build(
         }
     })?;
 
+    // REQ-3421 / CON-3410 (BUG-006): emit the HTML shell with a
+    // `<meta http-equiv="Content-Security-Policy">` fallback and an
+    // SRI-tagged shim `<script>`. Skipped if the caller did not thread
+    // a shim-integrity token through `BuildConfig` — pre-bundle dev
+    // builds and most unit tests take that branch.
+    if let Some(sri_hash) = config.shim_integrity.as_deref() {
+        html_shell::write_shell(&config.out_dir, sri_hash).map_err(|source| BuildError::Io {
+            path: config
+                .out_dir
+                .join("_zetl")
+                .join(html_shell::CAPABILITY_SHELL_FILENAME),
+            source,
+        })?;
+    }
+
     Ok(BuildSummary {
         cohorts: recipients.cohorts.len(),
         pages: pages.len(),
@@ -711,6 +737,7 @@ mod tests {
             path_cap_bits: PATH_CAP_DEFAULT_BITS,
             visibility: Visibility::Private,
             access: AccessConfig::default(),
+            shim_integrity: None,
         }
     }
 
@@ -1043,6 +1070,72 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, BuildError::DuplicateSlug(s) if s == "same"));
+    }
+
+    /// REQ-3421 / CON-3410: when `shim_integrity` is Some, the shell
+    /// lands under `_zetl/capability-shell.html` with the pinned CSP
+    /// meta tag and the SRI-tagged shim script. When None, the shell
+    /// file is absent (pre-bundle dev-build / unit-test path).
+    #[test]
+    fn shell_emission_is_gated_on_shim_integrity() {
+        let tmp = TempDir::new().unwrap();
+        let salt_b64 = URL_SAFE_NO_PAD.encode(b"salt-for-shell-test-01");
+        let (_id, pk) = fresh_age_identity_pair();
+        let recipients = sample_recipients(&salt_b64, vec![pk]);
+
+        // Baseline: default cfg (shim_integrity = None) writes no
+        // shell.
+        run_capability_build(
+            &build_cfg(tmp.path()),
+            &recipients,
+            &sample_grants(),
+            &sample_secret(),
+            &sample_signing_key(),
+            &[PageInput {
+                slug: "welcome".into(),
+                html: "<p>x</p>".into(),
+                explicit_cohorts: vec![],
+            }],
+        )
+        .unwrap();
+        let shell_path = tmp
+            .path()
+            .join("_zetl")
+            .join(html_shell::CAPABILITY_SHELL_FILENAME);
+        assert!(
+            !shell_path.exists(),
+            "shell must not be emitted when shim_integrity is None"
+        );
+
+        // With a hash threaded through, the shell appears and carries
+        // every REQ-3421 / CON-3410 element.
+        let tmp2 = TempDir::new().unwrap();
+        let sri = "sha384-TestHashForUnitCoverageOnly0000000000000000000000000000000=";
+        let mut cfg = build_cfg(tmp2.path());
+        cfg.shim_integrity = Some(sri.to_string());
+        run_capability_build(
+            &cfg,
+            &recipients,
+            &sample_grants(),
+            &sample_secret(),
+            &sample_signing_key(),
+            &[PageInput {
+                slug: "welcome".into(),
+                html: "<p>x</p>".into(),
+                explicit_cohorts: vec![],
+            }],
+        )
+        .unwrap();
+        let shell = fs::read_to_string(
+            tmp2.path()
+                .join("_zetl")
+                .join(html_shell::CAPABILITY_SHELL_FILENAME),
+        )
+        .expect("shell must be written");
+        assert!(shell.contains("<meta http-equiv=\"Content-Security-Policy\""));
+        assert!(shell.contains(sri));
+        assert!(shell.contains("crossorigin=\"anonymous\""));
+        assert!(shell.contains("<main data-zetl-capability></main>"));
     }
 
     #[test]

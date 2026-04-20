@@ -1,10 +1,12 @@
-//! Cache-Control + Clear-Site-Data deploy-header recipes (SPEC-034
-//! REQ-3407, REQ-3418, REQ-3428 / CON-3406).
+//! Cache-Control + Clear-Site-Data + CSP deploy-header recipes
+//! (SPEC-034 REQ-3407, REQ-3418, REQ-3421, REQ-3428 / CON-3406,
+//! CON-3410 — BUG-006 resolution).
 //!
 //! Operators of capability-mode static deployments configure their
 //! HTTP server (nginx, Caddy) or CDN (Netlify, Vercel, Cloudflare
-//! Pages) to emit three headers that the capability shim + spec rely
-//! on for revocation latency bounds and ServiceWorker hygiene:
+//! Pages) to emit four headers that the capability shim + spec rely
+//! on for revocation latency bounds, ServiceWorker hygiene, and
+//! XSS / CDN-substitution resistance:
 //!
 //! - `Cache-Control: private, max-age=<N>, must-revalidate` on
 //!   `/c/*` ciphertext responses. `max-age` is operator-tunable via
@@ -17,6 +19,12 @@
 //!   `/assets/shim.js`. Fixed because the shim filename is content-
 //!   hashed on emission, so a new shim gets a new path and the
 //!   immutable cache never stales.
+//! - `Content-Security-Policy: default-src 'none'; script-src
+//!   'self'; …; require-trusted-types-for 'script'; trusted-types
+//!   'none';` on `/c/*` and `/enroll.html` (REQ-3421 / CON-3410).
+//!   The shell HTML also carries the same directive as a
+//!   `<meta http-equiv>` fallback, so a CDN that forgets to emit
+//!   the header still enforces CSP in the browser.
 //!
 //! This module is the single source of truth for the header values
 //! and path-to-header mapping; each recipe emitter consults the same
@@ -62,6 +70,39 @@ pub const SHIM_PATH: &str = "/assets/shim.js";
 /// Path prefix for ciphertext envelopes (SPEC-034 CON-3401).
 pub const CIPHERTEXT_PATH_PREFIX: &str = "/c/";
 
+/// Content-Security-Policy header value mandated by SPEC-034
+/// REQ-3421 / CON-3410 (BUG-006 resolution). The exact directive
+/// order is pinned so the HTTP header, the HTML shell's
+/// `<meta http-equiv>` fallback, and the spec all carry the same
+/// byte-for-byte string.
+///
+/// - `default-src 'none'`        — deny everything by default.
+/// - `script-src 'self'`         — only the SRI-pinned shim.
+/// - `style-src 'self'`          — stylesheets from same origin.
+/// - `img-src 'self' data:`      — inline data URIs allowed for
+///   sanitised-HTML image payloads (no remote fetches).
+/// - `connect-src 'none'`        — no `fetch`/XHR to anywhere. The
+///   shim fetches its envelope from the page URL itself (same-origin
+///   same-document, which browsers do not gate on `connect-src`).
+/// - `font-src 'self'`           — fonts from same origin only.
+/// - `frame-ancestors 'none'`    — unframeable.
+/// - `base-uri 'none'`           — `<base>` injection blocked.
+/// - `form-action 'none'`        — blocks exfil via form POST.
+/// - `require-trusted-types-for 'script'` + `trusted-types 'none'`
+///   — Trusted Types gate for the shim's `innerHTML` assignment
+///   path; the shim installs a named policy before injection.
+pub const CAP_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; \
+    img-src 'self' data:; connect-src 'none'; font-src 'self'; \
+    frame-ancestors 'none'; base-uri 'none'; form-action 'none'; \
+    require-trusted-types-for 'script'; trusted-types 'none';";
+
+/// Paths that must receive the CSP response header (REQ-3421). The
+/// shell HTML under `/c/*` is the browser's first-navigation target;
+/// `/enroll.html` is the hardened-mode self-enrol page. Both need
+/// the header so CSP is enforced even before `<meta http-equiv>` is
+/// parsed. Ordered for byte-stable recipe emission.
+pub const CSP_PATHS: &[&str] = &[CIPHERTEXT_PATH_PREFIX, "/enroll.html"];
+
 /// Logical header set captured once and rendered into every recipe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeaderSpec {
@@ -73,6 +114,9 @@ pub struct HeaderSpec {
     /// `Clear-Site-Data` value for `/enroll.html` and `/logout`.
     /// Fixed.
     pub clear_site_data: String,
+    /// `Content-Security-Policy` value for `/c/*` and `/enroll.html`.
+    /// Pinned to the SPEC-034 CON-3410 directive string.
+    pub csp: String,
 }
 
 impl HeaderSpec {
@@ -88,6 +132,7 @@ impl HeaderSpec {
             ),
             shim_cache_control: format!("public, max-age={SHIM_MAX_AGE}, immutable"),
             clear_site_data: CLEAR_SITE_DATA_VALUE.to_string(),
+            csp: CAP_CSP.to_string(),
         }
     }
 }
@@ -102,15 +147,23 @@ pub fn render_nginx(spec: &HeaderSpec) -> String {
     out.push_str("# Format: nginx `location` blocks; include from a server { } block.\n\n");
     out.push_str(&format!(
         "location ^~ {CIPHERTEXT_PATH_PREFIX} {{\n    \
-         add_header Cache-Control \"{}\" always;\n}}\n\n",
-        spec.cap_cache_control
+         add_header Cache-Control \"{}\" always;\n    \
+         add_header Content-Security-Policy \"{}\" always;\n}}\n\n",
+        spec.cap_cache_control, spec.csp
     ));
     for path in CLEAR_SITE_DATA_PATHS {
         out.push_str(&format!(
             "location = {path} {{\n    \
-             add_header Clear-Site-Data '{}' always;\n}}\n\n",
+             add_header Clear-Site-Data '{}' always;\n",
             spec.clear_site_data
         ));
+        if path == &"/enroll.html" {
+            out.push_str(&format!(
+                "    add_header Content-Security-Policy \"{}\" always;\n",
+                spec.csp
+            ));
+        }
+        out.push_str("}\n\n");
     }
     out.push_str(&format!(
         "location = {SHIM_PATH} {{\n    \
@@ -127,15 +180,24 @@ pub fn render_caddy(spec: &HeaderSpec) -> String {
     out.push_str(RECIPE_HEADER_COMMENT);
     out.push_str("# Format: Caddyfile directives; paste inside your site block.\n\n");
     out.push_str(&format!(
-        "@zetl_cap path {CIPHERTEXT_PATH_PREFIX}*\nheader @zetl_cap Cache-Control \"{}\"\n\n",
-        spec.cap_cache_control
+        "@zetl_cap path {CIPHERTEXT_PATH_PREFIX}*\n\
+         header @zetl_cap Cache-Control \"{}\"\n\
+         header @zetl_cap Content-Security-Policy \"{}\"\n\n",
+        spec.cap_cache_control, spec.csp
     ));
     for (idx, path) in CLEAR_SITE_DATA_PATHS.iter().enumerate() {
         let matcher = format!("@zetl_csd_{idx}");
         out.push_str(&format!(
-            "{matcher} path {path}\nheader {matcher} Clear-Site-Data `{}`\n\n",
+            "{matcher} path {path}\nheader {matcher} Clear-Site-Data `{}`\n",
             spec.clear_site_data
         ));
+        if path == &"/enroll.html" {
+            out.push_str(&format!(
+                "header {matcher} Content-Security-Policy \"{}\"\n",
+                spec.csp
+            ));
+        }
+        out.push('\n');
     }
     out.push_str(&format!(
         "@zetl_shim path {SHIM_PATH}\nheader @zetl_shim Cache-Control \"{}\"\n",
@@ -153,14 +215,18 @@ pub fn render_netlify_headers(spec: &HeaderSpec) -> String {
         "# Format: Netlify / Cloudflare Pages `_headers` file (deploy at the site root).\n\n",
     );
     out.push_str(&format!(
-        "{CIPHERTEXT_PATH_PREFIX}*\n  Cache-Control: {}\n\n",
-        spec.cap_cache_control
+        "{CIPHERTEXT_PATH_PREFIX}*\n  Cache-Control: {}\n  Content-Security-Policy: {}\n\n",
+        spec.cap_cache_control, spec.csp
     ));
     for path in CLEAR_SITE_DATA_PATHS {
         out.push_str(&format!(
-            "{path}\n  Clear-Site-Data: {}\n\n",
+            "{path}\n  Clear-Site-Data: {}\n",
             spec.clear_site_data
         ));
+        if path == &"/enroll.html" {
+            out.push_str(&format!("  Content-Security-Policy: {}\n", spec.csp));
+        }
+        out.push('\n');
     }
     out.push_str(&format!(
         "{SHIM_PATH}\n  Cache-Control: {}\n",
@@ -175,11 +241,33 @@ pub fn render_netlify_headers(spec: &HeaderSpec) -> String {
 pub fn render_vercel_json(spec: &HeaderSpec) -> String {
     let ciphertext_source = format!("{CIPHERTEXT_PATH_PREFIX}(.*)");
     let mut entries: Vec<String> = Vec::new();
-    entries.push(vercel_entry(&ciphertext_source, "Cache-Control", &spec.cap_cache_control));
+    entries.push(vercel_entry(
+        &ciphertext_source,
+        &[
+            ("Cache-Control", spec.cap_cache_control.as_str()),
+            ("Content-Security-Policy", spec.csp.as_str()),
+        ],
+    ));
     for path in CLEAR_SITE_DATA_PATHS {
-        entries.push(vercel_entry(path, "Clear-Site-Data", &spec.clear_site_data));
+        if path == &"/enroll.html" {
+            entries.push(vercel_entry(
+                path,
+                &[
+                    ("Clear-Site-Data", spec.clear_site_data.as_str()),
+                    ("Content-Security-Policy", spec.csp.as_str()),
+                ],
+            ));
+        } else {
+            entries.push(vercel_entry(
+                path,
+                &[("Clear-Site-Data", spec.clear_site_data.as_str())],
+            ));
+        }
     }
-    entries.push(vercel_entry(SHIM_PATH, "Cache-Control", &spec.shim_cache_control));
+    entries.push(vercel_entry(
+        SHIM_PATH,
+        &[("Cache-Control", spec.shim_cache_control.as_str())],
+    ));
 
     let mut out = String::new();
     out.push_str("{\n  \"headers\": [\n");
@@ -194,14 +282,24 @@ pub fn render_vercel_json(spec: &HeaderSpec) -> String {
     out
 }
 
-fn vercel_entry(source: &str, key: &str, value: &str) -> String {
-    format!(
-        "    {{\n      \"source\": \"{src}\",\n      \"headers\": [\n        \
-         {{ \"key\": \"{k}\", \"value\": {v} }}\n      ]\n    }}",
-        src = source,
-        k = key,
-        v = json_string(value),
-    )
+fn vercel_entry(source: &str, headers: &[(&str, &str)]) -> String {
+    let mut s = String::new();
+    s.push_str("    {\n      \"source\": \"");
+    s.push_str(source);
+    s.push_str("\",\n      \"headers\": [\n");
+    for (i, (k, v)) in headers.iter().enumerate() {
+        s.push_str("        { \"key\": \"");
+        s.push_str(k);
+        s.push_str("\", \"value\": ");
+        s.push_str(&json_string(v));
+        s.push_str(" }");
+        if i + 1 < headers.len() {
+            s.push(',');
+        }
+        s.push('\n');
+    }
+    s.push_str("      ]\n    }");
+    s
 }
 
 fn json_string(raw: &str) -> String {
@@ -240,11 +338,21 @@ pub fn render_readme(spec: &HeaderSpec) -> String {
         "- `{CIPHERTEXT_PATH_PREFIX}*` → `Cache-Control: {}`\n",
         spec.cap_cache_control
     ));
+    out.push_str(&format!(
+        "- `{CIPHERTEXT_PATH_PREFIX}*` → `Content-Security-Policy: {}`\n",
+        spec.csp
+    ));
     for path in CLEAR_SITE_DATA_PATHS {
         out.push_str(&format!(
             "- `{path}` → `Clear-Site-Data: {}`\n",
             spec.clear_site_data
         ));
+        if path == &"/enroll.html" {
+            out.push_str(&format!(
+                "- `{path}` → `Content-Security-Policy: {}`\n",
+                spec.csp
+            ));
+        }
     }
     out.push_str(&format!(
         "- `{SHIM_PATH}` → `Cache-Control: {}`\n\n",
@@ -262,14 +370,22 @@ pub fn render_readme(spec: &HeaderSpec) -> String {
         "The `/c/*` max-age is operator-tunable via `[access.cache] max_age` \
          (bounds [60, 3600]). Lowering it shortens the window between `zetl cap \
          revoke` and readers no longer being able to load the page from CDN \
-         caches. See NFR-3409.\n",
+         caches. See NFR-3409.\n\n",
+    );
+    out.push_str("## CSP fallback\n\n");
+    out.push_str(
+        "The HTML shell emitted under `_zetl/capability-shell.html` carries the \
+         same `Content-Security-Policy` directive as a `<meta http-equiv>` tag. \
+         If a CDN drops the HTTP header, the meta tag still enforces CSP in the \
+         browser — the recipe + shell are belt-and-braces. See SPEC-034 \
+         REQ-3421 / CON-3410.\n",
     );
     out
 }
 
 const RECIPE_HEADER_COMMENT: &str = "\
 # zetl capability-mode HTTP header recipe
-# Generated by `zetl build` from SPEC-034 REQ-3407 / REQ-3418 / REQ-3428.
+# Generated by `zetl build` from SPEC-034 REQ-3407 / REQ-3418 / REQ-3421 / REQ-3428.
 # Do not edit by hand — re-run the build if you want different values.
 ";
 
@@ -340,6 +456,14 @@ mod tests {
         assert!(rendered.contains("location = /assets/shim.js"));
         assert!(rendered.contains("public, max-age=31536000, immutable"));
         assert!(rendered.contains("Clear-Site-Data"));
+        // REQ-3421: CSP is emitted on both /c/* and /enroll.html, with
+        // the exact directive from CAP_CSP. /logout is Clear-Site-Data
+        // only — it is not an HTML path a reader lands on before the
+        // shim runs, so the CSP header would only confuse the operator.
+        assert!(
+            rendered.contains(&format!("add_header Content-Security-Policy \"{CAP_CSP}\" always;")),
+            "expected CSP header in nginx recipe, got:\n{rendered}"
+        );
         // nginx uses single-quote wrapping for CSD so the double-quoted
         // token list inside the value survives verbatim.
         assert!(
@@ -361,6 +485,16 @@ mod tests {
                 "missing Caddy matcher for {path}"
             );
         }
+        assert!(
+            rendered.contains(&format!(
+                "header @zetl_cap Content-Security-Policy \"{CAP_CSP}\""
+            )),
+            "expected CSP on @zetl_cap in Caddy recipe, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains(&format!("Content-Security-Policy \"{CAP_CSP}\"")),
+            "expected CSP header (on /enroll.html matcher) in Caddy recipe, got:\n{rendered}"
+        );
         // Backtick-wrapped CSD payload so Caddy's tokenizer doesn't
         // consume the inner double quotes.
         assert!(
@@ -381,6 +515,21 @@ mod tests {
         );
         assert!(
             rendered.contains("/assets/shim.js\n  Cache-Control: public, max-age=31536000, immutable")
+        );
+        // REQ-3421: CSP is stacked under /c/* right after Cache-Control,
+        // and under /enroll.html right after Clear-Site-Data.
+        assert!(
+            rendered.contains(&format!("/c/*\n  Cache-Control: private, max-age=300, must-revalidate\n  Content-Security-Policy: {CAP_CSP}")),
+            "expected /c/* CSP stacked under Cache-Control in _headers, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains(&format!("/enroll.html\n  Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\"\n  Content-Security-Policy: {CAP_CSP}")),
+            "expected /enroll.html CSP in _headers, got:\n{rendered}"
+        );
+        // /logout gets Clear-Site-Data but NOT CSP (not an HTML surface).
+        assert!(
+            !rendered.contains(&format!("/logout\n  Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\"\n  Content-Security-Policy:")),
+            "/logout should not carry CSP in _headers"
         );
     }
 
@@ -404,26 +553,59 @@ mod tests {
             vec!["/c/(.*)", "/enroll.html", "/logout", "/assets/shim.js"]
         );
 
-        let cap_entry = &headers[0]["headers"][0];
-        assert_eq!(cap_entry["key"], "Cache-Control");
+        let cap_headers = headers[0]["headers"].as_array().unwrap();
+        assert_eq!(cap_headers.len(), 2, "expected Cache-Control + CSP on /c/*");
+        assert_eq!(cap_headers[0]["key"], "Cache-Control");
         assert_eq!(
-            cap_entry["value"],
+            cap_headers[0]["value"],
             "private, max-age=300, must-revalidate"
         );
+        assert_eq!(cap_headers[1]["key"], "Content-Security-Policy");
+        assert_eq!(cap_headers[1]["value"], CAP_CSP);
 
-        let enroll_entry = &headers[1]["headers"][0];
-        assert_eq!(enroll_entry["key"], "Clear-Site-Data");
+        let enroll_headers = headers[1]["headers"].as_array().unwrap();
         assert_eq!(
-            enroll_entry["value"],
+            enroll_headers.len(),
+            2,
+            "expected Clear-Site-Data + CSP on /enroll.html"
+        );
+        assert_eq!(enroll_headers[0]["key"], "Clear-Site-Data");
+        assert_eq!(
+            enroll_headers[0]["value"],
             "\"cache\", \"storage\", \"executionContexts\""
         );
+        assert_eq!(enroll_headers[1]["key"], "Content-Security-Policy");
+        assert_eq!(enroll_headers[1]["value"], CAP_CSP);
 
-        let shim_entry = &headers[3]["headers"][0];
-        assert_eq!(shim_entry["key"], "Cache-Control");
+        let logout_headers = headers[2]["headers"].as_array().unwrap();
+        assert_eq!(logout_headers.len(), 1, "/logout has Clear-Site-Data only");
+        assert_eq!(logout_headers[0]["key"], "Clear-Site-Data");
+
+        let shim_headers = headers[3]["headers"].as_array().unwrap();
+        assert_eq!(shim_headers.len(), 1);
+        assert_eq!(shim_headers[0]["key"], "Cache-Control");
         assert_eq!(
-            shim_entry["value"],
+            shim_headers[0]["value"],
             "public, max-age=31536000, immutable"
         );
+    }
+
+    #[test]
+    fn csp_constant_matches_spec_directive_set() {
+        // Byte-exact guard against accidental drift from SPEC-034
+        // CON-3410. Any directive reorder or case change trips this.
+        assert_eq!(
+            CAP_CSP,
+            "default-src 'none'; script-src 'self'; style-src 'self'; \
+             img-src 'self' data:; connect-src 'none'; font-src 'self'; \
+             frame-ancestors 'none'; base-uri 'none'; form-action 'none'; \
+             require-trusted-types-for 'script'; trusted-types 'none';"
+        );
+    }
+
+    #[test]
+    fn default_spec_uses_pinned_csp() {
+        assert_eq!(default_spec().csp, CAP_CSP);
     }
 
     #[test]

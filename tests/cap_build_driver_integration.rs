@@ -117,6 +117,7 @@ fn build_cfg(out: &std::path::Path) -> BuildConfig {
         path_cap_bits: 64,
         visibility: Visibility::Private,
         access: zetl::cap::scoping::access_config::AccessConfig::default(),
+        shim_integrity: None,
     }
 }
 
