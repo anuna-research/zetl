@@ -17,6 +17,7 @@ import {
   type PipelineDeps,
   type PipelineTrace,
 } from "./pipeline.ts";
+import { clearAllBindings } from "./storage.ts";
 
 // `declare const` + esbuild `define` swaps this for the literal b64url
 // pubkey string at build time. Keeping it a plain const means the
@@ -70,12 +71,12 @@ export async function renderCurrentPage(
   }
 }
 
-/// Mirror of CON-3408's `forgetBinding()` surface. v1 core ships a stub
-/// that wipes any future IndexedDB entries the TOFU task creates; until
-/// that task lands there are none, so this is a no-op.
+/// Mirror of CON-3408's `forgetBinding()` surface. Deletes every
+/// TOFU-wrapped priv_A record persisted by the shim on this origin.
+/// After calling this the reader needs a fresh invite URL to
+/// re-bind their device.
 export async function forgetBinding(): Promise<void> {
-  // `task-cap-shim-tofu` adds the concrete IDB object store and updates
-  // this to `idb.deleteDatabase(...)`.
+  await clearAllBindings();
 }
 
 declare global {

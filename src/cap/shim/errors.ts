@@ -6,6 +6,7 @@ export type ErrorKind =
   | "signature-failed"
   | "need-invite"
   | "identity-unavailable"
+  | "tofu-failed"
   | "decrypt-failed"
   | "envelope-malformed"
   | "sw-purge-failed"
@@ -20,6 +21,8 @@ const COPY: Record<ErrorKind, string> = {
     "This page is only readable from a fresh invite URL on this device. Ask your wiki operator for a new invite URL.",
   "identity-unavailable":
     "Could not recover the reading identity for this cohort on this device. Ask your wiki operator to re-invite you.",
+  "tofu-failed":
+    "Could not bind this device to the cohort passkey — TOFU registration failed. Reload to retry; if the problem persists, your browser or authenticator may not support the WebAuthn PRF extension.",
   "decrypt-failed":
     "Could not decrypt this page — the invite may have been revoked or rotated. Ask your wiki operator for a new invite.",
   "envelope-malformed":
@@ -70,7 +73,9 @@ export function errorKindFromException(err: unknown): ErrorKind {
   const kind = (err as { kind?: string }).kind;
   if (name === "EnvelopeParseError") return "envelope-malformed";
   if (name === "IdentityError") {
-    return kind === "need-invite" ? "need-invite" : "identity-unavailable";
+    if (kind === "need-invite") return "need-invite";
+    if (kind === "tofu-failed") return "tofu-failed";
+    return "identity-unavailable";
   }
   if (name === "DecryptError") return "decrypt-failed";
   return "internal";
