@@ -217,11 +217,15 @@ pub fn policy() -> Builder<'static> {
         .generic_attributes(generic)
         .tag_attributes(per_tag_attributes())
         .url_schemes(url_schemes)
-        // Every surviving <a> gets rel="noopener noreferrer". REQ-3413
-        // wants noreferrer on *external* links; always-setting it here is
-        // strictly stronger and overwrites any malicious rel=preconnect
-        // that might otherwise survive the allowlist.
-        .link_rel(Some("noopener noreferrer"))
+        // `rel` is not in the <a> allowlist so any author-provided rel
+        // value is dropped by the allowlist pass. We deliberately do
+        // NOT use ammonia's `link_rel` hook to force rel on every
+        // surviving link: REQ-3413 scrubs only *external* links and
+        // leaves internal navigation untouched so operators can still
+        // rely on same-site Referer for internal analytics. The
+        // downstream step in `cap::referrer_scrub` adds the canonical
+        // `rel="noopener noreferrer"` to external hrefs only.
+        .link_rel(None)
         // No relative URL base: the cap-mode shim rewrites hrefs after
         // sanitisation anyway (CON-3408 step 5).
         .url_relative(ammonia::UrlRelative::PassThrough)
@@ -436,14 +440,16 @@ mod tests {
     }
 
     #[test]
-    fn forces_noopener_noreferrer_on_links() {
+    fn strips_author_rel_so_referrer_scrub_owns_rel_policy() {
+        // REQ-3413 is implemented by the downstream `referrer_scrub`
+        // module, not by the sanitiser. The sanitiser just has to
+        // guarantee that any author-supplied `rel` (e.g.
+        // `rel="preconnect"` or `rel="dns-prefetch"`) is stripped so
+        // the scrubber sees a clean slate when deciding whether to
+        // add `noopener noreferrer` on external links.
         let out = sanitise("<a href=\"https://ok\" rel=\"preconnect\">x</a>");
-        assert!(
-            out.contains("rel=\"noopener noreferrer\""),
-            "rendered: {}",
-            out
-        );
-        assert!(!out.contains("preconnect"));
+        assert!(!out.contains("preconnect"), "rendered: {}", out);
+        assert!(!out.contains("rel="), "rendered: {}", out);
     }
 
     #[test]
