@@ -95,6 +95,10 @@ webauthn-rs = "0.5"
 uuid = { version = "1", features = ["v4"] }
 url = "2"
 base64 = "0.22"
+# SPEC-034 REQ-3421 capability-mode HTML sanitiser. Wraps the ammonia
+# Builder with an allowlist matching OWASP HTML-sanitisation recommendations;
+# config lives at tools/sanitiser-config.toml for operator visibility.
+ammonia = "4"
 bip39 = { version = "2", features = ["rand"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 hmac = "0.12"

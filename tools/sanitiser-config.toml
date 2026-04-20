@@ -1,0 +1,130 @@
+# zetl capability-mode HTML sanitiser policy
+#
+# SPEC-034 REQ-3421 — mirrors the OWASP HTML sanitisation allowlist.
+# The Rust implementation that enforces this policy lives in
+# `src/cap/sanitiser.rs` and wraps the `ammonia` crate.
+#
+# This file is the authoritative operator-visible statement of what the
+# capability-mode build strips from rendered HTML before it is age-encrypted
+# and served. Review it before deploying a capability-mode build to an
+# audience whose threat model differs from the defaults.
+#
+# The Rust policy is pinned against this file by `test_config_mirrors_spec`
+# in `tests/cap_sanitiser_integration.rs`; any drift fails CI.
+
+schema = "v1"
+
+# ── Allowlisted tags ─────────────────────────────────────────────────────
+#
+# Standard CommonMark output plus GFM extensions (tables, strikethrough,
+# sup/sub). Zetl-specific rendering is expected to compose from these.
+
+[tags]
+allow = [
+  # Sectioning + flow
+  "a", "abbr", "article", "aside", "b", "bdi", "bdo", "blockquote",
+  "br", "caption", "cite", "code", "data", "dd", "del", "details",
+  "dfn", "div", "dl", "dt", "em", "figcaption", "figure", "footer",
+  "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "i", "img",
+  "ins", "kbd", "li", "main", "mark", "nav", "ol", "p", "pre",
+  "q", "rp", "rt", "ruby", "s", "samp", "section", "small", "span",
+  "strong", "sub", "summary", "sup", "table", "tbody", "td", "tfoot",
+  "th", "thead", "time", "tr", "u", "ul", "var", "wbr",
+]
+
+# ── Denied tags ──────────────────────────────────────────────────────────
+#
+# `deny` is implicit: anything not in `allow` is stripped. The list below
+# is documentary — a subset of the tags we explicitly test to ensure the
+# sanitiser strips them. The `strip_content` list removes the tag AND its
+# children (otherwise a `<script>alert()</script>` would drop the tag but
+# leave the text node "alert()").
+
+[tags.strip_content]
+# REQ-3421 deny list. `iframe`/`object`/`embed` are active-content sinks;
+# `script`/`style`/`template` can exfiltrate via side channels even when
+# quoted as text children; `math` is stripped entirely (per REQ-3421
+# "Strip MathML"). `svg` is omitted from the allowlist so any inline SVG
+# becomes plain text.
+tags = [
+  "script", "style", "iframe", "object", "embed", "template", "math",
+  "base", "frame", "frameset", "noframes", "noscript", "xmp",
+]
+
+# ── Attributes ────────────────────────────────────────────────────────────
+
+[attributes.generic]
+# Allowed on any tag. The regex-level event-handler blocklist
+# (all `on*` attributes) is enforced by ammonia's default attribute
+# filter; only the attributes listed here survive.
+allow = ["id", "class", "title", "lang", "dir", "role", "aria-label",
+         "aria-hidden", "aria-describedby", "aria-labelledby"]
+
+[attributes.per_tag]
+a       = ["href", "hreflang", "rel", "target", "type", "download"]
+img     = ["src", "alt", "width", "height", "loading", "decoding"]
+blockquote = ["cite"]
+q       = ["cite"]
+time    = ["datetime"]
+th      = ["scope", "colspan", "rowspan", "abbr", "headers"]
+td      = ["colspan", "rowspan", "headers"]
+col     = ["span"]
+colgroup = ["span"]
+ol      = ["start", "type", "reversed"]
+li      = ["value"]
+details = ["open"]
+data    = ["value"]
+code    = ["data-lang"]
+pre     = ["data-lang"]
+
+# REQ-3421 denied attributes. Documentary — enforced by the allowlist
+# above (only listed attributes survive). Listed here so operators
+# scanning the config see the explicit threat map.
+[attributes.denied]
+# Event handlers.
+patterns = ["on*"]
+# Named attributes that smuggle capability into otherwise-allowed tags.
+named = ["srcdoc", "formaction", "ping", "http-equiv",
+         "integrity", "nonce", "xmlns", "is"]
+
+# ── URL schemes ──────────────────────────────────────────────────────────
+#
+# href/src values are filtered against this allowlist before rendering.
+# REQ-3421 denies `javascript:`, `data:`, and `vbscript:`. `data:` is
+# denied even for `<img src>` because a data-URI image can still drive
+# XSS via SVG payloads.
+
+[url_schemes]
+allow = ["http", "https", "mailto", "tel"]
+deny = ["javascript", "data", "vbscript", "file", "about"]
+
+# ── Link-rel filter ──────────────────────────────────────────────────────
+#
+# REQ-3421 denies `<link rel=preconnect|dns-prefetch|prerender>`. The
+# sanitiser's allowlist excludes `<link>` entirely, so every rel value is
+# stripped; this list documents the specific network-side-channel rels
+# that motivate the blanket deny.
+
+[link_rel]
+denied_rels = ["preconnect", "dns-prefetch", "prerender", "preload",
+               "prefetch", "modulepreload"]
+
+# ── CSS rules ────────────────────────────────────────────────────────────
+#
+# `<style>` is stripped (see tags.strip_content). Inline `style=` is not
+# in any per-tag allowlist so it's stripped too, eliminating `@import`
+# and `expression(...)` vectors.
+
+[css]
+inline_style_allowed = false
+at_import_blocked = true
+
+# ── Notes ────────────────────────────────────────────────────────────────
+#
+# - rel=noopener noreferrer is added by the emit layer, not the sanitiser
+#   (REQ-3413 / task-cap-referrer-scrubbing).
+# - This policy is applied AFTER the CommonMark renderer and BEFORE
+#   encryption; a reader only ever sees sanitised HTML regardless of what
+#   the source markdown contained.
+# - To extend the allowlist for a custom deployment, fork this file AND
+#   the Rust policy in `src/cap/sanitiser.rs`; never fork only one.
