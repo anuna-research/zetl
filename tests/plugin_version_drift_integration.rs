@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use zetl::ecosystems::version_drift::{
     classify, diagnostic_for_incompatible, format_minor_drift_log, parse_range,
@@ -31,6 +32,28 @@ use zetl::ecosystems::version_drift::{
     PluginVersionDrift, Version,
 };
 use zetl::hooks::diagnostic::{DiagnosticClass, Verbosity};
+
+/// Retry `probe_plugin_version` on the Linux `ETXTBSY` (errno 26, "Text
+/// file busy") race, where a sibling test thread's fork holds an fd to
+/// our just-written mock script between write and exec. Matches on the
+/// stringified error detail because the production probe wraps the
+/// underlying `io::Error` as `ProbeFailed { detail: format!("…: {e}") }`
+/// rather than exposing the raw errno. 25 ms backoff, 3 s deadline —
+/// mirrors the `spawn_or_retry` helpers in `src/hooks/persistent.rs`
+/// and `tests/persistent_protocol_integration.rs`.
+fn probe_with_retry(binary: &str) -> Version {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        match probe_plugin_version(binary) {
+            Err(PluginProbeError::ProbeFailed { detail, .. })
+                if detail.contains("os error 26") && Instant::now() < deadline =>
+            {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            result => return result.expect("probe succeeds"),
+        }
+    }
+}
 
 // ── Mocked `<plugin> --version` scripts ───────────────────────────────────
 
@@ -65,7 +88,7 @@ fn test_3314_exact_match_via_mocked_probe_is_silent() {
     // Matrix range `>=0.3.14 <0.4`; probe reports the exact lower bound.
     let tmp = tempfile::tempdir().unwrap();
     let path = write_mock_version_script(tmp.path(), "pandoc-crossref", "pandoc-crossref 0.3.14");
-    let observed = probe_plugin_version(path.to_str().unwrap()).expect("probe succeeds");
+    let observed = probe_with_retry(path.to_str().unwrap());
     assert_eq!(observed, Version(0, 3, 14));
 
     let drift = classify(">=0.3.14 <0.4", observed).expect("classify");
@@ -77,7 +100,7 @@ fn test_3314_minor_drift_via_mocked_probe_warns_and_continues() {
     // pandoc-crossref 0.3.16 → newer patch within the tested range.
     let tmp = tempfile::tempdir().unwrap();
     let path = write_mock_version_script(tmp.path(), "pandoc-crossref", "pandoc-crossref 0.3.16");
-    let observed = probe_plugin_version(path.to_str().unwrap()).expect("probe succeeds");
+    let observed = probe_with_retry(path.to_str().unwrap());
     assert_eq!(observed, Version(0, 3, 16));
 
     let drift = classify(">=0.3.14 <0.4", observed).expect("classify");
@@ -111,7 +134,7 @@ fn test_3314_incompatible_major_mismatch_via_mocked_probe_disables_hook() {
     // pandoc-crossref 1.0.0 — major bump from tested 0.3.14.
     let tmp = tempfile::tempdir().unwrap();
     let path = write_mock_version_script(tmp.path(), "pandoc-crossref", "pandoc-crossref 1.0.0");
-    let observed = probe_plugin_version(path.to_str().unwrap()).expect("probe succeeds");
+    let observed = probe_with_retry(path.to_str().unwrap());
     assert_eq!(observed, Version(1, 0, 0));
 
     let drift = classify(">=0.3.14 <0.4", observed).expect("classify");
@@ -133,7 +156,7 @@ fn test_3314_incompatible_below_range_via_mocked_probe() {
     // (same major 0 but patch below).
     let tmp = tempfile::tempdir().unwrap();
     let path = write_mock_version_script(tmp.path(), "pandoc-crossref", "pandoc-crossref 0.3.10");
-    let observed = probe_plugin_version(path.to_str().unwrap()).expect("probe succeeds");
+    let observed = probe_with_retry(path.to_str().unwrap());
     assert_eq!(observed, Version(0, 3, 10));
 
     let drift = classify(">=0.3.14 <0.4", observed).expect("classify");
@@ -150,7 +173,7 @@ fn test_3314_incompatible_above_range_via_mocked_probe() {
     // Same major (0), observed 0.4.0 hits the exclusive upper bound.
     let tmp = tempfile::tempdir().unwrap();
     let path = write_mock_version_script(tmp.path(), "pandoc-crossref", "pandoc-crossref 0.4.0");
-    let observed = probe_plugin_version(path.to_str().unwrap()).expect("probe succeeds");
+    let observed = probe_with_retry(path.to_str().unwrap());
     assert_eq!(observed, Version(0, 4, 0));
 
     let drift = classify(">=0.3.14 <0.4", observed).expect("classify");
