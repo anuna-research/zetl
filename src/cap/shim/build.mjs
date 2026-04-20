@@ -51,6 +51,23 @@ async function main() {
     process.exit(2);
   }
 
+  // REQ-3430 opt-in — mirrors `[access.split_key] second_factor` in
+  // the operator's `.zetl/config.toml`. When unset (or empty) the
+  // shim bundle refuses `#k1=` URLs with `mode-not-supported`. When
+  // set, the shim wires a `window.prompt` (for `spoken-phrase`) or
+  // a camera-scanner hook (for `qr`) into the identity branch.
+  const splitKeyFactor = process.env.ZETL_CAP_SPLIT_KEY_SECOND_FACTOR ?? "";
+  if (
+    splitKeyFactor !== ""
+    && splitKeyFactor !== "spoken-phrase"
+    && splitKeyFactor !== "qr"
+  ) {
+    console.error(
+      `ZETL_CAP_SPLIT_KEY_SECOND_FACTOR ${JSON.stringify(splitKeyFactor)} is not one of ""/"spoken-phrase"/"qr"`,
+    );
+    process.exit(2);
+  }
+
   await mkdir(OUT_DIR, { recursive: true });
 
   await build({
@@ -65,6 +82,7 @@ async function main() {
     legalComments: "none",
     define: {
       __VAULT_SIGNING_PUBKEY_B64URL__: JSON.stringify(pubkey),
+      __SPLIT_KEY_SECOND_FACTOR__: JSON.stringify(splitKeyFactor),
     },
     logLevel: "warning",
   });
@@ -103,6 +121,7 @@ async function main() {
     integrity: sriHash,
     signingPubkeyB64url: pubkey,
     placeholderPubkey: pubkey === DEV_PLACEHOLDER_PUBKEY_B64URL,
+    splitKeySecondFactor: splitKeyFactor === "" ? null : splitKeyFactor,
     enroll: {
       bundle: "enroll.js",
       bytes: enrollBytes.length,

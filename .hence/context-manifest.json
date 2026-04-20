@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-tier1-review-shim",
+  "task_id": "cap-split-key-mode",
   "token_budget": 8000,
-  "tokens_used": 423,
+  "tokens_used": 449,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Tier 1 cross-model adversarial review of the browser shim: state-machine correctness (first-use vs subsequent-use vs fallback dispatch), signature-verify-before-decrypt ordering, ServiceWorker hygiene, navigator.locks correctness, absence of key-material persistence outside IndexedDB, CSP+SRI enforcement. Required before shim merges to main.",
-      "token_cost": 85,
+      "content": "Optional XOR split-key mode per REQ-3430 + ADR-3415 (BUG-002 mitigation). `zetl cap invite --split-key` splits priv_A via XOR secret-sharing: `priv_A = half1 XOR half2`. URL carries `#k1=<half1>`; `half2` output separately (QR code image or spoken-phrase per `[access.split_key] second_factor`). Shim prompts for second factor (camera QR scan or text input) on first click; reconstructs priv_A; TOFU-binds. Opt-in; default is `enabled = false`.",
+      "token_cost": 111,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T18:13:32Z"
+  "constructed_at": "2026-04-20T18:27:19Z"
 }

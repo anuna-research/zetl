@@ -168,6 +168,7 @@ fn test_3423_public_with_external_path_inside_repo_refuses() {
     // file to git defeats the entire safety.
     let access = AccessConfig {
         grants_file_external: Some("/tmp/wiki/secrets/grants.toml".to_string()),
+        split_key: None,
     };
     let err = decide_grants_source(
         &resolved,
@@ -188,6 +189,7 @@ fn test_3423_public_with_external_path_outside_repo_succeeds() {
     let external = "/home/op/.config/zetl/acme-wiki/grants.toml";
     let access = AccessConfig {
         grants_file_external: Some(external.to_string()),
+        split_key: None,
     };
     let decision = decide_grants_source(
         &resolved,

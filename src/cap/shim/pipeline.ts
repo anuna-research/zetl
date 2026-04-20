@@ -11,7 +11,12 @@
 
 import { parseEnvelope, type ParsedEnvelope } from "./envelope.ts";
 import { verifyEd25519 } from "./signature.ts";
-import { acquireIdentity, IdentityError } from "./identity.ts";
+import {
+  acquireIdentity,
+  IdentityError,
+  type SplitKeyPrompt,
+  type SplitKeySecondFactor,
+} from "./identity.ts";
 import { ageDecrypt } from "./decrypt.ts";
 import { sanitiseHtml } from "./sanitise.ts";
 import { renderInto, rewriteWikiHrefs, scrubFragment } from "./render.ts";
@@ -91,6 +96,16 @@ export interface PipelineDeps {
   /// Override for REQ-3412 OBS-3412 mark emission. Defaults to the
   /// live `performance.mark` path; tests pass a capturing spy.
   emitFallbackMark?: (reason?: PrfAvailability["reason"]) => void;
+  /// REQ-3430 split-key: callback that prompts the reader for
+  /// `half2`. Required when a `#k1=<half1>` fragment is present;
+  /// omitted when the build wasn't compiled with split-key support
+  /// (in which case such a fragment surfaces an
+  /// `IdentityError("mode-not-supported")`).
+  promptHalf2?: SplitKeyPrompt;
+  /// `[access.split_key] second_factor` — injected at build time
+  /// from the operator's config so the shim knows which prompt
+  /// widget to render.
+  splitKeySecondFactor?: SplitKeySecondFactor;
 }
 
 export async function runPipeline(deps: PipelineDeps): Promise<PipelineTrace> {
@@ -148,6 +163,8 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineTrace> {
         // `navigator.credentials.create` and `crypto.subtle` but
         // does not implement the PRF extension).
         idbFactory: fallbackActive ? null : deps.idbFactory,
+        promptHalf2: deps.promptHalf2,
+        splitKeySecondFactor: deps.splitKeySecondFactor,
       });
       trace.phases.push(Phase.IdentityAcquired);
 
@@ -197,6 +214,8 @@ function errorKindFrom(err: unknown): ErrorKind {
   if (err instanceof IdentityError) {
     if (err.kind === "need-invite") return "need-invite";
     if (err.kind === "tofu-failed") return "tofu-failed";
+    if (err.kind === "split-key-cancelled") return "need-invite";
+    if (err.kind === "split-key-invalid-half2") return "need-invite";
     return "identity-unavailable";
   }
   return errorKindFromException(err);
