@@ -21,6 +21,7 @@ pub mod html_shell;
 pub mod invite;
 pub mod pad;
 pub mod pair;
+pub mod public_repo;
 pub mod recipients;
 pub mod referrer_scrub;
 pub mod revocation;

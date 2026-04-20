@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-shim-unwrap",
+  "task_id": "cap-public-repo-safety",
   "token_budget": 8000,
-  "tokens_used": 454,
+  "tokens_used": 460,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Subsequent-visit branch of the shim: detect existing IndexedDB entry → navigator.credentials.get with prf.eval.first = stored salt → derive K_wrap → unwrap priv_A from IDB → age-decrypt → render. Requires ZERO URL fragment (REQ-3406). Handles passkey-unavailable (authenticator deleted/revoked) by presenting clear `re-invite needed` diagnostic. Session-policy caching per REQ-3417 `[access.session]` (per-page / per-session / per-minute user-verification).",
-      "token_cost": 116,
+      "content": "Public-repo safety per REQ-3423 + ADR-3409 (BUG-013 resolution). Detect public hosting: (a) explicit `[vault] visibility = \"public\"` declaration, OR (b) git-origin heuristic (github.com without private-org token, gitlab.com, codeberg.org, etc.). If detected, refuse to read `.zetl/caps/grants.toml` in the repo tree; require `[access.grants_file_external]` pointing outside the repo; emit stub `grants-committed.toml` containing only cohort salts + IDs (no recipients, no grant metadata).",
+      "token_cost": 122,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T17:53:02Z"
+  "constructed_at": "2026-04-20T18:03:54Z"
 }
