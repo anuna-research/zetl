@@ -14,6 +14,7 @@ pub mod build;
 pub mod deploy_headers;
 pub mod derivation;
 pub mod emergency_shutdown;
+pub mod enrolment;
 pub mod genkey;
 pub mod grants;
 pub mod html_shell;

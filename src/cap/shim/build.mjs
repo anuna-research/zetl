@@ -31,6 +31,11 @@ const OUT_DIR = join(ROOT, "dist");
 const BUNDLE_PATH = join(OUT_DIR, "shim.js");
 const SRI_PATH = join(OUT_DIR, "shim.sri");
 const MANIFEST_PATH = join(OUT_DIR, "shim.manifest.json");
+// SPEC-034 REQ-3404 hardened-mode reader self-enrolment bundle.
+// Bundled from the same tsc/esbuild pipeline as the main shim so
+// the two share the `age-encryption` + `@noble/*` vendoring.
+const ENROLL_BUNDLE_PATH = join(OUT_DIR, "enroll.js");
+const ENROLL_SRI_PATH = join(OUT_DIR, "enroll.sri");
 
 const DEV_PLACEHOLDER_PUBKEY_B64URL = "A".repeat(43);
 
@@ -69,18 +74,49 @@ async function main() {
     createHash("sha384").update(bundleBytes).digest("base64");
   await writeFile(SRI_PATH, sriHash + "\n", "utf8");
 
+  // SPEC-034 REQ-3404 / REQ-3414: bundle the hardened-mode reader
+  // self-enrolment entry point into `dist/enroll.js` + emit its
+  // SHA-384 SRI hash. The bundle is self-contained (no network to
+  // zetl endpoints at runtime) and is referenced from
+  // `/enroll.html` (emitted by `src/cap/enrolment.rs`) with the
+  // SRI token below.
+  await build({
+    entryPoints: [join(ROOT, "enroll.ts")],
+    outfile: ENROLL_BUNDLE_PATH,
+    bundle: true,
+    format: "iife",
+    target: "es2022",
+    platform: "browser",
+    minify: true,
+    sourcemap: false,
+    legalComments: "none",
+    logLevel: "warning",
+  });
+  const enrollBytes = await readFile(ENROLL_BUNDLE_PATH);
+  const enrollSri = "sha384-" +
+    createHash("sha384").update(enrollBytes).digest("base64");
+  await writeFile(ENROLL_SRI_PATH, enrollSri + "\n", "utf8");
+
   const manifest = {
     bundle: "shim.js",
     bytes: bundleBytes.length,
     integrity: sriHash,
     signingPubkeyB64url: pubkey,
     placeholderPubkey: pubkey === DEV_PLACEHOLDER_PUBKEY_B64URL,
+    enroll: {
+      bundle: "enroll.js",
+      bytes: enrollBytes.length,
+      integrity: enrollSri,
+    },
   };
   await writeFile(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n", "utf8");
 
   const banner = manifest.placeholderPubkey ? " [DEV PLACEHOLDER PUBKEY]" : "";
   console.error(
     `[zetl] cap shim: bundle=${BUNDLE_PATH} bytes=${bundleBytes.length} integrity=${sriHash}${banner}`,
+  );
+  console.error(
+    `[zetl] cap enroll: bundle=${ENROLL_BUNDLE_PATH} bytes=${enrollBytes.length} integrity=${enrollSri}`,
   );
 }
 

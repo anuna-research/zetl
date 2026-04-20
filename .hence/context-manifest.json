@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-shim-ed25519-verify",
+  "task_id": "cap-enrolment-page",
   "token_budget": 8000,
-  "tokens_used": 457,
+  "tokens_used": 462,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Ed25519 signature verification in the shim using `@noble/ed25519`. Public key embedded at build time via template string with SRI-covered import. Verification runs BEFORE any other processing — signature check → decrypt → sanitise → render pipeline (CON-3411 order). On verification failure: render error page `<p>This page's signature did not verify — possible tampering; contact your wiki operator</p>`; do NOT call credentials.get/create; do NOT attempt decryption.",
-      "token_cost": 119,
+      "content": "`/enroll.html` static page per REQ-3404 for hardened mode. Self-contained HTML + JS (no network to zetl endpoints). Accepts `?cohort=<cohort-id>` query param. Calls navigator.credentials.create with per-cohort PRF salt `SHA-256('zetl/webauthn-prf/v1/' || origin || '/' || cohort_id)` per REQ-3414. Derives X25519 keypair via typage's PRF-recipient helpers. Displays derived pubkey as `age-recipient-v1:<b64url>` with copy-to-clipboard and QR code affordances. Clear diagnostic for no-PRF scenarios.",
+      "token_cost": 124,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T16:08:46Z"
+  "constructed_at": "2026-04-20T16:27:37Z"
 }

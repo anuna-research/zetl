@@ -3,30 +3,35 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 376,
-    "deletions": 22,
+    "files_changed": 12,
+    "insertions": 1750,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/shim/decrypt.ts",
-      "src/cap/shim/errors.ts",
-      "src/cap/shim/package-lock.json",
-      "src/cap/shim/package.json",
-      "src/cap/shim/pipeline.ts",
-      "src/cap/shim/test/signature-verify.test.ts"
+      "src/cap/build/driver.rs",
+      "src/cap/enrolment.rs",
+      "src/cap/mod.rs",
+      "src/cap/shim/build.mjs",
+      "src/cap/shim/enroll.ts",
+      "src/cap/shim/test/enroll.test.ts",
+      "tests/cap_build_driver_integration.rs",
+      "tests/cap_csp_sri_integration.rs",
+      "tests/cap_deploy_headers_integration.rs",
+      "tests/cap_enrolment_page_integration.rs",
+      "tests/cap_search_scoping_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-shim-ed25519-verify-changes",
-      "content": "Modified 7 files (+376, -22): .hence/context-manifest.json, src/cap/shim/decrypt.ts, src/cap/shim/errors.ts, src/cap/shim/package-lock.json, src/cap/shim/package.json and 2 more",
+      "key": "task-cap-enrolment-page-changes",
+      "content": "Modified 12 files (+1750, -5): .hence/context-manifest.json, src/cap/build/driver.rs, src/cap/enrolment.rs, src/cap/mod.rs, src/cap/shim/build.mjs and 7 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-shim-ed25519-verify-v1",
-  "evaluated_at": "2026-04-20T16:27:24Z",
+  "branch_name": "hence/cap-enrolment-page-v1",
+  "evaluated_at": "2026-04-20T16:47:32Z",
   "checks_passed": 0,
   "checks_failed": 0
 }

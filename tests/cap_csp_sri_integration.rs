@@ -126,6 +126,7 @@ fn cfg_with_sri(out: &std::path::Path, sri: Option<&str>) -> BuildConfig {
         visibility: Visibility::Private,
         access: AccessConfig::default(),
         shim_integrity: sri.map(str::to_string),
+        enroll_integrity: None,
     }
 }
 

@@ -82,6 +82,7 @@ use base64::Engine as _;
 use crate::cap::age_encrypt::{self, AgeCiphertext, AgeEncryptError};
 use crate::cap::deploy_headers::{self, HeaderSpec};
 use crate::cap::derivation::{derive_path_cap, DerivationError, PATH_CAP_DEFAULT_BITS};
+use crate::cap::enrolment;
 use crate::cap::genkey::ParsedSecret;
 use crate::cap::grants::validation::{Grant, GrantsFile};
 use crate::cap::html_shell;
@@ -135,6 +136,13 @@ pub struct BuildConfig {
     /// skipped — this keeps pre-shim-bundle dev builds unblocked and
     /// lets unit tests target the envelope path in isolation.
     pub shim_integrity: Option<String>,
+    /// SHA-384 SRI integrity token for `/assets/enroll.js` (SPEC-034
+    /// REQ-3404 / REQ-3414 / CON-3409). When `Some`, the build
+    /// additionally emits `<out_dir>/enroll.html` — the hardened-
+    /// mode reader self-enrolment page. When `None`, emission is
+    /// skipped; vaults with only delegated-URL cohorts do not need
+    /// the page.
+    pub enroll_integrity: Option<String>,
 }
 
 impl BuildConfig {
@@ -151,6 +159,7 @@ impl BuildConfig {
             visibility: Visibility::Private,
             access: AccessConfig::default(),
             shim_integrity: None,
+            enroll_integrity: None,
         }
     }
 }
@@ -528,6 +537,19 @@ pub fn run_capability_build(
         })?;
     }
 
+    // SPEC-034 REQ-3404 / REQ-3414 / CON-3409: emit `/enroll.html`
+    // when the caller threads an enroll-bundle SRI token through
+    // `BuildConfig`. The page is the hardened-mode reader self-
+    // enrolment surface; delegated-URL-only vaults skip it.
+    if let Some(sri_hash) = config.enroll_integrity.as_deref() {
+        enrolment::write_enroll_html(&config.out_dir, sri_hash).map_err(|source| {
+            BuildError::Io {
+                path: config.out_dir.join(enrolment::ENROLL_HTML_FILENAME),
+                source,
+            }
+        })?;
+    }
+
     Ok(BuildSummary {
         cohorts: recipients.cohorts.len(),
         pages: pages.len(),
@@ -740,6 +762,7 @@ mod tests {
             visibility: Visibility::Private,
             access: AccessConfig::default(),
             shim_integrity: None,
+            enroll_integrity: None,
         }
     }
 
