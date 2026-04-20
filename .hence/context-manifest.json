@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-x25519-padding",
+  "task_id": "cap-age-encrypt",
   "token_budget": 8000,
-  "tokens_used": 256,
+  "tokens_used": 257,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "X25519 ephemeral padding generator per REQ-3422 + ADR-3413 (BUG-001 resolution). Generates tier-sized {10, 30, 100, 300, 1000} padded recipient lists. Each padding entry: generate X25519 keypair, take pubkey, zeroize + discard privkey before returning pubkey. Padding entries MUST be structurally indistinguishable from real X25519 recipients in the age header. Deterministic test: the private-key discard is verifiable via a trait that asserts `ZeroizeOnDrop`. Unit test that real + padded = tier value exactly.",
-      "token_cost": 128,
+      "content": "`src/cap/age_encrypt.rs` effectful shell: accepts plaintext + cohort recipients + padding-tier, produces age v1 ciphertext via the `age` Rust crate. Recipients = union of real + padded pubkeys. Uses standard X25519 recipient type — no custom stanza. Testable via round-trip: Rust-encrypt → reference-age-cli decrypt with a real recipient key succeeds; decrypt with a padding-slot key fails.",
+      "token_cost": 98,
       "priority": "PlanMeta"
     },
     {
@@ -32,8 +32,14 @@
       "content": "Modified 64 files (+1811, -135): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, src/cap/audit_diff.rs, src/cap/derivation.rs and 59 more",
       "token_cost": 37,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cap-x25519-padding-changes",
+      "content": "Modified 6 files (+369, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/mod.rs, src/cap/pad.rs and 1 more",
+      "token_cost": 31,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T11:52:19Z"
+  "constructed_at": "2026-04-20T12:04:12Z"
 }
