@@ -58,6 +58,11 @@ pub struct AccessConfig {
     /// partner that has been briefed on the exposure.
     #[serde(default = "default_rel_noreferrer")]
     pub rel_noreferrer: bool,
+    /// Optional single-file offline-distribution bundle
+    /// (SPEC-034 REQ-3418 / task-cap-deploy-artifacts). Opt-in —
+    /// disabled by default.
+    #[serde(default)]
+    pub single_file: SingleFileConfig,
 }
 
 fn default_rel_noreferrer() -> bool {
@@ -71,6 +76,7 @@ impl Default for AccessConfig {
             backlinks: BacklinksConfig::default(),
             cache: CacheConfig::default(),
             rel_noreferrer: default_rel_noreferrer(),
+            single_file: SingleFileConfig::default(),
         }
     }
 }
@@ -91,6 +97,28 @@ pub struct SearchConfig {
 pub struct BacklinksConfig {
     #[serde(default)]
     pub mode: BacklinksMode,
+}
+
+/// `[access.single_file]` table. Opt-in single-file HTML bundle for
+/// offline distribution (SPEC-034 REQ-3418 / task-cap-deploy-
+/// artifacts). When `enabled = true` the capability build emits one
+/// `dist/<vault-name>-<cohort-id>.html` per cohort that inlines
+/// every envelope the cohort would otherwise fetch over `/c/*`, so
+/// operators can distribute a single static file (USB, email
+/// attachment, intranet mirror) instead of pushing to a CDN.
+///
+/// The v1 bundle is a scaffolded page — envelopes are inlined as
+/// base64-encoded `<template>` blocks keyed by slug; the loader that
+/// wires them back to the shim lives in a downstream task. Emitting
+/// the scaffold here is what makes the config field testable today.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SingleFileConfig {
+    /// Default `false` — operators must opt in before any bundle is
+    /// written. A `true` value alone is enough to produce one file
+    /// per cohort; no per-cohort override is surfaced in v1.
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 /// Search-UI emission mode. Default `Off` — no search surface is
@@ -254,9 +282,31 @@ mod tests {
         assert_eq!(cfg.search.mode, SearchMode::Off);
         assert_eq!(cfg.backlinks.mode, BacklinksMode::Scoped);
         assert!(cfg.rel_noreferrer, "rel_noreferrer defaults to true");
+        assert!(!cfg.single_file.enabled, "single_file defaults off");
         assert!(cfg.validate().is_ok());
         assert!(!cfg.search_ui_enabled());
         assert!(cfg.backlinks_enabled());
+    }
+
+    #[test]
+    fn single_file_toml_opt_in_parses() {
+        let src = r#"
+            [single_file]
+            enabled = true
+        "#;
+        let parsed: AccessConfig = toml::from_str(src).unwrap();
+        assert!(parsed.single_file.enabled);
+        assert!(parsed.validate().is_ok());
+    }
+
+    #[test]
+    fn single_file_unknown_field_rejected() {
+        let src = r#"
+            [single_file]
+            enabled = true
+            bundle_format = "zip"
+        "#;
+        assert!(toml::from_str::<AccessConfig>(src).is_err());
     }
 
     #[test]

@@ -134,6 +134,8 @@ fn cfg_with_enroll(out: &std::path::Path, enroll_sri: Option<&str>) -> BuildConf
         access: AccessConfig::default(),
         shim_integrity: None,
         enroll_integrity: enroll_sri.map(str::to_string),
+        vault_name: "test-vault".to_string(),
+        tombstones: Vec::new(),
     }
 }
 

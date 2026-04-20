@@ -119,6 +119,8 @@ fn mk_cfg(out: &std::path::Path, cache: CacheConfig) -> BuildConfig {
         },
         shim_integrity: None,
         enroll_integrity: None,
+        vault_name: "test-vault".to_string(),
+        tombstones: Vec::new(),
     }
 }
 

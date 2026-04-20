@@ -80,6 +80,9 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 
 use crate::cap::age_encrypt::{self, AgeCiphertext, AgeEncryptError};
+use crate::cap::deploy_artifacts::{
+    self, BundledEnvelope, CohortBundle, DeployArtifactsInput,
+};
 use crate::cap::deploy_headers::{self, HeaderSpec};
 use crate::cap::derivation::{derive_path_cap, DerivationError, PATH_CAP_DEFAULT_BITS};
 use crate::cap::enrolment;
@@ -144,6 +147,17 @@ pub struct BuildConfig {
     /// skipped; vaults with only delegated-URL cohorts do not need
     /// the page.
     pub enroll_integrity: Option<String>,
+    /// Vault name used to key the single-file bundle filename
+    /// (`<out_dir>/<vault_name>-<cohort>.html`). Only consulted when
+    /// `access.single_file.enabled = true`; callers may pass the
+    /// vault-root leaf component or an explicit operator label.
+    pub vault_name: String,
+    /// Paths — `/c/<path-cap>/<slug>.html` — that the operator has
+    /// explicitly retired. Propagated verbatim into `_gone.map`,
+    /// `_redirects`, and the top-level `vercel.json` redirects array
+    /// (task-cap-deploy-artifacts). Empty is valid — the scaffold
+    /// still lands so operators know where to extend later.
+    pub tombstones: Vec<String>,
 }
 
 impl BuildConfig {
@@ -161,6 +175,8 @@ impl BuildConfig {
             access: AccessConfig::default(),
             shim_integrity: None,
             enroll_integrity: None,
+            vault_name: String::new(),
+            tombstones: Vec::new(),
         }
     }
 }
@@ -417,6 +433,12 @@ pub fn run_capability_build(
     let mut bytes_ciphertext: u64 = 0;
     let mut bytes_envelope: u64 = 0;
     let mut pages_encrypted: usize = 0;
+    // Per-cohort envelope accumulator for `[access.single_file]`
+    // (task-cap-deploy-artifacts). Collected in declaration order so
+    // the emitted bundle's `<template>` order matches the ciphertext
+    // write order — deterministic across rebuilds.
+    let collect_bundles = config.access.single_file.enabled;
+    let mut cohort_bundles: Vec<CohortBundle> = Vec::new();
 
     let out_cap_root = config.out_dir.join("c");
     fs::create_dir_all(&out_cap_root).map_err(|e| BuildError::Io {
@@ -429,6 +451,7 @@ pub fn run_capability_build(
     for cohort in &recipients.cohorts {
         let real_recipients = cohort_pubkeys.get(cohort.id.as_str()).unwrap();
         let salt_stable = cohort_salt_stable.get(cohort.id.as_str()).unwrap();
+        let mut bundle_envelopes: Vec<BundledEnvelope> = Vec::new();
 
         for slug in index.pages_in(&cohort.id) {
             let page = page_by_slug
@@ -511,6 +534,13 @@ pub fn run_capability_build(
             pages_encrypted += 1;
             *tier_distribution.entry(ciphertext.tier).or_insert(0) += 1;
 
+            if collect_bundles {
+                bundle_envelopes.push(BundledEnvelope {
+                    slug: page.slug.clone(),
+                    envelope_bytes: envelope_bytes.clone(),
+                });
+            }
+
             per_page.push(EncryptedPageStats {
                 cohort_id: cohort.id.clone(),
                 slug: page.slug.clone(),
@@ -520,6 +550,13 @@ pub fn run_capability_build(
                 envelope_bytes: envelope_bytes.len() as u64,
                 real_recipients: ciphertext.real_count,
                 tier: ciphertext.tier,
+            });
+        }
+
+        if collect_bundles {
+            cohort_bundles.push(CohortBundle {
+                cohort_id: cohort.id.clone(),
+                envelopes: bundle_envelopes,
             });
         }
     }
@@ -532,6 +569,25 @@ pub fn run_capability_build(
     deploy_headers::write_deploy_recipes(&config.out_dir, &header_spec).map_err(|e| {
         BuildError::Io {
             path: config.out_dir.join("_zetl").join("deploy"),
+            source: e,
+        }
+    })?;
+
+    // SPEC-034 REQ-3418 / CON-3406 (task-cap-deploy-artifacts): emit
+    // the top-level static-host wiring (`_gone.map`, `_redirects`,
+    // `vercel.json`, per-platform `deploy-*.conf`) + the optional
+    // single-file bundle. Sibling to the recipe snippets above — the
+    // header values round-trip through the same `HeaderSpec`.
+    let artifacts_input = DeployArtifactsInput {
+        spec: &header_spec,
+        tombstones: config.tombstones.clone(),
+        vault_name: config.vault_name.as_str(),
+        single_file: &config.access.single_file,
+        cohort_bundles,
+    };
+    deploy_artifacts::write_deploy_artifacts(&config.out_dir, &artifacts_input).map_err(|e| {
+        BuildError::Io {
+            path: config.out_dir.join("_zetl"),
             source: e,
         }
     })?;
@@ -777,6 +833,8 @@ mod tests {
             access: AccessConfig::default(),
             shim_integrity: None,
             enroll_integrity: None,
+            vault_name: "test-vault".to_string(),
+            tombstones: Vec::new(),
         }
     }
 

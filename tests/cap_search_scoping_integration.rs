@@ -127,6 +127,8 @@ fn build_cfg(out: &std::path::Path, access: AccessConfig) -> BuildConfig {
         access,
         shim_integrity: None,
         enroll_integrity: None,
+        vault_name: "test-vault".to_string(),
+        tombstones: Vec::new(),
     }
 }
 

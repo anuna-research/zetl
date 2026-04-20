@@ -121,6 +121,8 @@ fn build_cfg(out: &std::path::Path) -> BuildConfig {
         access: zetl::cap::scoping::access_config::AccessConfig::default(),
         shim_integrity: None,
         enroll_integrity: None,
+        vault_name: "test-vault".to_string(),
+        tombstones: Vec::new(),
     }
 }
 

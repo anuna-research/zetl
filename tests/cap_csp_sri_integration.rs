@@ -127,6 +127,8 @@ fn cfg_with_sri(out: &std::path::Path, sri: Option<&str>) -> BuildConfig {
         access: AccessConfig::default(),
         shim_integrity: sri.map(str::to_string),
         enroll_integrity: None,
+        vault_name: "test-vault".to_string(),
+        tombstones: Vec::new(),
     }
 }
 
