@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-genkey",
+  "task_id": "cap-invite-command",
   "token_budget": 8000,
-  "tokens_used": 400,
+  "tokens_used": 448,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`zetl cap genkey` implementation: emits BOTH `ZETL_CAP_SECRET` (48 bytes: 1-byte version + 32-byte random + 15-byte keyed checksum, base64) AND `ZETL_CAP_SIGNING_KEY` (Ed25519 private key, base64) to stdout exactly once with secure-storage instructions. Reads from OS CSPRNG via `rand_core::OsRng`. Checksum verification in build secret parser — framed in docs as UX safeguard (BUG-017 resolution), not as security control. Never writes to any file, never logs, stdout only. Test: checksum tampering detected; verify-error surfaces remediation text.",
-      "token_cost": 137,
+      "content": "`zetl cap invite <name> --cohort <id> [--expires <d>] [--pages <filter>] [--recipient <pubkey>] [--via enrol-page] [--split-key]`. Delegated-URL mode: generates fresh (priv_A, pub_A) via OsRng, appends pub_A to `recipients.toml` under the cohort, adds a grant to `grants.toml` with `bound=false`, prints the invite URL to stdout. Priv_A appears ONLY on stdout — never in grants.toml, never logged, never in any file. Emits the REQ-3410 URL-shortener warning banner on every invocation. Hardened mode: `--recipient <pubkey>` pre-collected or `--via enrol-page` to print the enrolment URL.",
+      "token_cost": 147,
       "priority": "PlanMeta"
     },
     {
@@ -56,8 +56,14 @@
       "content": "Modified 6 files (+653, -7): .hence/context-manifest.json, src/cap/emergency_shutdown.rs, src/cap/mod.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs and 1 more",
       "token_cost": 41,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cap-genkey-changes",
+      "content": "Modified 6 files (+769, -8): .hence/context-manifest.json, src/cap/genkey.rs, src/cap/mod.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs and 1 more",
+      "token_cost": 38,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T12:34:47Z"
+  "constructed_at": "2026-04-20T12:44:39Z"
 }

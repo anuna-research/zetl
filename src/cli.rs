@@ -593,7 +593,7 @@ pub enum CapCommand {
 
     /// Issue an invitation grant for a new reader.
     #[command(
-        after_help = "Examples:\n  zetl cap invite alice --cohort eng\n  zetl cap invite bob --cohort ops --expires 7d --pages 'projects/*'\n  zetl cap invite carol --cohort eng --recipient age1...   # hardened mode\n\nSee SPEC-034 REQ-3416 / REQ-3410."
+        after_help = "Examples:\n  zetl cap invite alice --cohort eng --site-url https://wiki.example\n  zetl cap invite bob --cohort ops --expires 7d --pages 'projects/*' --site-url https://wiki.example\n  zetl cap invite carol --cohort eng --recipient age-recipient-v1:...   # hardened mode\n  zetl cap invite dan --cohort eng --via enrol-page --site-url https://wiki.example\n\nSee SPEC-034 REQ-3416 / REQ-3410."
     )]
     Invite {
         /// Human-readable invitee label (stored in grants.toml).
@@ -608,16 +608,26 @@ pub enum CapCommand {
         #[arg(long, value_name = "GLOB")]
         pages: Option<String>,
         /// Pre-collected recipient pubkey (hardened mode — skip delegated
-        /// URL generation).
+        /// URL generation). Must carry the `age-recipient-v1:` prefix.
         #[arg(long, value_name = "PUBKEY")]
         recipient: Option<String>,
         /// Print an `enrol.html` URL instead of generating the grant
-        /// locally (hardened mode, REQ-3404).
+        /// locally (hardened mode, REQ-3404). Only valid value today is
+        /// `enrol-page`.
         #[arg(long = "via", value_name = "MODE")]
         via: Option<String>,
         /// Split the private key across URL + second factor (REQ-3430).
         #[arg(long)]
         split_key: bool,
+        /// Canonical site URL (scheme + host) used to render the invite
+        /// URL. Falls back to the `ZETL_CAP_SITE_URL` env var.
+        #[arg(long, value_name = "URL", env = "ZETL_CAP_SITE_URL")]
+        site_url: Option<String>,
+        /// Landing slug the invite URL points at (the reader's first
+        /// page). Defaults to `welcome`; operators rename their landing
+        /// page by passing a different slug here.
+        #[arg(long, value_name = "SLUG", default_value = "welcome")]
+        slug: String,
     },
 
     /// List all issued grants.

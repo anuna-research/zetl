@@ -68,6 +68,14 @@ pub struct Cohort {
     /// happens in `cap::scoping::cohort_index`.
     #[serde(default)]
     pub pages: Option<String>,
+    /// Stable path-cap salt per CON-3401 (base64url, 16+ bytes). When
+    /// present, `cap::derivation::derive_path_cap` feeds this as
+    /// `cohort_salt_stable`; rotating it invalidates every URL in the
+    /// cohort (the "rotate-paths" flow). When absent, `zetl cap invite`
+    /// initialises it on first invocation for this cohort so the very
+    /// first issued URL is stable thereafter.
+    #[serde(default)]
+    pub salt_stable: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -238,6 +246,7 @@ mod tests {
                     format!("{AGE_RECIPIENT_V1_PREFIX}def-456_"),
                 ],
                 pages: None,
+                salt_stable: None,
             }],
         }
     }
@@ -354,6 +363,7 @@ mod tests {
             mode: CohortMode::WebauthnPrf,
             pubkeys: vec![],
             pages: None,
+            salt_stable: None,
         });
         let ids = f.cohort_ids();
         assert!(ids.contains("engineering"));

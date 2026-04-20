@@ -288,6 +288,7 @@ fn grants_references_unknown_cohort_detected() {
             mode: CohortMode::DelegatedUrl,
             pubkeys: vec![],
             pages: None,
+            salt_stable: None,
         }],
     };
     recipients.validate().unwrap();
