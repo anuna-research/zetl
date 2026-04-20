@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-age-encrypt",
+  "task_id": "cap-cli-skeleton",
   "token_budget": 8000,
-  "tokens_used": 257,
+  "tokens_used": 313,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`src/cap/age_encrypt.rs` effectful shell: accepts plaintext + cohort recipients + padding-tier, produces age v1 ciphertext via the `age` Rust crate. Recipients = union of real + padded pubkeys. Uses standard X25519 recipient type — no custom stanza. Testable via round-trip: Rust-encrypt → reference-age-cli decrypt with a real recipient key succeeds; decrypt with a padding-slot key fails.",
-      "token_cost": 98,
+      "content": "`zetl cap` subcommand dispatcher with stubs for every verb listed in REQ-3416: `genkey`, `invite`, `list`, `revoke`, `rotate`, `finalise`, `share`, `check`, `sweep`, `pair`, `audit-diff`, `rotate-signing-key`, `emergency-shutdown`. Each stub exits with a `not-yet-implemented` message and follows SPEC-004 exit codes (0/1/2/64+). `--help` text for every verb. `--output json` support plumbed through (even if verb body returns stub). Help output + exit codes testable via `assert_cmd`.",
+      "token_cost": 121,
       "priority": "PlanMeta"
     },
     {
@@ -38,8 +38,14 @@
       "content": "Modified 6 files (+369, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/mod.rs, src/cap/pad.rs and 1 more",
       "token_cost": 31,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cap-age-encrypt-changes",
+      "content": "Modified 6 files (+1035, -8): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/age_encrypt.rs, src/cap/mod.rs and 1 more",
+      "token_cost": 33,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T12:04:12Z"
+  "constructed_at": "2026-04-20T12:17:01Z"
 }

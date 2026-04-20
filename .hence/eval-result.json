@@ -3,29 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 6,
-    "insertions": 1035,
+    "files_changed": 4,
+    "insertions": 326,
     "deletions": 8,
     "file_list": [
       ".hence/context-manifest.json",
-      "Cargo.lock",
-      "Cargo.toml",
-      "src/cap/age_encrypt.rs",
-      "src/cap/mod.rs",
-      "tests/cap_age_encrypt_integration.rs"
+      "src/cli.rs",
+      "src/main.rs",
+      "tests/cap_cli_skeleton_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-age-encrypt-changes",
-      "content": "Modified 6 files (+1035, -8): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/age_encrypt.rs, src/cap/mod.rs and 1 more",
+      "key": "task-cap-cli-skeleton-changes",
+      "content": "Modified 4 files (+326, -8): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-age-encrypt-v1",
-  "evaluated_at": "2026-04-20T12:16:54Z",
+  "branch_name": "hence/cap-cli-skeleton-v1",
+  "evaluated_at": "2026-04-20T12:23:52Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
