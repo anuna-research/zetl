@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-public-repo-safety",
+  "task_id": "cap-tier1-review-shim",
   "token_budget": 8000,
-  "tokens_used": 460,
+  "tokens_used": 423,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Public-repo safety per REQ-3423 + ADR-3409 (BUG-013 resolution). Detect public hosting: (a) explicit `[vault] visibility = \"public\"` declaration, OR (b) git-origin heuristic (github.com without private-org token, gitlab.com, codeberg.org, etc.). If detected, refuse to read `.zetl/caps/grants.toml` in the repo tree; require `[access.grants_file_external]` pointing outside the repo; emit stub `grants-committed.toml` containing only cohort salts + IDs (no recipients, no grant metadata).",
-      "token_cost": 122,
+      "content": "Tier 1 cross-model adversarial review of the browser shim: state-machine correctness (first-use vs subsequent-use vs fallback dispatch), signature-verify-before-decrypt ordering, ServiceWorker hygiene, navigator.locks correctness, absence of key-material persistence outside IndexedDB, CSP+SRI enforcement. Required before shim merges to main.",
+      "token_cost": 85,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T18:03:54Z"
+  "constructed_at": "2026-04-20T18:13:32Z"
 }
