@@ -37,6 +37,21 @@ const COPY: Record<ErrorKind, string> = {
     "An internal error occurred while rendering this page. Reload; if the problem persists, contact your wiki operator.",
 };
 
+/// Base URL of the reader-facing onboarding + troubleshooting page.
+/// `renderError` appends `#err-<kind>` to deep-link to the matching
+/// section. Operators can override the base at bundle time via the
+/// esbuild `define` substitution, in case they host the doc under a
+/// different path than the default `dist/reader.html` location. The
+/// default is a root-relative path so the link resolves against the
+/// same origin the shim is running on.
+export const READER_DOC_BASE: string = "/reader.html";
+
+/// Build the deep-link URL pointing into `reader.html` for a given
+/// error kind. Exported so tests can assert the exact href.
+export function helpHrefFor(kind: ErrorKind): string {
+  return `${READER_DOC_BASE}#err-${kind}`;
+}
+
 /// Render a user-visible error page and stamp a `data-zetl-error=<kind>`
 /// attribute the Playwright suite keys off for assertions.
 export function renderError(kind: ErrorKind, detail?: string): void {
@@ -63,6 +78,24 @@ export function renderError(kind: ErrorKind, detail?: string): void {
     small.textContent = detail;
     host.appendChild(small);
   }
+
+  // Deep-link to the matching section of the reader-facing
+  // troubleshooting doc. The summary element above is kept textContent-
+  // only so REQ-3427's byte-stable copy assertion stays green; this
+  // link is a separate sibling the Playwright suite can query by the
+  // `data-zetl-error-help` attribute without affecting the summary.
+  const help = document.createElement("p");
+  help.setAttribute("data-zetl-error-help", "");
+  const a = document.createElement("a");
+  a.setAttribute("href", helpHrefFor(kind));
+  // Belt-and-braces: the enclosing shell already sets a document-level
+  // `no-referrer` policy (html_shell::REFERRER_META), but readers who
+  // open this link in another tab via middle-click benefit from the
+  // explicit rel here too.
+  a.setAttribute("rel", "noopener noreferrer");
+  a.textContent = "Troubleshooting";
+  help.appendChild(a);
+  host.appendChild(help);
 
   if (!host.isConnected) body.appendChild(host);
 }
