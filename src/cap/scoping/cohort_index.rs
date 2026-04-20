@@ -63,12 +63,14 @@ pub enum IndexError {
     DuplicateCohortId(String),
     #[error("duplicate page slug {0:?}")]
     DuplicateSlug(String),
-    #[error(
-        "page {slug:?} names unknown cohort {cohort:?} in frontmatter"
-    )]
+    #[error("page {slug:?} names unknown cohort {cohort:?} in frontmatter")]
     UnknownCohort { slug: String, cohort: String },
     #[error("cohort {cohort_id:?} has malformed glob {glob:?}: {err}")]
-    BadGlob { cohort_id: String, glob: String, err: String },
+    BadGlob {
+        cohort_id: String,
+        glob: String,
+        err: String,
+    },
 }
 
 /// The bidirectional assignment. Stored as `BTreeMap` so iteration
@@ -81,10 +83,7 @@ pub struct CohortIndex {
 
 impl CohortIndex {
     /// Build the index from a cohort-declaration list + page list.
-    pub fn build(
-        cohorts: &[CohortScope],
-        pages: &[PageRef],
-    ) -> Result<Self, IndexError> {
+    pub fn build(cohorts: &[CohortScope], pages: &[PageRef]) -> Result<Self, IndexError> {
         // 1. Unique cohort ids.
         let mut seen_cohorts: BTreeSet<&str> = BTreeSet::new();
         for c in cohorts {
@@ -162,7 +161,10 @@ impl CohortIndex {
             }
         }
 
-        Ok(Self { cohort_to_pages, page_to_cohorts })
+        Ok(Self {
+            cohort_to_pages,
+            page_to_cohorts,
+        })
     }
 
     /// Slugs encrypted by `cohort_id`. Empty slice if the cohort has
@@ -177,9 +179,7 @@ impl CohortIndex {
     /// Cohort ids that will encrypt `slug`. Empty slice if the slug
     /// is unknown or the page is outside every cohort's scope.
     pub fn cohorts_of(&self, slug: &str) -> &[String] {
-        self.page_to_cohorts
-            .get(slug)
-            .map_or(&[], |v| v.as_slice())
+        self.page_to_cohorts.get(slug).map_or(&[], |v| v.as_slice())
     }
 
     /// Iterate all cohort → slugs mappings in cohort-id-sorted order.
@@ -234,7 +234,10 @@ mod tests {
         let c = vec![cohort("all", None)];
         let p = vec![page("a", &[]), page("b/nested", &[])];
         let ix = CohortIndex::build(&c, &p).unwrap();
-        assert_eq!(ix.pages_in("all"), &["a".to_string(), "b/nested".to_string()]);
+        assert_eq!(
+            ix.pages_in("all"),
+            &["a".to_string(), "b/nested".to_string()]
+        );
         assert_eq!(ix.cohorts_of("a"), &["all".to_string()]);
     }
 
@@ -269,7 +272,10 @@ mod tests {
         let c = vec![cohort("eng", None), cohort("ops", None)];
         let p = vec![page("page", &["eng", "ops"])];
         let ix = CohortIndex::build(&c, &p).unwrap();
-        assert_eq!(ix.cohorts_of("page"), &["eng".to_string(), "ops".to_string()]);
+        assert_eq!(
+            ix.cohorts_of("page"),
+            &["eng".to_string(), "ops".to_string()]
+        );
     }
 
     #[test]

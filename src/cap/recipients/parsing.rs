@@ -85,9 +85,7 @@ pub enum ParseError {
     SigningPubkeyPrefix,
     #[error("vault.signing_pubkey payload is empty")]
     SigningPubkeyEmpty,
-    #[error(
-        "vault.signing_pubkey payload contains non-base64url character {0:?}"
-    )]
+    #[error("vault.signing_pubkey payload contains non-base64url character {0:?}")]
     SigningPubkeyCharset(char),
     #[error("cohort id {0:?} is empty or not a valid identifier")]
     InvalidCohortId(String),
@@ -100,10 +98,12 @@ pub enum ParseError {
     RecipientPrefix { cohort: String, idx: usize },
     #[error("cohort {cohort:?} recipient {idx} payload is empty")]
     RecipientEmpty { cohort: String, idx: usize },
-    #[error(
-        "cohort {cohort:?} recipient {idx} payload contains non-base64url character {ch:?}"
-    )]
-    RecipientCharset { cohort: String, idx: usize, ch: char },
+    #[error("cohort {cohort:?} recipient {idx} payload contains non-base64url character {ch:?}")]
+    RecipientCharset {
+        cohort: String,
+        idx: usize,
+        ch: char,
+    },
     #[error("cohort {cohort:?} contains a duplicate recipient pubkey")]
     DuplicateRecipient { cohort: String },
     #[error("cohort {0:?} has an empty pages glob")]
@@ -169,11 +169,17 @@ fn validate_signing_pubkey(s: &str) -> Result<(), ParseError> {
 fn validate_cohort_pubkeys(c: &Cohort) -> Result<(), ParseError> {
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     for (idx, pk) in c.pubkeys.iter().enumerate() {
-        let payload = pk.strip_prefix(AGE_RECIPIENT_V1_PREFIX).ok_or(
-            ParseError::RecipientPrefix { cohort: c.id.clone(), idx },
-        )?;
+        let payload =
+            pk.strip_prefix(AGE_RECIPIENT_V1_PREFIX)
+                .ok_or(ParseError::RecipientPrefix {
+                    cohort: c.id.clone(),
+                    idx,
+                })?;
         if payload.is_empty() {
-            return Err(ParseError::RecipientEmpty { cohort: c.id.clone(), idx });
+            return Err(ParseError::RecipientEmpty {
+                cohort: c.id.clone(),
+                idx,
+            });
         }
         for ch in payload.chars() {
             if !is_base64url(ch) {
@@ -185,7 +191,9 @@ fn validate_cohort_pubkeys(c: &Cohort) -> Result<(), ParseError> {
             }
         }
         if !seen.insert(pk.as_str()) {
-            return Err(ParseError::DuplicateRecipient { cohort: c.id.clone() });
+            return Err(ParseError::DuplicateRecipient {
+                cohort: c.id.clone(),
+            });
         }
     }
     Ok(())
@@ -251,7 +259,10 @@ mod tests {
     fn rejects_unsupported_version() {
         let mut f = sample();
         f.version = 2;
-        assert!(matches!(f.validate(), Err(ParseError::UnsupportedVersion(2))));
+        assert!(matches!(
+            f.validate(),
+            Err(ParseError::UnsupportedVersion(2))
+        ));
     }
 
     #[test]
@@ -283,7 +294,10 @@ mod tests {
     fn duplicate_cohort_id_fails() {
         let mut f = sample();
         f.cohorts.push(f.cohorts[0].clone());
-        assert!(matches!(f.validate(), Err(ParseError::DuplicateCohortId(_))));
+        assert!(matches!(
+            f.validate(),
+            Err(ParseError::DuplicateCohortId(_))
+        ));
     }
 
     #[test]

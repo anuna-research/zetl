@@ -567,6 +567,41 @@ pub enum Command {
 
     /// Generate a roff(7) man page on stdout (pipe to `man -l -` to preview)
     Man,
+
+    /// Capability-URL static-site mode operations
+    Cap {
+        #[command(subcommand)]
+        command: CapCommand,
+    },
+}
+
+/// Subcommands for `zetl cap`.
+///
+/// v0.5.0 ships only the verbs implementation has landed for — other
+/// verbs listed in the cap CLI surface are added by later plan tasks.
+#[derive(Subcommand)]
+pub enum CapCommand {
+    /// Scan a vault diff for malicious-content patterns
+    #[command(
+        after_help = "Examples:\n  zetl cap audit-diff main HEAD                Scan changes since main\n  zetl cap audit-diff --corpus tools/audit-diff-corpus/fixtures/001-*\n                                              Run against a single corpus fixture\n  zetl cap audit-diff --corpus-root tools/audit-diff-corpus\n                                              Walk every fixture under the corpus root"
+    )]
+    AuditDiff {
+        /// Git ref for the baseline vault state
+        #[arg(value_name = "OLD_REF")]
+        old_ref: Option<String>,
+        /// Git ref for the new vault state (defaults to HEAD)
+        #[arg(value_name = "NEW_REF")]
+        new_ref: Option<String>,
+        /// Scan a single corpus fixture directory (must contain `new/`;
+        /// `baseline/` is optional). Mutually exclusive with git refs.
+        #[arg(long, value_name = "DIR", conflicts_with_all = ["old_ref", "new_ref", "corpus_root"])]
+        corpus: Option<std::path::PathBuf>,
+        /// Walk every fixture directory under a corpus root (per
+        /// REQ-3424's CI `audit-corpus` job). Fails on any fixture
+        /// whose expected findings are missed.
+        #[arg(long, value_name = "DIR", conflicts_with_all = ["old_ref", "new_ref", "corpus"])]
+        corpus_root: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]

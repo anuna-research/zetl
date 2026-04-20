@@ -119,9 +119,7 @@ impl CapUrl {
     /// Parse a cap URL string. Strict: no query strings, exact slug
     /// extension, exact fragment prefix.
     pub fn parse(s: &str) -> Result<Self, ParseError> {
-        let (scheme, rest) = s
-            .split_once("://")
-            .ok_or(ParseError::MissingAuthority)?;
+        let (scheme, rest) = s.split_once("://").ok_or(ParseError::MissingAuthority)?;
         if scheme.is_empty() || !scheme.chars().all(is_scheme_char) {
             return Err(ParseError::MissingAuthority);
         }
@@ -308,11 +306,15 @@ fn parse_fragment(f: &str) -> Result<CapUrlMode, ParseError> {
     // prefix would swallow split-key fragments.
     if let Some(rest) = f.strip_prefix(FRAGMENT_PREFIX_SPLIT_KEY) {
         validate_fragment_key(rest)?;
-        return Ok(CapUrlMode::SplitKey { half1_b64url: rest.to_string() });
+        return Ok(CapUrlMode::SplitKey {
+            half1_b64url: rest.to_string(),
+        });
     }
     if let Some(rest) = f.strip_prefix(FRAGMENT_PREFIX_DELEGATED) {
         validate_fragment_key(rest)?;
-        return Ok(CapUrlMode::Delegated { priv_a_b64url: rest.to_string() });
+        return Ok(CapUrlMode::Delegated {
+            priv_a_b64url: rest.to_string(),
+        });
     }
     let prefix = f.split('=').next().unwrap_or("").to_string();
     Err(ParseError::FragmentPrefix(format!("{prefix}=")))
@@ -378,9 +380,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             url,
-            format!(
-                "https://wiki.example/c/1234567890ABC/pages/intro.html#k={VALID_KEY}"
-            )
+            format!("https://wiki.example/c/1234567890ABC/pages/intro.html#k={VALID_KEY}")
         );
         let parsed = CapUrl::parse(&url).unwrap();
         assert_eq!(parsed.scheme, "https");
@@ -389,19 +389,16 @@ mod tests {
         assert_eq!(parsed.slug, "pages/intro");
         assert_eq!(
             parsed.mode,
-            CapUrlMode::Delegated { priv_a_b64url: VALID_KEY.to_string() }
+            CapUrlMode::Delegated {
+                priv_a_b64url: VALID_KEY.to_string()
+            }
         );
     }
 
     #[test]
     fn render_and_parse_hardened_roundtrip() {
-        let url = CapUrl::render_hardened(
-            "https",
-            "wiki.example",
-            "1234567890ABC",
-            "welcome",
-        )
-        .unwrap();
+        let url =
+            CapUrl::render_hardened("https", "wiki.example", "1234567890ABC", "welcome").unwrap();
         assert_eq!(url, "https://wiki.example/c/1234567890ABC/welcome.html");
         let parsed = CapUrl::parse(&url).unwrap();
         assert_eq!(parsed.mode, CapUrlMode::Hardened);
@@ -421,16 +418,15 @@ mod tests {
         let parsed = CapUrl::parse(&url).unwrap();
         assert_eq!(
             parsed.mode,
-            CapUrlMode::SplitKey { half1_b64url: VALID_KEY.to_string() }
+            CapUrlMode::SplitKey {
+                half1_b64url: VALID_KEY.to_string()
+            }
         );
     }
 
     #[test]
     fn display_matches_render() {
-        let u = CapUrl::parse(
-            &format!("https://x/c/1234567890ABC/a.html#k={VALID_KEY}"),
-        )
-        .unwrap();
+        let u = CapUrl::parse(&format!("https://x/c/1234567890ABC/a.html#k={VALID_KEY}")).unwrap();
         assert_eq!(
             u.to_string(),
             format!("https://x/c/1234567890ABC/a.html#k={VALID_KEY}")
@@ -521,9 +517,7 @@ mod tests {
     fn reject_fragment_key_bad_char() {
         let bad = format!("{}!", "A".repeat(FRAGMENT_KEY_B64URL_LEN - 1));
         assert!(matches!(
-            CapUrl::parse(&format!(
-                "https://x/c/1234567890ABC/a.html#k={bad}"
-            )),
+            CapUrl::parse(&format!("https://x/c/1234567890ABC/a.html#k={bad}")),
             Err(ParseError::FragmentKeyCharset('!'))
         ));
     }
@@ -539,10 +533,7 @@ mod tests {
     #[test]
     fn parse_multi_segment_slugs() {
         // Slugs may contain `/` — they are the vault-relative path.
-        let parsed = CapUrl::parse(
-            "https://x/c/1234567890ABC/some/nested/page.html",
-        )
-        .unwrap();
+        let parsed = CapUrl::parse("https://x/c/1234567890ABC/some/nested/page.html").unwrap();
         assert_eq!(parsed.slug, "some/nested/page");
     }
 
@@ -573,8 +564,7 @@ mod tests {
 
     #[test]
     fn render_strips_duplicate_html_suffix() {
-        let url = CapUrl::render_hardened("https", "x", "1234567890ABC", "intro.html")
-            .unwrap();
+        let url = CapUrl::render_hardened("https", "x", "1234567890ABC", "intro.html").unwrap();
         assert_eq!(url, "https://x/c/1234567890ABC/intro.html");
     }
 }

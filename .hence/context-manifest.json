@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-pure-core",
+  "task_id": "cap-audit-diff",
   "token_budget": 8000,
-  "tokens_used": 200,
+  "tokens_used": 232,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Pure-core modules per SPEC-034 §8 purity boundary map: `src/cap/derivation.rs` (HKDF path-cap + wrap-key derivation per CON-3401), `src/cap/url_format.rs` (cap URL rendering + parsing), `src/cap/grants/validation.rs` (schema + invariants with `deny_unknown_fields`), `src/cap/recipients/parsing.rs` (age-recipient-v1 only per REQ-3409), `src/cap/scoping/cohort_index.rs` (cohort-to-pages assignment). No I/O, no randomness. Property-based tests on derivation (deterministic, secret/cohort/slug/epoch separation). Mutation testing ≥ 90% kill rate on derivation + url_format.",
-      "token_cost": 144,
+      "content": "`zetl cap audit-diff <old-ref> <new-ref>` + test corpus per REQ-3424 + ADR-3410 (BUG-016 resolution). Scans vault diff for: external-origin links to previously-unseen domains, raw HTML surviving the sanitiser allowlist, dynamically-constructed URIs, markdown constructs that render to unusual HTML. Paired with `tools/audit-diff-corpus/` — versioned repo of known-malicious patterns + XSS cheatsheet samples + exfiltration templates. CI job `audit-corpus` runs audit-diff against corpus; fails on ANY miss. Corpus update cadence: monthly OR on any reported evasion.",
+      "token_cost": 141,
       "priority": "PlanMeta"
     },
     {
@@ -20,8 +20,14 @@
       "content": "Modified 8 files (+1072, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/mod.rs, src/cap/sanitiser.rs and 3 more",
       "token_cost": 32,
       "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cap-pure-core-changes",
+      "content": "Modified 13 files (+2449, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/derivation.rs, src/cap/grants/mod.rs and 8 more",
+      "token_cost": 35,
+      "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T11:02:25Z"
+  "constructed_at": "2026-04-20T11:20:43Z"
 }

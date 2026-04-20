@@ -11416,7 +11416,272 @@ fn main() -> anyhow::Result<()> {
             clap_mangen::Man::new(cmd).render(&mut std::io::stdout())?;
             Ok(())
         }
+        Command::Cap { command } => match command {
+            zetl::cli::CapCommand::AuditDiff {
+                old_ref,
+                new_ref,
+                corpus,
+                corpus_root,
+            } => cmd_cap_audit_diff(
+                &cli,
+                old_ref.as_deref(),
+                new_ref.as_deref(),
+                corpus.as_deref(),
+                corpus_root.as_deref(),
+            ),
+        },
     }
+}
+
+/// `zetl cap audit-diff` — SPEC-034 REQ-3424 / ADR-3410 PR gate.
+///
+/// Three invocation shapes:
+/// 1. `<old_ref> <new_ref>` — git-backed vault diff.
+/// 2. `--corpus <dir>` — single fixture (baseline/ + new/).
+/// 3. `--corpus-root <dir>` — walk every fixture under root; fails
+///    if any fixture's expected markers are missed (the CI
+///    `audit-corpus` job's entry point).
+fn cmd_cap_audit_diff(
+    cli: &Cli,
+    old_ref: Option<&str>,
+    new_ref: Option<&str>,
+    corpus: Option<&Path>,
+    corpus_root: Option<&Path>,
+) -> Result<()> {
+    use zetl::cap::audit_diff::{format_report, scan_diff, Page};
+
+    if let Some(root) = corpus_root {
+        return cmd_cap_audit_diff_corpus_root(root);
+    }
+    if let Some(fixture) = corpus {
+        let report = cmd_cap_audit_diff_corpus_one(fixture)?;
+        println!("{}", report.report_text);
+        if !report.missed.is_empty() {
+            eprintln!(
+                "[zetl cap audit-diff] CORPUS MISS: {} expected marker(s) not detected",
+                report.missed.len(),
+            );
+            for m in &report.missed {
+                eprintln!("  - {m}");
+            }
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    let old = old_ref.ok_or_else(|| {
+        anyhow::anyhow!("audit-diff requires <OLD_REF> <NEW_REF> or --corpus/--corpus-root")
+    })?;
+    let new = new_ref.unwrap_or("HEAD");
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let (baseline_pairs, new_pairs) = load_vault_at_refs(&vault_root, old, new)?;
+
+    let baseline_pages: Vec<Page> = baseline_pairs
+        .iter()
+        .map(|(p, c)| Page {
+            path: p.as_path(),
+            contents: c.as_str(),
+        })
+        .collect();
+    let new_pages: Vec<Page> = new_pairs
+        .iter()
+        .map(|(p, c)| Page {
+            path: p.as_path(),
+            contents: c.as_str(),
+        })
+        .collect();
+
+    let findings = scan_diff(&baseline_pages, &new_pages);
+    print!("{}", format_report(&findings));
+
+    if findings.is_empty() {
+        Ok(())
+    } else {
+        std::process::exit(1);
+    }
+}
+
+/// Enumerate `.md` files in the vault at two git refs and return
+/// `(baseline, new)` pairs. Uses `git ls-tree` to walk each ref and
+/// `git show` to read file contents — same mechanism the existing
+/// `zetl diff` backend relies on.
+type MdFileList = Vec<(PathBuf, String)>;
+
+fn load_vault_at_refs(
+    vault_root: &Path,
+    old_ref: &str,
+    new_ref: &str,
+) -> Result<(MdFileList, MdFileList)> {
+    let baseline = git_ls_md_files(vault_root, old_ref)?;
+    let newside = git_ls_md_files(vault_root, new_ref)?;
+
+    let mut baseline_pairs: Vec<(PathBuf, String)> = Vec::new();
+    for rel in &baseline {
+        if let Some(content) = git_show(vault_root, old_ref, rel)? {
+            baseline_pairs.push((PathBuf::from(rel), content));
+        }
+    }
+    let mut new_pairs: Vec<(PathBuf, String)> = Vec::new();
+    for rel in &newside {
+        if let Some(content) = git_show(vault_root, new_ref, rel)? {
+            new_pairs.push((PathBuf::from(rel), content));
+        }
+    }
+    Ok((baseline_pairs, new_pairs))
+}
+
+fn git_ls_md_files(vault_root: &Path, git_ref: &str) -> Result<Vec<String>> {
+    let output = std::process::Command::new("git")
+        .args([
+            "-C",
+            vault_root.to_str().unwrap_or("."),
+            "ls-tree",
+            "-r",
+            "--name-only",
+            git_ref,
+        ])
+        .output()
+        .context("running git ls-tree")?;
+    if !output.status.success() {
+        anyhow::bail!("git ls-tree failed for ref {git_ref}");
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter(|l| l.ends_with(".md"))
+        .map(|l| l.to_owned())
+        .collect())
+}
+
+struct CorpusFixtureReport {
+    report_text: String,
+    missed: Vec<String>,
+}
+
+fn cmd_cap_audit_diff_corpus_one(fixture_dir: &Path) -> Result<CorpusFixtureReport> {
+    use zetl::cap::audit_diff::{format_report, scan_diff, Page};
+
+    let new_dir = fixture_dir.join("new");
+    let baseline_dir = fixture_dir.join("baseline");
+    if !new_dir.is_dir() {
+        anyhow::bail!(
+            "corpus fixture missing `new/` dir: {}",
+            fixture_dir.display()
+        );
+    }
+
+    let baseline_files = read_md_tree(&baseline_dir).unwrap_or_default();
+    let new_files = read_md_tree(&new_dir)?;
+
+    let baseline_pages: Vec<Page> = baseline_files
+        .iter()
+        .map(|(p, c)| Page {
+            path: p.as_path(),
+            contents: c.as_str(),
+        })
+        .collect();
+    let new_pages: Vec<Page> = new_files
+        .iter()
+        .map(|(p, c)| Page {
+            path: p.as_path(),
+            contents: c.as_str(),
+        })
+        .collect();
+
+    let findings = scan_diff(&baseline_pages, &new_pages);
+    let report_text = format_report(&findings);
+
+    // Check expected markers.
+    let expected = fixture_dir.join("expected.txt");
+    let mut missed = Vec::new();
+    if expected.is_file() {
+        let raw = std::fs::read_to_string(&expected)
+            .with_context(|| format!("reading {}", expected.display()))?;
+        let got_tags: Vec<&str> = findings.iter().map(|f| f.kind.tag()).collect();
+        for line in raw.lines() {
+            let wanted = line.trim();
+            if wanted.is_empty() || wanted.starts_with('#') {
+                continue;
+            }
+            if !got_tags.contains(&wanted) {
+                missed.push(wanted.to_string());
+            }
+        }
+    }
+
+    Ok(CorpusFixtureReport {
+        report_text,
+        missed,
+    })
+}
+
+fn cmd_cap_audit_diff_corpus_root(root: &Path) -> Result<()> {
+    let fixtures_dir = if root.join("fixtures").is_dir() {
+        root.join("fixtures")
+    } else {
+        root.to_path_buf()
+    };
+    let mut entries: Vec<PathBuf> = match std::fs::read_dir(&fixtures_dir) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.is_dir())
+            .collect(),
+        Err(e) => anyhow::bail!("reading corpus root {}: {}", fixtures_dir.display(), e),
+    };
+    entries.sort();
+
+    if entries.is_empty() {
+        anyhow::bail!("no fixtures found under {}", fixtures_dir.display());
+    }
+
+    let mut any_missed = false;
+    for fx in &entries {
+        let name = fx
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let report = cmd_cap_audit_diff_corpus_one(fx)?;
+        if report.missed.is_empty() {
+            println!("[zetl cap audit-diff] PASS {name}");
+        } else {
+            any_missed = true;
+            println!("[zetl cap audit-diff] MISS {name}");
+            for m in &report.missed {
+                println!("  - expected finding kind `{m}` not detected");
+            }
+        }
+    }
+    if any_missed {
+        eprintln!("[zetl cap audit-diff] corpus regression — REQ-3424 gate FAILED");
+        std::process::exit(1);
+    }
+    println!("[zetl cap audit-diff] {} fixture(s) OK", entries.len());
+    Ok(())
+}
+
+fn read_md_tree(dir: &Path) -> Result<Vec<(PathBuf, String)>> {
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out: Vec<(PathBuf, String)> = Vec::new();
+    let walker = ignore::WalkBuilder::new(dir).hidden(false).build();
+    for entry in walker.flatten() {
+        let p = entry.path();
+        if !p.is_file() {
+            continue;
+        }
+        if p.extension().and_then(|s| s.to_str()) != Some("md") {
+            continue;
+        }
+        let rel = p.strip_prefix(dir).unwrap_or(p).to_path_buf();
+        let content =
+            std::fs::read_to_string(p).with_context(|| format!("reading {}", p.display()))?;
+        out.push((rel, content));
+    }
+    out.sort();
+    Ok(out)
 }
 
 #[cfg(feature = "mcp")]

@@ -193,7 +193,11 @@ fn canonical_url_shape_matches_con_3401() {
     // spec's ABNF so shims written against other implementations can
     // round-trip against zetl-emitted URLs.
     let url = CapUrl::render_delegated(
-        "https", "wiki.example", "1234567890ABC", "team/runbook", VALID_KEY,
+        "https",
+        "wiki.example",
+        "1234567890ABC",
+        "team/runbook",
+        VALID_KEY,
     )
     .unwrap();
     assert_eq!(
@@ -216,7 +220,8 @@ fn url_parser_rejects_non_crockford_path_cap() {
 
 #[test]
 fn recipients_file_round_trips_with_both_modes() {
-    let toml_in = format!(r#"
+    let toml_in = format!(
+        r#"
 version = 1
 
 [vault]
@@ -236,7 +241,8 @@ id = "ops"
 name = "Operations"
 mode = "webauthn-prf"
 pubkeys = []
-"#);
+"#
+    );
 
     let f = RecipientsFile::parse(&toml_in).unwrap();
     assert_eq!(f.cohorts.len(), 2);
@@ -289,7 +295,7 @@ fn grants_references_unknown_cohort_detected() {
         version: Some(1),
         grants: vec![Grant {
             id: "g1".to_string(),
-            cohort: "marketing".to_string(),   // ← not in recipients.toml
+            cohort: "marketing".to_string(), // ← not in recipients.toml
             recipient: format!("{AGE_RECIPIENT_V1_PREFIX}abc123"),
             mode: GrantMode::DelegatedUrl,
             bound: false,
@@ -332,14 +338,26 @@ fn grants_validation_passes_with_matching_cohort() {
 #[test]
 fn scoping_frontmatter_trumps_glob() {
     let cohorts = vec![
-        CohortScope { id: "eng".to_string(), pages_glob: Some("**".to_string()) },
-        CohortScope { id: "ops".to_string(), pages_glob: None },
+        CohortScope {
+            id: "eng".to_string(),
+            pages_glob: Some("**".to_string()),
+        },
+        CohortScope {
+            id: "ops".to_string(),
+            pages_glob: None,
+        },
     ];
     let pages = vec![
         // Opts out of "eng" despite glob by naming only "ops".
-        PageRef { slug: "shared/secret".to_string(), explicit_cohorts: vec!["ops".to_string()] },
+        PageRef {
+            slug: "shared/secret".to_string(),
+            explicit_cohorts: vec!["ops".to_string()],
+        },
         // No explicit — falls back to the glob (eng matches, ops is None = all).
-        PageRef { slug: "readme".to_string(), explicit_cohorts: vec![] },
+        PageRef {
+            slug: "readme".to_string(),
+            explicit_cohorts: vec![],
+        },
     ];
     let ix = CohortIndex::build(&cohorts, &pages).unwrap();
     assert_eq!(ix.cohorts_of("shared/secret"), &["ops".to_string()]);
@@ -351,7 +369,10 @@ fn scoping_frontmatter_trumps_glob() {
 
 #[test]
 fn scoping_unknown_explicit_cohort_fails() {
-    let cohorts = vec![CohortScope { id: "eng".to_string(), pages_glob: None }];
+    let cohorts = vec![CohortScope {
+        id: "eng".to_string(),
+        pages_glob: None,
+    }];
     let pages = vec![PageRef {
         slug: "p".to_string(),
         explicit_cohorts: vec!["ghost".to_string()],

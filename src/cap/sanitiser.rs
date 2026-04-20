@@ -45,14 +45,74 @@ pub const CONFIG_TOML: &str = include_str!("../../tools/sanitiser-config.toml");
 /// Tags allowed through the sanitiser. Mirrors the `[tags].allow` list
 /// in `tools/sanitiser-config.toml`.
 pub const ALLOWED_TAGS: &[&str] = &[
-    "a", "abbr", "article", "aside", "b", "bdi", "bdo", "blockquote",
-    "br", "caption", "cite", "code", "data", "dd", "del", "details",
-    "dfn", "div", "dl", "dt", "em", "figcaption", "figure", "footer",
-    "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "i", "img",
-    "ins", "kbd", "li", "main", "mark", "nav", "ol", "p", "pre",
-    "q", "rp", "rt", "ruby", "s", "samp", "section", "small", "span",
-    "strong", "sub", "summary", "sup", "table", "tbody", "td", "tfoot",
-    "th", "thead", "time", "tr", "u", "ul", "var", "wbr",
+    "a",
+    "abbr",
+    "article",
+    "aside",
+    "b",
+    "bdi",
+    "bdo",
+    "blockquote",
+    "br",
+    "caption",
+    "cite",
+    "code",
+    "data",
+    "dd",
+    "del",
+    "details",
+    "dfn",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "figcaption",
+    "figure",
+    "footer",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "header",
+    "hr",
+    "i",
+    "img",
+    "ins",
+    "kbd",
+    "li",
+    "main",
+    "mark",
+    "nav",
+    "ol",
+    "p",
+    "pre",
+    "q",
+    "rp",
+    "rt",
+    "ruby",
+    "s",
+    "samp",
+    "section",
+    "small",
+    "span",
+    "strong",
+    "sub",
+    "summary",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "time",
+    "tr",
+    "u",
+    "ul",
+    "var",
+    "wbr",
 ];
 
 /// Tags whose element AND text children are removed. A `<script>` that
@@ -60,16 +120,24 @@ pub const ALLOWED_TAGS: &[&str] = &[
 /// covers tags that render as inert containers when stripped without
 /// their contents (e.g. `<style>body{}` would leave the CSS text node).
 pub const STRIP_CONTENT_TAGS: &[&str] = &[
-    "script", "style", "iframe", "object", "embed", "template", "math",
-    "base", "frame", "frameset", "noframes", "noscript", "xmp",
+    "script", "style", "iframe", "object", "embed", "template", "math", "base", "frame",
+    "frameset", "noframes", "noscript", "xmp",
 ];
 
 /// Attributes allowed on every tag. Conservative ARIA + presentation set;
 /// `style` is intentionally absent (no `@import` / `expression()` vectors),
 /// as are `on*` event handlers.
 pub const GENERIC_ATTRIBUTES: &[&str] = &[
-    "id", "class", "title", "lang", "dir", "role",
-    "aria-label", "aria-hidden", "aria-describedby", "aria-labelledby",
+    "id",
+    "class",
+    "title",
+    "lang",
+    "dir",
+    "role",
+    "aria-label",
+    "aria-hidden",
+    "aria-describedby",
+    "aria-labelledby",
 ];
 
 /// URL schemes permitted in href/src/cite/action-style attributes.
@@ -81,8 +149,14 @@ pub const ALLOWED_URL_SCHEMES: &[&str] = &["http", "https", "mailto", "tel"];
 /// coverage; enforcement is structural (they never appear in any
 /// per-tag allowlist below).
 pub const DENIED_ATTRIBUTES: &[&str] = &[
-    "srcdoc", "formaction", "ping", "http-equiv",
-    "integrity", "nonce", "xmlns", "is",
+    "srcdoc",
+    "formaction",
+    "ping",
+    "http-equiv",
+    "integrity",
+    "nonce",
+    "xmlns",
+    "is",
 ];
 
 fn per_tag_attributes() -> HashMap<&'static str, HashSet<&'static str>> {
@@ -90,13 +164,31 @@ fn per_tag_attributes() -> HashMap<&'static str, HashSet<&'static str>> {
     // Note: `rel` is intentionally absent — ammonia's `link_rel`
     // forcibly replaces every `<a>` rel with `"noopener noreferrer"`
     // and asserts no per-tag `rel` allowlist entry coexists with it.
-    map.insert("a", ["href", "hreflang", "target", "type", "download"].into_iter().collect());
-    map.insert("img", ["src", "alt", "width", "height", "loading", "decoding"].into_iter().collect());
+    map.insert(
+        "a",
+        ["href", "hreflang", "target", "type", "download"]
+            .into_iter()
+            .collect(),
+    );
+    map.insert(
+        "img",
+        ["src", "alt", "width", "height", "loading", "decoding"]
+            .into_iter()
+            .collect(),
+    );
     map.insert("blockquote", ["cite"].into_iter().collect());
     map.insert("q", ["cite"].into_iter().collect());
     map.insert("time", ["datetime"].into_iter().collect());
-    map.insert("th", ["scope", "colspan", "rowspan", "abbr", "headers"].into_iter().collect());
-    map.insert("td", ["colspan", "rowspan", "headers"].into_iter().collect());
+    map.insert(
+        "th",
+        ["scope", "colspan", "rowspan", "abbr", "headers"]
+            .into_iter()
+            .collect(),
+    );
+    map.insert(
+        "td",
+        ["colspan", "rowspan", "headers"].into_iter().collect(),
+    );
     map.insert("col", ["span"].into_iter().collect());
     map.insert("colgroup", ["span"].into_iter().collect());
     map.insert("ol", ["start", "type", "reversed"].into_iter().collect());
@@ -188,7 +280,11 @@ mod tests {
     fn strips_script_tag_and_content() {
         let out = sanitise("<p>ok</p><script>alert(1)</script>");
         assert!(!out.contains("<script"));
-        assert!(!out.contains("alert(1)"), "script content must not survive: {}", out);
+        assert!(
+            !out.contains("alert(1)"),
+            "script content must not survive: {}",
+            out
+        );
     }
 
     #[test]
@@ -223,7 +319,11 @@ mod tests {
         let out = sanitise("<a href=\"https://ok\" onclick=\"x()\" onerror=\"y()\">hi</a>");
         assert!(!out.contains("onclick"));
         assert!(!out.contains("onerror"));
-        assert!(out.contains("href=\"https://ok\""), "href should survive: {}", out);
+        assert!(
+            out.contains("href=\"https://ok\""),
+            "href should survive: {}",
+            out
+        );
     }
 
     #[test]
@@ -316,9 +416,20 @@ mod tests {
                     <hr><p>after</p>";
         let out = sanitise(html);
         for frag in [
-            "<h1>", "<em>", "<strong>", "<code>", "<blockquote",
-            "<pre>", "<ul>", "<li>", "<ol ", "<table>", "<thead>",
-            "<th scope=\"col\">", "<hr", "href=\"https://example.com\"",
+            "<h1>",
+            "<em>",
+            "<strong>",
+            "<code>",
+            "<blockquote",
+            "<pre>",
+            "<ul>",
+            "<li>",
+            "<ol ",
+            "<table>",
+            "<thead>",
+            "<th scope=\"col\">",
+            "<hr",
+            "href=\"https://example.com\"",
         ] {
             assert!(out.contains(frag), "missing {} in: {}", frag, out);
         }
@@ -327,7 +438,11 @@ mod tests {
     #[test]
     fn forces_noopener_noreferrer_on_links() {
         let out = sanitise("<a href=\"https://ok\" rel=\"preconnect\">x</a>");
-        assert!(out.contains("rel=\"noopener noreferrer\""), "rendered: {}", out);
+        assert!(
+            out.contains("rel=\"noopener noreferrer\""),
+            "rendered: {}",
+            out
+        );
         assert!(!out.contains("preconnect"));
     }
 

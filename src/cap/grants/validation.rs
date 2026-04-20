@@ -100,9 +100,7 @@ pub enum ValidationError {
     RecipientPrefix { grant_id: String },
     #[error("grant {grant_id:?} recipient payload is empty")]
     RecipientEmpty { grant_id: String },
-    #[error(
-        "grant {grant_id:?} recipient payload contains non-base64url character {ch:?}"
-    )]
+    #[error("grant {grant_id:?} recipient payload contains non-base64url character {ch:?}")]
     RecipientCharset { grant_id: String, ch: char },
     #[error("grant {grant_id:?} `created` is not a valid RFC 3339 timestamp")]
     BadCreated { grant_id: String },
@@ -150,11 +148,15 @@ impl Grant {
         }
         validate_recipient(&self.id, &self.recipient)?;
         if !is_rfc3339(&self.created) {
-            return Err(ValidationError::BadCreated { grant_id: self.id.clone() });
+            return Err(ValidationError::BadCreated {
+                grant_id: self.id.clone(),
+            });
         }
         if let Some(exp) = self.expires.as_deref() {
             if !is_rfc3339(exp) {
-                return Err(ValidationError::BadExpires { grant_id: self.id.clone() });
+                return Err(ValidationError::BadExpires {
+                    grant_id: self.id.clone(),
+                });
             }
             // Lexicographic comparison is correct for normalised RFC 3339
             // timestamps because the format sorts correctly as a string
@@ -167,18 +169,24 @@ impl Grant {
             }
         }
         if self.pages.trim().is_empty() {
-            return Err(ValidationError::EmptyPages { grant_id: self.id.clone() });
+            return Err(ValidationError::EmptyPages {
+                grant_id: self.id.clone(),
+            });
         }
         Ok(())
     }
 }
 
 fn validate_recipient(grant_id: &str, s: &str) -> Result<(), ValidationError> {
-    let payload = s
-        .strip_prefix(AGE_RECIPIENT_V1_PREFIX)
-        .ok_or_else(|| ValidationError::RecipientPrefix { grant_id: grant_id.to_string() })?;
+    let payload = s.strip_prefix(AGE_RECIPIENT_V1_PREFIX).ok_or_else(|| {
+        ValidationError::RecipientPrefix {
+            grant_id: grant_id.to_string(),
+        }
+    })?;
     if payload.is_empty() {
-        return Err(ValidationError::RecipientEmpty { grant_id: grant_id.to_string() });
+        return Err(ValidationError::RecipientEmpty {
+            grant_id: grant_id.to_string(),
+        });
     }
     for c in payload.chars() {
         if !is_base64url(c) {
@@ -270,7 +278,10 @@ mod tests {
 
     #[test]
     fn valid_grant_passes() {
-        let f = GrantsFile { version: Some(1), grants: vec![good_grant("g1")] };
+        let f = GrantsFile {
+            version: Some(1),
+            grants: vec![good_grant("g1")],
+        };
         f.validate(&cohort_set(&["engineering"])).unwrap();
     }
 
@@ -286,14 +297,20 @@ mod tests {
 
     #[test]
     fn unknown_cohort_fails() {
-        let f = GrantsFile { version: None, grants: vec![good_grant("g1")] };
+        let f = GrantsFile {
+            version: None,
+            grants: vec![good_grant("g1")],
+        };
         let err = f.validate(&cohort_set(&["other"])).unwrap_err();
         assert!(matches!(err, ValidationError::UnknownCohort { .. }));
     }
 
     #[test]
     fn empty_cohort_set_skips_cross_check() {
-        let f = GrantsFile { version: None, grants: vec![good_grant("g1")] };
+        let f = GrantsFile {
+            version: None,
+            grants: vec![good_grant("g1")],
+        };
         f.validate(&BTreeSet::new()).unwrap();
     }
 
@@ -301,7 +318,10 @@ mod tests {
     fn recipient_missing_prefix_fails() {
         let mut g = good_grant("g1");
         g.recipient = "ssh-ed25519:abc".to_string();
-        let f = GrantsFile { version: None, grants: vec![g] };
+        let f = GrantsFile {
+            version: None,
+            grants: vec![g],
+        };
         assert!(matches!(
             f.validate(&BTreeSet::new()),
             Err(ValidationError::RecipientPrefix { .. })
@@ -312,7 +332,10 @@ mod tests {
     fn recipient_empty_payload_fails() {
         let mut g = good_grant("g1");
         g.recipient = AGE_RECIPIENT_V1_PREFIX.to_string();
-        let f = GrantsFile { version: None, grants: vec![g] };
+        let f = GrantsFile {
+            version: None,
+            grants: vec![g],
+        };
         assert!(matches!(
             f.validate(&BTreeSet::new()),
             Err(ValidationError::RecipientEmpty { .. })
@@ -323,7 +346,10 @@ mod tests {
     fn recipient_bad_char_fails() {
         let mut g = good_grant("g1");
         g.recipient = format!("{AGE_RECIPIENT_V1_PREFIX}abc!");
-        let f = GrantsFile { version: None, grants: vec![g] };
+        let f = GrantsFile {
+            version: None,
+            grants: vec![g],
+        };
         assert!(matches!(
             f.validate(&BTreeSet::new()),
             Err(ValidationError::RecipientCharset { ch: '!', .. })
@@ -334,7 +360,10 @@ mod tests {
     fn bad_created_fails() {
         let mut g = good_grant("g1");
         g.created = "not-a-date".to_string();
-        let f = GrantsFile { version: None, grants: vec![g] };
+        let f = GrantsFile {
+            version: None,
+            grants: vec![g],
+        };
         assert!(matches!(
             f.validate(&BTreeSet::new()),
             Err(ValidationError::BadCreated { .. })
@@ -345,7 +374,10 @@ mod tests {
     fn bad_expires_fails() {
         let mut g = good_grant("g1");
         g.expires = Some("2026/10/20".to_string());
-        let f = GrantsFile { version: None, grants: vec![g] };
+        let f = GrantsFile {
+            version: None,
+            grants: vec![g],
+        };
         assert!(matches!(
             f.validate(&BTreeSet::new()),
             Err(ValidationError::BadExpires { .. })
@@ -356,7 +388,10 @@ mod tests {
     fn expires_before_created_fails() {
         let mut g = good_grant("g1");
         g.expires = Some("2026-01-01T00:00:00Z".to_string());
-        let f = GrantsFile { version: None, grants: vec![g] };
+        let f = GrantsFile {
+            version: None,
+            grants: vec![g],
+        };
         assert!(matches!(
             f.validate(&BTreeSet::new()),
             Err(ValidationError::ExpiresBeforeCreated { .. })
@@ -367,7 +402,10 @@ mod tests {
     fn empty_pages_glob_fails() {
         let mut g = good_grant("g1");
         g.pages = "   ".to_string();
-        let f = GrantsFile { version: None, grants: vec![g] };
+        let f = GrantsFile {
+            version: None,
+            grants: vec![g],
+        };
         assert!(matches!(
             f.validate(&BTreeSet::new()),
             Err(ValidationError::EmptyPages { .. })

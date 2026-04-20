@@ -84,10 +84,10 @@ pub fn derive_path_cap(
     slug: &str,
     path_cap_bits: u32,
 ) -> Result<String, DerivationError> {
-    if !(PATH_CAP_MIN_BITS..=PATH_CAP_MAX_BITS).contains(&path_cap_bits)
-        || path_cap_bits % 8 != 0
-    {
-        return Err(DerivationError::PathCapWidth { bits: path_cap_bits });
+    if !(PATH_CAP_MIN_BITS..=PATH_CAP_MAX_BITS).contains(&path_cap_bits) || path_cap_bits % 8 != 0 {
+        return Err(DerivationError::PathCapWidth {
+            bits: path_cap_bits,
+        });
     }
     let byte_len = (path_cap_bits / 8) as usize;
 
@@ -96,9 +96,8 @@ pub fn derive_path_cap(
     // delimiters in cohort_id/slug are responsible for escaping upstream;
     // the validator in `cap::grants::validation` restricts cohort_id to
     // `[a-z0-9][a-z0-9-]*` so no ambiguity enters here.
-    let mut info = Vec::with_capacity(
-        PATH_CAP_INFO_PREFIX.len() + cohort_id.len() + 1 + slug.len(),
-    );
+    let mut info =
+        Vec::with_capacity(PATH_CAP_INFO_PREFIX.len() + cohort_id.len() + 1 + slug.len());
     info.extend_from_slice(PATH_CAP_INFO_PREFIX.as_bytes());
     info.extend_from_slice(cohort_id.as_bytes());
     info.push(b'/');
