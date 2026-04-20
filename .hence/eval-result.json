@@ -3,31 +3,27 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 8,
-    "insertions": 91,
-    "deletions": 58,
+    "files_changed": 4,
+    "insertions": 1217,
+    "deletions": 5,
     "file_list": [
       ".hence/context-manifest.json",
-      ".woodpecker/ci.yaml",
-      "CHANGELOG.md",
-      "Cargo.toml",
-      "Makefile",
-      "specs/SPEC-033.md",
-      "tests/ecosystems_registry_integration.rs",
-      "tests/nfr_gates_033_integration.rs"
+      "src/ecosystems/mod.rs",
+      "src/ecosystems/version_drift.rs",
+      "tests/plugin_version_drift_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-retire-ecosystems-v1-changes",
-      "content": "Modified 8 files (+91, -58): .hence/context-manifest.json, .woodpecker/ci.yaml, CHANGELOG.md, Cargo.toml, Makefile and 3 more",
+      "key": "task-plugin-version-drift-changes",
+      "content": "Modified 4 files (+1217, -5): .hence/context-manifest.json, src/ecosystems/mod.rs, src/ecosystems/version_drift.rs, tests/plugin_version_drift_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/retire-ecosystems-v1-v1",
-  "evaluated_at": "2026-04-20T00:03:41Z",
+  "branch_name": "hence/plugin-version-drift-v1",
+  "evaluated_at": "2026-04-20T00:15:24Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
