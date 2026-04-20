@@ -54,6 +54,30 @@ fn write_hook(dir: &Path, name: &str, body: &str) -> PathBuf {
     path
 }
 
+/// Retry a spawn call on Linux `ETXTBSY` (errno 26, "Text file busy").
+/// Cargo runs integration tests in parallel; when one thread is between
+/// `write_hook`'s write and `spawn`'s exec, a sibling thread's fork can
+/// inherit the still-open-for-write fd and Linux refuses to exec. The
+/// race clears within milliseconds as fds close on the child's own exec.
+/// Mirror of the helper in `src/hooks/persistent.rs` (unreachable from
+/// integration-test crate).
+fn spawn_or_retry<F>(mut f: F) -> PersistentHook
+where
+    F: FnMut() -> Result<PersistentHook, ProtocolError>,
+{
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        match f() {
+            Err(ProtocolError::Io(e))
+                if e.raw_os_error() == Some(26) && Instant::now() < deadline =>
+            {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            result => return result.unwrap_or_else(|e| panic!("spawn failed: {e:?}")),
+        }
+    }
+}
+
 /// Round-trip-fidelity hook: echoes the AST payload back unchanged.
 const ECHO_AST_BODY: &str = r#"
 import json, sys
@@ -110,8 +134,9 @@ fn full_lifecycle_typed_ast_round_trip() {
     let tmp = TempDir::new().unwrap();
     let hook_path = write_hook(tmp.path(), "echo.py", ECHO_AST_BODY);
 
-    let mut hook =
-        PersistentHook::spawn(Command::new(&hook_path), "echo-ast", Stage::Transform).unwrap();
+    let mut hook = spawn_or_retry(|| {
+        PersistentHook::spawn(Command::new(&hook_path), "echo-ast", Stage::Transform)
+    });
     assert_eq!(hook.handshake().hook, "echo-ast");
 
     // init
@@ -163,8 +188,9 @@ fn protocol_overhead_per_run_is_fast() {
 
     let tmp = TempDir::new().unwrap();
     let hook_path = write_hook(tmp.path(), "echo.py", ECHO_AST_BODY);
-    let mut hook =
-        PersistentHook::spawn(Command::new(&hook_path), "echo-ast", Stage::Transform).unwrap();
+    let mut hook = spawn_or_retry(|| {
+        PersistentHook::spawn(Command::new(&hook_path), "echo-ast", Stage::Transform)
+    });
     let _ = hook.init(json!({}), 1_000).unwrap();
 
     let ast = build_500_node_ast();
@@ -232,14 +258,15 @@ while True:
     );
 
     for _ in 0..5 {
-        let hook = PersistentHook::spawn_with_config(
-            Command::new(&hook_path),
-            "stubborn",
-            Stage::Transform,
-            Duration::from_secs(5),
-            Duration::from_millis(50), // short grace so Drop completes quickly
-        )
-        .unwrap();
+        let hook = spawn_or_retry(|| {
+            PersistentHook::spawn_with_config(
+                Command::new(&hook_path),
+                "stubborn",
+                Stage::Transform,
+                Duration::from_secs(5),
+                Duration::from_millis(50), // short grace so Drop completes quickly
+            )
+        });
         // Drop triggers shutdown + hard-kill; we rely on pgrep after
         // the fact to confirm no descendants remain.
         drop(hook);
@@ -298,8 +325,9 @@ for line in sys.stdin:
 "#;
     let hook_path = write_hook(tmp.path(), "echo-init.py", hook_body);
 
-    let mut hook =
-        PersistentHook::spawn(Command::new(&hook_path), "echo-init", Stage::Transform).unwrap();
+    let mut hook = spawn_or_retry(|| {
+        PersistentHook::spawn(Command::new(&hook_path), "echo-init", Stage::Transform)
+    });
 
     let init = hook.init(json!({}), 1_000).unwrap();
     match init {
@@ -355,8 +383,9 @@ for line in sys.stdin:
 "#,
     );
 
-    let mut hook =
-        PersistentHook::spawn(Command::new(&hook_path), "partial", Stage::Transform).unwrap();
+    let mut hook = spawn_or_retry(|| {
+        PersistentHook::spawn(Command::new(&hook_path), "partial", Stage::Transform)
+    });
 
     match hook.run("p1", json!({}), json!({}), 1_000) {
         Err(ProtocolError::HookError { reason, .. }) => assert_eq!(reason, "first"),
