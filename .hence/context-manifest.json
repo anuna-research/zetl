@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-build-driver",
+  "task_id": "cap-search-scoping",
   "token_budget": 8000,
-  "tokens_used": 452,
+  "tokens_used": 457,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`src/cap/build/driver.rs` orchestrates the full capability build: enumerate pages, compute per-page path-caps, sanitise HTML (task-cap-sanitiser), encrypt (task-cap-age-encrypt) with padding (task-cap-x25519-padding), sign (task-cap-content-signing), write to `dist/c/<path-cap>/<slug>.html`, emit deploy artifacts (task-cap-deploy-artifacts). Iterates cohorts; respects public-repo safety (task-cap-public-repo-safety). Emits build-summary log per OBS-3401.",
-      "token_cost": 114,
+      "content": "Cohort-scope search and backlinks per REQ-3415. Default: no search UI; backlinks panel shows only in-cohort backlinks per the page's decrypted context. `[access.search] mode = \"per-cohort\"` opts into per-cohort encrypted search indices (NOTE: search-index format deferred per BUG-019; feature ships as off-by-default in v1 with documentation that enabling it is a future deliverable). Attempts to enable global cross-cohort search/backlinks rejected at build with clear error.",
+      "token_cost": 119,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T13:26:11Z"
+  "constructed_at": "2026-04-20T13:45:03Z"
 }
