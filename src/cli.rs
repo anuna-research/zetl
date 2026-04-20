@@ -622,9 +622,14 @@ pub enum HookCommand {
         extra: Vec<String>,
     },
     /// Scaffold a new render-pipeline hook (skeleton + manifest + fixture).
+    ///
+    /// Writes the persistent-mode skeleton at
+    /// `.zetl/hooks/<stage>.d/<name>.<ext>` and the sidecar manifest at
+    /// `.zetl/hooks/<stage>.d/<name>.<ext>.toml` (the canonical form
+    /// composition reads — do not rename to `<name>.toml`).
     /// SPEC-032 REQ-3225.
     #[command(
-        after_help = "Examples:\n  zetl hook new transform callouts\n  zetl hook new pre-parse prelude --lang sh\n  zetl hook new post-render banner --lang js"
+        after_help = "Examples:\n  zetl hook new transform callouts\n  zetl hook new pre-parse prelude --lang sh\n  zetl hook new post-render banner --lang js\n  zetl hook new transform smallcaps --ecosystem pandoc"
     )]
     New {
         /// Hook pipeline stage (pre-parse, transform, or post-render).
@@ -634,7 +639,11 @@ pub enum HookCommand {
         /// Implementation language for the scaffolded skeleton.
         #[arg(long, value_enum, default_value_t = HookLang::Py)]
         lang: HookLang,
-        /// Scaffold against an ecosystem plugin adapter (SPEC-033 stubs).
+        /// Scaffold against an ecosystem plugin adapter. Seeds the SPEC-033
+        /// REQ-3312 manifest fields the chosen ecosystem requires (so
+        /// `dry-run`/`build` work without further hand-edits) and, for
+        /// `pandoc`, drops a starter identity Lua filter on disk at the
+        /// `lua_filter` path.
         #[arg(long, value_enum)]
         ecosystem: Option<HookEcosystem>,
         /// Overwrite existing scaffold files.
@@ -788,8 +797,17 @@ impl HookLang {
     }
 }
 
-/// Ecosystem adapter to target when scaffolding. `--ecosystem pandoc`
-/// produces a Lua filter stub alongside the Python wrapper, etc.
+/// Ecosystem adapter to target when scaffolding. The scaffolded manifest
+/// carries the SPEC-033 REQ-3312 fields the chosen ecosystem requires:
+///
+/// - `pandoc` — `ecosystem = "pandoc"` + `lua_filter = "filters/<name>.lua"`,
+///   plus a starter identity Lua filter on disk at that path.
+/// - `mdbook` — `ecosystem = "mdbook"` + `exec = "mdbook-<name>"` +
+///   `scope = "page"`. Place the preprocessor binary on PATH (or rename
+///   `exec`) before `zetl build`.
+/// - `remark` — `ecosystem = "remark"` + `package = "remark-<name>"`.
+///   Install the npm package under the vault's `node_modules/`.
+///
 /// SPEC-033 REQ-3303/3304/3305.
 #[derive(Clone, ValueEnum, PartialEq, Eq, Debug)]
 pub enum HookEcosystem {

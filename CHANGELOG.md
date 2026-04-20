@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`zetl hook new` writes the composition-canonical sidecar manifest.**
+  The scaffolder previously wrote `<name>.toml`, but
+  `compose_stage` looks for `<name>.<ext>.toml` (e.g. `callouts.py.toml`).
+  Freshly scaffolded hooks were silently invisible to the pipeline until
+  the manifest was renamed by hand. The scaffolder now emits the
+  canonical form directly; `find_scaffolded_hook` (used by `hook test`
+  and `hook watch`) accepts both the canonical and legacy filenames so
+  hooks scaffolded by older builds keep working.
+- **`zetl hook new --ecosystem <id>` seeds the SPEC-033 REQ-3312
+  required fields.** Previously the scaffolded manifest carried only
+  `ecosystem = "<id>"` and an explanatory comment, so the per-ecosystem
+  manifest parser rejected it with the cryptic *"pandoc manifest must
+  declare `exec = ...` or `lua_filter = ...`"*. The scaffolder now emits:
+  - `pandoc` → `lua_filter = "filters/<name>.lua"` plus a starter
+    identity Lua filter on disk at that path, so `dry-run` and `build`
+    work without further hand-edits;
+  - `mdbook` → `exec = "mdbook-<name>"` + `scope = "page"` (rename
+    `exec` or place the binary on `PATH` before `build`);
+  - `remark` → `package = "remark-<name>"` (install under the vault's
+    `node_modules/`).
+
+  The convention hint also strips ecosystem prefixes from the hook name
+  so `zetl hook new transform pandoc-smallcaps --ecosystem pandoc` no
+  longer suggests `exec = "pandoc-pandoc-smallcaps"`.
+
 ### Changed
 
 - **`--features hooks-v2` umbrella retired.** SPEC-032's three-stage hook

@@ -68,7 +68,8 @@ fn hook_new_scaffolds_at_expected_paths() {
     );
 
     let hook_path = vault.join(".zetl/hooks/transform.d/foo.py");
-    let manifest_path = vault.join(".zetl/hooks/transform.d/foo.toml");
+    // Composition reads `<filename-with-ext>.toml`; scaffold matches that.
+    let manifest_path = vault.join(".zetl/hooks/transform.d/foo.py.toml");
     let input_path = vault.join("tests/hook-fixtures/foo/input.md");
     let expected_path = vault.join("tests/hook-fixtures/foo/expected.json");
     assert!(hook_path.is_file(), "{}", hook_path.display());
@@ -424,4 +425,68 @@ fn watch_loop_restarts_on_source_edit_within_500ms() {
 
     // Let the loop wind down.
     let _ = handle.join();
+}
+
+// ── Regression: --ecosystem pandoc scaffold composes without hand-edits ──
+
+#[test]
+fn ecosystem_pandoc_scaffold_writes_composition_canonical_manifest_and_lua_filter() {
+    // Two pre-existing bugs surfaced by smoke-testing the IMPL-032-033 PR:
+    //   1. scaffolder wrote `<name>.toml`, but composition reads
+    //      `<filename-with-ext>.toml` — manifest was silently invisible.
+    //   2. `--ecosystem pandoc` produced a manifest missing the required
+    //      `exec`/`lua_filter` field, failing the per-ecosystem parser
+    //      with the cryptic "must declare exec or lua_filter".
+    // This test pins the fix end-to-end: scaffold a fresh pandoc hook,
+    // assert the manifest sits at the composition-canonical path, and
+    // load it through the ecosystem manifest parser.
+    let tmp = TempDir::new().unwrap();
+    let vault = touch_vault(&tmp);
+
+    let out = run_zetl(
+        vault,
+        &[
+            "hook",
+            "new",
+            "transform",
+            "smallcaps",
+            "--lang",
+            "py",
+            "--ecosystem",
+            "pandoc",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "scaffold failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Composition-canonical manifest path (was `smallcaps.toml` pre-fix).
+    let manifest = vault.join(".zetl/hooks/transform.d/smallcaps.py.toml");
+    assert!(
+        manifest.is_file(),
+        "manifest must use composition-canonical naming: {}",
+        manifest.display()
+    );
+    // Identity Lua filter is on disk so `lua_filter = "..."` resolves.
+    let lua = vault.join(".zetl/hooks/transform.d/filters/smallcaps.lua");
+    assert!(
+        lua.is_file(),
+        "lua filter must be seeded: {}",
+        lua.display()
+    );
+
+    // Manifest parses cleanly through the full base+ecosystem pipeline
+    // without hand-edits — the pre-fix scaffold failed here with
+    // "must declare exec or lua_filter".
+    let toml_text = fs::read_to_string(&manifest).unwrap();
+    let parsed = zetl::hooks::manifest::parse_manifest(&toml_text, Some(&manifest))
+        .expect("scaffolded pandoc manifest must parse end-to-end");
+    let eco = parsed
+        .extra
+        .as_ref()
+        .expect("ecosystem block must be attached");
+    assert_eq!(eco.id(), "pandoc", "ecosystem tag survives parsing");
 }
