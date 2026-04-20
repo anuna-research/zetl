@@ -16,6 +16,12 @@ import { ageDecrypt } from "./decrypt.ts";
 import { sanitiseHtml } from "./sanitise.ts";
 import { renderInto, rewriteWikiHrefs, scrubFragment } from "./render.ts";
 import { errorKindFromException, renderError, type ErrorKind } from "./errors.ts";
+import {
+  detectPrfAvailability,
+  emitFallbackMark,
+  renderFallbackNotice,
+  type PrfAvailability,
+} from "./fallback.ts";
 import type { IdbFactoryLike } from "./storage.ts";
 import type { TofuDeps } from "./tofu.ts";
 
@@ -42,6 +48,15 @@ export interface PipelineTrace {
   phases: Phase[];
   errorKind?: ErrorKind;
   errorDetail?: string;
+  /// Set when REQ-3412 fragment-required fallback activated: PRF
+  /// unavailable → TOFU skipped + fragment scrub skipped + banner
+  /// rendered. Unset on the happy path so tests can assert the
+  /// default experience is untouched.
+  fallbackActive?: boolean;
+  /// The probe's reason tag — present when `fallbackActive` is
+  /// true. Lets tests assert the exact branch (missing credential
+  /// API vs. caps.prf=false vs. no-create).
+  fallbackReason?: PrfAvailability["reason"];
 }
 
 export interface PipelineDeps {
@@ -68,6 +83,14 @@ export interface PipelineDeps {
   tofuDeps?: Partial<TofuDeps>;
   /// Override the IDB factory (fake-indexeddb in the test suite).
   idbFactory?: IdbFactoryLike | null;
+  /// PRF-availability probe. Defaults to
+  /// `fallback.ts::detectPrfAvailability`. Tests inject a
+  /// deterministic stub so happy-dom doesn't need a real
+  /// `PublicKeyCredential` surface.
+  probePrf?: () => Promise<PrfAvailability>;
+  /// Override for REQ-3412 OBS-3412 mark emission. Defaults to the
+  /// live `performance.mark` path; tests pass a capturing spy.
+  emitFallbackMark?: (reason?: PrfAvailability["reason"]) => void;
 }
 
 export async function runPipeline(deps: PipelineDeps): Promise<PipelineTrace> {
@@ -98,13 +121,33 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineTrace> {
       }
       trace.phases.push(Phase.SignatureVerified);
 
+      // REQ-3412 probe — runs before acquireIdentity so the
+      // decision to skip TOFU (idbFactory=null) is taken once, at
+      // a single point, rather than relying on downstream APIs
+      // happening to be absent. The probe does not call
+      // credentials.get/create — it only inspects capabilities
+      // and feature-probes the surface — so it's safe to run
+      // before any cryptographic work beyond signature verify.
+      const probe = deps.probePrf ?? detectPrfAvailability;
+      const prfProbe = await probe();
+      const fallbackActive = !prfProbe.available;
+      trace.fallbackActive = fallbackActive;
+      trace.fallbackReason = prfProbe.reason;
+      if (fallbackActive) {
+        (deps.emitFallbackMark ?? emitFallbackMark)(prfProbe.reason);
+      }
+
       const priv = await acquireIdentity({
         cohortId: envelope.header.cohortId,
         cohortMode: envelope.header.cohortMode,
         locationHash: deps.locationHash,
         origin: deps.origin,
         tofuDeps: deps.tofuDeps,
-        idbFactory: deps.idbFactory,
+        // Fragment-required fallback: force TOFU off even when
+        // the other surfaces exist (e.g. a browser that has
+        // `navigator.credentials.create` and `crypto.subtle` but
+        // does not implement the PRF extension).
+        idbFactory: fallbackActive ? null : deps.idbFactory,
       });
       trace.phases.push(Phase.IdentityAcquired);
 
@@ -115,11 +158,22 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineTrace> {
       const sanitised = sanitiseHtml(plaintext);
       trace.phases.push(Phase.Sanitised);
 
-      scrubFragment();
+      // REQ-3412: in fallback mode the fragment stays in the URL so
+      // the reader can bookmark / reload without losing decrypt
+      // capability. Wikilink rewrite still runs — build-time intra-
+      // wiki hrefs are fragmentless so this is effectively a no-op,
+      // and keeping it on preserves the §11.2 leak-hygiene property
+      // for any content that somehow did embed one.
+      if (!fallbackActive) {
+        scrubFragment();
+      }
       rewriteWikiHrefs();
       trace.phases.push(Phase.Scrubbed);
 
-      renderInto(sanitised);
+      const host = renderInto(sanitised);
+      if (fallbackActive) {
+        renderFallbackNotice(host, prfProbe.reason);
+      }
       trace.phases.push(Phase.Rendered);
 
       return trace;

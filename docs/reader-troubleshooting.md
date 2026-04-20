@@ -40,6 +40,7 @@ recovery path is always "ask the operator for a fresh invite."
 - [err-lock-unavailable — "Your browser does not support the concurrency lock"](#err-lock-unavailable)
 - [err-host-missing — "Capability-mode mount point is missing"](#err-host-missing)
 - [err-internal — "An internal error occurred"](#err-internal)
+- [fallback-prf-unavailable — "Running in fragment-required mode…"](#fallback-prf-unavailable) *(banner, not an error)*
 
 ---
 
@@ -298,6 +299,61 @@ specific message for. It is the catch-all kind.
 2. If it repeats, contact your wiki operator. Quote the URL. Let them
    know this is the generic "internal error" message, not one of the
    named kinds above — that distinction helps them triage.
+
+---
+
+## fallback-prf-unavailable
+
+**What you saw.**
+
+> Running in fragment-required mode — your browser does not advertise
+> WebAuthn PRF, so this page must be reopened from the full invite URL
+> on every visit.
+
+This is a **banner**, not a red error page. The page still decrypted
+and is readable below the banner.
+
+**What it means.** Your browser or authenticator does not expose the
+WebAuthn PRF extension the wiki uses to wrap your reading key with a
+passkey. Without PRF the shim cannot store a per-device binding, so
+every visit relies on the secret at the end of the URL. The wiki
+operator has chosen "graceful fallback" over "hard fail" — you still
+read the page, with a small but real widening of the URL-leak
+surface.
+
+**What to do.**
+
+- **If you are fine with the trade-off.** Bookmark the invite URL
+  (including its `#k=…` suffix) and reopen from the bookmark each
+  visit. Treat the bookmark itself as the secret — do not copy it
+  into chat, shorteners, or preview bots.
+- **If you are not.** Switch to a browser that supports WebAuthn
+  PRF and open a fresh invite there:
+  - Chrome 116+ / Edge / Brave / Arc on any OS,
+  - Firefox 128+ on desktop,
+  - Safari on macOS Sonoma+ or iOS 17+.
+- **If you are already on one of the supported browsers** and still
+  see the banner, update the browser. PRF arrived over several
+  releases; older-than-two-year builds often do not have it.
+- **Enterprise or WebView browsers.** Some locked-down browsers
+  advertise WebAuthn but omit PRF. Open the URL in a different
+  browser on the same device, or ask your operator whether a
+  different enrolment path is available.
+
+**What does not help.**
+
+- Reloading the page — the probe result is stable across reloads
+  on the same browser.
+- Clearing site data — there is no binding to clear in this mode.
+- Copying the URL to another tab in the same browser — same result.
+
+**Why this exists.** The spec (REQ-3412) calls for a fallback rather
+than a hard error so readers on older devices still see content
+rather than a wall. The banner is deliberately non-intrusive (a
+single paragraph above the page, not a modal) so it does not get
+in the way of reading. Operators monitoring their deployment will
+see an OBS-3412 signal tick each time a visit falls back — if the
+rate is unexpected, they may change the enrolment path.
 
 ---
 

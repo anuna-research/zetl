@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-docs-reader",
+  "task_id": "cap-shim-fallback",
   "token_budget": 8000,
-  "tokens_used": 430,
+  "tokens_used": 423,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "`docs/reader.html` (static, served from dist/ in capability builds) + `docs/reader-troubleshooting.md`. Reader-facing onboarding: what a passkey is (no crypto jargon), how to enrol, what to do on a new device, what to do if you lose your authenticator, what to do if the shim shows a signature-verify error (contact your wiki operator). Linked from shim error messages.",
-      "token_cost": 92,
+      "content": "Graceful fallback for non-PRF browsers per REQ-3412. Shim detects PRF availability via feature-probe or `PublicKeyCredential.getClientCapabilities()`. If unavailable: operate in fragment-required mode (decrypt directly from URL fragment on every visit), no TOFU binding, no replaceState. Display non-intrusive notice. Log to OBS-3412 metric.",
+      "token_cost": 85,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T17:28:00Z"
+  "constructed_at": "2026-04-20T17:38:19Z"
 }
