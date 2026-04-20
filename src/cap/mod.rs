@@ -19,4 +19,5 @@ pub mod pad;
 pub mod recipients;
 pub mod sanitiser;
 pub mod scoping;
+pub mod sign;
 pub mod url_format;
