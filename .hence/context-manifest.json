@@ -1,12 +1,12 @@
 {
-  "task_id": "cap-shim-core",
+  "task_id": "cap-spake2-pair",
   "token_budget": 8000,
-  "tokens_used": 469,
+  "tokens_used": 468,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "TypeScript shim at `src/cap/shim/index.ts`. Implements the CON-3408 pipeline: navigator.locks lock → unregister ServiceWorkers → fetch envelope → verify Ed25519 → acquire identity (TOFU or subsequent) → age-decrypt → sanitise → replaceState → rewrite hrefs → render. The pipeline order is security-critical and enforced by the state machine. Bundled via esbuild with SRI hash generated into a manifest at build time. Includes `@noble/ed25519` for signature verification + `age-encryption` (typage) for unwrap.",
-      "token_cost": 131,
+      "content": "`zetl cap pair` SPAKE2-EE pubkey handoff per REQ-3408 (the CLI-commands REQ; distinct from REQ-3408 grants-file). Fresh CSPRNG-generated 4-word BIP39 phrase per pairing; refusal to reuse phrase within 30 days (tracked in `.zetl/caps/.pair-nonces`). Uses `@noble/curves` SPAKE2 for constant-time elliptic operations. Pairing completes with no server, no relay (messages exchanged via copy-paste / QR / in-person). Derived shared key used ONLY to authenticate pubkey handoff — not stored, not used for content encryption.",
+      "token_cost": 130,
       "priority": "PlanMeta"
     },
     {
@@ -71,5 +71,5 @@
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T14:14:56Z"
+  "constructed_at": "2026-04-20T14:28:25Z"
 }

@@ -41,7 +41,6 @@ const STUB_VERBS: &[(&str, &[&str])] = &[
     ("share", &["grant-id-xyz"]),
     ("check", &[]),
     ("sweep", &[]),
-    ("pair", &[]),
     ("rotate-signing-key", &[]),
     // `emergency-shutdown` is NOT stubbed (SPEC-034 REQ-3431 is landed;
     // see tests/cap_emergency_shutdown_integration.rs).
@@ -49,6 +48,8 @@ const STUB_VERBS: &[(&str, &[&str])] = &[
     // tests/cap_genkey_integration.rs).
     // `invite` is NOT stubbed (SPEC-034 REQ-3410 / REQ-3416 is landed;
     // see tests/cap_invite_integration.rs).
+    // `pair` is NOT stubbed (SPEC-034 REQ-3408 CLI is landed; see
+    // tests/cap_pair_integration.rs).
 ];
 
 #[test]

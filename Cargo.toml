@@ -100,6 +100,12 @@ base64 = "0.22"
 # config lives at tools/sanitiser-config.toml for operator visibility.
 ammonia = "4"
 bip39 = { version = "2", features = ["rand"] }
+# SPEC-034 REQ-3408 (CLI) / §8 `cap::pair::spake2` — PAKE-over-ed25519
+# used by `zetl cap pair` to authenticate an out-of-band pubkey handoff
+# against a freshly-generated 4-word BIP39 phrase. The 0.4 line tracks
+# rand_core 0.6 + curve25519-dalek 4.x (the versions zetl already links)
+# and stays within the workspace's pinned rustc floor.
+spake2 = "0.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 hmac = "0.12"
 # SPEC-034 CON-3401 path-cap derivation + CON-3409 TOFU-wrap derivation.

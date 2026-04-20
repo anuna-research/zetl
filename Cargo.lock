@@ -1139,6 +1139,7 @@ dependencies = [
  "curve25519-dalek-derive",
  "digest",
  "fiat-crypto",
+ "rand_core 0.6.4",
  "rustc_version",
  "subtle",
  "zeroize",
@@ -5644,6 +5645,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "spake2"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5482afe85a0b6ce956c945401598dbc527593c77ba51d0a87a586938b1b893a"
+dependencies = [
+ "curve25519-dalek",
+ "hkdf",
+ "rand_core 0.6.4",
+ "sha2",
+]
+
+[[package]]
 name = "spindle-core"
 version = "0.3.0"
 source = "git+https://codeberg.org/anuna/spindle-rust.git#f7ec81c6b158eeccea7b0a5c6ae372e4369326ff"
@@ -7608,6 +7621,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sha2",
+ "spake2",
  "spindle-core",
  "spindle-parser",
  "tantivy",

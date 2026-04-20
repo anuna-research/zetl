@@ -3,38 +3,32 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 15,
-    "insertions": 1761,
-    "deletions": 5,
+    "files_changed": 9,
+    "insertions": 1601,
+    "deletions": 11,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/shim/.gitignore",
-      "src/cap/shim/build.mjs",
-      "src/cap/shim/decrypt.ts",
-      "src/cap/shim/envelope.ts",
-      "src/cap/shim/errors.ts",
-      "src/cap/shim/identity.ts",
-      "src/cap/shim/index.ts",
-      "src/cap/shim/package-lock.json",
-      "src/cap/shim/package.json",
-      "src/cap/shim/pipeline.ts",
-      "src/cap/shim/render.ts",
-      "src/cap/shim/sanitise.ts",
-      "src/cap/shim/signature.ts",
-      "src/cap/shim/tsconfig.json"
+      "Cargo.lock",
+      "Cargo.toml",
+      "src/cap/mod.rs",
+      "src/cap/pair.rs",
+      "src/cli.rs",
+      "src/main.rs",
+      "tests/cap_cli_skeleton_integration.rs",
+      "tests/cap_pair_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-shim-core-changes",
-      "content": "Modified 15 files (+1761, -5): .hence/context-manifest.json, src/cap/shim/.gitignore, src/cap/shim/build.mjs, src/cap/shim/decrypt.ts, src/cap/shim/envelope.ts and 10 more",
+      "key": "task-cap-spake2-pair-changes",
+      "content": "Modified 9 files (+1601, -11): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/mod.rs, src/cap/pair.rs and 4 more",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-shim-core-v1",
-  "evaluated_at": "2026-04-20T14:28:19Z",
+  "branch_name": "hence/cap-spake2-pair-v1",
+  "evaluated_at": "2026-04-20T15:03:42Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
