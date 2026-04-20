@@ -412,6 +412,8 @@ pub async fn run(
         .route("/api/graph", get(routes::api_graph_handler))
         .route("/graph-index.json", get(routes::graph_index_handler))
         .route("/pages.json", get(routes::pages_json_handler))
+        .route("/sitemap.xml", get(routes::sitemap_handler))
+        .route("/llms.txt", get(routes::llms_txt_handler))
         .route("/_graph", get(routes::vault_graph_handler))
         .route("/api/index", post(routes::api_index_handler))
         .route("/_me", get(routes::dashboard_handler))

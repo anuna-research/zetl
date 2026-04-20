@@ -1,0 +1,174 @@
+;; ============================================================
+;; IMPL-llms-txt: LLM-agent discovery artefacts for serve and build
+;; ============================================================
+
+(meta plan
+  (id "IMPL-llms-txt")
+  (title "Ship llms.txt, sitemap.xml, and raw markdown for agent discovery")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-04-20")
+  (author "agent:claude")
+  (description "Make zetl vaults first-class discoverable by LLM agents. Emit llms.txt (llmstxt.org format) pointing at the existing JSON endpoints, sitemap.xml for generic crawlers, and per-page raw markdown alongside rendered HTML. Both build and serve expose the same URLs."))
+
+(given agent-claude-available)
+
+;; ============================================================
+;; Tasks
+;; ============================================================
+
+(given task-draft-filter-audit)
+(given no-deps-draft-filter-audit)
+(meta task-draft-filter-audit
+  (description "Audit how draft: true / noindex frontmatter is handled today in pages.json and search-index.json emission. Produce a short written finding: are drafts currently excluded or included? The new emitters (llms.txt page count hint if any, sitemap.xml page list) must match existing behavior, whatever it is, so authors don't get surprising divergence between indices. If behavior is inconsistent across existing emitters, flag it rather than fix — scope creep.")
+  (acceptance "One-paragraph finding asserted into the plan via (claims agent:claude (given completed-draft-filter-audit) (note ...)). Downstream tasks read this to decide their filter predicate."))
+
+(given task-raw-md)
+(meta task-raw-md
+  (description "Emit per-page raw markdown. Build: copy source .md to {out}/{slug}/index.md alongside the rendered .html. Serve: add GET /{slug}/index.md returning text/markdown from disk (parity with build URLs; complements existing /api/pages/{slug}). Honor the same draft filter as pages.json.")
+  (acceptance "`zetl build` emits {out}/{slug}/index.md for each non-draft page. `curl /foo/index.md` on serve returns the raw source with Content-Type: text/markdown. Integration test covers both paths on a fixture vault."))
+
+(given task-sitemap)
+(meta task-sitemap
+  (description "Emit sitemap.xml at vault root. Pure core build_sitemap(vault_ctx, site_url) -> String in engine.rs produces standard sitemaps.org 0.9 XML with <loc> for each non-draft page. When site_url is set in context, URLs are absolute; otherwise root-relative. Build writes {out}/sitemap.xml; serve adds GET /sitemap.xml calling the same core. Skip <lastmod> for v1 — deferred until task-draft-filter-audit confirms source of truth.")
+  (acceptance "Valid sitemaps.org 0.9 XML emitted at {out}/sitemap.xml and served at /sitemap.xml. Contains one <url>/<loc> per non-draft page. Absolute-url and root-relative variants both tested."))
+
+(given task-llms-txt)
+(meta task-llms-txt
+  (description "Emit llms.txt at vault root per llmstxt.org. Pure core build_llms_txt(vault_ctx, mode) -> String in engine.rs. Content: `# <vault.name>` + `## Resources` section listing pages.json, search-index.json (with BM25 schema one-liner), graph-index.json, sitemap.xml, and per-page raw-markdown convention. Serve-mode variant swaps in /api/search?q= and /api/pages/{slug} where they're more ergonomic than the static indices. Build writes {out}/llms.txt; serve adds GET /llms.txt. No page listing (agents fan out via pages.json). No summary blockquote in v1 — no VaultContext.description field yet.")
+  (acceptance "`curl /llms.txt` on serve and the emitted {out}/llms.txt on build contain the resource list with correct per-mode endpoints. Integration test snapshots the content so format regressions are caught."))
+
+(given task-tests-and-routes)
+(meta task-tests-and-routes
+  (description "Wire new serve routes into src/web/mod.rs router table. Add integration tests under tests/ covering: build emits all three artefacts on a fixture vault; serve returns all three at the expected URLs with correct Content-Type. Tests should read the emitted files/responses and assert shape, not byte-exact content (snapshot for llms.txt only).")
+  (acceptance "`cargo test` passes including new tests. Serve routes registered and 200-returning for /llms.txt, /sitemap.xml, /{slug}/index.md."))
+
+;; ============================================================
+;; Readiness rules
+;; ============================================================
+
+(normally r-ready-draft-filter-audit
+  (and task-draft-filter-audit no-deps-draft-filter-audit)
+  ready-draft-filter-audit)
+
+(normally r-ready-raw-md
+  (and task-raw-md completed-draft-filter-audit)
+  ready-raw-md)
+
+(normally r-ready-sitemap
+  (and task-sitemap completed-draft-filter-audit)
+  ready-sitemap)
+
+(normally r-ready-llms-txt
+  (and task-llms-txt completed-draft-filter-audit)
+  ready-llms-txt)
+
+(normally r-ready-tests-and-routes
+  (and task-tests-and-routes completed-raw-md completed-sitemap completed-llms-txt)
+  ready-tests-and-routes)
+
+;; ============================================================
+;; Assignment — single agent
+;; ============================================================
+
+(normally r-assign-draft-filter-audit
+  (and ready-draft-filter-audit agent-claude-available)
+  assign-to-draft-filter-audit-claude)
+
+(normally r-assign-raw-md
+  (and ready-raw-md agent-claude-available)
+  assign-to-raw-md-claude)
+
+(normally r-assign-sitemap
+  (and ready-sitemap agent-claude-available)
+  assign-to-sitemap-claude)
+
+(normally r-assign-llms-txt
+  (and ready-llms-txt agent-claude-available)
+  assign-to-llms-txt-claude)
+
+(normally r-assign-tests-and-routes
+  (and ready-tests-and-routes agent-claude-available)
+  assign-to-tests-and-routes-claude)
+
+(claims agent:claude
+  :at "2026-04-20T13:51:40Z"
+  (given claim-v1-draft-filter-audit)
+  (normally r-cl-state-v1-draft-filter-audit claim-v1-draft-filter-audit state-claimed-v1-draft-filter-audit)
+  (normally r-cl-chain-v1-draft-filter-audit state-claimed-v1-draft-filter-audit claimed-draft-filter-audit)
+)
+
+;; Propagation rules: failures in 'draft-filter-audit' block downstream tasks
+(normally r-propagate-llms-txt-from-draft-filter-audit-failed failed-draft-filter-audit upstream-blocked-llms-txt)
+(normally r-propagate-llms-txt-from-draft-filter-audit-permanently-failed permanently-failed-draft-filter-audit upstream-blocked-llms-txt)
+(normally r-propagate-llms-txt-from-draft-filter-audit-stale-v1 stale-v1-draft-filter-audit upstream-blocked-llms-txt)
+(normally r-propagate-llms-txt-from-draft-filter-audit-timeout-v1 timeout-v1-draft-filter-audit upstream-blocked-llms-txt)
+(normally r-propagate-llms-txt-from-draft-filter-audit-blocked upstream-blocked-draft-filter-audit upstream-blocked-llms-txt)
+(normally r-propagate-raw-md-from-draft-filter-audit-failed failed-draft-filter-audit upstream-blocked-raw-md)
+(normally r-propagate-raw-md-from-draft-filter-audit-permanently-failed permanently-failed-draft-filter-audit upstream-blocked-raw-md)
+(normally r-propagate-raw-md-from-draft-filter-audit-stale-v1 stale-v1-draft-filter-audit upstream-blocked-raw-md)
+(normally r-propagate-raw-md-from-draft-filter-audit-timeout-v1 timeout-v1-draft-filter-audit upstream-blocked-raw-md)
+(normally r-propagate-raw-md-from-draft-filter-audit-blocked upstream-blocked-draft-filter-audit upstream-blocked-raw-md)
+(normally r-propagate-sitemap-from-draft-filter-audit-failed failed-draft-filter-audit upstream-blocked-sitemap)
+(normally r-propagate-sitemap-from-draft-filter-audit-permanently-failed permanently-failed-draft-filter-audit upstream-blocked-sitemap)
+(normally r-propagate-sitemap-from-draft-filter-audit-stale-v1 stale-v1-draft-filter-audit upstream-blocked-sitemap)
+(normally r-propagate-sitemap-from-draft-filter-audit-timeout-v1 timeout-v1-draft-filter-audit upstream-blocked-sitemap)
+(normally r-propagate-sitemap-from-draft-filter-audit-blocked upstream-blocked-draft-filter-audit upstream-blocked-sitemap)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-tests-and-routes-from-llms-txt-blocked upstream-blocked-llms-txt upstream-blocked-tests-and-routes)
+(normally r-propagate-tests-and-routes-from-raw-md-blocked upstream-blocked-raw-md upstream-blocked-tests-and-routes)
+(normally r-propagate-tests-and-routes-from-sitemap-blocked upstream-blocked-sitemap upstream-blocked-tests-and-routes)
+
+(claims agent:claude
+  :at "2026-04-20T13:52:06Z"
+  (given completed-draft-filter-audit))
+
+(claims agent:claude
+  :at "2026-04-20T13:52:16Z"
+  (given claim-v1-sitemap)
+  (normally r-cl-state-v1-sitemap claim-v1-sitemap state-claimed-v1-sitemap)
+  (normally r-cl-chain-v1-sitemap state-claimed-v1-sitemap claimed-sitemap)
+)
+
+;; Propagation rules: failures in 'sitemap' block downstream tasks
+(normally r-propagate-tests-and-routes-from-sitemap-failed failed-sitemap upstream-blocked-tests-and-routes)
+(normally r-propagate-tests-and-routes-from-sitemap-permanently-failed permanently-failed-sitemap upstream-blocked-tests-and-routes)
+(normally r-propagate-tests-and-routes-from-sitemap-stale-v1 stale-v1-sitemap upstream-blocked-tests-and-routes)
+(normally r-propagate-tests-and-routes-from-sitemap-timeout-v1 timeout-v1-sitemap upstream-blocked-tests-and-routes)
+
+(claims agent:claude
+  :at "2026-04-20T13:53:48Z"
+  (given completed-sitemap))
+
+(claims agent:claude
+  :at "2026-04-20T13:53:48Z"
+  (given claim-v1-llms-txt)
+  (normally r-cl-state-v1-llms-txt claim-v1-llms-txt state-claimed-v1-llms-txt)
+  (normally r-cl-chain-v1-llms-txt state-claimed-v1-llms-txt claimed-llms-txt)
+)
+
+;; Propagation rules: failures in 'llms-txt' block downstream tasks
+(normally r-propagate-tests-and-routes-from-llms-txt-failed failed-llms-txt upstream-blocked-tests-and-routes)
+(normally r-propagate-tests-and-routes-from-llms-txt-permanently-failed permanently-failed-llms-txt upstream-blocked-tests-and-routes)
+(normally r-propagate-tests-and-routes-from-llms-txt-stale-v1 stale-v1-llms-txt upstream-blocked-tests-and-routes)
+(normally r-propagate-tests-and-routes-from-llms-txt-timeout-v1 timeout-v1-llms-txt upstream-blocked-tests-and-routes)
+
+(claims agent:claude
+  :at "2026-04-20T13:53:48Z"
+  (given completed-llms-txt))
+
+(claims agent:claude
+  :at "2026-04-20T13:54:55Z"
+  (given completed-raw-md))
+
+(claims agent:claude
+  :at "2026-04-20T13:55:00Z"
+  (given claim-v1-tests-and-routes)
+  (normally r-cl-state-v1-tests-and-routes claim-v1-tests-and-routes state-claimed-v1-tests-and-routes)
+  (normally r-cl-chain-v1-tests-and-routes state-claimed-v1-tests-and-routes claimed-tests-and-routes)
+)
+
+(claims agent:claude
+  :at "2026-04-20T13:57:22Z"
+  (given completed-tests-and-routes))
