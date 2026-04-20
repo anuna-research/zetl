@@ -9,6 +9,7 @@ pub mod html;
 pub mod markdown;
 pub mod og;
 pub mod rate_limit;
+pub mod robots;
 pub mod routes;
 pub mod session;
 pub mod theme;

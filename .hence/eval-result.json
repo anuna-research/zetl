@@ -3,30 +3,28 @@
   "confidence": 1.0,
   "exit_code": 0,
   "diff_summary": {
-    "files_changed": 7,
-    "insertions": 970,
-    "deletions": 6,
+    "files_changed": 5,
+    "insertions": 364,
+    "deletions": 10,
     "file_list": [
       ".hence/context-manifest.json",
-      "src/cap/build/driver.rs",
-      "src/cap/scoping/access_config.rs",
-      "src/cap/scoping/backlinks.rs",
-      "src/cap/scoping/mod.rs",
-      "tests/cap_build_driver_integration.rs",
-      "tests/cap_search_scoping_integration.rs"
+      "src/web/build.rs",
+      "src/web/mod.rs",
+      "src/web/robots.rs",
+      "tests/cap_robots_txt_integration.rs"
     ],
     "dirty_files": 0
   },
   "learnings": [
     {
-      "key": "task-cap-search-scoping-changes",
-      "content": "Modified 7 files (+970, -6): .hence/context-manifest.json, src/cap/build/driver.rs, src/cap/scoping/access_config.rs, src/cap/scoping/backlinks.rs, src/cap/scoping/mod.rs and 2 more",
+      "key": "task-cap-robots-txt-changes",
+      "content": "Modified 5 files (+364, -10): .hence/context-manifest.json, src/web/build.rs, src/web/mod.rs, src/web/robots.rs, tests/cap_robots_txt_integration.rs",
       "memory_type": "episodic",
       "confidence": 0.8
     }
   ],
-  "branch_name": "hence/cap-search-scoping-v1",
-  "evaluated_at": "2026-04-20T13:56:37Z",
+  "branch_name": "hence/cap-robots-txt-v1",
+  "evaluated_at": "2026-04-20T14:08:31Z",
   "checks_passed": 0,
   "checks_failed": 0
 }
