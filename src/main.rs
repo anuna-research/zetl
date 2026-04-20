@@ -11418,7 +11418,30 @@ fn main() -> anyhow::Result<()> {
         }
         Command::Cap { command } => match command {
             zetl::cli::CapCommand::Genkey => cmd_cap_genkey(&cli),
-            zetl::cli::CapCommand::Invite { .. } => cmd_cap_stub(&cli, "invite"),
+            zetl::cli::CapCommand::Invite {
+                name,
+                cohort,
+                expires,
+                pages,
+                recipient,
+                via,
+                split_key,
+                site_url,
+                slug,
+            } => cmd_cap_invite(
+                &cli,
+                CapInviteArgs {
+                    name: name.clone(),
+                    cohort: cohort.clone(),
+                    expires: expires.clone(),
+                    pages: pages.clone(),
+                    recipient: recipient.clone(),
+                    via: via.clone(),
+                    split_key: *split_key,
+                    site_url: site_url.clone(),
+                    slug: slug.clone(),
+                },
+            ),
             zetl::cli::CapCommand::List { .. } => cmd_cap_stub(&cli, "list"),
             zetl::cli::CapCommand::Revoke { .. } => cmd_cap_stub(&cli, "revoke"),
             zetl::cli::CapCommand::Rotate { .. } => cmd_cap_stub(&cli, "rotate"),
@@ -11523,6 +11546,328 @@ fn cmd_cap_genkey(cli: &Cli) -> Result<()> {
         // A single `print!` emits the banner once.
         print!("{}", zetl::cap::genkey::render_human(&out));
     }
+    Ok(())
+}
+
+/// Argument bundle threaded through to [`cmd_cap_invite`]. Using a
+/// named struct instead of a long positional parameter list keeps the
+/// dispatch site in `main()` readable and makes the tests that call
+/// the handler directly compile-type-check when a new flag lands.
+struct CapInviteArgs {
+    name: String,
+    cohort: String,
+    expires: Option<String>,
+    pages: Option<String>,
+    recipient: Option<String>,
+    via: Option<String>,
+    split_key: bool,
+    site_url: Option<String>,
+    slug: String,
+}
+
+/// `zetl cap invite` — SPEC-034 REQ-3410 / REQ-3416 / CON-3402.
+///
+/// Three operating modes, dispatched on the flags:
+///
+/// 1. **Delegated-URL (default).** Generate a fresh `(priv_A, pub_A)`
+///    keypair, append `pub_A` to the cohort in `recipients.toml`, add
+///    a `bound=false` grant to `grants.toml`, and print the
+///    `#k=<priv_A>` URL to stdout. The private key appears **only**
+///    on stdout — never in `grants.toml`, never in stderr/logs,
+///    never persisted. Emits the REQ-3410 URL-shortener warning
+///    banner before the URL.
+/// 2. **Hardened, pre-collected recipient** (`--recipient <pubkey>`).
+///    The operator already has the reader's `age-recipient-v1:`
+///    pubkey (e.g. via `zetl cap pair` SPAKE2 handoff); we skip key
+///    generation, add the pubkey to the cohort, and print the
+///    hardened URL (no fragment).
+/// 3. **Hardened, enrol-page** (`--via enrol-page`). We don't yet
+///    know the reader's pubkey; print the `/enroll.html?cohort=<id>`
+///    URL so the reader can self-enrol and send back their pubkey.
+///    No grant is written until the operator runs
+///    `zetl cap invite --recipient <pubkey>` with the returned
+///    pubkey.
+///
+/// `--split-key` (REQ-3430) is orthogonal to the mode: when set (and
+/// the mode is delegated-URL), we XOR-split `priv_A` into
+/// `(half1, half2)` and print `half2` on a separate stdout line as
+/// the second-factor conveyance.
+fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use zetl::cap::derivation::{derive_path_cap, PATH_CAP_DEFAULT_BITS};
+    use zetl::cap::genkey::{decode_secret, ZETL_CAP_SECRET_ENV};
+    use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+    use zetl::cap::invite::{
+        encode_age_recipient_v1, format_rfc3339_utc, generate_grant_id, generate_invite_keypair,
+        parse_expires, xor_split_private_key, DEFAULT_EXPIRES_SECS, URL_SHORTENER_WARNING,
+    };
+    use zetl::cap::recipients::parsing::{CohortMode, RecipientsFile, AGE_RECIPIENT_V1_PREFIX};
+    use zetl::cap::url_format::CapUrl;
+
+    // ─── Resolve site URL (scheme + host) ──────────────────────────
+    let site_url = args
+        .site_url
+        .as_deref()
+        .map(|s| s.trim().trim_end_matches('/'))
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "zetl cap invite requires a canonical site URL: pass --site-url <URL> \
+                 or set ZETL_CAP_SITE_URL=<URL> in the environment"
+            )
+        })?
+        .to_string();
+    let (scheme, host) = site_url
+        .split_once("://")
+        .ok_or_else(|| anyhow::anyhow!("--site-url must be of the form <scheme>://<host>"))?;
+    if scheme.is_empty() || host.is_empty() {
+        anyhow::bail!("--site-url must be of the form <scheme>://<host>");
+    }
+
+    // ─── Parse --expires (or use default) ──────────────────────────
+    let expires_secs = match args.expires.as_deref() {
+        Some(s) => parse_expires(s).with_context(|| format!("invalid --expires value {s:?}"))?,
+        None => DEFAULT_EXPIRES_SECS,
+    };
+    let pages_glob = args.pages.clone().unwrap_or_else(|| "*".to_string());
+
+    // ─── Load recipients.toml ──────────────────────────────────────
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let recipients_path = vault_root.join("recipients.toml");
+    let body = std::fs::read_to_string(&recipients_path).with_context(|| {
+        format!(
+            "Cannot read {}. Run `zetl cap genkey` + populate `recipients.toml` \
+             before issuing invites (see SPEC-034 REQ-3409).",
+            recipients_path.display()
+        )
+    })?;
+    let mut recipients = RecipientsFile::parse(&body)
+        .with_context(|| format!("{} is invalid", recipients_path.display()))?;
+
+    // Locate the target cohort (reject unknown ids up-front — a typo
+    // is far more likely than the intent to auto-create).
+    let cohort_idx = recipients
+        .cohorts
+        .iter()
+        .position(|c| c.id == args.cohort)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "cohort {:?} not found in {} (known cohorts: {})",
+                args.cohort,
+                recipients_path.display(),
+                recipients
+                    .cohorts
+                    .iter()
+                    .map(|c| c.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })?;
+
+    // ─── Dispatch enrol-page mode (no grant written; no priv_A) ────
+    if let Some(via) = args.via.as_deref() {
+        if via != "enrol-page" {
+            anyhow::bail!(
+                "--via only accepts `enrol-page` today; got {via:?}. See SPEC-034 REQ-3404."
+            );
+        }
+        if args.split_key {
+            anyhow::bail!("--split-key has no effect with --via enrol-page (hardened mode)");
+        }
+        if args.recipient.is_some() {
+            anyhow::bail!("--recipient and --via are mutually exclusive");
+        }
+        // Emit the enrolment URL so the operator can forward it. No
+        // grant is written until the reader returns a pubkey.
+        println!("{URL_SHORTENER_WARNING}");
+        println!(
+            "{scheme}://{host}/enroll.html?cohort={}",
+            urlencoding::encode(&args.cohort)
+        );
+        eprintln!(
+            "After the reader sends back their `age-recipient-v1:` pubkey, re-run:\n  \
+             zetl cap invite {name:?} --cohort {cohort} --recipient <pubkey>",
+            name = args.name,
+            cohort = args.cohort,
+        );
+        return Ok(());
+    }
+
+    // ─── Load ZETL_CAP_SECRET (needed to derive path-cap) ──────────
+    let secret_env = std::env::var(ZETL_CAP_SECRET_ENV).map_err(|_| {
+        anyhow::anyhow!(
+            "{ZETL_CAP_SECRET_ENV} is not set in the environment; run `zetl cap genkey` first"
+        )
+    })?;
+    let secret =
+        decode_secret(&secret_env).with_context(|| format!("{ZETL_CAP_SECRET_ENV} is invalid"))?;
+
+    // ─── Ensure cohort has a stable path salt ──────────────────────
+    // First invite for a cohort initialises salt_stable; persist on
+    // exit alongside the new pubkey so subsequent URLs stay
+    // bit-stable (CON-3401's "stable salt" contract).
+    if recipients.cohorts[cohort_idx].salt_stable.is_none() {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine as _;
+        use rand_core::{OsRng, RngCore};
+        let mut salt_bytes = [0u8; 32];
+        OsRng.fill_bytes(&mut salt_bytes);
+        recipients.cohorts[cohort_idx].salt_stable = Some(URL_SAFE_NO_PAD.encode(salt_bytes));
+    }
+    let cohort_salt_stable = recipients.cohorts[cohort_idx]
+        .salt_stable
+        .as_deref()
+        .expect("just initialised above")
+        .to_string();
+
+    // ─── Derive the path-cap for the invite's landing slug ─────────
+    let path_cap = derive_path_cap(
+        secret.random_body(),
+        cohort_salt_stable.as_bytes(),
+        &args.cohort,
+        &args.slug,
+        PATH_CAP_DEFAULT_BITS,
+    )
+    .context("failed to derive path-cap from (secret, salt, cohort, slug)")?;
+
+    // ─── Resolve the grant's `recipient` + URL (delegated vs hardened) ──
+    let cohort_mode = recipients.cohorts[cohort_idx].mode;
+    let (recipient_str, url_and_extra): (String, (String, Option<String>)) =
+        if let Some(rcpt) = args.recipient.as_deref() {
+            // Hardened mode, pre-collected pubkey.
+            if args.split_key {
+                anyhow::bail!("--split-key has no effect with --recipient (hardened mode)");
+            }
+            if !rcpt.starts_with(AGE_RECIPIENT_V1_PREFIX) {
+                anyhow::bail!(
+                    "--recipient must carry the `{AGE_RECIPIENT_V1_PREFIX}` prefix \
+                     (see SPEC-034 REQ-3409)"
+                );
+            }
+            let url = CapUrl::render_hardened(scheme, host, &path_cap, &args.slug)
+                .context("failed to render hardened cap URL")?;
+            (rcpt.to_string(), (url, None))
+        } else {
+            // Delegated-URL mode: generate fresh (priv_A, pub_A).
+            if matches!(cohort_mode, CohortMode::WebauthnPrf) {
+                anyhow::bail!(
+                    "cohort {:?} is configured for webauthn-prf (hardened) mode; \
+                     pass --recipient <pubkey> or --via enrol-page",
+                    args.cohort,
+                );
+            }
+            use rand_core::OsRng;
+            let mut rng = OsRng;
+            let kp = generate_invite_keypair(&mut rng);
+            let pub_recipient = encode_age_recipient_v1(&kp.public);
+            if args.split_key {
+                let (half1, half2) = xor_split_private_key(kp.secret, &mut rng);
+                let url = CapUrl::render_split_key(scheme, host, &path_cap, &args.slug, &half1)
+                    .context("failed to render split-key cap URL")?;
+                (pub_recipient, (url, Some(half2)))
+            } else {
+                let priv_b64 = kp.secret.into_b64url();
+                let url = CapUrl::render_delegated(scheme, host, &path_cap, &args.slug, &priv_b64)
+                    .context("failed to render delegated cap URL")?;
+                (pub_recipient, (url, None))
+            }
+        };
+
+    // ─── Append the recipient pubkey to the cohort if absent ───────
+    {
+        let cohort = &mut recipients.cohorts[cohort_idx];
+        if !cohort.pubkeys.iter().any(|k| k == &recipient_str) {
+            cohort.pubkeys.push(recipient_str.clone());
+        }
+        recipients
+            .validate()
+            .context("post-update recipients.toml failed validation")?;
+    }
+
+    // ─── Load grants.toml (tolerate missing) + append new grant ────
+    let grants_path = vault_root.join("grants.toml");
+    let mut grants: GrantsFile = match std::fs::read_to_string(&grants_path) {
+        Ok(body) if !body.trim().is_empty() => GrantsFile::from_toml(&body)
+            .with_context(|| format!("{} is invalid TOML", grants_path.display()))?,
+        _ => GrantsFile {
+            version: Some(1),
+            grants: Vec::new(),
+        },
+    };
+
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is before UNIX epoch")
+        .as_secs();
+    let created = format_rfc3339_utc(now_unix);
+    let expires_ts = format_rfc3339_utc(now_unix + expires_secs);
+    let grant_id = {
+        use rand_core::OsRng;
+        generate_grant_id(&mut OsRng)
+    };
+    let grant_mode = if args.recipient.is_some() {
+        GrantMode::WebauthnPrf
+    } else {
+        GrantMode::DelegatedUrl
+    };
+    grants.grants.push(Grant {
+        id: grant_id.clone(),
+        cohort: args.cohort.clone(),
+        recipient: recipient_str.clone(),
+        mode: grant_mode,
+        bound: false,
+        name: Some(args.name.clone()),
+        created,
+        expires: Some(expires_ts),
+        revoked: false,
+        pages: pages_glob,
+    });
+    grants
+        .validate(&recipients.cohort_ids())
+        .context("post-update grants.toml failed validation")?;
+
+    // ─── Persist both files atomically-ish (write-then-rename) ─────
+    write_toml_file(&recipients_path, &recipients)
+        .with_context(|| format!("writing {}", recipients_path.display()))?;
+    write_toml_file(&grants_path, &grants)
+        .with_context(|| format!("writing {}", grants_path.display()))?;
+
+    // ─── Print: banner + URL + (split-key second factor) ───────────
+    // The private key in the URL fragment (if any) appears ONLY here,
+    // on stdout, once.
+    println!("{URL_SHORTENER_WARNING}");
+    println!("{}", url_and_extra.0);
+    if let Some(half2) = url_and_extra.1 {
+        println!();
+        println!(
+            "# REQ-3430 split-key: convey half2 via a SEPARATE channel (QR, spoken phrase, etc)."
+        );
+        println!("# Reader will be prompted for it on first visit; the URL alone does NOT decrypt.");
+        println!("half2 = {half2}");
+    }
+    eprintln!(
+        "[zetl cap invite] grant id: {grant_id} (stored in {})",
+        grants_path.display(),
+    );
+    Ok(())
+}
+
+/// Atomic-ish TOML writer: serialise to a temp file in the same
+/// directory, then `rename` into place. Avoids half-written configs if
+/// the process dies mid-write.
+fn write_toml_file<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
+    let serialised = toml::to_string(value).context("serialising TOML")?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("path has no parent directory: {}", path.display()))?;
+    let mut tmp = tempfile::NamedTempFile::new_in(parent).context("creating temp file")?;
+    use std::io::Write as _;
+    tmp.write_all(serialised.as_bytes())
+        .context("writing TOML body to temp file")?;
+    tmp.persist(path)
+        .map_err(|e| anyhow::anyhow!("renaming temp file into place: {e}"))?;
     Ok(())
 }
 

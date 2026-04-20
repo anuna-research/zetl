@@ -34,7 +34,6 @@ const CAP_VERBS: &[&str] = &[
 ];
 
 const STUB_VERBS: &[(&str, &[&str])] = &[
-    ("invite", &["alice", "--cohort", "eng"]),
     ("list", &[]),
     ("revoke", &["grant-id-xyz"]),
     ("rotate", &["--cohort", "eng"]),
@@ -48,6 +47,8 @@ const STUB_VERBS: &[(&str, &[&str])] = &[
     // see tests/cap_emergency_shutdown_integration.rs).
     // `genkey` is NOT stubbed (SPEC-034 REQ-3419 is landed; see
     // tests/cap_genkey_integration.rs).
+    // `invite` is NOT stubbed (SPEC-034 REQ-3410 / REQ-3416 is landed;
+    // see tests/cap_invite_integration.rs).
 ];
 
 #[test]
