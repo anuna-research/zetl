@@ -1,9 +1,90 @@
 use std::collections::{HashMap, HashSet};
 
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use regex::Regex;
 
 use crate::web::html::{html_escape, urlencoding};
+
+/// GitHub-style heading slug: lower-case, non-alphanumerics collapsed to
+/// `-`, edges trimmed. Unicode letters and digits are preserved; other
+/// characters (punctuation, whitespace, emoji) become separators. Returns
+/// an empty string for headings whose text slugifies to nothing (e.g.
+/// all-punctuation); callers should skip id assignment in that case.
+fn slugify_heading(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut prev_dash = true;
+    for ch in text.chars() {
+        if ch.is_alphanumeric() {
+            out.extend(ch.to_lowercase());
+            prev_dash = false;
+        } else if !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
+}
+
+/// Walk `events` and populate `id` on every `Tag::Heading` whose id is
+/// currently `None`. The id is a slugified form of the heading's visible
+/// text (concatenating `Event::Text`, `Event::Code`, and `Event::Html`
+/// text-like content between `Start(Heading)` and `End(Heading)`).
+/// Collisions within a single document are disambiguated with a `-N`
+/// suffix matching GitHub and rustdoc conventions.
+///
+/// Headings that the author already annotated with `{#custom-id}` (via
+/// `ENABLE_HEADING_ATTRIBUTES`) are left alone — the author's explicit
+/// choice wins, and we still register the id in the seen-set so later
+/// auto-generated ids won't collide with it.
+fn inject_heading_ids(events: &mut [Event<'_>]) {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut i = 0;
+    while i < events.len() {
+        let is_heading_start = matches!(&events[i], Event::Start(Tag::Heading { .. }));
+        if !is_heading_start {
+            i += 1;
+            continue;
+        }
+        // Find the matching End(Heading). Headings do not nest in
+        // CommonMark, so a forward linear scan is sufficient.
+        let mut end = i + 1;
+        while end < events.len() && !matches!(&events[end], Event::End(TagEnd::Heading(_))) {
+            end += 1;
+        }
+        // Collect visible text between start and end.
+        let mut buf = String::new();
+        for ev in &events[i + 1..end] {
+            match ev {
+                Event::Text(t) | Event::Code(t) => buf.push_str(t),
+                Event::SoftBreak | Event::HardBreak => buf.push(' '),
+                _ => {}
+            }
+        }
+        if let Event::Start(Tag::Heading { id, .. }) = &mut events[i] {
+            if id.is_none() {
+                let base = slugify_heading(&buf);
+                if !base.is_empty() {
+                    let n = *seen.get(&base).unwrap_or(&0);
+                    let unique = if n == 0 {
+                        base.clone()
+                    } else {
+                        format!("{base}-{n}")
+                    };
+                    seen.insert(base, n + 1);
+                    *id = Some(CowStr::Boxed(unique.into_boxed_str()));
+                }
+            } else if let Some(explicit) = id {
+                // Still register explicit ids so auto-ids after this
+                // don't collide with them.
+                seen.entry(explicit.to_string()).or_insert(1);
+            }
+        }
+        i = end + 1;
+    }
+}
 
 /// Render markdown content to HTML, rewriting `[[wikilinks]]` into `<a>` tags.
 /// `slug_map` maps resolved page names to their URL slugs (e.g. "Scanner" → "architecture/Scanner").
@@ -58,6 +139,8 @@ pub fn render_to_html(
             }
         }
     }
+
+    inject_heading_ids(&mut events);
 
     let mut html_output = String::new();
     pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
@@ -480,6 +563,8 @@ pub fn render_to_html_with_visibility(
             }
         }
     }
+
+    inject_heading_ids(&mut events);
 
     let mut html_output = String::new();
     pulldown_cmark::html::push_html(&mut html_output, events.into_iter());
@@ -1022,5 +1107,68 @@ mod tests {
         assert!(html.contains("/public-page/"));
         // Secret should have locked styling
         assert!(html.contains("wikilink-denied-locked"));
+    }
+
+    #[test]
+    fn slugify_heading_basics() {
+        assert_eq!(slugify_heading("Writing SPL"), "writing-spl");
+        assert_eq!(slugify_heading("What-if & Abduction"), "what-if-abduction");
+        assert_eq!(slugify_heading("  lots   of   space  "), "lots-of-space");
+        assert_eq!(slugify_heading("!!!"), "");
+        assert_eq!(slugify_heading("Rules: normally and always"), "rules-normally-and-always");
+        // Unicode letters stay (URL-safe in modern browsers).
+        assert_eq!(slugify_heading("Schrödinger's cat"), "schrödinger-s-cat");
+    }
+
+    #[test]
+    fn heading_ids_are_injected_and_deduped() {
+        let slug_map = HashMap::new();
+        let md = "# Writing SPL\n\n## Facts\n\n## Facts\n\n### Related\n";
+        let html = render_to_html(md, &slug_map, "/", "");
+        assert!(
+            html.contains(r#"<h1 id="writing-spl">"#),
+            "h1 should get slug id; got: {html}"
+        );
+        assert!(
+            html.contains(r#"<h2 id="facts">"#),
+            "first duplicate should keep bare slug; got: {html}"
+        );
+        assert!(
+            html.contains(r#"<h2 id="facts-1">"#),
+            "second duplicate should get -1 suffix; got: {html}"
+        );
+        assert!(
+            html.contains(r#"<h3 id="related">"#),
+            "h3 should get slug id too; got: {html}"
+        );
+    }
+
+    #[test]
+    fn explicit_heading_id_is_preserved_and_blocks_collision() {
+        // `## Custom {#mine}` should keep `mine`; a later `## Mine`
+        // must auto-slug to `mine-1`, not clash.
+        let slug_map = HashMap::new();
+        let md = "## Custom {#mine}\n\n## Mine\n";
+        let html = render_to_html(md, &slug_map, "/", "");
+        assert!(html.contains(r#"id="mine""#), "explicit id kept; got: {html}");
+        assert!(
+            html.contains(r#"id="mine-1""#),
+            "auto-slug should dodge explicit id; got: {html}"
+        );
+    }
+
+    #[test]
+    fn line_anchors_coexist_with_heading_ids() {
+        let slug_map = HashMap::new();
+        let md = "# A Heading\n\nbody\n";
+        let html = render_to_html(md, &slug_map, "/", "");
+        assert!(
+            html.contains(r#"<h1 id="a-heading">"#),
+            "heading id present; got: {html}"
+        );
+        assert!(
+            html.contains(r#"<a id="line-1" class="line-anchor">"#),
+            "line anchor still emitted inside heading; got: {html}"
+        );
     }
 }
