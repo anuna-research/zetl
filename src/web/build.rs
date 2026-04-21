@@ -1222,18 +1222,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn no_static_dirs_skips_copy() {
+    fn user_theme_without_on_disk_dirs_ships_bundled_default() {
+        // With the bundled-default fallback in place (so user-created
+        // themes don't 404 on theme.css / shell.css), the old
+        // "no dirs → no copy" skip path is only reachable in degenerate
+        // builds where even the bundled `default` theme has no `static/`
+        // subtree. A non-bundled theme name with no on-disk theme dir
+        // and no shared vault static dir now inherits default's assets.
         let tmp = tempfile::tempdir().unwrap();
         let out = tmp.path().join("out");
         std::fs::create_dir_all(&out).unwrap();
 
-        // Use a theme name that has no bundled assets and no on-disk theme
-        // directory, so there is nothing to copy. (The "default" theme now
-        // carries bundled static assets, so it no longer exercises the
-        // skip path.)
-        let result = copy_static_assets(tmp.path(), &out, "__no_bundled__").unwrap();
-        assert!(!result);
-        assert!(!out.join("_static").exists());
+        let result = copy_static_assets(tmp.path(), &out, "__user_theme__").unwrap();
+        assert!(result, "default-theme fallback should have kicked in");
+        assert!(
+            out.join("_static").is_dir(),
+            "_static/ should exist after copy"
+        );
+        let copied = std::fs::read_dir(out.join("_static")).unwrap().count();
+        assert!(
+            copied > 0,
+            "at least one bundled default asset should be copied"
+        );
     }
 
     #[test]
