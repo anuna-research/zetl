@@ -125,15 +125,11 @@
     .transclusion-card.tc-active .tc-excerpt {
       display: block;
     }
-    /* Mobile transclusion panel: stacked below content, all excerpts visible */
+    /* Mobile: hide the transclusion panel. With no hover, the excerpts
+       just stack noisily below every article; the wikilinks themselves
+       still render inline in the prose. */
     @media (max-width: 1279px) {
-      .transclusion-panel {
-        border-top: 2px solid oklch(var(--b3));
-        margin-top: 2rem;
-      }
-      .transclusion-panel .transclusion-card .tc-excerpt {
-        display: block;
-      }
+      .transclusion-panel { display: none; }
     }
 
     /* wikilink color underline */
