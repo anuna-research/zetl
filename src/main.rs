@@ -12484,16 +12484,16 @@ fn cmd_cap_rotate_signing_key(cli: &Cli) -> Result<()> {
     // signing-key.txt` captures the key-bearing line. The banner frames
     // the new key the same way `zetl cap genkey` does: export line, UX
     // safeguard disclaimer, rotation guidance.
-    print!("# zetl cap rotate-signing-key — new Ed25519 vault-signing key (SPEC-034 REQ-3427)\n");
-    print!("#\n");
-    print!("# Store the new signing-key in your password manager BEFORE rebuilding.\n");
-    print!("# This key is printed to this terminal exactly once; zetl does not\n");
-    print!("# persist or log it.\n");
-    print!("#\n");
-    print!("# recipients.toml[vault].signing_pubkey has been updated in-place:\n");
-    print!("#   {new_pubkey_wire}\n");
-    print!("#\n");
-    print!("export {ZETL_CAP_SIGNING_KEY_ENV}='{new_signing_key_b64}'\n");
+    println!("# zetl cap rotate-signing-key — new Ed25519 vault-signing key (SPEC-034 REQ-3427)");
+    println!("#");
+    println!("# Store the new signing-key in your password manager BEFORE rebuilding.");
+    println!("# This key is printed to this terminal exactly once; zetl does not");
+    println!("# persist or log it.");
+    println!("#");
+    println!("# recipients.toml[vault].signing_pubkey has been updated in-place:");
+    println!("#   {new_pubkey_wire}");
+    println!("#");
+    println!("export {ZETL_CAP_SIGNING_KEY_ENV}='{new_signing_key_b64}'");
     eprintln!(
         "[zetl cap rotate-signing-key] new public key written to {}.",
         state.recipients_path.display()

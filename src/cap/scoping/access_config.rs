@@ -123,10 +123,11 @@ pub struct SingleFileConfig {
 
 /// Search-UI emission mode. Default `Off` — no search surface is
 /// emitted and no index bytes are written.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SearchMode {
     /// No search UI, no index. REQ-3415 default.
+    #[default]
     Off,
     /// One encrypted index per cohort. Index format pending BUG-019;
     /// v1 builds refuse to emit bytes but accept the declaration so
@@ -140,19 +141,14 @@ pub enum SearchMode {
     Global,
 }
 
-impl Default for SearchMode {
-    fn default() -> Self {
-        SearchMode::Off
-    }
-}
-
 /// Backlinks-panel scoping. Default `Scoped` — the backlinks panel on
 /// each decrypted page lists only sources that share at least one
 /// cohort with the target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BacklinksMode {
     /// Filter to in-cohort sources only. REQ-3415 default.
+    #[default]
     Scoped,
     /// Show every backlink regardless of cohort. Rejected at build
     /// start — a reader with one cohort's key could otherwise learn
@@ -160,12 +156,6 @@ pub enum BacklinksMode {
     /// leaks slug + link-structure metadata that path-caps exist to
     /// hide.
     Global,
-}
-
-impl Default for BacklinksMode {
-    fn default() -> Self {
-        BacklinksMode::Scoped
-    }
 }
 
 /// `[access.cache]` table. Operator-facing knob controlling the

@@ -3,7 +3,7 @@
 //!
 //! This module emits BOTH:
 //!   * `ZETL_CAP_SECRET` — 48 bytes total, base64-encoded:
-//!         `[version:1][random:32][checksum:15]`
+//!     `[version:1][random:32][checksum:15]`
 //!     The checksum is a truncated HMAC-SHA256 over the version byte and
 //!     the 32 random bytes, keyed with a fixed domain-separation string.
 //!   * `ZETL_CAP_SIGNING_KEY` — 32-byte Ed25519 private scalar, base64.

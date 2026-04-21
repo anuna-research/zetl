@@ -175,7 +175,7 @@ pub fn render_top_vercel_json(spec: &HeaderSpec, tombstones: &[String]) -> Strin
     let mut redirects = String::new();
     redirects.push_str("  \"redirects\": [");
     if tombstones.is_empty() {
-        redirects.push_str("]");
+        redirects.push(']');
     } else {
         redirects.push('\n');
         for (i, path) in tombstones.iter().enumerate() {
@@ -209,9 +209,7 @@ pub fn render_deploy_nginx(spec: &HeaderSpec, tombstones: &[String]) -> String {
     let mut out = String::new();
     out.push_str(&format!("# {GENERATED_MARKER}: nginx.\n"));
     out.push_str("# Paste inside an nginx `server { }` block. Also include\n");
-    out.push_str(&format!(
-        "# `include _zetl/_gone.map;` in your enclosing `http {{}}` context.\n"
-    ));
+    out.push_str("# `include _zetl/_gone.map;` in your enclosing `http {}` context.\n");
     out.push_str(&format!(
         "location ^~ {CIPHERTEXT_PATH_PREFIX} {{\n    \
          if ({GONE_MAP_VARIABLE} = 1) {{ return 410; }}\n    \

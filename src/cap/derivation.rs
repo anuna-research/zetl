@@ -84,7 +84,9 @@ pub fn derive_path_cap(
     slug: &str,
     path_cap_bits: u32,
 ) -> Result<String, DerivationError> {
-    if !(PATH_CAP_MIN_BITS..=PATH_CAP_MAX_BITS).contains(&path_cap_bits) || path_cap_bits % 8 != 0 {
+    if !(PATH_CAP_MIN_BITS..=PATH_CAP_MAX_BITS).contains(&path_cap_bits)
+        || !path_cap_bits.is_multiple_of(8)
+    {
         return Err(DerivationError::PathCapWidth {
             bits: path_cap_bits,
         });
