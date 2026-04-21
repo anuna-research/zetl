@@ -9,6 +9,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Capability-URL distribution (SPEC-034 v0.4.0).** A new
+  `zetl build --capability` build mode encrypts every page with
+  [`age`](https://age-encryption.org) and signs the resulting envelope
+  with an Ed25519 vault-signing key, so a purely static host can serve
+  a reader-scoped wiki without any server-side auth. Two authentication
+  modes are selectable per cohort:
+
+  - **Delegated-URL mode (default).** The operator mints a reader-specific
+    X25519 keypair; the private half travels in a URL fragment that the
+    reader's browser binds to a WebAuthn passkey on first visit
+    (Trust-on-First-Use). After the TOFU handshake, the passkey-wrapped
+    key is the reader's durable credential. Optional split-key mode
+    (`--split-key`, REQ-3430) delivers the second half out of band via a
+    spoken phrase or QR code to mitigate pre-first-click URL harvesting.
+  - **WebAuthn-PRF-only mode (hardened, opt-in).** Readers self-enrol at
+    a static `/enroll.html`, deriving a long-term X25519 identity from a
+    per-cohort PRF output (REQ-3414 salts defeat cross-cohort pubkey
+    linkage) and sending the public key to the operator out of band. URLs
+    carry no cryptographic material.
+
+  Both modes share the same pipeline: Ed25519 signature verification
+  (REQ-3427) blocks CDN substitution, X25519 padding (REQ-3422) masks
+  cohort size to a declared tier, `navigator.locks` serialises
+  concurrent-tab TOFU (REQ-3429), and the browser shim unregisters any
+  pre-existing ServiceWorkers on load (REQ-3428). Revocation is
+  rebuild-and-redeploy; forward secrecy is an explicit non-goal
+  (NFR-3414).
+
+  A new `zetl cap` subcommand suite covers the full operator lifecycle:
+
+  ```sh
+  zetl cap genkey                      # mint ZETL_CAP_SECRET + Ed25519 vault-signing key
+  zetl cap invite <name> --cohort <id> # issue an invite URL (delegated-URL) or entry URL (hardened)
+      [--expires <d>] [--pages <filter>] [--split-key]
+  zetl cap list    [--cohort <id>] [--output json|text]
+  zetl cap revoke  <grant-id>
+  zetl cap rotate  --cohort <id>       # new content salt; path-caps stable (REQ-3402)
+  zetl cap finalise <grant-id>         # set bound=true post-confirmation
+  zetl cap rotate-signing-key          # rotate Ed25519 key + rebuild all pages
+  zetl cap check                       # stale-grant + public-repo-safety audit
+  zetl cap sweep                       # mark past-expires revoked
+  zetl cap pair                        # SPAKE2 pubkey handoff
+  zetl cap audit-diff <old> <new>      # PR-gate malicious-author check (REQ-3424)
+  zetl cap emergency-shutdown          # live incident-response checklist
+  ```
+
+  Configuration lives under `[access]` in `zetl.toml`
+  (`[access.signing]`, `[access.split_key]`, `[access.sw_hygiene]`,
+  cohort tables); `grants.toml` and `recipients.toml` track issued
+  grants and out-of-band public keys. Deploy artifacts include
+  `dist/assets/shim.js`, `dist/assets/vault-signing-key.pub`, per-host
+  header snippets for `Cache-Control` + `Clear-Site-Data`, and the
+  `/c/<path-cap>/<slug>.html` layout defined in CON-3401.
+
+  **Operator documentation.** The task-oriented walkthrough is
+  [`docs/capability-mode.md`](docs/capability-mode.md) (threat model,
+  per-cohort mode selection, quickstart, grants lifecycle, deploy
+  recipes, troubleshooting). The long-form security reference —
+  quantitative bounds, acknowledged residuals, and the full attack /
+  mitigation matrix — is [`docs/capability-security.md`](docs/capability-security.md).
+  The signing-key lifecycle has its own reference in
+  [`docs/signing.md`](docs/signing.md); reader-side error remediation
+  is in [`docs/reader-troubleshooting.md`](docs/reader-troubleshooting.md).
+
 - **Render-pipeline hooks (SPEC-032).** A new three-stage hook pipeline
   — `pre-parse` (raw markdown), `transform` (typed AST), `post-render`
   (HTML fragment) — runs alongside the existing SPEC-016 lifecycle

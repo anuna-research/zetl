@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip audit-corpus help
 
 all: build
 
@@ -160,6 +160,30 @@ nfr-gates-033-strict:
 # 10,000 as the release-gate corpus).
 translator-roundtrip:
 	PROPTEST_CASES=$${PROPTEST_CASES:-256} cargo test --lib -p zetl translators::roundtrip -- --nocapture
+
+# SPEC-034 REQ-3424 / ADR-3410 malicious-author PR gate. Walks every
+# fixture under tools/audit-diff-corpus/ and asserts that the expected
+# finding-kind markers fire. A miss means the adversary's sample got
+# past `zetl cap audit-diff` — an immediate CI failure. The same
+# corpus fixtures are also driven via the library API by
+# tests/cap_audit_diff_integration.rs; this target surfaces the
+# per-fixture PASS/MISS log on the CI console.
+audit-corpus:
+	cargo run --quiet --bin zetl -- cap audit-diff --corpus-root tools/audit-diff-corpus
+
+# SPEC-034 REQ-3413 / OBS-3407 referrer-leak canary. Runs the TEST-3413
+# integration suite that builds a mixed-link page through the
+# capability driver, decrypts the emitted envelope, and asserts:
+#   • external <a> carries rel="noopener noreferrer"
+#   • internal <a> is byte-identical to the sanitiser output
+#   • the capability HTML shell carries
+#     <meta name="referrer" content="no-referrer">
+#   • [access] rel_noreferrer = false opts out of the per-link
+#     rewrite but leaves the shell meta tag in place
+# Miss == the path-cap leaks into outgoing Referer headers, so
+# treat any red here as a spec regression.
+ref-leak-test:
+	cargo test --test cap_referrer_scrubbing_integration -- --nocapture
 
 install: build
 	install -d $(PREFIX)/bin $(MANDIR) $(BASHCOMPDIR) $(ZSHCOMPDIR) $(FISHCOMPDIR)

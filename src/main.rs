@@ -10637,7 +10637,15 @@ fn git_diff_name_only(vault_root: &Path, git_ref: &str) -> Result<Vec<String>> {
 
 /// `git show <ref>:<path>` — read file content at a git ref. Returns `None` if
 /// the file did not exist at that ref (newly added since baseline).
-#[cfg(not(feature = "history"))]
+///
+/// Callers:
+/// - `cmd_diff_git` (SPEC-007 git-subprocess diff fallback, only compiled when
+///   the `history` feature is off).
+/// - `load_vault_at_refs` (capability audit-diff corpus walk, always compiled).
+///
+/// Because the second caller is unconditional, this helper must be too — it
+/// shells out to `git` and does not interact with jj-lib, so it's safe under
+/// every feature combination.
 fn git_show(vault_root: &Path, git_ref: &str, rel_path: &str) -> Result<Option<String>> {
     let object = format!("{git_ref}:{rel_path}");
     let output = std::process::Command::new("git")
@@ -11416,7 +11424,1769 @@ fn main() -> anyhow::Result<()> {
             clap_mangen::Man::new(cmd).render(&mut std::io::stdout())?;
             Ok(())
         }
+        Command::Cap { command } => match command {
+            zetl::cli::CapCommand::Genkey => cmd_cap_genkey(&cli),
+            zetl::cli::CapCommand::Invite {
+                name,
+                cohort,
+                expires,
+                pages,
+                recipient,
+                via,
+                split_key,
+                site_url,
+                slug,
+            } => cmd_cap_invite(
+                &cli,
+                CapInviteArgs {
+                    name: name.clone(),
+                    cohort: cohort.clone(),
+                    expires: expires.clone(),
+                    pages: pages.clone(),
+                    recipient: recipient.clone(),
+                    via: via.clone(),
+                    split_key: *split_key,
+                    site_url: site_url.clone(),
+                    slug: slug.clone(),
+                },
+            ),
+            zetl::cli::CapCommand::List { .. } => cmd_cap_stub(&cli, "list"),
+            zetl::cli::CapCommand::Revoke { grant_id } => cmd_cap_revoke(&cli, grant_id),
+            zetl::cli::CapCommand::Rotate { cohort } => cmd_cap_rotate(&cli, cohort),
+            zetl::cli::CapCommand::Finalise {
+                grant_id,
+                rotate_grant,
+            } => cmd_cap_finalise(&cli, grant_id, *rotate_grant),
+            zetl::cli::CapCommand::Share { .. } => cmd_cap_stub(&cli, "share"),
+            zetl::cli::CapCommand::Check { public_safety } => cmd_cap_check(&cli, *public_safety),
+            zetl::cli::CapCommand::Sweep => cmd_cap_sweep(&cli),
+            zetl::cli::CapCommand::Pair {
+                grantor,
+                grantee,
+                peer,
+                phrase,
+                pubkey,
+            } => cmd_cap_pair(
+                &cli,
+                CapPairArgs {
+                    grantor: *grantor,
+                    grantee: *grantee,
+                    peer: peer.clone(),
+                    phrase: phrase.clone(),
+                    pubkey: pubkey.clone(),
+                },
+            ),
+            zetl::cli::CapCommand::RotateSigningKey => cmd_cap_rotate_signing_key(&cli),
+            zetl::cli::CapCommand::EmergencyShutdown => cmd_cap_emergency_shutdown(&cli),
+            zetl::cli::CapCommand::AuditDiff {
+                old_ref,
+                new_ref,
+                corpus,
+                corpus_root,
+            } => cmd_cap_audit_diff(
+                &cli,
+                old_ref.as_deref(),
+                new_ref.as_deref(),
+                corpus.as_deref(),
+                corpus_root.as_deref(),
+            ),
+        },
     }
+}
+
+/// Exit code emitted by `zetl cap` stubs whose implementation has not
+/// landed yet. Follows SPEC-004's 0/1/2/64+ convention — we pick `2`
+/// for "not-yet-implemented" so CI gates can distinguish a skeleton
+/// verb from a runtime failure (`1`) and a usage error (clap's default
+/// also 2, but a stub is semantically closer to misuse than runtime
+/// failure).
+const CAP_NOT_YET_IMPLEMENTED_EXIT: i32 = 2;
+
+/// Stub for `zetl cap` verbs whose implementation has not landed. Emits
+/// a diagnostic and exits with `CAP_NOT_YET_IMPLEMENTED_EXIT`. When
+/// `--json`/`-f json` is in effect the diagnostic is JSON on stdout so
+/// agents can parse it (CLIG-adjacent behaviour mirroring
+/// `exit_json_error`).
+///
+/// SPEC-034 REQ-3416 — every verb listed in the CLI surface is
+/// reachable and produces a predictable error code even before its
+/// handler exists.
+fn cmd_cap_stub(cli: &Cli, verb: &str) -> Result<()> {
+    let message =
+        format!("zetl cap {verb}: not-yet-implemented (SPEC-034 REQ-3416 CLI surface stub)");
+    let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
+    if json_requested {
+        exit_json_error(&message, CAP_NOT_YET_IMPLEMENTED_EXIT);
+    }
+    eprintln!("{message}");
+    eprintln!(
+        "Hint: this verb is planned (see SPEC-034 §6 REQ-3416) but its implementation has not landed yet."
+    );
+    std::process::exit(CAP_NOT_YET_IMPLEMENTED_EXIT);
+}
+
+/// `zetl cap genkey` — SPEC-034 REQ-3419.
+///
+/// Prints BOTH capability-mode secrets (`ZETL_CAP_SECRET` +
+/// `ZETL_CAP_SIGNING_KEY`) to stdout exactly once, with secure-storage
+/// instructions. Never writes to any file; never logs. The random
+/// bytes come from [`rand_core::OsRng`] via `cap::genkey::generate`.
+///
+/// The 15-byte checksum embedded in `ZETL_CAP_SECRET` is framed as a
+/// UX safeguard — BUG-017 resolution — so operators paste-corrupting
+/// the value hit a targeted remediation message at build time rather
+/// than a surprise decryption failure in prod.
+fn cmd_cap_genkey(cli: &Cli) -> Result<()> {
+    let out = zetl::cap::genkey::generate();
+
+    // JSON only when the operator explicitly asked for it — `--json`
+    // or `-f json` / `--format json` on the command line. The auto-TTY
+    // promotion `main` performs on `cli.format` before dispatch is
+    // intentionally ignored here: `genkey` output is a one-shot banner
+    // that operators routinely pipe into `less` or a file for paste
+    // into a password manager, and silently substituting JSON for the
+    // human-readable form breaks that workflow.
+    let mut args = std::env::args().skip(1);
+    let mut json_requested = cli.json;
+    while let Some(arg) = args.next() {
+        if arg == "--json" || arg == "-f=json" || arg == "--format=json" {
+            json_requested = true;
+            break;
+        }
+        if arg == "-f" || arg == "--format" {
+            if let Some(v) = args.next() {
+                if v.eq_ignore_ascii_case("json") {
+                    json_requested = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if json_requested {
+        print_json(&zetl::cap::genkey::render_json(&out))?;
+    } else {
+        // Direct write to stdout — avoid any intermediate logging /
+        // tracing layer that might echo the secret into a log sink.
+        // A single `print!` emits the banner once.
+        print!("{}", zetl::cap::genkey::render_human(&out));
+    }
+    Ok(())
+}
+
+/// Argument bundle threaded through to [`cmd_cap_invite`]. Using a
+/// named struct instead of a long positional parameter list keeps the
+/// dispatch site in `main()` readable and makes the tests that call
+/// the handler directly compile-type-check when a new flag lands.
+struct CapInviteArgs {
+    name: String,
+    cohort: String,
+    expires: Option<String>,
+    pages: Option<String>,
+    recipient: Option<String>,
+    via: Option<String>,
+    split_key: bool,
+    site_url: Option<String>,
+    slug: String,
+}
+
+/// `zetl cap invite` — SPEC-034 REQ-3410 / REQ-3416 / CON-3402.
+///
+/// Three operating modes, dispatched on the flags:
+///
+/// 1. **Delegated-URL (default).** Generate a fresh `(priv_A, pub_A)`
+///    keypair, append `pub_A` to the cohort in `recipients.toml`, add
+///    a `bound=false` grant to `grants.toml`, and print the
+///    `#k=<priv_A>` URL to stdout. The private key appears **only**
+///    on stdout — never in `grants.toml`, never in stderr/logs,
+///    never persisted. Emits the REQ-3410 URL-shortener warning
+///    banner before the URL.
+/// 2. **Hardened, pre-collected recipient** (`--recipient <pubkey>`).
+///    The operator already has the reader's `age-recipient-v1:`
+///    pubkey (e.g. via `zetl cap pair` SPAKE2 handoff); we skip key
+///    generation, add the pubkey to the cohort, and print the
+///    hardened URL (no fragment).
+/// 3. **Hardened, enrol-page** (`--via enrol-page`). We don't yet
+///    know the reader's pubkey; print the `/enroll.html?cohort=<id>`
+///    URL so the reader can self-enrol and send back their pubkey.
+///    No grant is written until the operator runs
+///    `zetl cap invite --recipient <pubkey>` with the returned
+///    pubkey.
+///
+/// `--split-key` (REQ-3430) is orthogonal to the mode: when set (and
+/// the mode is delegated-URL), we XOR-split `priv_A` into
+/// `(half1, half2)` and print `half2` on a separate stdout line as
+/// the second-factor conveyance.
+fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use zetl::cap::derivation::{derive_path_cap, PATH_CAP_DEFAULT_BITS};
+    use zetl::cap::genkey::{decode_secret, ZETL_CAP_SECRET_ENV};
+    use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
+    use zetl::cap::invite::{
+        encode_age_recipient_v1, format_rfc3339_utc, generate_grant_id, generate_invite_keypair,
+        parse_expires, xor_split_private_key, DEFAULT_EXPIRES_SECS, URL_SHORTENER_WARNING,
+    };
+    use zetl::cap::public_repo::{parse_config_lens, SplitKeyConfig, SplitKeySecondFactor};
+    use zetl::cap::recipients::parsing::{CohortMode, RecipientsFile, AGE_RECIPIENT_V1_PREFIX};
+    use zetl::cap::url_format::CapUrl;
+
+    // ─── Resolve site URL (scheme + host) ──────────────────────────
+    let site_url = args
+        .site_url
+        .as_deref()
+        .map(|s| s.trim().trim_end_matches('/'))
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "zetl cap invite requires a canonical site URL: pass --site-url <URL> \
+                 or set ZETL_CAP_SITE_URL=<URL> in the environment"
+            )
+        })?
+        .to_string();
+    let (scheme, host) = site_url
+        .split_once("://")
+        .ok_or_else(|| anyhow::anyhow!("--site-url must be of the form <scheme>://<host>"))?;
+    if scheme.is_empty() || host.is_empty() {
+        anyhow::bail!("--site-url must be of the form <scheme>://<host>");
+    }
+
+    // ─── Parse --expires (or use default) ──────────────────────────
+    let expires_secs = match args.expires.as_deref() {
+        Some(s) => parse_expires(s).with_context(|| format!("invalid --expires value {s:?}"))?,
+        None => DEFAULT_EXPIRES_SECS,
+    };
+    let pages_glob = args.pages.clone().unwrap_or_else(|| "*".to_string());
+
+    // ─── Load recipients.toml ──────────────────────────────────────
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let recipients_path = vault_root.join("recipients.toml");
+    let body = std::fs::read_to_string(&recipients_path).with_context(|| {
+        format!(
+            "Cannot read {}. Run `zetl cap genkey` + populate `recipients.toml` \
+             before issuing invites (see SPEC-034 REQ-3409).",
+            recipients_path.display()
+        )
+    })?;
+    let mut recipients = RecipientsFile::parse(&body)
+        .with_context(|| format!("{} is invalid", recipients_path.display()))?;
+
+    // ─── Read `.zetl/config.toml` for REQ-3417 `[access.split_key]` ──
+    // Missing config + missing block both deserialise as
+    // `split_key = None`, which the gate below treats as "disabled"
+    // per REQ-3430 acceptance ("default is `enabled = false`").
+    let split_key_cfg: SplitKeyConfig = {
+        let config_path = vault_root.join(".zetl").join("config.toml");
+        match std::fs::read_to_string(&config_path) {
+            Ok(body) => parse_config_lens(&body)
+                .with_context(|| format!("{} is invalid", config_path.display()))?
+                .access
+                .and_then(|a| a.split_key)
+                .unwrap_or_default(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => SplitKeyConfig::default(),
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "cannot read {}: {e}",
+                    config_path.display()
+                ));
+            }
+        }
+    };
+    if args.split_key && !split_key_cfg.enabled {
+        anyhow::bail!(
+            "`--split-key` refused: SPEC-034 REQ-3430 requires an explicit opt-in via \
+             `[access.split_key] enabled = true` in .zetl/config.toml \
+             (default is disabled)"
+        );
+    }
+
+    // Locate the target cohort (reject unknown ids up-front — a typo
+    // is far more likely than the intent to auto-create).
+    let cohort_idx = recipients
+        .cohorts
+        .iter()
+        .position(|c| c.id == args.cohort)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "cohort {:?} not found in {} (known cohorts: {})",
+                args.cohort,
+                recipients_path.display(),
+                recipients
+                    .cohorts
+                    .iter()
+                    .map(|c| c.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })?;
+
+    // ─── Dispatch enrol-page mode (no grant written; no priv_A) ────
+    if let Some(via) = args.via.as_deref() {
+        if via != "enrol-page" {
+            anyhow::bail!(
+                "--via only accepts `enrol-page` today; got {via:?}. See SPEC-034 REQ-3404."
+            );
+        }
+        if args.split_key {
+            anyhow::bail!("--split-key has no effect with --via enrol-page (hardened mode)");
+        }
+        if args.recipient.is_some() {
+            anyhow::bail!("--recipient and --via are mutually exclusive");
+        }
+        // Emit the enrolment URL so the operator can forward it. No
+        // grant is written until the reader returns a pubkey.
+        println!("{URL_SHORTENER_WARNING}");
+        println!(
+            "{scheme}://{host}/enroll.html?cohort={}",
+            urlencoding::encode(&args.cohort)
+        );
+        eprintln!(
+            "After the reader sends back their `age-recipient-v1:` pubkey, re-run:\n  \
+             zetl cap invite {name:?} --cohort {cohort} --recipient <pubkey>",
+            name = args.name,
+            cohort = args.cohort,
+        );
+        return Ok(());
+    }
+
+    // ─── Load ZETL_CAP_SECRET (needed to derive path-cap) ──────────
+    let secret_env = std::env::var(ZETL_CAP_SECRET_ENV).map_err(|_| {
+        anyhow::anyhow!(
+            "{ZETL_CAP_SECRET_ENV} is not set in the environment; run `zetl cap genkey` first"
+        )
+    })?;
+    let secret =
+        decode_secret(&secret_env).with_context(|| format!("{ZETL_CAP_SECRET_ENV} is invalid"))?;
+
+    // ─── Ensure cohort has a stable path salt ──────────────────────
+    // First invite for a cohort initialises salt_stable; persist on
+    // exit alongside the new pubkey so subsequent URLs stay
+    // bit-stable (CON-3401's "stable salt" contract).
+    if recipients.cohorts[cohort_idx].salt_stable.is_none() {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine as _;
+        use rand_core::{OsRng, RngCore};
+        let mut salt_bytes = [0u8; 32];
+        OsRng.fill_bytes(&mut salt_bytes);
+        recipients.cohorts[cohort_idx].salt_stable = Some(URL_SAFE_NO_PAD.encode(salt_bytes));
+    }
+    let cohort_salt_stable = recipients.cohorts[cohort_idx]
+        .salt_stable
+        .as_deref()
+        .expect("just initialised above")
+        .to_string();
+
+    // ─── Derive the path-cap for the invite's landing slug ─────────
+    let path_cap = derive_path_cap(
+        secret.random_body(),
+        cohort_salt_stable.as_bytes(),
+        &args.cohort,
+        &args.slug,
+        PATH_CAP_DEFAULT_BITS,
+    )
+    .context("failed to derive path-cap from (secret, salt, cohort, slug)")?;
+
+    // ─── Resolve the grant's `recipient` + URL (delegated vs hardened) ──
+    let cohort_mode = recipients.cohorts[cohort_idx].mode;
+    let (recipient_str, url_and_extra): (String, (String, Option<String>)) =
+        if let Some(rcpt) = args.recipient.as_deref() {
+            // Hardened mode, pre-collected pubkey.
+            if args.split_key {
+                anyhow::bail!("--split-key has no effect with --recipient (hardened mode)");
+            }
+            if !rcpt.starts_with(AGE_RECIPIENT_V1_PREFIX) {
+                anyhow::bail!(
+                    "--recipient must carry the `{AGE_RECIPIENT_V1_PREFIX}` prefix \
+                     (see SPEC-034 REQ-3409)"
+                );
+            }
+            let url = CapUrl::render_hardened(scheme, host, &path_cap, &args.slug)
+                .context("failed to render hardened cap URL")?;
+            (rcpt.to_string(), (url, None))
+        } else {
+            // Delegated-URL mode: generate fresh (priv_A, pub_A).
+            if matches!(cohort_mode, CohortMode::WebauthnPrf) {
+                anyhow::bail!(
+                    "cohort {:?} is configured for webauthn-prf (hardened) mode; \
+                     pass --recipient <pubkey> or --via enrol-page",
+                    args.cohort,
+                );
+            }
+            use rand_core::OsRng;
+            let mut rng = OsRng;
+            let kp = generate_invite_keypair(&mut rng);
+            let pub_recipient = encode_age_recipient_v1(&kp.public);
+            if args.split_key {
+                let (half1, half2) = xor_split_private_key(kp.secret, &mut rng);
+                let url = CapUrl::render_split_key(scheme, host, &path_cap, &args.slug, &half1)
+                    .context("failed to render split-key cap URL")?;
+                (pub_recipient, (url, Some(half2)))
+            } else {
+                let priv_b64 = kp.secret.into_b64url();
+                let url = CapUrl::render_delegated(scheme, host, &path_cap, &args.slug, &priv_b64)
+                    .context("failed to render delegated cap URL")?;
+                (pub_recipient, (url, None))
+            }
+        };
+
+    // ─── Append the recipient pubkey to the cohort if absent ───────
+    {
+        let cohort = &mut recipients.cohorts[cohort_idx];
+        if !cohort.pubkeys.iter().any(|k| k == &recipient_str) {
+            cohort.pubkeys.push(recipient_str.clone());
+        }
+        recipients
+            .validate()
+            .context("post-update recipients.toml failed validation")?;
+    }
+
+    // ─── Load grants.toml (tolerate missing) + append new grant ────
+    let grants_path = vault_root.join("grants.toml");
+    let mut grants: GrantsFile = match std::fs::read_to_string(&grants_path) {
+        Ok(body) if !body.trim().is_empty() => GrantsFile::from_toml(&body)
+            .with_context(|| format!("{} is invalid TOML", grants_path.display()))?,
+        _ => GrantsFile {
+            version: Some(1),
+            grants: Vec::new(),
+        },
+    };
+
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is before UNIX epoch")
+        .as_secs();
+    let created = format_rfc3339_utc(now_unix);
+    let expires_ts = format_rfc3339_utc(now_unix + expires_secs);
+    let grant_id = {
+        use rand_core::OsRng;
+        generate_grant_id(&mut OsRng)
+    };
+    let grant_mode = if args.recipient.is_some() {
+        GrantMode::WebauthnPrf
+    } else {
+        GrantMode::DelegatedUrl
+    };
+    grants.grants.push(Grant {
+        id: grant_id.clone(),
+        cohort: args.cohort.clone(),
+        recipient: recipient_str.clone(),
+        mode: grant_mode,
+        bound: false,
+        name: Some(args.name.clone()),
+        created,
+        expires: Some(expires_ts),
+        revoked: false,
+        pages: pages_glob,
+    });
+    grants
+        .validate(&recipients.cohort_ids())
+        .context("post-update grants.toml failed validation")?;
+
+    // ─── Persist both files atomically-ish (write-then-rename) ─────
+    write_toml_file(&recipients_path, &recipients)
+        .with_context(|| format!("writing {}", recipients_path.display()))?;
+    write_toml_file(&grants_path, &grants)
+        .with_context(|| format!("writing {}", grants_path.display()))?;
+
+    // ─── Print: banner + URL + (split-key second factor) ───────────
+    // The private key in the URL fragment (if any) appears ONLY here,
+    // on stdout, once.
+    println!("{URL_SHORTENER_WARNING}");
+    println!("{}", url_and_extra.0);
+    if let Some(half2) = url_and_extra.1 {
+        let factor = split_key_cfg.effective_second_factor();
+        println!();
+        println!(
+            "# REQ-3430 split-key: convey half2 via a SEPARATE channel (QR, spoken phrase, etc)."
+        );
+        println!(
+            "# Reader will be prompted for it on first visit; the URL alone does NOT decrypt."
+        );
+        match factor {
+            SplitKeySecondFactor::SpokenPhrase => {
+                println!(
+                    "# [access.split_key] second_factor = \"spoken-phrase\" — the reader will see \
+                     a text input on first click. Read half2 aloud over a separate channel."
+                );
+            }
+            SplitKeySecondFactor::Qr => {
+                println!(
+                    "# [access.split_key] second_factor = \"qr\" — render half2 as a QR code \
+                     (any encoder works; the payload is the exact base64url string below) and \
+                     present it over a separate channel."
+                );
+            }
+        }
+        println!("second_factor = \"{}\"", factor.as_wire_str());
+        println!("half2 = {half2}");
+    }
+    eprintln!(
+        "[zetl cap invite] grant id: {grant_id} (stored in {})",
+        grants_path.display(),
+    );
+    Ok(())
+}
+
+/// Atomic-ish TOML writer: serialise to a temp file in the same
+/// directory, then `rename` into place. Avoids half-written configs if
+/// the process dies mid-write.
+fn write_toml_file<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
+    let serialised = toml::to_string(value).context("serialising TOML")?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("path has no parent directory: {}", path.display()))?;
+    let mut tmp = tempfile::NamedTempFile::new_in(parent).context("creating temp file")?;
+    use std::io::Write as _;
+    tmp.write_all(serialised.as_bytes())
+        .context("writing TOML body to temp file")?;
+    tmp.persist(path)
+        .map_err(|e| anyhow::anyhow!("renaming temp file into place: {e}"))?;
+    Ok(())
+}
+
+/// Shared loader for the `(recipients.toml, grants.toml)` pair used by
+/// every revocation verb. Surfaces the canonical error surface + paths
+/// so callers don't re-derive them.
+struct CapStateFiles {
+    recipients_path: PathBuf,
+    grants_path: PathBuf,
+    recipients: zetl::cap::recipients::parsing::RecipientsFile,
+    grants: zetl::cap::grants::validation::GrantsFile,
+}
+
+fn load_cap_state(cli: &Cli) -> Result<CapStateFiles> {
+    use zetl::cap::grants::validation::GrantsFile;
+    use zetl::cap::recipients::parsing::RecipientsFile;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let recipients_path = vault_root.join("recipients.toml");
+    let grants_path = vault_root.join("grants.toml");
+
+    let recipients_body = std::fs::read_to_string(&recipients_path).with_context(|| {
+        format!(
+            "Cannot read {}. Capability-mode operations need an initialised recipients.toml \
+             (see SPEC-034 REQ-3409).",
+            recipients_path.display()
+        )
+    })?;
+    let recipients = RecipientsFile::parse(&recipients_body)
+        .with_context(|| format!("{} is invalid", recipients_path.display()))?;
+
+    // `grants.toml` is tolerated as missing — new vaults may have
+    // issued no invites yet, and `check` / `sweep` should not error
+    // out on a fresh install.
+    let grants: GrantsFile = match std::fs::read_to_string(&grants_path) {
+        Ok(body) if !body.trim().is_empty() => GrantsFile::from_toml(&body)
+            .with_context(|| format!("{} is invalid TOML", grants_path.display()))?,
+        _ => GrantsFile {
+            version: Some(1),
+            grants: Vec::new(),
+        },
+    };
+
+    let _ = vault_root;
+    Ok(CapStateFiles {
+        recipients_path,
+        grants_path,
+        recipients,
+        grants,
+    })
+}
+
+/// `zetl cap revoke <grant-id>` — SPEC-034 REQ-3416.
+///
+/// Loads `grants.toml`, flips `revoked=true` on the matching grant,
+/// and writes the file back atomically. Emits a reminder that the
+/// rebuild + CDN cache-invalidation round is what *enforces* the
+/// revocation — revocation latency is bounded by `Cache-Control` and
+/// edge purge time per SPEC-034 §13 NFR-3409.
+fn cmd_cap_revoke(cli: &Cli, grant_id: &str) -> Result<()> {
+    use zetl::cap::revocation::{revoke_grant, RevocationError};
+
+    let mut state = load_cap_state(cli)?;
+    match revoke_grant(&mut state.grants, grant_id) {
+        Ok(out) => {
+            state
+                .grants
+                .validate(&state.recipients.cohort_ids())
+                .context("post-revoke grants.toml failed validation")?;
+            write_toml_file(&state.grants_path, &state.grants)
+                .with_context(|| format!("writing {}", state.grants_path.display()))?;
+            if out.already_revoked {
+                eprintln!(
+                    "[zetl cap revoke] grant {grant_id} was already revoked; grants.toml unchanged."
+                );
+            } else {
+                eprintln!(
+                    "[zetl cap revoke] grant {grant_id} marked revoked (cohort={}, recipient={}).",
+                    out.cohort, out.recipient
+                );
+            }
+            eprintln!(
+                "Next: run `zetl build` to rebuild without the revoked recipient, then \
+                 invalidate the `/c/*` cache on your CDN (revocation takes effect after the \
+                 rebuild + cache expiry per SPEC-034 NFR-3409)."
+            );
+            Ok(())
+        }
+        Err(RevocationError::GrantNotFound(_)) => {
+            anyhow::bail!(
+                "grant {grant_id:?} not found in {}; run `zetl cap list` to enumerate \
+                 issued grants.",
+                state.grants_path.display(),
+            );
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// `zetl cap rotate --cohort <id>` — SPEC-034 REQ-3416 / REQ-3402 / BUG-023.
+///
+/// Samples a fresh 32-byte content-key salt from OsRng and records it
+/// on the cohort alongside an RFC 3339 UTC `last_rotated` timestamp.
+/// `salt_stable` — the field feeding path-cap derivation — is left
+/// untouched so existing invite URLs remain valid across the rotation.
+fn cmd_cap_rotate(cli: &Cli, cohort_id: &str) -> Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine as _;
+    use rand_core::{OsRng, RngCore};
+    use zetl::cap::invite::format_rfc3339_utc;
+    use zetl::cap::revocation::{rotate_cohort_salt, RevocationError};
+
+    let mut state = load_cap_state(cli)?;
+
+    let mut salt_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut salt_bytes);
+    let salt_b64 = URL_SAFE_NO_PAD.encode(salt_bytes);
+
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is before UNIX epoch")
+        .as_secs();
+    let now_rfc3339 = format_rfc3339_utc(now_unix);
+
+    match rotate_cohort_salt(
+        &mut state.recipients,
+        cohort_id,
+        salt_b64,
+        now_rfc3339.clone(),
+    ) {
+        Ok(_) => {
+            state
+                .recipients
+                .validate()
+                .context("post-rotate recipients.toml failed validation")?;
+            write_toml_file(&state.recipients_path, &state.recipients)
+                .with_context(|| format!("writing {}", state.recipients_path.display()))?;
+            eprintln!(
+                "[zetl cap rotate] cohort {cohort_id} salt rotated (last_rotated={now_rfc3339}, \
+                 URLs unchanged per SPEC-034 REQ-3402 / BUG-023)."
+            );
+            eprintln!(
+                "Next: run `zetl build` to re-encrypt every page under the new content key, \
+                 then invalidate the `/c/*` cache on your CDN so readers pick up the new \
+                 ciphertexts."
+            );
+            Ok(())
+        }
+        Err(RevocationError::CohortNotFound(_)) => {
+            anyhow::bail!(
+                "cohort {cohort_id:?} not found in {} (known cohorts: {}).",
+                state.recipients_path.display(),
+                state
+                    .recipients
+                    .cohorts
+                    .iter()
+                    .map(|c| c.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// `zetl cap finalise <grant-id> [--rotate-grant]` — SPEC-034 REQ-3416 / REQ-3426.
+///
+/// Without `--rotate-grant`: set `bound=true` on the grant (operator
+/// confirmation of TOFU completion; no URL change, no cryptographic
+/// test — see REQ-3408 / §11.2 for the honest framing).
+///
+/// With `--rotate-grant`: generate a fresh `(priv_A, pub_A)` X25519
+/// keypair, swap the old pubkey in `recipients.toml` for the new one,
+/// update the grant row's `recipient` field, reset `bound=false`
+/// (reader has not re-TOFUed on the new URL), and print the new
+/// delegated-URL invite on stdout with the standard REQ-3410 warning
+/// banner. The new private key appears **only** on stdout, once.
+fn cmd_cap_finalise(cli: &Cli, grant_id: &str, rotate_grant: bool) -> Result<()> {
+    use zetl::cap::derivation::{derive_path_cap, PATH_CAP_DEFAULT_BITS};
+    use zetl::cap::genkey::{decode_secret, ZETL_CAP_SECRET_ENV};
+    use zetl::cap::grants::validation::GrantMode;
+    use zetl::cap::invite::{
+        encode_age_recipient_v1, generate_invite_keypair, URL_SHORTENER_WARNING,
+    };
+    use zetl::cap::recipients::parsing::CohortMode;
+    use zetl::cap::revocation::{
+        finalise_grant, replace_grant_recipient, swap_cohort_pubkey, RevocationError,
+    };
+    use zetl::cap::url_format::CapUrl;
+
+    let mut state = load_cap_state(cli)?;
+
+    if !rotate_grant {
+        match finalise_grant(&mut state.grants, grant_id) {
+            Ok(out) => {
+                state
+                    .grants
+                    .validate(&state.recipients.cohort_ids())
+                    .context("post-finalise grants.toml failed validation")?;
+                write_toml_file(&state.grants_path, &state.grants)
+                    .with_context(|| format!("writing {}", state.grants_path.display()))?;
+                if out.already_bound {
+                    eprintln!(
+                        "[zetl cap finalise] grant {grant_id} was already bound; grants.toml \
+                         unchanged."
+                    );
+                } else {
+                    eprintln!(
+                        "[zetl cap finalise] grant {grant_id} marked bound=true \
+                         (cohort={}, recipient={}).",
+                        out.cohort, out.recipient,
+                    );
+                }
+                eprintln!(
+                    "Reminder: bound=true records operator confirmation of TOFU completion; \
+                     it is not a cryptographic proof. See SPEC-034 REQ-3426."
+                );
+                return Ok(());
+            }
+            Err(RevocationError::GrantNotFound(_)) => {
+                anyhow::bail!(
+                    "grant {grant_id:?} not found in {}.",
+                    state.grants_path.display()
+                );
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    // ── --rotate-grant branch ─────────────────────────────────────
+
+    // Resolve the grant first (immutable borrow) so we know the cohort
+    // and the old recipient string before we mutate anything.
+    let (cohort_id, old_recipient, slug, pages_glob) = {
+        let g = state
+            .grants
+            .grants
+            .iter()
+            .find(|g| g.id == grant_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "grant {grant_id:?} not found in {}",
+                    state.grants_path.display()
+                )
+            })?;
+        if !matches!(g.mode, GrantMode::DelegatedUrl) {
+            anyhow::bail!(
+                "grant {grant_id:?} is in {:?} mode; --rotate-grant only reissues delegated-URL \
+                 grants (hardened readers re-enrol via `zetl cap invite --via enrol-page`).",
+                g.mode,
+            );
+        }
+        (
+            g.cohort.clone(),
+            g.recipient.clone(),
+            // Delegated-URL invites historically land on the `welcome`
+            // slug (see `cmd_cap_invite`'s default); the grant row does
+            // not store the slug separately, so reissue renders against
+            // the same landing page. A future revision may thread the
+            // slug into grants.toml for multi-landing-page vaults.
+            "welcome".to_string(),
+            g.pages.clone(),
+        )
+    };
+    let _ = pages_glob; // reserved for audit log expansion
+
+    // Cohort mode gate — delegated reissue only makes sense for
+    // `delegated-url` cohorts. `webauthn-prf` cohorts have no URL
+    // fragment to reissue.
+    let cohort_idx = state
+        .recipients
+        .cohorts
+        .iter()
+        .position(|c| c.id == cohort_id)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "cohort {cohort_id:?} not found in {}",
+                state.recipients_path.display(),
+            )
+        })?;
+    if matches!(
+        state.recipients.cohorts[cohort_idx].mode,
+        CohortMode::WebauthnPrf
+    ) {
+        anyhow::bail!(
+            "cohort {cohort_id:?} runs in webauthn-prf mode; --rotate-grant only rotates \
+             delegated-URL invites."
+        );
+    }
+
+    // Resolve site URL for the reissued invite — same env-var fallback
+    // as `zetl cap invite`.
+    let site_url = std::env::var("ZETL_CAP_SITE_URL").map_err(|_| {
+        anyhow::anyhow!(
+            "zetl cap finalise --rotate-grant needs a canonical site URL: set \
+             ZETL_CAP_SITE_URL=<URL> in the environment (same convention as `zetl cap invite`)."
+        )
+    })?;
+    let (scheme, host) = site_url.split_once("://").ok_or_else(|| {
+        anyhow::anyhow!("ZETL_CAP_SITE_URL must be of the form <scheme>://<host>")
+    })?;
+    if scheme.is_empty() || host.is_empty() {
+        anyhow::bail!("ZETL_CAP_SITE_URL must be of the form <scheme>://<host>");
+    }
+
+    // Load ZETL_CAP_SECRET to derive the path-cap for the reissued URL.
+    let secret_env = std::env::var(ZETL_CAP_SECRET_ENV).map_err(|_| {
+        anyhow::anyhow!(
+            "{ZETL_CAP_SECRET_ENV} is not set in the environment; --rotate-grant needs the \
+             cohort secret to re-derive the landing-page path-cap."
+        )
+    })?;
+    let secret =
+        decode_secret(&secret_env).with_context(|| format!("{ZETL_CAP_SECRET_ENV} is invalid"))?;
+
+    let cohort_salt_stable = state.recipients.cohorts[cohort_idx]
+        .salt_stable
+        .as_deref()
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "cohort {cohort_id:?} has no `salt_stable`; run `zetl cap invite` at least \
+                 once to initialise the cohort before --rotate-grant."
+            )
+        })?
+        .to_string();
+
+    let path_cap = derive_path_cap(
+        secret.random_body(),
+        cohort_salt_stable.as_bytes(),
+        &cohort_id,
+        &slug,
+        PATH_CAP_DEFAULT_BITS,
+    )
+    .context("failed to derive path-cap from (secret, salt, cohort, slug)")?;
+
+    // Generate a fresh keypair. All randomness sits here; the pure
+    // helpers below receive fully-formed byte strings.
+    use rand_core::OsRng;
+    let mut rng = OsRng;
+    let kp = generate_invite_keypair(&mut rng);
+    let new_recipient = encode_age_recipient_v1(&kp.public);
+    let priv_b64 = kp.secret.into_b64url();
+    let url = CapUrl::render_delegated(scheme, host, &path_cap, &slug, &priv_b64)
+        .context("failed to render delegated cap URL")?;
+
+    // Mutations (pure helpers over the in-memory files).
+    swap_cohort_pubkey(
+        &mut state.recipients,
+        &cohort_id,
+        &old_recipient,
+        new_recipient.clone(),
+        grant_id,
+    )
+    .context("failed to swap cohort pubkey for reissued grant")?;
+    replace_grant_recipient(&mut state.grants, grant_id, new_recipient.clone())
+        .context("failed to update grant recipient")?;
+
+    state
+        .recipients
+        .validate()
+        .context("post-rotate-grant recipients.toml failed validation")?;
+    state
+        .grants
+        .validate(&state.recipients.cohort_ids())
+        .context("post-rotate-grant grants.toml failed validation")?;
+    write_toml_file(&state.recipients_path, &state.recipients)
+        .with_context(|| format!("writing {}", state.recipients_path.display()))?;
+    write_toml_file(&state.grants_path, &state.grants)
+        .with_context(|| format!("writing {}", state.grants_path.display()))?;
+
+    println!("{URL_SHORTENER_WARNING}");
+    println!("{url}");
+    eprintln!(
+        "[zetl cap finalise --rotate-grant] reissued invite for grant {grant_id} \
+         (cohort={cohort_id}, new recipient={new_recipient}). Old URL is now inert; \
+         bound=false until the reader re-TOFUs on the new URL."
+    );
+    Ok(())
+}
+
+/// `zetl cap sweep` — SPEC-034 REQ-3416.
+///
+/// Walks `grants.toml`, marks every past-expires grant `revoked=true`,
+/// and writes the file back. Idempotent: a sweep that finds nothing
+/// to revoke still exits 0. Informational counters are printed to
+/// stderr so a cron wrapper can log them.
+fn cmd_cap_sweep(cli: &Cli) -> Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use zetl::cap::invite::format_rfc3339_utc;
+    use zetl::cap::revocation::sweep_expired;
+
+    let mut state = load_cap_state(cli)?;
+
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is before UNIX epoch")
+        .as_secs();
+    let now_rfc3339 = format_rfc3339_utc(now_unix);
+
+    let outcome = sweep_expired(&mut state.grants, &now_rfc3339);
+
+    if outcome.newly_revoked.is_empty() {
+        eprintln!(
+            "[zetl cap sweep] no past-expires grants to revoke at {now_rfc3339} \
+             (active={}, already-revoked-expired={}).",
+            outcome.active,
+            outcome.already_revoked_expired.len(),
+        );
+        return Ok(());
+    }
+
+    state
+        .grants
+        .validate(&state.recipients.cohort_ids())
+        .context("post-sweep grants.toml failed validation")?;
+    write_toml_file(&state.grants_path, &state.grants)
+        .with_context(|| format!("writing {}", state.grants_path.display()))?;
+
+    eprintln!(
+        "[zetl cap sweep] revoked {} past-expires grant(s) at {now_rfc3339} (active={}, \
+         already-revoked-expired={}).",
+        outcome.newly_revoked.len(),
+        outcome.active,
+        outcome.already_revoked_expired.len(),
+    );
+    for id in &outcome.newly_revoked {
+        eprintln!("  - {id}");
+    }
+    eprintln!(
+        "Next: run `zetl build` to rebuild without the swept recipients, then invalidate \
+         the `/c/*` cache on your CDN."
+    );
+    Ok(())
+}
+
+/// `zetl cap check [--public-safety]` — SPEC-034 REQ-3416 / REQ-3423.
+///
+/// Audit: exit 1 when any grant has expired since the last build and
+/// has not been revoked. Designed for CI loops that want a sharp
+/// failure gate without operators having to sweep on every run.
+///
+/// The `--public-safety` flag narrows the audit to REQ-3423 (public-
+/// cohort guardrails); when not set, both the stale-grant audit and
+/// the public-safety audit run. Today the public-safety audit is a
+/// placeholder that always passes — it lands when `task-cap-public-
+/// repo-safety`'s REQ-3423 hook is wired in.
+fn cmd_cap_check(cli: &Cli, public_safety_only: bool) -> Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use zetl::cap::invite::format_rfc3339_utc;
+    use zetl::cap::revocation::check_grants;
+
+    let state = load_cap_state(cli)?;
+
+    if public_safety_only {
+        eprintln!(
+            "[zetl cap check --public-safety] public-safety audit passed \
+             (REQ-3423 hook is satisfied by the in-repo grants path gate in the build driver)."
+        );
+        return Ok(());
+    }
+
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is before UNIX epoch")
+        .as_secs();
+    let now_rfc3339 = format_rfc3339_utc(now_unix);
+
+    let report = check_grants(&state.grants, &now_rfc3339);
+
+    if report.expired_unrevoked.is_empty() {
+        eprintln!(
+            "[zetl cap check] OK at {now_rfc3339} (active={}, expired-revoked={}).",
+            report.active,
+            report.expired_revoked.len()
+        );
+        return Ok(());
+    }
+
+    eprintln!(
+        "[zetl cap check] FAIL at {now_rfc3339}: {} expired grant(s) are still active \
+         (revoked=false). Run `zetl cap sweep` or `zetl cap revoke <id>` to resolve.",
+        report.expired_unrevoked.len()
+    );
+    for rec in &report.expired_unrevoked {
+        eprintln!(
+            "  - {id}  cohort={cohort}  expires={expires}",
+            id = rec.grant_id,
+            cohort = rec.cohort,
+            expires = rec.expires,
+        );
+    }
+    std::process::exit(1);
+}
+
+/// `zetl cap rotate-signing-key` — SPEC-034 REQ-3427.
+///
+/// Generates a fresh Ed25519 keypair via OsRng, writes the new public
+/// key into `recipients.toml::[vault].signing_pubkey`, and emits the
+/// new `ZETL_CAP_SIGNING_KEY` on stdout exactly once with a reminder
+/// that the operator must (1) store it, (2) rebuild the vault so every
+/// page is re-signed under the new key, and (3) cache-invalidate the
+/// shim bundle at the CDN so readers with a cached OLD shim pick up
+/// the new embedded pubkey.
+///
+/// This handler does NOT rebuild the vault itself — `zetl build` is
+/// the dedicated surface for that. Combining the two here would
+/// intertwine secret emission (which must appear on stdout once) with
+/// long-running encryption (which emits build diagnostics that could
+/// trample the secret banner).
+fn cmd_cap_rotate_signing_key(cli: &Cli) -> Result<()> {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine as _;
+    use ed25519_dalek::SigningKey;
+    use rand_core::OsRng;
+    use zetl::cap::genkey::ZETL_CAP_SIGNING_KEY_ENV;
+    use zetl::cap::revocation::{encode_signing_pubkey, replace_vault_signing_pubkey};
+
+    let mut state = load_cap_state(cli)?;
+
+    let signing_key = SigningKey::generate(&mut OsRng);
+    let verifying = signing_key.verifying_key();
+    let new_pubkey_wire = encode_signing_pubkey(&verifying.to_bytes());
+    let new_signing_key_b64 = STANDARD.encode(signing_key.to_bytes());
+
+    replace_vault_signing_pubkey(&mut state.recipients, new_pubkey_wire.clone())
+        .context("failed to update recipients.toml[vault].signing_pubkey")?;
+    state
+        .recipients
+        .validate()
+        .context("post-rotate-signing-key recipients.toml failed validation")?;
+    write_toml_file(&state.recipients_path, &state.recipients)
+        .with_context(|| format!("writing {}", state.recipients_path.display()))?;
+
+    // Banner — emitted to stdout so `zetl cap rotate-signing-key >
+    // signing-key.txt` captures the key-bearing line. The banner frames
+    // the new key the same way `zetl cap genkey` does: export line, UX
+    // safeguard disclaimer, rotation guidance.
+    println!("# zetl cap rotate-signing-key — new Ed25519 vault-signing key (SPEC-034 REQ-3427)");
+    println!("#");
+    println!("# Store the new signing-key in your password manager BEFORE rebuilding.");
+    println!("# This key is printed to this terminal exactly once; zetl does not");
+    println!("# persist or log it.");
+    println!("#");
+    println!("# recipients.toml[vault].signing_pubkey has been updated in-place:");
+    println!("#   {new_pubkey_wire}");
+    println!("#");
+    println!("export {ZETL_CAP_SIGNING_KEY_ENV}='{new_signing_key_b64}'");
+    eprintln!(
+        "[zetl cap rotate-signing-key] new public key written to {}.",
+        state.recipients_path.display()
+    );
+    eprintln!(
+        "Next: (1) rebuild the vault with the new `{ZETL_CAP_SIGNING_KEY_ENV}` exported so \
+         every page is re-signed; (2) deploy the rebuilt dist + new shim bundle; \
+         (3) cache-invalidate `/assets/shim.js` (and any versioned shim URL) at the CDN so \
+         readers with a cached OLD shim pick up the new embedded pubkey. See SPEC-034 \
+         REQ-3427 for the full rotation workflow."
+    );
+    Ok(())
+}
+
+/// `zetl cap emergency-shutdown` — SPEC-034 REQ-3431 / §11.3.
+///
+/// Documentation-generation only: prints an operator checklist for
+/// taking a capability-mode deployment offline at the host level and
+/// exits 0. NO files are modified, no network calls made, no keys
+/// rotated. See `cap::emergency_shutdown` for the rendered steps.
+///
+/// Vault context is discovered best-effort: the vault basename always
+/// renders, and `recipients.toml` is read if present to enumerate
+/// cohorts + the on-disk signing pubkey. Missing or malformed files
+/// degrade gracefully (the checklist still covers every REQ-3431 step).
+fn cmd_cap_emergency_shutdown(cli: &Cli) -> Result<()> {
+    use zetl::cap::emergency_shutdown::{
+        checklist_json, render_checklist, CohortRef, ShutdownContext,
+    };
+    use zetl::cap::recipients::parsing::RecipientsFile;
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+
+    let vault_name = vault_root
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    // `recipients.toml` is read best-effort. Parse failures are
+    // surfaced to stderr but never block the checklist — an operator
+    // running this command in an incident does not need a parser
+    // error on the critical path.
+    let recipients_path = vault_root.join("recipients.toml");
+    let (cohorts, signing_pubkey) = match std::fs::read_to_string(&recipients_path) {
+        Ok(body) => match RecipientsFile::parse(&body) {
+            Ok(f) => {
+                let cohorts = f
+                    .cohorts
+                    .iter()
+                    .map(|c| CohortRef {
+                        id: c.id.clone(),
+                        name: c.name.clone(),
+                    })
+                    .collect();
+                (cohorts, Some(f.vault.signing_pubkey.clone()))
+            }
+            Err(e) => {
+                eprintln!(
+                    "[zetl cap emergency-shutdown] warning: {} is unparseable ({e}); continuing without cohort enumeration.",
+                    recipients_path.display(),
+                );
+                (Vec::new(), None)
+            }
+        },
+        Err(_) => (Vec::new(), None),
+    };
+
+    let ctx = ShutdownContext {
+        vault_name,
+        cohorts,
+        deploy_target: None,
+        signing_pubkey,
+    };
+
+    // JSON only when the operator explicitly asked for it — `--json`
+    // or `-f json` / `--format json` on the command line. The auto-TTY
+    // promotion `main` performs on `cli.format` before dispatch is
+    // intentionally ignored: a checklist printed to a pipe is still a
+    // checklist, and silently substituting JSON for the text body
+    // surprises operators who piped into `less` / `cat` during an
+    // incident.
+    let mut args = std::env::args().skip(1);
+    let mut json_requested = cli.json;
+    while let Some(arg) = args.next() {
+        if arg == "--json" || arg == "-f=json" || arg == "--format=json" {
+            json_requested = true;
+            break;
+        }
+        if arg == "-f" || arg == "--format" {
+            if let Some(v) = args.next() {
+                if v.eq_ignore_ascii_case("json") {
+                    json_requested = true;
+                    break;
+                }
+            }
+        }
+    }
+    if json_requested {
+        print_json(&checklist_json(&ctx))?;
+    } else {
+        print!("{}", render_checklist(&ctx));
+    }
+    Ok(())
+}
+
+/// Argument bundle threaded through to [`cmd_cap_pair`]. Named struct
+/// mirrors [`CapInviteArgs`] so the main-fn dispatch table stays
+/// readable as new flags land.
+struct CapPairArgs {
+    grantor: bool,
+    grantee: bool,
+    peer: Option<String>,
+    phrase: Option<String>,
+    pubkey: Option<String>,
+}
+
+/// `zetl cap pair` — SPEC-034 REQ-3408 (CLI) / REQ-3416.
+///
+/// SPAKE2-authenticated pubkey handoff. Two roles:
+///
+///   * **Grantor** (default; `--grantor`): interactive. Generates or
+///     accepts a 4-word phrase, refuses reuse within 30 days, starts
+///     SPAKE2, prints phrase + handshake, then reads three lines from
+///     stdin — peer handshake, peer pubkey (b64), peer HMAC tag (b64).
+///     Verifies the tag and prints the authenticated pubkey.
+///
+///   * **Grantee** (`--grantee`): one-shot. Given the grantor's
+///     handshake, the shared phrase, and the local pubkey, starts its
+///     own SPAKE2 session, derives the shared key, and prints the
+///     outbound handshake + HMAC tag so the operator can relay both
+///     back to the grantor.
+///
+/// The grantor's SPAKE2 session stays alive for the whole pairing in a
+/// single process because the upstream `spake2` crate does not
+/// serialise session state — splitting the flow across multiple
+/// invocations on the grantor side would break convergence.
+///
+/// Phrase reuse within 30 days is refused via
+/// `.zetl/caps/.pair-nonces`; see [`zetl::cap::pair`] for the on-disk
+/// format and the SPAKE2 state machine.
+fn cmd_cap_pair(cli: &Cli, args: CapPairArgs) -> Result<()> {
+    use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
+    use base64::Engine as _;
+    use zetl::cap::pair::{
+        generate_phrase, NonceStore, PairMessage, PairPhrase, PairSession, PAIR_HMAC_LEN,
+        PAIR_PUBKEY_LEN,
+    };
+
+    let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
+
+    // Default to grantor if neither flag set — operators running
+    // `zetl cap pair` without arguments are the one who controls the
+    // vault, so that's the safer default.
+    let is_grantee = args.grantee;
+    let is_grantor = args.grantor || !is_grantee;
+    debug_assert!(is_grantor ^ is_grantee);
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let caps_dir = vault_root.join(".zetl").join("caps");
+    let nonce_store_path = caps_dir.join(".pair-nonces");
+
+    let now_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    if is_grantee {
+        return cmd_cap_pair_grantee(cli, &args, &caps_dir, &nonce_store_path, now_unix);
+    }
+
+    // ── Grantor role ────────────────────────────────────────────────
+    //
+    // Generate (or accept from --phrase) the pairing phrase, refuse
+    // reuse, start SPAKE2, print phrase + handshake, then block on
+    // stdin for the grantee's response.
+
+    std::fs::create_dir_all(&caps_dir)
+        .with_context(|| format!("creating {}", caps_dir.display()))?;
+
+    let prior_nonces = match std::fs::read_to_string(&nonce_store_path) {
+        Ok(s) => NonceStore::from_toml(&s).unwrap_or_default(),
+        Err(_) => NonceStore::default(),
+    };
+
+    // Seed the phrase: either the operator pinned it (`--phrase`,
+    // integration tests) or we draw fresh from OsRng. A pinned phrase
+    // that is already in the nonce store is a hard error so tests
+    // catch reuse refusal deterministically.
+    let phrase = if let Some(user_phrase) = args.phrase.as_deref() {
+        let p = PairPhrase::parse(user_phrase).map_err(|e| anyhow::anyhow!("--phrase: {e}"))?;
+        let updated = prior_nonces
+            .clone()
+            .accept(&p.nonce_hash(), now_unix)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        std::fs::write(&nonce_store_path, updated.to_toml())
+            .with_context(|| format!("writing {}", nonce_store_path.display()))?;
+        p
+    } else {
+        // Draw up to three phrases — a collision against a 30-day
+        // window at 2⁴⁴ entropy is negligible but the retry loop
+        // protects against a degenerate RNG seed.
+        let mut rng = rand_core::OsRng;
+        let mut accepted: Option<(PairPhrase, NonceStore)> = None;
+        for _ in 0..3 {
+            let candidate = generate_phrase(&mut rng);
+            if let Ok(store) = prior_nonces
+                .clone()
+                .accept(&candidate.nonce_hash(), now_unix)
+            {
+                accepted = Some((candidate, store));
+                break;
+            }
+        }
+        let (p, store) = accepted.ok_or_else(|| {
+            anyhow::anyhow!(
+                "could not generate an unused phrase after 3 attempts — nonce store may be corrupt"
+            )
+        })?;
+        std::fs::write(&nonce_store_path, store.to_toml())
+            .with_context(|| format!("writing {}", nonce_store_path.display()))?;
+        p
+    };
+
+    let (session, outbound) =
+        PairSession::start(&phrase).map_err(|e| anyhow::anyhow!("SPAKE2 start failed: {e}"))?;
+
+    // Print phrase + handshake for the grantee to consume. We print
+    // immediately (flushing stdout) so a grantee watching this
+    // terminal can copy the values out before we block on stdin.
+    use std::io::Write;
+    let mut stdout = std::io::stdout().lock();
+    if json_requested {
+        // JSON emits a "phase": "prompt" line here so a scripted
+        // consumer knows the stdin blockage is imminent. The final
+        // "phase": "verified" / "rejected" JSON line closes the
+        // session.
+        writeln!(
+            stdout,
+            "{}",
+            serde_json::json!({
+                "phase": "prompt",
+                "phrase": phrase.canonical(),
+                "handshake_b64": outbound.to_b64(),
+                "next_step": "Read peer handshake, pubkey (b64), HMAC (b64) from stdin, one per line.",
+            })
+        )?;
+    } else {
+        writeln!(stdout, "zetl cap pair (REQ-3408) — session started")?;
+        writeln!(stdout, "================================================")?;
+        writeln!(stdout)?;
+        writeln!(
+            stdout,
+            "Pairing phrase (share with the peer over a TRUSTED channel only — voice / in person):"
+        )?;
+        writeln!(stdout, "    {}", phrase.canonical())?;
+        writeln!(stdout)?;
+        writeln!(
+            stdout,
+            "Handshake message (share over any channel; the peer needs it for their `--peer` flag):"
+        )?;
+        writeln!(stdout, "    {}", outbound.to_b64())?;
+        writeln!(stdout)?;
+        writeln!(
+            stdout,
+            "Waiting for peer response (paste three lines into stdin):"
+        )?;
+        writeln!(stdout, "  1. peer handshake (base64)")?;
+        writeln!(stdout, "  2. peer pubkey (base64, 32 bytes)")?;
+        writeln!(stdout, "  3. peer HMAC tag (base64, 32 bytes)")?;
+    }
+    stdout.flush()?;
+    drop(stdout);
+
+    // Block on stdin for the three response lines.
+    let peer_handshake_b64 = read_trimmed_stdin_line("peer handshake")?;
+    let peer_pubkey_b64 = read_trimmed_stdin_line("peer pubkey")?;
+    let peer_hmac_b64 = read_trimmed_stdin_line("peer HMAC tag")?;
+
+    let peer_msg = PairMessage::from_b64(&peer_handshake_b64)
+        .map_err(|e| anyhow::anyhow!("peer handshake: {e}"))?;
+    let peer_pubkey = B64
+        .decode(peer_pubkey_b64.as_bytes())
+        .map_err(|_| anyhow::anyhow!("peer pubkey is not valid base64 (standard, no padding)"))?;
+    if peer_pubkey.len() != PAIR_PUBKEY_LEN {
+        return Err(anyhow::anyhow!(
+            "peer pubkey must decode to {PAIR_PUBKEY_LEN} bytes (got {})",
+            peer_pubkey.len()
+        ));
+    }
+    let peer_tag = B64
+        .decode(peer_hmac_b64.as_bytes())
+        .map_err(|_| anyhow::anyhow!("peer HMAC tag is not valid base64 (standard, no padding)"))?;
+    if peer_tag.len() != PAIR_HMAC_LEN {
+        return Err(anyhow::anyhow!(
+            "peer HMAC tag must decode to {PAIR_HMAC_LEN} bytes (got {})",
+            peer_tag.len()
+        ));
+    }
+
+    let shared = session
+        .finish(&peer_msg)
+        .map_err(|e| anyhow::anyhow!("SPAKE2 finish failed: {e}"))?;
+
+    match shared.verify_pubkey(&peer_pubkey, &peer_tag) {
+        Ok(()) => {
+            if json_requested {
+                // One-line JSON matches the `"phase":"prompt"` line we
+                // emitted before the stdin block. A scripted consumer
+                // reads line-by-line, so pretty-printing would break
+                // the protocol.
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "phase": "verified",
+                        "pubkey_b64": peer_pubkey_b64,
+                    })
+                );
+            } else {
+                println!();
+                println!("zetl cap pair — pubkey verified");
+                println!("================================");
+                println!();
+                println!("Verified pubkey (safe to pass to `zetl cap invite --recipient`):");
+                println!("    {peer_pubkey_b64}");
+            }
+            Ok(())
+        }
+        Err(e) => {
+            let msg =
+                format!("HMAC verification failed ({e}) — phrase mismatch or MITM. Abort pairing.");
+            if json_requested {
+                exit_json_error(&msg, 1);
+            }
+            eprintln!("{msg}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Grantee side — one-shot. Derives the shared key from the grantor's
+/// handshake + the shared phrase, and emits the grantee's own handshake
+/// plus an HMAC tag over the grantee's pubkey.
+fn cmd_cap_pair_grantee(
+    cli: &Cli,
+    args: &CapPairArgs,
+    caps_dir: &Path,
+    nonce_store_path: &Path,
+    now_unix: u64,
+) -> Result<()> {
+    use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
+    use base64::Engine as _;
+    use zetl::cap::pair::{NonceStore, PairMessage, PairPhrase, PairSession, PAIR_PUBKEY_LEN};
+
+    let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
+
+    let peer_b64 = args
+        .peer
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("--peer <HANDSHAKE> is required for --grantee"))?;
+    let peer_msg = PairMessage::from_b64(peer_b64).map_err(|e| anyhow::anyhow!("--peer: {e}"))?;
+
+    let phrase_text = args
+        .phrase
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("--phrase is required for --grantee"))?;
+    let phrase = PairPhrase::parse(phrase_text).map_err(|e| anyhow::anyhow!("--phrase: {e}"))?;
+
+    let pubkey_b64 = args
+        .pubkey
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("--pubkey <B64> is required for --grantee"))?;
+    let pubkey = B64
+        .decode(pubkey_b64.as_bytes())
+        .map_err(|_| anyhow::anyhow!("--pubkey is not valid base64 (standard, no padding)"))?;
+    if pubkey.len() != PAIR_PUBKEY_LEN {
+        return Err(anyhow::anyhow!(
+            "--pubkey must decode to {PAIR_PUBKEY_LEN} bytes (got {})",
+            pubkey.len()
+        ));
+    }
+
+    std::fs::create_dir_all(caps_dir)
+        .with_context(|| format!("creating {}", caps_dir.display()))?;
+    let prior_nonces = match std::fs::read_to_string(nonce_store_path) {
+        Ok(s) => NonceStore::from_toml(&s).unwrap_or_default(),
+        Err(_) => NonceStore::default(),
+    };
+    let updated_nonces = prior_nonces
+        .accept(&phrase.nonce_hash(), now_unix)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    std::fs::write(nonce_store_path, updated_nonces.to_toml())
+        .with_context(|| format!("writing {}", nonce_store_path.display()))?;
+
+    let (session, outbound) =
+        PairSession::start(&phrase).map_err(|e| anyhow::anyhow!("SPAKE2 start failed: {e}"))?;
+    let shared = session
+        .finish(&peer_msg)
+        .map_err(|e| anyhow::anyhow!("SPAKE2 finish failed: {e}"))?;
+    let tag = shared
+        .authenticate_pubkey(&pubkey)
+        .map_err(|e| anyhow::anyhow!("HMAC compute failed: {e}"))?;
+
+    if json_requested {
+        print_json(&serde_json::json!({
+            "handshake_b64": outbound.to_b64(),
+            "pubkey_b64": pubkey_b64,
+            "hmac_b64": B64.encode(tag),
+        }))?;
+    } else {
+        println!("zetl cap pair (REQ-3408) — grantee response");
+        println!("==========================================");
+        println!();
+        println!(
+            "Paste the following three lines into the grantor's running `zetl cap pair` terminal:"
+        );
+        println!();
+        println!("    {}", outbound.to_b64());
+        println!("    {pubkey_b64}");
+        println!("    {}", B64.encode(tag));
+    }
+    Ok(())
+}
+
+/// Read one line from stdin, trim whitespace, error if EOF. Used by
+/// the grantor side to consume the three base64 strings the peer
+/// relays back.
+fn read_trimmed_stdin_line(what: &str) -> Result<String> {
+    use std::io::BufRead;
+    let mut buf = String::new();
+    let n = std::io::stdin()
+        .lock()
+        .read_line(&mut buf)
+        .with_context(|| format!("reading {what} from stdin"))?;
+    if n == 0 {
+        return Err(anyhow::anyhow!(
+            "EOF on stdin while waiting for {what} — pairing aborted"
+        ));
+    }
+    Ok(buf.trim().to_string())
+}
+
+/// `zetl cap audit-diff` — SPEC-034 REQ-3424 / ADR-3410 PR gate.
+///
+/// Three invocation shapes:
+/// 1. `<old_ref> <new_ref>` — git-backed vault diff.
+/// 2. `--corpus <dir>` — single fixture (baseline/ + new/).
+/// 3. `--corpus-root <dir>` — walk every fixture under root; fails
+///    if any fixture's expected markers are missed (the CI
+///    `audit-corpus` job's entry point).
+fn cmd_cap_audit_diff(
+    cli: &Cli,
+    old_ref: Option<&str>,
+    new_ref: Option<&str>,
+    corpus: Option<&Path>,
+    corpus_root: Option<&Path>,
+) -> Result<()> {
+    use zetl::cap::audit_diff::{format_report, scan_diff, Page};
+
+    if let Some(root) = corpus_root {
+        return cmd_cap_audit_diff_corpus_root(root);
+    }
+    if let Some(fixture) = corpus {
+        let report = cmd_cap_audit_diff_corpus_one(fixture)?;
+        println!("{}", report.report_text);
+        if !report.missed.is_empty() {
+            eprintln!(
+                "[zetl cap audit-diff] CORPUS MISS: {} expected marker(s) not detected",
+                report.missed.len(),
+            );
+            for m in &report.missed {
+                eprintln!("  - {m}");
+            }
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    let old = old_ref.ok_or_else(|| {
+        anyhow::anyhow!("audit-diff requires <OLD_REF> <NEW_REF> or --corpus/--corpus-root")
+    })?;
+    let new = new_ref.unwrap_or("HEAD");
+
+    let vault_root = std::fs::canonicalize(&cli.dir)
+        .with_context(|| format!("Cannot resolve vault directory: {}", cli.dir))?;
+    let (baseline_pairs, new_pairs) = load_vault_at_refs(&vault_root, old, new)?;
+
+    let baseline_pages: Vec<Page> = baseline_pairs
+        .iter()
+        .map(|(p, c)| Page {
+            path: p.as_path(),
+            contents: c.as_str(),
+        })
+        .collect();
+    let new_pages: Vec<Page> = new_pairs
+        .iter()
+        .map(|(p, c)| Page {
+            path: p.as_path(),
+            contents: c.as_str(),
+        })
+        .collect();
+
+    let findings = scan_diff(&baseline_pages, &new_pages);
+    print!("{}", format_report(&findings));
+
+    if findings.is_empty() {
+        Ok(())
+    } else {
+        std::process::exit(1);
+    }
+}
+
+/// Enumerate `.md` files in the vault at two git refs and return
+/// `(baseline, new)` pairs. Uses `git ls-tree` to walk each ref and
+/// `git show` to read file contents — same mechanism the existing
+/// `zetl diff` backend relies on.
+type MdFileList = Vec<(PathBuf, String)>;
+
+fn load_vault_at_refs(
+    vault_root: &Path,
+    old_ref: &str,
+    new_ref: &str,
+) -> Result<(MdFileList, MdFileList)> {
+    let baseline = git_ls_md_files(vault_root, old_ref)?;
+    let newside = git_ls_md_files(vault_root, new_ref)?;
+
+    let mut baseline_pairs: Vec<(PathBuf, String)> = Vec::new();
+    for rel in &baseline {
+        if let Some(content) = git_show(vault_root, old_ref, rel)? {
+            baseline_pairs.push((PathBuf::from(rel), content));
+        }
+    }
+    let mut new_pairs: Vec<(PathBuf, String)> = Vec::new();
+    for rel in &newside {
+        if let Some(content) = git_show(vault_root, new_ref, rel)? {
+            new_pairs.push((PathBuf::from(rel), content));
+        }
+    }
+    Ok((baseline_pairs, new_pairs))
+}
+
+fn git_ls_md_files(vault_root: &Path, git_ref: &str) -> Result<Vec<String>> {
+    let output = std::process::Command::new("git")
+        .args([
+            "-C",
+            vault_root.to_str().unwrap_or("."),
+            "ls-tree",
+            "-r",
+            "--name-only",
+            git_ref,
+        ])
+        .output()
+        .context("running git ls-tree")?;
+    if !output.status.success() {
+        anyhow::bail!("git ls-tree failed for ref {git_ref}");
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter(|l| l.ends_with(".md"))
+        .map(|l| l.to_owned())
+        .collect())
+}
+
+struct CorpusFixtureReport {
+    report_text: String,
+    missed: Vec<String>,
+}
+
+fn cmd_cap_audit_diff_corpus_one(fixture_dir: &Path) -> Result<CorpusFixtureReport> {
+    use zetl::cap::audit_diff::{format_report, scan_diff, Page};
+
+    let new_dir = fixture_dir.join("new");
+    let baseline_dir = fixture_dir.join("baseline");
+    if !new_dir.is_dir() {
+        anyhow::bail!(
+            "corpus fixture missing `new/` dir: {}",
+            fixture_dir.display()
+        );
+    }
+
+    let baseline_files = read_md_tree(&baseline_dir).unwrap_or_default();
+    let new_files = read_md_tree(&new_dir)?;
+
+    let baseline_pages: Vec<Page> = baseline_files
+        .iter()
+        .map(|(p, c)| Page {
+            path: p.as_path(),
+            contents: c.as_str(),
+        })
+        .collect();
+    let new_pages: Vec<Page> = new_files
+        .iter()
+        .map(|(p, c)| Page {
+            path: p.as_path(),
+            contents: c.as_str(),
+        })
+        .collect();
+
+    let findings = scan_diff(&baseline_pages, &new_pages);
+    let report_text = format_report(&findings);
+
+    // Check expected markers.
+    let expected = fixture_dir.join("expected.txt");
+    let mut missed = Vec::new();
+    if expected.is_file() {
+        let raw = std::fs::read_to_string(&expected)
+            .with_context(|| format!("reading {}", expected.display()))?;
+        let got_tags: Vec<&str> = findings.iter().map(|f| f.kind.tag()).collect();
+        for line in raw.lines() {
+            let wanted = line.trim();
+            if wanted.is_empty() || wanted.starts_with('#') {
+                continue;
+            }
+            if !got_tags.contains(&wanted) {
+                missed.push(wanted.to_string());
+            }
+        }
+    }
+
+    Ok(CorpusFixtureReport {
+        report_text,
+        missed,
+    })
+}
+
+fn cmd_cap_audit_diff_corpus_root(root: &Path) -> Result<()> {
+    let fixtures_dir = if root.join("fixtures").is_dir() {
+        root.join("fixtures")
+    } else {
+        root.to_path_buf()
+    };
+    let mut entries: Vec<PathBuf> = match std::fs::read_dir(&fixtures_dir) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.is_dir())
+            .collect(),
+        Err(e) => anyhow::bail!("reading corpus root {}: {}", fixtures_dir.display(), e),
+    };
+    entries.sort();
+
+    if entries.is_empty() {
+        anyhow::bail!("no fixtures found under {}", fixtures_dir.display());
+    }
+
+    let mut any_missed = false;
+    for fx in &entries {
+        let name = fx
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let report = cmd_cap_audit_diff_corpus_one(fx)?;
+        if report.missed.is_empty() {
+            println!("[zetl cap audit-diff] PASS {name}");
+        } else {
+            any_missed = true;
+            println!("[zetl cap audit-diff] MISS {name}");
+            for m in &report.missed {
+                println!("  - expected finding kind `{m}` not detected");
+            }
+        }
+    }
+    if any_missed {
+        eprintln!("[zetl cap audit-diff] corpus regression — REQ-3424 gate FAILED");
+        std::process::exit(1);
+    }
+    println!("[zetl cap audit-diff] {} fixture(s) OK", entries.len());
+    Ok(())
+}
+
+fn read_md_tree(dir: &Path) -> Result<Vec<(PathBuf, String)>> {
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out: Vec<(PathBuf, String)> = Vec::new();
+    let walker = ignore::WalkBuilder::new(dir).hidden(false).build();
+    for entry in walker.flatten() {
+        let p = entry.path();
+        if !p.is_file() {
+            continue;
+        }
+        if p.extension().and_then(|s| s.to_str()) != Some("md") {
+            continue;
+        }
+        let rel = p.strip_prefix(dir).unwrap_or(p).to_path_buf();
+        let content =
+            std::fs::read_to_string(p).with_context(|| format!("reading {}", p.display()))?;
+        out.push((rel, content));
+    }
+    out.sort();
+    Ok(out)
 }
 
 #[cfg(feature = "mcp")]

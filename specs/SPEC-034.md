@@ -1,7 +1,7 @@
 ---
 title: "SPEC-034: Capability-URL Static Distribution — Signed, Delegated-URL, TOFU-Bound Encrypted Wikis"
 version: 0.4.0
-status: draft
+status: implemented
 date: 2026-04-20
 audience: agent, human
 supersedes-internally: |
@@ -568,13 +568,13 @@ Content-Security-Policy:
   script-src 'self';                              /* with SRI on the shim */
   style-src 'self';
   img-src 'self' data:;
-  connect-src 'none';
+  connect-src 'self';
   font-src 'self';
   frame-ancestors 'none';
   base-uri 'none';
   form-action 'none';
   require-trusted-types-for 'script';
-  trusted-types 'none';
+  trusted-types zetl-cap;
 ```
 
 Shim script tag: `<script src="/assets/shim.js" integrity="sha384-<hash>" crossorigin="anonymous">`.
@@ -1020,13 +1020,13 @@ Content-Security-Policy:
   script-src 'self';
   style-src 'self';
   img-src 'self' data:;
-  connect-src 'none';
+  connect-src 'self';
   font-src 'self';
   frame-ancestors 'none';
   base-uri 'none';
   form-action 'none';
   require-trusted-types-for 'script';
-  trusted-types 'none';
+  trusted-types zetl-cap;
 ```
 
 Shim script: `<script src="/assets/shim.js" integrity="sha384-<hash>" crossorigin="anonymous">`

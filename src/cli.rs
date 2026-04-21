@@ -567,6 +567,209 @@ pub enum Command {
 
     /// Generate a roff(7) man page on stdout (pipe to `man -l -` to preview)
     Man,
+
+    /// Capability-URL static-site mode operations
+    Cap {
+        #[command(subcommand)]
+        command: CapCommand,
+    },
+}
+
+/// Subcommands for `zetl cap` (SPEC-034 REQ-3416 capability-URL
+/// static-distribution mode).
+///
+/// The CLI surface is the full set of verbs called out in REQ-3416;
+/// verbs whose implementation has not landed exit non-zero with a
+/// `not-yet-implemented` diagnostic so operators discover the surface
+/// without hitting a half-implemented workflow.
+#[derive(Subcommand)]
+pub enum CapCommand {
+    /// Generate both the content-encryption secret and the vault-signing
+    /// keypair. Emits to stdout exactly once — see SPEC-034 REQ-3419.
+    #[command(
+        after_help = "Examples:\n  zetl cap genkey                             Print ZETL_CAP_SECRET + signing key\n\nSee SPEC-034 REQ-3419 / ADR-3405 for storage guidance."
+    )]
+    Genkey,
+
+    /// Issue an invitation grant for a new reader.
+    #[command(
+        after_help = "Examples:\n  zetl cap invite alice --cohort eng --site-url https://wiki.example\n  zetl cap invite bob --cohort ops --expires 7d --pages 'projects/*' --site-url https://wiki.example\n  zetl cap invite carol --cohort eng --recipient age-recipient-v1:...   # hardened mode\n  zetl cap invite dan --cohort eng --via enrol-page --site-url https://wiki.example\n\nSee SPEC-034 REQ-3416 / REQ-3410."
+    )]
+    Invite {
+        /// Human-readable invitee label (stored in grants.toml).
+        name: String,
+        /// Cohort id the grant belongs to.
+        #[arg(long, value_name = "ID")]
+        cohort: String,
+        /// Expiry duration (e.g. "72h", "7d").
+        #[arg(long, value_name = "DUR")]
+        expires: Option<String>,
+        /// Page scope glob restricting what this grant decrypts.
+        #[arg(long, value_name = "GLOB")]
+        pages: Option<String>,
+        /// Pre-collected recipient pubkey (hardened mode — skip delegated
+        /// URL generation). Must carry the `age-recipient-v1:` prefix.
+        #[arg(long, value_name = "PUBKEY")]
+        recipient: Option<String>,
+        /// Print an `enrol.html` URL instead of generating the grant
+        /// locally (hardened mode, REQ-3404). Only valid value today is
+        /// `enrol-page`.
+        #[arg(long = "via", value_name = "MODE")]
+        via: Option<String>,
+        /// Split the private key across URL + second factor (REQ-3430).
+        #[arg(long)]
+        split_key: bool,
+        /// Canonical site URL (scheme + host) used to render the invite
+        /// URL. Falls back to the `ZETL_CAP_SITE_URL` env var.
+        #[arg(long, value_name = "URL", env = "ZETL_CAP_SITE_URL")]
+        site_url: Option<String>,
+        /// Landing slug the invite URL points at (the reader's first
+        /// page). Defaults to `welcome`; operators rename their landing
+        /// page by passing a different slug here.
+        #[arg(long, value_name = "SLUG", default_value = "welcome")]
+        slug: String,
+    },
+
+    /// List all issued grants.
+    #[command(
+        after_help = "Examples:\n  zetl cap list\n  zetl cap list --cohort eng\n  zetl cap list --output json"
+    )]
+    List {
+        /// Restrict output to one cohort.
+        #[arg(long, value_name = "ID")]
+        cohort: Option<String>,
+        /// Output format for this verb (overrides the global --format).
+        #[arg(long, value_enum, default_value_t = OutputFormat::Auto)]
+        output: OutputFormat,
+    },
+
+    /// Revoke an issued grant by id.
+    Revoke {
+        /// Grant id to revoke (see `zetl cap list`).
+        grant_id: String,
+    },
+
+    /// Rotate a cohort's content-key salt (URLs remain stable per
+    /// REQ-3402).
+    Rotate {
+        /// Cohort id to rotate.
+        #[arg(long, value_name = "ID")]
+        cohort: String,
+    },
+
+    /// Mark a grant as operator-confirmed-onboarded
+    /// (`bound=true`; REQ-3416).
+    Finalise {
+        /// Grant id to finalise.
+        grant_id: String,
+        /// Reissue the delegated private key at finalisation time.
+        #[arg(long)]
+        rotate_grant: bool,
+    },
+
+    /// Share: not part of the SPEC-034 verb set today; reserved for a
+    /// future workflow that bundles an invite URL with auxiliary metadata
+    /// for out-of-band delivery.
+    Share {
+        /// Grant id whose invite artefacts should be re-emitted.
+        grant_id: String,
+    },
+
+    /// Stale-grant and public-safety audit (REQ-3423 / REQ-3416).
+    ///
+    /// Exits non-zero if any grant has expired since the last build or
+    /// if a configured public cohort is missing the required guardrails.
+    Check {
+        /// Run the public-safety audit only.
+        #[arg(long)]
+        public_safety: bool,
+    },
+
+    /// Mark past-expiry grants as revoked in-place.
+    Sweep,
+
+    /// SPAKE2 pubkey handoff between two operators (REQ-3408).
+    ///
+    /// The pairing runs in a single process per side so the SPAKE2
+    /// session state (which the upstream crate does not serialise) can
+    /// stay resident across the three message exchanges. Two roles:
+    ///
+    ///   * **Grantor** (`--grantor`, the default): generate a fresh
+    ///     4-word BIP39 phrase, refuse reuse within 30 days (tracked
+    ///     in `.zetl/caps/.pair-nonces`), start SPAKE2, print phrase +
+    ///     outbound handshake, then BLOCK reading three lines from
+    ///     stdin — peer handshake, peer pubkey (base64), peer HMAC
+    ///     tag (base64). Verifies the HMAC and prints the authenticated
+    ///     pubkey on success (exit 1 on mismatch).
+    ///
+    ///   * **Grantee** (`--grantee`): one-shot. Takes the grantor's
+    ///     handshake + the phrase + the local pubkey, starts its own
+    ///     SPAKE2 session, derives the shared key, and prints its
+    ///     outbound handshake + HMAC tag of the pubkey. The operator
+    ///     relays those two strings back to the grantor.
+    ///
+    /// The handoff is authenticated by the phrase: if the phrase
+    /// differs on the two sides, SPAKE2 derives different keys and the
+    /// HMAC verification fails.
+    #[command(
+        after_help = "Examples:\n  zetl cap pair --grantor\n                                              Start a new pairing (interactive — reads stdin)\n  zetl cap pair --grantee --peer <handshake> --phrase <4-words> --pubkey <b64>\n                                              Complete the pairing as the grantee\n\nSee SPEC-034 REQ-3408 (CLI) / CON-3407."
+    )]
+    Pair {
+        /// Run the grantor side (default if neither flag is set).
+        /// Blocks on stdin after printing phrase + handshake.
+        #[arg(long, conflicts_with = "grantee")]
+        grantor: bool,
+        /// Run the grantee side (one-shot). Requires `--peer`,
+        /// `--phrase`, `--pubkey`.
+        #[arg(long, conflicts_with = "grantor")]
+        grantee: bool,
+
+        /// Peer's base64 SPAKE2 outbound message (grantor's handshake,
+        /// from stdout of `zetl cap pair --grantor`). Required by
+        /// `--grantee`.
+        #[arg(long, value_name = "HANDSHAKE")]
+        peer: Option<String>,
+        /// 4-word BIP39 pairing phrase. Required by `--grantee`;
+        /// optional for `--grantor` (test hook — seeds reuse a pinned
+        /// phrase rather than drawing from the RNG).
+        #[arg(long, value_name = "PHRASE", env = "ZETL_CAP_PAIR_PHRASE")]
+        phrase: Option<String>,
+        /// 32-byte raw pubkey as base64 (standard, no padding).
+        /// Required by `--grantee` — the pubkey being authenticated
+        /// into the grantor's cohort.
+        #[arg(long, value_name = "PUBKEY_B64")]
+        pubkey: Option<String>,
+    },
+
+    /// Scan a vault diff for malicious-content patterns
+    #[command(
+        after_help = "Examples:\n  zetl cap audit-diff main HEAD                Scan changes since main\n  zetl cap audit-diff --corpus tools/audit-diff-corpus/fixtures/001-*\n                                              Run against a single corpus fixture\n  zetl cap audit-diff --corpus-root tools/audit-diff-corpus\n                                              Walk every fixture under the corpus root"
+    )]
+    AuditDiff {
+        /// Git ref for the baseline vault state
+        #[arg(value_name = "OLD_REF")]
+        old_ref: Option<String>,
+        /// Git ref for the new vault state (defaults to HEAD)
+        #[arg(value_name = "NEW_REF")]
+        new_ref: Option<String>,
+        /// Scan a single corpus fixture directory (must contain `new/`;
+        /// `baseline/` is optional). Mutually exclusive with git refs.
+        #[arg(long, value_name = "DIR", conflicts_with_all = ["old_ref", "new_ref", "corpus_root"])]
+        corpus: Option<std::path::PathBuf>,
+        /// Walk every fixture directory under a corpus root (per
+        /// REQ-3424's CI `audit-corpus` job). Fails on any fixture
+        /// whose expected findings are missed.
+        #[arg(long, value_name = "DIR", conflicts_with_all = ["old_ref", "new_ref", "corpus"])]
+        corpus_root: Option<std::path::PathBuf>,
+    },
+
+    /// Rotate the Ed25519 vault-signing key. Requires rebuilding every
+    /// page so old signatures are re-issued under the new key.
+    RotateSigningKey,
+
+    /// Print the operator checklist for removing the wiki from service
+    /// (REQ-3431). Does not modify any files.
+    EmergencyShutdown,
 }
 
 #[derive(Subcommand)]

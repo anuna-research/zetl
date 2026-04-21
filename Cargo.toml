@@ -95,10 +95,47 @@ webauthn-rs = "0.5"
 uuid = { version = "1", features = ["v4"] }
 url = "2"
 base64 = "0.22"
+# SPEC-034 REQ-3421 capability-mode HTML sanitiser. Wraps the ammonia
+# Builder with an allowlist matching OWASP HTML-sanitisation recommendations;
+# config lives at tools/sanitiser-config.toml for operator visibility.
+ammonia = "4"
 bip39 = { version = "2", features = ["rand"] }
+# SPEC-034 REQ-3408 (CLI) / §8 `cap::pair::spake2` — PAKE-over-ed25519
+# used by `zetl cap pair` to authenticate an out-of-band pubkey handoff
+# against a freshly-generated 4-word BIP39 phrase. The 0.4 line tracks
+# rand_core 0.6 + curve25519-dalek 4.x (the versions zetl already links)
+# and stays within the workspace's pinned rustc floor.
+spake2 = "0.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 hmac = "0.12"
+# SPEC-034 CON-3401 path-cap derivation + CON-3409 TOFU-wrap derivation.
+# Used by the pure-core `cap::derivation` module (RFC 5869 HKDF-SHA256).
+hkdf = "0.12"
 getrandom = "0.2"
+# SPEC-034 REQ-3422 + ADR-3413 X25519 ephemeral padding. The `zeroize`
+# feature wires ZeroizeOnDrop onto StaticSecret so padding scalars are
+# zeroed when the padding-construct function returns — that guarantee
+# is asserted at compile time in `cap::pad` tests.
+x25519-dalek = { version = "2", features = ["static_secrets", "zeroize"] }
+# SPEC-034 REQ-3403 / CON-3404 age v1 ciphertext emission. `cap::age_encrypt`
+# wraps `age::Encryptor::with_recipients` over standard `x25519::Recipient`
+# entries so real + padding recipients are byte-indistinguishable in the
+# header (REQ-3422 acceptance #3).
+age = "0.11"
+# bech32 encoding of raw X25519 pubkeys into the "age1..." form that
+# `age::x25519::Recipient` accepts via `FromStr` (no public constructor
+# from raw bytes exists in 0.11). Standard Bech32 variant (not Bech32m),
+# HRP "age" — matches the age wire format.
+bech32 = "0.11"
+# RngCore / CryptoRng traits + OsRng; used by `cap::pad` and by any
+# other pure-core-with-rng surface that needs to accept seeded RNGs for
+# deterministic tests.
+rand_core = { version = "0.6", features = ["getrandom"] }
+# The `ZeroizeOnDrop` marker trait used by `cap::pad` to assert at
+# compile time that padding private scalars are zeroed on drop
+# (SPEC-034 ADR-3413). Also pulled in transitively by x25519-dalek;
+# the explicit entry keeps the semantic dependency visible.
+zeroize = "1"
 # default-features=false disables `https` + `ssh`. zetl only uses git2
 # for local repo inspection and auto-commits (no network), so neither
 # is needed. Dropping `https` also eliminates libgit2-sys's
@@ -142,6 +179,10 @@ serde_json = "1"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
+# Seeded ChaCha20 RNG (CryptoRng) for deterministic-padding tests
+# (SPEC-034 §8 purity: `cap::pad::x25519_padding_construct` is a
+# function of its RNG input).
+rand_chacha = "0.3"
 
 [[test]]
 name = "reason_integration"

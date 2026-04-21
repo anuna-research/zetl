@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Reading this wiki</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --fg: #111;
+    --fg-muted: #555;
+    --bg: #fff;
+    --rule: #ddd;
+    --accent: #0057b7;
+    --warn-bg: #fff3cd;
+    --warn-border: #e0b900;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg: #eee;
+      --fg-muted: #aaa;
+      --bg: #121212;
+      --rule: #333;
+      --accent: #6ea8ff;
+      --warn-bg: #3a2f00;
+      --warn-border: #8a6d00;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main {
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+  }
+  h1 { font-size: 1.75rem; margin-top: 0; }
+  h2 { font-size: 1.25rem; margin-top: 2.5rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.25rem; }
+  h3 { font-size: 1.05rem; margin-top: 1.75rem; }
+  p, ul, ol { margin: 0.75rem 0; }
+  code, kbd {
+    font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--rule);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+  a { color: var(--accent); }
+  .lede { font-size: 1.05rem; color: var(--fg-muted); }
+  .toc {
+    background: var(--rule);
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin: 1.5rem 0;
+  }
+  .toc ul { margin: 0.25rem 0 0; padding-left: 1.25rem; }
+  .note {
+    background: var(--warn-bg);
+    border-left: 3px solid var(--warn-border);
+    padding: 0.75rem 1rem;
+    border-radius: 0 4px 4px 0;
+    margin: 1rem 0;
+  }
+  section.trouble { border-top: 1px solid var(--rule); padding-top: 0.5rem; }
+  footer {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+  }
+</style>
+</head>
+<body>
+<main data-zetl-reader-docs>
+
+<h1>Reading this wiki</h1>
+
+<p class="lede">This wiki keeps its pages private by encrypting them in your browser. You unlock pages with a <strong>passkey</strong> on your device — the same kind of passkey your bank, password manager, or work SSO might already use. You do not need an account, a username, or a password.</p>
+
+<div class="toc" aria-label="On this page">
+  <strong>On this page</strong>
+  <ul>
+    <li><a href="#passkey">What is a passkey?</a></li>
+    <li><a href="#enrol">Enrolling on this device</a></li>
+    <li><a href="#new-device">Reading on a new device</a></li>
+    <li><a href="#lost">If you lose your authenticator</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#fallback-prf-unavailable">Fragment-required mode (non-PRF browsers)</a></li>
+  </ul>
+</div>
+
+<h2 id="passkey">What is a passkey?</h2>
+
+<p>A <strong>passkey</strong> is a secret that lives on your device — your phone, your laptop, or a hardware key like a YubiKey — and unlocks with your fingerprint, your face, a PIN, or a tap. You do not type it, you do not memorise it, and it never leaves the device.</p>
+
+<p>Think of it like a house key on your keyring: you prove who you are by having the key, not by reciting a password. The wiki asks your device <em>“please prove you have the right key”</em>, your device asks <em>you</em> to unlock with your fingerprint or PIN, and that is it. No passwords cross the network.</p>
+
+<p>When you read this wiki for the first time, your browser will pop a small system prompt asking whether to save a passkey for this site. Approve it. From then on, opening the wiki just asks for your fingerprint or PIN.</p>
+
+<h2 id="enrol">Enrolling on this device</h2>
+
+<p>Your operator will send you one of two things:</p>
+
+<ol>
+  <li><strong>An invite link</strong> — a URL that looks like <code>https://wiki.example/c/…/page.html#k=…</code> with a hash fragment after the <code>#</code>. Click the link on the device you want to read from. On first visit, your browser asks to create a passkey for this site. Approve it. The hash fragment is consumed during that first visit; do not share the invite link further.</li>
+  <li><strong>An enrolment page</strong> — a URL like <code>https://wiki.example/enroll.html?cohort=…</code>. Open it. Your browser asks to create a passkey, then shows you a public key (a string beginning with <code>age-recipient-v1:</code>). Copy that string and send it back to your operator through whatever channel they told you to use. They will add it and send you the reading URL.</li>
+</ol>
+
+<div class="note">
+  <strong>Invite links are single-device.</strong> The secret in the URL hash binds to this browser on this device on first use. If you want to read from a second device, ask your operator for a second invite — do not copy the URL across.
+</div>
+
+<h3>Which browsers work?</h3>
+
+<p>Any recent Chromium-based browser (Chrome, Edge, Brave, Arc) or recent Firefox on desktop. On mobile, recent Safari on iOS 16+ and Chrome on Android. Your device needs screen-unlock configured (fingerprint, face, or PIN). If your browser is older than two years, update it.</p>
+
+<h3>What should I <em>not</em> do?</h3>
+
+<ul>
+  <li>Do <strong>not</strong> paste invite links into chat previews, link shorteners, or URL-preview bots — anything that unfurls the URL will burn the invite.</li>
+  <li>Do <strong>not</strong> email invite links to yourself to open on another device. Ask for a fresh invite for each device.</li>
+  <li>Do <strong>not</strong> screenshot the URL bar: the fragment after <code>#</code> is a secret.</li>
+</ul>
+
+<h2 id="new-device">Reading on a new device</h2>
+
+<p>A passkey stays on the device that created it. Reading on a new device means starting fresh:</p>
+
+<ul>
+  <li>Ask your operator for a <strong>new invite link</strong> (delegated-URL mode) or for a fresh enrolment on the <strong>enrol page</strong> (hardened mode).</li>
+  <li>Open it on the new device. Your browser will prompt to create a passkey for this site. Approve it.</li>
+  <li>The passkey on the new device is independent of the one on any other device. You can have as many as you need.</li>
+</ul>
+
+<p>Some passkey providers — iCloud Keychain, 1Password, Bitwarden, Google Password Manager — sync passkeys across your own devices. If you use one of those, a passkey you created on your laptop may appear on your phone automatically. You still need a fresh invite to <em>visit</em> the wiki on the new device the first time, so the browser can bind the invite to the synced passkey.</p>
+
+<h2 id="lost">If you lose your authenticator</h2>
+
+<p>If you lose the device that holds your passkey — phone stolen, laptop dead, hardware key lost — you lose the ability to read the wiki from that device. This is by design: nobody else can read it from that device either.</p>
+
+<p>To recover, contact your <strong>wiki operator</strong> directly — the person or team who sent you the original invite. They will:</p>
+
+<ol>
+  <li>Revoke the old device's access (so if the device ever comes back online it cannot read new content).</li>
+  <li>Send you a fresh invite link or enrolment URL for your replacement device.</li>
+</ol>
+
+<p>The operator cannot recover the old passkey. They cannot read your old device's stored state. What they <em>can</em> do is give you a new invite, which is the only path back in.</p>
+
+<div class="note">
+  <strong>Tell your operator promptly if the old device was lost or stolen.</strong> Until they revoke it, a device that holds a wrapped passkey could in principle still decrypt any pages the device already downloaded. Rebuilding the wiki with the old device revoked closes that window.
+</div>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<p>When something goes wrong, the wiki shows a short red message in the page area. Each message has a shorthand kind — find it below. If none of the steps resolve the problem, contact your wiki operator and quote the message text and the page URL (without the <code>#…</code> fragment).</p>
+
+<section class="trouble" id="err-signature-failed">
+  <h3>“This page's signature did not verify”</h3>
+  <p><strong>What it means.</strong> The page you received does not match what your wiki operator published. Either the server sent you the wrong file, a cache somewhere is serving a stale copy, or — rarely — someone between you and the wiki changed it.</p>
+  <p><strong>What to do.</strong></p>
+  <ol>
+    <li>Do <strong>not</strong> reload repeatedly or try to “make it work”. The browser is protecting you.</li>
+    <li>Close the tab.</li>
+    <li>Contact your wiki operator and tell them you saw a signature-verify failure on <em>this URL</em>. They can check whether they recently rotated their signing key without flushing their CDN cache, which is the usual cause.</li>
+    <li>Once the operator confirms, open the URL fresh in a private/incognito window.</li>
+  </ol>
+</section>
+
+<section class="trouble" id="err-need-invite">
+  <h3>“This page is only readable from a fresh invite URL on this device”</h3>
+  <p><strong>What it means.</strong> The wiki does not recognise this browser on this device. Either this is your first visit and you opened the page without the full invite link, or the invite has been used before.</p>
+  <p><strong>What to do.</strong> Ask your wiki operator for a new invite URL. When you receive it, open that full URL (everything after the <code>#</code> matters) in this browser, on this device.</p>
+</section>
+
+<section class="trouble" id="err-identity-unavailable">
+  <h3>“Could not recover the reading identity”</h3>
+  <p><strong>What it means.</strong> Your browser cannot find the passkey it expects for this wiki. The common causes are: you cleared site data, you are in a private/incognito window that will not see your main passkeys, or your browser profile has changed.</p>
+  <p><strong>What to do.</strong></p>
+  <ul>
+    <li>Check whether you are in a private/incognito window. If so, open a normal window.</li>
+    <li>If you recently cleared browser data, ask your operator to re-invite you — the stored passkey binding is gone.</li>
+    <li>If neither applies, contact your wiki operator.</li>
+  </ul>
+</section>
+
+<section class="trouble" id="err-tofu-failed">
+  <h3>“Could not bind this device to the cohort passkey”</h3>
+  <p><strong>What it means.</strong> Your browser or authenticator does not support the WebAuthn feature this wiki uses (the “PRF extension”). Or the passkey creation prompt was cancelled.</p>
+  <p><strong>What to do.</strong></p>
+  <ul>
+    <li>Reload the page and try again; if the passkey prompt appears, approve it.</li>
+    <li>Update your browser to the latest version.</li>
+    <li>If you were using a hardware key, check that it supports the PRF extension (most recent YubiKeys do; older models may not).</li>
+    <li>Switch to a recent Chromium- or Firefox-based browser if yours is very old.</li>
+  </ul>
+</section>
+
+<section class="trouble" id="err-decrypt-failed">
+  <h3>“Could not decrypt this page”</h3>
+  <p><strong>What it means.</strong> Your reading key does not unlock this page. The most common cause is that your access was <em>revoked or rotated</em> on the operator's side — for example, the operator removed you from the group, or rotated cohort keys and you have not received the new invite.</p>
+  <p><strong>What to do.</strong> Contact your wiki operator and ask for a fresh invite. If you were intentionally removed from the group, they will let you know.</p>
+</section>
+
+<section class="trouble" id="err-envelope-malformed">
+  <h3>“This page's envelope is malformed”</h3>
+  <p><strong>What it means.</strong> The wiki file is not in a format the browser recognises. Usually a caching or deploy-in-progress glitch.</p>
+  <p><strong>What to do.</strong> Reload in a minute. If it persists, contact your wiki operator.</p>
+</section>
+
+<section class="trouble" id="err-sw-purge-failed">
+  <h3>“Could not clear stale service workers”</h3>
+  <p><strong>What it means.</strong> An older version of the wiki left a helper script running in your browser and it refuses to be cleared from this tab alone.</p>
+  <p><strong>What to do.</strong> Close <strong>all</strong> tabs for this site — not just this one — and open the URL fresh.</p>
+</section>
+
+<section class="trouble" id="err-lock-unavailable">
+  <h3>“Your browser does not support the concurrency lock this shim requires”</h3>
+  <p><strong>What it means.</strong> Your browser is missing <code>navigator.locks</code>, which the wiki needs to prevent multiple tabs from stepping on each other.</p>
+  <p><strong>What to do.</strong> Switch to a recent Chromium-based browser (Chrome, Edge, Brave) or a recent Firefox. Very old browsers will not work.</p>
+</section>
+
+<section class="trouble" id="err-host-missing">
+  <h3>“Capability-mode mount point is missing”</h3>
+  <p><strong>What it means.</strong> The HTML your browser received is not the page the wiki expected to serve. This is almost always an operator-side deploy problem.</p>
+  <p><strong>What to do.</strong> Contact your wiki operator and quote the URL and this message.</p>
+</section>
+
+<section class="trouble" id="err-internal">
+  <h3>“An internal error occurred”</h3>
+  <p><strong>What it means.</strong> The wiki hit an unexpected condition the browser did not have a specific message for.</p>
+  <p><strong>What to do.</strong> Reload once. If it repeats, contact your wiki operator and quote the URL.</p>
+</section>
+
+<h2 id="fallback-prf-unavailable">Fragment-required mode (non-PRF browsers)</h2>
+
+<p>If your browser or authenticator does not support the WebAuthn feature this wiki uses to bind a passkey to your device (the <strong>PRF extension</strong>), the page still decrypts — but it does so directly from the secret at the end of the URL, <em>on every visit</em>. The shim shows a small banner at the top of the page reading <em>“Running in fragment-required mode…”</em> so you know you are in this mode. This is a deliberate graceful fallback, not an error.</p>
+
+<p>What this means in practice:</p>
+
+<ul>
+  <li>The secret fragment after <code>#</code> in the URL <strong>stays visible in your address bar</strong> — the shim does not scrub it, because it needs the fragment on the next visit too.</li>
+  <li>There is <strong>no passkey binding</strong> on this device. Clearing browser data loses nothing extra; you only ever had the invite URL.</li>
+  <li>You must reopen the <strong>same invite URL</strong> (with its <code>#k=…</code> suffix) each time you want to read. Bookmark it; do not share it.</li>
+  <li>Clicking internal wiki links may land you on other pages without the fragment — if those pages also need decryption, you will see <a href="#err-need-invite">“need-invite”</a>. Reopen from your bookmarked invite URL.</li>
+</ul>
+
+<div class="note">
+  <strong>Fragment-required mode widens the URL-leak surface described in §11.2 of the capability spec.</strong> The fragment stays in your URL bar, browser history, and any place the browser syncs or hands off URLs. Treat the bookmarked invite URL itself as the secret. If that is unacceptable, ask your operator for access from a device whose browser supports WebAuthn PRF — see the list below.
+</div>
+
+<p><strong>Known-good combinations.</strong> Recent Chromium-based browsers (Chrome 116+, Edge, Brave, Arc) on any OS; Firefox 128+ on desktop; recent Safari on macOS Sonoma+ / iOS 17+. If you are hitting fragment-required mode on one of these, update the browser — the PRF extension is present in recent releases but was not in older ones.</p>
+
+<p><strong>Older Safari, locked-down enterprise browsers, or browsers inside a WebView</strong> often do not advertise PRF. A different browser on the same device usually works.</p>
+
+<footer>
+  <p>This page is part of a capability-mode zetl wiki. The operator-facing reference for the underlying model lives in <code>docs/capability-security.md</code>; the troubleshooting entries above have a mirror in <code>docs/reader-troubleshooting.md</code>.</p>
+</footer>
+
+</main>
+</body>
+</html>

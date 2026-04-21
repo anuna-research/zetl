@@ -777,13 +777,10 @@ pub fn build_static(
         folder_count += 1;
     }
 
-    // ── robots.txt + _headers (only written if not already provided by a public overlay later) ──
-    let robots = "User-agent: *\nAllow: /\n";
-    if !out.join("robots.txt").exists() {
-        std::fs::write(out.join("robots.txt"), robots)?;
-    }
-
     // ── sitemap.xml + llms.txt (agent discovery artefacts) ──
+    // robots.txt itself is emitted below via `merge_robots_txt` so the
+    // SPEC-034 REQ-3418 / CON-3406 disallow lines layer correctly onto
+    // any operator-supplied file from the public overlay.
     std::fs::write(out.join("sitemap.xml"), build_sitemap(&vault_ctx))
         .context("writing sitemap.xml")?;
     std::fs::write(out.join("llms.txt"), build_llms_txt(&vault_ctx, "build"))
@@ -817,6 +814,18 @@ pub fn build_static(
     } else {
         false
     };
+
+    // ── robots.txt (SPEC-034 REQ-3418 / CON-3406) ─────────────────────
+    // Written after the public overlay so the operator's own
+    // `public/robots.txt` (if any) forms the base of the merge. Emitted
+    // unconditionally — even when `--capability` is off, the `/c/` and
+    // `/_zetl/` paths are reserved for the capability build and should
+    // stay off search-engine index for any vault that will ever ship
+    // encrypted pages. Operator's content is preserved verbatim;
+    // stricter rules (e.g. `Disallow: /`) are never relaxed.
+    let operator_robots = std::fs::read_to_string(out.join("robots.txt")).ok();
+    let merged_robots = crate::web::robots::merge_robots_txt(operator_robots.as_deref());
+    std::fs::write(out.join("robots.txt"), merged_robots)?;
 
     // SPEC-027 REQ-303: static emission of vault-wide history page.
     // Renders even when history is absent — the template's graceful-absence

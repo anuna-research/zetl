@@ -1,0 +1,2 @@
+# No findings expected — www. normalisation must not trigger
+# `unseen-domain` when the bare host is in baseline.

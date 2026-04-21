@@ -1,75 +1,75 @@
 {
-  "task_id": "spec-031-supersede",
+  "task_id": "cap-mark-implemented",
   "token_budget": 8000,
-  "tokens_used": 314,
+  "tokens_used": 426,
   "elements_selected": [
     {
       "source": "plan-meta/description",
-      "content": "Mark SPEC-031 as superseded by SPEC-032 + SPEC-033. Update status header + supersede links. Retain top-50 scan findings.",
-      "token_cost": 30,
+      "content": "Update `specs/SPEC-034.md` status frontmatter from `draft` to `implemented` per USDD Phase 3 quality gates. Requires: all constitutional quality gates pass, all REQ→TEST traceability verified, Tier 1 + Tier 2 reviews completed and findings addressed, docs generated, synthetic-user walkthroughs confirm behaviour matches spec, CHANGELOG entry present.",
+      "token_cost": 88,
       "priority": "PlanMeta"
     },
     {
-      "source": "memory/episodic/task-ast-schema-changes",
-      "content": "Modified 2 files (+383, -65): .hence/context-manifest.json, tools/zetl-ast-schema-v1.json",
-      "token_cost": 22,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-three-stage-pipeline-changes",
-      "content": "Modified 3 files (+698, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/pipeline.rs",
+      "source": "memory/episodic/task-cap-tier2-review-spec-changes",
+      "content": "Modified 2 files (+489, -65): .hence/context-manifest.json, .hence/reviews/cap-tier2-2026-04-20.md",
       "token_cost": 24,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-build-data-channel-changes",
-      "content": "Modified 3 files (+871, -5): .hence/context-manifest.json, src/hooks/build_data.rs, src/hooks/mod.rs",
-      "token_cost": 25,
+      "source": "memory/episodic/task-cap-sanitiser-changes",
+      "content": "Modified 8 files (+1072, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/mod.rs, src/cap/sanitiser.rs and 3 more",
+      "token_cost": 32,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-ast-types-rust-changes",
-      "content": "Modified 7 files (+1570, -41): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/hooks/ast/mod.rs, src/hooks/mod.rs and 2 more",
-      "token_cost": 33,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-build-context-changes",
-      "content": "Modified 4 files (+728, -20): .hence/context-manifest.json, src/hooks/build_context.rs, src/hooks/mod.rs, src/hooks/pipeline.rs",
-      "token_cost": 31,
-      "priority": "AgentMemory"
-    },
-    {
-      "source": "memory/episodic/task-persistent-protocol-changes",
-      "content": "Modified 4 files (+1416, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/persistent.rs, tests/persistent_protocol_integration.rs",
+      "source": "memory/episodic/task-cap-pure-core-changes",
+      "content": "Modified 13 files (+2449, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/derivation.rs, src/cap/grants/mod.rs and 8 more",
       "token_cost": 35,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-template-vars-changes",
-      "content": "Modified 3 files (+833, -5): .hence/context-manifest.json, src/hooks/mod.rs, src/hooks/template_vars.rs",
-      "token_cost": 25,
+      "source": "memory/episodic/task-cap-audit-diff-changes",
+      "content": "Modified 64 files (+1811, -135): .hence/context-manifest.json, .woodpecker/ci.yaml, Makefile, src/cap/audit_diff.rs, src/cap/derivation.rs and 59 more",
+      "token_cost": 37,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-composition-changes",
-      "content": "Modified 3 files (+1209, -5): .hence/context-manifest.json, src/hooks/composition.rs, src/hooks/mod.rs",
-      "token_cost": 25,
+      "source": "memory/episodic/task-cap-x25519-padding-changes",
+      "content": "Modified 6 files (+369, -5): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/mod.rs, src/cap/pad.rs and 1 more",
+      "token_cost": 31,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-ordering-hooks-changes",
-      "content": "Modified 2 files (+241, -13): .hence/context-manifest.json, src/hooks/composition.rs",
-      "token_cost": 21,
+      "source": "memory/episodic/task-cap-age-encrypt-changes",
+      "content": "Modified 6 files (+1035, -8): .hence/context-manifest.json, Cargo.lock, Cargo.toml, src/cap/age_encrypt.rs, src/cap/mod.rs and 1 more",
+      "token_cost": 33,
       "priority": "AgentMemory"
     },
     {
-      "source": "memory/episodic/task-typed-ast-protocol-changes",
-      "content": "Modified 8 files (+3838, -5): .hence/context-manifest.json, src/hooks/composition.rs, src/hooks/mod.rs, src/hooks/translators/mdast.rs, src/hooks/translators/mod.rs and 3 more",
-      "token_cost": 43,
+      "source": "memory/episodic/task-cap-cli-skeleton-changes",
+      "content": "Modified 4 files (+326, -8): .hence/context-manifest.json, src/cli.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs",
+      "token_cost": 30,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cap-emergency-shutdown-changes",
+      "content": "Modified 6 files (+653, -7): .hence/context-manifest.json, src/cap/emergency_shutdown.rs, src/cap/mod.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs and 1 more",
+      "token_cost": 41,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cap-genkey-changes",
+      "content": "Modified 6 files (+769, -8): .hence/context-manifest.json, src/cap/genkey.rs, src/cap/mod.rs, src/main.rs, tests/cap_cli_skeleton_integration.rs and 1 more",
+      "token_cost": 38,
+      "priority": "AgentMemory"
+    },
+    {
+      "source": "memory/episodic/task-cap-invite-command-changes",
+      "content": "Modified 9 files (+1208, -10): .hence/context-manifest.json, src/cap/invite.rs, src/cap/mod.rs, src/cap/recipients/parsing.rs, src/cli.rs and 4 more",
+      "token_cost": 37,
       "priority": "AgentMemory"
     }
   ],
   "elements_excluded": [],
-  "constructed_at": "2026-04-20T00:15:31Z"
+  "constructed_at": "2026-04-20T19:26:54Z"
 }
