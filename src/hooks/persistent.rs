@@ -602,11 +602,31 @@ impl PersistentHook {
             }
         }
 
-        let mut child = command
+        command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
+
+        // Retry on ETXTBSY ("Text file busy"): cargo test runs in parallel
+        // and when one thread is between `write_hook`'s write and `spawn`'s
+        // exec, a sibling thread's fork can inherit the still-open-for-write
+        // fd and Linux refuses to exec. Mirrors the retry in
+        // src/hooks/mod.rs and removes the need for per-test spawn_or_retry
+        // shims. See rust-lang/rust#114554.
+        let mut child = {
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            loop {
+                match command.spawn() {
+                    Ok(c) => break c,
+                    Err(e)
+                        if e.raw_os_error() == Some(26) && std::time::Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(Duration::from_millis(25));
+                    }
+                    Err(e) => return Err(e.into()),
+                }
+            }
+        };
 
         let stdin = BufWriter::new(child.stdin.take().expect("piped stdin"));
         let stdout = child.stdout.take().expect("piped stdout");

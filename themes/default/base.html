@@ -790,6 +790,17 @@
     window.addEventListener('resize',function(){
       if(isOpen()&&window.innerWidth>=900)setOpen(false);
     });
+
+    /* Mobile: tapping a sidebar link should collapse the drawer. On lg+
+       the checkbox has no visual effect (lg:drawer-open), so unchecking
+       unconditionally is safe. */
+    var sidebarRoot=document.querySelector('.drawer-side');
+    var sidebarToggle=document.getElementById('sidebar-toggle');
+    if(sidebarRoot&&sidebarToggle){
+      sidebarRoot.addEventListener('click',function(e){
+        if(e.target.closest('a[href]'))sidebarToggle.checked=false;
+      });
+    }
   })();
   </script>
   {# SPEC-028 REQ-113 / REQ-115: persistent-shell SPA navigation module.
