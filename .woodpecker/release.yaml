@@ -77,7 +77,9 @@ steps:
     commands:
       - apt-get update && apt-get install -y gcc-mingw-w64-x86-64 zip
       - rustup target add x86_64-pc-windows-gnu
-      - cargo build --release --features "reason,history,mcp,vendored-openssl" --target x86_64-pc-windows-gnu
+      # Soften LTO just for the mingw cross-link — fat LTO + codegen-units=1
+      # OOMs the shared CI runner at link time (see pipelines #158/#159).
+      - CARGO_PROFILE_RELEASE_LTO=thin CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo build --release --features "reason,history,mcp,vendored-openssl" --target x86_64-pc-windows-gnu
       - mkdir -p dist
       - cp target/x86_64-pc-windows-gnu/release/zetl.exe dist/zetl.exe
       - cd dist && zip zetl-windows-x86_64.zip zetl.exe && rm zetl.exe && cd ..
