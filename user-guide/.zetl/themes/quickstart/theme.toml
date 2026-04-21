@@ -1,0 +1,7 @@
+[theme]
+name = "quickstart"
+version = "1.0.0"
+description = "Overrides the vault root (/) with a meta-refresh redirect to /index/ so visitors land on the Quick Start page. Extend-only — every other template falls back to the bundled default theme."
+
+[theme.templates]
+overrides = ["index.html"]

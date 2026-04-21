@@ -11,3 +11,13 @@ tools/theme-build/*/node_modules
 # Built vault sites
 demo-vault/dist
 zetl-vault/dist
+user-guide/dist
+user-guide/site
+
+# The comprehensive user-guide vault ships with a versioned `quickstart`
+# theme, so whitelist its source through the global `.zetl/` ignore.
+# Everything else under user-guide/.zetl/ stays ignored (index.json,
+# search/, jj/, history/ are all cache and regenerate on first run).
+!user-guide/.zetl/
+user-guide/.zetl/*
+!user-guide/.zetl/themes/
