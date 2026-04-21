@@ -1206,19 +1206,15 @@ pub fn build_sitemap(vault_ctx: &VaultContext) -> String {
     };
     let mut urls = String::new();
     // Root index page first.
-    urls.push_str(&format!("  <url><loc>{}/</loc></url>\n", prefix));
+    urls.push_str(&format!("  <url><loc>{prefix}/</loc></url>\n"));
     for p in &vault_ctx.pages {
-        urls.push_str(&format!(
-            "  <url><loc>{}/{}/</loc></url>\n",
-            prefix,
-            xml_escape(&p.slug)
-        ));
+        let slug = xml_escape(&p.slug);
+        urls.push_str(&format!("  <url><loc>{prefix}/{slug}/</loc></url>\n"));
     }
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
 <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n\
-{}</urlset>\n",
-        urls
+{urls}</urlset>\n"
     )
 }
 
