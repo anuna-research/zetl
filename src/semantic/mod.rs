@@ -635,6 +635,9 @@ fn load_model(vault_root: &Path) -> Result<(Session, Tokenizer)> {
 
 /// Tokenize `text` and run a single ONNX inference pass, returning a
 /// normalised 384-dimensional embedding.
+/// Maximum sequence length for all-MiniLM-L6-v2 (positional embedding limit).
+const MAX_SEQ_LEN: usize = 256;
+
 fn embed_text(
     session: &RefCell<Session>,
     tokenizer: &Tokenizer,
@@ -644,16 +647,23 @@ fn embed_text(
         .encode(text, true)
         .map_err(|e| anyhow::anyhow!("Tokenization failed: {e}"))?;
 
-    let ids: Vec<i64> = encoding.get_ids().iter().map(|&x| x as i64).collect();
-    let mask: Vec<i64> = encoding
-        .get_attention_mask()
-        .iter()
-        .map(|&x| x as i64)
-        .collect();
-    let type_ids: Vec<i64> = encoding.get_type_ids().iter().map(|&x| x as i64).collect();
-    let seq_len = ids.len();
+    // Truncate to model's max sequence length, then pad to MAX_SEQ_LEN.
+    // This matches ChromaDB's approach: truncate + pad to fixed length.
+    let raw_ids = encoding.get_ids();
+    let raw_mask = encoding.get_attention_mask();
+    let raw_type = encoding.get_type_ids();
+    let len = raw_ids.len().min(MAX_SEQ_LEN);
 
-    let shape = [1i64, seq_len as i64];
+    let mut ids = vec![0i64; MAX_SEQ_LEN];
+    let mut mask = vec![0i64; MAX_SEQ_LEN];
+    let mut type_ids = vec![0i64; MAX_SEQ_LEN];
+    for i in 0..len {
+        ids[i] = raw_ids[i] as i64;
+        mask[i] = raw_mask[i] as i64;
+        type_ids[i] = raw_type[i] as i64;
+    }
+
+    let shape = [1i64, MAX_SEQ_LEN as i64];
     let t_ids = TensorRef::<i64>::from_array_view((shape, ids.as_slice()))
         .map_err(|e| anyhow::anyhow!("Failed to create input_ids tensor: {e}"))?;
     let t_mask = TensorRef::<i64>::from_array_view((shape, mask.as_slice()))
@@ -664,11 +674,12 @@ fn embed_text(
     let mut session_guard = session.borrow_mut();
     let outputs = session_guard.run(ort::inputs![t_ids, t_mask, t_type])?;
 
-    // The first output is the last hidden state; mean-pool across the sequence dimension.
+    // The first output is the last hidden state.
+    // Shape: (1, MAX_SEQ_LEN, 384).
+    // Perform attention-weighted mean pooling: only average over non-padding tokens.
     let (out_shape, data) = outputs[0]
         .try_extract_tensor::<f32>()
         .map_err(|e| anyhow::anyhow!("Failed to extract tensor: {e}"))?;
-    // Shape: (1, seq_len, 384) → mean over dim 1.
     let dims: &[i64] = &out_shape;
     anyhow::ensure!(dims.len() == 3, "expected 3-D output, got {}D", dims.len());
     let hidden_dim = dims[2] as usize;
@@ -677,10 +688,16 @@ fn embed_text(
         "unexpected embedding dim {hidden_dim}"
     );
 
+    // Attention-weighted mean pooling: sum(hidden * mask) / sum(mask)
     let mut embedding = [0f32; EMBEDDING_DIM];
+    let mask_sum: f32 = mask.iter().map(|&m| m as f32).sum();
+    let mask_sum = if mask_sum > 0.0 { mask_sum } else { 1.0 };
+
     for j in 0..EMBEDDING_DIM {
-        let sum: f32 = (0..seq_len).map(|t| data[t * EMBEDDING_DIM + j]).sum();
-        embedding[j] = sum / seq_len as f32;
+        let weighted_sum: f32 = (0..MAX_SEQ_LEN)
+            .map(|t| data[t * EMBEDDING_DIM + j] * mask[t] as f32)
+            .sum();
+        embedding[j] = weighted_sum / mask_sum;
     }
 
     // L2-normalise so cosine similarity = dot product.
