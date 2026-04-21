@@ -1,0 +1,704 @@
+(meta plan
+  (id "IMPL-034")
+  (title "Capability-URL Static Distribution — implementation plan")
+  (version "0.1.0")
+  (status "active")
+  (created "2026-04-20")
+  (author "agent:architect")
+  (spec "SPEC-034")
+  (description "Implement SPEC-034 v0.4.0: capability-URL static-site build mode with delegated-URL+TOFU default, WebAuthn-PRF-only hardened opt-in, Ed25519 content signing, X25519 recipient padding, per-cohort PRF salt, ammonia HTML sanitiser, strict CSP + SRI. The plan tracks 32 tasks across seven phases from pure-core modules through browser shim, deploy artifacts, advanced operations, documentation, and mandatory adversarial reviews. Spec itself is still `draft` and requires a fresh-context cross-model Tier 2 review before advancing to `approved` — task-cap-tier2-review-spec gates that transition and all downstream implementation."))
+
+;; ── Agents ──────────────────────────────────────────────────────────
+
+(given agent-coder-available)
+(given agent-shim-dev-available)
+(given agent-docs-writer-available)
+(given agent-reviewer-crypto-available)
+(given agent-reviewer-shim-available)
+(given agent-reviewer-spec-available)
+
+;; ── Phase 0 — spec-level review gate ────────────────────────────────
+
+(given task-cap-tier2-review-spec)
+(meta task-cap-tier2-review-spec
+  (description "Tier 2 fresh-context, cross-model adversarial review of SPEC-034 v0.4.0. Per USDD Constitutional Principle 12 and SPEC-034 §16. Reviewer should be given the spec + prior-art URLs from §1.4 with explicit mandate to find design defects and unstated assumptions, with particular attention to: (a) REQ-3427+CON-3411 Ed25519 signing byte-range and envelope tampering, (b) REQ-3422+ADR-3413 X25519 padding private-key discard verifiability and correlation channels, (c) REQ-3414+ADR-3414 cohort-scoped PRF salt interaction with the age-encryption.org/fido2prf standard, (d) ADR-3415 TOFU residual-leak honesty and unaddressed mitigations, (e) CON-3409 challenge generation and non-verification disclosure. Reviewer must NOT have participated in the v0.3→v0.4 iteration (both prior reviews were same-session).")
+  (acceptance "Review report produced; zero S1 findings OR all S1 findings addressed in a v0.5.0 draft that re-invokes this gate. Findings at S2 and below documented with resolution plan. Spec status advances from `draft` to `approved` only after this gate passes.")
+  (priority "P0")
+  (spec-ref "SPEC-034 §16"))
+
+(given task-cap-tier1-review-crypto)
+(meta task-cap-tier1-review-crypto
+  (description "Tier 1 cross-model adversarial review of crypto integration: `age` usage, Ed25519 signing layer, X25519 padding key-discard, HKDF `info` parameter separation, WebAuthn PRF salt construction. Reviewer should examine source for: key material handling (zeroization, no-log policies), padding pubkey generation that verifiably discards privkeys, signature byte-range correctness, challenge randomness. Required before any crypto code merges to main.")
+  (acceptance "Review of all files under `src/cap/` that touch cryptographic material. Findings filed as BUG-### entries with severity. All S1/S2 findings addressed before merge. Review artifact (notes + reviewer's model + session context) committed to `.hence/reviews/cap-crypto-<date>.md`.")
+  (priority "P0")
+  (spec-ref "SPEC-034 §11.4, ADR-3403, ADR-3412"))
+
+(given task-cap-tier1-review-shim)
+(meta task-cap-tier1-review-shim
+  (description "Tier 1 cross-model adversarial review of the browser shim: state-machine correctness (first-use vs subsequent-use vs fallback dispatch), signature-verify-before-decrypt ordering, ServiceWorker hygiene, navigator.locks correctness, absence of key-material persistence outside IndexedDB, CSP+SRI enforcement. Required before shim merges to main.")
+  (acceptance "Review of shim TypeScript source. Findings filed. All S1/S2 addressed before merge. Review artifact committed.")
+  (priority "P0")
+  (spec-ref "SPEC-034 §11.4, CON-3408, NFR-3408"))
+
+;; ── Phase A — Pure core + CLI skeleton ──────────────────────────────
+
+(given task-cap-pure-core)
+(meta task-cap-pure-core
+  (description "Pure-core modules per SPEC-034 §8 purity boundary map: `src/cap/derivation.rs` (HKDF path-cap + wrap-key derivation per CON-3401), `src/cap/url_format.rs` (cap URL rendering + parsing), `src/cap/grants/validation.rs` (schema + invariants with `deny_unknown_fields`), `src/cap/recipients/parsing.rs` (age-recipient-v1 only per REQ-3409), `src/cap/scoping/cohort_index.rs` (cohort-to-pages assignment). No I/O, no randomness. Property-based tests on derivation (deterministic, secret/cohort/slug/epoch separation). Mutation testing ≥ 90% kill rate on derivation + url_format.")
+  (acceptance "All five modules implemented as `pub(crate)` under `cap::core::*`. Clippy lint forbids `std::env`, `std::fs`, `std::time::SystemTime` in core. `cargo test -p zetl cap::core` passes with property tests for derivation. Mutation testing via `cargo-mutants` on `cap::core::derivation` and `cap::core::url_format` shows ≥90% kill rate. TEST-3402, TEST-3405 (for grants validation), and derivation property tests green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3402, REQ-3405, REQ-3408, REQ-3409, CON-3401, CON-3402, CON-3403"))
+
+(given task-cap-sanitiser)
+(meta task-cap-sanitiser
+  (description "HTML sanitiser using the `ammonia` Rust crate with an allowlist config mirroring OWASP recommendations per SPEC-034 REQ-3421. Deny `<script>`, `<iframe>`, `<object>`, `<embed>`, `<base>`, `<meta http-equiv>`, `<link rel=preconnect|dns-prefetch|prerender>`, all event handlers, `javascript:`/`data:`/`vbscript:` URIs in href/src, `srcdoc`/`formaction`/`ping` attributes, MathML `<script>`, SVG `<script>`, CSS `@import`, HTML5 `<template>`. Allowlist: standard CommonMark rendering output. Ship config at `tools/sanitiser-config.toml` for operator visibility. Fuzz-test against OWASP XSS cheatsheet and the `audit-diff-corpus` (task-cap-audit-diff).")
+  (acceptance "`src/cap/sanitiser.rs` wraps `ammonia::Builder` with documented config. Fuzz tests using `cargo-fuzz` against adversarial HTML samples — zero successful bypasses. Integration test: every element/attribute in the denylist is stripped; every allowlist element survives. TEST-3421 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3421, CON-3410, ADR-3408"))
+
+(given task-cap-cli-skeleton)
+(meta task-cap-cli-skeleton
+  (description "`zetl cap` subcommand dispatcher with stubs for every verb listed in REQ-3416: `genkey`, `invite`, `list`, `revoke`, `rotate`, `finalise`, `share`, `check`, `sweep`, `pair`, `audit-diff`, `rotate-signing-key`, `emergency-shutdown`. Each stub exits with a `not-yet-implemented` message and follows SPEC-004 exit codes (0/1/2/64+). `--help` text for every verb. `--output json` support plumbed through (even if verb body returns stub). Help output + exit codes testable via `assert_cmd`.")
+  (acceptance "`zetl cap --help` lists all verbs. Each `zetl cap <verb> --help` shows flags + example. Unknown verbs exit 1 with diagnostic. `assert_cmd` tests for all help paths. TEST-3416 (scaffold) green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3416, CON-3407"))
+
+(given task-cap-genkey)
+(meta task-cap-genkey
+  (description "`zetl cap genkey` implementation: emits BOTH `ZETL_CAP_SECRET` (48 bytes: 1-byte version + 32-byte random + 15-byte keyed checksum, base64) AND `ZETL_CAP_SIGNING_KEY` (Ed25519 private key, base64) to stdout exactly once with secure-storage instructions. Reads from OS CSPRNG via `rand_core::OsRng`. Checksum verification in build secret parser — framed in docs as UX safeguard (BUG-017 resolution), not as security control. Never writes to any file, never logs, stdout only. Test: checksum tampering detected; verify-error surfaces remediation text.")
+  (acceptance "`zetl cap genkey` produces parseable output with both secrets. Build-time parser rejects non-genkey-produced encryption secrets. Secret substring never appears in any stderr/logs/dist output (grep-based test). TEST-3419 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3419"))
+
+;; ── Phase B — Encryption + signing wire-up ──────────────────────────
+
+(given task-cap-x25519-padding)
+(meta task-cap-x25519-padding
+  (description "X25519 ephemeral padding generator per REQ-3422 + ADR-3413 (BUG-001 resolution). Generates tier-sized {10, 30, 100, 300, 1000} padded recipient lists. Each padding entry: generate X25519 keypair, take pubkey, zeroize + discard privkey before returning pubkey. Padding entries MUST be structurally indistinguishable from real X25519 recipients in the age header. Deterministic test: the private-key discard is verifiable via a trait that asserts `ZeroizeOnDrop`. Unit test that real + padded = tier value exactly.")
+  (acceptance "`src/cap/padding.rs` exposes `pad_recipients(real: &[X25519Pubkey], tier: u32) -> Vec<X25519Pubkey>`. Every returned slice has length ∈ {10, 30, 100, 300, 1000}. `ZeroizeOnDrop` on the ephemeral private-key handle. TEST-3422 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3422, ADR-3413"))
+
+(given task-cap-age-encrypt)
+(meta task-cap-age-encrypt
+  (description "`src/cap/age_encrypt.rs` effectful shell: accepts plaintext + cohort recipients + padding-tier, produces age v1 ciphertext via the `age` Rust crate. Recipients = union of real + padded pubkeys. Uses standard X25519 recipient type — no custom stanza. Testable via round-trip: Rust-encrypt → reference-age-cli decrypt with a real recipient key succeeds; decrypt with a padding-slot key fails.")
+  (acceptance "age ciphertext validates against reference implementation. Real recipient decrypts successfully. Padding-only decrypt fails. TEST-3403 (Rust side) green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3403, CON-3404, ADR-3403"))
+
+(given task-cap-content-signing)
+(meta task-cap-content-signing
+  (description "Ed25519 content signing layer per REQ-3427 + CON-3411 + ADR-3412 (BUG-004 resolution). `src/cap/sign.rs` composes: envelope header (plaintext, unsigned) + Ed25519 signature over the age ciphertext bytes + age ciphertext itself. Uses `ed25519-dalek` v2 (constant-time). Signing key loaded from `ZETL_CAP_SIGNING_KEY` env var; never touches disk. Public key exported via accessor for embedding into shim bundle at build time. Envelope builder is pure (given inputs); signing is the effectful shell.")
+  (acceptance "Every page emitted under `zetl build --capability` carries a valid Ed25519 signature over its age ciphertext. Verification succeeds with the operator's signing pubkey. Tampering with ciphertext byte invalidates signature. TEST-3427 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3427, CON-3411, ADR-3412"))
+
+(given task-cap-invite-command)
+(meta task-cap-invite-command
+  (description "`zetl cap invite <name> --cohort <id> [--expires <d>] [--pages <filter>] [--recipient <pubkey>] [--via enrol-page] [--split-key]`. Delegated-URL mode: generates fresh (priv_A, pub_A) via OsRng, appends pub_A to `recipients.toml` under the cohort, adds a grant to `grants.toml` with `bound=false`, prints the invite URL to stdout. Priv_A appears ONLY on stdout — never in grants.toml, never logged, never in any file. Emits the REQ-3410 URL-shortener warning banner on every invocation. Hardened mode: `--recipient <pubkey>` pre-collected or `--via enrol-page` to print the enrolment URL.")
+  (acceptance "`zetl cap invite alice --cohort eng` produces one URL with `#k=` fragment; grants.toml grows by one entry with `bound=false`; recipients.toml grows by one pubkey. Priv substring never in grants.toml. Warning banner emitted to stderr. TEST-3410 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3410, REQ-3430, CON-3407"))
+
+(given task-cap-revocation-commands)
+(meta task-cap-revocation-commands
+  (description "Implement `revoke`, `rotate`, `finalise`, `sweep`, `check`. `revoke <grant-id>`: sets `revoked=true` in grants.toml. `rotate --cohort <id>`: generates new cohort salt (content-key rotation; URL-stable per REQ-3402 / BUG-023). `finalise <grant-id>`: sets `bound=true` (operator-confirmed onboarding); `--rotate-grant` reissues priv_A. `sweep`: marks past-expires grants `revoked=true`. `check`: exits 1 if any grant has expired since last build (wired into CI). `rotate-signing-key`: generates new Ed25519 keypair, rebuilds all pages, marks shim bundle for cache-invalidation.")
+  (acceptance "Each verb modifies grants.toml idempotently. `check` exit codes correct. Signing-key rotation changes the embedded shim pubkey and invalidates old ciphertexts' signature against the new pubkey. TEST-3408, TEST-3409, TEST-3410 (revoke variants), TEST-3426 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3408, REQ-3409, REQ-3410, REQ-3426, CON-3407"))
+
+(given task-cap-build-driver)
+(meta task-cap-build-driver
+  (description "`src/cap/build/driver.rs` orchestrates the full capability build: enumerate pages, compute per-page path-caps, sanitise HTML (task-cap-sanitiser), encrypt (task-cap-age-encrypt) with padding (task-cap-x25519-padding), sign (task-cap-content-signing), write to `dist/c/<path-cap>/<slug>.html`, emit deploy artifacts (task-cap-deploy-artifacts). Iterates cohorts; respects public-repo safety (task-cap-public-repo-safety). Emits build-summary log per OBS-3401.")
+  (acceptance "`zetl build --capability` on a fixture vault produces correct ciphertext tree, deploy artifacts, and summary. Per OBS-3401 the stderr line includes `cohorts=N pages=M grants_active=K ...`. NFR-3405 (≤30% size overhead) and NFR-3406 (≤40% time overhead) measured on a 1000-page fixture and within bounds. TEST-3403, TEST-3418 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3401, REQ-3402, REQ-3403, REQ-3418, NFR-3405, NFR-3406"))
+
+;; ── Phase C — Browser shim + enrolment page ─────────────────────────
+
+(given task-cap-shim-core)
+(meta task-cap-shim-core
+  (description "TypeScript shim at `src/cap/shim/index.ts`. Implements the CON-3408 pipeline: navigator.locks lock → unregister ServiceWorkers → fetch envelope → verify Ed25519 → acquire identity (TOFU or subsequent) → age-decrypt → sanitise → replaceState → rewrite hrefs → render. The pipeline order is security-critical and enforced by the state machine. Bundled via esbuild with SRI hash generated into a manifest at build time. Includes `@noble/ed25519` for signature verification + `age-encryption` (typage) for unwrap.")
+  (acceptance "Shim bundle at `src/cap/shim/dist/shim.js` with SRI hash in `src/cap/shim/dist/shim.sri`. Pipeline order test: Playwright mocks signature-invalid response → shim renders error, does not call `credentials.get`. Mocks missing fragment + no IDB → `need-invite` error. TEST-3405, TEST-3406 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 CON-3408, REQ-3405, REQ-3406, REQ-3427"))
+
+(given task-cap-shim-tofu)
+(meta task-cap-shim-tofu
+  (description "TOFU branch of the shim: acquire navigator.locks exclusive lock → unregister all ServiceWorkers → generate 32-byte random challenge → invoke navigator.credentials.create() with PRF extension and per-cohort salt → derive K_wrap via HKDF → AES-256-GCM wrap priv_A with origin+cohort_id AAD → store in IndexedDB → replaceState → rewrite hrefs. Per-cohort PRF salt per REQ-3414 + ADR-3414 (BUG-003 resolution). Explicit random challenge per CON-3409 (BUG-005 resolution). Concurrency serialisation via navigator.locks (BUG-010).")
+  (acceptance "Playwright with virtual authenticator: first-click TOFU completes in ≤ 2s per NFR-3407 (excluding UV). Concurrent-tab test: two tabs opening invite URL produce exactly one `create()` invocation. SW purge verified via pre-registered stub SW → confirmed unregistered post-TOFU. TEST-3405, TEST-3428, TEST-3429 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3405, REQ-3414, REQ-3428, REQ-3429, CON-3409, ADR-3414"))
+
+(given task-cap-shim-unwrap)
+(meta task-cap-shim-unwrap
+  (description "Subsequent-visit branch of the shim: detect existing IndexedDB entry → navigator.credentials.get with prf.eval.first = stored salt → derive K_wrap → unwrap priv_A from IDB → age-decrypt → render. Requires ZERO URL fragment (REQ-3406). Handles passkey-unavailable (authenticator deleted/revoked) by presenting clear `re-invite needed` diagnostic. Session-policy caching per REQ-3417 `[access.session]` (per-page / per-session / per-minute user-verification).")
+  (acceptance "Playwright: TOFU on device 1, then navigate to another page without the invite URL — shim uses stored binding, prompts once per session per policy. Authenticator-deleted simulation produces `re-invite needed` diagnostic. TEST-3406 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3406, REQ-3417, CON-3408"))
+
+(given task-cap-shim-ed25519-verify)
+(meta task-cap-shim-ed25519-verify
+  (description "Ed25519 signature verification in the shim using `@noble/ed25519`. Public key embedded at build time via template string with SRI-covered import. Verification runs BEFORE any other processing — signature check → decrypt → sanitise → render pipeline (CON-3411 order). On verification failure: render error page `<p>This page's signature did not verify — possible tampering; contact your wiki operator</p>`; do NOT call credentials.get/create; do NOT attempt decryption.")
+  (acceptance "Positive test: valid signed envelope → decrypt → render. Negative tests: (a) invalid signature → error page, no authenticator prompt. (b) mismatched embedded pubkey (shim tampered, SRI would catch but simulated) → error. (c) truncated ciphertext → error. TEST-3427 (browser side) green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3427, CON-3411, NFR-3413"))
+
+(given task-cap-shim-collision-ui)
+(meta task-cap-shim-collision-ui
+  (description "TOFU collision disambiguation UI per REQ-3425. When shim detects invite URL + existing IDB binding, renders the wireframe from REQ-3425 with three options: KEEP (default), Add alongside, Replace (requires 1-line rationale stored in local audit log). Focus on KEEP by default. No silent overwrites.")
+  (acceptance "Playwright: existing IDB entry + invite URL → disambiguation UI shown, focus on KEEP. Selecting Replace requires rationale text > 0 characters. Rationale stored in `localStorage['zetl-cap-audit-log']`. TEST-3425 green.")
+  (priority "P1")
+  (spec-ref "SPEC-034 REQ-3425"))
+
+(given task-cap-shim-fallback)
+(meta task-cap-shim-fallback
+  (description "Graceful fallback for non-PRF browsers per REQ-3412. Shim detects PRF availability via feature-probe or `PublicKeyCredential.getClientCapabilities()`. If unavailable: operate in fragment-required mode (decrypt directly from URL fragment on every visit), no TOFU binding, no replaceState. Display non-intrusive notice. Log to OBS-3412 metric.")
+  (acceptance "Playwright with PRF-disabled virtual authenticator: shim falls back, content renders, notice visible. Every page load re-reads fragment. No IDB entry created. TEST-3412 green.")
+  (priority "P1")
+  (spec-ref "SPEC-034 REQ-3412, CON-3408, OBS-3412"))
+
+(given task-cap-enrolment-page)
+(meta task-cap-enrolment-page
+  (description "`/enroll.html` static page per REQ-3404 for hardened mode. Self-contained HTML + JS (no network to zetl endpoints). Accepts `?cohort=<cohort-id>` query param. Calls navigator.credentials.create with per-cohort PRF salt `SHA-256('zetl/webauthn-prf/v1/' || origin || '/' || cohort_id)` per REQ-3414. Derives X25519 keypair via typage's PRF-recipient helpers. Displays derived pubkey as `age-recipient-v1:<b64url>` with copy-to-clipboard and QR code affordances. Clear diagnostic for no-PRF scenarios.")
+  (acceptance "Playwright enrolment flow: visit `/enroll.html?cohort=eng`, create passkey with virtual authenticator, verify displayed pubkey matches expected PRF-derived X25519. Different cohort param produces different pubkey (REQ-3414 cross-cohort unlinkability). TEST-3404, TEST-3414 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3404, REQ-3414, CON-3409"))
+
+;; ── Phase D — Deploy-side + security hardening ──────────────────────
+
+(given task-cap-csp-sri)
+(meta task-cap-csp-sri
+  (description "CSP + SRI per REQ-3421 + CON-3410 (BUG-006 resolution). Emit `Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';` as both an HTTP response header (via deploy configs) and a `<meta http-equiv>` fallback in every encrypted page's HTML shell. Shim script tag: `<script src=\"/assets/shim.js\" integrity=\"sha384-<hash>\" crossorigin=\"anonymous\">`. SRI hash generated during shim bundle.")
+  (acceptance "Playwright: cross-origin script injection attempt blocked by CSP. SRI tamper test: shim bytes modified → browser refuses to execute → page shows plain `failed to load viewer` error. TEST-3421 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3421, CON-3410"))
+
+(given task-cap-cache-control)
+(meta task-cap-cache-control
+  (description "Cache-Control + Clear-Site-Data headers per REQ-3407 + REQ-3428. Emit `Cache-Control: private, max-age=300, must-revalidate` on `/c/*` paths in all deploy configs (nginx, Caddy, Netlify `_headers`, Vercel `vercel.json`, Cloudflare Pages). Emit `Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\"` on `/enroll.html` and `/logout`. Emit `Cache-Control: public, max-age=31536000, immutable` on `/assets/shim.js` (immutable since filename-hashed). Operator can override max-age via `[access.cache]` with hard bounds [60, 3600].")
+  (acceptance "curl -I against deployed nginx confirms headers. Override in config changes emitted values. OBS-3409 build-output line shows worst-case revocation latency. TEST-3407, TEST-3428 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3407, REQ-3428, CON-3406, NFR-3409"))
+
+(given task-cap-deploy-artifacts)
+(meta task-cap-deploy-artifacts
+  (description "Deploy artifact emission per REQ-3418 + CON-3406: `dist/_zetl/_gone.map` (nginx), `dist/_redirects` (Netlify), `dist/vercel.json`, `dist/_zetl/deploy-{nginx,caddy,netlify,vercel,cloudflare}.conf` with complete copy-paste recipes including Cache-Control + Clear-Site-Data entries, `dist/robots.txt` with Disallow: /c/ and /_zetl/, optional `dist/<vault-name>-<cohort>.html` single-file bundle per `[access.single_file]`.")
+  (acceptance "All deploy files present after build. Each recipe is syntactically valid for the target host (validated via `nginx -t`, `caddy validate`, etc. where possible). Revoked grant's URL present in _gone.map, _redirects, vercel.json. TEST-3418 green.")
+  (priority "P0")
+  (spec-ref "SPEC-034 REQ-3418, CON-3406"))
+
+(given task-cap-referrer-scrubbing)
+(meta task-cap-referrer-scrubbing
+  (description "Rewrite external `<a>` tags during render to include `rel=\"noopener noreferrer\"`; emit `<meta name=\"referrer\" content=\"no-referrer\">` in every page's HTML shell per REQ-3413. Internal links unmodified. Operator opt-out via `[access] rel_noreferrer = false` documented as reducing path-cap-privacy.")
+  (acceptance "Build output inspected: external `<a>` have noreferrer; internal unchanged; meta present. `make ref-leak-test` (OBS-3407) canary: navigate from cap page to local canary endpoint, assert Referer does NOT contain path-cap. TEST-3413 green.")
+  (priority "P1")
+  (spec-ref "SPEC-034 REQ-3413, OBS-3407"))
+
+(given task-cap-robots-txt)
+(meta task-cap-robots-txt
+  (description "Emit `/robots.txt` containing `Disallow: /c/` and `Disallow: /_zetl/` per REQ-3414 (the general robots.txt REQ; separate from the new REQ-3414 PRF salt). Merge with operator's `public/robots.txt` — preserve stricter rules (e.g., `Disallow: /`) if present.")
+  (acceptance "`dist/robots.txt` contains both Disallow lines. Operator `public/robots.txt` contents preserved + merged. Test with custom input confirming merge behaviour. TEST-3414 green.")
+  (priority "P1")
+  (spec-ref "SPEC-034 REQ-3414"))
+
+(given task-cap-search-scoping)
+(meta task-cap-search-scoping
+  (description "Cohort-scope search and backlinks per REQ-3415. Default: no search UI; backlinks panel shows only in-cohort backlinks per the page's decrypted context. `[access.search] mode = \"per-cohort\"` opts into per-cohort encrypted search indices (NOTE: search-index format deferred per BUG-019; feature ships as off-by-default in v1 with documentation that enabling it is a future deliverable). Attempts to enable global cross-cohort search/backlinks rejected at build with clear error.")
+  (acceptance "Default build: no search UI emitted. Backlinks panel scoped. Attempt to set global search → build error. TEST-3415 green.")
+  (priority "P1")
+  (spec-ref "SPEC-034 REQ-3415"))
+
+(given task-cap-public-repo-safety)
+(meta task-cap-public-repo-safety
+  (description "Public-repo safety per REQ-3423 + ADR-3409 (BUG-013 resolution). Detect public hosting: (a) explicit `[vault] visibility = \"public\"` declaration, OR (b) git-origin heuristic (github.com without private-org token, gitlab.com, codeberg.org, etc.). If detected, refuse to read `.zetl/caps/grants.toml` in the repo tree; require `[access.grants_file_external]` pointing outside the repo; emit stub `grants-committed.toml` containing only cohort salts + IDs (no recipients, no grant metadata).")
+  (acceptance "Public-vault fixture: build refuses in-repo grants.toml, instructs operator; with external path set, build proceeds; stub contains no recipients or names. Fixture private-vault unaffected. `zetl cap check --public-safety` audits config. TEST-3423 green.")
+  (priority "P1")
+  (spec-ref "SPEC-034 REQ-3423, ADR-3409"))
+
+;; ── Phase E — Advanced operations ───────────────────────────────────
+
+(given task-cap-split-key-mode)
+(meta task-cap-split-key-mode
+  (description "Optional XOR split-key mode per REQ-3430 + ADR-3415 (BUG-002 mitigation). `zetl cap invite --split-key` splits priv_A via XOR secret-sharing: `priv_A = half1 XOR half2`. URL carries `#k1=<half1>`; `half2` output separately (QR code image or spoken-phrase per `[access.split_key] second_factor`). Shim prompts for second factor (camera QR scan or text input) on first click; reconstructs priv_A; TOFU-binds. Opt-in; default is `enabled = false`.")
+  (acceptance "With `--split-key`: URL alone cannot decrypt (verified in Playwright without entering second factor). URL + second factor → successful TOFU binding. QR mode: Playwright simulates QR decode → bind. Text mode: input field → bind. TEST-3430 green.")
+  (priority "P2")
+  (spec-ref "SPEC-034 REQ-3430, ADR-3415"))
+
+(given task-cap-audit-diff)
+(meta task-cap-audit-diff
+  (description "`zetl cap audit-diff <old-ref> <new-ref>` + test corpus per REQ-3424 + ADR-3410 (BUG-016 resolution). Scans vault diff for: external-origin links to previously-unseen domains, raw HTML surviving the sanitiser allowlist, dynamically-constructed URIs, markdown constructs that render to unusual HTML. Paired with `tools/audit-diff-corpus/` — versioned repo of known-malicious patterns + XSS cheatsheet samples + exfiltration templates. CI job `audit-corpus` runs audit-diff against corpus; fails on ANY miss. Corpus update cadence: monthly OR on any reported evasion.")
+  (acceptance "CLI correctly flags samples in the corpus. `.zetl/audit-allowlist.toml` allows suppressing previously-reviewed exceptions. CI job fails on corpus additions. TEST-3424 green.")
+  (priority "P2")
+  (spec-ref "SPEC-034 REQ-3424, ADR-3410"))
+
+(given task-cap-spake2-pair)
+(meta task-cap-spake2-pair
+  (description "`zetl cap pair` SPAKE2-EE pubkey handoff per REQ-3408 (the CLI-commands REQ; distinct from REQ-3408 grants-file). Fresh CSPRNG-generated 4-word BIP39 phrase per pairing; refusal to reuse phrase within 30 days (tracked in `.zetl/caps/.pair-nonces`). Uses `@noble/curves` SPAKE2 for constant-time elliptic operations. Pairing completes with no server, no relay (messages exchanged via copy-paste / QR / in-person). Derived shared key used ONLY to authenticate pubkey handoff — not stored, not used for content encryption.")
+  (acceptance "Two browser contexts run `cap pair` → converge on shared key given same phrase → grantee's pubkey reaches grantor authenticated. Phrase reuse refused. TEST-3408 (pair variant) green.")
+  (priority "P2")
+  (spec-ref "SPEC-034 REQ-3408 (CLI), CON-3407"))
+
+(given task-cap-emergency-shutdown)
+(meta task-cap-emergency-shutdown
+  (description "`zetl cap emergency-shutdown` per REQ-3431 (BUG-024 resolution). Produces a printable operator checklist: (1) remove/redirect DNS; (2) CDN purge/delete `/c/*`; (3) rotate secrets (new `zetl cap genkey`); (4) announce to readers; (5) re-enrol when ready. NOT automated — documentation-generation only. Spec has no cryptographic kill-switch.")
+  (acceptance "`zetl cap emergency-shutdown` outputs the checklist to stdout. No files modified. Output includes vault-specific identifiers (vault name, cohorts, current deploy target if configured).")
+  (priority "P3")
+  (spec-ref "SPEC-034 REQ-3431, §11.3"))
+
+;; ── Phase F — Documentation ─────────────────────────────────────────
+
+(given task-cap-docs-operator)
+(meta task-cap-docs-operator
+  (description "`docs/capability-mode.md` — full operator guide per SPEC-034 §12. Sections: threat model (quoting §11 verbatim), per-cohort mode-selection decision aid, quickstart (genkey → config → first build → deploy), grants lifecycle (invite / revoke / rotate / finalise / signing-key rotation), deploy recipes for nginx, Caddy, Netlify, Cloudflare Pages, S3+CloudFront, Vercel (with copy-paste blocks), troubleshooting flowchart (`my reader can't decrypt` → diagnostic tree).")
+  (acceptance "Document exists, reviewed for accuracy against implementation, includes all deploy recipes that match the emitted `_zetl/deploy-*.conf` files byte-for-byte. Walkthrough with synthetic-user HP-1 completes without gaps.")
+  (priority "P1")
+  (spec-ref "SPEC-034 §12"))
+
+(given task-cap-docs-security)
+(meta task-cap-docs-security
+  (description "`docs/capability-security.md` — deeper threat-model discussion per SPEC-034 §12 and §11. Explicit `do NOT use capability mode for X` list (regulated PII, cardholder data, etc.). Comparison table: delegated-URL vs hardened vs `zetl serve` vs reverse-proxy-auth. Prior-art citations (§1.4). Offline brute-force math for padding (NFR-3410 honest bounds). Content-authenticity story (signing key trust model).")
+  (acceptance "Document exists; technical reviewers confirm the numbers (entropy, brute-force bounds, tier-leak math) match the spec. Operators evaluating whether capability mode fits their threat model have a direct answer.")
+  (priority "P1")
+  (spec-ref "SPEC-034 §11, §12"))
+
+(given task-cap-docs-reader)
+(meta task-cap-docs-reader
+  (description "`docs/reader.html` (static, served from dist/ in capability builds) + `docs/reader-troubleshooting.md`. Reader-facing onboarding: what a passkey is (no crypto jargon), how to enrol, what to do on a new device, what to do if you lose your authenticator, what to do if the shim shows a signature-verify error (contact your wiki operator). Linked from shim error messages.")
+  (acceptance "Both documents exist. Reader synthetic-user walk-through (HP-2, HP-4) completes without confusion. Shim error messages link to the troubleshooting doc by anchor.")
+  (priority "P1")
+  (spec-ref "SPEC-034 §12, HP-2, HP-4"))
+
+(given task-cap-docs-signing)
+(meta task-cap-docs-signing
+  (description "`docs/signing.md` — what the vault-signing key is, why it matters (CDN-substitution defence), rotation procedure (`zetl cap rotate-signing-key` + shim cache invalidation), emergency shutdown (`zetl cap emergency-shutdown` checklist). Explains the v0.4.0 BUG-004 resolution for operators who need to understand the trust model.")
+  (acceptance "Document exists. Rotation walk-through tested end-to-end: rotate, rebuild, invalidate shim cache, readers see new content. Old shim cache hit shows signature-verify error with clear explanation.")
+  (priority "P1")
+  (spec-ref "SPEC-034 REQ-3427, §12"))
+
+;; ── Phase G — Stabilisation ─────────────────────────────────────────
+
+(given task-cap-changelog)
+(meta task-cap-changelog
+  (description "CHANGELOG.md entry for the release that ships SPEC-034 capability mode. References SPEC-034 version, lists user-facing features, documents the two modes, points at operator docs.")
+  (acceptance "CHANGELOG entry follows project conventions. Release-ready.")
+  (priority "P2")
+  (spec-ref "SPEC-034 §12"))
+
+(given task-cap-mark-implemented)
+(meta task-cap-mark-implemented
+  (description "Update `specs/SPEC-034.md` status frontmatter from `draft` to `implemented` per USDD Phase 3 quality gates. Requires: all constitutional quality gates pass, all REQ→TEST traceability verified, Tier 1 + Tier 2 reviews completed and findings addressed, docs generated, synthetic-user walkthroughs confirm behaviour matches spec, CHANGELOG entry present.")
+  (acceptance "specs/SPEC-034.md status field is `implemented`. Commit message references the completed gates. Version bumped to 1.0.0.")
+  (priority "P1")
+  (spec-ref "USDD Protocol §12 Specification Status Lifecycle"))
+
+;; ── Readiness rules ─────────────────────────────────────────────────
+
+;; Phase 0: reviews are ready immediately (they operate on the spec itself
+;; + on code as it lands), but the spec-level gate blocks everything else.
+
+(normally r-ready-tier2-spec-review
+  task-cap-tier2-review-spec
+  ready-cap-tier2-review-spec)
+
+;; Phase A can only start after the spec-level review gate passes.
+;; If the Tier 2 review identifies S1 defects, v0.5.0 supersedes v0.4.0
+;; and this entire plan needs refreshing before implementation begins.
+
+(normally r-ready-pure-core
+  (and task-cap-pure-core completed-cap-tier2-review-spec)
+  ready-cap-pure-core)
+
+(normally r-ready-sanitiser
+  (and task-cap-sanitiser completed-cap-tier2-review-spec)
+  ready-cap-sanitiser)
+
+(normally r-ready-cli-skeleton
+  (and task-cap-cli-skeleton completed-cap-tier2-review-spec)
+  ready-cap-cli-skeleton)
+
+(normally r-ready-genkey
+  (and task-cap-genkey completed-cap-tier2-review-spec completed-cap-cli-skeleton)
+  ready-cap-genkey)
+
+;; Phase B depends on Phase A core.
+
+(normally r-ready-x25519-padding
+  (and task-cap-x25519-padding completed-cap-pure-core)
+  ready-cap-x25519-padding)
+
+(normally r-ready-age-encrypt
+  (and task-cap-age-encrypt completed-cap-pure-core completed-cap-x25519-padding)
+  ready-cap-age-encrypt)
+
+(normally r-ready-content-signing
+  (and task-cap-content-signing completed-cap-pure-core completed-cap-genkey)
+  ready-cap-content-signing)
+
+(normally r-ready-invite-command
+  (and task-cap-invite-command
+       completed-cap-cli-skeleton
+       completed-cap-genkey
+       completed-cap-pure-core)
+  ready-cap-invite-command)
+
+(normally r-ready-revocation-commands
+  (and task-cap-revocation-commands
+       completed-cap-cli-skeleton
+       completed-cap-pure-core
+       completed-cap-genkey)
+  ready-cap-revocation-commands)
+
+(normally r-ready-build-driver
+  (and task-cap-build-driver
+       completed-cap-age-encrypt
+       completed-cap-content-signing
+       completed-cap-sanitiser
+       completed-cap-invite-command)
+  ready-cap-build-driver)
+
+;; Phase C: Browser shim. Depends on Phase B ciphertext format being stable
+;; (so the shim can target it) and on the signing layer being implemented
+;; (so the shim has something to verify against).
+
+(normally r-ready-shim-core
+  (and task-cap-shim-core
+       completed-cap-build-driver
+       completed-cap-content-signing)
+  ready-cap-shim-core)
+
+(normally r-ready-shim-ed25519-verify
+  (and task-cap-shim-ed25519-verify completed-cap-shim-core)
+  ready-cap-shim-ed25519-verify)
+
+(normally r-ready-shim-tofu
+  (and task-cap-shim-tofu
+       completed-cap-shim-core
+       completed-cap-shim-ed25519-verify)
+  ready-cap-shim-tofu)
+
+(normally r-ready-shim-unwrap
+  (and task-cap-shim-unwrap completed-cap-shim-tofu)
+  ready-cap-shim-unwrap)
+
+(normally r-ready-shim-collision-ui
+  (and task-cap-shim-collision-ui completed-cap-shim-tofu)
+  ready-cap-shim-collision-ui)
+
+(normally r-ready-shim-fallback
+  (and task-cap-shim-fallback completed-cap-shim-core)
+  ready-cap-shim-fallback)
+
+(normally r-ready-enrolment-page
+  (and task-cap-enrolment-page
+       completed-cap-shim-core
+       completed-cap-shim-ed25519-verify)
+  ready-cap-enrolment-page)
+
+;; Phase D: Deploy-side. Independent of shim internals; depends on build driver.
+
+(normally r-ready-csp-sri
+  (and task-cap-csp-sri completed-cap-shim-core completed-cap-build-driver)
+  ready-cap-csp-sri)
+
+(normally r-ready-cache-control
+  (and task-cap-cache-control completed-cap-build-driver)
+  ready-cap-cache-control)
+
+(normally r-ready-deploy-artifacts
+  (and task-cap-deploy-artifacts completed-cap-build-driver)
+  ready-cap-deploy-artifacts)
+
+(normally r-ready-referrer-scrubbing
+  (and task-cap-referrer-scrubbing completed-cap-build-driver)
+  ready-cap-referrer-scrubbing)
+
+(normally r-ready-robots-txt
+  (and task-cap-robots-txt completed-cap-build-driver)
+  ready-cap-robots-txt)
+
+(normally r-ready-search-scoping
+  (and task-cap-search-scoping completed-cap-build-driver)
+  ready-cap-search-scoping)
+
+(normally r-ready-public-repo-safety
+  (and task-cap-public-repo-safety
+       completed-cap-pure-core
+       completed-cap-build-driver)
+  ready-cap-public-repo-safety)
+
+;; Phase E: Advanced operations. Depend on core shim + build.
+
+(normally r-ready-split-key-mode
+  (and task-cap-split-key-mode
+       completed-cap-invite-command
+       completed-cap-shim-tofu)
+  ready-cap-split-key-mode)
+
+(normally r-ready-audit-diff
+  (and task-cap-audit-diff completed-cap-sanitiser)
+  ready-cap-audit-diff)
+
+(normally r-ready-spake2-pair
+  (and task-cap-spake2-pair completed-cap-cli-skeleton completed-cap-shim-core)
+  ready-cap-spake2-pair)
+
+(normally r-ready-emergency-shutdown
+  (and task-cap-emergency-shutdown completed-cap-cli-skeleton)
+  ready-cap-emergency-shutdown)
+
+;; Tier-1 reviews: ready once their review scope is implementation-complete.
+
+(normally r-ready-tier1-review-crypto
+  (and task-cap-tier1-review-crypto
+       completed-cap-age-encrypt
+       completed-cap-content-signing
+       completed-cap-x25519-padding
+       completed-cap-genkey)
+  ready-cap-tier1-review-crypto)
+
+(normally r-ready-tier1-review-shim
+  (and task-cap-tier1-review-shim
+       completed-cap-shim-core
+       completed-cap-shim-tofu
+       completed-cap-shim-unwrap
+       completed-cap-shim-ed25519-verify)
+  ready-cap-tier1-review-shim)
+
+;; Phase F: Docs. Ready once all reviewable implementation is complete.
+
+(normally r-ready-docs-operator
+  (and task-cap-docs-operator
+       completed-cap-build-driver
+       completed-cap-deploy-artifacts)
+  ready-cap-docs-operator)
+
+(normally r-ready-docs-security
+  (and task-cap-docs-security completed-cap-content-signing)
+  ready-cap-docs-security)
+
+(normally r-ready-docs-reader
+  (and task-cap-docs-reader completed-cap-shim-core completed-cap-enrolment-page)
+  ready-cap-docs-reader)
+
+(normally r-ready-docs-signing
+  (and task-cap-docs-signing
+       completed-cap-content-signing
+       completed-cap-revocation-commands)
+  ready-cap-docs-signing)
+
+;; Phase G: Stabilisation.
+
+(normally r-ready-changelog
+  (and task-cap-changelog
+       completed-cap-build-driver
+       completed-cap-shim-core
+       completed-cap-docs-operator)
+  ready-cap-changelog)
+
+;; Mark-implemented is the final gate. Requires ALL implementation tasks,
+;; ALL Tier-1 reviews, AND the re-execution of Tier-2 on the finished
+;; artifact (a fresh review, not a re-claim of the earlier task).
+
+(normally r-ready-mark-implemented
+  (and task-cap-mark-implemented
+       completed-cap-tier2-review-spec
+       completed-cap-tier1-review-crypto
+       completed-cap-tier1-review-shim
+       completed-cap-build-driver
+       completed-cap-shim-core
+       completed-cap-shim-tofu
+       completed-cap-shim-unwrap
+       completed-cap-enrolment-page
+       completed-cap-csp-sri
+       completed-cap-cache-control
+       completed-cap-deploy-artifacts
+       completed-cap-docs-operator
+       completed-cap-docs-reader
+       completed-cap-changelog)
+  ready-cap-mark-implemented)
+
+;; ── Assignment rules ────────────────────────────────────────────────
+
+;; Reviews go to reviewers.
+
+(normally r-assign-tier2-spec
+  (and ready-cap-tier2-review-spec agent-reviewer-spec-available)
+  assign-to-cap-tier2-review-spec-reviewer-spec)
+
+(normally r-assign-tier1-crypto
+  (and ready-cap-tier1-review-crypto agent-reviewer-crypto-available)
+  assign-to-cap-tier1-review-crypto-reviewer-crypto)
+
+(normally r-assign-tier1-shim
+  (and ready-cap-tier1-review-shim agent-reviewer-shim-available)
+  assign-to-cap-tier1-review-shim-reviewer-shim)
+
+;; Rust implementation → coder.
+
+(normally r-assign-pure-core
+  (and ready-cap-pure-core agent-coder-available)
+  assign-to-cap-pure-core-coder)
+
+(normally r-assign-sanitiser
+  (and ready-cap-sanitiser agent-coder-available)
+  assign-to-cap-sanitiser-coder)
+
+(normally r-assign-cli-skeleton
+  (and ready-cap-cli-skeleton agent-coder-available)
+  assign-to-cap-cli-skeleton-coder)
+
+(normally r-assign-genkey
+  (and ready-cap-genkey agent-coder-available)
+  assign-to-cap-genkey-coder)
+
+(normally r-assign-x25519-padding
+  (and ready-cap-x25519-padding agent-coder-available)
+  assign-to-cap-x25519-padding-coder)
+
+(normally r-assign-age-encrypt
+  (and ready-cap-age-encrypt agent-coder-available)
+  assign-to-cap-age-encrypt-coder)
+
+(normally r-assign-content-signing
+  (and ready-cap-content-signing agent-coder-available)
+  assign-to-cap-content-signing-coder)
+
+(normally r-assign-invite-command
+  (and ready-cap-invite-command agent-coder-available)
+  assign-to-cap-invite-command-coder)
+
+(normally r-assign-revocation-commands
+  (and ready-cap-revocation-commands agent-coder-available)
+  assign-to-cap-revocation-commands-coder)
+
+(normally r-assign-build-driver
+  (and ready-cap-build-driver agent-coder-available)
+  assign-to-cap-build-driver-coder)
+
+(normally r-assign-cache-control
+  (and ready-cap-cache-control agent-coder-available)
+  assign-to-cap-cache-control-coder)
+
+(normally r-assign-deploy-artifacts
+  (and ready-cap-deploy-artifacts agent-coder-available)
+  assign-to-cap-deploy-artifacts-coder)
+
+(normally r-assign-referrer-scrubbing
+  (and ready-cap-referrer-scrubbing agent-coder-available)
+  assign-to-cap-referrer-scrubbing-coder)
+
+(normally r-assign-robots-txt
+  (and ready-cap-robots-txt agent-coder-available)
+  assign-to-cap-robots-txt-coder)
+
+(normally r-assign-search-scoping
+  (and ready-cap-search-scoping agent-coder-available)
+  assign-to-cap-search-scoping-coder)
+
+(normally r-assign-public-repo-safety
+  (and ready-cap-public-repo-safety agent-coder-available)
+  assign-to-cap-public-repo-safety-coder)
+
+(normally r-assign-audit-diff
+  (and ready-cap-audit-diff agent-coder-available)
+  assign-to-cap-audit-diff-coder)
+
+(normally r-assign-emergency-shutdown
+  (and ready-cap-emergency-shutdown agent-coder-available)
+  assign-to-cap-emergency-shutdown-coder)
+
+(normally r-assign-changelog
+  (and ready-cap-changelog agent-coder-available)
+  assign-to-cap-changelog-coder)
+
+(normally r-assign-mark-implemented
+  (and ready-cap-mark-implemented agent-coder-available)
+  assign-to-cap-mark-implemented-coder)
+
+;; Browser shim → shim-dev.
+
+(normally r-assign-shim-core
+  (and ready-cap-shim-core agent-shim-dev-available)
+  assign-to-cap-shim-core-shim-dev)
+
+(normally r-assign-shim-ed25519-verify
+  (and ready-cap-shim-ed25519-verify agent-shim-dev-available)
+  assign-to-cap-shim-ed25519-verify-shim-dev)
+
+(normally r-assign-shim-tofu
+  (and ready-cap-shim-tofu agent-shim-dev-available)
+  assign-to-cap-shim-tofu-shim-dev)
+
+(normally r-assign-shim-unwrap
+  (and ready-cap-shim-unwrap agent-shim-dev-available)
+  assign-to-cap-shim-unwrap-shim-dev)
+
+(normally r-assign-shim-collision-ui
+  (and ready-cap-shim-collision-ui agent-shim-dev-available)
+  assign-to-cap-shim-collision-ui-shim-dev)
+
+(normally r-assign-shim-fallback
+  (and ready-cap-shim-fallback agent-shim-dev-available)
+  assign-to-cap-shim-fallback-shim-dev)
+
+(normally r-assign-enrolment-page
+  (and ready-cap-enrolment-page agent-shim-dev-available)
+  assign-to-cap-enrolment-page-shim-dev)
+
+(normally r-assign-csp-sri
+  (and ready-cap-csp-sri agent-shim-dev-available)
+  assign-to-cap-csp-sri-shim-dev)
+
+(normally r-assign-split-key-mode
+  (and ready-cap-split-key-mode agent-shim-dev-available)
+  assign-to-cap-split-key-mode-shim-dev)
+
+(normally r-assign-spake2-pair
+  (and ready-cap-spake2-pair agent-shim-dev-available)
+  assign-to-cap-spake2-pair-shim-dev)
+
+;; Docs → docs-writer.
+
+(normally r-assign-docs-operator
+  (and ready-cap-docs-operator agent-docs-writer-available)
+  assign-to-cap-docs-operator-docs-writer)
+
+(normally r-assign-docs-security
+  (and ready-cap-docs-security agent-docs-writer-available)
+  assign-to-cap-docs-security-docs-writer)
+
+(normally r-assign-docs-reader
+  (and ready-cap-docs-reader agent-docs-writer-available)
+  assign-to-cap-docs-reader-docs-writer)
+
+(normally r-assign-docs-signing
+  (and ready-cap-docs-signing agent-docs-writer-available)
+  assign-to-cap-docs-signing-docs-writer)
+
+;; ── Rule metadata ───────────────────────────────────────────────────
+
+(meta r-ready-pure-core
+  (description "Pure-core modules wait on the Tier 2 spec review.")
+  (justification "Per SPEC-034 §16, the spec cannot advance from `draft` to `approved` without fresh-context Tier 2 review. If Tier 2 identifies S1 defects, v0.5.0 supersedes v0.4.0 and the plan must be refreshed — implementing against an unreviewed spec wastes work."))
+
+(meta r-ready-build-driver
+  (description "Build driver depends on all Phase B primitives.")
+  (justification "Driver orchestrates encrypt → sign → sanitise → emit; every step must be in place before the integration target is meaningful."))
+
+(meta r-ready-shim-tofu
+  (description "TOFU branch of the shim depends on signature-verify being in place.")
+  (justification "Per CON-3411, signature verification MUST run before any authenticator invocation. Implementing TOFU without the verify stub risks inverting the pipeline order during testing."))
+
+(meta r-ready-mark-implemented
+  (description "Final gate: all implementation + all three reviews + all docs + changelog.")
+  (justification "USDD Phase 3 quality gates require complete traceability, passing tests, generated documentation, AND adversarial review of the deliverable. This gate enforces all of those before the spec's status is updated."))
+
+(meta r-assign-pure-core
+  (description "Rust pure-core modules → coder agent."))
+(meta r-assign-shim-core
+  (description "TypeScript shim → shim-dev agent."))
+(meta r-assign-docs-operator
+  (description "Prose documentation → docs-writer agent."))
+
+;; ── End of plan ─────────────────────────────────────────────────────
