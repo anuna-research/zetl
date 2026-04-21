@@ -1193,6 +1193,62 @@ pub fn build_search_index(vault_ctx: &VaultContext) -> String {
     format!("[{}]", entries.join(","))
 }
 
+/// Build sitemaps.org 0.9 XML listing every page. Absolute URLs when
+/// `vault_ctx.site_url` is set; root-relative paths otherwise. The site_url
+/// case is the standard-compliant one; the bare-path fallback keeps the
+/// file useful for local serving and static hosts that don't need a
+/// canonical domain.
+pub fn build_sitemap(vault_ctx: &VaultContext) -> String {
+    let prefix = if vault_ctx.site_url.is_empty() {
+        String::new()
+    } else {
+        vault_ctx.site_url.trim_end_matches('/').to_string()
+    };
+    let mut urls = String::new();
+    // Root index page first.
+    urls.push_str(&format!("  <url><loc>{prefix}/</loc></url>\n"));
+    for p in &vault_ctx.pages {
+        let slug = xml_escape(&p.slug);
+        urls.push_str(&format!("  <url><loc>{prefix}/{slug}/</loc></url>\n"));
+    }
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n\
+{urls}</urlset>\n"
+    )
+}
+
+/// Build an llmstxt.org-format discovery file pointing at the vault's
+/// machine-readable endpoints. `mode` is "serve" or "build" — the serve
+/// variant documents the live `/api/*` handlers, which don't exist in
+/// static output.
+pub fn build_llms_txt(vault_ctx: &VaultContext, mode: &str) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("# {}\n\n", vault_ctx.name));
+    out.push_str("## Resources\n\n");
+    if mode == "serve" {
+        out.push_str("- [/api/search?q=QUERY](/api/search?q=): full-text search (modes: bm25 | semantic | hybrid). Returns ranked JSON results.\n");
+        out.push_str("- [/api/pages](/api/pages): list of pages with name + slug.\n");
+        out.push_str("- [/api/pages/{slug}](/api/pages/): raw markdown + forward_links + backlinks for a page.\n");
+    } else {
+        out.push_str("- [/search-index.json](/search-index.json): pre-built BM25 index. Schema: `{docs:[{n:title,s:slug,dl:length,tf:{term:count},secs:[{h:heading,t:text,l:line}]}], df:{term:count}, avgDl:number}`. Rank with BM25 (k1=1.2, b=0.75).\n");
+        out.push_str("- [/pages.json](/pages.json): list of pages as `[{n:title,s:slug}]`.\n");
+        out.push_str("- Per-page raw markdown: `GET /{slug}/index.md` (same URL shape as `/{slug}/index.html`).\n");
+    }
+    out.push_str("- [/graph-index.json](/graph-index.json): link graph (nodes + edges) for traversal and backlinks.\n");
+    out.push_str("- [/sitemap.xml](/sitemap.xml): standard sitemap of every page.\n");
+    out
+}
+
+/// Minimal XML attribute/text escaping for <loc> content.
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
 /// Minimal JSON string escaping for search index values.
 fn json_escape(s: &str) -> String {
     s.replace('\\', "\\\\")
@@ -2369,5 +2425,54 @@ mod tests {
             })
             .expect("host must render even when `_graph.html` is missing or inert");
         assert!(html.contains("<div id=\"host\">"));
+    }
+
+    #[test]
+    fn sitemap_root_relative_when_site_url_empty() {
+        let xml = build_sitemap(&sample_vault());
+        assert!(xml.contains("<?xml"));
+        assert!(xml.contains("<urlset"));
+        assert!(xml.contains("<loc>/</loc>"));
+        assert!(xml.contains("<loc>/hello/</loc>"));
+    }
+
+    #[test]
+    fn sitemap_absolute_when_site_url_set() {
+        let mut v = sample_vault();
+        v.site_url = "https://example.com/".into();
+        let xml = build_sitemap(&v);
+        assert!(xml.contains("<loc>https://example.com/hello/</loc>"));
+        assert!(!xml.contains("<loc>/hello/"));
+    }
+
+    #[test]
+    fn sitemap_escapes_slugs() {
+        let mut v = sample_vault();
+        v.pages[0].slug = "a&b".into();
+        let xml = build_sitemap(&v);
+        assert!(xml.contains("<loc>/a&amp;b/</loc>"));
+    }
+
+    #[test]
+    fn llms_txt_build_mode_points_at_static_indices() {
+        let out = build_llms_txt(&sample_vault(), "build");
+        assert!(out.starts_with("# test-vault\n"));
+        assert!(out.contains("## Resources"));
+        assert!(out.contains("/search-index.json"));
+        assert!(out.contains("/pages.json"));
+        assert!(out.contains("/graph-index.json"));
+        assert!(out.contains("/sitemap.xml"));
+        assert!(out.contains("index.md"));
+        assert!(!out.contains("/api/"));
+    }
+
+    #[test]
+    fn llms_txt_serve_mode_points_at_live_api() {
+        let out = build_llms_txt(&sample_vault(), "serve");
+        assert!(out.contains("/api/search"));
+        assert!(out.contains("/api/pages"));
+        assert!(out.contains("/graph-index.json"));
+        assert!(out.contains("/sitemap.xml"));
+        assert!(!out.contains("search-index.json"));
     }
 }

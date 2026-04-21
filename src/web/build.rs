@@ -7,7 +7,9 @@ use petgraph::visit::EdgeRef;
 use crate::graph::{GraphIndexContext, GraphIndexEdge, GraphIndexNode};
 use crate::scanner::{body_text_ranges, page_slug_from_path};
 use crate::web::context::{build_folder_context, build_page_context, build_vault_context};
-use crate::web::engine::{build_search_index, bundled_theme_files, TemplateEngine};
+use crate::web::engine::{
+    build_llms_txt, build_search_index, build_sitemap, bundled_theme_files, TemplateEngine,
+};
 use crate::web::html::{html_escape, urlencoding};
 use crate::web::markdown;
 use crate::web::VaultData;
@@ -634,6 +636,16 @@ pub fn build_static(
             })?;
         std::fs::write(page_dir.join("index.html"), page_html)?;
 
+        // Per-page raw source alongside the rendered HTML, so LLM agents can
+        // fetch the original markdown (or fountain, spl, etc.) without
+        // parsing HTML. Extension matches the source file.
+        let src_ext = file
+            .path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("md");
+        std::fs::write(page_dir.join(format!("index.{src_ext}")), &content)?;
+
         // SPEC-027 REQ-302 / adversarial defect 5: static emission of
         // per-page history HTML. Gate on last_changed presence so the
         // static file is never emitted when page.html's inline link
@@ -765,6 +777,14 @@ pub fn build_static(
         folder_count += 1;
     }
 
+    // ── sitemap.xml + llms.txt (agent discovery artefacts) ──
+    // robots.txt itself is emitted below via `merge_robots_txt` so the
+    // SPEC-034 REQ-3418 / CON-3406 disallow lines layer correctly onto
+    // any operator-supplied file from the public overlay.
+    std::fs::write(out.join("sitemap.xml"), build_sitemap(&vault_ctx))
+        .context("writing sitemap.xml")?;
+    std::fs::write(out.join("llms.txt"), build_llms_txt(&vault_ctx, "build"))
+        .context("writing llms.txt")?;
     // Cloudflare Pages / Netlify-style _headers: long-cache hashed static assets and JSON indexes.
     let headers = "/_static/*\n  Cache-Control: public, max-age=31536000, immutable\n\n/*.json\n  Cache-Control: public, max-age=3600\n";
     if !out.join("_headers").exists() {

@@ -438,6 +438,40 @@ pub async fn page_handler(
     let slug = urldecode(&slug);
     let slug = slug.trim_end_matches('/');
 
+    // Raw-source: /{slug}/index.<ext> returns the original .md (or .fountain,
+    // .spl, …) file from the vault, matching the `<out>/{slug}/index.<ext>`
+    // artefact emitted by `zetl build`. Complements /api/pages/{slug}.
+    if let Some((page_slug, ext)) = slug
+        .rsplit_once("/index.")
+        .or_else(|| slug.strip_prefix("index.").map(|e| ("", e)))
+    {
+        let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(file) = data
+            .files
+            .iter()
+            .find(|f| page_slug_from_path(&f.path).eq_ignore_ascii_case(page_slug))
+        {
+            if file.path.extension().and_then(|e| e.to_str()) == Some(ext) {
+                let full = state.vault_root.join(&file.path);
+                if let Ok(body) = std::fs::read_to_string(&full) {
+                    let ctype = match ext {
+                        "md" => "text/markdown; charset=utf-8",
+                        _ => "text/plain; charset=utf-8",
+                    };
+                    return (
+                        StatusCode::OK,
+                        [
+                            (header::CONTENT_TYPE, ctype),
+                            (header::CACHE_CONTROL, "public, max-age=3600"),
+                        ],
+                        body,
+                    )
+                        .into_response();
+                }
+            }
+        }
+    }
+
     // SPEC-027 REQ-303: /_history → vault-wide history page.
     if slug == "_history" {
         return vault_history_handler_inner(State(state)).await;
@@ -5677,6 +5711,48 @@ pub async fn pages_json_handler(State(state): State<WebState>) -> Response {
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+// ── GET /sitemap.xml — sitemaps.org 0.9 XML (mirrors build asset) ────────
+pub async fn sitemap_handler(State(state): State<WebState>) -> Response {
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+    let vault_ctx = crate::web::context::build_vault_context(&data, &vault_name);
+    let body = crate::web::engine::build_sitemap(&vault_ctx);
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/xml; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+// ── GET /llms.txt — llmstxt.org-format agent discovery (mirrors build asset)
+pub async fn llms_txt_handler(State(state): State<WebState>) -> Response {
+    let data = state.data.read().unwrap_or_else(|e| e.into_inner());
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+    let vault_ctx = crate::web::context::build_vault_context(&data, &vault_name);
+    let body = crate::web::engine::build_llms_txt(&vault_ctx, "serve");
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
             (header::CACHE_CONTROL, "public, max-age=3600"),
         ],
         body,
