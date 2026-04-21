@@ -10637,7 +10637,15 @@ fn git_diff_name_only(vault_root: &Path, git_ref: &str) -> Result<Vec<String>> {
 
 /// `git show <ref>:<path>` — read file content at a git ref. Returns `None` if
 /// the file did not exist at that ref (newly added since baseline).
-#[cfg(not(feature = "history"))]
+///
+/// Callers:
+/// - `cmd_diff_git` (SPEC-007 git-subprocess diff fallback, only compiled when
+///   the `history` feature is off).
+/// - `load_vault_at_refs` (capability audit-diff corpus walk, always compiled).
+///
+/// Because the second caller is unconditional, this helper must be too — it
+/// shells out to `git` and does not interact with jj-lib, so it's safe under
+/// every feature combination.
 fn git_show(vault_root: &Path, git_ref: &str, rel_path: &str) -> Result<Option<String>> {
     let object = format!("{git_ref}:{rel_path}");
     let output = std::process::Command::new("git")
