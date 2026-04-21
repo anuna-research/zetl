@@ -88,13 +88,14 @@ fn cap_stub_verbs_exit_not_yet_implemented() {
         let mut args = vec!["cap", verb];
         args.extend_from_slice(extra_args);
 
-        let assert = cargo_bin_cmd!("zetl")
-            .args(&args)
-            .assert()
-            .code(2)
-            .stderr(predicate::str::contains(format!(
-                "zetl cap {verb}: not-yet-implemented"
-            )));
+        let assert =
+            cargo_bin_cmd!("zetl")
+                .args(&args)
+                .assert()
+                .code(2)
+                .stderr(predicate::str::contains(format!(
+                    "zetl cap {verb}: not-yet-implemented"
+                )));
         let _ = assert;
     }
 }
@@ -128,8 +129,8 @@ fn cap_stub_verbs_emit_json_under_format_flag() {
         .code(2);
     let out = assert.get_output();
     let stderr = String::from_utf8_lossy(&out.stderr);
-    let _: serde_json::Value = serde_json::from_str(stderr.trim())
-        .expect("stderr should be parseable JSON under -f json");
+    let _: serde_json::Value =
+        serde_json::from_str(stderr.trim()).expect("stderr should be parseable JSON under -f json");
 }
 
 #[test]
@@ -138,9 +139,11 @@ fn cap_unknown_verb_errors() {
         .args(["cap", "definitely-not-a-verb"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("unrecognized subcommand").or(
-            predicate::str::contains("invalid value").or(predicate::str::contains("error:")),
-        ));
+        .stderr(
+            predicate::str::contains("unrecognized subcommand")
+                .or(predicate::str::contains("invalid value")
+                    .or(predicate::str::contains("error:"))),
+        );
 }
 
 #[test]

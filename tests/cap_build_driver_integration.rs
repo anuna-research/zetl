@@ -22,9 +22,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use tempfile::TempDir;
 
-use zetl::cap::build::{
-    run_capability_build, BuildConfig, BuildSummary, PageInput, Visibility,
-};
+use zetl::cap::build::{run_capability_build, BuildConfig, BuildSummary, PageInput, Visibility};
 use zetl::cap::genkey::{build_secret, decode_secret, encode_secret, SECRET_VERSION_V1};
 use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
 use zetl::cap::recipients::parsing::{
@@ -299,8 +297,13 @@ fn obs_3401_stderr_line_carries_counter_keys() {
     let tmp = TempDir::new().unwrap();
     let (_alice, alice_pk) = fresh_identity_pair();
     let salt = URL_SAFE_NO_PAD.encode(b"salt");
-    let recipients =
-        mk_recipients(vec![mk_cohort("eng", &[alice_pk], &salt, None, CohortMode::DelegatedUrl)]);
+    let recipients = mk_recipients(vec![mk_cohort(
+        "eng",
+        &[alice_pk],
+        &salt,
+        None,
+        CohortMode::DelegatedUrl,
+    )]);
     let grants = GrantsFile {
         version: Some(1),
         grants: vec![
@@ -392,13 +395,7 @@ fn explicit_frontmatter_cohorts_win_over_globs() {
     let (_b, b_pk) = fresh_identity_pair();
     let salt = URL_SAFE_NO_PAD.encode(b"salt");
     let recipients = mk_recipients(vec![
-        mk_cohort(
-            "eng",
-            &[a_pk],
-            &salt,
-            Some("**"),
-            CohortMode::DelegatedUrl,
-        ),
+        mk_cohort("eng", &[a_pk], &salt, Some("**"), CohortMode::DelegatedUrl),
         mk_cohort("ops", &[b_pk], &salt, None, CohortMode::DelegatedUrl),
     ]);
     let grants = GrantsFile {

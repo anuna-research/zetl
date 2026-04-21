@@ -639,7 +639,10 @@ mod tests {
         let later = 1_700_000_000 + PAIR_NONCE_TTL_SECS + 1;
         let store = store.accept(&new.nonce_hash(), later).unwrap();
         assert_eq!(store.entries.len(), 1);
-        assert_eq!(store.entries[0].phrase_hash_hex, hex_encode(&new.nonce_hash()));
+        assert_eq!(
+            store.entries[0].phrase_hash_hex,
+            hex_encode(&new.nonce_hash())
+        );
     }
 
     #[test]
@@ -744,7 +747,9 @@ mod tests {
     #[test]
     fn nonce_store_toml_is_human_readable() {
         let p = PairPhrase::parse("abandon ability able about").unwrap();
-        let store = NonceStore::default().accept(&p.nonce_hash(), 1_700_000_000).unwrap();
+        let store = NonceStore::default()
+            .accept(&p.nonce_hash(), 1_700_000_000)
+            .unwrap();
         let toml = store.to_toml();
         // Human legibility: hex phrase-hash appears in the expected
         // form and the `used_at_unix` field name is stable.

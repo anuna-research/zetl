@@ -176,13 +176,15 @@ pub fn swap_cohort_pubkey(
         .iter_mut()
         .find(|c| c.id == cohort_id)
         .ok_or_else(|| RevocationError::CohortNotFound(cohort_id.to_string()))?;
-    let idx = cohort.pubkeys.iter().position(|p| p == old_recipient).ok_or_else(|| {
-        RevocationError::RecipientNotInCohort {
+    let idx = cohort
+        .pubkeys
+        .iter()
+        .position(|p| p == old_recipient)
+        .ok_or_else(|| RevocationError::RecipientNotInCohort {
             grant_id: grant_id.to_string(),
             cohort: cohort_id.to_string(),
             recipient: old_recipient.to_string(),
-        }
-    })?;
+        })?;
     cohort.pubkeys[idx] = new_recipient;
     Ok(())
 }
@@ -457,14 +459,8 @@ mod tests {
     #[test]
     fn swap_cohort_pubkey_rejects_unknown_cohort() {
         let mut r = sample_recipients();
-        let err = swap_cohort_pubkey(
-            &mut r,
-            "nonexistent",
-            "x",
-            "y".to_string(),
-            "g_a",
-        )
-        .unwrap_err();
+        let err =
+            swap_cohort_pubkey(&mut r, "nonexistent", "x", "y".to_string(), "g_a").unwrap_err();
         assert!(matches!(err, RevocationError::CohortNotFound(_)));
     }
 

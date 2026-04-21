@@ -80,7 +80,9 @@ fn tampered_checksum_yields_remediation_error() {
     let secret_b64 = extract_export(&stdout, "ZETL_CAP_SECRET");
 
     // Flip a bit in the last checksum byte.
-    let mut raw = STANDARD.decode(&secret_b64).expect("produced secret is base64");
+    let mut raw = STANDARD
+        .decode(&secret_b64)
+        .expect("produced secret is base64");
     let last = raw.len() - 1;
     raw[last] ^= 0x01;
     let mangled = STANDARD.encode(&raw);
@@ -134,7 +136,9 @@ fn genkey_json_mode_is_parseable() {
     assert_eq!(j["secret"]["env"], "ZETL_CAP_SECRET");
     assert_eq!(j["signing_key"]["env"], "ZETL_CAP_SIGNING_KEY");
     // Round-trip the embedded secret through the pure-core decoder.
-    let secret_b64 = j["secret"]["value"].as_str().expect("secret.value is a string");
+    let secret_b64 = j["secret"]["value"]
+        .as_str()
+        .expect("secret.value is a string");
     zetl::cap::genkey::decode_secret(secret_b64).expect("emitted secret parses");
 }
 

@@ -189,7 +189,9 @@ mod tests {
     #[test]
     fn real_plus_padding_equals_tier() {
         let mut rng = ChaCha20Rng::seed_from_u64(0xC0FFEE);
-        for real in [0usize, 1, 5, 10, 11, 29, 30, 31, 77, 100, 101, 299, 300, 301, 777, 1000] {
+        for real in [
+            0usize, 1, 5, 10, 11, 29, 30, 31, 77, 100, 101, 299, 300, 301, 777, 1000,
+        ] {
             let padding = pad_to_tier_with_rng(real, &mut rng).unwrap();
             let tier = tier_for(real).unwrap();
             assert_eq!(

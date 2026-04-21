@@ -186,9 +186,7 @@ pub enum KeyLoadError {
         "{env} does not parse as base64 ({detail}) — re-run `zetl cap genkey` and paste the output verbatim"
     )]
     Base64 { env: &'static str, detail: String },
-    #[error(
-        "{env} decodes to {got} bytes but {expected} are required — re-run `zetl cap genkey`"
-    )]
+    #[error("{env} decodes to {got} bytes but {expected} are required — re-run `zetl cap genkey`")]
     Length {
         env: &'static str,
         got: usize,
@@ -245,12 +243,10 @@ pub fn parse_signing_key_b64(env: &'static str, s: &str) -> Result<VaultSigningK
     if trimmed.is_empty() {
         return Err(KeyLoadError::EnvEmpty { env });
     }
-    let raw = STANDARD
-        .decode(trimmed)
-        .map_err(|e| KeyLoadError::Base64 {
-            env,
-            detail: e.to_string(),
-        })?;
+    let raw = STANDARD.decode(trimmed).map_err(|e| KeyLoadError::Base64 {
+        env,
+        detail: e.to_string(),
+    })?;
     if raw.len() != SIGNING_KEY_LEN {
         return Err(KeyLoadError::Length {
             env,
@@ -330,10 +326,7 @@ pub fn load_signing_key_from_env() -> Result<VaultSigningKey, KeyLoadError> {
 /// Pure function of its inputs (ed25519-dalek uses deterministic
 /// signatures per RFC 8032 §5.1.6 — identical inputs produce
 /// byte-identical signatures).
-pub fn sign_ciphertext(
-    key: &VaultSigningKey,
-    ciphertext: &[u8],
-) -> [u8; SIGNATURE_LEN] {
+pub fn sign_ciphertext(key: &VaultSigningKey, ciphertext: &[u8]) -> [u8; SIGNATURE_LEN] {
     key.sign_ciphertext(ciphertext)
 }
 
@@ -673,7 +666,11 @@ mod tests {
         // offset.
         let needle = format!("{HEADER_COHORT_ID}: engineering");
         let replacement = format!("{HEADER_COHORT_ID}: attackerxxx");
-        assert_eq!(needle.len(), replacement.len(), "len must match for in-place edit");
+        assert_eq!(
+            needle.len(),
+            replacement.len(),
+            "len must match for in-place edit"
+        );
         let at = bytes
             .windows(needle.len())
             .position(|w| w == needle.as_bytes())
@@ -762,8 +759,10 @@ mod tests {
         let encoded = STANDARD.encode(raw);
         let parsed =
             parse_signing_key_b64("ZETL_CAP_SIGNING_KEY", &encoded).expect("parse STANDARD");
-        assert_eq!(parsed.verifying_key().to_bytes(),
-                   VaultSigningKey::from_bytes(&raw).verifying_key().to_bytes());
+        assert_eq!(
+            parsed.verifying_key().to_bytes(),
+            VaultSigningKey::from_bytes(&raw).verifying_key().to_bytes()
+        );
     }
 
     #[test]
@@ -880,7 +879,10 @@ mod tests {
             Err(e) => e,
         };
         let rendered = format!("{err}");
-        assert!(rendered.contains("zetl cap genkey"), "remediation hint missing: {rendered}");
+        assert!(
+            rendered.contains("zetl cap genkey"),
+            "remediation hint missing: {rendered}"
+        );
         assert!(matches!(err, KeyLoadError::EnvMissing { .. }));
         if let Some(v) = prev {
             unsafe { env::set_var(ZETL_CAP_SIGNING_KEY_ENV, v) };
@@ -894,17 +896,23 @@ mod tests {
         // `+` or `/` (i.e. STANDARD alphabet) would be wrong.
         let key = sample_key();
         let bytes = sign_and_build_envelope(&key, &sample_header(), b"probe");
-        let header_slice = &bytes[..bytes
-            .windows(2)
-            .position(|w| w == b"\n\n")
-            .unwrap()];
+        let header_slice = &bytes[..bytes.windows(2).position(|w| w == b"\n\n").unwrap()];
         let header_text = std::str::from_utf8(header_slice).unwrap();
         let sig_line = header_text
             .lines()
             .find(|l| l.starts_with(HEADER_SIGNATURE))
             .expect("signature present");
-        assert!(!sig_line.contains('+'), "base64url must not emit `+`: {sig_line}");
-        assert!(!sig_line.contains('/'), "base64url must not emit `/`: {sig_line}");
-        assert!(!sig_line.contains('='), "unpadded base64url must not emit `=`: {sig_line}");
+        assert!(
+            !sig_line.contains('+'),
+            "base64url must not emit `+`: {sig_line}"
+        );
+        assert!(
+            !sig_line.contains('/'),
+            "base64url must not emit `/`: {sig_line}"
+        );
+        assert!(
+            !sig_line.contains('='),
+            "unpadded base64url must not emit `=`: {sig_line}"
+        );
     }
 }

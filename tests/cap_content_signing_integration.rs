@@ -34,9 +34,9 @@ use zetl::cap::genkey::{SIGNING_KEY_LEN, ZETL_CAP_SIGNING_KEY_ENV};
 use zetl::cap::pad::X25519Pubkey;
 use zetl::cap::recipients::parsing::CohortMode;
 use zetl::cap::sign::{
-    build_envelope, parse_envelope, sign_and_build_envelope, sign_ciphertext,
-    verify_ciphertext, EnvelopeHeader, EnvelopeParseError, KeyLoadError, VaultSigningKey,
-    VerifyError, ENVELOPE_SCHEMA, HEADER_SCHEMA, HEADER_SIGNATURE, SIGNATURE_LEN,
+    build_envelope, parse_envelope, sign_and_build_envelope, sign_ciphertext, verify_ciphertext,
+    EnvelopeHeader, EnvelopeParseError, KeyLoadError, VaultSigningKey, VerifyError,
+    ENVELOPE_SCHEMA, HEADER_SCHEMA, HEADER_SIGNATURE, SIGNATURE_LEN,
 };
 
 fn pubkey_from_age_string(s: &str) -> X25519Pubkey {
@@ -140,7 +140,10 @@ fn test_3427_negative_ciphertext_tamper_rejects() {
     // decrypt. That's what we assert: signature fails first.
     let body_start = sep + 2;
     let target = body_start + 16;
-    assert!(target < envelope.len(), "envelope must have a ciphertext body");
+    assert!(
+        target < envelope.len(),
+        "envelope must have a ciphertext body"
+    );
     envelope[target] ^= 0x01;
 
     let parsed = parse_envelope(&envelope).expect("envelope still parses");
@@ -163,7 +166,11 @@ fn test_3427_negative_wrong_vault_pubkey_rejects() {
     // Build was signed by `key`; shim tries `other` (different vault).
     // REQ-3427: verification MUST fail.
     assert!(matches!(
-        verify_ciphertext(&other.verifying_key(), &parsed.ciphertext, &parsed.signature),
+        verify_ciphertext(
+            &other.verifying_key(),
+            &parsed.ciphertext,
+            &parsed.signature
+        ),
         Err(VerifyError::Invalid(_))
     ));
 }
@@ -262,8 +269,7 @@ fn test_3427_unsigned_envelope_is_rejected_by_parser() {
     assert!(
         matches!(
             err,
-            EnvelopeParseError::MissingHeader(_)
-                | EnvelopeParseError::MalformedHeaderLine(_)
+            EnvelopeParseError::MissingHeader(_) | EnvelopeParseError::MalformedHeaderLine(_)
         ),
         "expected MissingHeader or MalformedHeaderLine, got {err:?}"
     );

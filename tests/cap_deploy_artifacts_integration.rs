@@ -21,7 +21,9 @@ use zetl::cap::deploy_artifacts::{
     GENERATED_MARKER,
 };
 use zetl::cap::deploy_headers::HeaderSpec;
-use zetl::cap::genkey::{build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1};
+use zetl::cap::genkey::{
+    build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1,
+};
 use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
 use zetl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,

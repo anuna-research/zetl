@@ -27,10 +27,7 @@ use tempfile::tempdir;
 fn seeded_secret_b64() -> String {
     use base64::engine::general_purpose::STANDARD;
     use base64::Engine as _;
-    let bytes = zetl::cap::genkey::build_secret(
-        zetl::cap::genkey::SECRET_VERSION_V1,
-        &[0u8; 32],
-    );
+    let bytes = zetl::cap::genkey::build_secret(zetl::cap::genkey::SECRET_VERSION_V1, &[0u8; 32]);
     STANDARD.encode(bytes)
 }
 
@@ -143,7 +140,8 @@ fn delegated_mode_emits_banner_url_and_writes_grant() {
     assert_eq!(g.revoked, false);
     assert_eq!(g.name.as_deref(), Some("alice"));
     assert!(
-        g.recipient.starts_with(zetl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX),
+        g.recipient
+            .starts_with(zetl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX),
         "grant recipient missing age-recipient-v1 prefix: {:?}",
         g.recipient,
     );
@@ -396,8 +394,10 @@ fn split_key_halves_reconstruct_priv_a_that_matches_recipient() {
 #[test]
 fn hardened_recipient_mode_uses_pre_collected_pubkey() {
     let dir = seed_vault("webauthn-prf");
-    let rcpt =
-        format!("{}AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", zetl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX);
+    let rcpt = format!(
+        "{}AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        zetl::cap::recipients::parsing::AGE_RECIPIENT_V1_PREFIX
+    );
     let out = cargo_bin_cmd!("zetl")
         .env("ZETL_CAP_SECRET", seeded_secret_b64())
         .env("ZETL_CAP_SITE_URL", "https://wiki.example")
@@ -430,8 +430,7 @@ fn hardened_recipient_mode_uses_pre_collected_pubkey() {
         "hardened URL must not carry a fragment:\n{url_line}",
     );
     // Grant was written with the supplied recipient verbatim.
-    let grants_body =
-        std::fs::read_to_string(dir.path().join("grants.toml")).expect("grants.toml");
+    let grants_body = std::fs::read_to_string(dir.path().join("grants.toml")).expect("grants.toml");
     assert!(grants_body.contains(&rcpt));
 }
 

@@ -32,7 +32,9 @@ use zetl::cap::deploy_headers::CAP_CSP;
 use zetl::cap::enrolment::{
     compute_prf_salt, ENROLL_HTML_FILENAME, ENROLL_JS_PATH, ENROLL_MOUNT_ID, PRF_SALT_PREFIX,
 };
-use zetl::cap::genkey::{build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1};
+use zetl::cap::genkey::{
+    build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1,
+};
 use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
 use zetl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
@@ -176,9 +178,8 @@ fn enroll_html_emitted_when_integrity_threaded() {
     );
 
     let csp_escaped = CAP_CSP.replace('\'', "&#39;");
-    let expected_csp = format!(
-        "<meta http-equiv=\"Content-Security-Policy\" content=\"{csp_escaped}\">"
-    );
+    let expected_csp =
+        format!("<meta http-equiv=\"Content-Security-Policy\" content=\"{csp_escaped}\">");
     assert!(
         html.contains(&expected_csp),
         "missing CSP meta fallback in:\n{html}"

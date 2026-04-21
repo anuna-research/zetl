@@ -49,7 +49,12 @@ fn emergency_shutdown_prints_full_checklist_on_stdout() {
         .expect("write recipients.toml");
 
     let assert = cargo_bin_cmd!("zetl")
-        .args(["-d", vault.path().to_str().unwrap(), "cap", "emergency-shutdown"])
+        .args([
+            "-d",
+            vault.path().to_str().unwrap(),
+            "cap",
+            "emergency-shutdown",
+        ])
         .assert()
         .success();
 
@@ -65,7 +70,10 @@ fn emergency_shutdown_prints_full_checklist_on_stdout() {
         "Step 4 — Announce to readers",
         "Step 5 — Re-enrolment",
     ] {
-        assert!(stdout.contains(marker), "missing marker `{marker}`:\n{stdout}");
+        assert!(
+            stdout.contains(marker),
+            "missing marker `{marker}`:\n{stdout}"
+        );
     }
 
     // REQ-3431 explicitly: this command is NOT automated.
@@ -82,12 +90,20 @@ fn emergency_shutdown_enumerates_cohorts_and_signing_pubkey() {
         .expect("write recipients.toml");
 
     let assert = cargo_bin_cmd!("zetl")
-        .args(["-d", vault.path().to_str().unwrap(), "cap", "emergency-shutdown"])
+        .args([
+            "-d",
+            vault.path().to_str().unwrap(),
+            "cap",
+            "emergency-shutdown",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).to_string();
 
-    assert!(stdout.contains("engineering"), "cohort id missing:\n{stdout}");
+    assert!(
+        stdout.contains("engineering"),
+        "cohort id missing:\n{stdout}"
+    );
     assert!(
         stdout.contains("Engineering Team"),
         "cohort human label missing:\n{stdout}",
@@ -104,14 +120,22 @@ fn emergency_shutdown_degrades_without_recipients_toml() {
     let vault = fresh_vault("zetl-cap-es-bare");
 
     let assert = cargo_bin_cmd!("zetl")
-        .args(["-d", vault.path().to_str().unwrap(), "cap", "emergency-shutdown"])
+        .args([
+            "-d",
+            vault.path().to_str().unwrap(),
+            "cap",
+            "emergency-shutdown",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).to_string();
 
     // All five steps still render.
     for marker in ["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"] {
-        assert!(stdout.contains(marker), "missing marker `{marker}`:\n{stdout}");
+        assert!(
+            stdout.contains(marker),
+            "missing marker `{marker}`:\n{stdout}"
+        );
     }
     // Step 4 falls back to the "no cohorts on file" guidance.
     assert!(
@@ -133,7 +157,12 @@ fn emergency_shutdown_is_idempotent_on_disk() {
     let before_body = fs::read_to_string(vault.path().join("recipients.toml")).unwrap();
 
     cargo_bin_cmd!("zetl")
-        .args(["-d", vault.path().to_str().unwrap(), "cap", "emergency-shutdown"])
+        .args([
+            "-d",
+            vault.path().to_str().unwrap(),
+            "cap",
+            "emergency-shutdown",
+        ])
         .assert()
         .success();
 
@@ -189,12 +218,22 @@ fn emergency_shutdown_surfaces_vault_basename() {
     let vault = fresh_vault("zetl-cap-es-named-vault");
 
     let assert = cargo_bin_cmd!("zetl")
-        .args(["-d", vault.path().to_str().unwrap(), "cap", "emergency-shutdown"])
+        .args([
+            "-d",
+            vault.path().to_str().unwrap(),
+            "cap",
+            "emergency-shutdown",
+        ])
         .assert()
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).to_string();
 
-    let basename = vault.path().file_name().unwrap().to_string_lossy().into_owned();
+    let basename = vault
+        .path()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
     assert!(
         stdout.contains(&basename),
         "vault basename `{basename}` missing from output:\n{stdout}",
@@ -211,7 +250,12 @@ fn emergency_shutdown_tolerates_malformed_recipients_toml() {
     .expect("write bad toml");
 
     let assert = cargo_bin_cmd!("zetl")
-        .args(["-d", vault.path().to_str().unwrap(), "cap", "emergency-shutdown"])
+        .args([
+            "-d",
+            vault.path().to_str().unwrap(),
+            "cap",
+            "emergency-shutdown",
+        ])
         .assert()
         .success();
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_string();
@@ -235,7 +279,12 @@ fn emergency_shutdown_is_not_stubbed() {
     // `not-yet-implemented` path.
     let vault = fresh_vault("zetl-cap-es-not-stub");
     let assert = cargo_bin_cmd!("zetl")
-        .args(["-d", vault.path().to_str().unwrap(), "cap", "emergency-shutdown"])
+        .args([
+            "-d",
+            vault.path().to_str().unwrap(),
+            "cap",
+            "emergency-shutdown",
+        ])
         .assert()
         .success();
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr);

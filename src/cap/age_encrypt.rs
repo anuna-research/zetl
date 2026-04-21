@@ -222,12 +222,9 @@ mod tests {
     fn round_trip_with_real_recipient_succeeds() {
         let (id, pk) = fresh_identity();
         let plaintext = b"REQ-3403: page-body bytes under age + Ed25519 envelope";
-        let out = encrypt_to_cohort_with_rng(
-            plaintext,
-            &[pk],
-            &mut ChaCha20Rng::seed_from_u64(0xA6E),
-        )
-        .expect("encrypt");
+        let out =
+            encrypt_to_cohort_with_rng(plaintext, &[pk], &mut ChaCha20Rng::seed_from_u64(0xA6E))
+                .expect("encrypt");
         assert_eq!(out.real_count, 1);
         assert_eq!(out.tier, 10);
         assert_eq!(out.padding_count, 9);
@@ -304,12 +301,8 @@ mod tests {
     #[test]
     fn header_stanzas_are_all_x25519() {
         let (_id, pk) = fresh_identity();
-        let out = encrypt_to_cohort_with_rng(
-            b"body",
-            &[pk],
-            &mut ChaCha20Rng::seed_from_u64(1),
-        )
-        .expect("encrypt");
+        let out = encrypt_to_cohort_with_rng(b"body", &[pk], &mut ChaCha20Rng::seed_from_u64(1))
+            .expect("encrypt");
 
         // age v1 closes its ASCII header with a `--- <b64>\n` MAC
         // line; everything before that newline is ASCII and safe to

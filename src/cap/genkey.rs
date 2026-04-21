@@ -199,9 +199,12 @@ impl Drop for ParsedSecret {
 /// Compute the 15-byte UX-safeguard checksum over `[version || random]`.
 /// Exposed for tests and for the parser; effectful callers should use
 /// [`generate_with_rng`] which wires this in.
-pub fn compute_checksum(version: u8, random: &[u8; SECRET_RANDOM_LEN]) -> [u8; SECRET_CHECKSUM_LEN] {
-    let mut mac = HmacSha256::new_from_slice(CHECKSUM_HMAC_KEY)
-        .expect("HMAC-SHA256 accepts any key length");
+pub fn compute_checksum(
+    version: u8,
+    random: &[u8; SECRET_RANDOM_LEN],
+) -> [u8; SECRET_CHECKSUM_LEN] {
+    let mut mac =
+        HmacSha256::new_from_slice(CHECKSUM_HMAC_KEY).expect("HMAC-SHA256 accepts any key length");
     mac.update(&[version]);
     mac.update(random);
     let full = mac.finalize().into_bytes();
@@ -212,10 +215,7 @@ pub fn compute_checksum(version: u8, random: &[u8; SECRET_RANDOM_LEN]) -> [u8; S
 
 /// Pack a version + random body into the 48-byte wire layout, computing
 /// the checksum on the way.
-pub fn build_secret(
-    version: u8,
-    random: &[u8; SECRET_RANDOM_LEN],
-) -> [u8; SECRET_TOTAL_LEN] {
+pub fn build_secret(version: u8, random: &[u8; SECRET_RANDOM_LEN]) -> [u8; SECRET_TOTAL_LEN] {
     let mut out = [0u8; SECRET_TOTAL_LEN];
     out[0] = version;
     out[1..1 + SECRET_RANDOM_LEN].copy_from_slice(random);
@@ -237,10 +237,12 @@ pub fn encode_secret(bytes: &[u8; SECRET_TOTAL_LEN]) -> String {
 /// point the build-time secret parser should use.
 pub fn decode_secret(encoded: &str) -> Result<ParsedSecret, SecretParseError> {
     let trimmed = encoded.trim();
-    let raw = STANDARD.decode(trimmed).map_err(|e| SecretParseError::Base64 {
-        env: ZETL_CAP_SECRET_ENV,
-        detail: e.to_string(),
-    })?;
+    let raw = STANDARD
+        .decode(trimmed)
+        .map_err(|e| SecretParseError::Base64 {
+            env: ZETL_CAP_SECRET_ENV,
+            detail: e.to_string(),
+        })?;
     if raw.len() != SECRET_TOTAL_LEN {
         return Err(SecretParseError::Length {
             env: ZETL_CAP_SECRET_ENV,
@@ -334,7 +336,10 @@ pub fn render_human(out: &GenkeyOutput) -> String {
     s.push_str("# compromises the env var can produce a valid checksum. Protect the\n");
     s.push_str("# secret itself, not the checksum.\n");
     s.push('\n');
-    s.push_str(&format!("export {}='{}'\n", ZETL_CAP_SECRET_ENV, out.secret_b64));
+    s.push_str(&format!(
+        "export {}='{}'\n",
+        ZETL_CAP_SECRET_ENV, out.secret_b64
+    ));
     s.push_str(&format!(
         "export {}='{}'\n",
         ZETL_CAP_SIGNING_KEY_ENV, out.signing_key_b64
@@ -342,7 +347,10 @@ pub fn render_human(out: &GenkeyOutput) -> String {
     s.push('\n');
     s.push_str("# Vault-signing PUBLIC key (not a secret — embed in recipients.toml\n");
     s.push_str("# under [vault].signing_pubkey; the build will verify on first run):\n");
-    s.push_str(&format!("#   signing_pubkey = \"{}\"\n", out.signing_pubkey_b64));
+    s.push_str(&format!(
+        "#   signing_pubkey = \"{}\"\n",
+        out.signing_pubkey_b64
+    ));
     s
 }
 
@@ -468,8 +476,7 @@ mod tests {
 
     #[test]
     fn bad_base64_is_rejected_with_hint() {
-        let err = decode_secret("!!!not-base64!!!")
-            .expect_err("non-base64 must not parse");
+        let err = decode_secret("!!!not-base64!!!").expect_err("non-base64 must not parse");
         assert!(matches!(err, SecretParseError::Base64 { .. }));
         let rendered = format!("{err}");
         assert!(rendered.contains("re-run `zetl cap genkey`"));

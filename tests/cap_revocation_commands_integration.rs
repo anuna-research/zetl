@@ -282,10 +282,8 @@ fn finalise_rotate_grant_reissues_pubkey_and_prints_new_url() {
     // genkey invocation.
     use base64::engine::general_purpose::STANDARD;
     use base64::Engine as _;
-    let secret_bytes = zetl::cap::genkey::build_secret(
-        zetl::cap::genkey::SECRET_VERSION_V1,
-        &[0u8; 32],
-    );
+    let secret_bytes =
+        zetl::cap::genkey::build_secret(zetl::cap::genkey::SECRET_VERSION_V1, &[0u8; 32]);
     let secret_b64 = STANDARD.encode(secret_bytes);
 
     let out = cargo_bin_cmd!("zetl")

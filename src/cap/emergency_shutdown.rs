@@ -241,9 +241,15 @@ mod tests {
     fn checklist_surfaces_vault_identifiers() {
         let out = render_checklist(&base_ctx());
         assert!(out.contains("my-vault"), "vault name missing:\n{out}");
-        assert!(out.contains("vault.example"), "deploy target missing:\n{out}");
+        assert!(
+            out.contains("vault.example"),
+            "deploy target missing:\n{out}"
+        );
         assert!(out.contains("engineering"), "cohort id missing:\n{out}");
-        assert!(out.contains("Engineering Team"), "cohort label missing:\n{out}");
+        assert!(
+            out.contains("Engineering Team"),
+            "cohort label missing:\n{out}"
+        );
         assert!(out.contains("ops"), "unlabelled cohort missing:\n{out}");
         assert!(
             out.contains("ed25519:abc123"),

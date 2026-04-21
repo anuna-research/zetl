@@ -22,9 +22,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use tempfile::TempDir;
 
-use zetl::cap::build::{
-    run_capability_build, BuildConfig, BuildError, PageInput, Visibility,
-};
+use zetl::cap::build::{run_capability_build, BuildConfig, BuildError, PageInput, Visibility};
 use zetl::cap::genkey::{build_secret, decode_secret, encode_secret, SECRET_VERSION_V1};
 use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
 use zetl::cap::recipients::parsing::{
@@ -33,7 +31,9 @@ use zetl::cap::recipients::parsing::{
 use zetl::cap::scoping::access_config::{
     AccessConfig, AccessConfigError, BacklinksConfig, BacklinksMode, SearchConfig, SearchMode,
 };
-use zetl::cap::scoping::backlinks::{scope_backlinks_for_target, scope_backlinks_per_cohort, RawBacklink};
+use zetl::cap::scoping::backlinks::{
+    scope_backlinks_for_target, scope_backlinks_per_cohort, RawBacklink,
+};
 use zetl::cap::scoping::cohort_index::{CohortIndex, CohortScope, PageRef};
 use zetl::cap::sign::VaultSigningKey;
 

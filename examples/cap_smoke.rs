@@ -75,8 +75,8 @@ fn main() -> anyhow::Result<()> {
     if !status.success() {
         anyhow::bail!("src/cap/shim/build.mjs failed (status {status:?})");
     }
-    let shim_sri = load_shim_integrity(&shim_dist)
-        .map_err(|e| anyhow::anyhow!("load shim sri: {e}"))?;
+    let shim_sri =
+        load_shim_integrity(&shim_dist).map_err(|e| anyhow::anyhow!("load shim sri: {e}"))?;
     let enroll_sri_path = shim_dist.join("enroll.sri");
     let enroll_sri = fs::read_to_string(&enroll_sri_path)?.trim().to_string();
 
@@ -109,14 +109,13 @@ fn main() -> anyhow::Result<()> {
             last_rotated: None,
         }],
     };
-    recipients.validate().map_err(|e| anyhow::anyhow!("recipients invalid: {e:?}"))?;
+    recipients
+        .validate()
+        .map_err(|e| anyhow::anyhow!("recipients invalid: {e:?}"))?;
 
     // ── 4. grants.toml ─────────────────────────────────────────
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-    let build_epoch = format!(
-        "{}",
-        chrono_rfc3339(now)
-    );
+    let build_epoch = format!("{}", chrono_rfc3339(now));
     let grants = GrantsFile {
         version: Some(1),
         grants: vec![Grant {
@@ -202,15 +201,17 @@ fn main() -> anyhow::Result<()> {
     println!("shim.sri:       {shim_sri}");
     println!("signing_pubkey: ed25519:{signing_pubkey_b64}");
     println!("path_cap:       {path_cap}");
-    println!("envelope:       {}/c/{path_cap}/welcome.html", out_dir.display());
-    println!("shell:          {}/_zetl/{CAPABILITY_SHELL_FILENAME}", out_dir.display());
+    println!(
+        "envelope:       {}/c/{path_cap}/welcome.html",
+        out_dir.display()
+    );
+    println!(
+        "shell:          {}/_zetl/{CAPABILITY_SHELL_FILENAME}",
+        out_dir.display()
+    );
     println!("invite_url:     {url}");
-    println!(
-        "NOTE: the browser shell and the envelope share the URL /c/<cap>/<slug>.html;"
-    );
-    println!(
-        "      serve the shell on HTML navigation and the envelope on subsequent fetch."
-    );
+    println!("NOTE: the browser shell and the envelope share the URL /c/<cap>/<slug>.html;");
+    println!("      serve the shell on HTML navigation and the envelope on subsequent fetch.");
 
     // Also dump the URL to a sibling file the next step can slurp.
     fs::write(out_dir.join("_zetl").join("invite-url.txt"), &url)?;
@@ -231,7 +232,11 @@ fn chrono_rfc3339(unix_secs: u64) -> String {
 // Howard Hinnant's civil_from_days algorithm (MIT), adapted.
 fn civil_from_days(days: i64) -> (i32, u32, u32) {
     let z = days + 719468;
-    let era = if z >= 0 { z / 146097 } else { (z - 146096) / 146097 };
+    let era = if z >= 0 {
+        z / 146097
+    } else {
+        (z - 146096) / 146097
+    };
     let doe = (z - era * 146097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
     let y = yoe as i64 + era * 400;

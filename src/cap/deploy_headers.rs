@@ -134,10 +134,7 @@ impl HeaderSpec {
     /// first — this constructor does not re-validate the bounds.
     pub fn from_cache_config(cache: &CacheConfig) -> Self {
         Self {
-            cap_cache_control: format!(
-                "private, max-age={}, must-revalidate",
-                cache.max_age
-            ),
+            cap_cache_control: format!("private, max-age={}, must-revalidate", cache.max_age),
             shim_cache_control: format!("public, max-age={SHIM_MAX_AGE}, immutable"),
             clear_site_data: CLEAR_SITE_DATA_VALUE.to_string(),
             csp: CAP_CSP.to_string(),
@@ -424,7 +421,9 @@ mod tests {
     #[test]
     fn default_spec_uses_300s_cap_max_age() {
         let spec = default_spec();
-        assert!(spec.cap_cache_control.contains(&format!("max-age={DEFAULT_CAP_MAX_AGE}")));
+        assert!(spec
+            .cap_cache_control
+            .contains(&format!("max-age={DEFAULT_CAP_MAX_AGE}")));
         assert!(spec.cap_cache_control.starts_with("private, "));
         assert!(spec.cap_cache_control.ends_with(", must-revalidate"));
     }
@@ -469,7 +468,9 @@ mod tests {
         // only — it is not an HTML path a reader lands on before the
         // shim runs, so the CSP header would only confuse the operator.
         assert!(
-            rendered.contains(&format!("add_header Content-Security-Policy \"{CAP_CSP}\" always;")),
+            rendered.contains(&format!(
+                "add_header Content-Security-Policy \"{CAP_CSP}\" always;"
+            )),
             "expected CSP header in nginx recipe, got:\n{rendered}"
         );
         // nginx uses single-quote wrapping for CSD so the double-quoted
@@ -484,7 +485,8 @@ mod tests {
     fn caddy_recipe_contains_every_rule() {
         let rendered = render_caddy(&default_spec());
         assert!(rendered.contains("@zetl_cap path /c/*"));
-        assert!(rendered.contains("header @zetl_cap Cache-Control \"private, max-age=300, must-revalidate\""));
+        assert!(rendered
+            .contains("header @zetl_cap Cache-Control \"private, max-age=300, must-revalidate\""));
         assert!(rendered.contains("@zetl_shim path /assets/shim.js"));
         assert!(rendered.contains("public, max-age=31536000, immutable"));
         for path in CLEAR_SITE_DATA_PATHS {
@@ -515,15 +517,13 @@ mod tests {
     fn netlify_headers_recipe_contains_every_rule() {
         let rendered = render_netlify_headers(&default_spec());
         assert!(rendered.contains("/c/*\n  Cache-Control: private, max-age=300, must-revalidate"));
-        assert!(
-            rendered.contains("/enroll.html\n  Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\"")
-        );
-        assert!(
-            rendered.contains("/logout\n  Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\"")
-        );
-        assert!(
-            rendered.contains("/assets/shim.js\n  Cache-Control: public, max-age=31536000, immutable")
-        );
+        assert!(rendered.contains(
+            "/enroll.html\n  Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\""
+        ));
+        assert!(rendered
+            .contains("/logout\n  Clear-Site-Data: \"cache\", \"storage\", \"executionContexts\""));
+        assert!(rendered
+            .contains("/assets/shim.js\n  Cache-Control: public, max-age=31536000, immutable"));
         // REQ-3421: CSP is stacked under /c/* right after Cache-Control,
         // and under /enroll.html right after Clear-Site-Data.
         assert!(

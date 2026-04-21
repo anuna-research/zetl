@@ -80,9 +80,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 
 use crate::cap::age_encrypt::{self, AgeCiphertext, AgeEncryptError};
-use crate::cap::deploy_artifacts::{
-    self, BundledEnvelope, CohortBundle, DeployArtifactsInput,
-};
+use crate::cap::deploy_artifacts::{self, BundledEnvelope, CohortBundle, DeployArtifactsInput};
 use crate::cap::deploy_headers::{self, HeaderSpec};
 use crate::cap::derivation::{derive_path_cap, DerivationError, PATH_CAP_DEFAULT_BITS};
 use crate::cap::enrolment;
@@ -650,18 +648,18 @@ fn resolve_cohort_salts(
 ) -> Result<BTreeMap<&str, Vec<u8>>, BuildError> {
     let mut out: BTreeMap<&str, Vec<u8>> = BTreeMap::new();
     for c in &recipients.cohorts {
-        let salt_b64 = c
-            .salt_stable
-            .as_deref()
-            .ok_or_else(|| BuildError::MissingCohortSaltStable {
-                cohort: c.id.clone(),
-            })?;
-        let raw = URL_SAFE_NO_PAD
-            .decode(salt_b64.as_bytes())
-            .map_err(|e| BuildError::CohortSaltBase64 {
+        let salt_b64 =
+            c.salt_stable
+                .as_deref()
+                .ok_or_else(|| BuildError::MissingCohortSaltStable {
+                    cohort: c.id.clone(),
+                })?;
+        let raw = URL_SAFE_NO_PAD.decode(salt_b64.as_bytes()).map_err(|e| {
+            BuildError::CohortSaltBase64 {
                 cohort: c.id.clone(),
                 detail: e.to_string(),
-            })?;
+            }
+        })?;
         out.insert(c.id.as_str(), raw);
     }
     Ok(out)
@@ -681,12 +679,12 @@ fn resolve_cohort_pubkeys(
 fn parse_cohort_pubkeys(cohort: &Cohort) -> Result<Vec<X25519Pubkey>, BuildError> {
     let mut out: Vec<X25519Pubkey> = Vec::with_capacity(cohort.pubkeys.len());
     for (idx, entry) in cohort.pubkeys.iter().enumerate() {
-        let payload = entry
-            .strip_prefix(AGE_RECIPIENT_V1_PREFIX)
-            .ok_or_else(|| BuildError::RecipientPrefix {
+        let payload = entry.strip_prefix(AGE_RECIPIENT_V1_PREFIX).ok_or_else(|| {
+            BuildError::RecipientPrefix {
                 cohort: cohort.id.clone(),
                 idx,
-            })?;
+            }
+        })?;
         let raw = URL_SAFE_NO_PAD.decode(payload.as_bytes()).map_err(|e| {
             BuildError::RecipientBase64 {
                 cohort: cohort.id.clone(),
@@ -950,15 +948,8 @@ mod tests {
         }];
         let mut cfg = build_cfg(tmp.path());
         cfg.visibility = Visibility::Public;
-        let err = run_capability_build(
-            &cfg,
-            &recipients,
-            &grants,
-            &secret,
-            &signing_key,
-            &pages,
-        )
-        .unwrap_err();
+        let err = run_capability_build(&cfg, &recipients, &grants, &secret, &signing_key, &pages)
+            .unwrap_err();
         assert!(matches!(err, BuildError::PublicRepoRefused));
     }
 
@@ -1006,8 +997,7 @@ mod tests {
         )
         .unwrap();
         let stat = &summary.per_page[0];
-        let bytes =
-            fs::read(tmp.path().join("c").join(&stat.path_cap).join("w.html")).unwrap();
+        let bytes = fs::read(tmp.path().join("c").join(&stat.path_cap).join("w.html")).unwrap();
         let parsed = parse_envelope(&bytes).unwrap();
         let decryptor = age::Decryptor::new(parsed.ciphertext.as_slice()).unwrap();
         let mut reader = decryptor
@@ -1017,7 +1007,10 @@ mod tests {
         use std::io::Read;
         reader.read_to_string(&mut plaintext).unwrap();
         assert!(plaintext.contains("<p>hi</p>"));
-        assert!(!plaintext.contains("<script"), "sanitiser must strip scripts");
+        assert!(
+            !plaintext.contains("<script"),
+            "sanitiser must strip scripts"
+        );
         assert!(!plaintext.contains("alert(1)"));
     }
 

@@ -25,7 +25,9 @@ use tempfile::TempDir;
 
 use zetl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
 use zetl::cap::deploy_headers::CAP_CSP;
-use zetl::cap::genkey::{build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1};
+use zetl::cap::genkey::{
+    build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1,
+};
 use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
 use zetl::cap::html_shell::CAPABILITY_SHELL_FILENAME;
 use zetl::cap::recipients::parsing::{
@@ -155,9 +157,8 @@ fn shell_carries_csp_meta_and_sri_script() {
     // escapes `'` → `&#39;`, so compare after the same transform so
     // the assertion is readable.
     let escaped_csp = CAP_CSP.replace('\'', "&#39;");
-    let expected_meta = format!(
-        "<meta http-equiv=\"Content-Security-Policy\" content=\"{escaped_csp}\">"
-    );
+    let expected_meta =
+        format!("<meta http-equiv=\"Content-Security-Policy\" content=\"{escaped_csp}\">");
     assert!(
         shell.contains(&expected_meta),
         "missing CSP meta with pinned directive, got:\n{shell}"
@@ -256,7 +257,10 @@ fn without_shim_integrity_shell_is_absent_but_csp_header_still_emitted() {
     .expect("build");
 
     assert!(
-        !tmp.path().join("_zetl").join(CAPABILITY_SHELL_FILENAME).exists(),
+        !tmp.path()
+            .join("_zetl")
+            .join(CAPABILITY_SHELL_FILENAME)
+            .exists(),
         "shell must not be emitted without a shim_integrity token"
     );
     let headers = fs::read_to_string(tmp.path().join("_zetl").join("deploy").join("_headers"))
@@ -286,9 +290,7 @@ fn shell_is_byte_deterministic_across_rebuilds() {
         )
         .unwrap();
     }
-    let s1 = fs::read_to_string(tmp1.path().join("_zetl").join(CAPABILITY_SHELL_FILENAME))
-        .unwrap();
-    let s2 = fs::read_to_string(tmp2.path().join("_zetl").join(CAPABILITY_SHELL_FILENAME))
-        .unwrap();
+    let s1 = fs::read_to_string(tmp1.path().join("_zetl").join(CAPABILITY_SHELL_FILENAME)).unwrap();
+    let s2 = fs::read_to_string(tmp2.path().join("_zetl").join(CAPABILITY_SHELL_FILENAME)).unwrap();
     assert_eq!(s1, s2);
 }

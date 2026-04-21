@@ -17,7 +17,9 @@ use base64::Engine as _;
 use tempfile::TempDir;
 
 use zetl::cap::build::{run_capability_build, BuildConfig, PageInput, Visibility};
-use zetl::cap::genkey::{build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1};
+use zetl::cap::genkey::{
+    build_secret, decode_secret, encode_secret, ParsedSecret, SECRET_VERSION_V1,
+};
 use zetl::cap::grants::validation::{Grant, GrantMode, GrantsFile};
 use zetl::cap::recipients::parsing::{
     Cohort, CohortMode, RecipientsFile, VaultSection, AGE_RECIPIENT_V1_PREFIX,
@@ -176,9 +178,7 @@ fn default_build_emits_every_deploy_recipe_with_spec_headers() {
 
     // REQ-3418 / CON-3406: /assets/shim.js is public, immutable, 1 year.
     assert!(
-        headers.contains(
-            "/assets/shim.js\n  Cache-Control: public, max-age=31536000, immutable"
-        ),
+        headers.contains("/assets/shim.js\n  Cache-Control: public, max-age=31536000, immutable"),
         "missing shim.js Cache-Control in _headers:\n{headers}"
     );
 
@@ -230,7 +230,12 @@ fn operator_max_age_override_propagates_to_every_recipe() {
     .expect("build");
 
     let deploy = tmp.path().join("_zetl").join("deploy");
-    for name in ["nginx.conf.snippet", "Caddyfile.snippet", "_headers", "vercel.json"] {
+    for name in [
+        "nginx.conf.snippet",
+        "Caddyfile.snippet",
+        "_headers",
+        "vercel.json",
+    ] {
         let body = fs::read_to_string(deploy.join(name)).unwrap();
         assert!(
             body.contains("max-age=900"),
@@ -313,7 +318,11 @@ fn deploy_recipe_emission_is_additive_over_ciphertext_tree() {
         .join("welcome.html");
     assert!(envelope_path.is_file(), "ciphertext envelope missing");
     assert!(
-        tmp.path().join("_zetl").join("deploy").join("_headers").is_file(),
+        tmp.path()
+            .join("_zetl")
+            .join("deploy")
+            .join("_headers")
+            .is_file(),
         "deploy recipes missing"
     );
 

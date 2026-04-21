@@ -177,8 +177,10 @@ pub fn render_enroll_html(enroll_js_sri: &str) -> String {
     out.push_str("\" data-zetl-enroll>\n");
     out.push_str("<h1>zetl — hardened-mode enrolment</h1>\n");
     out.push_str("<noscript>\n");
-    out.push_str("<p>This page needs JavaScript enabled to create a \
-                 passkey and derive your cohort-scoped public key.</p>\n");
+    out.push_str(
+        "<p>This page needs JavaScript enabled to create a \
+                 passkey and derive your cohort-scoped public key.</p>\n",
+    );
     out.push_str("</noscript>\n");
     out.push_str("<section data-state=\"loading\"><p>Loading enrolment flow…</p></section>\n");
     out.push_str("</main>\n");
@@ -191,10 +193,7 @@ pub fn render_enroll_html(enroll_js_sri: &str) -> String {
 /// `<out_dir>/enroll.html`. Overwrites any existing file so
 /// successive rebuilds stay idempotent alongside the shared HTML
 /// shell and deploy recipes.
-pub fn write_enroll_html(
-    out_dir: &Path,
-    enroll_js_sri: &str,
-) -> Result<PathBuf, io::Error> {
+pub fn write_enroll_html(out_dir: &Path, enroll_js_sri: &str) -> Result<PathBuf, io::Error> {
     fs::create_dir_all(out_dir)?;
     let path = out_dir.join(ENROLL_HTML_FILENAME);
     fs::write(&path, render_enroll_html(enroll_js_sri))?;
@@ -320,9 +319,8 @@ mod tests {
     fn enroll_html_carries_csp_meta_fallback() {
         let html = render_enroll_html(SAMPLE_SRI);
         let escaped = CAP_CSP.replace('\'', "&#39;");
-        let expected_meta = format!(
-            "<meta http-equiv=\"Content-Security-Policy\" content=\"{escaped}\">"
-        );
+        let expected_meta =
+            format!("<meta http-equiv=\"Content-Security-Policy\" content=\"{escaped}\">");
         assert!(
             html.contains(&expected_meta),
             "missing CSP meta fallback, got:\n{html}"
@@ -434,11 +432,7 @@ mod tests {
     #[test]
     fn load_enroll_integrity_rejects_non_sha384_prefix() {
         let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(
-            tmp.path().join(ENROLL_SRI_FILENAME),
-            "sha256-0000\n",
-        )
-        .unwrap();
+        fs::write(tmp.path().join(ENROLL_SRI_FILENAME), "sha256-0000\n").unwrap();
         let err = load_enroll_integrity(tmp.path()).unwrap_err();
         assert!(matches!(err, EnrolmentError::Malformed { .. }));
     }

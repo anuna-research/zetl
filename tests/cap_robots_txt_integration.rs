@@ -113,9 +113,7 @@ fn test_3414_stricter_disallow_root_preserved() {
     // Exactly one `Disallow: /` — we must never duplicate the operator's
     // rule when re-emitting.
     assert_eq!(
-        body.lines()
-            .filter(|l| l.trim() == "Disallow: /")
-            .count(),
+        body.lines().filter(|l| l.trim() == "Disallow: /").count(),
         1,
         "duplicated strict rule in {body:?}"
     );

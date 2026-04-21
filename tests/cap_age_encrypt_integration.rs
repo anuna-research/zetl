@@ -94,12 +94,9 @@ fn req_3403_round_trip_multi_recipient_cohort() {
     let pubkeys: Vec<X25519Pubkey> = readers.iter().map(|(_, pk)| *pk).collect();
 
     let plaintext = b"shared cohort page";
-    let ct = encrypt_to_cohort_with_rng(
-        plaintext,
-        &pubkeys,
-        &mut ChaCha20Rng::seed_from_u64(0x5555),
-    )
-    .expect("encrypt succeeds");
+    let ct =
+        encrypt_to_cohort_with_rng(plaintext, &pubkeys, &mut ChaCha20Rng::seed_from_u64(0x5555))
+            .expect("encrypt succeeds");
 
     assert_eq!(ct.real_count, 5);
     assert_eq!(ct.tier, 10);
@@ -142,12 +139,9 @@ fn req_3422_decrypt_with_non_recipient_key_fails() {
 #[test]
 fn req_3422_no_recipient_type_distinguisher_in_header() {
     let (_id, pk) = fresh_identity_pair();
-    let ct = encrypt_to_cohort_with_rng(
-        b"body",
-        &[pk; 11],
-        &mut ChaCha20Rng::seed_from_u64(0xC0DE),
-    )
-    .expect("encrypt succeeds");
+    let ct =
+        encrypt_to_cohort_with_rng(b"body", &[pk; 11], &mut ChaCha20Rng::seed_from_u64(0xC0DE))
+            .expect("encrypt succeeds");
 
     // 11 real pubkeys → tier 30 → 19 padding entries.
     assert_eq!(ct.tier, 30);
@@ -179,11 +173,7 @@ fn oversized_cohort_surfaces_padding_overflow() {
     let _encoded = bech32::encode::<Bech32>(hrp, &pk_bytes).unwrap();
 
     let recipients = vec![pk_bytes; pad::MAX_REAL_RECIPIENTS + 1];
-    let err = encrypt_to_cohort_with_rng(
-        b"x",
-        &recipients,
-        &mut ChaCha20Rng::seed_from_u64(0),
-    )
-    .expect_err("overflow");
+    let err = encrypt_to_cohort_with_rng(b"x", &recipients, &mut ChaCha20Rng::seed_from_u64(0))
+        .expect_err("overflow");
     assert!(matches!(err, AgeEncryptError::Padding(_)));
 }

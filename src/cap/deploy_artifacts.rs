@@ -317,9 +317,7 @@ pub fn render_deploy_netlify(spec: &HeaderSpec, tombstones: &[String]) -> String
 pub fn render_deploy_vercel(spec: &HeaderSpec, tombstones: &[String]) -> String {
     let mut out = String::new();
     out.push_str(&format!("// {GENERATED_MARKER}: Vercel.\n"));
-    out.push_str(
-        "// Drop the `headers` / `redirects` arrays into your own vercel.json.\n\n",
-    );
+    out.push_str("// Drop the `headers` / `redirects` arrays into your own vercel.json.\n\n");
     out.push_str(&render_top_vercel_json(spec, tombstones));
     out
 }
@@ -416,7 +414,10 @@ pub fn write_deploy_artifacts(
     written.push(redirects);
 
     let vercel = out_dir.join("vercel.json");
-    fs::write(&vercel, render_top_vercel_json(input.spec, &input.tombstones))?;
+    fs::write(
+        &vercel,
+        render_top_vercel_json(input.spec, &input.tombstones),
+    )?;
     written.push(vercel);
 
     for (name, body) in [
@@ -529,7 +530,9 @@ fn json_string(raw: &str) -> String {
 }
 
 fn nginx_quote(raw: &str) -> String {
-    let needs_quoting = raw.chars().any(|c| c.is_whitespace() || c == '"' || c == ';');
+    let needs_quoting = raw
+        .chars()
+        .any(|c| c.is_whitespace() || c == '"' || c == ';');
     if !needs_quoting {
         return raw.to_string();
     }
@@ -603,7 +606,10 @@ mod tests {
         HeaderSpec::from_cache_config(&AccessConfig::default().cache)
     }
 
-    fn default_input<'a>(spec: &'a HeaderSpec, sf: &'a SingleFileConfig) -> DeployArtifactsInput<'a> {
+    fn default_input<'a>(
+        spec: &'a HeaderSpec,
+        sf: &'a SingleFileConfig,
+    ) -> DeployArtifactsInput<'a> {
         DeployArtifactsInput {
             spec,
             tombstones: Vec::new(),
@@ -629,7 +635,10 @@ mod tests {
         ];
         let body = render_gone_map(&paths);
         for p in &paths {
-            assert!(body.contains(&format!("{p} 1;")), "missing {p:?} in:\n{body}");
+            assert!(
+                body.contains(&format!("{p} 1;")),
+                "missing {p:?} in:\n{body}"
+            );
         }
     }
 
@@ -699,10 +708,7 @@ mod tests {
 
     #[test]
     fn deploy_caddy_emits_respond_410_per_tombstone() {
-        let body = render_deploy_caddy(
-            &default_spec(),
-            &["/c/xyz/page.html".to_string()],
-        );
+        let body = render_deploy_caddy(&default_spec(), &["/c/xyz/page.html".to_string()]);
         assert!(body.contains("@zetl_cap path /c/*"));
         assert!(body.contains("path /c/xyz/page.html"));
         assert!(body.contains("respond @zetl_gone_"));
@@ -794,10 +800,7 @@ mod tests {
             .filter_map(|e| e.file_name().into_string().ok())
             .filter(|n| n.ends_with(".html"))
             .collect();
-        assert!(
-            entries.is_empty(),
-            "no bundle expected, found {entries:?}"
-        );
+        assert!(entries.is_empty(), "no bundle expected, found {entries:?}");
     }
 
     #[test]
@@ -856,14 +859,10 @@ mod tests {
         let tombstones = vec!["/c/deadbeef/secret.html".to_string()];
 
         assert!(render_gone_map(&tombstones).contains("/c/deadbeef/secret.html 1;"));
-        assert!(render_netlify_redirects(&tombstones)
-            .contains("/c/deadbeef/secret.html 410!"));
+        assert!(render_netlify_redirects(&tombstones).contains("/c/deadbeef/secret.html 410!"));
         let vj = render_top_vercel_json(&spec, &tombstones);
         let parsed: serde_json::Value = serde_json::from_str(&vj).unwrap();
-        assert_eq!(
-            parsed["redirects"][0]["source"],
-            "/c/deadbeef/secret.html"
-        );
+        assert_eq!(parsed["redirects"][0]["source"], "/c/deadbeef/secret.html");
         // The recipe under _zetl/ mentions the tombstone inline as a
         // hint so an operator auditing one file sees every platform's
         // view of the retired path.

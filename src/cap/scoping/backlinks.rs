@@ -47,15 +47,20 @@ pub fn scope_backlinks_for_target<T: Clone>(
     raw: &[RawBacklink<T>],
     index: &CohortIndex,
 ) -> Vec<RawBacklink<T>> {
-    let target_cohorts: BTreeSet<&str> =
-        index.cohorts_of(target_slug).iter().map(String::as_str).collect();
+    let target_cohorts: BTreeSet<&str> = index
+        .cohorts_of(target_slug)
+        .iter()
+        .map(String::as_str)
+        .collect();
     if target_cohorts.is_empty() {
         return Vec::new();
     }
     raw.iter()
         .filter(|b| {
             let src_cohorts = index.cohorts_of(&b.source_slug);
-            src_cohorts.iter().any(|c| target_cohorts.contains(c.as_str()))
+            src_cohorts
+                .iter()
+                .any(|c| target_cohorts.contains(c.as_str()))
         })
         .cloned()
         .collect()

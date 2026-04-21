@@ -11453,13 +11453,12 @@ fn main() -> anyhow::Result<()> {
             zetl::cli::CapCommand::List { .. } => cmd_cap_stub(&cli, "list"),
             zetl::cli::CapCommand::Revoke { grant_id } => cmd_cap_revoke(&cli, grant_id),
             zetl::cli::CapCommand::Rotate { cohort } => cmd_cap_rotate(&cli, cohort),
-            zetl::cli::CapCommand::Finalise { grant_id, rotate_grant } => {
-                cmd_cap_finalise(&cli, grant_id, *rotate_grant)
-            }
+            zetl::cli::CapCommand::Finalise {
+                grant_id,
+                rotate_grant,
+            } => cmd_cap_finalise(&cli, grant_id, *rotate_grant),
             zetl::cli::CapCommand::Share { .. } => cmd_cap_stub(&cli, "share"),
-            zetl::cli::CapCommand::Check { public_safety } => {
-                cmd_cap_check(&cli, *public_safety)
-            }
+            zetl::cli::CapCommand::Check { public_safety } => cmd_cap_check(&cli, *public_safety),
             zetl::cli::CapCommand::Sweep => cmd_cap_sweep(&cli),
             zetl::cli::CapCommand::Pair {
                 grantor,
@@ -11513,9 +11512,8 @@ const CAP_NOT_YET_IMPLEMENTED_EXIT: i32 = 2;
 /// reachable and produces a predictable error code even before its
 /// handler exists.
 fn cmd_cap_stub(cli: &Cli, verb: &str) -> Result<()> {
-    let message = format!(
-        "zetl cap {verb}: not-yet-implemented (SPEC-034 REQ-3416 CLI surface stub)"
-    );
+    let message =
+        format!("zetl cap {verb}: not-yet-implemented (SPEC-034 REQ-3416 CLI surface stub)");
     let json_requested = cli.json || matches!(cli.format, OutputFormat::Json);
     if json_requested {
         exit_json_error(&message, CAP_NOT_YET_IMPLEMENTED_EXIT);
@@ -11629,9 +11627,7 @@ fn cmd_cap_invite(cli: &Cli, args: CapInviteArgs) -> Result<()> {
         encode_age_recipient_v1, format_rfc3339_utc, generate_grant_id, generate_invite_keypair,
         parse_expires, xor_split_private_key, DEFAULT_EXPIRES_SECS, URL_SHORTENER_WARNING,
     };
-    use zetl::cap::public_repo::{
-        parse_config_lens, SplitKeyConfig, SplitKeySecondFactor,
-    };
+    use zetl::cap::public_repo::{parse_config_lens, SplitKeyConfig, SplitKeySecondFactor};
     use zetl::cap::recipients::parsing::{CohortMode, RecipientsFile, AGE_RECIPIENT_V1_PREFIX};
     use zetl::cap::url_format::CapUrl;
 
@@ -12073,7 +12069,12 @@ fn cmd_cap_rotate(cli: &Cli, cohort_id: &str) -> Result<()> {
         .as_secs();
     let now_rfc3339 = format_rfc3339_utc(now_unix);
 
-    match rotate_cohort_salt(&mut state.recipients, cohort_id, salt_b64, now_rfc3339.clone()) {
+    match rotate_cohort_salt(
+        &mut state.recipients,
+        cohort_id,
+        salt_b64,
+        now_rfc3339.clone(),
+    ) {
         Ok(_) => {
             state
                 .recipients
@@ -12242,9 +12243,9 @@ fn cmd_cap_finalise(cli: &Cli, grant_id: &str, rotate_grant: bool) -> Result<()>
              ZETL_CAP_SITE_URL=<URL> in the environment (same convention as `zetl cap invite`)."
         )
     })?;
-    let (scheme, host) = site_url
-        .split_once("://")
-        .ok_or_else(|| anyhow::anyhow!("ZETL_CAP_SITE_URL must be of the form <scheme>://<host>"))?;
+    let (scheme, host) = site_url.split_once("://").ok_or_else(|| {
+        anyhow::anyhow!("ZETL_CAP_SITE_URL must be of the form <scheme>://<host>")
+    })?;
     if scheme.is_empty() || host.is_empty() {
         anyhow::bail!("ZETL_CAP_SITE_URL must be of the form <scheme>://<host>");
     }
@@ -12256,8 +12257,8 @@ fn cmd_cap_finalise(cli: &Cli, grant_id: &str, rotate_grant: bool) -> Result<()>
              cohort secret to re-derive the landing-page path-cap."
         )
     })?;
-    let secret = decode_secret(&secret_env)
-        .with_context(|| format!("{ZETL_CAP_SECRET_ENV} is invalid"))?;
+    let secret =
+        decode_secret(&secret_env).with_context(|| format!("{ZETL_CAP_SECRET_ENV} is invalid"))?;
 
     let cohort_salt_stable = state.recipients.cohorts[cohort_idx]
         .salt_stable
@@ -12519,7 +12520,9 @@ fn cmd_cap_rotate_signing_key(cli: &Cli) -> Result<()> {
 /// cohorts + the on-disk signing pubkey. Missing or malformed files
 /// degrade gracefully (the checklist still covers every REQ-3431 step).
 fn cmd_cap_emergency_shutdown(cli: &Cli) -> Result<()> {
-    use zetl::cap::emergency_shutdown::{checklist_json, render_checklist, CohortRef, ShutdownContext};
+    use zetl::cap::emergency_shutdown::{
+        checklist_json, render_checklist, CohortRef, ShutdownContext,
+    };
     use zetl::cap::recipients::parsing::RecipientsFile;
 
     let vault_root = std::fs::canonicalize(&cli.dir)
@@ -12683,8 +12686,7 @@ fn cmd_cap_pair(cli: &Cli, args: CapPairArgs) -> Result<()> {
     // that is already in the nonce store is a hard error so tests
     // catch reuse refusal deterministically.
     let phrase = if let Some(user_phrase) = args.phrase.as_deref() {
-        let p = PairPhrase::parse(user_phrase)
-            .map_err(|e| anyhow::anyhow!("--phrase: {e}"))?;
+        let p = PairPhrase::parse(user_phrase).map_err(|e| anyhow::anyhow!("--phrase: {e}"))?;
         let updated = prior_nonces
             .clone()
             .accept(&p.nonce_hash(), now_unix)
@@ -12718,8 +12720,8 @@ fn cmd_cap_pair(cli: &Cli, args: CapPairArgs) -> Result<()> {
         p
     };
 
-    let (session, outbound) = PairSession::start(&phrase)
-        .map_err(|e| anyhow::anyhow!("SPAKE2 start failed: {e}"))?;
+    let (session, outbound) =
+        PairSession::start(&phrase).map_err(|e| anyhow::anyhow!("SPAKE2 start failed: {e}"))?;
 
     // Print phrase + handshake for the grantee to consume. We print
     // immediately (flushing stdout) so a grantee watching this
@@ -12823,9 +12825,8 @@ fn cmd_cap_pair(cli: &Cli, args: CapPairArgs) -> Result<()> {
             Ok(())
         }
         Err(e) => {
-            let msg = format!(
-                "HMAC verification failed ({e}) — phrase mismatch or MITM. Abort pairing."
-            );
+            let msg =
+                format!("HMAC verification failed ({e}) — phrase mismatch or MITM. Abort pairing.");
             if json_requested {
                 exit_json_error(&msg, 1);
             }
@@ -12855,15 +12856,13 @@ fn cmd_cap_pair_grantee(
         .peer
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("--peer <HANDSHAKE> is required for --grantee"))?;
-    let peer_msg = PairMessage::from_b64(peer_b64)
-        .map_err(|e| anyhow::anyhow!("--peer: {e}"))?;
+    let peer_msg = PairMessage::from_b64(peer_b64).map_err(|e| anyhow::anyhow!("--peer: {e}"))?;
 
     let phrase_text = args
         .phrase
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("--phrase is required for --grantee"))?;
-    let phrase = PairPhrase::parse(phrase_text)
-        .map_err(|e| anyhow::anyhow!("--phrase: {e}"))?;
+    let phrase = PairPhrase::parse(phrase_text).map_err(|e| anyhow::anyhow!("--phrase: {e}"))?;
 
     let pubkey_b64 = args
         .pubkey
@@ -12910,7 +12909,9 @@ fn cmd_cap_pair_grantee(
         println!("zetl cap pair (REQ-3408) — grantee response");
         println!("==========================================");
         println!();
-        println!("Paste the following three lines into the grantor's running `zetl cap pair` terminal:");
+        println!(
+            "Paste the following three lines into the grantor's running `zetl cap pair` terminal:"
+        );
         println!();
         println!("    {}", outbound.to_b64());
         println!("    {pubkey_b64}");

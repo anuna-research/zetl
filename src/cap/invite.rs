@@ -207,18 +207,13 @@ pub fn generate_grant_id<R: RngCore + CryptoRng>(rng: &mut R) -> String {
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ExpiresParseError {
     #[error("invalid --expires value {value:?}: {reason}")]
-    Malformed {
-        value: String,
-        reason: &'static str,
-    },
+    Malformed { value: String, reason: &'static str },
     #[error(
         "--expires {value:?} is below the NFR-3412 minimum of {min}s",
         min = MIN_EXPIRES_SECS
     )]
     TooShort { value: String },
-    #[error(
-        "--expires {value:?} exceeds the NFR-3412 maximum of 90 days"
-    )]
+    #[error("--expires {value:?} exceeds the NFR-3412 maximum of 90 days")]
     TooLong { value: String },
 }
 
@@ -249,12 +244,10 @@ pub fn parse_expires(s: &str) -> Result<u64, ExpiresParseError> {
             value: s.to_string(),
             reason: "non-numeric quantity",
         })?;
-    let secs = n
-        .checked_mul(mult)
-        .ok_or(ExpiresParseError::Malformed {
-            value: s.to_string(),
-            reason: "duration overflow",
-        })?;
+    let secs = n.checked_mul(mult).ok_or(ExpiresParseError::Malformed {
+        value: s.to_string(),
+        reason: "duration overflow",
+    })?;
     if secs < MIN_EXPIRES_SECS {
         return Err(ExpiresParseError::TooShort {
             value: s.to_string(),

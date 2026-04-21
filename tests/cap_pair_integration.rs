@@ -39,7 +39,11 @@ fn fresh_vault(name: &str) -> tempfile::TempDir {
 fn spawn_grantor(
     vault: &std::path::Path,
     phrase: &str,
-) -> (std::process::Child, BufReader<std::process::ChildStdout>, String) {
+) -> (
+    std::process::Child,
+    BufReader<std::process::ChildStdout>,
+    String,
+) {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_zetl"));
     cmd.args([
         "-d",
@@ -65,7 +69,11 @@ fn spawn_grantor(
     reader.read_line(&mut line).expect("grantor prompt line");
     let v: serde_json::Value = serde_json::from_str(line.trim())
         .unwrap_or_else(|e| panic!("grantor prompt not JSON: {line}\n{e}"));
-    assert_eq!(v["phase"].as_str(), Some("prompt"), "unexpected phase: {line}");
+    assert_eq!(
+        v["phase"].as_str(),
+        Some("prompt"),
+        "unexpected phase: {line}"
+    );
     let handshake = v["handshake_b64"].as_str().unwrap().to_string();
     (child, reader, handshake)
 }
@@ -95,8 +103,7 @@ fn run_grantee(
         ])
         .assert()
         .success();
-    serde_json::from_slice(&out.get_output().stdout)
-        .expect("grantee stdout is valid JSON")
+    serde_json::from_slice(&out.get_output().stdout).expect("grantee stdout is valid JSON")
 }
 
 #[test]
@@ -395,7 +402,12 @@ fn human_output_contains_security_warning() {
     drop(child.stdin.take());
 
     let mut out = String::new();
-    child.stdout.take().unwrap().read_to_string(&mut out).unwrap();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut out)
+        .unwrap();
     let _ = child.wait();
 
     assert!(
