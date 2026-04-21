@@ -1,0 +1,436 @@
+; =============================================================================
+; zetl User Guide — comprehensive vault at ../zetl-docs
+; =============================================================================
+
+(meta plan
+  (title "zetl User Guide")
+  (status "active")
+  (created "2026-04-21")
+  (description "Build a comprehensive zetl user guide as a zetl vault at /Users/anuna-01/Code/zetl-docs. Audience: writers and knowledge workers. Scope: every feature in README.md + zetl-features.md (install, vault basics, writing, finding, reading, history, reasoning, collaboration, automation, reference, help)."))
+
+; --- AGENTS ---
+(given agent-hugo-available)
+
+; --- TASKS ---
+(given task-scaffold)
+(given task-getting-started)
+(given task-concepts)
+(given task-writing)
+(given task-finding)
+(given task-reading)
+(given task-history)
+(given task-reasoning)
+(given task-collaboration)
+(given task-automation)
+(given task-reference)
+(given task-help)
+(given task-crosslink)
+(given task-verify)
+
+; --- TASK METADATA ---
+(meta task-scaffold
+  (description "Scaffold the docs vault: Index.md, directory skeleton, optional .zetl/ config, README.md for GitHub/Codeberg visitors")
+  (acceptance "Directory /Users/anuna-01/Code/zetl-docs exists with Index.md, all section folders, and README.md explaining how to read the guide"))
+
+(meta task-getting-started
+  (description "Write getting-started/ section: What is zetl, Installation, Quick Start, Your First Vault, Migrating from Obsidian")
+  (acceptance "5 pages in getting-started/, each with working examples a writer can copy-paste"))
+
+(meta task-concepts
+  (description "Write concepts/ section: Vaults, Wikilinks, The Link Graph, Blocks, Frontmatter, Local-first, What is SPL")
+  (acceptance "7 pages in concepts/ explaining the mental model; no CLI minutiae"))
+
+(meta task-writing
+  (description "Write writing/ section: Writing Pages, Linking Pages, Embeds and Transclusion, Headings and Blocks, Organising Your Vault, Tags and Frontmatter")
+  (acceptance "6 pages in writing/; practical how-tos with before/after examples"))
+
+(meta task-finding
+  (description "Write finding/ section: Searching, Backlinks, Similar Pages, Following Links, Finding Orphans and Dead Links")
+  (acceptance "5 pages in finding/; covers search, similar, links, dead-links, stats"))
+
+(meta task-reading
+  (description "Write reading/ section: Terminal Viewer, Web Server, Static Site Export, Customising the Look (themes)")
+  (acceptance "4 pages in reading/; covers view, serve, build, themes"))
+
+(meta task-history
+  (description "Write history/ section: Time Travel, Watching for Changes, Page History, Snapshots under the hood (jj)")
+  (acceptance "4 pages in history/; feature-gated notes for --features history"))
+
+(meta task-reasoning
+  (description "Write reasoning/ section: What is Defeasible Reasoning, Writing SPL, Running Queries, Proof Trees, What-if and Abduction")
+  (acceptance "5 pages in reasoning/; motivates SPL for non-programmers, feature-gated"))
+
+(meta task-collaboration
+  (description "Write collaboration/ section: Running a Team Server, Passkeys and Accounts, Invitations, Co-editing, Access Control, Capability URLs")
+  (acceptance "5-6 pages in collaboration/; includes BIP39 recovery and capability-URL static distribution"))
+
+(meta task-automation
+  (description "Write automation/ section: Lifecycle Hooks, Render Pipeline Hooks, Plugin Ecosystems (Pandoc/mdBook/remark), MCP Server for AI agents")
+  (acceptance "4 pages in automation/; ecosystems feature-gated, safe-mode explained"))
+
+(meta task-reference
+  (description "Write reference/ section: CLI Overview, Configuration, Frontmatter Fields, Glossary")
+  (acceptance "4 pages in reference/; cross-referenced from the rest of the vault"))
+
+(meta task-help
+  (description "Write help/ section: Troubleshooting, FAQ")
+  (acceptance "2 pages in help/; covers common first-time-user pitfalls"))
+
+(meta task-crosslink
+  (description "Audit wikilinks across the vault: ensure every page links to its prerequisites, parent concept, and related pages; add a short 'Related' section where helpful")
+  (acceptance "`zetl check /Users/anuna-01/Code/zetl-docs` reports no dead links; every page has at least one inbound link (no orphans except Index.md)"))
+
+(meta task-verify
+  (description "Build the vault with `zetl build` and `zetl serve` to confirm it renders; fix any parse errors or frontmatter issues")
+  (acceptance "`zetl build /Users/anuna-01/Code/zetl-docs --out /tmp/zetl-docs-dist` succeeds with no errors"))
+
+; --- READINESS RULES ---
+; scaffold is ready immediately
+(given no-deps-scaffold)
+(normally r-ready-scaffold
+  (and task-scaffold no-deps-scaffold)
+  ready-scaffold)
+
+; all content sections are ready once scaffold is done
+(normally r-ready-getting-started completed-scaffold ready-getting-started)
+(normally r-ready-concepts        completed-scaffold ready-concepts)
+(normally r-ready-writing         completed-scaffold ready-writing)
+(normally r-ready-finding         completed-scaffold ready-finding)
+(normally r-ready-reading         completed-scaffold ready-reading)
+(normally r-ready-history         completed-scaffold ready-history)
+(normally r-ready-reasoning       completed-scaffold ready-reasoning)
+(normally r-ready-collaboration   completed-scaffold ready-collaboration)
+(normally r-ready-automation      completed-scaffold ready-automation)
+(normally r-ready-reference       completed-scaffold ready-reference)
+(normally r-ready-help            completed-scaffold ready-help)
+
+; crosslink is ready once every content section is done
+(normally r-ready-crosslink
+  (and completed-getting-started
+       completed-concepts
+       completed-writing
+       completed-finding
+       completed-reading
+       completed-history
+       completed-reasoning
+       completed-collaboration
+       completed-automation
+       completed-reference
+       completed-help)
+  ready-crosslink)
+
+; verify is ready once crosslink is done
+(normally r-ready-verify completed-crosslink ready-verify)
+
+; --- ASSIGNMENT RULES ---
+(normally r-assign-scaffold        (and ready-scaffold        agent-hugo-available) assign-to-scaffold-hugo)
+(normally r-assign-getting-started (and ready-getting-started agent-hugo-available) assign-to-getting-started-hugo)
+(normally r-assign-concepts        (and ready-concepts        agent-hugo-available) assign-to-concepts-hugo)
+(normally r-assign-writing         (and ready-writing         agent-hugo-available) assign-to-writing-hugo)
+(normally r-assign-finding         (and ready-finding         agent-hugo-available) assign-to-finding-hugo)
+(normally r-assign-reading         (and ready-reading         agent-hugo-available) assign-to-reading-hugo)
+(normally r-assign-history         (and ready-history         agent-hugo-available) assign-to-history-hugo)
+(normally r-assign-reasoning       (and ready-reasoning       agent-hugo-available) assign-to-reasoning-hugo)
+(normally r-assign-collaboration   (and ready-collaboration   agent-hugo-available) assign-to-collaboration-hugo)
+(normally r-assign-automation      (and ready-automation      agent-hugo-available) assign-to-automation-hugo)
+(normally r-assign-reference       (and ready-reference       agent-hugo-available) assign-to-reference-hugo)
+(normally r-assign-help            (and ready-help            agent-hugo-available) assign-to-help-hugo)
+(normally r-assign-crosslink       (and ready-crosslink       agent-hugo-available) assign-to-crosslink-hugo)
+(normally r-assign-verify          (and ready-verify          agent-hugo-available) assign-to-verify-hugo)
+
+(claims agent:hugo
+  :at "2026-04-21T05:13:49Z"
+  (given claim-v1-scaffold)
+  (normally r-cl-state-v1-scaffold claim-v1-scaffold state-claimed-v1-scaffold)
+  (normally r-cl-chain-v1-scaffold state-claimed-v1-scaffold claimed-scaffold)
+)
+
+;; Propagation rules: failures in 'scaffold' block downstream tasks
+(normally r-propagate-automation-from-scaffold-failed failed-scaffold upstream-blocked-automation)
+(normally r-propagate-automation-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-automation)
+(normally r-propagate-automation-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-automation)
+(normally r-propagate-automation-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-automation)
+(normally r-propagate-automation-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-automation)
+(normally r-propagate-collaboration-from-scaffold-failed failed-scaffold upstream-blocked-collaboration)
+(normally r-propagate-collaboration-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-collaboration)
+(normally r-propagate-collaboration-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-collaboration)
+(normally r-propagate-collaboration-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-collaboration)
+(normally r-propagate-collaboration-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-collaboration)
+(normally r-propagate-concepts-from-scaffold-failed failed-scaffold upstream-blocked-concepts)
+(normally r-propagate-concepts-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-concepts)
+(normally r-propagate-concepts-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-concepts)
+(normally r-propagate-concepts-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-concepts)
+(normally r-propagate-concepts-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-concepts)
+(normally r-propagate-finding-from-scaffold-failed failed-scaffold upstream-blocked-finding)
+(normally r-propagate-finding-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-finding)
+(normally r-propagate-finding-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-finding)
+(normally r-propagate-finding-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-finding)
+(normally r-propagate-finding-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-finding)
+(normally r-propagate-getting-started-from-scaffold-failed failed-scaffold upstream-blocked-getting-started)
+(normally r-propagate-getting-started-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-getting-started)
+(normally r-propagate-getting-started-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-getting-started)
+(normally r-propagate-getting-started-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-getting-started)
+(normally r-propagate-getting-started-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-getting-started)
+(normally r-propagate-help-from-scaffold-failed failed-scaffold upstream-blocked-help)
+(normally r-propagate-help-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-help)
+(normally r-propagate-help-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-help)
+(normally r-propagate-help-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-help)
+(normally r-propagate-help-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-help)
+(normally r-propagate-history-from-scaffold-failed failed-scaffold upstream-blocked-history)
+(normally r-propagate-history-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-history)
+(normally r-propagate-history-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-history)
+(normally r-propagate-history-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-history)
+(normally r-propagate-history-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-history)
+(normally r-propagate-reading-from-scaffold-failed failed-scaffold upstream-blocked-reading)
+(normally r-propagate-reading-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-reading)
+(normally r-propagate-reading-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-reading)
+(normally r-propagate-reading-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-reading)
+(normally r-propagate-reading-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-reading)
+(normally r-propagate-reasoning-from-scaffold-failed failed-scaffold upstream-blocked-reasoning)
+(normally r-propagate-reasoning-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-reasoning)
+(normally r-propagate-reasoning-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-reasoning)
+(normally r-propagate-reasoning-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-reasoning)
+(normally r-propagate-reasoning-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-reasoning)
+(normally r-propagate-reference-from-scaffold-failed failed-scaffold upstream-blocked-reference)
+(normally r-propagate-reference-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-reference)
+(normally r-propagate-reference-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-reference)
+(normally r-propagate-reference-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-reference)
+(normally r-propagate-reference-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-reference)
+(normally r-propagate-writing-from-scaffold-failed failed-scaffold upstream-blocked-writing)
+(normally r-propagate-writing-from-scaffold-permanently-failed permanently-failed-scaffold upstream-blocked-writing)
+(normally r-propagate-writing-from-scaffold-stale-v1 stale-v1-scaffold upstream-blocked-writing)
+(normally r-propagate-writing-from-scaffold-timeout-v1 timeout-v1-scaffold upstream-blocked-writing)
+(normally r-propagate-writing-from-scaffold-blocked upstream-blocked-scaffold upstream-blocked-writing)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-crosslink-from-automation-blocked upstream-blocked-automation upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-collaboration-blocked upstream-blocked-collaboration upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-concepts-blocked upstream-blocked-concepts upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-finding-blocked upstream-blocked-finding upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-getting-started-blocked upstream-blocked-getting-started upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-help-blocked upstream-blocked-help upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-history-blocked upstream-blocked-history upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reading-blocked upstream-blocked-reading upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reasoning-blocked upstream-blocked-reasoning upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reference-blocked upstream-blocked-reference upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-writing-blocked upstream-blocked-writing upstream-blocked-crosslink)
+(normally r-propagate-verify-from-crosslink-blocked upstream-blocked-crosslink upstream-blocked-verify)
+
+(claims agent:hugo
+  :at "2026-04-21T05:15:05Z"
+  (given completed-scaffold))
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-getting-started)
+  (normally r-cl-state-v1-getting-started claim-v1-getting-started state-claimed-v1-getting-started)
+  (normally r-cl-chain-v1-getting-started state-claimed-v1-getting-started claimed-getting-started)
+)
+
+;; Propagation rules: failures in 'getting-started' block downstream tasks
+(normally r-propagate-crosslink-from-getting-started-failed failed-getting-started upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-getting-started-permanently-failed permanently-failed-getting-started upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-getting-started-stale-v1 stale-v1-getting-started upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-getting-started-timeout-v1 timeout-v1-getting-started upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-concepts)
+  (normally r-cl-state-v1-concepts claim-v1-concepts state-claimed-v1-concepts)
+  (normally r-cl-chain-v1-concepts state-claimed-v1-concepts claimed-concepts)
+)
+
+;; Propagation rules: failures in 'concepts' block downstream tasks
+(normally r-propagate-crosslink-from-concepts-failed failed-concepts upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-concepts-permanently-failed permanently-failed-concepts upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-concepts-stale-v1 stale-v1-concepts upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-concepts-timeout-v1 timeout-v1-concepts upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-writing)
+  (normally r-cl-state-v1-writing claim-v1-writing state-claimed-v1-writing)
+  (normally r-cl-chain-v1-writing state-claimed-v1-writing claimed-writing)
+)
+
+;; Propagation rules: failures in 'writing' block downstream tasks
+(normally r-propagate-crosslink-from-writing-failed failed-writing upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-writing-permanently-failed permanently-failed-writing upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-writing-stale-v1 stale-v1-writing upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-writing-timeout-v1 timeout-v1-writing upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-finding)
+  (normally r-cl-state-v1-finding claim-v1-finding state-claimed-v1-finding)
+  (normally r-cl-chain-v1-finding state-claimed-v1-finding claimed-finding)
+)
+
+;; Propagation rules: failures in 'finding' block downstream tasks
+(normally r-propagate-crosslink-from-finding-failed failed-finding upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-finding-permanently-failed permanently-failed-finding upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-finding-stale-v1 stale-v1-finding upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-finding-timeout-v1 timeout-v1-finding upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-reading)
+  (normally r-cl-state-v1-reading claim-v1-reading state-claimed-v1-reading)
+  (normally r-cl-chain-v1-reading state-claimed-v1-reading claimed-reading)
+)
+
+;; Propagation rules: failures in 'reading' block downstream tasks
+(normally r-propagate-crosslink-from-reading-failed failed-reading upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reading-permanently-failed permanently-failed-reading upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reading-stale-v1 stale-v1-reading upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reading-timeout-v1 timeout-v1-reading upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-history)
+  (normally r-cl-state-v1-history claim-v1-history state-claimed-v1-history)
+  (normally r-cl-chain-v1-history state-claimed-v1-history claimed-history)
+)
+
+;; Propagation rules: failures in 'history' block downstream tasks
+(normally r-propagate-crosslink-from-history-failed failed-history upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-history-permanently-failed permanently-failed-history upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-history-stale-v1 stale-v1-history upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-history-timeout-v1 timeout-v1-history upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-reasoning)
+  (normally r-cl-state-v1-reasoning claim-v1-reasoning state-claimed-v1-reasoning)
+  (normally r-cl-chain-v1-reasoning state-claimed-v1-reasoning claimed-reasoning)
+)
+
+;; Propagation rules: failures in 'reasoning' block downstream tasks
+(normally r-propagate-crosslink-from-reasoning-failed failed-reasoning upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reasoning-permanently-failed permanently-failed-reasoning upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reasoning-stale-v1 stale-v1-reasoning upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reasoning-timeout-v1 timeout-v1-reasoning upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-collaboration)
+  (normally r-cl-state-v1-collaboration claim-v1-collaboration state-claimed-v1-collaboration)
+  (normally r-cl-chain-v1-collaboration state-claimed-v1-collaboration claimed-collaboration)
+)
+
+;; Propagation rules: failures in 'collaboration' block downstream tasks
+(normally r-propagate-crosslink-from-collaboration-failed failed-collaboration upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-collaboration-permanently-failed permanently-failed-collaboration upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-collaboration-stale-v1 stale-v1-collaboration upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-collaboration-timeout-v1 timeout-v1-collaboration upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-automation)
+  (normally r-cl-state-v1-automation claim-v1-automation state-claimed-v1-automation)
+  (normally r-cl-chain-v1-automation state-claimed-v1-automation claimed-automation)
+)
+
+;; Propagation rules: failures in 'automation' block downstream tasks
+(normally r-propagate-crosslink-from-automation-failed failed-automation upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-automation-permanently-failed permanently-failed-automation upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-automation-stale-v1 stale-v1-automation upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-automation-timeout-v1 timeout-v1-automation upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-reference)
+  (normally r-cl-state-v1-reference claim-v1-reference state-claimed-v1-reference)
+  (normally r-cl-chain-v1-reference state-claimed-v1-reference claimed-reference)
+)
+
+;; Propagation rules: failures in 'reference' block downstream tasks
+(normally r-propagate-crosslink-from-reference-failed failed-reference upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reference-permanently-failed permanently-failed-reference upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reference-stale-v1 stale-v1-reference upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-reference-timeout-v1 timeout-v1-reference upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:16:22Z"
+  (given claim-v1-help)
+  (normally r-cl-state-v1-help claim-v1-help state-claimed-v1-help)
+  (normally r-cl-chain-v1-help state-claimed-v1-help claimed-help)
+)
+
+;; Propagation rules: failures in 'help' block downstream tasks
+(normally r-propagate-crosslink-from-help-failed failed-help upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-help-permanently-failed permanently-failed-help upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-help-stale-v1 stale-v1-help upstream-blocked-crosslink)
+(normally r-propagate-crosslink-from-help-timeout-v1 timeout-v1-help upstream-blocked-crosslink)
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-getting-started))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-concepts))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-writing))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-finding))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-reading))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-history))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-reasoning))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-collaboration))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-automation))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-reference))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:36Z"
+  (given completed-help))
+
+(claims agent:hugo
+  :at "2026-04-21T05:28:42Z"
+  (given claim-v1-crosslink)
+  (normally r-cl-state-v1-crosslink claim-v1-crosslink state-claimed-v1-crosslink)
+  (normally r-cl-chain-v1-crosslink state-claimed-v1-crosslink claimed-crosslink)
+)
+
+;; Propagation rules: failures in 'crosslink' block downstream tasks
+(normally r-propagate-verify-from-crosslink-failed failed-crosslink upstream-blocked-verify)
+(normally r-propagate-verify-from-crosslink-permanently-failed permanently-failed-crosslink upstream-blocked-verify)
+(normally r-propagate-verify-from-crosslink-stale-v1 stale-v1-crosslink upstream-blocked-verify)
+(normally r-propagate-verify-from-crosslink-timeout-v1 timeout-v1-crosslink upstream-blocked-verify)
+
+(claims agent:hugo
+  :at "2026-04-21T05:30:20Z"
+  (given completed-crosslink))
+
+(claims agent:hugo
+  :at "2026-04-21T05:30:20Z"
+  (given claim-v1-verify)
+  (normally r-cl-state-v1-verify claim-v1-verify state-claimed-v1-verify)
+  (normally r-cl-chain-v1-verify state-claimed-v1-verify claimed-verify)
+)
+
+(claims agent:hugo
+  :at "2026-04-21T05:33:54Z"
+  (given completed-verify))
