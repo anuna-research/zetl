@@ -1115,7 +1115,10 @@ mod tests {
         assert_eq!(slugify_heading("What-if & Abduction"), "what-if-abduction");
         assert_eq!(slugify_heading("  lots   of   space  "), "lots-of-space");
         assert_eq!(slugify_heading("!!!"), "");
-        assert_eq!(slugify_heading("Rules: normally and always"), "rules-normally-and-always");
+        assert_eq!(
+            slugify_heading("Rules: normally and always"),
+            "rules-normally-and-always"
+        );
         // Unicode letters stay (URL-safe in modern browsers).
         assert_eq!(slugify_heading("Schrödinger's cat"), "schrödinger-s-cat");
     }
@@ -1150,7 +1153,10 @@ mod tests {
         let slug_map = HashMap::new();
         let md = "## Custom {#mine}\n\n## Mine\n";
         let html = render_to_html(md, &slug_map, "/", "");
-        assert!(html.contains(r#"id="mine""#), "explicit id kept; got: {html}");
+        assert!(
+            html.contains(r#"id="mine""#),
+            "explicit id kept; got: {html}"
+        );
         assert!(
             html.contains(r#"id="mine-1""#),
             "auto-slug should dodge explicit id; got: {html}"
