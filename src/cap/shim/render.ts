@@ -1,6 +1,14 @@
 // Final pipeline steps: replaceState scrub, wikilink href rewrite, and
 // DOM injection. The host page carries `<main data-zetl-capability>` as
 // the single injection sink; anything outside that element is untouched.
+//
+// The capability-mode CSP (`require-trusted-types-for 'script'`;
+// `trusted-types zetl-cap`) makes `innerHTML` a TrustedHTML sink. The
+// shared policy is registered in `sanitise.ts::trustedHtml`; we pull
+// it from there rather than re-registering so the whole shim emits a
+// single TT policy (per the one-sink-per-document TT recommendation).
+
+import { trustedHtml } from "./sanitise.ts";
 
 const HOST_SELECTOR = "main[data-zetl-capability]";
 
@@ -59,6 +67,8 @@ export function renderInto(sanitisedHtml: string): Element {
       `capability-mode host element ${HOST_SELECTOR} not found in the document — the HTML shell is missing its mount point`,
     );
   }
-  host.innerHTML = sanitisedHtml;
+  // `innerHTML` accepts TrustedHTML or string; the assignment site is
+  // one line so the union type stays local to this sink.
+  (host as unknown as { innerHTML: unknown }).innerHTML = trustedHtml(sanitisedHtml);
   return host;
 }

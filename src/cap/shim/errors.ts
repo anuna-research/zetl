@@ -57,8 +57,10 @@ export function helpHrefFor(kind: ErrorKind): string {
 export function renderError(kind: ErrorKind, detail?: string): void {
   const body = document.body ?? document.documentElement;
   // Clear any existing content so a half-rendered page never coexists
-  // with the error notice.
-  body.innerHTML = "";
+  // with the error notice. `replaceChildren()` bypasses the
+  // `innerHTML` TrustedHTML sink — no policy needed since we're
+  // installing only freshly-constructed DOM nodes below.
+  body.replaceChildren();
   const host =
     document.querySelector("main[data-zetl-capability]") ??
     document.createElement("main");

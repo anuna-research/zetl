@@ -81,20 +81,28 @@ pub const CIPHERTEXT_PATH_PREFIX: &str = "/c/";
 /// - `style-src 'self'`          — stylesheets from same origin.
 /// - `img-src 'self' data:`      — inline data URIs allowed for
 ///   sanitised-HTML image payloads (no remote fetches).
-/// - `connect-src 'none'`        — no `fetch`/XHR to anywhere. The
-///   shim fetches its envelope from the page URL itself (same-origin
-///   same-document, which browsers do not gate on `connect-src`).
+/// - `connect-src 'self'`        — the shim's `fetch(location.pathname)`
+///   for the envelope is a same-origin request but modern browsers
+///   gate it on `connect-src` regardless, so `'none'` would block
+///   the envelope fetch. `'self'` restricts fetches to the serving
+///   origin; the envelope is the only resource the shim fetches
+///   over the network.
 /// - `font-src 'self'`           — fonts from same origin only.
 /// - `frame-ancestors 'none'`    — unframeable.
 /// - `base-uri 'none'`           — `<base>` injection blocked.
 /// - `form-action 'none'`        — blocks exfil via form POST.
-/// - `require-trusted-types-for 'script'` + `trusted-types 'none'`
+/// - `require-trusted-types-for 'script'` + `trusted-types zetl-cap`
 ///   — Trusted Types gate for the shim's `innerHTML` assignment
-///   path; the shim installs a named policy before injection.
+///   path. The shim registers a `zetl-cap` policy in
+///   `src/cap/shim/render.ts` that identity-wraps the already-
+///   sanitised HTML into TrustedHTML before assignment. Only the
+///   `zetl-cap` policy name is allowed so foreign scripts cannot
+///   create their own sinks, and `require-trusted-types-for 'script'`
+///   blocks raw string assignments to DOM sinks document-wide.
 pub const CAP_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; \
-    img-src 'self' data:; connect-src 'none'; font-src 'self'; \
+    img-src 'self' data:; connect-src 'self'; font-src 'self'; \
     frame-ancestors 'none'; base-uri 'none'; form-action 'none'; \
-    require-trusted-types-for 'script'; trusted-types 'none';";
+    require-trusted-types-for 'script'; trusted-types zetl-cap;";
 
 /// Paths that must receive the CSP response header (REQ-3421). The
 /// shell HTML under `/c/*` is the browser's first-navigation target;
@@ -597,9 +605,9 @@ mod tests {
         assert_eq!(
             CAP_CSP,
             "default-src 'none'; script-src 'self'; style-src 'self'; \
-             img-src 'self' data:; connect-src 'none'; font-src 'self'; \
+             img-src 'self' data:; connect-src 'self'; font-src 'self'; \
              frame-ancestors 'none'; base-uri 'none'; form-action 'none'; \
-             require-trusted-types-for 'script'; trusted-types 'none';"
+             require-trusted-types-for 'script'; trusted-types zetl-cap;"
         );
     }
 

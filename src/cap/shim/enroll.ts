@@ -26,8 +26,9 @@
 //      clipboard + QR-code affordances.
 //
 // No network traffic to zetl endpoints is performed at runtime —
-// the CSP policy on `/enroll.html` is `connect-src 'none'`, so any
-// accidental `fetch()` would be refused by the browser.
+// the enrol bundle does all its work client-side. CSP still allows
+// same-origin fetches (`connect-src 'self'`) to share one policy
+// shape with `/c/*`; the bundle voluntarily makes none.
 
 import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha2";

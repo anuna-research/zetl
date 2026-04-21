@@ -3,6 +3,37 @@
 // but the ciphertext body crosses a cryptographic trust boundary so the
 // shim re-applies the allowlist on the decrypted plaintext before
 // injecting it into the DOM. Allowlist mirrors `tools/sanitiser-config.toml`.
+//
+// Under the capability-mode CSP (`require-trusted-types-for 'script';
+// trusted-types zetl-cap;`) both `DOMParser.parseFromString` and
+// `innerHTML` are TrustedHTML sinks. We register a shared `zetl-cap`
+// policy here so the sanitiser's parse step can feed TrustedHTML into
+// DOMParser; `render.ts` pulls the same policy for its `innerHTML`
+// assignment. `createHTML` is an identity wrap — the sanitiser below
+// does the actual content filtering before anything is returned to
+// the injection site.
+type TrustedCapPolicy = { createHTML: (input: string) => unknown };
+let CAP_POLICY: TrustedCapPolicy | null | undefined;
+function capPolicy(): TrustedCapPolicy | null {
+  if (CAP_POLICY !== undefined) return CAP_POLICY;
+  const tt = (globalThis as unknown as { trustedTypes?: {
+    createPolicy: (name: string, rules: { createHTML: (s: string) => string }) => TrustedCapPolicy;
+  } }).trustedTypes;
+  if (!tt || typeof tt.createPolicy !== "function") {
+    CAP_POLICY = null;
+    return null;
+  }
+  try {
+    CAP_POLICY = tt.createPolicy("zetl-cap", { createHTML: (s: string) => s });
+  } catch {
+    CAP_POLICY = null;
+  }
+  return CAP_POLICY ?? null;
+}
+export function trustedHtml(raw: string): unknown {
+  const p = capPolicy();
+  return p ? p.createHTML(raw) : raw;
+}
 
 const ALLOWED_TAGS = new Set([
   "a", "abbr", "article", "aside", "b", "bdi", "bdo", "blockquote",
@@ -51,7 +82,13 @@ const DENIED_SCHEMES = /^\s*(javascript|data|vbscript|file|about):/i;
 /// cleaned HTML as a string. The result is safe to assign to
 /// `.innerHTML` on a capability-mode host element.
 export function sanitiseHtml(html: string): string {
-  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const wrapped = trustedHtml(`<body>${html}</body>`);
+  // DOMParser.parseFromString accepts TrustedHTML or string; the cast
+  // is local so the union type stays contained at the sink.
+  const doc = new DOMParser().parseFromString(
+    wrapped as unknown as string,
+    "text/html",
+  );
   scrub(doc.body);
   return doc.body.innerHTML;
 }

@@ -348,9 +348,9 @@ CSP (CON-3410):
 
 ```
 default-src 'none'; script-src 'self'; style-src 'self'; \
-img-src 'self' data:; connect-src 'none'; font-src 'self'; \
+img-src 'self' data:; connect-src 'self'; font-src 'self'; \
 frame-ancestors 'none'; base-uri 'none'; form-action 'none'; \
-require-trusted-types-for 'script'; trusted-types 'none';
+require-trusted-types-for 'script'; trusted-types zetl-cap;
 ```
 
 The HTML shell carries the same CSP as a `<meta http-equiv>` tag, so
@@ -536,9 +536,9 @@ directives is a silent weakening.
 
 ```
 default-src 'none'; script-src 'self'; style-src 'self'; \
-img-src 'self' data:; connect-src 'none'; font-src 'self'; \
+img-src 'self' data:; connect-src 'self'; font-src 'self'; \
 frame-ancestors 'none'; base-uri 'none'; form-action 'none'; \
-require-trusted-types-for 'script'; trusted-types 'none';
+require-trusted-types-for 'script'; trusted-types zetl-cap;
 ```
 
 ### 5.1 nginx
@@ -556,12 +556,12 @@ map $uri $zetl_gone {
 location ^~ /c/ {
     if ($zetl_gone = 1) { return 410; }
     add_header Cache-Control "private, max-age=300, must-revalidate" always;
-    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';" always;
+    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;" always;
 }
 
 location = /enroll.html {
     add_header Clear-Site-Data '"cache", "storage", "executionContexts"' always;
-    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';" always;
+    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;" always;
 }
 
 location = /logout {
@@ -585,11 +585,11 @@ Paste inside your site block.
 ```caddy
 @zetl_cap path /c/*
 header @zetl_cap Cache-Control "private, max-age=300, must-revalidate"
-header @zetl_cap Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';"
+header @zetl_cap Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;"
 
 @zetl_csd_0 path /enroll.html
 header @zetl_csd_0 Clear-Site-Data `"cache", "storage", "executionContexts"`
-header @zetl_csd_0 Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';"
+header @zetl_csd_0 Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;"
 
 @zetl_csd_1 path /logout
 header @zetl_csd_1 Clear-Site-Data `"cache", "storage", "executionContexts"`
@@ -613,11 +613,11 @@ operators who already maintain these files and want to merge by hand.
 ```
 /c/*
   Cache-Control: private, max-age=300, must-revalidate
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;
 
 /enroll.html
   Clear-Site-Data: "cache", "storage", "executionContexts"
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;
 
 /logout
   Clear-Site-Data: "cache", "storage", "executionContexts"
@@ -656,14 +656,14 @@ contents for hand-merging:
       "source": "/c/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "private, max-age=300, must-revalidate" },
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';" }
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;" }
       ]
     },
     {
       "source": "/enroll.html",
       "headers": [
         { "key": "Clear-Site-Data", "value": "\"cache\", \"storage\", \"executionContexts\"" },
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';" }
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;" }
       ]
     },
     {
@@ -704,7 +704,7 @@ aws cloudfront create-response-headers-policy \
 #   "SecurityHeadersConfig": {
 #     "ContentSecurityPolicy": {
 #       "Override": true,
-#       "ContentSecurityPolicy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none';"
+#       "ContentSecurityPolicy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types zetl-cap;"
 #     }
 #   },
 #   "CustomHeadersConfig": {

@@ -187,7 +187,7 @@ mitigations and their honest limits:
   1. `ammonia`-based HTML sanitiser with an OWASP-aligned allowlist
      (REQ-3421; config at `tools/sanitiser-config.toml`).
   2. Content Security Policy `default-src 'none'; script-src 'self';
-     trusted-types 'none'; …` (CON-3410).
+     trusted-types zetl-cap; …` (CON-3410).
   3. `zetl cap audit-diff <old-ref> <new-ref>` PR gate against a
      malicious-content corpus (REQ-3424).
 
@@ -520,7 +520,7 @@ as unmodified.
 | [Pulse Security — "Sensitive data in URLs"][pulse] | Empirical analysis of URL-harvester surfaces (Safe Browsing, SmartScreen, unfurl bots).                    | Motivates both the delegated-URL residual disclosure and split-key mode (REQ-3430).   |
 | [`ammonia` (Rust)][ammonia] / [DOMPurify (JS)][dompurify] | Battle-tested HTML sanitisers with OWASP-aligned defaults.                                           | `ammonia` is the build-side sanitiser (REQ-3421); DOMPurify is the reference shim-side config. |
 | [Subresource Integrity (W3C SRI)][sri]             | Browser-verified script integrity against the hash declared in the tag.                                    | Required on shim loader (REQ-3421) to pin the vault-signing pubkey.                   |
-| [CSP Level 3 — Trusted Types][trusted-types]       | Browser-enforced DOM-XSS mitigation via type-tagged sinks.                                                  | `require-trusted-types-for 'script'; trusted-types 'none'` (CON-3410).                |
+| [CSP Level 3 — Trusted Types][trusted-types]       | Browser-enforced DOM-XSS mitigation via type-tagged sinks.                                                  | `require-trusted-types-for 'script'; trusted-types zetl-cap` (CON-3410).                |
 
 [webauthn-prf]: https://www.w3.org/TR/webauthn-3/#prf-extension
 [filippo-passkeys]: https://words.filippo.io/passkey-encryption/
