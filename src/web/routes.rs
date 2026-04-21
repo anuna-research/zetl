@@ -2052,12 +2052,26 @@ pub async fn static_handler(
             .into_response();
     }
 
-    // 3. Fall back to the compile-time-bundled theme's `static/` dir. This
-    // lets the default theme ship a precompiled theme.css without requiring
-    // the vault to have `.zetl/themes/default/static/` on disk.
+    // 3. Fall back to the compile-time-bundled theme's `static/` dir.
+    //
+    // Two probes: first the active theme's bundled assets (for users of
+    // the bundled `default`/`minimal`/`docs`/`fountain` themes), then the
+    // bundled `default` theme as an ultimate fallback. The latter lets a
+    // user-created theme (e.g. `quickstart`) override only the templates
+    // it cares about while still pulling theme.css / shell.css / vendored
+    // sigma.js from the bundled default — otherwise every custom theme
+    // would need to vendor a full copy of default's `static/` just to
+    // render.
+    let bundled_rel = std::path::PathBuf::from("static").join(&req_path);
+    let mut bundled_probes: Vec<&str> = Vec::with_capacity(2);
     if !state.theme.is_empty() {
-        let bundled_rel = std::path::PathBuf::from("static").join(&req_path);
-        for (rel, bytes) in bundled_theme_files(&state.theme) {
+        bundled_probes.push(state.theme.as_str());
+    }
+    if state.theme != "default" {
+        bundled_probes.push("default");
+    }
+    for theme_name in bundled_probes {
+        for (rel, bytes) in bundled_theme_files(theme_name) {
             if rel == bundled_rel {
                 let mime = mime_from_ext(&req_path);
                 let cache = static_cache_control(&req_path);

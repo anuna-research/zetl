@@ -1061,7 +1061,11 @@ pub fn graph_index_size_warning(out_dir: &Path, page_count: usize) -> Option<Str
 /// Copy static assets from `.zetl/static/`, `.zetl/themes/<theme>/static/`, and
 /// the bundled theme's `static/` directory into `{out}/_static/`.
 ///
-/// Priority (lowest to highest): bundled theme → vault shared → installed theme.
+/// Priority (lowest to highest): bundled default → bundled <theme> → vault
+/// shared → installed theme. A user-created theme (e.g. `quickstart`) that
+/// only overrides templates still inherits bundled `default` static
+/// assets (theme.css, shell.css, vendored sigma.js) so the built site
+/// isn't broken.
 /// Returns `true` if any files were copied.
 fn copy_static_assets(vault_root: &Path, out: &Path, theme: &str) -> Result<bool> {
     let shared_static = vault_root.join(".zetl/static");
@@ -1071,10 +1075,29 @@ fn copy_static_assets(vault_root: &Path, out: &Path, theme: &str) -> Result<bool
     let theme_exists = theme != "default" && theme_static.is_dir();
 
     // Collect bundled theme static files (paths beginning with "static/").
-    let bundled_statics: Vec<_> = bundled_theme_files(theme)
+    // Ultimate-fallback pass: bundled `default` supplies core assets when
+    // the active theme is not a bundled one. Primary pass: the active
+    // theme's bundled files (if it is a bundled theme) overwrite where
+    // they overlap.
+    let mut bundled_statics: Vec<(std::path::PathBuf, Vec<u8>)> = Vec::new();
+    if theme != "default" {
+        bundled_statics.extend(
+            bundled_theme_files("default")
+                .into_iter()
+                .filter(|(p, _)| p.starts_with("static")),
+        );
+    }
+    for (p, bytes) in bundled_theme_files(theme)
         .into_iter()
         .filter(|(p, _)| p.starts_with("static"))
-        .collect();
+    {
+        // Overwrite any same-path entry from the default fallback.
+        if let Some(existing) = bundled_statics.iter_mut().find(|(ep, _)| ep == &p) {
+            existing.1 = bytes;
+        } else {
+            bundled_statics.push((p, bytes));
+        }
+    }
     let bundled_exists = !bundled_statics.is_empty();
 
     if !shared_exists && !theme_exists && !bundled_exists {
