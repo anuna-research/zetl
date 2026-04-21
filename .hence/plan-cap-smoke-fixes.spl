@@ -1,0 +1,150 @@
+; =============================================================================
+; Plan — fixes for gaps surfaced by the IMPL-034 ar-crawl smoke test
+; =============================================================================
+;
+; Two defects were observed while smoke-testing the capability-mode dist:
+;
+;   1. `cargo build --all-features` fails: `git_show` is
+;      `#[cfg(not(feature = "history"))]` but unconditional callers exist at
+;      src/main.rs:13018 / 13024 (in `load_vault_at_refs`). Under --all-features
+;      both branches compile → symbol-missing error.
+;
+;   2. CSP `require-trusted-types-for 'script'; trusted-types 'none';` silently
+;      blocks the shim's `host.innerHTML = sanitisedHtml` write (render.ts:62
+;      + errors.ts:61 `body.innerHTML = ""`). The shim renders nothing and
+;      emits no user-visible error. Either the shim needs a Trusted Types
+;      policy or CAP_CSP must drop the strict TT directives.
+
+(meta plan
+  (id "smoke-034-fixes")
+  (title "IMPL-034 smoke-test defects")
+  (status "active")
+  (created "2026-04-21")
+  (author "agent:hugo")
+  (description "Fix two defects surfaced by examples/cap_smoke.rs + ar-crawl: broken --all-features build, and strict CSP vs innerHTML render in the capability shim."))
+
+; --- AGENTS ---
+(given agent-coder-available)
+
+; --- TASKS ---
+(given task-build-git-show)
+(given task-shim-trusted-types)
+(given task-verify)
+
+; --- TASK METADATA ---
+(meta task-build-git-show
+  (description "Make src/cap/audit_diff's `load_vault_at_refs` callers compile under every feature combination. `git_show` is cfg-gated to `not(feature=\"history\")`; either provide a `#[cfg(feature=\"history\")]` sibling (using jj-lib or the existing git2 dep) or hoist the callers behind the same cfg. `cargo build --all-features` must succeed. Keep `zetl cap audit-diff` functional under both cfgs.")
+  (acceptance "`cargo build --all-features` finishes cleanly. `cargo check --features history` / `--no-default-features` also pass. No new warnings at the callsites. Existing `cap_audit_diff_integration` tests still pass."))
+
+(meta task-shim-trusted-types
+  (description "Reconcile CAP_CSP (`require-trusted-types-for 'script'; trusted-types 'none';` at src/cap/deploy_headers.rs:94) with the shim's `innerHTML` writes in src/cap/shim/render.ts:62 and src/cap/shim/errors.ts:61. Pick one of: (a) register a named Trusted Types policy from the shim (`trustedTypes.createPolicy('zetl-cap', {createHTML: s => s})` after sanitisation) and allow it in CAP_CSP (`trusted-types zetl-cap;`), or (b) drop the `require-trusted-types-for` / `trusted-types` directives from CAP_CSP and document the trade-off. SPEC-034 REQ-3421 / CON-3410 govern CSP; any change here updates the CSP snapshot tests in src/cap/deploy_headers.rs + src/cap/html_shell.rs.")
+  (acceptance "Default `zetl build --capability` + the serve-locally smoke test renders plaintext into `<main data-zetl-capability>` in a headless Chrome (Playwright) without the local server having to strip the CSP meta tag. All deploy-recipe byte-pin tests updated + green. Spec + operator guide (docs/capability-mode.md §3.4 CSP) reflect the decision."))
+
+(meta task-verify
+  (description "Re-run the smoke test end-to-end: fresh `cargo run --example cap_smoke`, launch `python3 /tmp/cap-smoke/serve.py` WITHOUT the CSP-strip workaround, drive `ar-crawl session` through the invite URL, assert `main.innerHTML` contains the original plaintext and the fragment was scrubbed.")
+  (acceptance "ar-crawl session logs show `main.innerHTML == <h1>Welcome</h1><p>…</p>` and `location.href` has no `#k=` after wait. `cargo build --all-features` in the same session succeeds."))
+
+; --- DEPENDENCIES ---
+; build-fix has no deps — it's a straight compile fix.
+(given no-deps-build-git-show)
+
+; --- READINESS RULES ---
+(normally r-ready-build-git-show
+  (and task-build-git-show no-deps-build-git-show)
+  ready-build-git-show)
+
+; Shim/CSP fix is independent of the build fix — can run in parallel, but
+; we prefer to land the build fix first so the CI checks the shim fix
+; under --all-features.
+(normally r-ready-shim-trusted-types
+  (and task-shim-trusted-types completed-build-git-show)
+  ready-shim-trusted-types)
+
+; Verification runs after both fixes.
+(normally r-ready-verify
+  (and task-verify completed-build-git-show completed-shim-trusted-types)
+  ready-verify)
+
+; --- ASSIGNMENT RULES ---
+(normally r-assign-build-git-show
+  (and ready-build-git-show agent-coder-available)
+  assign-to-build-git-show-coder)
+
+(normally r-assign-shim-trusted-types
+  (and ready-shim-trusted-types agent-coder-available)
+  assign-to-shim-trusted-types-coder)
+
+(normally r-assign-verify
+  (and ready-verify agent-coder-available)
+  assign-to-verify-coder)
+
+; --- RULE METADATA ---
+(meta r-ready-shim-trusted-types
+  (description "Shim/CSP fix waits on the build fix so CI can verify the shim change compiles under --all-features.")
+  (justification "Build-fix is a precondition for any meaningful full-feature CI run; avoids a merge window with a red main."))
+
+(claims agent:coder
+  :at "2026-04-20T23:47:47Z"
+  (given claim-v1-build-git-show)
+  (normally r-cl-state-v1-build-git-show claim-v1-build-git-show state-claimed-v1-build-git-show)
+  (normally r-cl-chain-v1-build-git-show state-claimed-v1-build-git-show claimed-build-git-show)
+)
+
+;; Propagation rules: failures in 'build-git-show' block downstream tasks
+(normally r-propagate-shim-trusted-types-from-build-git-show-failed failed-build-git-show upstream-blocked-shim-trusted-types)
+(normally r-propagate-shim-trusted-types-from-build-git-show-permanently-failed permanently-failed-build-git-show upstream-blocked-shim-trusted-types)
+(normally r-propagate-shim-trusted-types-from-build-git-show-stale-v1 stale-v1-build-git-show upstream-blocked-shim-trusted-types)
+(normally r-propagate-shim-trusted-types-from-build-git-show-timeout-v1 timeout-v1-build-git-show upstream-blocked-shim-trusted-types)
+(normally r-propagate-shim-trusted-types-from-build-git-show-blocked upstream-blocked-build-git-show upstream-blocked-shim-trusted-types)
+(normally r-propagate-verify-from-build-git-show-failed failed-build-git-show upstream-blocked-verify)
+(normally r-propagate-verify-from-build-git-show-permanently-failed permanently-failed-build-git-show upstream-blocked-verify)
+(normally r-propagate-verify-from-build-git-show-stale-v1 stale-v1-build-git-show upstream-blocked-verify)
+(normally r-propagate-verify-from-build-git-show-timeout-v1 timeout-v1-build-git-show upstream-blocked-verify)
+(normally r-propagate-verify-from-build-git-show-blocked upstream-blocked-build-git-show upstream-blocked-verify)
+
+;; Transitive propagation: upstream-blocked cascades through dependency chain
+(normally r-propagate-verify-from-shim-trusted-types-blocked upstream-blocked-shim-trusted-types upstream-blocked-verify)
+
+(claims agent:coder
+  :at "2026-04-20T23:51:52Z"
+  (given verified-build-git-show "cargo build --all-features + test --test cap_audit_diff_integration green after removing #[cfg(not(feature=history))] gate on git_show in src/main.rs:10640"))
+
+(claims agent:coder
+  :at "2026-04-20T23:51:56Z"
+  (given completed-build-git-show))
+
+(claims agent:coder
+  :at "2026-04-20T23:51:59Z"
+  (given claim-v1-shim-trusted-types)
+  (normally r-cl-state-v1-shim-trusted-types claim-v1-shim-trusted-types state-claimed-v1-shim-trusted-types)
+  (normally r-cl-chain-v1-shim-trusted-types state-claimed-v1-shim-trusted-types claimed-shim-trusted-types)
+)
+
+;; Propagation rules: failures in 'shim-trusted-types' block downstream tasks
+(normally r-propagate-verify-from-shim-trusted-types-failed failed-shim-trusted-types upstream-blocked-verify)
+(normally r-propagate-verify-from-shim-trusted-types-permanently-failed permanently-failed-shim-trusted-types upstream-blocked-verify)
+(normally r-propagate-verify-from-shim-trusted-types-stale-v1 stale-v1-shim-trusted-types upstream-blocked-verify)
+(normally r-propagate-verify-from-shim-trusted-types-timeout-v1 timeout-v1-shim-trusted-types upstream-blocked-verify)
+
+(claims agent:coder
+  :at "2026-04-20T23:54:59Z"
+  (given verified-shim-trusted-types "render.ts registers zetl-cap TrustedTypes policy; errors.ts uses replaceChildren; CAP_CSP emits trusted-types zetl-cap; shim tests 96/96 + cap_deploy_headers_integration 4/4 + cap_csp_sri_integration + cap_deploy_artifacts_integration all green"))
+
+(claims agent:coder
+  :at "2026-04-20T23:55:03Z"
+  (given completed-shim-trusted-types))
+
+(claims agent:coder
+  :at "2026-04-20T23:55:06Z"
+  (given claim-v1-verify)
+  (normally r-cl-state-v1-verify claim-v1-verify state-claimed-v1-verify)
+  (normally r-cl-chain-v1-verify state-claimed-v1-verify claimed-verify)
+)
+
+(claims agent:coder
+  :at "2026-04-21T00:00:08Z"
+  (given verified-verify "ar-crawl session main.innerHTML = <h1>Welcome</h1><p>This page is end-to-end encrypted.</p>, fragment scrubbed; CAP_CSP intact with trusted-types zetl-cap + connect-src self + require-trusted-types-for script; cargo build --all-features succeeds"))
+
+(claims agent:coder
+  :at "2026-04-21T00:00:12Z"
+  (given completed-verify))
