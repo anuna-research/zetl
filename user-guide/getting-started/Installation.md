@@ -5,27 +5,67 @@ tags: [install, setup, getting-started]
 
 # Installation
 
-zetl installs from source with `cargo`. There are no prebuilt binaries yet, so you need a working Rust toolchain. The binary, man page, and shell completions land in `~/.local/` by default.
+zetl ships prebuilt binaries for Linux, macOS, and Windows. The installer script handles platform detection, download, and wiring up the man page and shell completions. If you prefer to build from source, that path is documented below too.
 
-## Requirements
+## Prebuilt binaries (recommended)
 
-- A Rust toolchain. Install from [rustup.rs](https://rustup.rs/) if you don't have one.
-- `make` (optional — used by the convenience target).
-- `~/.local/bin` on your `PATH`, and `~/.local/share/man` on your `MANPATH`, for the default `make install` layout.
-
-## The one-liner
-
-From a clone of the zetl repo:
+**macOS and Linux:**
 
 ```bash
+curl -fsSL https://files.anuna.io/zetl/latest/install.sh | bash
+```
+
+The script detects your OS and architecture, downloads the right tarball, installs the binary to `~/.local/bin`, and generates the man page and shell completions.
+
+**Windows:**
+
+Download `zetl-windows-x86_64.zip` from [files.anuna.io/zetl/latest](https://files.anuna.io/zetl/latest/zetl-windows-x86_64.zip), extract `zetl.exe`, and place it somewhere on your `PATH`.
+
+### Pinning to a specific version
+
+```bash
+VERSION=0.6.1 curl -fsSL https://files.anuna.io/zetl/latest/install.sh | bash
+```
+
+### Custom install location
+
+```bash
+INSTALL_DIR=/usr/local/bin curl -fsSL https://files.anuna.io/zetl/latest/install.sh | bash
+```
+
+### What gets installed
+
+```
+~/.local/bin/zetl                                    # the binary
+~/.local/share/man/man1/zetl.1                       # man page (run 'man zetl')
+~/.local/share/bash-completion/completions/zetl
+~/.local/share/zsh/site-functions/_zetl
+~/.local/share/fish/vendor_completions.d/zetl.fish
+```
+
+The prebuilt binaries include the `reason`, `history`, and `mcp` features. See [[#Feature flags]] below if you need a different set.
+
+### PATH check
+
+The installer warns if `~/.local/bin` isn't on your `PATH`. If it isn't:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+# Add to ~/.bashrc, ~/.zshrc, or ~/.config/fish/config.fish to persist
+```
+
+---
+
+## Install from source
+
+Requires a Rust toolchain ([rustup.rs](https://rustup.rs/)).
+
+```bash
+git clone https://codeberg.org/anuna/zetl && cd zetl
 make install
 ```
 
-That gets you the core wikilink features — parsing, graph queries, search, diagnostics, the web UI, static-site export, and collaboration. No optional features.
-
-## Feature flags
-
-Everything beyond the wikilink core is gated behind cargo feature flags. Pick the ones you want at install time:
+`make install` builds with core features only and installs to `$PREFIX` (default `~/.local`). For optional features:
 
 ```bash
 # Defeasible reasoning (SPL code blocks)
@@ -41,6 +81,8 @@ cargo install --path . --features "reason,history"
 cargo install --path . --features "reason,history,semantic,mcp"
 ```
 
+## Feature flags
+
 | Flag | Unlocks |
 |------|---------|
 | *(none)* | Wikilink parsing, graph queries, search, `check`, `view`, `serve`, `build`, collaboration, hooks. |
@@ -49,25 +91,11 @@ cargo install --path . --features "reason,history,semantic,mcp"
 | `semantic` | Semantic search via embedding model (alongside full-text). |
 | `mcp` | [[MCP Server]] — expose the graph, search, and reasoning to AI agents. |
 
-Collaboration (`--collab`) is always on — it doesn't need a feature flag. SPL-based access control, however, requires `--features reason`.
-
-## Where things land
-
-`make install` installs to `$PREFIX` (default `~/.local`):
-
-```
-~/.local/bin/zetl                          # the binary
-~/.local/share/man/man1/zetl.1             # man page
-~/.local/share/bash-completion/completions/zetl
-~/.local/share/zsh/site-functions/_zetl
-~/.local/share/fish/vendor_completions.d/zetl.fish
-```
-
-After install, `man zetl` works directly, provided `~/.local/share/man` is on your `MANPATH`.
+Collaboration (`--collab`) is always on — no feature flag required. SPL-based access control requires `--features reason`.
 
 ## Shell completions
 
-If you prefer to wire completions up by hand (or your shell isn't bash/zsh/fish), the binary prints them on demand:
+The binary generates completions on demand, in case you want to wire them up manually or use a shell not covered by the installer:
 
 ```bash
 zetl completions bash       > /etc/bash_completion.d/zetl
@@ -77,7 +105,7 @@ zetl completions powershell > $PROFILE/zetl.ps1
 zetl completions elvish     > ~/.config/elvish/lib/zetl.elv
 ```
 
-Same story for the man page:
+Man page:
 
 ```bash
 zetl man > /usr/local/share/man/man1/zetl.1    # install
@@ -88,14 +116,10 @@ zetl man | man -l -                            # preview without installing
 
 ```bash
 zetl --version
-# zetl 0.5.0
+# zetl 0.6.1
 ```
 
 If that prints, you're done. Head to [[Quick Start]] for your first vault query.
-
-## No prebuilt binaries (yet)
-
-zetl is at v0.5.0. Binary releases for Linux, macOS, and Windows are planned but not yet published. Until then, install from source.
 
 ## Related
 

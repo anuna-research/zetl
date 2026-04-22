@@ -7,12 +7,24 @@ tags: [tutorial, getting-started]
 
 Sixty seconds from install to first result. This page uses the `demo-vault/` bundled with the zetl repo — a self-referential knowledge base about zetl itself. Run each command; what you see should match what's described.
 
-## Get the demo vault
+## Install zetl
 
-If you built zetl from source, `demo-vault/` is already next to your clone. From the zetl source directory:
+**macOS / Linux:**
 
 ```bash
-cd /path/to/zetl
+curl -fsSL https://files.anuna.io/zetl/latest/install.sh | bash
+```
+
+**Windows:** download [zetl-windows-x86_64.zip](https://files.anuna.io/zetl/latest/zetl-windows-x86_64.zip), extract `zetl.exe`, and add it to your `PATH`.
+
+The installer puts `zetl` in `~/.local/bin`, generates the man page, and wires up shell completions. Full details, feature flags, and source-build instructions: [[Installation]].
+
+## Get the demo vault
+
+Clone the zetl repo to get `demo-vault/`:
+
+```bash
+git clone https://codeberg.org/anuna/zetl && cd zetl
 ls demo-vault/
 # architecture/  concepts/  decisions/  features/  theories/  Demo Script.md ...
 ```

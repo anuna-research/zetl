@@ -7,7 +7,7 @@ BASHCOMPDIR ?= $(PREFIX)/share/bash-completion/completions
 ZSHCOMPDIR  ?= $(PREFIX)/share/zsh/site-functions
 FISHCOMPDIR ?= $(PREFIX)/share/fish/vendor_completions.d
 
-.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip audit-corpus help
+.PHONY: all build test test-reason test-history test-all test-nfr test-nfr-install test-nfr-build nfr-gates nfr-gates-strict nfr-gates-033 nfr-gates-033-strict check lint clippy fmt fmt-fix install uninstall clean doc doc-open release ast-reference ast-reference-check ext-golden ext-golden-update helper-js-install helper-js-build helper-js-test helper-contracts eco-features-check eco-matrix-check translator-roundtrip audit-corpus dist dist-macos-arm64 dist-macos-x86_64 dist-windows dist-metadata dist-upload dist-clean help
 
 all: build
 
@@ -214,6 +214,91 @@ clean:
 release:
 	./release.sh $(VERSION)
 
+# Local release artifact builder — use when CI upload times out.
+# Builds macOS arm64 + x86_64 + Windows from the current tag, packages
+# them, and writes metadata. Linux builds are done in CI only (Docker).
+#
+# Usage:
+#   make dist                  # build all three platforms
+#   make dist-macos-arm64      # single platform
+#   make dist-upload           # upload dist-release/ to R2 via wrangler
+#   make dist-clean            # remove dist-release/
+#
+# Windows requires: brew install mingw-w64
+DIST_DIR      ?= dist-release
+DIST_FEATURES  = reason,history,mcp,vendored-openssl
+DIST_TAG      := $(shell git describe --tags --abbrev=0)
+DIST_VERSION  := $(shell echo $(DIST_TAG) | sed 's/^v//')
+R2_BUCKET      = anuna-files
+R2_PREFIX      = zetl
+# Use rustup-managed cargo + rustc for cross-compilation. Homebrew installs
+# its own rustc earlier on PATH; explicitly pinning both binaries prevents
+# cargo from picking up the wrong compiler when cross-targeting.
+CARGO_RUSTUP  := $(shell rustup which cargo 2>/dev/null || echo $(HOME)/.cargo/bin/cargo)
+RUSTC_RUSTUP  := $(shell rustup which rustc 2>/dev/null || echo $(HOME)/.cargo/bin/rustc)
+
+dist: dist-macos-arm64 dist-macos-x86_64 dist-windows dist-metadata
+	@echo ""
+	@ls -lh $(DIST_DIR)/
+
+dist-macos-arm64:
+	rustup target add aarch64-apple-darwin
+	RUSTC=$(RUSTC_RUSTUP) $(CARGO_RUSTUP) build --release --features "$(DIST_FEATURES)" --target aarch64-apple-darwin
+	mkdir -p $(DIST_DIR)
+	cp target/aarch64-apple-darwin/release/zetl $(DIST_DIR)/zetl
+	tar czf $(DIST_DIR)/zetl-macos-arm64.tar.gz -C $(DIST_DIR) zetl
+	rm $(DIST_DIR)/zetl
+	@echo "Packaged: $(DIST_DIR)/zetl-macos-arm64.tar.gz"
+
+dist-macos-x86_64:
+	rustup target add x86_64-apple-darwin
+	RUSTC=$(RUSTC_RUSTUP) $(CARGO_RUSTUP) build --release --features "$(DIST_FEATURES)" --target x86_64-apple-darwin
+	mkdir -p $(DIST_DIR)
+	cp target/x86_64-apple-darwin/release/zetl $(DIST_DIR)/zetl
+	tar czf $(DIST_DIR)/zetl-macos-x86_64.tar.gz -C $(DIST_DIR) zetl
+	rm $(DIST_DIR)/zetl
+	@echo "Packaged: $(DIST_DIR)/zetl-macos-x86_64.tar.gz"
+
+dist-windows:
+	rustup target add x86_64-pc-windows-gnu
+	RUSTC=$(RUSTC_RUSTUP) \
+	CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
+	CARGO_PROFILE_RELEASE_LTO=thin \
+	CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 \
+		$(CARGO_RUSTUP) build --release --features "$(DIST_FEATURES)" --target x86_64-pc-windows-gnu
+	mkdir -p $(DIST_DIR)
+	cp target/x86_64-pc-windows-gnu/release/zetl.exe $(DIST_DIR)/zetl.exe
+	zip -j $(DIST_DIR)/zetl-windows-x86_64.zip $(DIST_DIR)/zetl.exe
+	rm $(DIST_DIR)/zetl.exe
+	@echo "Packaged: $(DIST_DIR)/zetl-windows-x86_64.zip"
+
+dist-metadata:
+	mkdir -p $(DIST_DIR)
+	printf '{\n  "version": "%s",\n  "download_url": "https://files.anuna.io/zetl/v%s",\n  "features": "reason,history,mcp"\n}\n' \
+		"$(DIST_VERSION)" "$(DIST_VERSION)" > $(DIST_DIR)/version.json
+	cp install.sh $(DIST_DIR)/install.sh
+	shasum -a 256 $(DIST_DIR)/zetl-*.tar.gz $(DIST_DIR)/zetl-*.zip > $(DIST_DIR)/SHA256SUMS
+	@echo "Metadata written to $(DIST_DIR)/"
+
+dist-upload:
+	@echo "Uploading $(DIST_DIR)/ → R2 $(R2_BUCKET)/$(R2_PREFIX)/$(DIST_TAG)/ + latest/"
+	@for f in $(DIST_DIR)/zetl-macos-arm64.tar.gz \
+	           $(DIST_DIR)/zetl-macos-x86_64.tar.gz \
+	           $(DIST_DIR)/zetl-windows-x86_64.zip \
+	           $(DIST_DIR)/version.json \
+	           $(DIST_DIR)/install.sh \
+	           $(DIST_DIR)/SHA256SUMS; do \
+	  [ -f "$$f" ] || continue; \
+	  fname=$$(basename "$$f"); \
+	  echo "  $$fname"; \
+	  wrangler r2 object put $(R2_BUCKET)/$(R2_PREFIX)/$(DIST_TAG)/$$fname --file "$$f" --remote; \
+	  wrangler r2 object put $(R2_BUCKET)/$(R2_PREFIX)/latest/$$fname --file "$$f" --remote; \
+	done
+	@echo "Done — https://files.anuna.io/$(R2_PREFIX)/$(DIST_TAG)/"
+
+dist-clean:
+	rm -rf $(DIST_DIR)
+
 doc:
 	cargo doc --no-deps
 
@@ -258,6 +343,9 @@ help:
 	@echo "  make doc          - Generate documentation"
 	@echo "  make doc-open     - Generate and open documentation"
 	@echo "  make release      - Tag and push a new release (VERSION=X.Y.Z optional)"
+	@echo "  make dist         - Build macOS arm64/x86_64 + Windows artifacts locally"
+	@echo "  make dist-upload  - Upload dist-release/ to R2 via wrangler"
+	@echo "  make dist-clean   - Remove dist-release/"
 	@echo ""
 	@echo "Options:"
 	@echo "  PREFIX=<path>     - Install prefix (default: ~/.local)"
