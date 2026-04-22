@@ -13,15 +13,23 @@ Source: <https://codeberg.org/anuna/zetl>. This guide is itself a zetl vault —
 
 ## 1. Install
 
-From a Rust toolchain ([rustup](https://rustup.rs/)):
+**macOS / Linux:**
+
+```bash
+curl -fsSL https://files.anuna.io/zetl/latest/install.sh | bash
+```
+
+**Windows:** download [zetl-windows-x86_64.zip](https://files.anuna.io/zetl/latest/zetl-windows-x86_64.zip), extract `zetl.exe`, add it to your `PATH`.
+
+**Build from source** (requires a [Rust toolchain](https://rustup.rs/)):
 
 ```bash
 git clone https://codeberg.org/anuna/zetl && cd zetl
-make install                                           # core: wikilinks + graph + search
-cargo install --path . --features "reason,history,mcp" # everything
+make install                                            # core features
+cargo install --path . --features "reason,history,mcp"  # everything
 ```
 
-You get `zetl` on your `$PATH`, a man page, and shell completions. Full options, feature flags, and shell-completion install paths: [[Installation]].
+You get `zetl` on your `$PATH`, a man page, and shell completions. Feature flags, custom install paths: [[Installation]].
 
 ## 2. Get the demo vault
 
@@ -155,7 +163,7 @@ Or open the folder in Obsidian, Logseq, Foam, or Dendron — wikilinks work ever
 - [[What is zetl]] · [[Your First Vault]] · [[Migrating from Obsidian]]
 
 ### Core concepts
-- [[Vaults]] · [[Wikilinks]] · [[The Link Graph]] · [[Blocks]] · [[Frontmatter]] · [[Local-first]] · [[What is SPL]]
+- [[Vaults]] · [[Wikilinks]] · [[The Link Graph]] · [[Blocks]] · [[Frontmatter]] · [[Local-first]] · [[What is SPL]] · [[Intellectual Heritage]] · [[LLM Wikis]]
 
 ### Writing
 - [[Writing Pages]] · [[Linking Pages]] · [[Embeds and Transclusion]] · [[Headings and Blocks]] · [[Organising Your Vault]] · [[Tags and Frontmatter]]
