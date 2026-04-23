@@ -2,7 +2,7 @@
 
 Captures what the Phase 0 spike in `tools/diamond-types-spike/` uncovered
 about the [diamond-types](https://crates.io/crates/diamond-types) 1.0 CRDT,
-its fit for zetl's collaborative-editing surface (`src/crdt/`,
+its fit for ztl's collaborative-editing surface (`src/crdt/`,
 `src/web/ws.rs`), and the gaps that the rest of IMPL-029 has to close.
 
 Run the spike:
@@ -17,13 +17,13 @@ doesn't perturb the main crate's dependency graph. It pulls in both
 `diamond-types = "1.0"` and `automerge = "0.5"` so the same scripted
 edit traces can be measured on each backend head-to-head.
 
-## 1. Does diamond-types cover what zetl needs?
+## 1. Does diamond-types cover what ztl needs?
 
-The table below maps zetl's current automerge surface (as used by
+The table below maps ztl's current automerge surface (as used by
 `src/crdt/mod.rs`'s `CrdtDocument` and by `src/web/ws.rs`) onto
 diamond-types 1.0.
 
-| zetl/automerge today                                | diamond-types 1.0 equivalent                                                             | Notes                                                                                                                                |
+| ztl/automerge today                                | diamond-types 1.0 equivalent                                                             | Notes                                                                                                                                |
 | --------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `AutoCommit::new()` + `put_object(ROOT, content, Text)` | `OpLog::new()`                                                                       | DT is text-only; the document *is* the oplog. No root/object-map concept.                                                            |
 | `doc.splice_text(obj, pos, del, text)`              | `oplog.add_insert(agent, pos, text)` + `oplog.add_delete_without_content(agent, range)` | Insert and delete are separate ops. Positions are **char** indices, matching automerge.                                             |

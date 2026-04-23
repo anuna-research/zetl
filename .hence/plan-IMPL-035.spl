@@ -6,7 +6,7 @@
   (created "2026-04-22")
   (author "agent:architect")
   (spec "SPEC-035")
-  (description "Implement SPEC-035 v0.1.0: static asset uploads in collaborative mode. Authorised editors upload files to .zetl/assets/, served under /assets/{*path}, governed by the SPL can-upload predicate. Seven implementation phases: (A) pure core validation + metadata types, (B) storage layer + atomic write, (C) ACL integration, (D) HTTP route handlers, (E) git integration, (F) minimal admin UI, (G) observability + documentation. Spec-level Tier 2 review (task-assets-tier2-review-spec) gates all implementation phases. Tier 1 security review (task-assets-tier1-review-security) gates merge to main."))
+  (description "Implement SPEC-035 v0.1.0: static asset uploads in collaborative mode. Authorised editors upload files to .ztl/assets/, served under /assets/{*path}, governed by the SPL can-upload predicate. Seven implementation phases: (A) pure core validation + metadata types, (B) storage layer + atomic write, (C) ACL integration, (D) HTTP route handlers, (E) git integration, (F) minimal admin UI, (G) observability + documentation. Spec-level Tier 2 review (task-assets-tier2-review-spec) gates all implementation phases. Tier 1 security review (task-assets-tier1-review-security) gates merge to main."))
 
 ;; ── Agents ──────────────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@
 (given task-assets-pure-core)
 (meta task-assets-pure-core
   (description "Pure-core modules per SPEC-035 §7 purity boundary map. (1) `src/assets/validation.rs`: `validate_slug(slug: &str) -> Result<(), SlugError>` implementing REQ-3510 rules (no `..`, no empty component, no null bytes, no Windows device names, not empty, no leading/trailing `/`); `check_mime_allowlist(mime: &Mime) -> bool` against the allowlist in REQ-3507. (2) `src/assets/metadata.rs`: `AssetMeta` struct (slug, original_filename, mime_type, size_bytes, sha256, uploaded_by, uploaded_at, replaced_at); serde Serialize + Deserialize with `deny_unknown_fields`; `version: u8 = 1`; `cache_control_for(meta: &AssetMeta) -> &'static str` per REQ-3515; `human_size(bytes: u64) -> String` for git commit messages. No std::fs, no std::env, no randomness. Property-based tests on validate_slug. Mutation testing via cargo-mutants on validation.rs ≥ 85% kill rate.")
-  (acceptance "Two files: `src/assets/validation.rs` and `src/assets/metadata.rs`. `pub(crate)` visibility. Clippy forbids `std::fs`, `std::env` in core. `cargo test -p zetl assets::` passes. Property tests for slug validation. Mutation testing ≥ 85% kill rate. TEST-3510 (slug cases table) passes as unit tests.")
+  (acceptance "Two files: `src/assets/validation.rs` and `src/assets/metadata.rs`. `pub(crate)` visibility. Clippy forbids `std::fs`, `std::env` in core. `cargo test -p ztl assets::` passes. Property tests for slug validation. Mutation testing ≥ 85% kill rate. TEST-3510 (slug cases table) passes as unit tests.")
   (priority "P0")
   (spec-ref "SPEC-035 REQ-3503, REQ-3507, REQ-3510, REQ-3515, CON-3506"))
 
@@ -37,7 +37,7 @@
 
 (given task-assets-storage-layer)
 (meta task-assets-storage-layer
-  (description "`src/assets/store.rs` effectful shell per SPEC-035 §7. (1) `init_storage_total(root) -> Result<u64>`: walks `.zetl/assets/`, sums file sizes (not sidecars). (2) `write_asset(root, slug, body: impl AsyncRead, mime, user_id, original_filename) -> Result<AssetMeta>`: streams to `.zetl/assets/.tmp/{uuid}` computing SHA-256, enforces per-file limit (stream abort), renames to final path, writes sidecar. Atomic: tmp removed on any error. (3) `delete_asset(root, slug) -> Result<()>`: removes asset + sidecar atomically, NotFound if absent. (4) `list_assets(root, prefix: Option<&str>) -> Result<Vec<AssetMeta>>`: walks `.zetl/assets/`, reads `.meta.json` sidecars, filters + sorts. (5) `serve_asset(root, path) -> Result<(AssetMeta, File)>`: reads sidecar, verifies canonical path within assets root, opens file. `StorageCounterGuard`: wraps `Arc<AtomicU64>` with `increment(n)`/`decrement(n)`/`total()`.")
+  (description "`src/assets/store.rs` effectful shell per SPEC-035 §7. (1) `init_storage_total(root) -> Result<u64>`: walks `.ztl/assets/`, sums file sizes (not sidecars). (2) `write_asset(root, slug, body: impl AsyncRead, mime, user_id, original_filename) -> Result<AssetMeta>`: streams to `.ztl/assets/.tmp/{uuid}` computing SHA-256, enforces per-file limit (stream abort), renames to final path, writes sidecar. Atomic: tmp removed on any error. (3) `delete_asset(root, slug) -> Result<()>`: removes asset + sidecar atomically, NotFound if absent. (4) `list_assets(root, prefix: Option<&str>) -> Result<Vec<AssetMeta>>`: walks `.ztl/assets/`, reads `.meta.json` sidecars, filters + sorts. (5) `serve_asset(root, path) -> Result<(AssetMeta, File)>`: reads sidecar, verifies canonical path within assets root, opens file. `StorageCounterGuard`: wraps `Arc<AtomicU64>` with `increment(n)`/`decrement(n)`/`total()`.")
   (acceptance "`src/assets/store.rs` unit and integration tested. TEST-3502 (on-disk + sidecar), TEST-3511 (atomic write + SHA-256), TEST-3525 (partial upload cleanup — simulate mid-stream error), TEST-3526 (concurrent uploads both succeed; concurrent overwrites produce one file). NFR-3504 verified. `cargo test assets::store` green.")
   (priority "P0")
   (spec-ref "SPEC-035 REQ-3502, REQ-3508, REQ-3511, NFR-3503, NFR-3504, NFR-3505, CON-3506"))
@@ -56,7 +56,7 @@
 (given task-assets-http-routes)
 (meta task-assets-http-routes
   (description "Four route handlers in `src/web/routes.rs` + router wiring in `src/web/mod.rs`. (1) `POST /api/assets/{*slug}` → `upload_asset_handler`: Content-Type header (400 if absent), validate slug (400), MIME allowlist (415), Content-Length vs per-file limit (413), `check_can_upload` (403), collab mode (404 if off), overwrite semantics headers (400/404/409 per CON-3501), storage total (507), `store::write_asset`, git commit, StorageCounterGuard.increment, log OBS-3501, return 201/200 JSON. (2) `GET /assets/{*path}` → `serve_asset_handler`: `check_can_read_assets` (401/403), `store::serve_asset`, headers per REQ-3514+REQ-3515, stream. (3) `GET /api/assets` → `list_assets_handler`: `check_can_upload`, `store::list_assets`, JSON array. (4) `DELETE /api/assets/{*slug}` → `delete_asset_handler`: CSRF check, validate slug, `check_can_upload`, `store::delete_asset`, git commit, StorageCounterGuard.decrement, 204. WebState gains `asset_storage: StorageCounterGuard`, `asset_max_file_bytes: u64`, `asset_max_total_bytes: u64`. CLI gains `--asset-max-file-bytes` and `--asset-max-total-bytes`.")
-  (acceptance "All four handlers implemented. TEST-3501, TEST-3503, TEST-3505, TEST-3506, TEST-3507, TEST-3508, TEST-3509, TEST-3512, TEST-3513, TEST-3514, TEST-3515, TEST-3517 pass in `tests/assets_http_integration.rs`. `zetl serve --collab` starts cleanly. Manual: upload PNG → appears at `/assets/slug` → list shows it → delete → 404.")
+  (acceptance "All four handlers implemented. TEST-3501, TEST-3503, TEST-3505, TEST-3506, TEST-3507, TEST-3508, TEST-3509, TEST-3512, TEST-3513, TEST-3514, TEST-3515, TEST-3517 pass in `tests/assets_http_integration.rs`. `ztl serve --collab` starts cleanly. Manual: upload PNG → appears at `/assets/slug` → list shows it → delete → 404.")
   (priority "P0")
   (spec-ref "SPEC-035 REQ-3501 through REQ-3519, CON-3501, CON-3502, CON-3503, CON-3504"))
 
@@ -82,8 +82,8 @@
 
 (given task-assets-observability)
 (meta task-assets-observability
-  (description "Observability signals per SPEC-035 §10. Log lines on upload success (OBS-3501), upload failure (OBS-3502), delete (OBS-3503). Startup log: `[zetl] assets: storage_bytes={N} max_bytes={M} count={C}`. 90%-capacity warning emitted after each upload that pushes usage past 90% of configured max. In --verbose mode: GET /assets/{path} response includes X-Zetl-Asset-Sha256 header. NFR tests: TEST-3528 (upload throughput for 10 MiB ≤ 10s on loopback), TEST-3529 (serve latency P95 ≤ 50ms for 1 MiB).")
-  (acceptance "All log lines present in integration test stderr. Startup log on `zetl serve --collab` with existing assets. 90% warning fires in test. TEST-3527 (counter accuracy under concurrent upload/delete), TEST-3528, TEST-3529 pass. Grep-based tests assert exact log format per §10.")
+  (description "Observability signals per SPEC-035 §10. Log lines on upload success (OBS-3501), upload failure (OBS-3502), delete (OBS-3503). Startup log: `[ztl] assets: storage_bytes={N} max_bytes={M} count={C}`. 90%-capacity warning emitted after each upload that pushes usage past 90% of configured max. In --verbose mode: GET /assets/{path} response includes X-Zetl-Asset-Sha256 header. NFR tests: TEST-3528 (upload throughput for 10 MiB ≤ 10s on loopback), TEST-3529 (serve latency P95 ≤ 50ms for 1 MiB).")
+  (acceptance "All log lines present in integration test stderr. Startup log on `ztl serve --collab` with existing assets. 90% warning fires in test. TEST-3527 (counter accuracy under concurrent upload/delete), TEST-3528, TEST-3529 pass. Grep-based tests assert exact log format per §10.")
   (priority "P2")
   (spec-ref "SPEC-035 OBS-3501 through OBS-3505, NFR-3501, NFR-3502, NFR-3506"))
 
@@ -100,7 +100,7 @@
 
 (given task-assets-tier1-review-security)
 (meta task-assets-tier1-review-security
-  (description "Tier 1 cross-model adversarial review of security-critical implementation: path traversal defence (slug validation in `src/assets/validation.rs` + canonical-path check in `serve_asset_handler`), MIME enforcement, HTML isolation headers, SPL injection prevention in `check_can_upload`. Adversarial prompt: 'Assume a malicious authenticated editor. Identify every way they can: (a) write a file outside .zetl/assets/, (b) cause a file to be served with a MIME type different from declared, (c) exhaust server disk or memory, (d) steal another user's session via uploaded HTML.' Findings filed as BUG-###. All S1/S2 findings resolved before merge to main.")
+  (description "Tier 1 cross-model adversarial review of security-critical implementation: path traversal defence (slug validation in `src/assets/validation.rs` + canonical-path check in `serve_asset_handler`), MIME enforcement, HTML isolation headers, SPL injection prevention in `check_can_upload`. Adversarial prompt: 'Assume a malicious authenticated editor. Identify every way they can: (a) write a file outside .ztl/assets/, (b) cause a file to be served with a MIME type different from declared, (c) exhaust server disk or memory, (d) steal another user's session via uploaded HTML.' Findings filed as BUG-###. All S1/S2 findings resolved before merge to main.")
   (acceptance "Review report produced. All S1/S2 findings addressed with regression tests. Review artifact committed to `.hence/reviews/assets-security-<date>.md`.")
   (priority "P0")
   (spec-ref "SPEC-035 §11, REQ-3510, REQ-3514, ADR-3504, ADR-3505"))

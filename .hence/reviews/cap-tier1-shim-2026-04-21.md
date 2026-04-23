@@ -93,7 +93,7 @@ Concrete consequence: on any browser that enforces CSP-L3 `connect-src` (Chrome 
 
 **Why this has not been caught.**
 - `src/cap/shim/test/*.test.ts` runs under `node:test` + happy-dom. happy-dom does not enforce CSP. All tests inject `fetchEnvelope: async () => fx.envelopeBytes` — the real `defaultFetchEnvelope` is never exercised in CI.
-- `tests/cap_csp_sri_integration.rs` is a Rust end-to-end assertion on the *text* of the CSP string and the `_zetl/capability-shell.html` bytes. It never spawns a browser.
+- `tests/cap_csp_sri_integration.rs` is a Rust end-to-end assertion on the *text* of the CSP string and the `_ztl/capability-shell.html` bytes. It never spawns a browser.
 - `tests/nfr/` (Playwright) has no capability-shim coverage — `grep -r capability|shim.js tests/nfr/tests` returns nothing.
 
 **Why this is S1, not S2.** A cryptographic claim that fails in the field is S1 by definition; a usability claim that fails in the field is S1 when the usability claim is **"the shim renders any page at all under the declared CSP"**. The declared CSP and the shim's delivery path are stapled together as the centrepiece of REQ-3421 / CON-3410 (BUG-006 resolution). The shim cannot ship to a Chromium reader as-is.
@@ -135,12 +135,12 @@ Under a Chromium browser that honours the meta CSP, the first `innerHTML =` thro
 **Interaction with S1-01.** The two S1s compound: even if `connect-src` is relaxed to `'self'` (fixing S1-01), the Trusted Types directive still bricks the render path. Both must be addressed.
 
 **Recommendation.** Pick one of:
-1. **Allow a single named policy and install it.** Change `trusted-types 'none'` → `trusted-types zetl-shim` (or any single name), and install a policy in `index.ts` before `runPipeline`:
+1. **Allow a single named policy and install it.** Change `trusted-types 'none'` → `trusted-types ztl-shim` (or any single name), and install a policy in `index.ts` before `runPipeline`:
    ```ts
    // eslint-disable-next-line @typescript-eslint/no-explicit-any
    const tt = (globalThis as any).trustedTypes;
    const policy = tt && typeof tt.createPolicy === "function"
-     ? tt.createPolicy("zetl-shim", {
+     ? tt.createPolicy("ztl-shim", {
          createHTML: (s: string) => s,  // trusted: post-sanitiser only
        })
      : null;
@@ -211,10 +211,10 @@ Alternative: call `fetch(location.pathname, { cache: "no-store", ...})` — brow
 
 **Claim from the Tier-1 task brief.** One of the explicit review criteria is *"absence of key-material persistence outside IndexedDB"*.
 
-**Observed behaviour.** When `sessionPolicy` is set to `"per-session"` or `"per-minute"` (REQ-3417 `[access.session]`), `storeCachedPrivA` persists the raw 32-byte `priv_A` — base64url-encoded, NO AEAD wrap — to `sessionStorage` under the key `zetl:cap:uv:<origin>:<cohortId>` (`session_policy.ts:27`). The comment block at lines 18-22 is honest that this is an opt-in trade-off, but the Tier-1 brief asks for an **absence**, not a conditional.
+**Observed behaviour.** When `sessionPolicy` is set to `"per-session"` or `"per-minute"` (REQ-3417 `[access.session]`), `storeCachedPrivA` persists the raw 32-byte `priv_A` — base64url-encoded, NO AEAD wrap — to `sessionStorage` under the key `ztl:cap:uv:<origin>:<cohortId>` (`session_policy.ts:27`). The comment block at lines 18-22 is honest that this is an opt-in trade-off, but the Tier-1 brief asks for an **absence**, not a conditional.
 
 **Attack model this enables.**
-- **Sanitiser-bypass XSS.** The allowlist-based sanitiser in `sanitise.ts` is strict, but any bypass (novel mXSS vector, sanitiser bug, content with a tag the allowlist forgets about in a future spec) runs JavaScript in the same origin as the shim. Same-origin code can read `sessionStorage.getItem("zetl:cap:uv:<origin>:<cohortId>")`, base64url-decode, and recover `priv_A`. The TOFU-wrapped IDB record is not readable (no PRF prompt available to an arbitrary script) — but the sessionStorage copy needs no ceremony.
+- **Sanitiser-bypass XSS.** The allowlist-based sanitiser in `sanitise.ts` is strict, but any bypass (novel mXSS vector, sanitiser bug, content with a tag the allowlist forgets about in a future spec) runs JavaScript in the same origin as the shim. Same-origin code can read `sessionStorage.getItem("ztl:cap:uv:<origin>:<cohortId>")`, base64url-decode, and recover `priv_A`. The TOFU-wrapped IDB record is not readable (no PRF prompt available to an arbitrary script) — but the sessionStorage copy needs no ceremony.
 - **Browser extensions with storage access.** Many extensions request `<all_urls>` storage permissions. sessionStorage is explicitly enumerated as one of the surfaces `chrome.storage` / extension APIs can read.
 - **Tab-crash memory disclosure.** sessionStorage is memory-mapped on most browsers; a tab-crash dump (auto-submitted by some crash-reporting stacks) may include the stored key.
 
@@ -223,9 +223,9 @@ The IDB wrap is explicitly designed so a raw DB dump does not yield `priv_A` —
 **Why this is S2, not S1.** The default policy is `per-page` (`session_policy.ts:24`) — a fresh install does not enable the feature. The policy is also clearly operator-documented as a UX/security trade. But it is a material contradiction of the brief's invariant and worth pinning at code-level so future `[access.session]` expansions don't extend the surface.
 
 **Recommendation (menu; pick at operator-policy level).**
-1. **Move the cached key to IndexedDB with the same PRF wrap** as the durable binding. Fast path: derive a session-scoped K_cache via HKDF(prf_output, info="zetl/session-cache/v1"), AES-GCM-wrap priv_A, store in a second IDB store keyed by (origin, cohortId). On the cache-hit path the shim still has to `credentials.get()` once per tab session — that's the bit the operator wanted to avoid, so this option is UX-equivalent to `per-page` and defeats the purpose.
+1. **Move the cached key to IndexedDB with the same PRF wrap** as the durable binding. Fast path: derive a session-scoped K_cache via HKDF(prf_output, info="ztl/session-cache/v1"), AES-GCM-wrap priv_A, store in a second IDB store keyed by (origin, cohortId). On the cache-hit path the shim still has to `credentials.get()` once per tab session — that's the bit the operator wanted to avoid, so this option is UX-equivalent to `per-page` and defeats the purpose.
 2. **Keep sessionStorage but wrap under a per-tab-ephemeral AES-GCM key held in a JS closure** (closure lives as long as the page; tab navigate-away clears it). Defeats XSS because the key is unreachable; defeats extension reads because the ciphertext alone is useless. Adds ~30 lines to `session_policy.ts`. This is the pragmatic fix.
-3. **Rename the feature honestly.** If (1) and (2) are out of scope, at minimum mark the stored entry `"priv_A": <b64>` with a `"warning": "plaintext-priv-A"` and surface it in `zetl cap audit` so an operator who enables `per-session` sees the trade in their own audit trail.
+3. **Rename the feature honestly.** If (1) and (2) are out of scope, at minimum mark the stored entry `"priv_A": <b64>` with a `"warning": "plaintext-priv-A"` and surface it in `ztl cap audit` so an operator who enables `per-session` sees the trade in their own audit trail.
 
 Recommend option (2). Document the change in `docs/capability-security.md` alongside the existing `[access.session]` section.
 
@@ -382,9 +382,9 @@ is false (see S1-01). It almost certainly seeded the shim's assumption that `con
 
 **Affected:** `pipeline.ts:28`.
 
-`"zetl-capability-shim"` is one lock for every cohort. Two tabs on two cohorts of the same wiki serialise even though their IDB stores are keyed by distinct `cohortId`. Minor UX; include cohortId in the lock name:
+`"ztl-capability-shim"` is one lock for every cohort. Two tabs on two cohorts of the same wiki serialise even though their IDB stores are keyed by distinct `cohortId`. Minor UX; include cohortId in the lock name:
 ```ts
-const lockName = `zetl-cap-${envelope.header.cohortId}`;
+const lockName = `ztl-cap-${envelope.header.cohortId}`;
 ```
 — but note this requires moving the lock acquisition to *after* envelope parse, which in turn requires a second re-entry to guard the SW-purge critical section. Probably not worth the complexity; tag as an optional polish.
 
@@ -414,7 +414,7 @@ which is Trusted-Types-safe regardless. The cost is ~2 lines. Do this as part of
 
 - **Ed25519 verify path** (`signature.ts`). `@noble/ed25519` v2 `verifyAsync` with SHA-512 injected via `@noble/hashes` — RFC 8032 strict verification (non-canonical R/S rejected). Input-length checks at 32 (pubkey) / 64 (signature) bytes. Error → `false`, not throw. Matches Rust-side `ed25519-dalek::verify_strict` semantics.
 - **Envelope parser** (`envelope.ts`). UTF-8 strict decode with `{ fatal: true }`; per-header bounds; schema-mismatch before any signature handling. Base64url decoder handles stray padding but never emits it. Unknown headers tolerated (forward-compat).
-- **TOFU wrap AAD discipline** (`tofu.ts::performTofu`). AES-256-GCM with AAD = `utf8(origin || "/" || cohortId)`; IV from injected RNG; K_wrap via HKDF-SHA256(prf_output, info="zetl/tofu-wrap/v1", 32). Byte-identical derivation across wrap + unwrap (`tofu.test.ts::HKDF-derives K_wrap`).
+- **TOFU wrap AAD discipline** (`tofu.ts::performTofu`). AES-256-GCM with AAD = `utf8(origin || "/" || cohortId)`; IV from injected RNG; K_wrap via HKDF-SHA256(prf_output, info="ztl/tofu-wrap/v1", 32). Byte-identical derivation across wrap + unwrap (`tofu.test.ts::HKDF-derives K_wrap`).
 - **PRF salt** (`prf_salt.ts::computePrfSalt`). SHA-256(PRF_SALT_PREFIX || origin || "/" || cohortId) — exact mirror of Rust-side `cap::enrolment::compute_prf_salt`; TEST-3414 cross-checks byte equality. No length-prefixing between `origin` and `cohortId`, but a strict cohortId charset check is enforced on the Rust side (see Tier-2 S3-x re length-prefixing — code is consistent with spec; any strengthening is a spec change).
 - **Subsequent-visit unwrap** (`unwrap.ts::performUnwrap`). Re-derives AAD from stored `binding.origin`/`binding.cohortId` rather than trusting the persisted AAD field — defence-in-depth against IDB record tampering (comment at lines 181-186). Good pattern; keep it.
 - **Fragment-required fallback** (`fallback.ts` + `pipeline.ts:131-150`). PRF probe runs *before* `acquireIdentity` at a single point. No `credentials.get/create` call on the probe path. `idbFactory: null` force-disables TOFU in fallback. Tested end-to-end in `fallback.test.ts`.
@@ -440,7 +440,7 @@ The signature-verify-before-decrypt ordering and the first-use / subsequent-use 
 The shim as it stands **cannot be merged to main** because of the two S1 CSP contradictions — they are single-function fixes, but without them the shim does not work on Chromium at all under its own declared policy. Both are straightforward:
 
 1. `connect-src 'none'` → `connect-src 'self'` in `deploy_headers.rs::CAP_CSP` + delete the false comment at lines 85-87.
-2. `trusted-types 'none'` → `trusted-types zetl-shim` + install a named identity-createHTML policy in `index.ts` before `runPipeline` + wire the policy through `render.ts::renderInto` and `errors.ts::renderError`.
+2. `trusted-types 'none'` → `trusted-types ztl-shim` + install a named identity-createHTML policy in `index.ts` before `runPipeline` + wire the policy through `render.ts::renderInto` and `errors.ts::renderError`.
 
 Once both S1s land (with a Playwright regression gate), S2-01/S2-03/S2-04 are the remaining material issues for shim-main merge. S2-02 should be tracked as a follow-up once `[access.session]` hardening is scoped; it does not strictly block the shim itself, only the feature built on top of it.
 

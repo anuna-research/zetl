@@ -33,12 +33,12 @@
 
 ; --- TASK METADATA ---
 (meta task-build-git-show
-  (description "Make src/cap/audit_diff's `load_vault_at_refs` callers compile under every feature combination. `git_show` is cfg-gated to `not(feature=\"history\")`; either provide a `#[cfg(feature=\"history\")]` sibling (using jj-lib or the existing git2 dep) or hoist the callers behind the same cfg. `cargo build --all-features` must succeed. Keep `zetl cap audit-diff` functional under both cfgs.")
+  (description "Make src/cap/audit_diff's `load_vault_at_refs` callers compile under every feature combination. `git_show` is cfg-gated to `not(feature=\"history\")`; either provide a `#[cfg(feature=\"history\")]` sibling (using jj-lib or the existing git2 dep) or hoist the callers behind the same cfg. `cargo build --all-features` must succeed. Keep `ztl cap audit-diff` functional under both cfgs.")
   (acceptance "`cargo build --all-features` finishes cleanly. `cargo check --features history` / `--no-default-features` also pass. No new warnings at the callsites. Existing `cap_audit_diff_integration` tests still pass."))
 
 (meta task-shim-trusted-types
-  (description "Reconcile CAP_CSP (`require-trusted-types-for 'script'; trusted-types 'none';` at src/cap/deploy_headers.rs:94) with the shim's `innerHTML` writes in src/cap/shim/render.ts:62 and src/cap/shim/errors.ts:61. Pick one of: (a) register a named Trusted Types policy from the shim (`trustedTypes.createPolicy('zetl-cap', {createHTML: s => s})` after sanitisation) and allow it in CAP_CSP (`trusted-types zetl-cap;`), or (b) drop the `require-trusted-types-for` / `trusted-types` directives from CAP_CSP and document the trade-off. SPEC-034 REQ-3421 / CON-3410 govern CSP; any change here updates the CSP snapshot tests in src/cap/deploy_headers.rs + src/cap/html_shell.rs.")
-  (acceptance "Default `zetl build --capability` + the serve-locally smoke test renders plaintext into `<main data-zetl-capability>` in a headless Chrome (Playwright) without the local server having to strip the CSP meta tag. All deploy-recipe byte-pin tests updated + green. Spec + operator guide (docs/capability-mode.md §3.4 CSP) reflect the decision."))
+  (description "Reconcile CAP_CSP (`require-trusted-types-for 'script'; trusted-types 'none';` at src/cap/deploy_headers.rs:94) with the shim's `innerHTML` writes in src/cap/shim/render.ts:62 and src/cap/shim/errors.ts:61. Pick one of: (a) register a named Trusted Types policy from the shim (`trustedTypes.createPolicy('ztl-cap', {createHTML: s => s})` after sanitisation) and allow it in CAP_CSP (`trusted-types ztl-cap;`), or (b) drop the `require-trusted-types-for` / `trusted-types` directives from CAP_CSP and document the trade-off. SPEC-034 REQ-3421 / CON-3410 govern CSP; any change here updates the CSP snapshot tests in src/cap/deploy_headers.rs + src/cap/html_shell.rs.")
+  (acceptance "Default `ztl build --capability` + the serve-locally smoke test renders plaintext into `<main data-ztl-capability>` in a headless Chrome (Playwright) without the local server having to strip the CSP meta tag. All deploy-recipe byte-pin tests updated + green. Spec + operator guide (docs/capability-mode.md §3.4 CSP) reflect the decision."))
 
 (meta task-verify
   (description "Re-run the smoke test end-to-end: fresh `cargo run --example cap_smoke`, launch `python3 /tmp/cap-smoke/serve.py` WITHOUT the CSP-strip workaround, drive `ar-crawl session` through the invite URL, assert `main.innerHTML` contains the original plaintext and the fragment was scrubbed.")
@@ -128,7 +128,7 @@
 
 (claims agent:coder
   :at "2026-04-20T23:54:59Z"
-  (given verified-shim-trusted-types "render.ts registers zetl-cap TrustedTypes policy; errors.ts uses replaceChildren; CAP_CSP emits trusted-types zetl-cap; shim tests 96/96 + cap_deploy_headers_integration 4/4 + cap_csp_sri_integration + cap_deploy_artifacts_integration all green"))
+  (given verified-shim-trusted-types "render.ts registers ztl-cap TrustedTypes policy; errors.ts uses replaceChildren; CAP_CSP emits trusted-types ztl-cap; shim tests 96/96 + cap_deploy_headers_integration 4/4 + cap_csp_sri_integration + cap_deploy_artifacts_integration all green"))
 
 (claims agent:coder
   :at "2026-04-20T23:55:03Z"
@@ -143,7 +143,7 @@
 
 (claims agent:coder
   :at "2026-04-21T00:00:08Z"
-  (given verified-verify "ar-crawl session main.innerHTML = <h1>Welcome</h1><p>This page is end-to-end encrypted.</p>, fragment scrubbed; CAP_CSP intact with trusted-types zetl-cap + connect-src self + require-trusted-types-for script; cargo build --all-features succeeds"))
+  (given verified-verify "ar-crawl session main.innerHTML = <h1>Welcome</h1><p>This page is end-to-end encrypted.</p>, fragment scrubbed; CAP_CSP intact with trusted-types ztl-cap + connect-src self + require-trusted-types-for script; cargo build --all-features succeeds"))
 
 (claims agent:coder
   :at "2026-04-21T00:00:12Z"

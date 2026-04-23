@@ -45,7 +45,7 @@
 (given task-cap-pure-core)
 (meta task-cap-pure-core
   (description "Pure-core modules per SPEC-034 §8 purity boundary map: `src/cap/derivation.rs` (HKDF path-cap + wrap-key derivation per CON-3401), `src/cap/url_format.rs` (cap URL rendering + parsing), `src/cap/grants/validation.rs` (schema + invariants with `deny_unknown_fields`), `src/cap/recipients/parsing.rs` (age-recipient-v1 only per REQ-3409), `src/cap/scoping/cohort_index.rs` (cohort-to-pages assignment). No I/O, no randomness. Property-based tests on derivation (deterministic, secret/cohort/slug/epoch separation). Mutation testing ≥ 90% kill rate on derivation + url_format.")
-  (acceptance "All five modules implemented as `pub(crate)` under `cap::core::*`. Clippy lint forbids `std::env`, `std::fs`, `std::time::SystemTime` in core. `cargo test -p zetl cap::core` passes with property tests for derivation. Mutation testing via `cargo-mutants` on `cap::core::derivation` and `cap::core::url_format` shows ≥90% kill rate. TEST-3402, TEST-3405 (for grants validation), and derivation property tests green.")
+  (acceptance "All five modules implemented as `pub(crate)` under `cap::core::*`. Clippy lint forbids `std::env`, `std::fs`, `std::time::SystemTime` in core. `cargo test -p ztl cap::core` passes with property tests for derivation. Mutation testing via `cargo-mutants` on `cap::core::derivation` and `cap::core::url_format` shows ≥90% kill rate. TEST-3402, TEST-3405 (for grants validation), and derivation property tests green.")
   (priority "P0")
   (spec-ref "SPEC-034 REQ-3402, REQ-3405, REQ-3408, REQ-3409, CON-3401, CON-3402, CON-3403"))
 
@@ -58,15 +58,15 @@
 
 (given task-cap-cli-skeleton)
 (meta task-cap-cli-skeleton
-  (description "`zetl cap` subcommand dispatcher with stubs for every verb listed in REQ-3416: `genkey`, `invite`, `list`, `revoke`, `rotate`, `finalise`, `share`, `check`, `sweep`, `pair`, `audit-diff`, `rotate-signing-key`, `emergency-shutdown`. Each stub exits with a `not-yet-implemented` message and follows SPEC-004 exit codes (0/1/2/64+). `--help` text for every verb. `--output json` support plumbed through (even if verb body returns stub). Help output + exit codes testable via `assert_cmd`.")
-  (acceptance "`zetl cap --help` lists all verbs. Each `zetl cap <verb> --help` shows flags + example. Unknown verbs exit 1 with diagnostic. `assert_cmd` tests for all help paths. TEST-3416 (scaffold) green.")
+  (description "`ztl cap` subcommand dispatcher with stubs for every verb listed in REQ-3416: `genkey`, `invite`, `list`, `revoke`, `rotate`, `finalise`, `share`, `check`, `sweep`, `pair`, `audit-diff`, `rotate-signing-key`, `emergency-shutdown`. Each stub exits with a `not-yet-implemented` message and follows SPEC-004 exit codes (0/1/2/64+). `--help` text for every verb. `--output json` support plumbed through (even if verb body returns stub). Help output + exit codes testable via `assert_cmd`.")
+  (acceptance "`ztl cap --help` lists all verbs. Each `ztl cap <verb> --help` shows flags + example. Unknown verbs exit 1 with diagnostic. `assert_cmd` tests for all help paths. TEST-3416 (scaffold) green.")
   (priority "P0")
   (spec-ref "SPEC-034 REQ-3416, CON-3407"))
 
 (given task-cap-genkey)
 (meta task-cap-genkey
-  (description "`zetl cap genkey` implementation: emits BOTH `ZETL_CAP_SECRET` (48 bytes: 1-byte version + 32-byte random + 15-byte keyed checksum, base64) AND `ZETL_CAP_SIGNING_KEY` (Ed25519 private key, base64) to stdout exactly once with secure-storage instructions. Reads from OS CSPRNG via `rand_core::OsRng`. Checksum verification in build secret parser — framed in docs as UX safeguard (BUG-017 resolution), not as security control. Never writes to any file, never logs, stdout only. Test: checksum tampering detected; verify-error surfaces remediation text.")
-  (acceptance "`zetl cap genkey` produces parseable output with both secrets. Build-time parser rejects non-genkey-produced encryption secrets. Secret substring never appears in any stderr/logs/dist output (grep-based test). TEST-3419 green.")
+  (description "`ztl cap genkey` implementation: emits BOTH `ZETL_CAP_SECRET` (48 bytes: 1-byte version + 32-byte random + 15-byte keyed checksum, base64) AND `ZETL_CAP_SIGNING_KEY` (Ed25519 private key, base64) to stdout exactly once with secure-storage instructions. Reads from OS CSPRNG via `rand_core::OsRng`. Checksum verification in build secret parser — framed in docs as UX safeguard (BUG-017 resolution), not as security control. Never writes to any file, never logs, stdout only. Test: checksum tampering detected; verify-error surfaces remediation text.")
+  (acceptance "`ztl cap genkey` produces parseable output with both secrets. Build-time parser rejects non-genkey-produced encryption secrets. Secret substring never appears in any stderr/logs/dist output (grep-based test). TEST-3419 green.")
   (priority "P0")
   (spec-ref "SPEC-034 REQ-3419"))
 
@@ -89,14 +89,14 @@
 (given task-cap-content-signing)
 (meta task-cap-content-signing
   (description "Ed25519 content signing layer per REQ-3427 + CON-3411 + ADR-3412 (BUG-004 resolution). `src/cap/sign.rs` composes: envelope header (plaintext, unsigned) + Ed25519 signature over the age ciphertext bytes + age ciphertext itself. Uses `ed25519-dalek` v2 (constant-time). Signing key loaded from `ZETL_CAP_SIGNING_KEY` env var; never touches disk. Public key exported via accessor for embedding into shim bundle at build time. Envelope builder is pure (given inputs); signing is the effectful shell.")
-  (acceptance "Every page emitted under `zetl build --capability` carries a valid Ed25519 signature over its age ciphertext. Verification succeeds with the operator's signing pubkey. Tampering with ciphertext byte invalidates signature. TEST-3427 green.")
+  (acceptance "Every page emitted under `ztl build --capability` carries a valid Ed25519 signature over its age ciphertext. Verification succeeds with the operator's signing pubkey. Tampering with ciphertext byte invalidates signature. TEST-3427 green.")
   (priority "P0")
   (spec-ref "SPEC-034 REQ-3427, CON-3411, ADR-3412"))
 
 (given task-cap-invite-command)
 (meta task-cap-invite-command
-  (description "`zetl cap invite <name> --cohort <id> [--expires <d>] [--pages <filter>] [--recipient <pubkey>] [--via enrol-page] [--split-key]`. Delegated-URL mode: generates fresh (priv_A, pub_A) via OsRng, appends pub_A to `recipients.toml` under the cohort, adds a grant to `grants.toml` with `bound=false`, prints the invite URL to stdout. Priv_A appears ONLY on stdout — never in grants.toml, never logged, never in any file. Emits the REQ-3410 URL-shortener warning banner on every invocation. Hardened mode: `--recipient <pubkey>` pre-collected or `--via enrol-page` to print the enrolment URL.")
-  (acceptance "`zetl cap invite alice --cohort eng` produces one URL with `#k=` fragment; grants.toml grows by one entry with `bound=false`; recipients.toml grows by one pubkey. Priv substring never in grants.toml. Warning banner emitted to stderr. TEST-3410 green.")
+  (description "`ztl cap invite <name> --cohort <id> [--expires <d>] [--pages <filter>] [--recipient <pubkey>] [--via enrol-page] [--split-key]`. Delegated-URL mode: generates fresh (priv_A, pub_A) via OsRng, appends pub_A to `recipients.toml` under the cohort, adds a grant to `grants.toml` with `bound=false`, prints the invite URL to stdout. Priv_A appears ONLY on stdout — never in grants.toml, never logged, never in any file. Emits the REQ-3410 URL-shortener warning banner on every invocation. Hardened mode: `--recipient <pubkey>` pre-collected or `--via enrol-page` to print the enrolment URL.")
+  (acceptance "`ztl cap invite alice --cohort eng` produces one URL with `#k=` fragment; grants.toml grows by one entry with `bound=false`; recipients.toml grows by one pubkey. Priv substring never in grants.toml. Warning banner emitted to stderr. TEST-3410 green.")
   (priority "P0")
   (spec-ref "SPEC-034 REQ-3410, REQ-3430, CON-3407"))
 
@@ -110,7 +110,7 @@
 (given task-cap-build-driver)
 (meta task-cap-build-driver
   (description "`src/cap/build/driver.rs` orchestrates the full capability build: enumerate pages, compute per-page path-caps, sanitise HTML (task-cap-sanitiser), encrypt (task-cap-age-encrypt) with padding (task-cap-x25519-padding), sign (task-cap-content-signing), write to `dist/c/<path-cap>/<slug>.html`, emit deploy artifacts (task-cap-deploy-artifacts). Iterates cohorts; respects public-repo safety (task-cap-public-repo-safety). Emits build-summary log per OBS-3401.")
-  (acceptance "`zetl build --capability` on a fixture vault produces correct ciphertext tree, deploy artifacts, and summary. Per OBS-3401 the stderr line includes `cohorts=N pages=M grants_active=K ...`. NFR-3405 (≤30% size overhead) and NFR-3406 (≤40% time overhead) measured on a 1000-page fixture and within bounds. TEST-3403, TEST-3418 green.")
+  (acceptance "`ztl build --capability` on a fixture vault produces correct ciphertext tree, deploy artifacts, and summary. Per OBS-3401 the stderr line includes `cohorts=N pages=M grants_active=K ...`. NFR-3405 (≤30% size overhead) and NFR-3406 (≤40% time overhead) measured on a 1000-page fixture and within bounds. TEST-3403, TEST-3418 green.")
   (priority "P0")
   (spec-ref "SPEC-034 REQ-3401, REQ-3402, REQ-3403, REQ-3418, NFR-3405, NFR-3406"))
 
@@ -147,7 +147,7 @@
 (given task-cap-shim-collision-ui)
 (meta task-cap-shim-collision-ui
   (description "TOFU collision disambiguation UI per REQ-3425. When shim detects invite URL + existing IDB binding, renders the wireframe from REQ-3425 with three options: KEEP (default), Add alongside, Replace (requires 1-line rationale stored in local audit log). Focus on KEEP by default. No silent overwrites.")
-  (acceptance "Playwright: existing IDB entry + invite URL → disambiguation UI shown, focus on KEEP. Selecting Replace requires rationale text > 0 characters. Rationale stored in `localStorage['zetl-cap-audit-log']`. TEST-3425 green.")
+  (acceptance "Playwright: existing IDB entry + invite URL → disambiguation UI shown, focus on KEEP. Selecting Replace requires rationale text > 0 characters. Rationale stored in `localStorage['ztl-cap-audit-log']`. TEST-3425 green.")
   (priority "P1")
   (spec-ref "SPEC-034 REQ-3425"))
 
@@ -160,7 +160,7 @@
 
 (given task-cap-enrolment-page)
 (meta task-cap-enrolment-page
-  (description "`/enroll.html` static page per REQ-3404 for hardened mode. Self-contained HTML + JS (no network to zetl endpoints). Accepts `?cohort=<cohort-id>` query param. Calls navigator.credentials.create with per-cohort PRF salt `SHA-256('zetl/webauthn-prf/v1/' || origin || '/' || cohort_id)` per REQ-3414. Derives X25519 keypair via typage's PRF-recipient helpers. Displays derived pubkey as `age-recipient-v1:<b64url>` with copy-to-clipboard and QR code affordances. Clear diagnostic for no-PRF scenarios.")
+  (description "`/enroll.html` static page per REQ-3404 for hardened mode. Self-contained HTML + JS (no network to ztl endpoints). Accepts `?cohort=<cohort-id>` query param. Calls navigator.credentials.create with per-cohort PRF salt `SHA-256('ztl/webauthn-prf/v1/' || origin || '/' || cohort_id)` per REQ-3414. Derives X25519 keypair via typage's PRF-recipient helpers. Displays derived pubkey as `age-recipient-v1:<b64url>` with copy-to-clipboard and QR code affordances. Clear diagnostic for no-PRF scenarios.")
   (acceptance "Playwright enrolment flow: visit `/enroll.html?cohort=eng`, create passkey with virtual authenticator, verify displayed pubkey matches expected PRF-derived X25519. Different cohort param produces different pubkey (REQ-3414 cross-cohort unlinkability). TEST-3404, TEST-3414 green.")
   (priority "P0")
   (spec-ref "SPEC-034 REQ-3404, REQ-3414, CON-3409"))
@@ -183,7 +183,7 @@
 
 (given task-cap-deploy-artifacts)
 (meta task-cap-deploy-artifacts
-  (description "Deploy artifact emission per REQ-3418 + CON-3406: `dist/_zetl/_gone.map` (nginx), `dist/_redirects` (Netlify), `dist/vercel.json`, `dist/_zetl/deploy-{nginx,caddy,netlify,vercel,cloudflare}.conf` with complete copy-paste recipes including Cache-Control + Clear-Site-Data entries, `dist/robots.txt` with Disallow: /c/ and /_zetl/, optional `dist/<vault-name>-<cohort>.html` single-file bundle per `[access.single_file]`.")
+  (description "Deploy artifact emission per REQ-3418 + CON-3406: `dist/_ztl/_gone.map` (nginx), `dist/_redirects` (Netlify), `dist/vercel.json`, `dist/_ztl/deploy-{nginx,caddy,netlify,vercel,cloudflare}.conf` with complete copy-paste recipes including Cache-Control + Clear-Site-Data entries, `dist/robots.txt` with Disallow: /c/ and /_ztl/, optional `dist/<vault-name>-<cohort>.html` single-file bundle per `[access.single_file]`.")
   (acceptance "All deploy files present after build. Each recipe is syntactically valid for the target host (validated via `nginx -t`, `caddy validate`, etc. where possible). Revoked grant's URL present in _gone.map, _redirects, vercel.json. TEST-3418 green.")
   (priority "P0")
   (spec-ref "SPEC-034 REQ-3418, CON-3406"))
@@ -197,7 +197,7 @@
 
 (given task-cap-robots-txt)
 (meta task-cap-robots-txt
-  (description "Emit `/robots.txt` containing `Disallow: /c/` and `Disallow: /_zetl/` per REQ-3414 (the general robots.txt REQ; separate from the new REQ-3414 PRF salt). Merge with operator's `public/robots.txt` — preserve stricter rules (e.g., `Disallow: /`) if present.")
+  (description "Emit `/robots.txt` containing `Disallow: /c/` and `Disallow: /_ztl/` per REQ-3414 (the general robots.txt REQ; separate from the new REQ-3414 PRF salt). Merge with operator's `public/robots.txt` — preserve stricter rules (e.g., `Disallow: /`) if present.")
   (acceptance "`dist/robots.txt` contains both Disallow lines. Operator `public/robots.txt` contents preserved + merged. Test with custom input confirming merge behaviour. TEST-3414 green.")
   (priority "P1")
   (spec-ref "SPEC-034 REQ-3414"))
@@ -211,8 +211,8 @@
 
 (given task-cap-public-repo-safety)
 (meta task-cap-public-repo-safety
-  (description "Public-repo safety per REQ-3423 + ADR-3409 (BUG-013 resolution). Detect public hosting: (a) explicit `[vault] visibility = \"public\"` declaration, OR (b) git-origin heuristic (github.com without private-org token, gitlab.com, codeberg.org, etc.). If detected, refuse to read `.zetl/caps/grants.toml` in the repo tree; require `[access.grants_file_external]` pointing outside the repo; emit stub `grants-committed.toml` containing only cohort salts + IDs (no recipients, no grant metadata).")
-  (acceptance "Public-vault fixture: build refuses in-repo grants.toml, instructs operator; with external path set, build proceeds; stub contains no recipients or names. Fixture private-vault unaffected. `zetl cap check --public-safety` audits config. TEST-3423 green.")
+  (description "Public-repo safety per REQ-3423 + ADR-3409 (BUG-013 resolution). Detect public hosting: (a) explicit `[vault] visibility = \"public\"` declaration, OR (b) git-origin heuristic (github.com without private-org token, gitlab.com, codeberg.org, etc.). If detected, refuse to read `.ztl/caps/grants.toml` in the repo tree; require `[access.grants_file_external]` pointing outside the repo; emit stub `grants-committed.toml` containing only cohort salts + IDs (no recipients, no grant metadata).")
+  (acceptance "Public-vault fixture: build refuses in-repo grants.toml, instructs operator; with external path set, build proceeds; stub contains no recipients or names. Fixture private-vault unaffected. `ztl cap check --public-safety` audits config. TEST-3423 green.")
   (priority "P1")
   (spec-ref "SPEC-034 REQ-3423, ADR-3409"))
 
@@ -220,29 +220,29 @@
 
 (given task-cap-split-key-mode)
 (meta task-cap-split-key-mode
-  (description "Optional XOR split-key mode per REQ-3430 + ADR-3415 (BUG-002 mitigation). `zetl cap invite --split-key` splits priv_A via XOR secret-sharing: `priv_A = half1 XOR half2`. URL carries `#k1=<half1>`; `half2` output separately (QR code image or spoken-phrase per `[access.split_key] second_factor`). Shim prompts for second factor (camera QR scan or text input) on first click; reconstructs priv_A; TOFU-binds. Opt-in; default is `enabled = false`.")
+  (description "Optional XOR split-key mode per REQ-3430 + ADR-3415 (BUG-002 mitigation). `ztl cap invite --split-key` splits priv_A via XOR secret-sharing: `priv_A = half1 XOR half2`. URL carries `#k1=<half1>`; `half2` output separately (QR code image or spoken-phrase per `[access.split_key] second_factor`). Shim prompts for second factor (camera QR scan or text input) on first click; reconstructs priv_A; TOFU-binds. Opt-in; default is `enabled = false`.")
   (acceptance "With `--split-key`: URL alone cannot decrypt (verified in Playwright without entering second factor). URL + second factor → successful TOFU binding. QR mode: Playwright simulates QR decode → bind. Text mode: input field → bind. TEST-3430 green.")
   (priority "P2")
   (spec-ref "SPEC-034 REQ-3430, ADR-3415"))
 
 (given task-cap-audit-diff)
 (meta task-cap-audit-diff
-  (description "`zetl cap audit-diff <old-ref> <new-ref>` + test corpus per REQ-3424 + ADR-3410 (BUG-016 resolution). Scans vault diff for: external-origin links to previously-unseen domains, raw HTML surviving the sanitiser allowlist, dynamically-constructed URIs, markdown constructs that render to unusual HTML. Paired with `tools/audit-diff-corpus/` — versioned repo of known-malicious patterns + XSS cheatsheet samples + exfiltration templates. CI job `audit-corpus` runs audit-diff against corpus; fails on ANY miss. Corpus update cadence: monthly OR on any reported evasion.")
-  (acceptance "CLI correctly flags samples in the corpus. `.zetl/audit-allowlist.toml` allows suppressing previously-reviewed exceptions. CI job fails on corpus additions. TEST-3424 green.")
+  (description "`ztl cap audit-diff <old-ref> <new-ref>` + test corpus per REQ-3424 + ADR-3410 (BUG-016 resolution). Scans vault diff for: external-origin links to previously-unseen domains, raw HTML surviving the sanitiser allowlist, dynamically-constructed URIs, markdown constructs that render to unusual HTML. Paired with `tools/audit-diff-corpus/` — versioned repo of known-malicious patterns + XSS cheatsheet samples + exfiltration templates. CI job `audit-corpus` runs audit-diff against corpus; fails on ANY miss. Corpus update cadence: monthly OR on any reported evasion.")
+  (acceptance "CLI correctly flags samples in the corpus. `.ztl/audit-allowlist.toml` allows suppressing previously-reviewed exceptions. CI job fails on corpus additions. TEST-3424 green.")
   (priority "P2")
   (spec-ref "SPEC-034 REQ-3424, ADR-3410"))
 
 (given task-cap-spake2-pair)
 (meta task-cap-spake2-pair
-  (description "`zetl cap pair` SPAKE2-EE pubkey handoff per REQ-3408 (the CLI-commands REQ; distinct from REQ-3408 grants-file). Fresh CSPRNG-generated 4-word BIP39 phrase per pairing; refusal to reuse phrase within 30 days (tracked in `.zetl/caps/.pair-nonces`). Uses `@noble/curves` SPAKE2 for constant-time elliptic operations. Pairing completes with no server, no relay (messages exchanged via copy-paste / QR / in-person). Derived shared key used ONLY to authenticate pubkey handoff — not stored, not used for content encryption.")
+  (description "`ztl cap pair` SPAKE2-EE pubkey handoff per REQ-3408 (the CLI-commands REQ; distinct from REQ-3408 grants-file). Fresh CSPRNG-generated 4-word BIP39 phrase per pairing; refusal to reuse phrase within 30 days (tracked in `.ztl/caps/.pair-nonces`). Uses `@noble/curves` SPAKE2 for constant-time elliptic operations. Pairing completes with no server, no relay (messages exchanged via copy-paste / QR / in-person). Derived shared key used ONLY to authenticate pubkey handoff — not stored, not used for content encryption.")
   (acceptance "Two browser contexts run `cap pair` → converge on shared key given same phrase → grantee's pubkey reaches grantor authenticated. Phrase reuse refused. TEST-3408 (pair variant) green.")
   (priority "P2")
   (spec-ref "SPEC-034 REQ-3408 (CLI), CON-3407"))
 
 (given task-cap-emergency-shutdown)
 (meta task-cap-emergency-shutdown
-  (description "`zetl cap emergency-shutdown` per REQ-3431 (BUG-024 resolution). Produces a printable operator checklist: (1) remove/redirect DNS; (2) CDN purge/delete `/c/*`; (3) rotate secrets (new `zetl cap genkey`); (4) announce to readers; (5) re-enrol when ready. NOT automated — documentation-generation only. Spec has no cryptographic kill-switch.")
-  (acceptance "`zetl cap emergency-shutdown` outputs the checklist to stdout. No files modified. Output includes vault-specific identifiers (vault name, cohorts, current deploy target if configured).")
+  (description "`ztl cap emergency-shutdown` per REQ-3431 (BUG-024 resolution). Produces a printable operator checklist: (1) remove/redirect DNS; (2) CDN purge/delete `/c/*`; (3) rotate secrets (new `ztl cap genkey`); (4) announce to readers; (5) re-enrol when ready. NOT automated — documentation-generation only. Spec has no cryptographic kill-switch.")
+  (acceptance "`ztl cap emergency-shutdown` outputs the checklist to stdout. No files modified. Output includes vault-specific identifiers (vault name, cohorts, current deploy target if configured).")
   (priority "P3")
   (spec-ref "SPEC-034 REQ-3431, §11.3"))
 
@@ -251,13 +251,13 @@
 (given task-cap-docs-operator)
 (meta task-cap-docs-operator
   (description "`docs/capability-mode.md` — full operator guide per SPEC-034 §12. Sections: threat model (quoting §11 verbatim), per-cohort mode-selection decision aid, quickstart (genkey → config → first build → deploy), grants lifecycle (invite / revoke / rotate / finalise / signing-key rotation), deploy recipes for nginx, Caddy, Netlify, Cloudflare Pages, S3+CloudFront, Vercel (with copy-paste blocks), troubleshooting flowchart (`my reader can't decrypt` → diagnostic tree).")
-  (acceptance "Document exists, reviewed for accuracy against implementation, includes all deploy recipes that match the emitted `_zetl/deploy-*.conf` files byte-for-byte. Walkthrough with synthetic-user HP-1 completes without gaps.")
+  (acceptance "Document exists, reviewed for accuracy against implementation, includes all deploy recipes that match the emitted `_ztl/deploy-*.conf` files byte-for-byte. Walkthrough with synthetic-user HP-1 completes without gaps.")
   (priority "P1")
   (spec-ref "SPEC-034 §12"))
 
 (given task-cap-docs-security)
 (meta task-cap-docs-security
-  (description "`docs/capability-security.md` — deeper threat-model discussion per SPEC-034 §12 and §11. Explicit `do NOT use capability mode for X` list (regulated PII, cardholder data, etc.). Comparison table: delegated-URL vs hardened vs `zetl serve` vs reverse-proxy-auth. Prior-art citations (§1.4). Offline brute-force math for padding (NFR-3410 honest bounds). Content-authenticity story (signing key trust model).")
+  (description "`docs/capability-security.md` — deeper threat-model discussion per SPEC-034 §12 and §11. Explicit `do NOT use capability mode for X` list (regulated PII, cardholder data, etc.). Comparison table: delegated-URL vs hardened vs `ztl serve` vs reverse-proxy-auth. Prior-art citations (§1.4). Offline brute-force math for padding (NFR-3410 honest bounds). Content-authenticity story (signing key trust model).")
   (acceptance "Document exists; technical reviewers confirm the numbers (entropy, brute-force bounds, tier-leak math) match the spec. Operators evaluating whether capability mode fits their threat model have a direct answer.")
   (priority "P1")
   (spec-ref "SPEC-034 §11, §12"))
@@ -271,7 +271,7 @@
 
 (given task-cap-docs-signing)
 (meta task-cap-docs-signing
-  (description "`docs/signing.md` — what the vault-signing key is, why it matters (CDN-substitution defence), rotation procedure (`zetl cap rotate-signing-key` + shim cache invalidation), emergency shutdown (`zetl cap emergency-shutdown` checklist). Explains the v0.4.0 BUG-004 resolution for operators who need to understand the trust model.")
+  (description "`docs/signing.md` — what the vault-signing key is, why it matters (CDN-substitution defence), rotation procedure (`ztl cap rotate-signing-key` + shim cache invalidation), emergency shutdown (`ztl cap emergency-shutdown` checklist). Explains the v0.4.0 BUG-004 resolution for operators who need to understand the trust model.")
   (acceptance "Document exists. Rotation walk-through tested end-to-end: rotate, rebuild, invalidate shim cache, readers see new content. Old shim cache hit shows signature-verify error with clear explanation.")
   (priority "P1")
   (spec-ref "SPEC-034 REQ-3427, §12"))

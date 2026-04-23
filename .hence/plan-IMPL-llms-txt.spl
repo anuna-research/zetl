@@ -9,7 +9,7 @@
   (status "active")
   (created "2026-04-20")
   (author "agent:claude")
-  (description "Make zetl vaults first-class discoverable by LLM agents. Emit llms.txt (llmstxt.org format) pointing at the existing JSON endpoints, sitemap.xml for generic crawlers, and per-page raw markdown alongside rendered HTML. Both build and serve expose the same URLs."))
+  (description "Make ztl vaults first-class discoverable by LLM agents. Emit llms.txt (llmstxt.org format) pointing at the existing JSON endpoints, sitemap.xml for generic crawlers, and per-page raw markdown alongside rendered HTML. Both build and serve expose the same URLs."))
 
 (given agent-claude-available)
 
@@ -26,7 +26,7 @@
 (given task-raw-md)
 (meta task-raw-md
   (description "Emit per-page raw markdown. Build: copy source .md to {out}/{slug}/index.md alongside the rendered .html. Serve: add GET /{slug}/index.md returning text/markdown from disk (parity with build URLs; complements existing /api/pages/{slug}). Honor the same draft filter as pages.json.")
-  (acceptance "`zetl build` emits {out}/{slug}/index.md for each non-draft page. `curl /foo/index.md` on serve returns the raw source with Content-Type: text/markdown. Integration test covers both paths on a fixture vault."))
+  (acceptance "`ztl build` emits {out}/{slug}/index.md for each non-draft page. `curl /foo/index.md` on serve returns the raw source with Content-Type: text/markdown. Integration test covers both paths on a fixture vault."))
 
 (given task-sitemap)
 (meta task-sitemap

@@ -1,12 +1,12 @@
 ; =============================================================================
-; zetl User Guide — comprehensive vault at ../zetl-docs
+; ztl User Guide — comprehensive vault at ../ztl-docs
 ; =============================================================================
 
 (meta plan
-  (title "zetl User Guide")
+  (title "ztl User Guide")
   (status "active")
   (created "2026-04-21")
-  (description "Build a comprehensive zetl user guide as a zetl vault at /Users/anuna-01/Code/zetl-docs. Audience: writers and knowledge workers. Scope: every feature in README.md + zetl-features.md (install, vault basics, writing, finding, reading, history, reasoning, collaboration, automation, reference, help)."))
+  (description "Build a comprehensive ztl user guide as a ztl vault at /Users/anuna-01/Code/ztl-docs. Audience: writers and knowledge workers. Scope: every feature in README.md + ztl-features.md (install, vault basics, writing, finding, reading, history, reasoning, collaboration, automation, reference, help)."))
 
 ; --- AGENTS ---
 (given agent-hugo-available)
@@ -29,11 +29,11 @@
 
 ; --- TASK METADATA ---
 (meta task-scaffold
-  (description "Scaffold the docs vault: Index.md, directory skeleton, optional .zetl/ config, README.md for GitHub/Codeberg visitors")
-  (acceptance "Directory /Users/anuna-01/Code/zetl-docs exists with Index.md, all section folders, and README.md explaining how to read the guide"))
+  (description "Scaffold the docs vault: Index.md, directory skeleton, optional .ztl/ config, README.md for GitHub/Codeberg visitors")
+  (acceptance "Directory /Users/anuna-01/Code/ztl-docs exists with Index.md, all section folders, and README.md explaining how to read the guide"))
 
 (meta task-getting-started
-  (description "Write getting-started/ section: What is zetl, Installation, Quick Start, Your First Vault, Migrating from Obsidian")
+  (description "Write getting-started/ section: What is ztl, Installation, Quick Start, Your First Vault, Migrating from Obsidian")
   (acceptance "5 pages in getting-started/, each with working examples a writer can copy-paste"))
 
 (meta task-concepts
@@ -78,11 +78,11 @@
 
 (meta task-crosslink
   (description "Audit wikilinks across the vault: ensure every page links to its prerequisites, parent concept, and related pages; add a short 'Related' section where helpful")
-  (acceptance "`zetl check /Users/anuna-01/Code/zetl-docs` reports no dead links; every page has at least one inbound link (no orphans except Index.md)"))
+  (acceptance "`ztl check /Users/anuna-01/Code/ztl-docs` reports no dead links; every page has at least one inbound link (no orphans except Index.md)"))
 
 (meta task-verify
-  (description "Build the vault with `zetl build` and `zetl serve` to confirm it renders; fix any parse errors or frontmatter issues")
-  (acceptance "`zetl build /Users/anuna-01/Code/zetl-docs --out /tmp/zetl-docs-dist` succeeds with no errors"))
+  (description "Build the vault with `ztl build` and `ztl serve` to confirm it renders; fix any parse errors or frontmatter issues")
+  (acceptance "`ztl build /Users/anuna-01/Code/ztl-docs --out /tmp/ztl-docs-dist` succeeds with no errors"))
 
 ; --- READINESS RULES ---
 ; scaffold is ready immediately

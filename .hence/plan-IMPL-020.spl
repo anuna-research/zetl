@@ -11,7 +11,7 @@
   (created "2026-03-18")
   (author "agent:architect")
   (spec "SPEC-020")
-  (description "Implement multi-user collab editing for zetl serve: passkey auth, BIP39 recovery, SPL-based ACL, git auto-commit, Peritext CRDT, agent integration, external edit reconciliation, UX layer, and security hardening"))
+  (description "Implement multi-user collab editing for ztl serve: passkey auth, BIP39 recovery, SPL-based ACL, git auto-commit, Peritext CRDT, agent integration, external edit reconciliation, UX layer, and security hardening"))
 
 ;; ============================================================
 ;; Agents
@@ -29,7 +29,7 @@
 (given task-user-profiles)
 (given no-deps-user-profiles)
 (meta task-user-profiles
-  (description "Implement user profile storage in .zetl/users/<id>/profile.json with WebAuthn credential and recovery pubkey fields")
+  (description "Implement user profile storage in .ztl/users/<id>/profile.json with WebAuthn credential and recovery pubkey fields")
   (acceptance "User profile created, read, serialized via serde; credential.json and recovery.json written; CON-020-001 schema validated")
   (phase "1")
   (reqs "REQ-020-001 REQ-020-002 REQ-020-005"))
@@ -126,7 +126,7 @@
 
 (given task-invitation-gen)
 (meta task-invitation-gen
-  (description "Implement zetl invite CLI: JWT generation with EdDSA signature, server.key creation, nonce tracking, expiry, URL output")
+  (description "Implement ztl invite CLI: JWT generation with EdDSA signature, server.key creation, nonce tracking, expiry, URL output")
   (acceptance "TEST-020-006 passes; JWT verifiable; nonce recorded; expiry enforced")
   (phase "2")
   (reqs "REQ-020-006"))
@@ -318,7 +318,7 @@
 
 (given task-agent-hook)
 (meta task-agent-hook
-  (description "Implement on-agent hook lifecycle point: manual trigger via zetl agent run, context with task/target_pages/user/budget")
+  (description "Implement on-agent hook lifecycle point: manual trigger via ztl agent run, context with task/target_pages/user/budget")
   (acceptance "TEST-020-023 passes; hook fires with correct context; exit codes handled")
   (phase "4")
   (reqs "REQ-020-023"))
@@ -428,7 +428,7 @@
 
 (given task-crdt-wal)
 (meta task-crdt-wal
-  (description "Implement CRDT write-ahead log: append ops to .zetl/crdt/<slug>.wal; truncate on flush; replay on startup; 10MB max WAL size")
+  (description "Implement CRDT write-ahead log: append ops to .ztl/crdt/<slug>.wal; truncate on flush; replay on startup; 10MB max WAL size")
   (acceptance "TEST-020-044 passes; crash recovery replays WAL; flush clears WAL; max size triggers force-flush")
   (phase "5")
   (reqs "REQ-020-044"))
@@ -625,7 +625,7 @@
 
 (given task-access-request)
 (meta task-access-request
-  (description "Implement access request flow: button on 403, request record in .zetl/collab/access-requests.json, admin WebSocket notification, on-access-request hook")
+  (description "Implement access request flow: button on 403, request record in .ztl/collab/access-requests.json, admin WebSocket notification, on-access-request hook")
   (acceptance "TEST-020-047 passes; admin receives notification; request appears in dashboard")
   (phase "7")
   (reqs "REQ-020-047"))
@@ -653,7 +653,7 @@
 
 (given task-page-comments)
 (meta task-page-comments
-  (description "Implement page comments: sidecar storage in .zetl/comments/<slug>.json, comment sidebar, WebSocket broadcast, ACL-gated, 30-day auto-prune")
+  (description "Implement page comments: sidecar storage in .ztl/comments/<slug>.json, comment sidebar, WebSocket broadcast, ACL-gated, 30-day auto-prune")
   (acceptance "TEST-020-051 passes; comments appear in real time; pruned after 30 days")
   (phase "7")
   (reqs "REQ-020-051"))
@@ -775,7 +775,7 @@
 
 (given task-server-key-protection)
 (meta task-server-key-protection
-  (description "Implement server key protection: 0600 permissions on creation, auto-add .zetl/collab/, .zetl/users/, .zetl/sessions/ to .gitignore, permission check on startup")
+  (description "Implement server key protection: 0600 permissions on creation, auto-add .ztl/collab/, .ztl/users/, .ztl/sessions/ to .gitignore, permission check on startup")
   (acceptance "TEST-020-057 passes; .gitignore updated; WARN on permissive file permissions")
   (phase "8")
   (reqs "REQ-020-057"))

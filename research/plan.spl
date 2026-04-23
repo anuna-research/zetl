@@ -86,19 +86,19 @@
 ;; --- Phase 1a: Local IPC ---
 (given task-local-ipc)
 (meta task-local-ipc
-  (description "Implement zetl <-> sidecar communication over Unix domain socket using JSON-RPC 2.0. Add `zetl sync start/stop/status` commands. Sidecar launches as background daemon, zetl connects and sends commands. REQ-001 from SPEC-004.")
-  (acceptance "`zetl sync start` launches sidecar, `zetl sync status` reports running state, `zetl sync stop` terminates gracefully. JSON-RPC round-trip works for a simple 'ping' command."))
+  (description "Implement ztl <-> sidecar communication over Unix domain socket using JSON-RPC 2.0. Add `ztl sync start/stop/status` commands. Sidecar launches as background daemon, ztl connects and sends commands. REQ-001 from SPEC-004.")
+  (acceptance "`ztl sync start` launches sidecar, `ztl sync status` reports running state, `ztl sync stop` terminates gracefully. JSON-RPC round-trip works for a simple 'ping' command."))
 
 ;; --- Phase 1b: Sync Core ---
 (given task-sync-core)
 (meta task-sync-core
-  (description "Implement the pull/push sync protocol with conflict staging. Delta-based file transfer with generation tracking. Conflict detection via SHA-256 content hash comparison. Stage conflicts in .zetl/sync/conflicts/. TCP+TLS transport (LAN only). REQ-004, REQ-005, REQ-006 from SPEC-004.")
+  (description "Implement the pull/push sync protocol with conflict staging. Delta-based file transfer with generation tracking. Conflict detection via SHA-256 content hash comparison. Stage conflicts in .ztl/sync/conflicts/. TCP+TLS transport (LAN only). REQ-004, REQ-005, REQ-006 from SPEC-004.")
   (acceptance "Pull receives new/modified files from remote. Push sends local changes. Conflicts detected and staged correctly. Sync state persisted across runs. Works over TCP+TLS on LAN."))
 
 ;; --- Phase 1c: Capabilities ---
 (given task-capabilities)
 (meta task-capabilities
-  (description "Implement capability creation, attenuation, and revocation. `zetl sync share` generates scoped sturdyrefs. `zetl sync attenuate` creates weaker child capabilities. `zetl sync revoke` invalidates capabilities. Folder-based scope model. REQ-002, REQ-003, REQ-007 from SPEC-004.")
+  (description "Implement capability creation, attenuation, and revocation. `ztl sync share` generates scoped sturdyrefs. `ztl sync attenuate` creates weaker child capabilities. `ztl sync revoke` invalidates capabilities. Folder-based scope model. REQ-002, REQ-003, REQ-007 from SPEC-004.")
   (acceptance "Share generates valid sturdyref with scope+permissions. Attenuated caps cannot exceed parent permissions. Revoked caps are rejected on next connection. Remote management (add/list/remove) works."))
 
 ;; --- Phase 1d: Tor Transport ---
@@ -110,7 +110,7 @@
 ;; --- Phase 1e: Polish ---
 (given task-polish)
 (meta task-polish
-  (description "Conflict resolution UX, --dry-run flag, audit log (.zetl/sync/log.json), improved error messages, `zetl sync conflicts` and `zetl sync resolve` commands. REQ-008 from SPEC-004.")
+  (description "Conflict resolution UX, --dry-run flag, audit log (.ztl/sync/log.json), improved error messages, `ztl sync conflicts` and `ztl sync resolve` commands. REQ-008 from SPEC-004.")
   (acceptance "All CON-001 through CON-007 contract specifications met. Audit log captures all operations. Dry-run shows what would change without applying. Error messages are structured JSON when -f json is specified."))
 
 ;; ---------------------------------------------------------------------------
@@ -187,7 +187,7 @@
 
 (meta r-ready-spike-review (description "Spike review requires all 4 spikes completed") (justification "Cannot make go/no-go decision without all feasibility data"))
 (meta r-ready-local-ipc (description "IPC implementation requires spike review pass") (justification "No point building IPC if sidecar architecture is infeasible"))
-(meta r-ready-sync-core (description "Sync core requires working IPC") (justification "Pull/push protocol needs zetl<->sidecar communication"))
+(meta r-ready-sync-core (description "Sync core requires working IPC") (justification "Pull/push protocol needs ztl<->sidecar communication"))
 (meta r-ready-capabilities (description "Capabilities require working sync") (justification "Capability model gates sync operations"))
 (meta r-ready-tor-transport (description "Tor requires working capabilities") (justification "Remote sync needs capability validation before adding NAT traversal"))
 (meta r-ready-polish (description "Polish requires all core features") (justification "UX improvements and audit logging depend on complete feature set"))

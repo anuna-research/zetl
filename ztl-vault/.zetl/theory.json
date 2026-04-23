@@ -1,0 +1,1662 @@
+{
+  "version": 2,
+  "spl_file_mtimes": {
+    "concepts/Local-first Design.md": 1771996608.673089,
+    "reference/Reason Commands.md": 1771996420.5505219,
+    "theories/vault-readiness.spl": 1771996847.1623347,
+    "architecture/Link Graph.md": 1771996459.2211785,
+    "concepts/Spindle Lisp.md": 1771996972.0573828,
+    "decisions/JSON by Default.md": 1771996668.5867333,
+    "reference/Blocks Command.md": 1771996342.2806115,
+    "architecture/Reasoning Engine.md": 1771996503.9975176,
+    "specs/SPEC-002 Full-Text Search.md": 1771996749.1829476,
+    "specs/SPEC-007 Graph Diff.md": 1771996802.6886983,
+    "theories/agent-ergonomics.spl": 1771996869.9645758,
+    "decisions/ADR-001 Rust.md": 1771996622.4887123,
+    "concepts/Defeasible Reasoning.md": 1771996980.3392017,
+    "Index.md": 1771996223.0759728,
+    "specs/SPEC-008 Watch Mode.md": 1771996812.0843883,
+    "decisions/ADR-003 JSON Errors.md": 1771996638.7013233,
+    "specs/SPEC-003 Agent Ergonomics.md": 1771996756.5633307,
+    "reference/TUI.md": 1771996384.5482605,
+    "specs/Spec Index.md": 1771996729.2030675,
+    "specs/SPEC-006 Merkle Tree.md": 1771996797.9897377,
+    "decisions/Local-first Design.md": 1771996685.165304,
+    "decisions/Feature Gates.md": 1771996676.4106188,
+    "architecture/Cache.md": 1771996471.3332448,
+    "specs/SPEC-005 Defeasible Reasoning.md": 1771996780.0870655,
+    "concepts/Wikilinks.md": 1771996544.2839234,
+    "reference/Search Command.md": 1771996305.830666,
+    "architecture/Scanner.md": 1771996446.8694382,
+    "specs/SPEC-009 Xanadu View.md": 1771996827.6057465,
+    "architecture/Performance.md": 1771996527.4537582,
+    "reference/Check Command.md": 1771996329.2611122,
+    "specs/SPEC-001 Link Graph CLI.md": 1771996740.3095086,
+    "theories/design-principles.spl": 1771996855.0249991,
+    "getting-started/Install.md": 1771996230.1895545,
+    "concepts/Provenance.md": 1771996576.969282,
+    "theories/caching.spl": 1771996863.6804829,
+    "architecture/Merkle Tree.md": 1771996492.8058062,
+    "getting-started/Compatibility.md": 1771996259.013986,
+    "decisions/Agent Ergonomics.md": 1771996693.02235
+  },
+  "rules": [
+    {
+      "label": "r-good-dx",
+      "rule_type": "Defeasible",
+      "body": [
+        "graceful-degradation"
+      ],
+      "head": [
+        "good-developer-experience"
+      ],
+      "source_file": "theories/design-principles.spl",
+      "source_line": 21,
+      "source_page": "design-principles"
+    },
+    {
+      "label": "__fact_64",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-require-done"
+      ],
+      "source_file": "reference/Reason Commands.md",
+      "source_line": 9,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "__fact_67",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "regex-support"
+      ],
+      "source_file": "reference/Search Command.md",
+      "source_line": 7,
+      "source_page": "Search Command"
+    },
+    {
+      "label": "__fact_50",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "defeasible-reasoning-documented"
+      ],
+      "source_file": "concepts/Defeasible Reasoning.md",
+      "source_line": 6,
+      "source_page": "Defeasible Reasoning"
+    },
+    {
+      "label": "__fact_21",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "json-default-output"
+      ],
+      "source_file": "decisions/JSON by Default.md",
+      "source_line": 6,
+      "source_page": "JSON by Default"
+    },
+    {
+      "label": "r-reason-commands-complete",
+      "rule_type": "Strict",
+      "body": [
+        "reason-status-done",
+        "reason-explain-done",
+        "reason-why-not-done",
+        "reason-require-done",
+        "reason-what-if-done",
+        "reason-conflicts-done",
+        "reason-export-done",
+        "reason-provenance-done"
+      ],
+      "head": [
+        "reason-commands-complete"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 46,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_68",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "fulltext-search-done"
+      ],
+      "source_file": "reference/Search Command.md",
+      "source_line": 6,
+      "source_page": "Search Command"
+    },
+    {
+      "label": "r-self-documenting",
+      "rule_type": "Defeasible",
+      "body": [
+        "vault-self-documenting",
+        "vault-uses-wikilinks",
+        "vault-uses-spl"
+      ],
+      "head": [
+        "vault-is-self-referential"
+      ],
+      "source_file": "Index.md",
+      "source_line": 79,
+      "source_page": "Index"
+    },
+    {
+      "label": "__fact_38",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "single-binary"
+      ],
+      "source_file": "getting-started/Install.md",
+      "source_line": 6,
+      "source_page": "Install"
+    },
+    {
+      "label": "__fact_24",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "type-safe"
+      ],
+      "source_file": "decisions/ADR-001 Rust.md",
+      "source_line": 10,
+      "source_page": "ADR-001 Rust"
+    },
+    {
+      "label": "__fact_41",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "logseq-compatible"
+      ],
+      "source_file": "getting-started/Compatibility.md",
+      "source_line": 7,
+      "source_page": "Compatibility"
+    },
+    {
+      "label": "r-grounded-reasoning",
+      "rule_type": "Defeasible",
+      "body": [
+        "content-addressed-hashing",
+        "provenance-documented"
+      ],
+      "head": [
+        "grounded-reasoning"
+      ],
+      "source_file": "theories/design-principles.spl",
+      "source_line": 31,
+      "source_page": "design-principles"
+    },
+    {
+      "label": "r-core-ready",
+      "rule_type": "Defeasible",
+      "body": [
+        "scanner-complete",
+        "diagnostics-complete",
+        "fulltext-search-done",
+        "directed-graph"
+      ],
+      "head": [
+        "core-features-ready"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 68,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_39",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "obsidian-compatible"
+      ],
+      "source_file": "getting-started/Compatibility.md",
+      "source_line": 6,
+      "source_page": "Compatibility"
+    },
+    {
+      "label": "__fact_1",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spec-001-documented"
+      ],
+      "source_file": "specs/SPEC-001 Link Graph CLI.md",
+      "source_line": 6,
+      "source_page": "SPEC-001 Link Graph CLI"
+    },
+    {
+      "label": "__fact_16",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "disposable-cache"
+      ],
+      "source_file": "decisions/Local-first Design.md",
+      "source_line": 15,
+      "source_page": "Local-first Design"
+    },
+    {
+      "label": "r-vault-ready",
+      "rule_type": "Defeasible",
+      "body": [
+        "vault-self-documented",
+        "core-features-ready",
+        "reasoning-ready",
+        "agent-friendly",
+        "safe-to-use",
+        "tui-complete",
+        "vault-is-self-referential"
+      ],
+      "head": [
+        "vault-ready-to-publish"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 84,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "r-scanner-complete",
+      "rule_type": "Strict",
+      "body": [
+        "wikilink-extraction",
+        "spl-extraction"
+      ],
+      "head": [
+        "scanner-complete"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 41,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_11",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spec-005-documented"
+      ],
+      "source_file": "specs/SPEC-005 Defeasible Reasoning.md",
+      "source_line": 6,
+      "source_page": "SPEC-005 Defeasible Reasoning"
+    },
+    {
+      "label": "__fact_35",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "four-conclusion-types"
+      ],
+      "source_file": "architecture/Reasoning Engine.md",
+      "source_line": 7,
+      "source_page": "Reasoning Engine"
+    },
+    {
+      "label": "r-cache-theory",
+      "rule_type": "Defeasible",
+      "body": [
+        "mtime-based-cache"
+      ],
+      "head": [
+        "cache-reasoning-results"
+      ],
+      "source_file": "architecture/Cache.md",
+      "source_line": 41,
+      "source_page": "Cache"
+    },
+    {
+      "label": "__fact_26",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "directed-graph"
+      ],
+      "source_file": "architecture/Link Graph.md",
+      "source_line": 6,
+      "source_page": "Link Graph"
+    },
+    {
+      "label": "__fact_2",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "all-specs-documented"
+      ],
+      "source_file": "specs/Spec Index.md",
+      "source_line": 6,
+      "source_page": "Spec Index"
+    },
+    {
+      "label": "__fact_34",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spindle-core-integrated"
+      ],
+      "source_file": "architecture/Reasoning Engine.md",
+      "source_line": 6,
+      "source_page": "Reasoning Engine"
+    },
+    {
+      "label": "r-architecture-complete",
+      "rule_type": "Strict",
+      "body": [
+        "wikilink-extraction",
+        "spl-extraction",
+        "directed-graph",
+        "mtime-based-cache",
+        "content-addressed-hashing",
+        "spindle-core-integrated",
+        "drift-detection"
+      ],
+      "head": [
+        "architecture-complete"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 19,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_14",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "mtime-based-cache"
+      ],
+      "source_file": "theories/caching.spl",
+      "source_line": 8,
+      "source_page": "caching"
+    },
+    {
+      "label": "__fact_58",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "tui-complete"
+      ],
+      "source_file": "reference/TUI.md",
+      "source_line": 6,
+      "source_page": "TUI"
+    },
+    {
+      "label": "__fact_5",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spec-006-documented"
+      ],
+      "source_file": "specs/SPEC-006 Merkle Tree.md",
+      "source_line": 6,
+      "source_page": "SPEC-006 Merkle Tree"
+    },
+    {
+      "label": "r-dual-audience-agents",
+      "rule_type": "Defeasible",
+      "body": [
+        "agent-production-ready",
+        "tui-complete"
+      ],
+      "head": [
+        "serves-both-audiences"
+      ],
+      "source_file": "theories/agent-ergonomics.spl",
+      "source_line": 39,
+      "source_page": "agent-ergonomics"
+    },
+    {
+      "label": "__fact_10",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "agent-ergonomics-audited"
+      ],
+      "source_file": "specs/SPEC-003 Agent Ergonomics.md",
+      "source_line": 7,
+      "source_page": "SPEC-003 Agent Ergonomics"
+    },
+    {
+      "label": "__fact_8",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spec-007-documented"
+      ],
+      "source_file": "specs/SPEC-007 Graph Diff.md",
+      "source_line": 6,
+      "source_page": "SPEC-007 Graph Diff"
+    },
+    {
+      "label": "r-merkle-over-mtime",
+      "rule_type": "Defeasible",
+      "body": [
+        "mtime-based-cache",
+        "incremental-rebuild"
+      ],
+      "head": [
+        "merkle-hashing-preferred"
+      ],
+      "source_file": "theories/caching.spl",
+      "source_line": 15,
+      "source_page": "caching"
+    },
+    {
+      "label": "__fact_3",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spec-002-documented"
+      ],
+      "source_file": "specs/SPEC-002 Full-Text Search.md",
+      "source_line": 6,
+      "source_page": "SPEC-002 Full-Text Search"
+    },
+    {
+      "label": "r-structured-errors",
+      "rule_type": "Defeasible",
+      "body": [
+        "structured-errors"
+      ],
+      "head": [
+        "agent-error-handling"
+      ],
+      "source_file": "theories/agent-ergonomics.spl",
+      "source_line": 12,
+      "source_page": "agent-ergonomics"
+    },
+    {
+      "label": "r-exit-codes",
+      "rule_type": "Defeasible",
+      "body": [
+        "nonzero-exit-codes"
+      ],
+      "head": [
+        "agent-process-control"
+      ],
+      "source_file": "theories/agent-ergonomics.spl",
+      "source_line": 17,
+      "source_page": "agent-ergonomics"
+    },
+    {
+      "label": "r-specs-complete",
+      "rule_type": "Strict",
+      "body": [
+        "spec-001-documented",
+        "spec-002-documented",
+        "spec-003-documented",
+        "spec-005-documented",
+        "spec-006-documented",
+        "spec-007-documented",
+        "spec-008-documented",
+        "spec-009-documented",
+        "all-specs-documented"
+      ],
+      "head": [
+        "specs-complete"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 32,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_27",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "multi-hop-traversal"
+      ],
+      "source_file": "architecture/Link Graph.md",
+      "source_line": 7,
+      "source_page": "Link Graph"
+    },
+    {
+      "label": "__fact_28",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "wikilink-extraction"
+      ],
+      "source_file": "architecture/Scanner.md",
+      "source_line": 6,
+      "source_page": "Scanner"
+    },
+    {
+      "label": "r-progressive-disclosure",
+      "rule_type": "Defeasible",
+      "body": [
+        "lean-default-binary",
+        "good-developer-experience"
+      ],
+      "head": [
+        "progressive-disclosure"
+      ],
+      "source_file": "decisions/Feature Gates.md",
+      "source_line": 36,
+      "source_page": "Feature Gates"
+    },
+    {
+      "label": "r-concepts-complete",
+      "rule_type": "Strict",
+      "body": [
+        "wikilink-syntax-documented",
+        "defeasible-reasoning-documented",
+        "spl-documented",
+        "provenance-documented",
+        "local-first-documented"
+      ],
+      "head": [
+        "concepts-complete"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 26,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_45",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "vault-uses-spl"
+      ],
+      "source_file": "Index.md",
+      "source_line": 10,
+      "source_page": "Index"
+    },
+    {
+      "label": "__fact_13",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "disposable-cache"
+      ],
+      "source_file": "theories/caching.spl",
+      "source_line": 10,
+      "source_page": "caching"
+    },
+    {
+      "label": "__fact_29",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spl-extraction"
+      ],
+      "source_file": "architecture/Scanner.md",
+      "source_line": 7,
+      "source_page": "Scanner"
+    },
+    {
+      "label": "__fact_48",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "read-only-vault-access"
+      ],
+      "source_file": "concepts/Local-first Design.md",
+      "source_line": 6,
+      "source_page": "Local-first Design"
+    },
+    {
+      "label": "__fact_43",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "vault-uses-wikilinks"
+      ],
+      "source_file": "Index.md",
+      "source_line": 9,
+      "source_page": "Index"
+    },
+    {
+      "label": "__fact_22",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "agent-ergonomics-audited"
+      ],
+      "source_file": "decisions/Agent Ergonomics.md",
+      "source_line": 30,
+      "source_page": "Agent Ergonomics"
+    },
+    {
+      "label": "r-agent-production",
+      "rule_type": "Defeasible",
+      "body": [
+        "agent-friendly",
+        "agent-bootstrapping-supported"
+      ],
+      "head": [
+        "agent-production-ready"
+      ],
+      "source_file": "theories/agent-ergonomics.spl",
+      "source_line": 32,
+      "source_page": "agent-ergonomics"
+    },
+    {
+      "label": "r-visible-connections",
+      "rule_type": "Defeasible",
+      "body": [
+        "tui-complete",
+        "spec-009-documented"
+      ],
+      "head": [
+        "visible-knowledge-connections"
+      ],
+      "source_file": "theories/design-principles.spl",
+      "source_line": 36,
+      "source_page": "design-principles"
+    },
+    {
+      "label": "__fact_56",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spl-diagnostics"
+      ],
+      "source_file": "reference/Check Command.md",
+      "source_line": 8,
+      "source_page": "Check Command"
+    },
+    {
+      "label": "r-vault-self-doc",
+      "rule_type": "Defeasible",
+      "body": [
+        "getting-started-complete",
+        "reference-complete",
+        "architecture-complete",
+        "concepts-complete",
+        "specs-complete",
+        "vault-self-documenting"
+      ],
+      "head": [
+        "vault-self-documented"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 78,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_15",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "read-only-vault-access"
+      ],
+      "source_file": "decisions/Local-first Design.md",
+      "source_line": 14,
+      "source_page": "Local-first Design"
+    },
+    {
+      "label": "__fact_18",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "structured-errors"
+      ],
+      "source_file": "decisions/ADR-003 JSON Errors.md",
+      "source_line": 16,
+      "source_page": "ADR-003 JSON Errors"
+    },
+    {
+      "label": "__fact_7",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spec-009-documented"
+      ],
+      "source_file": "specs/SPEC-009 Xanadu View.md",
+      "source_line": 6,
+      "source_page": "SPEC-009 Xanadu View"
+    },
+    {
+      "label": "__fact_69",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "redis-fast-enough"
+      ],
+      "source_file": "reference/Blocks Command.md",
+      "source_line": 59,
+      "source_page": "Blocks Command"
+    },
+    {
+      "label": "r-dual-audience",
+      "rule_type": "Defeasible",
+      "body": [
+        "json-default-output",
+        "tui-complete",
+        "seven-views"
+      ],
+      "head": [
+        "serves-both-audiences"
+      ],
+      "source_file": "decisions/JSON by Default.md",
+      "source_line": 28,
+      "source_page": "JSON by Default"
+    },
+    {
+      "label": "r-diagnostics-complete",
+      "rule_type": "Strict",
+      "body": [
+        "dead-link-detection",
+        "orphan-detection",
+        "spl-diagnostics"
+      ],
+      "head": [
+        "diagnostics-complete"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 53,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_60",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-status-done"
+      ],
+      "source_file": "reference/Reason Commands.md",
+      "source_line": 6,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "r-reference-complete",
+      "rule_type": "Strict",
+      "body": [
+        "reason-status-done",
+        "reason-explain-done",
+        "fulltext-search-done",
+        "dead-link-detection",
+        "tui-complete",
+        "content-addressed-hashing"
+      ],
+      "head": [
+        "reference-complete"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 13,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "r-list-for-bootstrap",
+      "rule_type": "Defeasible",
+      "body": [
+        "agent-ergonomics-audited"
+      ],
+      "head": [
+        "agent-bootstrapping-supported"
+      ],
+      "source_file": "theories/agent-ergonomics.spl",
+      "source_line": 22,
+      "source_page": "agent-ergonomics"
+    },
+    {
+      "label": "__fact_23",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "single-binary"
+      ],
+      "source_file": "decisions/ADR-001 Rust.md",
+      "source_line": 11,
+      "source_page": "ADR-001 Rust"
+    },
+    {
+      "label": "__fact_30",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "disposable-cache"
+      ],
+      "source_file": "architecture/Cache.md",
+      "source_line": 8,
+      "source_page": "Cache"
+    },
+    {
+      "label": "__fact_40",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "foam-compatible"
+      ],
+      "source_file": "getting-started/Compatibility.md",
+      "source_line": 8,
+      "source_page": "Compatibility"
+    },
+    {
+      "label": "__fact_42",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "dendron-compatible"
+      ],
+      "source_file": "getting-started/Compatibility.md",
+      "source_line": 9,
+      "source_page": "Compatibility"
+    },
+    {
+      "label": "__fact_49",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "provenance-documented"
+      ],
+      "source_file": "concepts/Provenance.md",
+      "source_line": 6,
+      "source_page": "Provenance"
+    },
+    {
+      "label": "r-agent-friendly",
+      "rule_type": "Defeasible",
+      "body": [
+        "json-default-output",
+        "structured-errors",
+        "nonzero-exit-codes"
+      ],
+      "head": [
+        "agent-friendly"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 58,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_19",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-feature-optional"
+      ],
+      "source_file": "decisions/Feature Gates.md",
+      "source_line": 6,
+      "source_page": "Feature Gates"
+    },
+    {
+      "label": "__fact_54",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "orphan-detection"
+      ],
+      "source_file": "reference/Check Command.md",
+      "source_line": 7,
+      "source_page": "Check Command"
+    },
+    {
+      "label": "__fact_17",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "nonzero-exit-codes"
+      ],
+      "source_file": "decisions/ADR-003 JSON Errors.md",
+      "source_line": 17,
+      "source_page": "ADR-003 JSON Errors"
+    },
+    {
+      "label": "r-json-for-agents",
+      "rule_type": "Defeasible",
+      "body": [
+        "json-default-output"
+      ],
+      "head": [
+        "agent-parseable-output"
+      ],
+      "source_file": "theories/agent-ergonomics.spl",
+      "source_line": 7,
+      "source_page": "agent-ergonomics"
+    },
+    {
+      "label": "__fact_59",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-explain-done"
+      ],
+      "source_file": "reference/Reason Commands.md",
+      "source_line": 7,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "__fact_66",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-conflicts-done"
+      ],
+      "source_file": "reference/Reason Commands.md",
+      "source_line": 11,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "r-two-tier-sound",
+      "rule_type": "Defeasible",
+      "body": [
+        "mtime-based-cache",
+        "content-addressed-hashing"
+      ],
+      "head": [
+        "two-tier-invalidation-sound"
+      ],
+      "source_file": "theories/caching.spl",
+      "source_line": 20,
+      "source_page": "caching"
+    },
+    {
+      "label": "r-reasoning-ready",
+      "rule_type": "Defeasible",
+      "body": [
+        "reason-commands-complete",
+        "spindle-core-integrated",
+        "four-conclusion-types"
+      ],
+      "head": [
+        "reasoning-ready"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 73,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_25",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "fast-startup"
+      ],
+      "source_file": "architecture/Performance.md",
+      "source_line": 6,
+      "source_page": "Performance"
+    },
+    {
+      "label": "__fact_57",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "seven-views"
+      ],
+      "source_file": "reference/TUI.md",
+      "source_line": 7,
+      "source_page": "TUI"
+    },
+    {
+      "label": "__fact_20",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "graceful-degradation"
+      ],
+      "source_file": "decisions/Feature Gates.md",
+      "source_line": 7,
+      "source_page": "Feature Gates"
+    },
+    {
+      "label": "__fact_9",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spec-003-documented"
+      ],
+      "source_file": "specs/SPEC-003 Agent Ergonomics.md",
+      "source_line": 6,
+      "source_page": "SPEC-003 Agent Ergonomics"
+    },
+    {
+      "label": "r-lean-default",
+      "rule_type": "Defeasible",
+      "body": [
+        "reason-feature-optional"
+      ],
+      "head": [
+        "lean-default-binary"
+      ],
+      "source_file": "theories/design-principles.spl",
+      "source_line": 16,
+      "source_page": "design-principles"
+    },
+    {
+      "label": "__fact_36",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "type-safe"
+      ],
+      "source_file": "getting-started/Install.md",
+      "source_line": 8,
+      "source_page": "Install"
+    },
+    {
+      "label": "r-good-cli",
+      "rule_type": "Defeasible",
+      "body": [
+        "fast-startup",
+        "single-binary",
+        "type-safe"
+      ],
+      "head": [
+        "good-cli-tool"
+      ],
+      "source_file": "theories/design-principles.spl",
+      "source_line": 6,
+      "source_page": "design-principles"
+    },
+    {
+      "label": "__fact_37",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "fast-startup"
+      ],
+      "source_file": "getting-started/Install.md",
+      "source_line": 7,
+      "source_page": "Install"
+    },
+    {
+      "label": "__fact_46",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "local-first-documented"
+      ],
+      "source_file": "concepts/Local-first Design.md",
+      "source_line": 8,
+      "source_page": "Local-first Design"
+    },
+    {
+      "label": "__fact_4",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "content-addressed-hashing"
+      ],
+      "source_file": "specs/SPEC-006 Merkle Tree.md",
+      "source_line": 7,
+      "source_page": "SPEC-006 Merkle Tree"
+    },
+    {
+      "label": "__fact_31",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "incremental-rebuild"
+      ],
+      "source_file": "architecture/Cache.md",
+      "source_line": 7,
+      "source_page": "Cache"
+    },
+    {
+      "label": "r-cache-safe",
+      "rule_type": "Defeasible",
+      "body": [
+        "disposable-cache",
+        "read-only-vault-access"
+      ],
+      "head": [
+        "cache-safe-to-deploy"
+      ],
+      "source_file": "theories/caching.spl",
+      "source_line": 43,
+      "source_page": "caching"
+    },
+    {
+      "label": "r-trustworthy",
+      "rule_type": "Defeasible",
+      "body": [
+        "read-only-vault-access",
+        "agent-ergonomics-audited",
+        "json-default-output"
+      ],
+      "head": [
+        "trustworthy-tool"
+      ],
+      "source_file": "theories/design-principles.spl",
+      "source_line": 41,
+      "source_page": "design-principles"
+    },
+    {
+      "label": "__fact_47",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "no-network-calls"
+      ],
+      "source_file": "concepts/Local-first Design.md",
+      "source_line": 7,
+      "source_page": "Local-first Design"
+    },
+    {
+      "label": "__fact_6",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spec-008-documented"
+      ],
+      "source_file": "specs/SPEC-008 Watch Mode.md",
+      "source_line": 6,
+      "source_page": "SPEC-008 Watch Mode"
+    },
+    {
+      "label": "__fact_12",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "incremental-rebuild"
+      ],
+      "source_file": "theories/caching.spl",
+      "source_line": 9,
+      "source_page": "caching"
+    },
+    {
+      "label": "r-safe-to-use",
+      "rule_type": "Defeasible",
+      "body": [
+        "read-only-vault-access",
+        "disposable-cache"
+      ],
+      "head": [
+        "safe-to-use"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 63,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "r-getting-started-complete",
+      "rule_type": "Strict",
+      "body": [
+        "single-binary",
+        "spl-documented",
+        "local-first-documented"
+      ],
+      "head": [
+        "getting-started-complete"
+      ],
+      "source_file": "theories/vault-readiness.spl",
+      "source_line": 8,
+      "source_page": "vault-readiness"
+    },
+    {
+      "label": "__fact_51",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "spl-documented"
+      ],
+      "source_file": "concepts/Spindle Lisp.md",
+      "source_line": 6,
+      "source_page": "Spindle Lisp"
+    },
+    {
+      "label": "__fact_32",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "mtime-based-cache"
+      ],
+      "source_file": "architecture/Cache.md",
+      "source_line": 6,
+      "source_page": "Cache"
+    },
+    {
+      "label": "__fact_52",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "wikilink-syntax-documented"
+      ],
+      "source_file": "concepts/Wikilinks.md",
+      "source_line": 6,
+      "source_page": "Wikilinks"
+    },
+    {
+      "label": "r-recompute-theory",
+      "rule_type": "Defeasible",
+      "body": [
+        "incremental-rebuild"
+      ],
+      "head": [
+        "~cache-reasoning-results"
+      ],
+      "source_file": "architecture/Cache.md",
+      "source_line": 46,
+      "source_page": "Cache"
+    },
+    {
+      "label": "__fact_53",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "dead-link-detection"
+      ],
+      "source_file": "reference/Check Command.md",
+      "source_line": 6,
+      "source_page": "Check Command"
+    },
+    {
+      "label": "__fact_44",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "vault-self-documenting"
+      ],
+      "source_file": "Index.md",
+      "source_line": 8,
+      "source_page": "Index"
+    },
+    {
+      "label": "__fact_55",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "drift-detection"
+      ],
+      "source_file": "reference/Check Command.md",
+      "source_line": 9,
+      "source_page": "Check Command"
+    },
+    {
+      "label": "__fact_61",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-export-done"
+      ],
+      "source_file": "reference/Reason Commands.md",
+      "source_line": 12,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "__fact_62",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-what-if-done"
+      ],
+      "source_file": "reference/Reason Commands.md",
+      "source_line": 10,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "__fact_63",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-provenance-done"
+      ],
+      "source_file": "reference/Reason Commands.md",
+      "source_line": 13,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "__fact_65",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "reason-why-not-done"
+      ],
+      "source_file": "reference/Reason Commands.md",
+      "source_line": 8,
+      "source_page": "Reason Commands"
+    },
+    {
+      "label": "__fact_33",
+      "rule_type": "Fact",
+      "body": [],
+      "head": [
+        "content-addressed-hashing"
+      ],
+      "source_file": "architecture/Merkle Tree.md",
+      "source_line": 6,
+      "source_page": "Merkle Tree"
+    }
+  ],
+  "superiorities": [],
+  "diagnostics": [
+    {
+      "level": "Warning",
+      "message": "Duplicate rule label 'r-agent-friendly' (also defined in theories/agent-ergonomics.spl:27)",
+      "file": "theories/vault-readiness.spl",
+      "line": 58,
+      "column": 0
+    },
+    {
+      "level": "Warning",
+      "message": "Duplicate rule label 'r-progressive-disclosure' (also defined in theories/design-principles.spl:26)",
+      "file": "decisions/Feature Gates.md",
+      "line": 36,
+      "column": 0
+    },
+    {
+      "level": "Warning",
+      "message": "Duplicate rule label 'r-dual-audience' (also defined in theories/design-principles.spl:11)",
+      "file": "decisions/JSON by Default.md",
+      "line": 28,
+      "column": 0
+    },
+    {
+      "level": "Warning",
+      "message": "Duplicate rule label 'r-recompute-theory' (also defined in theories/caching.spl:32)",
+      "file": "architecture/Cache.md",
+      "line": 46,
+      "column": 0
+    },
+    {
+      "level": "Warning",
+      "message": "Duplicate rule label 'r-cache-theory' (also defined in theories/caching.spl:27)",
+      "file": "architecture/Cache.md",
+      "line": 41,
+      "column": 0
+    }
+  ],
+  "vault_root_hash": "f07b76717bd7c438d8c2afd242ba05377c5934fedb811a3d83bf4c97a79b0e59",
+  "built_at": "2026-02-25T05:23:08Z",
+  "spl_blocks": {
+    "concepts/Local-first Design.md:5": {
+      "ast_hash": "5ed334585808dd060ff9e622a03499af9e390cc8dc67bdc3bbb71cf64873e28d",
+      "content_hash": "30eb25cdd61ccc069eb9e26f45bc78a3f799bd38f1637c22e63504293c23ff00",
+      "section_heading": "Local-first Design",
+      "section_grounding_hash": "50ab086d4c0f32174289d26e54fea1408cc34bd74e3e8eecab1f80b763c8b121",
+      "explicit_groundings": []
+    },
+    "decisions/Local-first Design.md:13": {
+      "ast_hash": "9b4031077605c385b745b06b3f61ff25d3aabc8a76c08ded3ec8066fdbd26b53",
+      "content_hash": "0421a3e29fcfda3deba132d9c3ad5851e8166416db54f7ef495eb88a441170de",
+      "section_heading": "Decision",
+      "section_grounding_hash": "d7b3cadf3cda9ae367ffcc454a434c1725355a8adda4104e7e11438ff1e01b24",
+      "explicit_groundings": []
+    },
+    "decisions/Agent Ergonomics.md:29": {
+      "ast_hash": "280418ad1c2e3f44dfd3f15de3eb6d68fd6d901da344fdc77951b54a6a282e05",
+      "content_hash": "8fc8d096f1b27fdc5aa75869e962b68bdfe30676905175fa4b8b361abdbdda7c",
+      "section_heading": "Design principle",
+      "section_grounding_hash": "1571190aad06861ddd75416bc426bc21c86789fbce2ba0874fae96bab6467384",
+      "explicit_groundings": []
+    },
+    "Index.md:7": {
+      "ast_hash": "215abb33a132f343206f9074f39f307db349c1c9f447ececa3565be93cdcebea",
+      "content_hash": "58e15c6ab27e252781731e47e4147690bc8823ee1beb875c09dd79672977c337",
+      "section_heading": "zetl",
+      "section_grounding_hash": "dff8a11c201f9e5377d20098eb0fbc27749d21e788d2628f8fa2024af24e894f",
+      "explicit_groundings": []
+    },
+    "decisions/ADR-003 JSON Errors.md:15": {
+      "ast_hash": "6a9dc0f7469d52d423cd283de6a9b62f69fceba11bfb0ad9ba8eaf67be01327b",
+      "content_hash": "9fc9b6f718c87b652c8733a6035fa70db7c087fbd7c8add5d9afa10b51e346c0",
+      "section_heading": "Decision",
+      "section_grounding_hash": "ac5511e1abf871fe16675057e099cf59c81f10b0ed9a26dd4f6f6d24d06cb7c7",
+      "explicit_groundings": []
+    },
+    "concepts/Spindle Lisp.md:5": {
+      "ast_hash": "fa454718f12c4e9580ca9604e6a4e83c5d709e30b256f0e38f171dbdf3acd031",
+      "content_hash": "1ff3ebbbe959e4f0c1357b1d2363fa8929d6cb84a451c28b7b9cb8b9a7cc1fb4",
+      "section_heading": "Spindle Lisp",
+      "section_grounding_hash": "ba5bc4b933b7d39ef965624a5570e0823e28e05eb77f9f2f2feb3d4195d46230",
+      "explicit_groundings": []
+    },
+    "decisions/Feature Gates.md:5": {
+      "ast_hash": "0919c0ac25917c0a8e58101148e9c98e9bfb0b0d613ad167e93cefe4b55babf4",
+      "content_hash": "b8d6be09190a183a1630b6dfb0adff2b4bc0c3d67936331eb4f41439917dd6e6",
+      "section_heading": "Feature Gates",
+      "section_grounding_hash": "74bac5900bafaaf0937a4f79f10e794753666500117b5a38e5412c08aaa18272",
+      "explicit_groundings": []
+    },
+    "specs/SPEC-002 Full-Text Search.md:5": {
+      "ast_hash": "1789aaa38e7cb692b78318984e738540157b24233d603f5b8820625d78024e5c",
+      "content_hash": "1805a459b5b1e610877b1e7345b50527ea066326fb5ddc8c3557d358886cf150",
+      "section_heading": "SPEC-002: Full-Text Search",
+      "section_grounding_hash": "9c9eebb04ff65eafb282030108e3f5bb5de11ad5602ead7065abad42bb949cdc",
+      "explicit_groundings": []
+    },
+    "architecture/Reasoning Engine.md:5": {
+      "ast_hash": "8f32a375a57cbbdc0747c1bb2faf40f2345ffa78cad5f31e0e5c784ddf109cec",
+      "content_hash": "92ddfbf048711f7c1a2ce9acec7cd0cceb394835a7ea0b264ff4b726add95b7b",
+      "section_heading": "Reasoning Engine",
+      "section_grounding_hash": "56d6af0fd12f2b741515a681b70c123f492cb9d33eed457abdbba6d16c25fbd4",
+      "explicit_groundings": []
+    },
+    "concepts/Wikilinks.md:5": {
+      "ast_hash": "58258e6decc4b9b764f3b6c39a45dba1a6c541f0bcea2715288275a7e9b7c529",
+      "content_hash": "1965b87d89798400835391d6e7812a8c916cf01e069d19798d9c4a943938c12a",
+      "section_heading": "Wikilinks",
+      "section_grounding_hash": "27d888d82fb5908f350ddac2cf04b9e15b91e65918efc8f8571999965212b872",
+      "explicit_groundings": []
+    },
+    "specs/SPEC-006 Merkle Tree.md:5": {
+      "ast_hash": "394c7c99dfb70bdb2fa7a504e3ac948c81bb99520142b6e72685f06ee1f6b29d",
+      "content_hash": "d3a43efb0d34e9c27dfb58e29ec7af8a38165835bc0a66faccfbb173f19eadc5",
+      "section_heading": "SPEC-006: Merkle Tree",
+      "section_grounding_hash": "9dc6304bf5b814ef1cf2d49e0df20ba102b42d632a298fd52ff9bf289e6bc8b1",
+      "explicit_groundings": []
+    },
+    "specs/SPEC-008 Watch Mode.md:5": {
+      "ast_hash": "40e448d7bdeab7fe4c3d57bc9e5a620eec2de878ab57fca204901234fd363cd4",
+      "content_hash": "7716a0a2754cdeadd8aa9f01569575f92dc4a219ff8d15625d52081c14d4ece5",
+      "section_heading": "SPEC-008: Watch Mode",
+      "section_grounding_hash": "7db9a8c26e4b9f76eb7d933626b355abd6a99fe451b679a72d9b45d559f15ad4",
+      "explicit_groundings": []
+    },
+    "specs/SPEC-003 Agent Ergonomics.md:5": {
+      "ast_hash": "b989551b8622f145e743b02d62155f9a531c6510072e3415674af96ea0f038ac",
+      "content_hash": "2181fa23ace5ce5aecf935b80cd0e70b2a391df3c273bad83f06cfd095c7753b",
+      "section_heading": "SPEC-003: Agent Ergonomics",
+      "section_grounding_hash": "428fbe2a5868c5c587dc2becd321dedadb1731262ff97fb5f078aa96a09f15f0",
+      "explicit_groundings": []
+    },
+    "architecture/Performance.md:5": {
+      "ast_hash": "078231581c174dc788e74a7cf4b4e6f145ec1de50b7d683700672dcb616615b8",
+      "content_hash": "58465a17bbc01dadd5f15d8d2bc95bc8f9591925a3ba25cf5d295998e01ee8f9",
+      "section_heading": "Performance",
+      "section_grounding_hash": "47758e7a877563e58147835f071ece703792f034e4779e3bd460e51eadf15c49",
+      "explicit_groundings": []
+    },
+    "decisions/JSON by Default.md:26": {
+      "ast_hash": "114a824f9b78f165c9a0601a58efad1ca5c323c4178b2b74c5d0d03ad70bd9cf",
+      "content_hash": "4ee94001b86db9e69f6844e6f605aa419b3853e97db23c41374b8b3e00146a5c",
+      "section_heading": "Both audiences",
+      "section_grounding_hash": "f0e48c739b8f717cb70ee66c8bf56db0850b2c469b67f56feeff209d7df60b48",
+      "explicit_groundings": []
+    },
+    "getting-started/Install.md:5": {
+      "ast_hash": "d54c3c4afeee6e173977ed6e0587219e38f954859545b3f6bda39f7567136b6a",
+      "content_hash": "a32a5f6e45f62f355427700df6dd1bcc1a9ae871da313ed0ce75f7f48347e91f",
+      "section_heading": "Install",
+      "section_grounding_hash": "1c526f688447a538f47e3b82c2d474af54877973be0e0af05a35ca8026d96b09",
+      "explicit_groundings": []
+    },
+    "decisions/ADR-001 Rust.md:9": {
+      "ast_hash": "62405e513fd6b2ff69c619b11c1339685b7be4dc5b30f6bfa0c0a1cefacfcda9",
+      "content_hash": "a5f9d41bda1f33155e60a8ba75ebff72012c18ab8190c884ab82dccdffb7a739",
+      "section_heading": "Context",
+      "section_grounding_hash": "3f835286765df19d61bea71d37b876e1e69d8125346a3820092ec77691713e49",
+      "explicit_groundings": []
+    },
+    "concepts/Provenance.md:5": {
+      "ast_hash": "e1c9c03e2364f88e5a882782e68c8c1a7843f0f128b8347fd19a54faf325d233",
+      "content_hash": "2893f8fd174af63821aa088d8793933761f27cc754f1e58ee67d687b49465c41",
+      "section_heading": "Provenance",
+      "section_grounding_hash": "c22ce8444a545cc96907dd2b2001f8edce4e5719eab061befa21e67100646653",
+      "explicit_groundings": []
+    },
+    "architecture/Scanner.md:5": {
+      "ast_hash": "877058a933f2fba54a2d06d333e541df0509022068b597d705359e251a5e704a",
+      "content_hash": "3f1771608982f7f43772e8b592ee9da921a821c2ad2bfcd3f5199c8f5d850ccd",
+      "section_heading": "Scanner",
+      "section_grounding_hash": "5336b58e959cc3bf97438f03aa93321f88f2bd450d6cca5f3b07c45fc14d6925",
+      "explicit_groundings": []
+    },
+    "architecture/Link Graph.md:5": {
+      "ast_hash": "c9e90d10650afe635483e4f485eb64c1a912da6cf6f2d42dafffa8e3bae74cb5",
+      "content_hash": "eda5a0a65f14b2af79c81119064453025d193502893357b3f06f5106a5c9e53a",
+      "section_heading": "Link Graph",
+      "section_grounding_hash": "a2e63e0cc8bc7119ad73e51bcabfff441814a6ee76b67a09fa0facabd533ed14",
+      "explicit_groundings": []
+    },
+    "reference/TUI.md:5": {
+      "ast_hash": "af2617ddee44c33abe4d1bef440b415885d41dba56b934f21c541c09a85b710d",
+      "content_hash": "d65088df850e36739b5b41474ce889a6d2e13aa2f074a1c25e23b88b738e6fec",
+      "section_heading": "TUI",
+      "section_grounding_hash": "e508542c4dbf4b1293fac3a652b262c2e8343d6869f299c615e5a94c8c9d2fcc",
+      "explicit_groundings": []
+    },
+    "specs/SPEC-009 Xanadu View.md:5": {
+      "ast_hash": "82888ebffa226a8de04dc2bac2330a11e43cfa98fd51bc96f38642c2cf606f93",
+      "content_hash": "d4952da79d487afaf18350eb00a6375ffb6e37b87459f27aa163bd4224729308",
+      "section_heading": "SPEC-009: Xanadu View",
+      "section_grounding_hash": "d84d86b9d0b3a19c35761e9fe7193a26f6f9a80997f59fadbbae57af3a420ead",
+      "explicit_groundings": []
+    },
+    "specs/SPEC-001 Link Graph CLI.md:5": {
+      "ast_hash": "fc5b5dcd427311933518890178edfaafb6c7d700cc2db605bd95c5a86897347a",
+      "content_hash": "eae172039e97635eb744712ee91211c32a1728e34e97f4fca7916b774cb576f2",
+      "section_heading": "SPEC-001: Link Graph CLI",
+      "section_grounding_hash": "e1d2d2684d972b016bb16d7830b2b2c3ef3ae636d1d789024914c1210c6cc347",
+      "explicit_groundings": []
+    },
+    "theories/agent-ergonomics.spl:1": {
+      "ast_hash": "3a7562c604eaf4557330bb161fe027d7f737e84d952c06ca642f7e38c0d60d6b",
+      "content_hash": "4c34b5eb8823f37a70751de912a6dd48869a6850462117d6c7f12f197a5d168d",
+      "section_heading": null,
+      "section_grounding_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "explicit_groundings": []
+    },
+    "decisions/JSON by Default.md:5": {
+      "ast_hash": "2e3c944f1d532d1d3d6bf30c9f2c6ec478e7e497e1550f7123169c88c583ccdc",
+      "content_hash": "e4b3928087384cd3a32ea51605765c3a605148268cbb6fb391504d7e66740273",
+      "section_heading": "JSON by Default",
+      "section_grounding_hash": "b90ff33fea617d42c8175cee0beee59edd60858b3eb552c7ec05f075def67f6f",
+      "explicit_groundings": []
+    },
+    "concepts/Defeasible Reasoning.md:5": {
+      "ast_hash": "0b4da66beb55329e972de847025f6abb82645c1656e3c8ebfe7f2261c6f7d55b",
+      "content_hash": "03b2888d37d1fd1bcea2b8a08bc1712a161a390aaa52f2c9c337fea25a9b3cb2",
+      "section_heading": "Defeasible Reasoning",
+      "section_grounding_hash": "6b19abc53394860acab55208d05480f16be550d165aec08a777fb947cc298da9",
+      "explicit_groundings": []
+    },
+    "reference/Reason Commands.md:5": {
+      "ast_hash": "29777d79d2283127c1e8aca354ee80488d83a2e05afbfcaf85d5d71ffd05970d",
+      "content_hash": "e3d99aa4b154968089f99573318645c09a9dc0066dbb30e43cb83f057451cc15",
+      "section_heading": "Reason Commands",
+      "section_grounding_hash": "ad715acd95302caadb34fb62ffaf291d8b044a9d821d5028e71db49a4ed07d57",
+      "explicit_groundings": []
+    },
+    "reference/Blocks Command.md:58": {
+      "ast_hash": "e1d1f5766bcc820d4b977f5fc16b511d7f5610c0f7a649dd0d970232897cc381",
+      "content_hash": "e5f6fc3a7c1a6362079f3734b275576317717ae7d082ba138f381e27f4797ef7",
+      "section_heading": "SPL grounding workflow",
+      "section_grounding_hash": "db1bf71927d1e09cb5237b9cc48e5d188d38d1934d26914b2d6231e9ab24605c",
+      "explicit_groundings": [
+        {
+          "construct": "redis-fast-enough",
+          "source_refs": [
+            "e5f6a7b8"
+          ],
+          "targets": []
+        }
+      ]
+    },
+    "architecture/Cache.md:39": {
+      "ast_hash": "d99461c4baeaf4df6bba3c95d0241ecd362ca5e7380289fa3d34792ce73b5fac",
+      "content_hash": "59fb87d4c88f08d310f7356df037cb49b42bd8d04f91f879fa712cb2afbdd228",
+      "section_heading": "Design tension",
+      "section_grounding_hash": "9672d52776001393960e85a5c77c93cc6eaeeaba6cd0c0635c26fe20ea99a507",
+      "explicit_groundings": []
+    },
+    "theories/design-principles.spl:1": {
+      "ast_hash": "d672afbe9f1a150ec2d0ff040be57b6091d3ebf5ce023df18ac47da4eb80a190",
+      "content_hash": "4a9524d4acb35b8163f868cf79bd00896a9b60dbb3bc31c7da6be3f62a024063",
+      "section_heading": null,
+      "section_grounding_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "explicit_groundings": []
+    },
+    "Index.md:76": {
+      "ast_hash": "15204d3faeebede4665d16910b411184b3e3164bb7b72c0f0d42b19dbbb978d4",
+      "content_hash": "e2073366216f1cedcd4583304c9bbe1222b3810abe1e91c9673829afaab8a2df",
+      "section_heading": "Theories",
+      "section_grounding_hash": "2c045689ecdb72984a0fdba62093b96e1c30330e029ba856321f0fa41d261fae",
+      "explicit_groundings": []
+    },
+    "specs/Spec Index.md:5": {
+      "ast_hash": "3946904721647826f0acee0b0f7bcc0a091f88d4d688495a4f93dd30c5c1448f",
+      "content_hash": "c15fc2a13b1076a1a204f158fc2015b312397cde1b62e2f82aaa89844eff69d3",
+      "section_heading": "Spec Index",
+      "section_grounding_hash": "550df20bba1ea8864b1c8b6018c897425d8e73c2957b85e3f0141fec062fbf8a",
+      "explicit_groundings": []
+    },
+    "theories/vault-readiness.spl:1": {
+      "ast_hash": "f9e17b2e72f2d128b5ab7cc66c86daec498e85fb49012c8045dac5da95192e09",
+      "content_hash": "4bca00d42e75324f926928e4ba42bdcc84423ca714e99f5f8eecdd4ab53733f5",
+      "section_heading": null,
+      "section_grounding_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "explicit_groundings": []
+    },
+    "getting-started/Compatibility.md:5": {
+      "ast_hash": "b514f6d97039b3094c81b7aae5da2b91d8f6473245c438e61ae013fb1e8f85b0",
+      "content_hash": "0f9f417859e61b36176a93cccdee30e026851031f973bf7db00d2145f98454da",
+      "section_heading": "Compatibility",
+      "section_grounding_hash": "3022ee95157d1e8e8ea46759333aeccd2e42440bfde4fd3ba7e5a70acf7b1e6a",
+      "explicit_groundings": []
+    },
+    "reference/Check Command.md:5": {
+      "ast_hash": "4633e745ce7d62f5ccaf328bed0b750f3bd392c1bc21a9ef90398fe055f1545a",
+      "content_hash": "2dc817ac345b1c4aa4b5579b9760eb9256e3ae09353b251d836794469c7169e5",
+      "section_heading": "Check Command",
+      "section_grounding_hash": "8bc6b2aaba478c72813c7dbb8c777d82f7606e8ad70f5edfb1e6a7a8775b7d77",
+      "explicit_groundings": []
+    },
+    "reference/Search Command.md:5": {
+      "ast_hash": "0addfc87cb5868a8327068bf20b5ff928bf9865c424606717378cf5e17a3691c",
+      "content_hash": "3caceb9f66b4651aa2d5b07ceefcc264014cc29bac0ecd3604401a7405d12c93",
+      "section_heading": "Search Command",
+      "section_grounding_hash": "766824fe1ed5d705ee0119ea7ccb3dd86f442d14e585009eb790ba3f25254e60",
+      "explicit_groundings": []
+    },
+    "theories/caching.spl:1": {
+      "ast_hash": "8a943801bc1f187c4038c2e3dc5fc23c41a3b64afa8d191174d0d91f6ebc3079",
+      "content_hash": "1647e1a90aa6b11bde7641339033140b1de82a1a40e783a0eae6b3f6f0992616",
+      "section_heading": null,
+      "section_grounding_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "explicit_groundings": []
+    },
+    "architecture/Cache.md:5": {
+      "ast_hash": "300acad56ba64bbb1f5c95cce635e1179cf89391fb8139fe00ad757cfea8f6b3",
+      "content_hash": "96a9dc132f38e35654d848ba5a1b94070e3a878fd744ef57084709297d2b0d96",
+      "section_heading": "Cache",
+      "section_grounding_hash": "64126898208ab4b99c2e8e521f1a2dfa5eb34c5426f3564ceea2ea2e363c13b0",
+      "explicit_groundings": []
+    },
+    "decisions/Feature Gates.md:34": {
+      "ast_hash": "28ceac32d1e58d507bcfa692dbbcb33160eae41ff4cf98b90dbe4b63e2341798",
+      "content_hash": "df03a8dc4b4662a09740319313bbbb302caababc69ac7c9af926f701a5c81dff",
+      "section_heading": "Progressive disclosure",
+      "section_grounding_hash": "c8a715db4e992496f5c564eff25886e9abaf030e9b2cf9265b5e9c921c3d6736",
+      "explicit_groundings": []
+    },
+    "specs/SPEC-005 Defeasible Reasoning.md:5": {
+      "ast_hash": "45957a1d140c9e8de36b62e7418c0ca02a859f97358f37863f22cbc868d44345",
+      "content_hash": "a099802cbfdf9863134818a815d00f2fbdff430a64fb3a300bc360fe33221cdc",
+      "section_heading": "SPEC-005: Defeasible Reasoning",
+      "section_grounding_hash": "2bd3e5cf4538247cc41ed0a8dac9def6208c2b30ae72a833af43e2f3c96592b2",
+      "explicit_groundings": []
+    },
+    "architecture/Merkle Tree.md:5": {
+      "ast_hash": "db75efb76418ceaadd24d516582456ba05bcc0855dba43b8adaae7b75298480b",
+      "content_hash": "0ec76afaf953a7ec26d5464d0d5de2473612c7befd4e8436b0c1258c486fe98d",
+      "section_heading": "Merkle Tree",
+      "section_grounding_hash": "e0c10a1ecd17d1b5899654c36ce2a88cf502070c9e53751c1d234cab524515e5",
+      "explicit_groundings": []
+    },
+    "specs/SPEC-007 Graph Diff.md:5": {
+      "ast_hash": "a5febeaff24c9628c0ee6e07a478ebf2b9b99c5cda7ee0dd94d41a6d1ddf018f",
+      "content_hash": "3ecff475d941645ac78b3183ae98f99aa888d4bd6208273d7ca16ef0b32282eb",
+      "section_heading": "SPEC-007: Graph Diff",
+      "section_grounding_hash": "b81a480347699e9e8493d147de66d0436650260abe4c9c5bc767e320bd6f8517",
+      "explicit_groundings": []
+    }
+  },
+  "git_commit": "3a2e81853499fe2f68259cc31282a6b663ef29ae",
+  "git_dirty": true
+}

@@ -27,7 +27,7 @@
 (given task-graph-serialize-core)
 (given no-deps-graph-serialize-core)
 (meta task-graph-serialize-core
-  (description "Implement graph::serialize_graph_index(vault_ctx) -> serde_json::Value producing the graphology serialisation format per CON-101. Stable ordering (alphabetical by slug). Pure function, no I/O. Include attributes.format='zetl-graph/v1', options.type='directed', per-node attributes {label,slug,outlink_count,backlink_count,is_orphan,is_dead,tags}.")
+  (description "Implement graph::serialize_graph_index(vault_ctx) -> serde_json::Value producing the graphology serialisation format per CON-101. Stable ordering (alphabetical by slug). Pure function, no I/O. Include attributes.format='ztl-graph/v1', options.type='directed', per-node attributes {label,slug,outlink_count,backlink_count,is_orphan,is_dead,tags}.")
   (acceptance "Unit tests pass; stable ordering property-tested; output loadable via graphology graph.import() in headless Chrome fixture (TEST-101).")
   (phase "1")
   (reqs "REQ-101")
@@ -47,8 +47,8 @@
 
 (given task-graph-build-emit)
 (meta task-graph-build-emit
-  (description "In web::build, add write_graph_index_json(vault_ctx, out_dir) writing <out_dir>/graph-index.json. Co-locate with existing search_index.json and history-index.json write passes. Emit '[zetl] graph-export: pages=N edges=M duration_ms=X bytes=Y' under --verbose (OBS-101).")
-  (acceptance "TEST-102: `zetl build --out-dir /tmp/out` on demo-vault writes /tmp/out/graph-index.json matching CON-101. Verbose log line format matches.")
+  (description "In web::build, add write_graph_index_json(vault_ctx, out_dir) writing <out_dir>/graph-index.json. Co-locate with existing search_index.json and history-index.json write passes. Emit '[ztl] graph-export: pages=N edges=M duration_ms=X bytes=Y' under --verbose (OBS-101).")
+  (acceptance "TEST-102: `ztl build --out-dir /tmp/out` on demo-vault writes /tmp/out/graph-index.json matching CON-101. Verbose log line format matches.")
   (phase "2")
   (reqs "REQ-102")
   (observability "OBS-101"))
@@ -70,8 +70,8 @@
 
 (given task-graph-stats-integration)
 (meta task-graph-stats-integration
-  (description "Extend `zetl stats` to include a Graph: section (bytes, nodes, edges) in table output and a graph field in JSON output. Mirrors existing History: section.")
-  (acceptance "`zetl stats` on demo-vault shows Graph: section; `zetl stats --json` contains graph.{bytes,nodes,edges}.")
+  (description "Extend `ztl stats` to include a Graph: section (bytes, nodes, edges) in table output and a graph field in JSON output. Mirrors existing History: section.")
+  (acceptance "`ztl stats` on demo-vault shows Graph: section; `ztl stats --json` contains graph.{bytes,nodes,edges}.")
   (phase "2")
   (reqs "REQ-101")
   (observability "OBS-102"))
@@ -98,7 +98,7 @@
 (given task-graph-partial)
 (meta task-graph-partial
   (description "Create themes/default/_graph.html: single-Sigma-instance partial. Instantiates graphology DirectedGraph (from inline graph_index or fetched graph_index_url), runs graphology-layout-forceatlas2 in a Web Worker when available, mounts Sigma.js v3. Implements mode switching (local/vault/off) via data-mode attribute. nodeReducer/edgeReducer read CSS custom properties via getComputedStyle.")
-  (acceptance "TEST-106: rendered partial contains <div id='zetl-graph'>, correct <script> tags, and either inline JSON or fetch call. TEST-108: three-route fixture shows single WebGL context identity across navigations; FA2 runs once; mode persisted in sessionStorage.")
+  (acceptance "TEST-106: rendered partial contains <div id='ztl-graph'>, correct <script> tags, and either inline JSON or fetch call. TEST-108: three-route fixture shows single WebGL context identity across navigations; FA2 runs once; mode persisted in sessionStorage.")
   (phase "4")
   (reqs "REQ-106 REQ-108"))
 
@@ -111,7 +111,7 @@
 
 (given task-shell-and-css-contract)
 (meta task-shell-and-css-contract
-  (description "Update themes/default/base.html to establish the persistent shell contract: {% block persistent_shell %} containing sidebar and zetl-graph-widget; <main data-zetl-volatile> for content. Define the full --zetl-graph-* and --zetl-shell-* CSS custom-property contract in the default stylesheet. Document in theme authoring reference.")
+  (description "Update themes/default/base.html to establish the persistent shell contract: {% block persistent_shell %} containing sidebar and ztl-graph-widget; <main data-ztl-volatile> for content. Define the full --ztl-graph-* and --ztl-shell-* CSS custom-property contract in the default stylesheet. Document in theme authoring reference.")
   (acceptance "TEST-114: overriding each CSS var in a fixture theme visibly changes the rendered graph (canvas readPixels + getBoundingClientRect checks). All documented CSS vars are declared with sensible defaults.")
   (phase "4")
   (reqs "REQ-114"))
@@ -125,7 +125,7 @@
 
 (given task-mobile-toggle)
 (meta task-mobile-toggle
-  (description "Implement mobile behaviour: below the --zetl-graph-widget-breakpoint (default 900 px) the widget is display:none and reachable via a top-bar toggle that expands to a full-screen overlay. Focus ring, Enter/Space activate, Escape dismiss. Visibility-only manipulation preserves Sigma instance.")
+  (description "Implement mobile behaviour: below the --ztl-graph-widget-breakpoint (default 900 px) the widget is display:none and reachable via a top-bar toggle that expands to a full-screen overlay. Focus ring, Enter/Space activate, Escape dismiss. Visibility-only manipulation preserves Sigma instance.")
   (acceptance "TEST-117: Puppeteer resize below breakpoint hides widget; toggle is focusable and reveals full-screen; Escape dismisses; WebGL context identity unchanged across all transitions.")
   (phase "4")
   (reqs "REQ-117"))
@@ -145,7 +145,7 @@
 
 (given task-spa-shell)
 (meta task-spa-shell
-  (description "Implement the SPA navigation shell as a small (<100 loc) vanilla JS module loaded by base.html when theme.toml sets [spa] enabled=true. Intercepts same-origin <a> clicks, fetches next document, swaps the [data-zetl-volatile] element, updates title and history state. Bypasses on meta/ctrl/middle-click, target=_blank, cross-origin. Handles popstate. Re-executes inline <script> tags in swapped content.")
+  (description "Implement the SPA navigation shell as a small (<100 loc) vanilla JS module loaded by base.html when theme.toml sets [spa] enabled=true. Intercepts same-origin <a> clicks, fetches next document, swaps the [data-ztl-volatile] element, updates title and history state. Bypasses on meta/ctrl/middle-click, target=_blank, cross-origin. Handles popstate. Re-executes inline <script> tags in swapped content.")
   (acceptance "TEST-113: WebGL context identity unchanged across navigations; camera state preserved; URL and title updated; back/forward works; new-tab modifiers preserve native behaviour; spa.enabled=false fixture falls back to full reload.")
   (phase "5")
   (reqs "REQ-113")
@@ -153,7 +153,7 @@
 
 (given task-navigate-events)
 (meta task-navigate-events
-  (description "Dispatch window-level zetl:before-navigate (cancelable, detail={fromSlug,toSlug,url}) and zetl:after-navigate (detail={slug,contentRoot}) around each successful navigation. Document in theme authoring reference. Graph partial listens to zetl:after-navigate to update highlight state via renderer.refresh() without re-instantiating Sigma.")
+  (description "Dispatch window-level ztl:before-navigate (cancelable, detail={fromSlug,toSlug,url}) and ztl:after-navigate (detail={slug,contentRoot}) around each successful navigation. Document in theme authoring reference. Graph partial listens to ztl:after-navigate to update highlight state via renderer.refresh() without re-instantiating Sigma.")
   (acceptance "TEST-115: both events fire in order on every SPA navigation; preventDefault() on before-navigate falls back to native nav; after-navigate.detail.contentRoot is the new volatile element.")
   (phase "5")
   (reqs "REQ-115"))
@@ -172,14 +172,14 @@
 
 (given task-dead-link-styling)
 (meta task-dead-link-styling
-  (description "Render dead-link nodes and edges with the muted treatment used elsewhere in the UI. Read --zetl-graph-node-dead and --zetl-graph-edge-dead CSS vars via reducer; apply dashed edge pattern to dead-link edges.")
+  (description "Render dead-link nodes and edges with the muted treatment used elsewhere in the UI. Read --ztl-graph-node-dead and --ztl-graph-edge-dead CSS vars via reducer; apply dashed edge pattern to dead-link edges.")
   (acceptance "TEST-112: vault fixture with known dead link produces is_dead:true node and dashed/muted edge in rendered snapshot.")
   (phase "6")
   (reqs "REQ-112"))
 
 (given task-client-perf-marks)
 (meta task-client-perf-marks
-  (description "Emit performance.mark('zetl:graph:render:start') before layout and performance.measure('zetl:graph:render', ...) on layoutstop; emit performance.measure('zetl:navigate', ...) around SPA navigation (OBS-113).")
+  (description "Emit performance.mark('ztl:graph:render:start') before layout and performance.measure('ztl:graph:render', ...) on layoutstop; emit performance.measure('ztl:navigate', ...) around SPA navigation (OBS-113).")
   (acceptance "Performance entries visible in devtools; used by NFR test harness.")
   (phase "6")
   (reqs "REQ-113")
@@ -229,7 +229,7 @@
 
 (given task-theme-authoring-ref)
 (meta task-theme-authoring-ref
-  (description "Extend the theme authoring reference (README.md or docs/themes) with: full --zetl-graph-* and --zetl-shell-* CSS-var table; theme.toml [spa] and [graph.placement] tables; {% block persistent_shell %}/{% block graph_widget %} contract; zetl:before-navigate and zetl:after-navigate events with code example; versioned theme contract note per REQ-114.")
+  (description "Extend the theme authoring reference (README.md or docs/themes) with: full --ztl-graph-* and --ztl-shell-* CSS-var table; theme.toml [spa] and [graph.placement] tables; {% block persistent_shell %}/{% block graph_widget %} contract; ztl:before-navigate and ztl:after-navigate events with code example; versioned theme contract note per REQ-114.")
   (acceptance "Docs cover every documented variable and block; example theme override builds and runs.")
   (phase "8")
   (reqs "REQ-114"))

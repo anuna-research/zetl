@@ -161,7 +161,7 @@
 (given completed-diamond-marks-layer-required-ws)
 
 (meta task-ws-wire-format
-  (description "Migrate src/web/ws.rs's initial-sync and op messages from automerge bytes (base64) to diamond-types bytes (base64). Update CrdtDocEntry to hold a Box<dyn CrdtBackend>. Replace the automerge::ScalarValue conversion in json_to_scalar with a project-owned Scalar enum (defined in src/crdt/marks.rs) so the ws module no longer imports automerge::*. Update existing ws.rs tests to use the new wire shape. WAL format change is acceptable — clear .zetl/wal/ on first run after the swap (documented in commit message).")
+  (description "Migrate src/web/ws.rs's initial-sync and op messages from automerge bytes (base64) to diamond-types bytes (base64). Update CrdtDocEntry to hold a Box<dyn CrdtBackend>. Replace the automerge::ScalarValue conversion in json_to_scalar with a project-owned Scalar enum (defined in src/crdt/marks.rs) so the ws module no longer imports automerge::*. Update existing ws.rs tests to use the new wire shape. WAL format change is acceptable — clear .ztl/wal/ on first run after the swap (documented in commit message).")
   (acceptance "src/web/ws.rs has no `use automerge` or `automerge::` references; `cargo test --features collab` passes including the existing crdt_store_* and ws_* tests; integration test shows two clients editing the same page converge through diamond-types."))
 
 (normally r-ready-ws-wire-format

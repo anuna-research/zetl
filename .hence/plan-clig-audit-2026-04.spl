@@ -3,7 +3,7 @@
   (title "clig.dev audit remediation")
   (status "active")
   (created "2026-04-14")
-  (description "Fix concrete gaps between zetl CLI and clig.dev guidelines: JSON error stream routing, global flag propagation to subcommands, shell completion generation, and --no-input flag for unattended scripting."))
+  (description "Fix concrete gaps between ztl CLI and clig.dev guidelines: JSON error stream routing, global flag propagation to subcommands, shell completion generation, and --no-input flag for unattended scripting."))
 
 ;; ── Agents ──────────────────────────────────────────────────────────
 (given agent-claude-available)
@@ -13,31 +13,31 @@
 (given task-json-error-stderr)
 (meta task-json-error-stderr
   (description "exit_json_error prints to stdout via println!; clig.dev requires errors on stderr so piped JSON consumers can distinguish success. Change println! to eprintln! in src/main.rs:487.")
-  (acceptance "`zetl links NoSuch 2>/dev/null | jq .` prints nothing on stdout; error appears on stderr; exit code 1")
+  (acceptance "`ztl links NoSuch 2>/dev/null | jq .` prints nothing on stdout; error appears on stderr; exit code 1")
   (priority "P0"))
 
 (given task-global-flags)
 (meta task-global-flags
-  (description "Global flags (--json, --format, --dir, --quiet, --verbose, --no-color, --no-cache) are defined at top level but not marked global=true in clap, so `zetl list --json` fails. Add global=true to each.")
-  (acceptance "`zetl list --json`, `zetl search foo --quiet`, `zetl links Page -v` all accept the flag after the subcommand")
+  (description "Global flags (--json, --format, --dir, --quiet, --verbose, --no-color, --no-cache) are defined at top level but not marked global=true in clap, so `ztl list --json` fails. Add global=true to each.")
+  (acceptance "`ztl list --json`, `ztl search foo --quiet`, `ztl links Page -v` all accept the flag after the subcommand")
   (priority "P0"))
 
 (given task-shell-completions)
 (meta task-shell-completions
-  (description "Add `zetl completions <shell>` subcommand using clap_complete crate to generate bash/zsh/fish/powershell completion scripts to stdout.")
-  (acceptance "`zetl completions zsh` prints a valid completion script; command documented in --help")
+  (description "Add `ztl completions <shell>` subcommand using clap_complete crate to generate bash/zsh/fish/powershell completion scripts to stdout.")
+  (acceptance "`ztl completions zsh` prints a valid completion script; command documented in --help")
   (priority "P1"))
 
 (given task-no-input-flag)
 (meta task-no-input-flag
-  (description "Add global --no-input flag. When set, `zetl view` without a PAGE arg should error out instead of launching the interactive picker. Makes zetl safe for cron/CI.")
-  (acceptance "`zetl view --no-input` without PAGE exits non-zero with a clear error; `zetl view Page --no-input` still works")
+  (description "Add global --no-input flag. When set, `ztl view` without a PAGE arg should error out instead of launching the interactive picker. Makes ztl safe for cron/CI.")
+  (acceptance "`ztl view --no-input` without PAGE exits non-zero with a clear error; `ztl view Page --no-input` still works")
   (priority "P1"))
 
 (given task-sigpipe-verify)
 (meta task-sigpipe-verify
-  (description "Verify SIGPIPE is handled — spot test shows `zetl list | head -5` exits 0, but confirm no panic or BrokenPipe traceback on small pipes. If broken, set signal handler to SIG_DFL at main() entry.")
-  (acceptance "`zetl list | head -1` always exits 0 or 141 without stderr noise or panic")
+  (description "Verify SIGPIPE is handled — spot test shows `ztl list | head -5` exits 0, but confirm no panic or BrokenPipe traceback on small pipes. If broken, set signal handler to SIG_DFL at main() entry.")
+  (acceptance "`ztl list | head -1` always exits 0 or 141 without stderr noise or panic")
   (priority "P2"))
 
 ;; ── Dependencies ────────────────────────────────────────────────────
@@ -147,8 +147,8 @@
   :at "2026-04-13T23:45:34Z"
   (given task-man-page)
 (meta task-man-page
-  (description "Add `zetl man` subcommand emitting roff(7) to stdout via clap_mangen.")
-  (acceptance "`zetl man | grep NAME` returns the roff NAME section; no regression")
+  (description "Add `ztl man` subcommand emitting roff(7) to stdout via clap_mangen.")
+  (acceptance "`ztl man | grep NAME` returns the roff NAME section; no regression")
   (priority "P1"))
 (normally r-ready-man task-man-page ready-man-page)
 (normally r-assign-man (and ready-man-page agent-claude-available) assign-to-man-page-claude))

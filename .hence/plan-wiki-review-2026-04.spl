@@ -3,7 +3,7 @@
   (title "CARA wiki design review — correctness remediation")
   (status "active")
   (created "2026-04-17")
-  (description "Fix correctness defects from the 2026-04-17 design review of the CARA wiki (zetl static-site output): broken graph links, overlapping graph widget, Sigma runtime errors on small viewports, WCAG-failing chip contrast, broken heading hierarchy from transcluded previews, backlink presentation exposing parser internals, empty tag-cloud page, mobile overflow, search accessibility, and the favicon 404. Design/polish issues from the review (H1 font sizing, visited-link colour, typography, sidebar scaling) are intentionally out of scope."))
+  (description "Fix correctness defects from the 2026-04-17 design review of the CARA wiki (ztl static-site output): broken graph links, overlapping graph widget, Sigma runtime errors on small viewports, WCAG-failing chip contrast, broken heading hierarchy from transcluded previews, backlink presentation exposing parser internals, empty tag-cloud page, mobile overflow, search accessibility, and the favicon 404. Design/polish issues from the review (H1 font sizing, visited-link colour, typography, sidebar scaling) are intentionally out of scope."))
 
 ;; ── Agents ──────────────────────────────────────────────────────────
 (given agent-claude-available)
@@ -13,12 +13,12 @@
 (given task-graph-page)
 (meta task-graph-page
   (description "`_graph.html` 404s on every page in the static build. themes/default/base.html:565 and :637 both href `./_graph.html` (\"Expand ↗\" widget button and sidebar \"Graph\" link). The serve-mode `/_graph` route exists in src/web/mod.rs:410 and the template themes/default/_graph.html exists, but `src/web/build.rs` never renders it to disk. Either emit `_graph.html` during static build (render the existing template against the same graph payload the widget uses) or gate the links to serve mode only.")
-  (acceptance "After `zetl build`, opening any generated page and clicking \"Expand ↗\" or sidebar \"Graph\" loads a working graph page (no 404). `curl -sf out/_graph.html` returns 200-equivalent (file exists, parses). Integration test covers presence of `_graph.html` in the static output directory.")
+  (acceptance "After `ztl build`, opening any generated page and clicking \"Expand ↗\" or sidebar \"Graph\" loads a working graph page (no 404). `curl -sf out/_graph.html` returns 200-equivalent (file exists, parses). Integration test covers presence of `_graph.html` in the static output directory.")
   (priority "P0"))
 
 (given task-widget-overlay)
 (meta task-widget-overlay
-  (description "Mini-graph widget in base.html:341-357 is `position:fixed; right:16px; bottom:16px; width:400px; height:320px` and is open by default, permanently occluding the last chips of the transclusion-panel and (on help page) body prose. Widget already has a `.zetl-graph-widget__toggle` (base.html:595) and close `×` (base.html:560-563) but no collapsed-default state. Default the widget to collapsed (toggle reveals it); persist last-state in localStorage so returning readers aren't re-prompted.")
+  (description "Mini-graph widget in base.html:341-357 is `position:fixed; right:16px; bottom:16px; width:400px; height:320px` and is open by default, permanently occluding the last chips of the transclusion-panel and (on help page) body prose. Widget already has a `.ztl-graph-widget__toggle` (base.html:595) and close `×` (base.html:560-563) but no collapsed-default state. Default the widget to collapsed (toggle reveals it); persist last-state in localStorage so returning readers aren't re-prompted.")
   (acceptance "On desktop (≥1025px) a fresh visit shows only the collapsed \"Show graph\" pill in the corner; widget opens when clicked; state persists across navigations. No body content is obscured at 1440px wide on memo-index, togias-2019, help, or landing pages. Existing aria-label on the close button is retained.")
   (priority "P0"))
 

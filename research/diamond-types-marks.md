@@ -70,7 +70,7 @@ pub enum Scalar {
 }
 
 /// Project-owned expand enum. Replaces automerge::marks::ExpandMark.
-/// Kept to exactly the two variants zetl emits today — adding
+/// Kept to exactly the two variants ztl emits today — adding
 /// Before/After is a one-line change if a future MarkType needs them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpandMark {
@@ -101,7 +101,7 @@ enum SpanOp {
     /// Clear any mark named `name` overlapping [start, end).
     /// `value` is None for "unmark all" (how `unmark()` is called
     /// today); Some(_) when the caller wants to unmark one specific
-    /// value (not used in zetl today but kept for forward compat).
+    /// value (not used in ztl today but kept for forward compat).
     Unmark {
         name: String,
         value: Option<Scalar>,
@@ -177,7 +177,7 @@ Notes:
   automerge backend before the swap can still be deserialised into
   `Scalar::Bool` with no format migration (the wire format today is
   already JSON in `OpEntry::Mark.value`; see `src/web/ws.rs:145-162`).
-  That keeps `.zetl/wal/` readable across the cut-over.
+  That keeps `.ztl/wal/` readable across the cut-over.
 - **Wikilink alias encoding** keeps the `"target|alias"` string form
   from `MarkType::scalar_value()` unchanged. Any future schema change
   (e.g. structured payloads) is a separate task.
@@ -530,7 +530,7 @@ begins, or that I expect to learn something about during Phase 5.
    cleanly from today's JSON WAL payloads because both backends
    already serialise marks as `serde_json::Value`. This is a claim
    that `task-ws-wire-format` in Phase 6 should assert on with a
-   fixture test; if it turns out false, `.zetl/wal/` clears on
+   fixture test; if it turns out false, `.ztl/wal/` clears on
    upgrade — that's already an accepted outcome in the plan
    (`task-ws-wire-format.description`, "WAL format change is
    acceptable").
