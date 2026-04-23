@@ -21,3 +21,4 @@ user-guide/site
 !user-guide/.zetl/
 user-guide/.zetl/*
 !user-guide/.zetl/themes/
+.env

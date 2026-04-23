@@ -794,6 +794,9 @@ mod tests {
             passkey_mgr: None,
             public_dir: None,
             scan_options: crate::scanner::ScanOptions::default(),
+            asset_storage: crate::assets::store::StorageCounterGuard::new(0),
+            asset_max_file_bytes: 10 * 1024 * 1024,
+            asset_max_total_bytes: 100 * 1024 * 1024,
         }
     }
 

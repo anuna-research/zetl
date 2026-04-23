@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block title %}Assets — {{ vault_name }}{% endblock %}
+
+{% block styles %}
+  .aa-container {
+    max-width: 52rem;
+    margin: 2rem auto;
+    padding: 2rem;
+  }
+  .aa-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  .aa-header-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: oklch(var(--p) / 0.12);
+    color: oklch(var(--p));
+    flex-shrink: 0;
+  }
+  .aa-section {
+    background: oklch(var(--b2));
+    border: 1px solid oklch(var(--bc) / 0.1);
+    border-radius: 0.5rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .aa-section h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: oklch(var(--bc) / 0.7);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+  }
+  .aa-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .aa-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid oklch(var(--bc) / 0.12);
+    color: oklch(var(--bc) / 0.5);
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .aa-table td {
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid oklch(var(--bc) / 0.06);
+    color: oklch(var(--bc));
+    vertical-align: middle;
+  }
+  .aa-table tr:last-child td { border-bottom: none; }
+  .aa-btn {
+    padding: 0.5rem 1rem;
+    background: oklch(var(--p));
+    color: oklch(var(--pc));
+    border: none;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .aa-btn:hover { opacity: 0.9; }
+  .aa-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .aa-delete-btn {
+    padding: 0.25rem 0.5rem;
+    background: transparent;
+    border: 1px solid oklch(var(--er) / 0.3);
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    color: oklch(var(--er));
+    cursor: pointer;
+  }
+  .aa-delete-btn:hover { background: oklch(var(--er) / 0.08); }
+  .aa-input {
+    padding: 0.5rem 0.75rem;
+    background: oklch(var(--b1));
+    border: 1px solid oklch(var(--bc) / 0.15);
+    border-radius: 0.375rem;
+    color: oklch(var(--bc));
+    font-size: 0.875rem;
+    width: 100%;
+    max-width: 24rem;
+  }
+  .aa-input:focus {
+    outline: none;
+    border-color: oklch(var(--p) / 0.5);
+  }
+  .aa-form-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+  .aa-error {
+    background: oklch(var(--er) / 0.1);
+    border: 1px solid oklch(var(--er) / 0.3);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: oklch(var(--er));
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    display: none;
+  }
+  .aa-success {
+    background: oklch(var(--su) / 0.08);
+    border: 1px solid oklch(var(--su) / 0.25);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    color: oklch(var(--su));
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    display: none;
+  }
+  .aa-summary {
+    font-size: 0.85rem;
+    color: oklch(var(--bc) / 0.6);
+    margin-bottom: 1rem;
+  }
+  .aa-empty {
+    text-align: center;
+    padding: 1.5rem;
+    color: oklch(var(--bc) / 0.4);
+    font-size: 0.85rem;
+  }
+{% endblock %}
+
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+<div class="aa-container">
+  <div class="aa-header">
+    <div class="aa-header-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M9.75 9.75l1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 20.25 4.5H3.75A2.25 2.25 0 0 0 1.5 6.75v12A2.25 2.25 0 0 0 3.75 21Z"/></svg>
+    </div>
+    <div>
+      <h2 style="font-size: 1.25rem; font-weight: 700; margin: 0;">Assets</h2>
+      <p style="font-size: 0.8rem; color: oklch(var(--bc) / 0.5); margin: 0;">Manage uploaded files for {{ vault_name }}</p>
+    </div>
+  </div>
+
+  <div id="aa-error" class="aa-error" role="alert" aria-live="polite"></div>
+  <div id="aa-success" class="aa-success" role="status" aria-live="polite"></div>
+
+  <div class="aa-section">
+    <h3>Upload</h3>
+    <div class="aa-form-row">
+      <input type="file" id="aa-file" class="aa-input" aria-label="Choose file" />
+    </div>
+    <div class="aa-form-row">
+      <input type="text" id="aa-slug" class="aa-input" placeholder="slug (e.g. diagrams/chart.png)" aria-label="Asset slug" />
+    </div>
+    <div class="aa-form-row">
+      <button type="button" class="aa-btn" id="aa-upload-btn" onclick="uploadAsset()">Upload</button>
+      <span id="aa-upload-status" style="font-size: 0.8rem; color: oklch(var(--bc) / 0.5);"></span>
+    </div>
+  </div>
+
+  <div class="aa-section">
+    <h3>Storage</h3>
+    <div class="aa-summary">{{ used_human }} / {{ max_human }} used</div>
+  </div>
+
+  <div class="aa-section">
+    <h3>All Assets</h3>
+    {% if assets | length > 0 %}
+    <table class="aa-table">
+      <thead>
+        <tr>
+          <th>Slug</th>
+          <th>Type</th>
+          <th>Size</th>
+          <th>Uploader</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="aa-asset-list">
+        {% for a in assets %}
+        <tr data-slug="{{ a.slug }}">
+          <td><a href="/assets/{{ a.slug }}" target="_blank">{{ a.slug }}</a></td>
+          <td>{{ a.mime_type }}</td>
+          <td>{{ a.size_human }}</td>
+          <td>{{ a.uploaded_by }}</td>
+          <td>{{ a.uploaded_at }}</td>
+          <td><button type="button" class="aa-delete-btn" onclick="deleteAsset('{{ a.slug }}')">Delete</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="aa-empty">No assets uploaded yet.</div>
+    {% endif %}
+  </div>
+
+  <a href="/" style="display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.85rem; color: oklch(var(--bc) / 0.5); text-decoration: none;">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+    Back to vault
+  </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var csrfToken = '{{ csrf_token }}';
+
+  document.getElementById('aa-file').addEventListener('change', function(){
+    var file = this.files[0];
+    if (!file) return;
+    var name = file.name.toLowerCase().replace(/\s+/g, '-');
+    var slugEl = document.getElementById('aa-slug');
+    if (!slugEl.value) slugEl.value = name;
+  });
+
+  window.uploadAsset = function(){
+    var file = document.getElementById('aa-file').files[0];
+    var slug = document.getElementById('aa-slug').value.trim();
+    var btn = document.getElementById('aa-upload-btn');
+    var status = document.getElementById('aa-upload-status');
+    var errorEl = document.getElementById('aa-error');
+    var successEl = document.getElementById('aa-success');
+    errorEl.style.display = 'none';
+    successEl.style.display = 'none';
+
+    if (!file) { errorEl.textContent = 'Choose a file.'; errorEl.style.display = 'block'; return; }
+    if (!slug) { errorEl.textContent = 'Enter a slug.'; errorEl.style.display = 'block'; return; }
+
+    btn.disabled = true;
+    status.textContent = 'Uploading...';
+
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var blob = new Blob([e.target.result]);
+      fetch('/api/assets/' + encodeURIComponent(slug), {
+        method: 'POST',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'X-CSRF-Token': csrfToken,
+          'X-Create': 'true'
+        },
+        body: blob
+      })
+      .then(function(r){
+        if (!r.ok) return r.json().then(function(d){ throw d; });
+        return r.json();
+      })
+      .then(function(data){
+        btn.disabled = false;
+        status.textContent = '';
+        successEl.textContent = 'Uploaded: ' + data.slug;
+        successEl.style.display = 'block';
+        location.reload();
+      })
+      .catch(function(err){
+        btn.disabled = false;
+        status.textContent = '';
+        errorEl.textContent = err.error || 'Upload failed.';
+        errorEl.style.display = 'block';
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  window.deleteAsset = function(slug){
+    if (!confirm('Delete "' + slug + '"?')) return;
+    var errorEl = document.getElementById('aa-error');
+    var successEl = document.getElementById('aa-success');
+    errorEl.style.display = 'none';
+    successEl.style.display = 'none';
+    fetch('/api/assets/' + encodeURIComponent(slug), {
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': csrfToken }
+    })
+    .then(function(r){
+      if (!r.ok) return r.json().then(function(d){ throw d; });
+      successEl.textContent = 'Deleted: ' + slug;
+      successEl.style.display = 'block';
+      var row = document.querySelector('tr[data-slug="' + slug + '"]');
+      if (row) row.remove();
+    })
+    .catch(function(err){
+      errorEl.textContent = err.error || 'Delete failed.';
+      errorEl.style.display = 'block';
+    });
+  };
+})();
+</script>
+{% endblock %}

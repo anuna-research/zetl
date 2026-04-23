@@ -32,6 +32,7 @@ use axum::response::Response;
 use axum::routing::{get, post};
 use axum::Router;
 
+use crate::assets::store::StorageCounterGuard;
 use crate::graph::LinkGraph;
 use crate::scanner::{page_slug_from_path, resolve_page_name, scan_vault};
 use crate::search_index::SearchIndex;
@@ -190,6 +191,12 @@ pub struct WebState {
     /// `None` when the semantic feature is inactive or the index has not been built.
     #[cfg(feature = "semantic")]
     pub vector_index: Option<Arc<std::sync::Mutex<crate::semantic::VectorIndex>>>,
+    /// Asset storage counter (REQ-3519).
+    pub asset_storage: StorageCounterGuard,
+    /// Per-file upload limit in bytes (REQ-3508).
+    pub asset_max_file_bytes: u64,
+    /// Total asset storage limit in bytes (REQ-3509).
+    pub asset_max_total_bytes: u64,
 }
 
 /// Re-scan the vault and return a fresh `VaultData` snapshot.
@@ -428,6 +435,13 @@ pub async fn run(
         .route("/api/history/restore", post(routes::api_restore_handler))
         .route("/edit/{*slug}", get(routes::edit_handler))
         .route("/_static/{*path}", get(routes::static_handler))
+        // Asset management API (SPEC-035)
+        .route("/api/assets", get(routes::list_assets_handler))
+        .route(
+            "/api/assets/{*slug}",
+            post(routes::upload_asset_handler).delete(routes::delete_asset_handler),
+        )
+        .route("/_admin/assets", get(routes::admin_assets_handler))
         .merge(admin_routes)
         .route("/preview/{*path}", get(routes::preview_handler))
         .route(
@@ -474,9 +488,14 @@ pub async fn run(
         .route("/ws/edit/{*slug}", get(ws::ws_edit_handler))
         .route("/api/ws/ticket", post(routes::ws_ticket_handler));
 
+    // ── Public asset routes (not gated by collab_gate — ACL checked inside handler)
+    let asset_routes = Router::new()
+        .route("/assets/{*path}", get(routes::serve_asset_handler));
+
     let app = Router::new()
         .merge(auth_routes)
         .merge(ws_routes)
+        .merge(asset_routes)
         .merge(content_routes)
         .with_state(state)
         .layer(middleware::map_response(|mut resp: axum::response::Response| async {

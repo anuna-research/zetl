@@ -481,6 +481,9 @@ mod tests {
             scan_options: crate::scanner::ScanOptions::default(),
             #[cfg(feature = "semantic")]
             vector_index: None,
+            asset_storage: crate::assets::store::StorageCounterGuard::new(0),
+            asset_max_file_bytes: 10 * 1024 * 1024,
+            asset_max_total_bytes: 100 * 1024 * 1024,
         }
     }
 

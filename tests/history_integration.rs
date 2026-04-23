@@ -1410,6 +1410,9 @@ fn build_history_web_state(vault_root: &std::path::Path) -> zetl::web::WebState 
         scan_options: zetl::scanner::ScanOptions::default(),
         tls: false,
         trust_proxy: false,
+        asset_storage: zetl::assets::store::StorageCounterGuard::new(0),
+        asset_max_file_bytes: 10 * 1024 * 1024,
+        asset_max_total_bytes: 100 * 1024 * 1024,
     }
 }
 

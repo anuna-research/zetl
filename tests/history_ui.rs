@@ -107,6 +107,9 @@ async fn test_300_304_metadata_strip_and_recent_changes_link() {
         scan_options: ScanOptions::default(),
         #[cfg(feature = "semantic")]
         vector_index: None,
+        asset_storage: zetl::assets::store::StorageCounterGuard::new(0),
+        asset_max_file_bytes: 10 * 1024 * 1024,
+        asset_max_total_bytes: 100 * 1024 * 1024,
     };
     let app: Router = Router::new()
         .route("/{*path}", get(page_handler))
@@ -197,6 +200,9 @@ async fn test_305_graceful_absence_no_history() {
         scan_options: ScanOptions::default(),
         #[cfg(feature = "semantic")]
         vector_index: None,
+        asset_storage: zetl::assets::store::StorageCounterGuard::new(0),
+        asset_max_file_bytes: 10 * 1024 * 1024,
+        asset_max_total_bytes: 100 * 1024 * 1024,
     };
     let app: Router = Router::new()
         .route("/{*path}", get(page_handler))
@@ -323,6 +329,9 @@ async fn test_serve_vault_history_populates_body_with_snapshots() {
         scan_options: ScanOptions::default(),
         #[cfg(feature = "semantic")]
         vector_index: None,
+        asset_storage: zetl::assets::store::StorageCounterGuard::new(0),
+        asset_max_file_bytes: 10 * 1024 * 1024,
+        asset_max_total_bytes: 100 * 1024 * 1024,
     };
     let app: Router = Router::new()
         .route("/{*path}", get(page_handler))

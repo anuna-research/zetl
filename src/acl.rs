@@ -1181,6 +1181,196 @@ fn literal_matches(rendered: &str, predicate: &str, user_id: &str, page_slug: &s
     rendered == expected
 }
 
+fn literal_matches_1arg(rendered: &str, predicate: &str, arg: &str) -> bool {
+    if rendered.starts_with('~') {
+        return false;
+    }
+    let expected = format!("{predicate}({arg})");
+    rendered == expected
+}
+
+fn literal_matches_2arg(rendered: &str, predicate: &str, arg1: &str, arg2: &str) -> bool {
+    if rendered.starts_with('~') {
+        return false;
+    }
+    let expected = format!("{predicate}({arg1}, {arg2})");
+    rendered == expected
+}
+
+// ── Asset ACL helpers (SPEC-035) ────────────────────────────────────────────
+
+/// Built-in ACL defaults for `can-upload` predicate (REQ-3504).
+fn built_in_upload_defaults(user_id: &str) -> String {
+    let user_id = escape_spl(user_id);
+    format!(
+        r#"; Built-in upload ACL defaults (REQ-3504)
+(normally r-editor-upload
+  (and (role "{user_id}" editor) (scope "{user_id}" "**"))
+  (can-upload "{user_id}"))
+
+(always s-owner-upload
+  (owner "{user_id}")
+  (can-upload "{user_id}"))
+
+(normally r-admin-upload
+  (admin "{user_id}")
+  (can-upload "{user_id}"))
+
+(except d-agent-no-upload
+  (is-agent "{user_id}")
+  (not (can-upload "{user_id}")))
+(prefer d-agent-no-upload r-admin-upload)
+"#
+    )
+}
+
+/// Built-in ACL defaults for `can-read-assets` predicate (REQ-3516).
+fn built_in_read_assets_defaults(user_id: &str, visibility_mode: VisibilityMode) -> String {
+    let user_id = escape_spl(user_id);
+    let mode_str = match visibility_mode {
+        VisibilityMode::Transparent => "transparent",
+        VisibilityMode::Mixed => "mixed",
+        VisibilityMode::Hidden => "hidden",
+    };
+    format!(
+        r#"; Built-in read-assets ACL defaults (REQ-3516)
+(given (visibility-mode {mode_str}))
+
+(normally r-default-read-assets
+  (authenticated "{user_id}")
+  (can-read-assets "{user_id}" "*"))
+
+(normally r-public-read-assets
+  (and (visibility-mode transparent) (not (authenticated "{user_id}")))
+  (can-read-assets "anonymous" "*"))
+"#
+    )
+}
+
+/// Evaluate a single-argument or two-argument asset predicate.
+fn evaluate_asset_predicate(
+    vault_root: &Path,
+    user_id: &str,
+    predicate: &str,
+    built_in_defaults: &str,
+    is_authenticated: bool,
+    is_agent: bool,
+) -> Result<bool> {
+    let mut spl_blocks: Vec<SplBlock> = Vec::new();
+
+    // 1a. Built-in defaults
+    spl_blocks.push(SplBlock {
+        source_file: PathBuf::from("<built-in>"),
+        source_page: String::from("<acl-defaults>"),
+        start_line: 1,
+        end_line: built_in_defaults.lines().count() as u32,
+        content: built_in_defaults.to_string(),
+    });
+
+    // 1b. Vault policy: access.spl
+    if let Some(mut access_block) = load_access_spl(vault_root)? {
+        strip_owner_facts(&mut access_block);
+        spl_blocks.push(access_block);
+    }
+
+    // 2. Runtime facts
+    let mut runtime_facts = String::new();
+    let safe_user = escape_spl(user_id);
+    if is_authenticated {
+        runtime_facts.push_str(&format!("(given (authenticated \"{safe_user}\"))\n"));
+    }
+    runtime_facts.push_str(&format!(
+        "(given (requesting \"{safe_user}\" \"*\" \"read\"))\n"
+    ));
+    if is_agent {
+        runtime_facts.push_str(&format!("(given (is-agent \"{safe_user}\"))\n"));
+    }
+
+    // 3. User roles from profile
+    if let Some(profile) = user::load_profile(vault_root, user_id)? {
+        if profile.owner {
+            runtime_facts.push_str(&format!("(given (owner \"{safe_user}\"))\n"));
+            runtime_facts.push_str(&format!("(given (admin \"{safe_user}\"))\n"));
+        }
+        let role = user::Role::for_profile_with_vault(&profile, vault_root);
+        runtime_facts.push_str(&format!("(given (role \"{safe_user}\" {role}))\n"));
+        if role == user::Role::Admin {
+            runtime_facts.push_str(&format!("(given (admin \"{safe_user}\"))\n"));
+        }
+
+        // Inject scopes
+        let scopes = extract_user_scopes_from_access_spl(vault_root, user_id);
+        for scope in scopes {
+            runtime_facts.push_str(&format!(
+                "(given (scope \"{safe_user}\" \"{scope}\"))\n"
+            ));
+        }
+    }
+
+    spl_blocks.push(SplBlock {
+        source_file: PathBuf::from("<runtime>"),
+        source_page: String::from("<acl-runtime>"),
+        start_line: 1,
+        end_line: runtime_facts.lines().count() as u32,
+        content: runtime_facts,
+    });
+
+    // 4. Build theory and reason
+    let result = build_theory(&spl_blocks)
+        .context("ACL pipeline: failed to build asset access theory")?;
+
+    // 5. Check conclusion
+    for conclusion in &result.conclusions {
+        let lit = &conclusion.literal;
+        if !lit.contains(predicate) {
+            continue;
+        }
+        let matches = if predicate == "can-upload" {
+            literal_matches_1arg(lit, predicate, user_id)
+        } else {
+            literal_matches_2arg(lit, predicate, user_id, "*")
+        };
+        if !matches {
+            continue;
+        }
+        let is_positive = matches!(
+            conclusion.conclusion_type,
+            ConclusionType::DefinitelyProvable | ConclusionType::DefeasiblyProvable
+        );
+        return Ok(is_positive);
+    }
+
+    Ok(false)
+}
+
+/// Check whether `user_id` has the `can-upload` permission (REQ-3504).
+pub fn check_can_upload(vault_root: &Path, user_id: &str, is_agent: bool) -> Result<bool> {
+    let defaults = built_in_upload_defaults(user_id);
+    evaluate_asset_predicate(vault_root, user_id, "can-upload", &defaults, true, is_agent)
+}
+
+/// Check whether the user (or anonymous) can read assets (REQ-3516).
+pub fn check_can_read_assets(
+    vault_root: &Path,
+    user_id: Option<&str>,
+    visibility_mode: VisibilityMode,
+    is_agent: bool,
+) -> Result<bool> {
+    let (effective_user, is_authenticated) = match user_id {
+        Some(uid) => (uid, true),
+        None => ("anonymous", false),
+    };
+    let defaults = built_in_read_assets_defaults(effective_user, visibility_mode);
+    evaluate_asset_predicate(
+        vault_root,
+        effective_user,
+        "can-read-assets",
+        &defaults,
+        is_authenticated,
+        is_agent,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

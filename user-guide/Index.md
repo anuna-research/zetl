@@ -163,7 +163,7 @@ Or open the folder in Obsidian, Logseq, Foam, or Dendron — wikilinks work ever
 - [[What is zetl]] · [[Your First Vault]] · [[Migrating from Obsidian]]
 
 ### Core concepts
-- [[Vaults]] · [[Wikilinks]] · [[The Link Graph]] · [[Blocks]] · [[Frontmatter]] · [[Local-first]] · [[What is SPL]] · [[Intellectual Heritage]] · [[LLM Wikis]]
+- [[Vaults]] · [[Wikilinks]] · [[The Link Graph]] · [[Blocks]] · [[Frontmatter]] · [[Local-first]] · [[What is SPL]] · [[Intellectual Heritage]] · [[LLM Wikis]] · [[Asset Uploads]]
 
 ### Writing
 - [[Writing Pages]] · [[Linking Pages]] · [[Embeds and Transclusion]] · [[Headings and Blocks]] · [[Organising Your Vault]] · [[Tags and Frontmatter]]

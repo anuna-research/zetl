@@ -1,7 +1,7 @@
 ---
 title: "SPEC-035: Collaborative Static Asset Uploads"
 version: 0.1.0
-status: draft
+status: implemented
 date: 2026-04-22
 audience: agent, human
 parent: SPEC-020
@@ -11,9 +11,9 @@ related:
   - SPEC-005  # Defeasible reasoning (SPL)
   - SPEC-034  # Capability-URL distribution (separate, complementary)
 dependencies:
-  - axum-multipart (or axum body streaming)
+  - axum body streaming (Bytes body, no multipart)
   - sha2 (SHA-256 integrity)
-  - mime_guess (MIME type detection by extension)
+  - uuid (temporary file names for atomic writes)
   - spindle-core (SPL reasoning for can-upload ACL)
   - git2 (auto-commit of uploaded assets)
 ---
@@ -27,14 +27,14 @@ dependencies:
 | Document ID  | SPEC-035                                                                         |
 | Title        | Collaborative Static Asset Uploads                                               |
 | Version      | 0.1.0                                                                            |
-| Status       | Draft                                                                            |
+| Status       | Implemented                                                                      |
 | Author       | Agent (USDD Protocol v1.3.0)                                                     |
 | Date         | 2026-04-22                                                                       |
 | Audience     | Agent, Human                                                                     |
 | Trace        | USDD Agent Protocol v1.3.0                                                       |
 | Parent       | SPEC-020 (Multi-User Collaborative Editing)                                      |
 | Related      | SPEC-004 (Web UI), SPEC-005 (SPL), SPEC-034 (capability distribution)           |
-| Dependencies | axum-multipart, sha2, mime_guess, spindle-core, git2                             |
+| Dependencies | axum body streaming, sha2, uuid, spindle-core, git2                              |
 
 ---
 

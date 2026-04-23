@@ -235,6 +235,7 @@ const KNOWN_TEMPLATES: &[&str] = &[
     "invite_accept.html",
     "admin_invite.html",
     "admin_permissions.html",
+    "admin_assets.html",
     "dashboard.html",
     "page_history.html",
     "vault_history.html",
@@ -695,6 +696,12 @@ impl TemplateEngine {
     /// Render the passkey registration guidance page.
     pub fn render_login(&self, vault_name: &str) -> Result<String, TemplateError> {
         let ctx = context! {
+            vault => context! {
+                name => vault_name,
+                site_url => "",
+                history => serde_json::Value::Null,
+                sidebar_tree => Vec::<serde_json::Value>::new(),
+            },
             vault_name => vault_name,
             mode => "serve",
             theme => &self.theme,
@@ -721,7 +728,12 @@ impl TemplateEngine {
         user_id: &str,
     ) -> Result<String, TemplateError> {
         let ctx = context! {
-            vault => context! { name => vault_name },
+            vault => context! {
+                name => vault_name,
+                site_url => "",
+                history => serde_json::Value::Null,
+                sidebar_tree => Vec::<serde_json::Value>::new(),
+            },
             vault_name => vault_name,
             user_id => user_id,
             mode => "serve",
@@ -756,7 +768,12 @@ impl TemplateEngine {
         csrf_token: &str,
     ) -> Result<String, TemplateError> {
         let ctx = context! {
-            vault => context! { name => vault_name },
+            vault => context! {
+                name => vault_name,
+                site_url => "",
+                history => serde_json::Value::Null,
+                sidebar_tree => Vec::<serde_json::Value>::new(),
+            },
             vault_name => vault_name,
             mnemonic => mnemonic,
             words => words,
@@ -793,6 +810,12 @@ impl TemplateEngine {
         pages: Option<&str>,
     ) -> Result<String, TemplateError> {
         let ctx = context! {
+            vault => context! {
+                name => vault_name,
+                site_url => "",
+                history => serde_json::Value::Null,
+                sidebar_tree => Vec::<serde_json::Value>::new(),
+            },
             vault_name => vault_name,
             token => token,
             inviter => inviter,
@@ -825,6 +848,12 @@ impl TemplateEngine {
         invitations: &[serde_json::Value],
     ) -> Result<String, TemplateError> {
         let ctx = context! {
+            vault => context! {
+                name => vault_name,
+                site_url => "",
+                history => serde_json::Value::Null,
+                sidebar_tree => Vec::<serde_json::Value>::new(),
+            },
             vault_name => vault_name,
             csrf_token => csrf_token,
             invitations => invitations,
@@ -856,6 +885,12 @@ impl TemplateEngine {
         spl_preview: &str,
     ) -> Result<String, TemplateError> {
         let ctx = context! {
+            vault => context! {
+                name => vault_name,
+                site_url => "",
+                history => serde_json::Value::Null,
+                sidebar_tree => Vec::<serde_json::Value>::new(),
+            },
             vault_name => vault_name,
             csrf_token => csrf_token,
             users => users,
@@ -898,6 +933,12 @@ impl TemplateEngine {
         passkey_count: usize,
     ) -> Result<String, TemplateError> {
         let ctx = context! {
+            vault => context! {
+                name => vault_name,
+                site_url => "",
+                history => serde_json::Value::Null,
+                sidebar_tree => Vec::<serde_json::Value>::new(),
+            },
             vault_name => vault_name,
             csrf_token => csrf_token,
             user_name => user_name,
@@ -1102,6 +1143,46 @@ impl TemplateEngine {
         let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
         if html.trim().is_empty() {
             return Err(TemplateError::empty_output("folder.html"));
+        }
+        Ok(html)
+    }
+
+    /// Render the admin asset management page.
+    pub fn render_admin_assets(
+        &self,
+        vault_name: &str,
+        csrf_token: &str,
+        assets: &[crate::assets::metadata::AssetMeta],
+        used_human: &str,
+        max_human: &str,
+    ) -> Result<String, TemplateError> {
+        let ctx = context! {
+            vault => context! {
+                name => vault_name,
+                site_url => "",
+                history => serde_json::Value::Null,
+                sidebar_tree => Vec::<serde_json::Value>::new(),
+            },
+            vault_name => vault_name,
+            csrf_token => csrf_token,
+            assets => assets,
+            used_human => used_human,
+            max_human => max_human,
+            mode => "serve",
+            theme => &self.theme,
+            root_path => "/",
+            index_file => "",
+            search_index => "[]",
+            graph_index_url => graph_index_url("/"),
+            graph_index => "",
+        };
+        let env = self.env();
+        let tmpl = env
+            .get_template("admin_assets.html")
+            .map_err(TemplateError::from_minijinja)?;
+        let html = tmpl.render(ctx).map_err(TemplateError::from_minijinja)?;
+        if html.trim().is_empty() {
+            return Err(TemplateError::empty_output("admin_assets.html"));
         }
         Ok(html)
     }

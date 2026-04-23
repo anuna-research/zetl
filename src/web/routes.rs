@@ -6832,6 +6832,9 @@ mod tests {
             scan_options: crate::scanner::ScanOptions::default(),
             #[cfg(feature = "semantic")]
             vector_index: None,
+            asset_storage: crate::assets::store::StorageCounterGuard::new(0),
+            asset_max_file_bytes: 10 * 1024 * 1024,
+            asset_max_total_bytes: 100 * 1024 * 1024,
         }
     }
 
@@ -7269,5 +7272,562 @@ mod tests {
 
         let status = get_status(&app, "/_not-a-shell-route").await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+}
+
+// ── Asset route handlers (SPEC-035) ─────────────────────────────────────────
+
+/// Extract authenticated user from session or bearer token.
+fn extract_auth_user(state: &WebState, headers: &axum::http::HeaderMap) -> Option<(String, bool)> {
+    // Try session cookie first
+    if let Some(token) = crate::web::session::token_from_cookies(headers) {
+        if let Some(user_id) = state.sessions.validate(&token) {
+            return Some((user_id, false));
+        }
+    }
+    // Try bearer token
+    if let Some(token) = crate::web::session::bearer_token_from_headers(headers) {
+        if let Some(user_id) = crate::web::session::verify_bearer_token(&state.vault_root, &token) {
+            return Some((user_id, true));
+        }
+    }
+    None
+}
+
+/// POST /api/assets/{*slug} — Upload or replace an asset.
+#[allow(unused_variables)]
+pub async fn upload_asset_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Path(slug): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    if !state.collab {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let slug = urldecode(&slug);
+    let slug = slug.trim_start_matches('/').trim_end_matches('/');
+
+    // Content-Type required
+    let content_type = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if content_type.is_empty() {
+        eprintln!("[zetl] asset_upload_failed: reason=missing_content_type slug={slug} user=anonymous");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "missing_content_type"})),
+        )
+            .into_response();
+    }
+
+    let base_mime = content_type.split(';').next().unwrap_or(content_type).trim();
+    if !crate::assets::validation::check_mime_allowlist(base_mime) {
+        eprintln!("[zetl] asset_upload_failed: reason=mime_rejected slug={slug} user=anonymous");
+        return (
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            Json(serde_json::json!({
+                "error": "mime_type_not_allowed",
+                "received": base_mime,
+            })),
+        )
+            .into_response();
+    }
+
+    // Per-file size limit
+    let content_length = body.len() as u64;
+    if content_length > state.asset_max_file_bytes {
+        eprintln!("[zetl] asset_upload_failed: reason=size_exceeded slug={slug} user=anonymous");
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(serde_json::json!({
+                "error": "file_too_large",
+                "max_bytes": state.asset_max_file_bytes,
+                "received_bytes": content_length,
+            })),
+        )
+            .into_response();
+    }
+
+    // Storage quota
+    let current_total = state.asset_storage.total();
+    if current_total + content_length > state.asset_max_total_bytes {
+        eprintln!("[zetl] asset_upload_failed: reason=storage_exceeded slug={slug} user=anonymous");
+        return (
+            StatusCode::INSUFFICIENT_STORAGE,
+            Json(serde_json::json!({
+                "error": "storage_quota_exceeded",
+                "quota_bytes": state.asset_max_total_bytes,
+                "used_bytes": current_total,
+            })),
+        )
+            .into_response();
+    }
+
+    // Authentication
+    let (user_id, is_agent) = match extract_auth_user(&state, &headers) {
+        Some(u) => u,
+        None => {
+            eprintln!("[zetl] asset_upload_failed: reason=acl_denied slug={slug} user=anonymous");
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthenticated"})),
+            )
+                .into_response();
+        }
+    };
+
+    // ACL check
+    #[cfg(feature = "reason")]
+    {
+        match crate::acl::check_can_upload(&state.vault_root, &user_id, is_agent) {
+            Ok(true) => {}
+            Ok(false) => {
+                eprintln!("[zetl] asset_upload_failed: reason=acl_denied slug={slug} user={user_id}");
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({"error": "forbidden"})),
+                )
+                    .into_response();
+            }
+            Err(e) => {
+                eprintln!("ACL check error: {e}");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "ACL error",
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    // Overwrite semantics (REQ-3517)
+    let x_create = headers
+        .get("X-Create")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false);
+    let x_overwrite = headers
+        .get("X-Overwrite")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false);
+
+    if !x_create && !x_overwrite {
+        eprintln!("[zetl] asset_upload_failed: reason=missing_create_or_overwrite slug={slug} user={user_id}");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "missing_create_or_overwrite"})),
+        )
+            .into_response();
+    }
+
+    let asset_exists = crate::assets::store::asset_path(&state.vault_root, slug)
+        .map(|p| p.exists())
+        .unwrap_or(false);
+
+    if x_create && !x_overwrite && asset_exists {
+        eprintln!("[zetl] asset_upload_failed: reason=slug_exists slug={slug} user={user_id}");
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "slug_exists", "slug": slug})),
+        )
+            .into_response();
+    }
+
+    if x_overwrite && !x_create && !asset_exists {
+        eprintln!("[zetl] asset_upload_failed: reason=not_found slug={slug} user={user_id}");
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "not_found", "slug": slug})),
+        )
+            .into_response();
+    }
+
+    let original_filename = slug.rsplit('/').next().unwrap_or(slug).to_string();
+
+    // Record old size for accurate counter update on replacement (BUG-001)
+    let old_size = crate::assets::store::serve_asset(&state.vault_root, slug)
+        .map(|(meta, _)| meta.size_bytes)
+        .unwrap_or(0);
+
+    match crate::assets::store::write_asset(
+        &state.vault_root,
+        slug,
+        &body,
+        base_mime,
+        &user_id,
+        &original_filename,
+    ) {
+        Ok(meta) => {
+            let is_replace = meta.replaced_at.is_some();
+
+            // Update storage counter: add new, subtract old (BUG-001)
+            state.asset_storage.increment(meta.size_bytes);
+            if old_size > 0 {
+                state.asset_storage.decrement(old_size);
+            }
+
+            // Git auto-commit (REQ-3513)
+            if let Some(ref lock) = state.git_commit_lock {
+                if let Ok(repo) = lock.lock() {
+                    let asset_path = crate::assets::store::asset_path(&state.vault_root, slug)
+                        .unwrap_or_else(|_| state.vault_root.join(".zetl/assets").join(slug));
+                    let sidecar_path = crate::assets::store::sidecar_path(&state.vault_root, slug);
+                    let size_human = meta.size_human();
+                    let msg = if is_replace {
+                        format!("asset: replace {slug} ({size_human}) [user: {user_id}]")
+                    } else {
+                        format!("asset: upload {slug} ({size_human}) [user: {user_id}]")
+                    };
+                    let paths: Vec<&std::path::Path> = if sidecar_path.exists() {
+                        vec![&asset_path, &sidecar_path]
+                    } else {
+                        vec![&asset_path]
+                    };
+                    let _ = crate::web::git_commit::auto_commit_multi(
+                        &repo,
+                        &paths,
+                        &user_id,
+                        &user_id,
+                        Some(&msg),
+                    );
+                    crate::web::git_commit::jj_git_import(&state.vault_root);
+                }
+            }
+
+            // Observability (OBS-3501)
+            eprintln!("[zetl] asset_upload: slug={slug} size={} mime={} user={user_id}", meta.size_bytes, meta.mime_type);
+
+            // 90% capacity warning (OBS-3505)
+            let new_total = state.asset_storage.total();
+            if new_total as f64 > state.asset_max_total_bytes as f64 * 0.9 {
+                eprintln!("[zetl] assets: storage_warning: used={new_total} max={} (90%)", state.asset_max_total_bytes);
+            }
+
+            let status = if is_replace {
+                StatusCode::OK
+            } else {
+                StatusCode::CREATED
+            };
+            (
+                status,
+                Json(serde_json::json!({
+                    "slug": meta.slug,
+                    "url": format!("/assets/{}", meta.slug),
+                    "mime_type": meta.mime_type,
+                    "size_bytes": meta.size_bytes,
+                    "sha256": meta.sha256,
+                    "uploaded_by": meta.uploaded_by,
+                    "uploaded_at": meta.uploaded_at,
+                    "replaced_at": meta.replaced_at,
+                })),
+            )
+                .into_response()
+        }
+        Err(crate::assets::store::StoreError::InvalidSlug(_)) => {
+            eprintln!("[zetl] asset_upload_failed: reason=invalid_slug slug={slug} user={user_id}");
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "invalid_slug", "slug": slug})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            eprintln!("[zetl] asset_upload_failed: reason=internal_error slug={slug} user={user_id}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "upload_failed"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /assets/{*path} — Serve an asset raw.
+#[allow(unused_variables)]
+pub async fn serve_asset_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Path(path): Path<String>,
+) -> Response {
+    let path = urldecode(&path);
+    let path = path.trim_start_matches('/');
+
+    // ACL check first to avoid leaking asset existence (BUG-003)
+    #[cfg(feature = "reason")]
+    {
+        let vis_mode = crate::acl::query_visibility_mode(&state.vault_root);
+        let user_id = extract_auth_user(&state, &headers).map(|(id, _)| id);
+        let is_agent = extract_auth_user(&state, &headers).map(|(_, agent)| agent).unwrap_or(false);
+        match crate::acl::check_can_read_assets(&state.vault_root, user_id.as_deref(), vis_mode, is_agent) {
+            Ok(true) => {}
+            Ok(false) => {
+                // Return 404 for all denials to prevent existence oracle
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            Err(e) => {
+                eprintln!("ACL read-assets error: {e}");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        }
+    }
+
+    // Resolve metadata and open file
+    let (meta, _file) = match crate::assets::store::serve_asset(&state.vault_root, path) {
+        Ok(v) => v,
+        Err(_) => return StatusCode::NOT_FOUND.into_response(),
+    };
+
+    let cache_control = crate::assets::metadata::cache_control_for(&meta);
+    let mut resp = Response::new(axum::body::Body::empty());
+    resp.headers_mut().insert(header::CONTENT_TYPE, meta.mime_type.parse().unwrap());
+    resp.headers_mut().insert(header::CACHE_CONTROL, cache_control.parse().unwrap());
+    resp.headers_mut().insert(
+        axum::http::HeaderName::from_static("x-content-type-options"),
+        "nosniff".parse().unwrap(),
+    );
+    resp.headers_mut().insert(
+        axum::http::HeaderName::from_static("x-frame-options"),
+        "SAMEORIGIN".parse().unwrap(),
+    );
+
+    // HTML isolation headers (REQ-3514, BUG-004)
+    if meta.mime_type == "text/html" {
+        resp.headers_mut().insert(
+            header::CONTENT_SECURITY_POLICY,
+            "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors 'self'; form-action 'self'"
+                .parse().unwrap(),
+        );
+    }
+
+    // Verbose mode: include SHA-256 header
+    if state.verbose {
+        resp.headers_mut().insert(
+            axum::http::HeaderName::from_static("x-zetl-asset-sha256"),
+            meta.sha256.parse().unwrap(),
+        );
+    }
+
+    // ETag from SHA-256
+    resp.headers_mut().insert(
+        header::ETAG,
+        format!("\"{}\"", &meta.sha256[..16]).parse().unwrap(),
+    );
+
+    let file_path = crate::assets::store::asset_path(&state.vault_root, path)
+        .unwrap_or_else(|_| state.vault_root.join(".zetl/assets").join(path));
+    match std::fs::read(&file_path) {
+        Ok(bytes) => {
+            *resp.body_mut() = axum::body::Body::from(bytes);
+            resp
+        }
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// GET /api/assets[?prefix=] — List assets.
+#[allow(unused_variables)]
+pub async fn list_assets_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Query(params): Query<ListAssetsParams>,
+) -> Response {
+    if !state.collab {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let (user_id, is_agent) = match extract_auth_user(&state, &headers) {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthenticated"})),
+            )
+                .into_response();
+        }
+    };
+
+    #[cfg(feature = "reason")]
+    {
+        match crate::acl::check_can_upload(&state.vault_root, &user_id, is_agent) {
+            Ok(true) => {}
+            Ok(false) => {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({"error": "forbidden"})),
+                )
+                    .into_response();
+            }
+            Err(e) => {
+                eprintln!("ACL check error: {e}");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "ACL error",
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    match crate::assets::store::list_assets(&state.vault_root, params.prefix.as_deref()) {
+        Ok(assets) => Json(assets).into_response(),
+        Err(e) => {
+            eprintln!("list assets error: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "list_failed"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ListAssetsParams {
+    pub prefix: Option<String>,
+}
+
+/// DELETE /api/assets/{*slug} — Delete an asset.
+#[allow(unused_variables)]
+pub async fn delete_asset_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+    Path(slug): Path<String>,
+) -> Response {
+    if !state.collab {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let slug = urldecode(&slug);
+    let slug = slug.trim_start_matches('/').trim_end_matches('/');
+
+    let (user_id, is_agent) = match extract_auth_user(&state, &headers) {
+        Some(u) => u,
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthenticated"})),
+            )
+                .into_response();
+        }
+    };
+
+    #[cfg(feature = "reason")]
+    {
+        match crate::acl::check_can_upload(&state.vault_root, &user_id, is_agent) {
+            Ok(true) => {}
+            Ok(false) => {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({"error": "forbidden"})),
+                )
+                    .into_response();
+            }
+            Err(e) => {
+                eprintln!("ACL check error: {e}");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "ACL error",
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    // Get size before deleting for counter adjustment
+    let size_before = crate::assets::store::serve_asset(&state.vault_root, slug)
+        .map(|(meta, _)| meta.size_bytes)
+        .unwrap_or(0);
+
+    match crate::assets::store::delete_asset(&state.vault_root, slug) {
+        Ok(()) => {
+            state.asset_storage.decrement(size_before);
+
+            // Git auto-commit deletion (REQ-3513)
+            if let Some(ref lock) = state.git_commit_lock {
+                if let Ok(repo) = lock.lock() {
+                    let msg = format!("asset: delete {slug} [user: {user_id}]");
+                    let _ = crate::web::git_commit::auto_commit_multi(
+                        &repo,
+                        &[],
+                        &user_id,
+                        &user_id,
+                        Some(&msg),
+                    );
+                    crate::web::git_commit::jj_git_import(&state.vault_root);
+                }
+            }
+
+            eprintln!("[zetl] asset_delete: slug={slug} user={user_id}");
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Err(crate::assets::store::StoreError::SlugNotFound) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            eprintln!("asset delete error: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "delete_failed"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /_admin/assets — Admin asset management UI.
+#[allow(unused_variables)]
+pub async fn admin_assets_handler(
+    State(state): State<WebState>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if !state.collab {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let (user_id, is_agent) = match extract_auth_user(&state, &headers) {
+        Some(u) => u,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+
+    #[cfg(feature = "reason")]
+    {
+        match crate::acl::check_can_upload(&state.vault_root, &user_id, is_agent) {
+            Ok(true) => {}
+            Ok(false) => return StatusCode::FORBIDDEN.into_response(),
+            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    }
+
+    let vault_name = state
+        .vault_root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "vault".to_string());
+
+    let csrf_token = crate::web::session::token_from_cookies(&headers)
+        .and_then(|t| state.sessions.csrf_token(&t))
+        .unwrap_or_default();
+
+    let assets = match crate::assets::store::list_assets(&state.vault_root, None) {
+        Ok(a) => a,
+        Err(_) => vec![],
+    };
+
+    let used = state.asset_storage.total();
+    let max = state.asset_max_total_bytes;
+    let used_human = crate::assets::metadata::human_size(used);
+    let max_human = crate::assets::metadata::human_size(max);
+
+    match state.engine.render_admin_assets(
+        &vault_name,
+        &csrf_token,
+        &assets,
+        &used_human,
+        &max_human,
+    ) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => render_error_response(e),
     }
 }
